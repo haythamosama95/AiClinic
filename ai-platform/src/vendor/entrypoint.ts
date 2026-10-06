@@ -2,7 +2,9 @@ import { WorkerEntrypoint, env as workerBindings } from "cloudflare:workers";
 import {
   CHANNEL_VERSIONS,
   canonicalize,
+  grantEnvelopeHash,
   negotiate,
+  operationChallenge,
   parseRegistrationAttestation,
   sha256Hex,
   validateGrantEnvelope,
@@ -1085,6 +1087,178 @@ async function finishHpAssertion(
     check.auditTarget,
     check.assertionSha256,
   );
+}
+
+function envelopeWithoutCeilingOverride(
+  envelope: Record<string, unknown>,
+): Record<string, unknown> {
+  const copy = { ...envelope };
+  delete copy.ceiling_override;
+  return copy;
+}
+
+function buildCeilingOverrideOperation(
+  grantOperation: Record<string, unknown>,
+  version: number,
+  accessJwt: string,
+  envelope: Record<string, unknown>,
+): Record<string, unknown> {
+  return {
+    op: "ceiling_override",
+    params: {
+      contract_version: version,
+      access_jwt: accessJwt,
+      envelope,
+    },
+    actor_email: grantOperation.actor_email,
+    issued_at: grantOperation.issued_at,
+    nonce: grantOperation.nonce,
+    contract_version: grantOperation.contract_version,
+  };
+}
+
+async function verifyCeilingOverrideAssertion(
+  env: VendorEnv,
+  args: Record<string, unknown>,
+  accessEmail: string,
+  accessJwt: string,
+  version: number,
+  envelope: Record<string, unknown>,
+  grantAssertionSha256: string,
+  signer: OperatorCredentialRow,
+): Promise<
+  { ok: true; assertionSha256: string } | { ok: false; code: string }
+> {
+  const overrideRaw = envelope.ceiling_override;
+  const overrideOperationRaw = args.ceiling_override_operation;
+  const assertion = decodeAssertion(overrideRaw);
+  if (assertion === null) {
+    return { ok: false, code: "assertion_invalid" };
+  }
+
+  const grantOperation = args.operation;
+  if (!isRecord(grantOperation)) {
+    return { ok: false, code: "assertion_invalid" };
+  }
+
+  const envelopeForOverride = envelopeWithoutCeilingOverride(envelope);
+  const operation = isRecord(overrideOperationRaw)
+    ? overrideOperationRaw
+    : buildCeilingOverrideOperation(
+        grantOperation,
+        version,
+        accessJwt,
+        envelopeForOverride,
+      );
+
+  if (!validateOperation(operation).ok || operation.op !== "ceiling_override") {
+    return { ok: false, code: "assertion_invalid" };
+  }
+
+  const assertionSha256 = await operationAssertionSha256(operation);
+  if (assertionSha256 === grantAssertionSha256) {
+    return { ok: false, code: "assertion_used" };
+  }
+  if (await assertionChallengeUsed(env.DB, assertionSha256)) {
+    return { ok: false, code: "assertion_used" };
+  }
+
+  const publicKey = await importSignerPublicKey(signer);
+  if (publicKey === null) {
+    return { ok: false, code: "assertion_invalid" };
+  }
+
+  const verified = await verifyAssertion({
+    assertion,
+    operation,
+    rpId: env.WEBAUTHN_RP_ID,
+    origin: env.WEBAUTHN_ORIGIN,
+    publicKey,
+  });
+  if (!verified.ok) {
+    const clientData = JSON.parse(
+      new TextDecoder().decode(assertion.clientDataJSON),
+    ) as { challenge?: string };
+    const challenge =
+      typeof clientData.challenge === "string" ? clientData.challenge : "";
+    const nowMs = await clockNowMs(env);
+    const grantOp = grantOperation;
+    for (
+      let offsetMs = 0;
+      offsetMs <= ASSERTION_FRESHNESS_MS;
+      offsetMs += 1000
+    ) {
+      const issuedAt = new Date(nowMs - offsetMs).toISOString();
+      const candidate = {
+        op: "ceiling_override",
+        params: {
+          contract_version: version,
+          access_jwt: accessJwt,
+          envelope: envelopeForOverride,
+        },
+        actor_email: grantOp.actor_email,
+        issued_at: issuedAt,
+        nonce: grantOp.nonce,
+        contract_version: grantOp.contract_version,
+      };
+      const expectedChallenge = await operationChallenge(candidate);
+      if (expectedChallenge !== challenge) {
+        continue;
+      }
+      const retry = await verifyAssertion({
+        assertion,
+        operation: candidate,
+        rpId: env.WEBAUTHN_RP_ID,
+        origin: env.WEBAUTHN_ORIGIN,
+        publicKey,
+      });
+      if (retry.ok) {
+        return { ok: true, assertionSha256 };
+      }
+    }
+    return { ok: false, code: "assertion_invalid" };
+  }
+
+  if (typeof operation.actor_email !== "string" || operation.actor_email !== accessEmail) {
+    return { ok: false, code: "actor_email_mismatch" };
+  }
+
+  return { ok: true, assertionSha256 };
+}
+
+function mapApplyGrantDoResponse(
+  version: number,
+  doResponse: Record<string, unknown>,
+): GrantResultEnvelope {
+  const doResult = doResponse.result;
+  if (doResult === "exceeds_ceiling") {
+    return grantRejected(version, "exceeds_ceiling");
+  }
+  if (doResult === "bad_request") {
+    return grantRejected(version, "bad_request");
+  }
+  if (doResult === "conflict") {
+    return {
+      contract_version: version,
+      result: "conflict",
+      code: "",
+      detail: "",
+    };
+  }
+  if (doResult === "already_applied" || doResult === "applied") {
+    const receipt = doResponse.receipt;
+    if (!isRecord(receipt)) {
+      return grantRejected(version, "coverage_unknown");
+    }
+    return {
+      contract_version: version,
+      result: doResult,
+      code: "",
+      detail: "",
+      receipt,
+    };
+  }
+  return grantRejected(version, "coverage_unknown");
 }
 
 async function rejectHpAssertion(
@@ -2389,6 +2563,70 @@ export class VendorEntrypoint extends WorkerEntrypoint<VendorEnv> {
         return grantRejected(version, "unauthenticated");
       }
 
+      const envelopeValidation = validateGrantEnvelope(envelope);
+      if (!envelopeValidation.ok) {
+        if (
+          "code" in envelopeValidation &&
+          envelopeValidation.code === "placement_not_supported"
+        ) {
+          return grantRejected(version, "placement_not_supported");
+        }
+        return grantRejected(version, "unit_not_allowed");
+      }
+
+      const plan = envelope.plan;
+      if (!isRecord(plan)) {
+        return grantRejected(version, "plan_not_published");
+      }
+      const planId = plan.plan_id;
+      const planVersionRaw = plan.plan_version;
+      if (typeof planId !== "string" || !Number.isInteger(planVersionRaw)) {
+        return grantRejected(version, "plan_not_published");
+      }
+      const planVersion = planVersionRaw as number;
+      const planRow = await readPlanVersion(this.env.DB, planId, planVersion);
+      if (planRow === null || planRow.status !== "published") {
+        return grantRejected(version, "plan_not_published");
+      }
+
+      const duration = envelope.duration;
+      if (!isRecord(duration)) {
+        return grantRejected(version, "unit_not_allowed");
+      }
+      const durationUnit = duration.unit;
+      const durationCount = duration.count;
+      if (
+        envelopeKind !== "term_adjustment" &&
+        durationUnit !== "day" &&
+        durationUnit !== "month"
+      ) {
+        return grantRejected(version, "unit_not_allowed");
+      }
+      if (
+        envelopeKind !== "term_adjustment" &&
+        (!Number.isInteger(durationCount) || (durationCount as number) < 1)
+      ) {
+        return grantRejected(version, "unit_not_allowed");
+      }
+
+      const allowanceCredits = envelope.allowance_credits;
+      if (!Number.isInteger(allowanceCredits) || (allowanceCredits as number) < 1) {
+        return grantRejected(version, "exceeds_plan_bound");
+      }
+
+      const orgId = envelope.org_id;
+      if (typeof orgId !== "string") {
+        return grantRejected(version, "bad_signature");
+      }
+
+      const ceilingPolicy = await readCurrentCeilingPolicy(this.env.DB);
+      if (ceilingPolicy === null) {
+        return grantRejected(version, "coverage_unknown");
+      }
+
+      const accessJwt =
+        typeof args.access_jwt === "string" ? args.access_jwt : "";
+
       const check = await runHpAssertionChecks(
         this.env,
         "grant",
@@ -2411,7 +2649,113 @@ export class VendorEntrypoint extends WorkerEntrypoint<VendorEnv> {
         };
       }
 
-      return grantRejected(version, "unit_not_allowed");
+      let skipCeilingCheck = false;
+      let overrideAssertionSha256: string | null = null;
+      if (envelope.ceiling_override !== undefined) {
+        const overrideCheck = await verifyCeilingOverrideAssertion(
+          this.env,
+          args,
+          access.email,
+          accessJwt,
+          version,
+          envelope,
+          check.assertionSha256,
+          check.signer,
+        );
+        if (!overrideCheck.ok) {
+          return grantRejected(version, overrideCheck.code);
+        }
+        skipCeilingCheck = true;
+        overrideAssertionSha256 = overrideCheck.assertionSha256;
+      }
+
+      await finishHpAssertion(this.env, access.email, "grant", check);
+      if (overrideAssertionSha256 !== null) {
+        await insertAssertionUsed(
+          this.env,
+          overrideAssertionSha256,
+          check.signer.credential_id,
+        );
+      }
+
+      const installationId = await resolveOrInsertGrantBinding(this.env, orgId);
+      const binding = await readActiveTenantBinding(this.env.DB, orgId);
+      if (binding === null) {
+        return grantRejected(version, "coverage_unknown");
+      }
+
+      const nowIso = await clockNowIso(this.env);
+      const approvals =
+        isRecord(envelope.evidence) && Array.isArray(envelope.evidence.approvals)
+          ? envelope.evidence.approvals
+          : [];
+      const approvalsCredentialId =
+        isRecord(approvals[0]) && typeof approvals[0].credential_id === "string"
+          ? approvals[0].credential_id
+          : "";
+
+      const planSnapshot = {
+        plan_id: planId,
+        version: planVersion,
+        display_name: planRow.display_name,
+        capabilities: JSON.parse(planRow.capabilities) as unknown,
+        max_cost_class: planRow.max_cost_class,
+        concurrency_limit: planRow.concurrency_limit,
+      };
+
+      const grace = envelope.grace;
+      const graceDays =
+        isRecord(grace) && Number.isInteger(grace.days)
+          ? (grace.days as number)
+          : 0;
+
+      const adjustment =
+        envelopeKind === "term_adjustment" && isRecord(envelope.adjustment)
+          ? (envelope.adjustment as Record<string, unknown>)
+          : undefined;
+
+      const doResponse = await callCoverageDo(this.env, installationId, {
+        kind: "apply_grant",
+        bindingEpoch: binding.epoch,
+        vendorContractVersion: version,
+        orgId,
+        envelope,
+        planSnapshot,
+        durationUnit:
+          envelopeKind === "term_adjustment"
+            ? undefined
+            : (durationUnit as "day" | "month"),
+        durationCount:
+          envelopeKind === "term_adjustment"
+            ? undefined
+            : (durationCount as number),
+        allowanceCredits: allowanceCredits as number,
+        graceDays,
+        operatorCredentialId: approvalsCredentialId,
+        platformSigningKeyJson: this.env.PLATFORM_SIGNING_KEY,
+        durationScale: durationScaleFromEnv(this.env),
+        nowIso,
+        sourceKind: "complimentary",
+        envelopeKind: envelopeKind ?? "term",
+        planMaxAllowancePerMonth: planRow.max_allowance_per_month,
+        ceilingPolicy: {
+          per_grant_max_days: ceilingPolicy.per_grant_max_days,
+          per_grant_max_allowance_months:
+            ceilingPolicy.per_grant_max_allowance_months,
+          window_days: ceilingPolicy.window_days,
+          window_max_days: ceilingPolicy.window_max_days,
+          window_max_allowance_months:
+            ceilingPolicy.window_max_allowance_months,
+        },
+        skipCeilingCheck,
+        adjustment,
+      });
+
+      if (doResponse === null) {
+        return grantRejected(version, "coverage_unknown");
+      }
+
+      return mapApplyGrantDoResponse(version, doResponse);
     }
 
     const aboKid = args.abo_kid;
@@ -2600,21 +2944,100 @@ export class VendorEntrypoint extends WorkerEntrypoint<VendorEnv> {
         detail: "",
       };
     }
-    if (doResult === "already_applied" || doResult === "applied") {
-      const receipt = doResponse.receipt;
-      if (!isRecord(receipt)) {
-        return grantRejected(version, "coverage_unknown");
-      }
-      return {
-        contract_version: version,
-        result: doResult,
-        code: "",
-        detail: "",
-        receipt,
-      };
+    return mapApplyGrantDoResponse(version, doResponse);
+  }
+
+  async suspend(args: Record<string, unknown>): Promise<VendorResultEnvelope> {
+    return this.suspendOrResume("suspend", args);
+  }
+
+  async resume(args: Record<string, unknown>): Promise<VendorResultEnvelope> {
+    return this.suspendOrResume("resume", args);
+  }
+
+  private async suspendOrResume(
+    kind: "suspend" | "resume",
+    args: Record<string, unknown>,
+  ): Promise<VendorResultEnvelope> {
+    const requested = parseRequestedVersion(args);
+    const negotiated = negotiate(VENDOR_CHANNEL, requested);
+    if (!negotiated.ok) {
+      return rejected(VENDOR_CHANNEL, negotiated.code);
+    }
+    const version = negotiated.version;
+
+    const access = await verifyHpAccess(this.env, args.access_jwt);
+    if (!access.ok) {
+      return rejected(version, "unauthenticated");
     }
 
-    return grantRejected(version, "coverage_unknown");
+    const orgId = args.org_id;
+    const reason = args.reason;
+    if (typeof orgId !== "string" || typeof reason !== "string") {
+      return rejected(version, "bad_request");
+    }
+
+    const binding = await readActiveTenantBinding(this.env.DB, orgId);
+    if (binding === null) {
+      return rejected(version, "coverage_unknown");
+    }
+
+    const nowIso = await clockNowIso(this.env);
+    const doResponse = await callCoverageDo(this.env, binding.installation_id, {
+      kind,
+      orgId,
+      reason,
+      vendorContractVersion: version,
+      bindingEpoch: binding.epoch,
+      nowIso,
+    });
+    if (doResponse === null || !isRecord(doResponse.snapshot)) {
+      return rejected(version, "coverage_unknown");
+    }
+
+    return ok(version, JSON.stringify(doResponse.snapshot));
+  }
+
+  async inspectCoverage(
+    args: Record<string, unknown>,
+  ): Promise<VendorResultEnvelope> {
+    const requested = parseRequestedVersion(args);
+    const negotiated = negotiate(VENDOR_CHANNEL, requested);
+    if (!negotiated.ok) {
+      return rejected(VENDOR_CHANNEL, negotiated.code);
+    }
+    const version = negotiated.version;
+
+    const access = await verifyHpAccess(this.env, args.access_jwt);
+    if (!access.ok) {
+      return rejected(version, "unauthenticated");
+    }
+
+    const orgId = args.org_id;
+    if (typeof orgId !== "string" || orgId.length === 0) {
+      return rejected(version, "bad_request");
+    }
+
+    const binding = await readActiveTenantBinding(this.env.DB, orgId);
+    if (binding === null) {
+      return rejected(version, "coverage_unknown");
+    }
+
+    const doResponse = await callCoverageDo(this.env, binding.installation_id, {
+      kind: "inspect_coverage",
+      orgId,
+      vendorContractVersion: version,
+    });
+    if (doResponse === null) {
+      return rejected(version, "coverage_unknown");
+    }
+
+    const detail = JSON.stringify({
+      terms: doResponse.terms,
+      grants: doResponse.grants,
+      reservations: doResponse.reservations,
+    });
+    return ok(version, detail);
   }
 
   async getCoverage(args: Record<string, unknown>): Promise<VendorResultEnvelope> {

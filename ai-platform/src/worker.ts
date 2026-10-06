@@ -97,8 +97,10 @@ import {
   applyGrantRPC,
   creditRPC,
   ensureCoverageDoTables,
+  inspectCoverageRPC,
   inspectRPC,
   readCoverageRPC,
+  suspendResumeRPC,
   releaseRPC,
   shipCoverageOutboxAlarm,
   scheduleOutboxAlarmIfPending,
@@ -129,7 +131,9 @@ import {
 } from "./logger";
 import {
   raiseAl11GrantFromOutbox,
+  raiseAl12GrantFromOutbox,
   raiseAl17FromOutbox,
+  raiseAl19FromOutbox,
   runFiveMinuteCron,
   type AlertEnv,
 } from "./alert/index";
@@ -1772,6 +1776,23 @@ export class GatewayObject extends DurableObject {
         );
         return Response.json({ ...result, contract_version: contractVersion });
       }
+      if (kind === "suspend" || kind === "resume") {
+        const result = await suspendResumeRPC(
+          this.ctx,
+          this.ctx.storage,
+          (fn) => this.ctx.blockConcurrencyWhile(fn),
+          body as Parameters<typeof suspendResumeRPC>[3],
+        );
+        return Response.json({ ...result, contract_version: contractVersion });
+      }
+      if (kind === "inspect_coverage") {
+        const result = await inspectCoverageRPC(
+          this.ctx.storage,
+          (fn) => this.ctx.blockConcurrencyWhile(fn),
+          body as Parameters<typeof inspectCoverageRPC>[2],
+        );
+        return Response.json({ ...result, contract_version: contractVersion });
+      }
     } catch (error) {
       if (isArgValidationError(error)) {
         return Response.json({ error: "bad_request" }, { status: 400 });
@@ -1811,6 +1832,14 @@ export class GatewayObject extends DurableObject {
           alert.alert_key,
           alert.body,
         );
+      } else if (alert.code === "AL-12") {
+        await raiseAl12GrantFromOutbox(
+          runtimeEnv,
+          alert.alert_key,
+          alert.body,
+        );
+      } else if (alert.code === "AL-19") {
+        await raiseAl19FromOutbox(runtimeEnv, alert.alert_key, alert.body);
       } else if (alert.code === "AL-17") {
         await raiseAl17FromOutbox(runtimeEnv, alert.alert_key, alert.body);
       }

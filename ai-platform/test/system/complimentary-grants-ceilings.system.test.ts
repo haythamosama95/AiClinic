@@ -11,6 +11,11 @@ import {
 import { beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { addDuration } from "../../src/coverage/calendar";
 import {
+  createCapabilityRegistry,
+  setCapabilityRegistry,
+  type Manifest,
+} from "../../src/capability";
+import {
   applyAllMigrations,
   clearCapturedVendorEmails,
   clearConfigCache,
@@ -19,13 +24,14 @@ import {
   encodeVendorAssertion,
   getCapturedVendorEmails,
   getCapabilities,
+  getVendorTestClockIso,
   invoke,
   mintAat,
   mintVendorAccessJwt,
   newClinic,
   newScenario,
   queryOne,
-  registerVisitSummaryCapability,
+  visitSummaryManifest,
   resetPlatformState,
   setTestClock,
   setupPromotedFakePolicy,
@@ -36,6 +42,50 @@ import {
 } from "./harness";
 
 const CONTRACT_VERSION = CHANNEL_VERSIONS.vendorEntrypoint;
+
+function planChangedManifest(): Manifest {
+  const base = visitSummaryManifest();
+  return {
+    ...base,
+    Identity: {
+      ...base.Identity,
+      capabilityId: "clinic.plan_changed",
+      title: "Plan changed",
+    },
+    Access: {
+      ...base.Access,
+      requiredCapabilityScope: "ai.plan_changed",
+    },
+  };
+}
+
+function registerP36Capabilities(): void {
+  setCapabilityRegistry(
+    createCapabilityRegistry([visitSummaryManifest(), planChangedManifest()]),
+    { replace: true },
+  );
+}
+
+function discoveryCapabilityIds(
+  body: Record<string, unknown> | null,
+): string[] {
+  const manifests = body?.manifests;
+  if (!Array.isArray(manifests)) {
+    return [];
+  }
+  return manifests
+    .map((entry) => {
+      if (typeof entry !== "object" || entry === null) {
+        return null;
+      }
+      const identity = (entry as { Identity?: { capabilityId?: string } })
+        .Identity;
+      return typeof identity?.capabilityId === "string"
+        ? identity.capabilityId
+        : null;
+    })
+    .filter((id): id is string => id !== null);
+}
 
 const PLAN_ID = "live-monthly";
 const PLAN_VERSION = 1;
@@ -191,7 +241,7 @@ async function operationForHpGrant(input: {
       envelope: input.envelope,
     },
     actor_email: VENDOR_OPERATOR_EMAIL,
-    issued_at: new Date().toISOString(),
+    issued_at: getVendorTestClockIso() ?? new Date().toISOString(),
     nonce: crypto.randomUUID(),
     contract_version: CONTRACT_VERSION,
   };
@@ -209,7 +259,7 @@ async function operationForCeilingOverride(input: {
       envelope: input.envelope,
     },
     actor_email: VENDOR_OPERATOR_EMAIL,
-    issued_at: new Date().toISOString(),
+    issued_at: getVendorTestClockIso() ?? new Date().toISOString(),
     nonce: crypto.randomUUID(),
     contract_version: CONTRACT_VERSION,
   };
@@ -218,6 +268,7 @@ async function operationForCeilingOverride(input: {
 async function hpComplimentaryGrant(input: {
   envelope: Record<string, unknown>;
   accessJwt?: string;
+  ceilingOverrideOperation?: Record<string, unknown>;
 }): Promise<GrantResultEnvelope> {
   const signer = coverClinicSigner();
   const accessJwt = input.accessJwt ?? (await mintVendorAccessJwt());
@@ -234,29 +285,32 @@ async function hpComplimentaryGrant(input: {
       uv: true,
     }),
   );
-  return extendedVendorCall(
-    "grant",
-    {
-      contract_version: CONTRACT_VERSION,
-      envelope: input.envelope,
-      signer_credential_id: signer.signerCredentialId,
-      operation,
-      assertion,
-    },
-    { accessJwt },
-  );
+  const grantArgs: Record<string, unknown> = {
+    contract_version: CONTRACT_VERSION,
+    envelope: input.envelope,
+    signer_credential_id: signer.signerCredentialId,
+    operation,
+    assertion,
+  };
+  if (input.ceilingOverrideOperation !== undefined) {
+    grantArgs.ceiling_override_operation = input.ceilingOverrideOperation;
+  }
+  return extendedVendorCall("grant", grantArgs, { accessJwt });
 }
 
 async function encodeCeilingOverrideAssertion(input: {
   envelope: Record<string, unknown>;
   accessJwt: string;
-}): Promise<Record<string, string>> {
+}): Promise<{
+  assertion: Record<string, string>;
+  operation: Record<string, unknown>;
+}> {
   const signer = coverClinicSigner();
   const operation = await operationForCeilingOverride({
     accessJwt: input.accessJwt,
     envelope: input.envelope,
   });
-  return encodeVendorAssertion(
+  const assertion = encodeVendorAssertion(
     await signer.signerAuthenticator.assert({
       operation,
       rpId: env.WEBAUTHN_RP_ID,
@@ -265,6 +319,7 @@ async function encodeCeilingOverrideAssertion(input: {
       uv: true,
     }),
   );
+  return { assertion, operation };
 }
 
 function parseAlertBodies(): Array<Record<string, unknown>> {
@@ -342,7 +397,7 @@ async function operationForSetCeilingPolicy(input: {
       ...LAUNCH_CEILING_POLICY,
     },
     actor_email: VENDOR_OPERATOR_EMAIL,
-    issued_at: new Date().toISOString(),
+    issued_at: getVendorTestClockIso() ?? new Date().toISOString(),
     nonce: crypto.randomUUID(),
     contract_version: CONTRACT_VERSION,
   };
@@ -401,7 +456,7 @@ async function publishPlanVersionTwo(
       max_allowance_per_month: PLAN_MAX_ALLOWANCE,
     },
     actor_email: VENDOR_OPERATOR_EMAIL,
-    issued_at: new Date().toISOString(),
+    issued_at: getVendorTestClockIso() ?? new Date().toISOString(),
     nonce: crypto.randomUUID(),
     contract_version: CONTRACT_VERSION,
   };
@@ -436,14 +491,14 @@ async function publishPlanVersionTwo(
 
 beforeAll(async () => {
   await applyAllMigrations(env.DB);
-  registerVisitSummaryCapability();
+  registerP36Capabilities();
   await setupVendorHarness();
 });
 
 beforeEach(async () => {
   vi.restoreAllMocks();
   await resetPlatformState();
-  registerVisitSummaryCapability();
+  registerP36Capabilities();
   await setupVendorHarness();
 });
 
@@ -511,13 +566,13 @@ describe("complimentary grants, ceilings, adjustments, suspension", () => {
     expect(rejected.code).toBe("exceeds_ceiling");
 
     const accessJwt = await mintVendorAccessJwt();
-    const overrideAssertion = await encodeCeilingOverrideAssertion({
+    const overrideEncoded = await encodeCeilingOverrideAssertion({
       envelope: baseEnvelope,
       accessJwt,
     });
     const withOverride = {
       ...baseEnvelope,
-      ceiling_override: overrideAssertion,
+      ceiling_override: overrideEncoded.assertion,
       evidence: {
         ...(baseEnvelope.evidence as Record<string, unknown>),
         approvals: [
@@ -531,6 +586,7 @@ describe("complimentary grants, ceilings, adjustments, suspension", () => {
     const applied = await hpComplimentaryGrant({
       envelope: withOverride,
       accessJwt,
+      ceilingOverrideOperation: overrideEncoded.operation,
     });
     expect(applied.result).toBe("applied");
 
@@ -738,9 +794,9 @@ describe("complimentary grants, ceilings, adjustments, suspension", () => {
     const token = await mintAat(scenario);
     const caps = await getCapabilities(token);
     expect(caps.status).toBe(200);
-    const allowed = caps.body?.allowed_capabilities as string[] | undefined;
-    expect(allowed ?? []).not.toContain("clinic.visit_summary");
-    expect(allowed ?? []).toContain("clinic.plan_changed");
+    const allowed = discoveryCapabilityIds(caps.body);
+    expect(allowed).not.toContain("clinic.visit_summary");
+    expect(allowed).toContain("clinic.plan_changed");
   });
 
   it("E2E-P3.6-06 Suspend returns 403 suspended before any other refusal and resume admits", async () => {
@@ -786,7 +842,7 @@ describe("complimentary grants, ceilings, adjustments, suspension", () => {
         org_id: scenario.orgId,
         reason: "resolved",
       },
-      { accessJwt },
+      { accessJwt: await mintVendorAccessJwt() },
     );
     expect(resumed.result).toBe("ok");
 

@@ -1424,12 +1424,18 @@ export async function ensureCoverageDoTables(
 
 export {
   applyGrantRPC,
+  inspectCoverageRPC,
   readCoverageRPC,
   scheduleOutboxAlarmIfPending,
   shipCoverageOutboxAlarm,
+  suspendResumeRPC,
   type ApplyGrantRequest,
   type ApplyGrantResponse,
+  type InspectCoverageRequest,
+  type InspectCoverageResponse,
   type ReadCoverageRequest,
   type ReadCoverageResponse,
+  type SuspendResumeRequest,
+  type SuspendResumeResponse,
   type CoverageShipEnv,
 } from "./coverage";

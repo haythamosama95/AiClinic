@@ -911,6 +911,55 @@ export async function raiseAl11GrantFromOutbox(
   await sendAl11GrantBody(env, body, alertKey);
 }
 
+async function sendCoverageAlertBody(
+  env: CoverageAlertEnv,
+  subject: string,
+  body: Record<string, unknown>,
+  alertKey: string,
+): Promise<void> {
+  const message = {
+    from: env.ALERT_EMAIL_TO,
+    to: env.ALERT_EMAIL_TO,
+    subject,
+    text: JSON.stringify(body),
+  };
+  try {
+    await sendPlatformEmail(env, message);
+    await markAlertSent(env.DB, alertKey);
+  } catch {
+    const nowIso = await clockNowIso(env);
+    await markAlertUnsent(env.DB, alertKey, nowIso);
+  }
+}
+
+export async function raiseAl12GrantFromOutbox(
+  env: CoverageAlertEnv,
+  alertKey: string,
+  body: Record<string, unknown>,
+): Promise<void> {
+  const nowIso = await clockNowIso(env);
+  const existing = await readPlatformAlertSendState(env.DB, alertKey);
+  if (existing === "sent") {
+    return;
+  }
+  await upsertPlatformAlert(env.DB, alertKey, "AL-12", nowIso);
+  await sendCoverageAlertBody(env, "AL-12", body, alertKey);
+}
+
+export async function raiseAl19FromOutbox(
+  env: CoverageAlertEnv,
+  alertKey: string,
+  body: Record<string, unknown>,
+): Promise<void> {
+  const nowIso = await clockNowIso(env);
+  const existing = await readPlatformAlertSendState(env.DB, alertKey);
+  if (existing === "sent") {
+    return;
+  }
+  await upsertPlatformAlert(env.DB, alertKey, "AL-19", nowIso);
+  await sendCoverageAlertBody(env, "AL-19", body, alertKey);
+}
+
 export async function raiseAl17FromOutbox(
   env: CoverageAlertEnv,
   alertKey: string,
