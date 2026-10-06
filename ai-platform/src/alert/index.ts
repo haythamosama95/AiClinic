@@ -943,6 +943,43 @@ export async function raiseAl18HeldBinding(
   await sendCoverageAlertBody(env, "AL-18", body, alertKey);
 }
 
+export async function sendDailyAl18ForHeldBindings(
+  env: CoverageAlertEnv,
+): Promise<void> {
+  const nowIso = await clockNowIso(env);
+  const cutoffIso = new Date(Date.parse(nowIso) - ONE_DAY_MS).toISOString();
+  const rows = await env.DB.prepare(
+    `SELECT org_id, installation_id FROM tenant_binding WHERE status = 'held_for_transfer'`,
+  ).all<{ org_id: string; installation_id: string }>();
+
+  for (const row of rows.results ?? []) {
+    const alertKey = `AL-18:${row.installation_id}`;
+    const alert = await env.DB.prepare(
+      `SELECT last_at FROM platform_alert WHERE alert_key = ? AND code = 'AL-18'`,
+    )
+      .bind(alertKey)
+      .first<{ last_at: string }>();
+    if (alert !== null && alert.last_at > cutoffIso) {
+      continue;
+    }
+    if (alert === null) {
+      await upsertPlatformAlert(env.DB, alertKey, "AL-18", nowIso);
+    } else {
+      await env.DB.prepare(
+        `UPDATE platform_alert SET last_at = ?, count = count + 1 WHERE alert_key = ?`,
+      )
+        .bind(nowIso, alertKey)
+        .run();
+    }
+    const body = {
+      code: "AL-18",
+      org_id: row.org_id,
+      installation_id: row.installation_id,
+    };
+    await sendCoverageAlertBody(env, "AL-18", body, alertKey);
+  }
+}
+
 async function sendCoverageAlertBody(
   env: CoverageAlertEnv,
   subject: string,

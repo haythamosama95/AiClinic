@@ -306,12 +306,22 @@ export async function purgeByInstallationId(
 
   const installationScope = `installation:${installationId}`;
 
+  const bindingRow = await db
+    .prepare(
+      `SELECT status FROM tenant_binding WHERE installation_id = ? LIMIT 1`,
+    )
+    .bind(installationId)
+    .first<{ status: string }>();
+  const preserveUsageForOpenCoverage =
+    bindingRow?.status === "held_for_transfer";
+
   // Decision: purge-by-installation-id is the store half of installation
-  // deletion recovery (§7.7). It removes identity + commercial footprint
-  // (`entitlement`, `installation`) in addition to
-  // journal/ledger/counter/grant rows and `grace_admission_queue` rows that
-  // FK to the installation — not deferred to B2 lifecycle alone.
-  await db.batch([
+  // deletion recovery (§7.7). P3.8 keeps the installation row (marked deleted),
+  // commercial binding rows, grant ledger, coverage events, transfers, and
+  // usage for terms that still have coverage on a held binding; DO storage is
+  // untouched. Journal, rollup, counter, and capability grant rows are still
+  // removed for the installation.
+  const batch: D1PreparedStatement[] = [
     db
       .prepare(
         `DELETE FROM ai_attempt
@@ -320,9 +330,6 @@ export async function purgeByInstallationId(
          )`,
       )
       .bind(installationId),
-    db.prepare(`DELETE FROM usage_event WHERE installation_id = ?`).bind(
-      installationId,
-    ),
     db.prepare(`DELETE FROM ai_request WHERE installation_id = ?`).bind(
       installationId,
     ),
@@ -342,18 +349,24 @@ export async function purgeByInstallationId(
       .prepare(`DELETE FROM capability_grant WHERE scope = ?`)
       .bind(installationScope),
     db
-      .prepare(`DELETE FROM entitlement WHERE installation_id = ?`)
-      .bind(installationId),
-    db
-      .prepare(`DELETE FROM tenant_binding WHERE installation_id = ?`)
-      .bind(installationId),
-    db
       .prepare(`DELETE FROM grace_admission_queue WHERE installation_id = ?`)
       .bind(installationId),
     db
-      .prepare(`DELETE FROM installation WHERE installation_id = ?`)
+      .prepare(`UPDATE installation SET status = 'deleted' WHERE installation_id = ?`)
       .bind(installationId),
-  ]);
+  ];
+
+  if (!preserveUsageForOpenCoverage) {
+    batch.splice(
+      1,
+      0,
+      db.prepare(`DELETE FROM usage_event WHERE installation_id = ?`).bind(
+        installationId,
+      ),
+    );
+  }
+
+  await db.batch(batch);
 
   await writePurgeAudit(db, operatorId, "purge_installation", installationId);
 }

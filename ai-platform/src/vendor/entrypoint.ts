@@ -3776,9 +3776,22 @@ export class VendorEntrypoint extends WorkerEntrypoint<VendorEnv> {
     const envelopeSha256 = await sha256Hex(canonicalize(signedBody));
 
     const ledgerRow = await this.env.DB.prepare(
-      "SELECT grant_id, org_id, installation_id FROM grant_ledger WHERE grant_id = ?",
+      `SELECT gl.grant_id, gl.org_id, gl.installation_id
+       FROM grant_ledger gl
+       WHERE gl.grant_id = ? OR gl.origin_grant_id = ?
+       ORDER BY gl.applied_at DESC,
+         CASE
+           WHEN gl.installation_id = (
+             SELECT tb.installation_id FROM tenant_binding tb
+             WHERE tb.org_id = gl.org_id AND tb.status = 'active'
+             LIMIT 1
+           ) THEN 0
+           ELSE 1
+         END,
+         gl.grant_id DESC
+       LIMIT 1`,
     )
-      .bind(grantId)
+      .bind(grantId, grantId)
       .first<{ grant_id: string; org_id: string; installation_id: string }>();
 
     const storedVoid = await findStoredReversalVoid(

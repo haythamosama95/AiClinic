@@ -127,7 +127,7 @@ The run fails because `beginTransfer` is not a method.
 
 **Independent Test**: E2E-P3.8-07 in harness H-AP.
 
-- [ ] T020 [US3] Choose the destination installation in `voidForReversal` in `ai-platform/src/vendor/entrypoint.ts` — produces the void on the moved term, FR-007, E2E-P3.8-07. Depends on T019. When choosing the DO, use the latest `grant_ledger` row by `applied_at` whose `grant_id` or `origin_grant_id` equals the paid `grant_id`, and call the existing `void_for_reversal` kind on that `installation_id` with the org's active binding epoch. Do not change `voidForReversalRPC` or the tombstone branch. `voidForReversal` stays class M.
+- [X] T020 [US3] Choose the destination installation in `voidForReversal` in `ai-platform/src/vendor/entrypoint.ts` — produces the void on the moved term, FR-007, E2E-P3.8-07. Depends on T019. When choosing the DO, use the latest `grant_ledger` row by `applied_at` whose `grant_id` or `origin_grant_id` equals the paid `grant_id`, and call the existing `void_for_reversal` kind on that `installation_id` with the org's active binding epoch. Do not change `voidForReversalRPC` or the tombstone branch. `voidForReversal` stays class M.
 
 **Checkpoint**: E2E-P3.8-07 still needs the unit command after T020. E2E-P3.8-08 still fails.
 
@@ -135,7 +135,7 @@ The run fails because `beginTransfer` is not a method.
 
 **Independent Test**: E2E-P3.8-08 in harness H-AP. Earlier H-AP suites stay green (rule S2).
 
-- [ ] T021 [US4] Change `purgeByInstallationId` in `ai-platform/src/retention/index.ts` — produces ledger retention, FR-008, E2E-P3.8-08. Depends on T020. Update `installation.status` to `deleted` and do not delete that row, `entitlement`, `tenant_binding`, `grant_ledger`, `grant_void`, `coverage_event`, `transfer`, or `transfer_step`. Do not delete or update DO storage. `usage_event` deletes stay, except rows whose `term_id` belongs to a DO term that has not ended. Keep the existing deletes of requests, attempts, rollups, counters, and capability grants.
+- [X] T021 [US4] Change `purgeByInstallationId` in `ai-platform/src/retention/index.ts` — produces ledger retention, FR-008, E2E-P3.8-08. Depends on T020. Update `installation.status` to `deleted` and do not delete that row, `entitlement`, `tenant_binding`, `grant_ledger`, `grant_void`, `coverage_event`, `transfer`, or `transfer_step`. Do not delete or update DO storage. `usage_event` deletes stay, except rows whose `term_id` belongs to a DO term that has not ended. Keep the existing deletes of requests, attempts, rollups, counters, and capability grants.
 
 **Checkpoint**: E2E-P3.8-08 still needs the unit command after T021. Earlier purge assertions still expect removed rows until T023–T025.
 
@@ -143,7 +143,7 @@ The run fails because `beginTransfer` is not a method.
 
 **Independent Test**: E2E-P3.8-04, E2E-P3.8-05, and E2E-P3.8-06 in harness H-AP.
 
-- [ ] T022 [US2] On the existing cron `0 3 * * *`, send AL-18 again for each binding still `held_for_transfer`, in `ai-platform/src/worker.ts` and `ai-platform/src/alert/index.ts` — produces the daily alert, FR-005, E2E-P3.8-04. Depends on T021. Send only when that binding's last AL-18 send is at least 24 hours earlier. Do not add a cron. A binding that is no longer held is not sent.
+- [X] T022 [US2] On the existing cron `0 3 * * *`, send AL-18 again for each binding still `held_for_transfer`, in `ai-platform/src/worker.ts` and `ai-platform/src/alert/index.ts` — produces the daily alert, FR-005, E2E-P3.8-04. Depends on T021. Send only when that binding's last AL-18 send is at least 24 hours earlier. Do not add a cron. A binding that is no longer held is not sent.
 
 **Checkpoint**: E2E-P3.8-01 through E2E-P3.8-08 are ready for the assertion updates and the unit command.
 

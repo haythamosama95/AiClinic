@@ -142,6 +142,7 @@ import {
   raiseAl17FromOutbox,
   raiseAl19FromOutbox,
   runFiveMinuteCron,
+  sendDailyAl18ForHeldBindings,
   type AlertEnv,
 } from "./alert/index";
 
@@ -2140,6 +2141,13 @@ export default {
         log.info("scheduled_retention_purge_complete");
       } catch (error) {
         log.error("scheduled_retention_purge_failed", {
+          error: error instanceof Error ? error.message : String(error),
+        });
+      }
+      try {
+        await sendDailyAl18ForHeldBindings(runtimeEnv);
+      } catch (error) {
+        log.error("scheduled_al18_held_failed", {
           error: error instanceof Error ? error.message : String(error),
         });
       }
