@@ -324,7 +324,7 @@ function expectPrincipalFromClaims(
 
 function expectRejected(
   result: VerifyResult,
-  code: "unauthenticated" | "installation_suspended" = "unauthenticated",
+  code: "unauthenticated" | "suspended" = "unauthenticated",
 ): void {
   expect(result.ok).toBe(false);
   if (!result.ok) {
@@ -513,7 +513,7 @@ describe("identity token rejection cases", () => {
     ctx?: (reader: ReaderSpy) => VerifyContext;
     expectOk?: boolean;
     expectedClaims?: Partial<AatClaims>;
-    code?: "unauthenticated" | "installation_suspended";
+    code?: "unauthenticated" | "suspended";
   }> = [
     {
       name: "identity_rejects_non_eddsa_alg",
@@ -738,9 +738,9 @@ describe("identity_preverification_tallies_unverified", () => {
       ),
     );
 
-    expectRejected(result, "installation_suspended");
+    expectRejected(result, "suspended");
     expect(spy).toHaveBeenCalledWith({
-      error_code: "installation_suspended",
+      error_code: "suspended",
       installation_id: FIXTURE_ISS,
     });
 
@@ -1060,7 +1060,7 @@ describe("identity_rejects_suspended_installation", () => {
     await clearIdentityTables(db);
   });
 
-  it("returns installation_suspended for a suspended installation", async () => {
+  it("returns suspended for a suspended installation", async () => {
     const keypair = await generateTestKeypair();
     await seedSuspendedInstallation(db, keypair);
     const notBefore = new Date((NOW - 3600) * 1000).toISOString();
@@ -1080,6 +1080,6 @@ describe("identity_rejects_suspended_installation", () => {
 
     const result = await verifier.verify(token, ctx);
 
-    expectRejected(result, "installation_suspended");
+    expectRejected(result, "suspended");
   });
 });

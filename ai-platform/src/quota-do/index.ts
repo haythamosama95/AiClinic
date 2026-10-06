@@ -102,6 +102,7 @@ export interface IdempotencyPriorState {
   requestReference: string;
   state: IdempotencyRequestState;
   requestId: string;
+  traceId?: string;
   terminalErrorCode?: TaxonomyCode;
 }
 
@@ -557,14 +558,19 @@ function emitBandCrossedIfNeeded(
   if (!(allowance > 0)) {
     return;
   }
-  const ratio = usageTotal / allowance;
   const orgId = request.orgId ?? "";
   const vendorVersion = request.vendorContractVersion ?? 1;
   const bands: Array<"75" | "90"> = [];
-  if (ratio >= 0.75 && !hot.band_emitted["75"]) {
+  if (
+    usageTotal * 4 >= allowance * 3 &&
+    !hot.band_emitted["75"]
+  ) {
     bands.push("75");
   }
-  if (ratio >= 0.9 && !hot.band_emitted["90"]) {
+  if (
+    usageTotal * 10 >= allowance * 9 &&
+    !hot.band_emitted["90"]
+  ) {
     bands.push("90");
   }
   for (const band of bands) {
@@ -1174,6 +1180,7 @@ export async function ensureCoverageDoTables(
 export {
   applyGrantRPC,
   readCoverageRPC,
+  scheduleOutboxAlarmIfPending,
   shipCoverageOutboxAlarm,
   type ApplyGrantRequest,
   type ApplyGrantResponse,

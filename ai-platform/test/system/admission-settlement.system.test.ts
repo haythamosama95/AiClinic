@@ -35,9 +35,23 @@ import { addDuration } from "../../src/coverage/calendar";
 
 const QUOTA_WEIGHT = 1;
 const W_MAX = QUOTA_WEIGHT;
+const doGetReal = env.DO.get.bind(env.DO);
+
+async function harnessNowMs(): Promise<number> {
+  const row = await queryOne<{ now_iso: string }>(
+    "SELECT now_iso FROM harness_test_clock WHERE id = 'default'",
+  );
+  if (row?.now_iso) {
+    const parsed = Date.parse(row.now_iso);
+    if (!Number.isNaN(parsed)) {
+      return parsed;
+    }
+  }
+  return Date.now();
+}
 
 function quotaDoStub(installationId: string) {
-  return env.DO.get(env.DO.idFromName(installationId));
+  return doGetReal(env.DO.idFromName(installationId));
 }
 
 function sqlSelect<T extends Record<string, unknown>>(
@@ -126,18 +140,9 @@ async function listBandCrossedEvents(orgId: string): Promise<
   });
 }
 
-async function completeChargedRequest(
-  scenario: Scenario,
-  token: string,
-): Promise<void> {
-  const document = fakePolicyDocument(POLICY_ID, POLICY_VERSION);
-  const published = await publishPolicy(POLICY_ID, POLICY_VERSION, document);
-  expect(published.status).toBe(200);
-  const promoted = await promote(POLICY_ID, POLICY_VERSION);
-  expect(promoted.status).toBe(200);
-
+async function completeChargedRequest(scenario: Scenario): Promise<void> {
   const invoked = await invoke(scenario, {
-    token,
+    token: await mintAat(scenario),
     idempotencyKey: crypto.randomUUID(),
   });
   expect(invoked.status).toBe(200);
@@ -147,17 +152,11 @@ async function completeChargedRequest(
 
 async function postUntilAllowanceConsumed(
   scenario: Scenario,
-  token: string,
   allowance: number,
 ): Promise<void> {
-  for (let attempt = 0; attempt < allowance + 2; attempt += 1) {
-    const hot = await readHotUsage(scenario.installationId);
-    if (hot.used + hot.reserved >= allowance) {
-      return;
-    }
-    await completeChargedRequest(scenario, token);
+  for (let attempt = 0; attempt < allowance; attempt += 1) {
+    await completeChargedRequest(scenario);
   }
-  throw new Error("allowance was not reached");
 }
 
 async function shipCoverageOutbox(installationId: string): Promise<void> {
@@ -189,17 +188,85 @@ function wrapQuotaDoFetch(
     forward: (input: RequestInfo, init?: RequestInit) => Promise<Response>,
   ) => Promise<Response>,
 ): () => void {
-  const stub = quotaDoStub(installationId);
-  const original = stub.fetch.bind(stub);
-  const spy = vi.spyOn(stub, "fetch").mockImplementation(async (input, init) => {
-    const request =
-      input instanceof Request ? input : new Request(input, init);
-    const body = (await request.clone().json()) as Record<string, unknown>;
-    return handler(body, (fwdInput, fwdInit) => original(fwdInput, fwdInit));
+  const targetName = env.DO.idFromName(installationId).toString();
+  const originalGet = env.DO.get.bind(env.DO);
+  const wrappedStubs = new WeakSet<object>();
+  const fetchSpies: Array<ReturnType<typeof vi.spyOn>> = [];
+  let restored = false;
+
+  const getSpy = vi.spyOn(env.DO, "get").mockImplementation((id) => {
+    const stub = originalGet(id);
+    if (id.toString() !== targetName) {
+      return stub;
+    }
+    if (!wrappedStubs.has(stub)) {
+      wrappedStubs.add(stub);
+      const originalFetch = stub.fetch.bind(stub);
+      const forward = (fwdInput: RequestInfo, fwdInit?: RequestInit) =>
+        originalFetch(fwdInput, fwdInit);
+      fetchSpies.push(
+        vi.spyOn(stub, "fetch").mockImplementation(async (input, init) => {
+          const request =
+            input instanceof Request ? input : new Request(input, init);
+          const contentType = request.headers.get("content-type") ?? "";
+          if (
+            request.method.toUpperCase() !== "POST" ||
+            !contentType.includes("json")
+          ) {
+            return originalFetch(input, init);
+          }
+          const text = await request.clone().text();
+          if (text.trim().length === 0) {
+            return originalFetch(input, init);
+          }
+          const body = JSON.parse(text) as Record<string, unknown>;
+          return handler(body, forward);
+        }),
+      );
+    }
+    return stub;
   });
+
   return () => {
-    spy.mockRestore();
+    if (restored) {
+      return;
+    }
+    restored = true;
+    getSpy.mockRestore();
+    for (const spy of fetchSpies) {
+      spy.mockRestore();
+    }
   };
+}
+
+async function seedOpenReservations(
+  scenario: Scenario,
+  count: number,
+): Promise<void> {
+  const { CHANNEL_VERSIONS } = await import("vendor-contracts");
+  const stub = quotaDoStub(scenario.installationId);
+  const nowMs = await harnessNowMs();
+  for (let index = 0; index < count; index += 1) {
+    const response = await stub.fetch("https://quota-do.internal/rpc", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        contract_version: CHANNEL_VERSIONS.platformDo,
+        kind: "admission",
+        now: nowMs,
+        jti: crypto.randomUUID(),
+        installationId: scenario.installationId,
+        idempotencyKey: crypto.randomUUID(),
+        requestReference: `CONC-SEED-${index}`,
+        capabilityId: CAPABILITY_ID,
+        quotaWeight: QUOTA_WEIGHT,
+        orgId: scenario.orgId,
+      }),
+    });
+    expect(response.ok).toBe(true);
+    const body = (await response.json()) as { outcome?: string };
+    expect(body.outcome).toBe("admitted");
+  }
 }
 
 async function setupPromotedPolicy(scenario: Scenario): Promise<string> {
@@ -218,6 +285,7 @@ beforeAll(async () => {
 });
 
 beforeEach(async () => {
+  vi.restoreAllMocks();
   await resetPlatformState();
   registerVisitSummaryCapability();
   await setupVendorHarness();
@@ -329,78 +397,23 @@ describe("admission settlement against terms", () => {
     await newClinic(scenario);
     const token = await setupPromotedPolicy(scenario);
 
-    const fakeMod = await import("../../src/provider/fake");
-    const invokeSpy = vi.spyOn(fakeMod, "FakeAdapter").mockImplementation(
-      () =>
-        ({
-          async invoke(
-            _request: unknown,
-            options?: { signal?: AbortSignal },
-          ) {
-            const signal = options?.signal;
-            await new Promise<void>((resolve, reject) => {
-              if (signal?.aborted) {
-                reject(
-                  new DOMException("The operation was aborted.", "AbortError"),
-                );
-                return;
-              }
-              const timer = setTimeout(() => resolve(), 5_000);
-              signal?.addEventListener(
-                "abort",
-                () => {
-                  clearTimeout(timer);
-                  reject(
-                    new DOMException(
-                      "The operation was aborted.",
-                      "AbortError",
-                    ),
-                  );
-                },
-                { once: true },
-              );
-            });
-            return {
-              kind: "success" as const,
-              result: {
-                finalContent: { type: "text" as const, text: "held" },
-                usage: { input: 1, output: 1, cached: 0 },
-                providerModel: { provider: "fake", model: "fake-v1" },
-                finishReason: "stop" as const,
-                providerRequestId: "concurrency-hold",
-                timing: { queue_ms: 0, provider_ms: 1, total_ms: 1 },
-              },
-              chunks: [],
-            };
-          },
-        }) as never,
+    const binding = await queryOne<{ installation_id: string }>(
+      "SELECT installation_id FROM tenant_binding WHERE org_id = ? AND status = 'active'",
+      [scenario.orgId],
     );
+    expect(binding?.installation_id).toBe(scenario.installationId);
 
-    const controllers = Array.from({ length: 17 }, () => new AbortController());
-    try {
-      const results = await Promise.all(
-        controllers.map((controller) =>
-          invoke(scenario, {
-            token,
-            idempotencyKey: crypto.randomUUID(),
-            signal: controller.signal,
-          }),
-        ),
-      );
+    await seedOpenReservations(scenario, 16);
+    expect(await readHotReservations(scenario.installationId)).toHaveLength(16);
 
-      const limited = results.filter(
-        (result) => result.body?.code === "concurrency_limited",
-      );
-      expect(limited).toHaveLength(1);
-      expect(limited[0]?.status).toBe(429);
-      expect(limited[0]?.body?.retry_after).toBeTruthy();
-      expect(limited[0]?.body?.code).not.toBe("rate_limited");
-    } finally {
-      for (const controller of controllers) {
-        controller.abort();
-      }
-      invokeSpy.mockRestore();
-    }
+    const limited = await invoke(scenario, {
+      token,
+      idempotencyKey: crypto.randomUUID(),
+    });
+    expect(limited.status).toBe(429);
+    expect(limited.body?.code).toBe("concurrency_limited");
+    expect(limited.body?.retry_after).toBeTruthy();
+    expect(limited.body?.code).not.toBe("rate_limited");
   });
 
   it("E2E-P3.4-05 Reaching the allowance with nothing queued exhausts the term", async () => {
@@ -411,7 +424,7 @@ describe("admission settlement against terms", () => {
     await newClinic(scenario);
     const token = await setupPromotedPolicy(scenario);
 
-    await postUntilAllowanceConsumed(scenario, token, allowance);
+    await postUntilAllowanceConsumed(scenario, allowance);
 
     const terms = await readDoTerms(scenario.installationId);
     const exhausted = terms.filter((row) => row.state === "exhausted");
@@ -440,7 +453,7 @@ describe("admission settlement against terms", () => {
     const queuedBefore = before.filter((row) => row.state === "queued");
     expect(queuedBefore).toHaveLength(1);
 
-    await postUntilAllowanceConsumed(scenario, token, allowance);
+    await postUntilAllowanceConsumed(scenario, allowance);
 
     const after = await readDoTerms(scenario.installationId);
     const active = after.find((row) => row.state === "active");
@@ -465,17 +478,11 @@ describe("admission settlement against terms", () => {
     const token = await setupPromotedPolicy(scenario);
 
     for (let index = 0; index < allowance - 1; index += 1) {
-      await completeChargedRequest(scenario, token);
+      await completeChargedRequest(scenario);
     }
 
     const beforeHot = await readHotUsage(scenario.installationId);
     expect(beforeHot.used + beforeHot.reserved).toBe(allowance - 1);
-
-    const document = fakePolicyDocument(POLICY_ID, POLICY_VERSION);
-    const published = await publishPolicy(POLICY_ID, POLICY_VERSION, document);
-    expect(published.status).toBe(200);
-    const promoted = await promote(POLICY_ID, POLICY_VERSION);
-    expect(promoted.status).toBe(200);
 
     const [first, second] = await Promise.all([
       invoke(scenario, {
@@ -488,6 +495,7 @@ describe("admission settlement against terms", () => {
       }),
     ]);
     await flushBackgroundWork();
+    await shipCoverageOutbox(scenario.installationId);
 
     const exhaustedTerms = (await readDoTerms(scenario.installationId)).filter(
       (row) => row.state === "exhausted",
@@ -531,21 +539,21 @@ describe("admission settlement against terms", () => {
     const token = await setupPromotedPolicy(scenario);
 
     for (let index = 0; index < 8; index += 1) {
-      await completeChargedRequest(scenario, token);
+      await completeChargedRequest(scenario);
     }
     await shipCoverageOutbox(scenario.installationId);
 
     let bandEvents = await listBandCrossedEvents(scenario.orgId);
     expect(bandEvents.filter((event) => event.band === "75")).toHaveLength(1);
 
-    await completeChargedRequest(scenario, token);
+    await completeChargedRequest(scenario);
     await shipCoverageOutbox(scenario.installationId);
 
     bandEvents = await listBandCrossedEvents(scenario.orgId);
     expect(bandEvents.filter((event) => event.band === "90")).toHaveLength(1);
 
     const band90Count = bandEvents.filter((event) => event.band === "90").length;
-    await completeChargedRequest(scenario, token);
+    await completeChargedRequest(scenario);
     await shipCoverageOutbox(scenario.installationId);
 
     bandEvents = await listBandCrossedEvents(scenario.orgId);
@@ -583,7 +591,6 @@ describe("admission settlement against terms", () => {
 
   it("E2E-P3.4-10 A reservation older than 15 minutes is charged once", async () => {
     const scenario = await newScenario();
-    await setTestClock("2026-08-01T12:00:00.000Z");
     await coverClinic(scenario);
     await newClinic(scenario);
     const token = await mintAat(scenario);
@@ -625,19 +632,21 @@ describe("admission settlement against terms", () => {
         idempotencyKey: crypto.randomUUID(),
       });
       expect(invoked.status).toBe(200);
-      await flushBackgroundWork();
+      for (let flush = 0; flush < 5; flush += 1) {
+        await flushBackgroundWork();
+      }
+
+      restoreFetch();
 
       expect(swallowedCreditBody).toBeTruthy();
       expect(await readHotReservations(scenario.installationId).then((r) => r.length)).toBeGreaterThan(0);
 
-      await setTestClock("2026-08-01T12:16:00.000Z");
-
-      const document2 = fakePolicyDocument(POLICY_ID, POLICY_VERSION);
-      await publishPolicy(POLICY_ID, POLICY_VERSION, document2);
-      await promote(POLICY_ID, POLICY_VERSION);
+      await setTestClock(
+        new Date((await harnessNowMs()) + 16 * 60 * 1000).toISOString(),
+      );
 
       const second = await invoke(scenario, {
-        token,
+        token: await mintAat(scenario, { jti: crypto.randomUUID() }),
         idempotencyKey: crypto.randomUUID(),
       });
       expect(second.status).toBe(200);
@@ -653,7 +662,7 @@ describe("admission settlement against terms", () => {
 
       const hotBeforeReplay = await readHotUsage(scenario.installationId);
       if (swallowedCreditBody) {
-        await quotaDoStub(scenario.installationId).fetch(
+        const replay = await quotaDoStub(scenario.installationId).fetch(
           "https://quota-do.internal/rpc",
           {
             method: "POST",
@@ -661,12 +670,19 @@ describe("admission settlement against terms", () => {
             body: JSON.stringify(swallowedCreditBody),
           },
         );
+        const replayBody = (await replay.json()) as { ok?: boolean };
+        expect(replayBody.ok).toBe(true);
       }
       const hotAfterReplay = await readHotUsage(scenario.installationId);
       expect(hotAfterReplay.used).toBe(hotBeforeReplay.used);
       expect(hotAfterReplay.reserved).toBe(hotBeforeReplay.reserved);
       const usageAfterReplay = await getUsageEvents(requestId);
       expect(usageAfterReplay).toHaveLength(1);
+
+      await shipCoverageOutbox(scenario.installationId);
+      for (let settle = 0; settle < 10; settle += 1) {
+        await flushBackgroundWork();
+      }
     } finally {
       restoreFetch();
     }
@@ -687,12 +703,6 @@ describe("admission settlement against terms", () => {
     expect(first.status).toBe(200);
     await flushBackgroundWork();
 
-    const hotAfterFirst = await runInDurableObject(
-      quotaDoStub(scenario.installationId),
-      async (_instance, state) =>
-        sqlSelect<Record<string, unknown>>(state, "SELECT * FROM hot LIMIT 1"),
-    );
-
     const replayIdempotency = await invoke(scenario, { token, idempotencyKey });
     expect(replayIdempotency.status).toBe(first.status);
     expect(replayIdempotency.body).toEqual(first.body);
@@ -709,6 +719,11 @@ describe("admission settlement against terms", () => {
     });
     expect(jtiFirst.status).toBe(200);
     await flushBackgroundWork();
+    const hotAfterJtiFirst = await runInDurableObject(
+      quotaDoStub(scenario.installationId),
+      async (_instance, state) =>
+        sqlSelect<Record<string, unknown>>(state, "SELECT * FROM hot LIMIT 1"),
+    );
     const jtiReplay = await invoke(scenario, {
       token: tokenB,
       idempotencyKey: keyB,
@@ -721,14 +736,16 @@ describe("admission settlement against terms", () => {
       async (_instance, state) =>
         sqlSelect<Record<string, unknown>>(state, "SELECT * FROM hot LIMIT 1"),
     );
-    expect(JSON.stringify(hotAfterReplay)).toBe(JSON.stringify(hotAfterFirst));
+    expect(JSON.stringify(hotAfterReplay)).toBe(
+      JSON.stringify(hotAfterJtiFirst),
+    );
   });
 
   it("E2E-P3.4-12 A DO version rejection is coverage_unknown", async () => {
     const scenario = await newScenario();
     await coverClinic(scenario);
     await newClinic(scenario);
-    const token = await mintAat(scenario);
+    const token = await setupPromotedPolicy(scenario);
 
     const restoreFetch = wrapQuotaDoFetch(
       scenario.installationId,

@@ -491,8 +491,9 @@ async function syncAlarm(
   _storage: DurableObjectStorage,
   nextAlarmAt: string | null,
   currentAlarmAt: string | null,
+  immediate = false,
 ): Promise<void> {
-  if (nextAlarmAt === currentAlarmAt) {
+  if (!immediate && nextAlarmAt === currentAlarmAt) {
     return;
   }
   if (nextAlarmAt === null) {
@@ -500,8 +501,30 @@ async function syncAlarm(
     return;
   }
   const targetMs = Date.parse(nextAlarmAt);
-  const scheduleMs = Math.max(targetMs, Date.now() + 5_000);
+  const scheduleMs = immediate
+    ? Date.now()
+    : Math.max(targetMs, Date.now() + 5_000);
   await state.storage.setAlarm(scheduleMs);
+}
+
+export async function scheduleOutboxAlarmIfPending(
+  state: DurableObjectState,
+  storage: DurableObjectStorage,
+  nowIso: string,
+): Promise<void> {
+  const outboxCount =
+    sqlSelect<{ count: number }>(
+      storage,
+      "SELECT COUNT(*) AS count FROM outbox",
+    )[0]?.count ?? 0;
+  if (outboxCount === 0) {
+    return;
+  }
+  const hot = loadHot(storage);
+  const terms = loadTerms(storage);
+  const nextAlarm = computeNextAlarmAt(terms, true, nowIso);
+  updateHot(storage, { next_alarm_at: nextAlarm });
+  await syncAlarm(state, storage, nextAlarm, hot.next_alarm_at, true);
 }
 
 function computeNextAlarmAt(

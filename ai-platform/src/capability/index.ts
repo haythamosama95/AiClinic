@@ -251,6 +251,18 @@ async function assertPlanAllowance(
     code: "forbidden_capability" as const,
   };
 
+  const mirrorRow = await db
+    .prepare(
+      `SELECT term_snapshot, state FROM coverage_mirror WHERE installation_id = ?`,
+    )
+    .bind(installationId)
+    .first<{ term_snapshot: string; state: string }>();
+  if (mirrorRow === null) {
+    return forbidden;
+  }
+  if (mirrorRow.state === "exhausted" || mirrorRow.state === "lapsed") {
+    return { ok: true };
+  }
   const planSnapshot = await loadPlanSnapshotFromMirror(db, installationId);
   if (
     planSnapshot === null ||

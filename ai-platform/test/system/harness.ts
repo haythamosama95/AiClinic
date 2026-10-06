@@ -499,10 +499,26 @@ function clearHarnessIssuerRegistry(): void {
   harnessIssuerRegistry = null;
 }
 
+/** Re-register harness issuer after advancing the test clock (new `not_before`). */
+export function resetHarnessIssuerRegistry(): void {
+  clearHarnessIssuerRegistry();
+}
+
 async function harnessNowSeconds(): Promise<number> {
   const iso = getVendorTestClockIso();
   if (iso) {
     return Math.floor(Date.parse(iso) / 1000);
+  }
+  if (env.TEST_CLOCK === "1") {
+    const row = await env.DB.prepare(
+      "SELECT now_iso FROM harness_test_clock WHERE id = 'default'",
+    ).first<{ now_iso: string }>();
+    if (row?.now_iso) {
+      const parsed = Date.parse(row.now_iso);
+      if (!Number.isNaN(parsed)) {
+        return Math.floor(parsed / 1000);
+      }
+    }
   }
   return nowSeconds();
 }
@@ -534,6 +550,19 @@ async function operationForRegisterIssuerKey(input: {
 async function bootstrapHarnessOperatorCredential(
   authenticator: Awaited<ReturnType<typeof createSoftwareAuthenticator>>,
 ): Promise<{ credentialId: string; accessJwt: string }> {
+  const existing = await env.DB.prepare(
+    `SELECT credential_id FROM operator_credential
+     WHERE status = 'active'
+     ORDER BY rowid DESC
+     LIMIT 1`,
+  ).first<{ credential_id: string }>();
+  if (existing?.credential_id) {
+    return {
+      credentialId: existing.credential_id,
+      accessJwt: await mintVendorAccessJwt(),
+    };
+  }
+
   const credentialId = randomUuid();
   const attestation = encodeVendorAttestation(await authenticator.attest());
   const accessJwt = await mintVendorAccessJwt();

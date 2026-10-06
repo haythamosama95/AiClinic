@@ -2,7 +2,7 @@
  * Suite 1 — golden journey (plan §4, SYS-1.1–SYS-1.10).
  */
 
-import { env, SELF } from "cloudflare:test";
+import { env, runInDurableObject, SELF } from "cloudflare:test";
 import { beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { VISIT_CHIEF_COMPLAINT_V1 } from "../../src/context";
 import {
@@ -54,8 +54,28 @@ beforeEach(async () => {
   registerVisitSummaryCapability();
 });
 
-function periodFromEntitleStart(periodStart: string): string {
-  return periodStart.slice(0, 7);
+function quotaDoStub(installationId: string) {
+  return env.DO.get(env.DO.idFromName(installationId));
+}
+
+async function readActiveTermId(installationId: string): Promise<string | null> {
+  const rows = await runInDurableObject(
+    quotaDoStub(installationId),
+    async (_instance, state) => {
+      const storage = state.storage as DurableObjectStorage & {
+        sql?: { exec: (query: string) => Iterable<{ term_id: string }> };
+      };
+      if (!storage.sql) {
+        return [];
+      }
+      return [
+        ...storage.sql.exec(
+          "SELECT term_id FROM term WHERE state = 'active' LIMIT 1",
+        ),
+      ];
+    },
+  );
+  return rows[0]?.term_id ?? null;
 }
 
 function assertSseOrder(events: { event: string }[]): void {
@@ -311,6 +331,8 @@ describe("golden journey", () => {
     await promote(POLICY_ID, POLICY_VERSION);
 
     const traceId = "01SYS1TRACE000000000001";
+    const activeTermId = await readActiveTermId(scenario.installationId);
+    expect(activeTermId).toBeTruthy();
     const invoked = await invoke(scenario, { traceId });
     expect(invoked.status).toBe(200);
     const ref = String(invoked.events[0]?.data.request_reference);
@@ -336,9 +358,7 @@ describe("golden journey", () => {
 
     const usageEvents = await getUsageEvents(String(request?.request_id));
     expect(usageEvents).toHaveLength(1);
-    expect(usageEvents[0]?.period).toBe(
-      periodFromEntitleStart(DEFAULT_ENTITLE_PAYLOAD.period_start),
-    );
+    expect(usageEvents[0]?.term_id).toBe(activeTermId);
     expect(usageEvents[0]?.tokens).toBe(
       Number(attempts[0]?.tokens_in) + Number(attempts[0]?.tokens_out),
     );

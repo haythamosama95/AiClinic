@@ -4,6 +4,7 @@ export type AdmissionAllowResult = {
   outcome: "admitted";
   requestId: string;
   degraded?: boolean;
+  band?: "ok" | "75" | "90" | "exhausted";
 };
 
 /**
@@ -29,7 +30,12 @@ export function routingTierFromAdmission(
 export function degradedNoticeFromAdmission(
   admission: AdmissionAllowResult,
 ): boolean | undefined {
-  if (admission.degraded) {
+  if (
+    admission.degraded ||
+    admission.band === "75" ||
+    admission.band === "90" ||
+    admission.band === "exhausted"
+  ) {
     return true;
   }
   return undefined;

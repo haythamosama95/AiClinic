@@ -377,7 +377,7 @@ describe("failure taxonomy matrix", () => {
     await assertJournalUnchanged(before);
   });
 
-  it("SYS-6.2 — Suspended installation → installation_suspended", async () => {
+  it("SYS-6.2 — Suspended installation → suspended", async () => {
     const scenario = await newScenario();
     await setupPromotedFakePolicy(scenario);
     const before = await count("ai_request");
@@ -394,10 +394,10 @@ describe("failure taxonomy matrix", () => {
       token,
       body: visitSummaryInvokeBody(scenario),
     });
-    expect(response.status).toBe(liveHttpStatusForCode("installation_suspended"));
+    expect(response.status).toBe(liveHttpStatusForCode("suspended"));
     assertNotSse(response.headers);
     assertTaxonomyBody(response.json, {
-      code: "installation_suspended",
+      code: "suspended",
       retry_safe: false,
       request_reference: "non-empty",
       trace_id: "non-empty",
@@ -1120,7 +1120,7 @@ describe("failure taxonomy matrix", () => {
       trace_id: "non-empty",
       retry_after: "present",
     });
-    expect(rateLimitedBody?.code).not.toBe("quota_exhausted");
+    expect(rateLimitedBody?.code).not.toBe("allowance_exhausted");
     await assertJournalUnchanged(before);
   });
 });

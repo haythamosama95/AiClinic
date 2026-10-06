@@ -402,7 +402,7 @@ describe("retention_expiry_platform_counter", () => {
     )
       .bind(
         "counter-old",
-        JSON.stringify({ error_code: "quota_exhausted", installation_id: FIXTURE_INSTALLATION_A }),
+        JSON.stringify({ error_code: "allowance_exhausted", installation_id: FIXTURE_INSTALLATION_A }),
         oldBucket,
         9,
       )
@@ -413,7 +413,7 @@ describe("retention_expiry_platform_counter", () => {
     )
       .bind(
         "counter-new",
-        JSON.stringify({ error_code: "quota_exhausted", installation_id: FIXTURE_INSTALLATION_A }),
+        JSON.stringify({ error_code: "allowance_exhausted", installation_id: FIXTURE_INSTALLATION_A }),
         recentBucket,
         2,
       )
@@ -747,7 +747,7 @@ describe("retention_purge_by_installation_id", () => {
         "counter-purge-a",
         JSON.stringify({
           installation_id: FIXTURE_INSTALLATION_A,
-          error_code: "quota_exhausted",
+          error_code: "allowance_exhausted",
         }),
         "2026-08-02T12:00:00.000Z",
         3,
@@ -761,7 +761,7 @@ describe("retention_purge_by_installation_id", () => {
         "counter-purge-b",
         JSON.stringify({
           installation_id: FIXTURE_INSTALLATION_B,
-          error_code: "quota_exhausted",
+          error_code: "allowance_exhausted",
         }),
         "2026-08-02T12:00:00.000Z",
         5,

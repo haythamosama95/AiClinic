@@ -181,13 +181,13 @@ describe("lifecycle interplay", () => {
     const token = await mintAat(scenario);
     const blockedInvoke = await invoke(scenario, { token });
     expect(blockedInvoke.status).toBe(403);
-    expect(blockedInvoke.body?.code).toBe("installation_suspended");
+    expect(blockedInvoke.body?.code).toBe("suspended");
     expect(blockedInvoke.body?.retry_safe).toBe(false);
     expect(await count("ai_request")).toBe(beforeRequests);
 
     const caps = await getCapabilities(token);
     expect(caps.status).toBe(403);
-    expect(caps.body?.code).toBe("installation_suspended");
+    expect(caps.body?.code).toBe("suspended");
     expect(caps.body?.retry_safe).toBe(false);
 
     const resumed = await operatorFetch(

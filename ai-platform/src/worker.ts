@@ -101,6 +101,7 @@ import {
   readCoverageRPC,
   releaseRPC,
   shipCoverageOutboxAlarm,
+  scheduleOutboxAlarmIfPending,
   type AdmissionRequest,
   type ApplyGrantRequest,
   type CreditIdempotencyState,
@@ -219,6 +220,7 @@ function admissionAllowFromGuard(guard: GuardFreshSuccess): AdmissionAllowResult
     outcome: "admitted",
     requestId: guard.requestId,
     ...(guard.degraded ? { degraded: true } : {}),
+    ...(guard.band !== undefined ? { band: guard.band } : {}),
   };
 }
 
@@ -859,24 +861,56 @@ function pushFailedTerminal(
   });
 }
 
-function replayIdempotentTerminal(
+async function replayIdempotentTerminal(
   sink: AdapterEventSink,
   traceId: string,
   guard: GuardIdempotentSuccess,
-  _runtimeEnv: Env,
-): void {
+  runtimeEnv: Env,
+): Promise<void> {
   const prior = guard.priorState;
+  const replayTraceId = prior.traceId ?? traceId;
   const streamCtx = {
-    traceId,
-    requestReference: guard.requestReference,
+    traceId: replayTraceId,
+    requestReference: prior.requestReference,
     headers: {
       idempotencyKey: guard.idempotencyKey,
-      traceId,
+      traceId: replayTraceId,
       capabilityVersion: "",
     },
     signal: new AbortController().signal,
   };
   if (prior.state === "completed") {
+    const loaded = await getRequest(prior.requestReference, {
+      db: runtimeEnv.DB,
+      r2: runtimeEnv.R2,
+    });
+    if (
+      loaded.found &&
+      loaded.state === "Completed" &&
+      "result" in loaded &&
+      loaded.result
+    ) {
+      const text =
+        loaded.result.finalContent?.type === "text"
+          ? loaded.result.finalContent.text
+          : "";
+      if (text.length > 0) {
+        sink.push({
+          type: "text_delta",
+          data: { text, sequence: 0, provisional: true },
+          trace_id: replayTraceId,
+        });
+      }
+      pushTerminalEvent(sink, streamCtx, "completed", "single_shot", {
+        result: {
+          finalContent: {
+            text,
+            authoritative: true,
+          },
+        },
+      });
+      return;
+    }
     pushTerminalEvent(sink, streamCtx, "completed", "single_shot", {
       result: {
         finalContent: { text: "Prior request completed.", authoritative: true },
@@ -940,12 +974,22 @@ function createProductionEventSource(
     }
     if (accept.kind === "idempotent") {
       log.info("event_source_idempotent_replay");
-      replayIdempotentTerminal(
+      void replayIdempotentTerminal(
         sink,
         streamContext.traceId,
         accept.guard,
         runtimeEnv,
-      );
+      ).catch((error) => {
+        log.error("event_source_idempotent_replay_failed", {
+          error: error instanceof Error ? error.message : String(error),
+        });
+        pushFailedTerminal(
+          sink,
+          streamContext.requestReference,
+          streamContext.traceId,
+          "internal_error",
+        );
+      });
       return;
     }
     log.info("event_source_fresh_start");
@@ -1369,6 +1413,7 @@ function createProductionPreAccept(
       {
         bodyText: input.bodyText,
         token,
+        now,
         verifier,
         verifyContext: {
           audience: "ai-platform",
@@ -1427,11 +1472,20 @@ function createProductionPreAccept(
     }
     if (guard.outcome === "idempotent") {
       log.info("guard_idempotent");
-      acceptContexts.set(input.requestReference, {
+      const priorReference = guard.priorState.requestReference;
+      const priorTraceId =
+        guard.priorState.traceId ?? input.headers.traceId;
+      acceptContexts.set(priorReference, {
         kind: "idempotent",
         guard,
       });
-      return { ok: true };
+      return {
+        ok: true,
+        streamIdentity: {
+          requestReference: priorReference,
+          traceId: priorTraceId,
+        },
+      };
     }
     log.info("guard_fresh");
     acceptContexts.set(input.requestReference, { kind: "fresh", guard });
@@ -1645,6 +1699,15 @@ export class GatewayObject extends DurableObject {
           body,
           now,
           quotaLog,
+        );
+        const admissionNowIso =
+          typeof (body as { nowIso?: string }).nowIso === "string"
+            ? (body as { nowIso: string }).nowIso
+            : await clockNowIso(this.env as Env);
+        await scheduleOutboxAlarmIfPending(
+          this.ctx,
+          this.ctx.storage,
+          admissionNowIso,
         );
         return Response.json({ ...result, contract_version: contractVersion });
       }

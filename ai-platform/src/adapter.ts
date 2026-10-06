@@ -67,7 +67,11 @@ export type AdapterEventSourceFactory = (
 ) => AdapterEventSourceHandle | void;
 
 export type PreAcceptResult =
-  | { ok: true; degradedNotice?: boolean }
+  | {
+      ok: true;
+      degradedNotice?: boolean;
+      streamIdentity?: { requestReference: string; traceId: string };
+    }
   | {
       ok: false;
       code: TaxonomyCode;
@@ -427,6 +431,7 @@ export async function handleAdapterRequest(
 
   let requestReference: string | undefined;
   let degradedNotice: boolean | undefined;
+  let streamTraceId = parsedHeaders.traceId;
 
   if (options.preAccept) {
     requestReference = generateRequestReference();
@@ -453,6 +458,10 @@ export async function handleAdapterRequest(
       );
     }
     degradedNotice = gate.degradedNotice;
+    if (gate.streamIdentity) {
+      requestReference = gate.streamIdentity.requestReference;
+      streamTraceId = gate.streamIdentity.traceId;
+    }
     log.debug("pre_accept_passed", { request_reference: requestReference });
   }
 
@@ -466,11 +475,11 @@ export async function handleAdapterRequest(
 
   const disconnectController = new AbortController();
   const context: AdapterStreamContext = {
-    traceId: parsedHeaders.traceId,
+    traceId: streamTraceId,
     requestReference,
     headers: {
       idempotencyKey: parsedHeaders.idempotencyKey,
-      traceId: parsedHeaders.traceId,
+      traceId: streamTraceId,
       capabilityVersion: parsedHeaders.capabilityVersion,
     },
     signal: disconnectController.signal,

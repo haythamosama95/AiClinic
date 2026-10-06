@@ -154,11 +154,19 @@ export async function dashboardCostPerCapabilityPerInstallation(
   }));
 }
 
+const CLINIC_DENIAL_COUNTER_CODES = [
+  "allowance_exhausted",
+  "coverage_lapsed",
+  "forbidden_capability",
+  "suspended",
+  "concurrency_limited",
+  "coverage_unknown",
+] as const;
+
 /**
- * Quota rejection approximation: sum of quota_exhausted counter counts
- * divided by COUNT(*) of journaled ai_request rows, both bounded to the
- * journal retention window so the numerator cannot outlive the denominator.
- * Returns 0 when there are no journaled requests in-window.
+ * Clinic admission rejection rate: sum of P3.4 denial counter counts divided
+ * by COUNT(*) of journaled ai_request rows, both bounded to the journal
+ * retention window. Returns 0 when there are no journaled requests in-window.
  *
  * The numerator is a **lower bound**: `platform_counter` is flushed only by the
  * cron isolate, so unflushed tallies in other isolates never reach D1.
@@ -171,13 +179,20 @@ export async function dashboardQuotaRejectionRate(
     now.getTime() - JOURNAL_HORIZON_DAYS * MS_PER_DAY,
   ).toISOString();
 
+  const codeLikeClauses = CLINIC_DENIAL_COUNTER_CODES.map(
+    () => "dimension_set LIKE ?",
+  ).join(" OR ");
+  const codeLikeBindings = CLINIC_DENIAL_COUNTER_CODES.map(
+    (code) => `%"error_code":"${code}"%`,
+  );
+
   const result = await db
     .prepare(
       `SELECT
          CAST(
            (SELECT COALESCE(SUM(count), 0)
             FROM platform_counter
-            WHERE dimension_set LIKE '%quota_exhausted%'
+            WHERE (${codeLikeClauses})
               AND time_bucket >= ?) AS REAL
          )
          / NULLIF(
@@ -185,7 +200,7 @@ export async function dashboardQuotaRejectionRate(
            0
          ) AS rate`,
     )
-    .bind(windowStart, windowStart)
+    .bind(...codeLikeBindings, windowStart, windowStart)
     .first<{ rate: number | null }>();
 
   return result?.rate ?? 0;

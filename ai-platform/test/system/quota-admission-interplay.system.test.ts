@@ -28,9 +28,10 @@ import {
   promote,
   registerVisitSummaryCapability,
   resetPlatformState,
-  setupPromotedFakePolicy,
+  coverClinic,
   terminalEventTypes,
   visitSummaryInvokeBody,
+  type CoverClinicOptions,
   type EntitlePayload,
 } from "./harness";
 
@@ -82,10 +83,21 @@ function quotaEntitlePayload(overrides: Partial<EntitlePayload> = {}): EntitlePa
 }
 
 async function setupQuotaScenario(
-  payload: EntitlePayload = quotaEntitlePayload(),
+  coverOpts: CoverClinicOptions = { max_allowance_per_month: 2 },
 ): Promise<Awaited<ReturnType<typeof newScenario>>> {
   const scenario = await newScenario();
-  await setupPromotedFakePolicy(scenario, payload);
+  await coverClinic(scenario, coverOpts);
+  await newClinic(scenario);
+  const document = fakePolicyDocument(POLICY_ID, POLICY_VERSION);
+  const published = await publishPolicy(POLICY_ID, POLICY_VERSION, document);
+  if (published.status !== 200) {
+    throw new Error(`publish failed: ${published.status}`);
+  }
+  const promoted = await promote(POLICY_ID, POLICY_VERSION);
+  if (promoted.status !== 200) {
+    throw new Error(`promote failed: ${promoted.status}`);
+  }
+  clearConfigCache();
   return scenario;
 }
 
@@ -130,9 +142,7 @@ function degradedTierPolicyDocument(version: string): Record<string, unknown> {
 
 describe("quota admission interplay", () => {
   it("SYS-5.1 — Request-quota exhaustion", async () => {
-    const scenario = await setupQuotaScenario(
-      quotaEntitlePayload({ request_quota: 2 }),
-    );
+    const scenario = await setupQuotaScenario({ max_allowance_per_month: 2 });
 
     const first = await invoke(scenario, {
       token: await mintAat(scenario),
@@ -154,11 +164,11 @@ describe("quota admission interplay", () => {
       token: await mintAat(scenario),
       idempotencyKey: crypto.randomUUID(),
     });
-    expect(third.status).toBe(429);
-    expect(third.body?.code).toBe("quota_exhausted");
-    expect(third.body?.retry_safe).toBe(true);
+    expect(third.status).toBe(403);
+    expect(third.body?.code).toBe("allowance_exhausted");
+    expect(third.body?.retry_safe).toBe(false);
     expect(third.body).not.toHaveProperty("retry_after");
-    expect(third.body?.period_reset).toBe("2026-09-01T00:00:00.000Z");
+    expect(third.body).not.toHaveProperty("period_reset");
     expect(await count("ai_request")).toBe(2);
   });
 
@@ -437,12 +447,9 @@ describe("quota admission interplay", () => {
   });
 
   it("SYS-5.7 — Token & cost ceilings", async () => {
-    // G2: token/cost counters are settlement-only; remaining-budget exhaustion
-    // is request-quota or credit-budget. Seed the credit ceiling so the same
-    // 429 quota_exhausted wire behaviour is asserted.
-    const tokenScenario = await setupQuotaScenario(
-      quotaEntitlePayload({ request_quota: 100, credit_budget: 1 }),
-    );
+    // Term admission: allowance is the live ceiling; entitlement credit fields
+    // no longer produce quota_exhausted on the wire.
+    const tokenScenario = await setupQuotaScenario({ max_allowance_per_month: 1 });
     const tokenFirst = await invoke(tokenScenario, {
       token: await mintAat(tokenScenario),
       idempotencyKey: crypto.randomUUID(),
@@ -454,34 +461,29 @@ describe("quota admission interplay", () => {
       token: await mintAat(tokenScenario),
       idempotencyKey: crypto.randomUUID(),
     });
-    expect(tokenSecond.status).toBe(429);
-    expect(tokenSecond.body?.code).toBe("quota_exhausted");
+    expect(tokenSecond.status).toBe(403);
+    expect(tokenSecond.body?.code).toBe("allowance_exhausted");
     expect(tokenSecond.body).not.toHaveProperty("retry_after");
 
-    const costScenario = await newScenario();
-    await newClinic(costScenario);
-    await entitleScenario(
-      costScenario,
-      quotaEntitlePayload({ request_quota: 100, credit_budget: 0 }),
-    );
-    const costPolicy = fakePolicyDocument(POLICY_ID, "70");
-    await publishPolicy(POLICY_ID, "70", costPolicy);
-    await promote(POLICY_ID, "70");
-    clearConfigCache();
+    const costScenario = await setupQuotaScenario({ max_allowance_per_month: 1 });
+    const costFirst = await invoke(costScenario, {
+      token: await mintAat(costScenario),
+      idempotencyKey: crypto.randomUUID(),
+    });
+    expect(costFirst.status).toBe(200);
+    await flushBackgroundWork();
 
     const costRefused = await invoke(costScenario, {
       token: await mintAat(costScenario),
       idempotencyKey: crypto.randomUUID(),
     });
-    expect(costRefused.status).toBe(429);
-    expect(costRefused.body?.code).toBe("quota_exhausted");
+    expect(costRefused.status).toBe(403);
+    expect(costRefused.body?.code).toBe("allowance_exhausted");
     expect(costRefused.body).not.toHaveProperty("retry_after");
   });
 
   it("SYS-5.8 — Period rollover", async () => {
-    const scenario = await setupQuotaScenario(
-      quotaEntitlePayload({ request_quota: 2 }),
-    );
+    const scenario = await setupQuotaScenario({ max_allowance_per_month: 2 });
 
     await invoke(scenario, {
       token: await mintAat(scenario),
@@ -497,35 +499,23 @@ describe("quota admission interplay", () => {
       token: await mintAat(scenario),
       idempotencyKey: crypto.randomUUID(),
     });
-    expect(exhausted.status).toBe(429);
-    expect(exhausted.body?.code).toBe("quota_exhausted");
+    expect(exhausted.status).toBe(403);
+    expect(exhausted.body?.code).toBe("allowance_exhausted");
 
-    await env.DB.prepare(
-      `UPDATE entitlement
-       SET period_start = '2026-09-01T00:00:00.000Z',
-           period_end = '2026-10-01T00:00:00.000Z',
-           request_quota = 100,
-           token_budget = 500000,
-           cost_budget = 50.0,
-           soft_threshold = 0.5
-       WHERE installation_id = ?`,
-    )
-      .bind(scenario.installationId)
-      .run();
-    clearConfigCache();
+    await coverClinic(scenario, { max_allowance_per_month: 100 });
 
-    const afterRollover = await invoke(scenario, {
+    const afterGrant = await invoke(scenario, {
       token: await mintAat(scenario),
       idempotencyKey: crypto.randomUUID(),
     });
-    expect(afterRollover.status).toBe(200);
-    assertSseOrder(afterRollover.events);
+    expect(afterGrant.status).toBe(200);
+    assertSseOrder(afterGrant.events);
 
-    const ref = String(afterRollover.events[0]?.data.request_reference);
+    const ref = String(afterGrant.events[0]?.data.request_reference);
     await flushBackgroundWork();
     const request = await getAiRequest(ref);
     const usage = await getUsageEvents(String(request?.request_id));
     expect(usage).toHaveLength(1);
-    expect(usage[0]?.period).toBe("2026-09");
+    expect(usage[0]?.term_id).toBeTruthy();
   });
 });

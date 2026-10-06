@@ -2,7 +2,7 @@
  * Suite 7 — settlement integrity (plan §4, SYS-7.1–SYS-7.5).
  */
 
-import { env, SELF } from "cloudflare:test";
+import { env, runInDurableObject, SELF } from "cloudflare:test";
 import { beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   applyAllMigrations,
@@ -46,8 +46,28 @@ beforeEach(async () => {
   registerVisitSummaryCapability();
 });
 
-function periodFromEntitleStart(periodStart: string): string {
-  return periodStart.slice(0, 7);
+function quotaDoStub(installationId: string) {
+  return env.DO.get(env.DO.idFromName(installationId));
+}
+
+async function readActiveTermId(installationId: string): Promise<string | null> {
+  const rows = await runInDurableObject(
+    quotaDoStub(installationId),
+    async (_instance, state) => {
+      const storage = state.storage as DurableObjectStorage & {
+        sql?: { exec: (query: string) => Iterable<{ term_id: string }> };
+      };
+      if (!storage.sql) {
+        return [];
+      }
+      return [
+        ...storage.sql.exec(
+          "SELECT term_id FROM term WHERE state = 'active' LIMIT 1",
+        ),
+      ];
+    },
+  );
+  return rows[0]?.term_id ?? null;
 }
 
 async function completeRequest(scenario: Scenario): Promise<{
@@ -103,6 +123,8 @@ describe("settlement integrity", () => {
   it("SYS-7.1 — Completed settlement columns and envelope", async () => {
     const scenario = await newScenario();
     await setupPromotedFakePolicy(scenario);
+    const activeTermId = await readActiveTermId(scenario.installationId);
+    expect(activeTermId).toBeTruthy();
     const { ref, requestId } = await completeRequest(scenario);
 
     const request = await getAiRequest(ref);
@@ -128,9 +150,7 @@ describe("settlement integrity", () => {
     expect(usage.results).toHaveLength(1);
     const usageRow = usage.results![0]!;
     expect(usageRow.installation_id).toBe(scenario.installationId);
-    expect(usageRow.period).toBe(
-      periodFromEntitleStart(DEFAULT_ENTITLE_PAYLOAD.period_start),
-    );
+    expect(usageRow.term_id).toBe(activeTermId);
     expect(usageRow.quota_weight).toBe(1);
     expect(usageRow.tokens).toBe(
       Number(attempt.tokens_in) + Number(attempt.tokens_out),

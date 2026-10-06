@@ -900,17 +900,22 @@ describe("guard_reject_request_too_large_no_journal_no_provider", () => {
   });
 });
 
-describe("guard_reject_quota_exhausted_no_journal_no_provider", () => {
-  it("T14 — quota_exhausted taxonomy HTTP", async () => {
-    await env.DB
-      .prepare(
-        "UPDATE entitlement SET request_quota = 0, token_budget = 0, cost_budget = 0 WHERE installation_id = ?",
-      )
-      .bind(FIXTURE_INSTALLATION_ID)
-      .run();
-    const token = await mintAat();
-    const response = await SELF.fetch(buildPostRequest({ token }));
-    expect(response.status).toBe(liveHttpStatusForCode("quota_exhausted"));
+describe("guard_reject_allowance_exhausted_no_journal_no_provider", () => {
+  it("T14 — allowance_exhausted taxonomy HTTP", async () => {
+    const admissionMod = await import("../src/admission");
+    const admitSpy = vi.spyOn(admissionMod, "runAdmission").mockResolvedValue({
+      ok: false,
+      code: "allowance_exhausted",
+    });
+    try {
+      const token = await mintAat();
+      const response = await SELF.fetch(buildPostRequest({ token }));
+      expect(response.status).toBe(liveHttpStatusForCode("allowance_exhausted"));
+      const body = (await response.json()) as { code?: string };
+      expect(body.code).toBe("allowance_exhausted");
+    } finally {
+      admitSpy.mockRestore();
+    }
   });
 });
 
@@ -1043,32 +1048,22 @@ describe("completed_attempt_and_usage_event_cost_agree", () => {
   });
 });
 
-describe("usage_event_period_from_admission_entitlement", () => {
-  it("journals YYYY-MM from the admission-time period_start, not wall-clock at credit", async () => {
-    await env.DB
-      .prepare(
-        `UPDATE entitlement SET period_start = ?, period_end = ? WHERE installation_id = ?`,
-      )
-      .bind(
-        "2026-07-01T00:00:00.000Z",
-        "2026-08-01T00:00:00.000Z",
-        FIXTURE_INSTALLATION_ID,
-      )
-      .run();
-
+describe("usage_event_term_id_from_admission", () => {
+  it("journals term_id from admission, not an entitlement period string", async () => {
     const token = await mintAat();
     await fetchLivePost(token);
     await flushBackgroundWork();
 
     const usage = await env.DB
       .prepare(
-        `SELECT period FROM usage_event
+        `SELECT term_id FROM usage_event
          WHERE installation_id = ?
          ORDER BY recorded_at DESC LIMIT 1`,
       )
       .bind(FIXTURE_INSTALLATION_ID)
-      .first<{ period: string }>();
-    expect(usage?.period).toBe("2026-07");
+      .first<{ term_id: string }>();
+    expect(usage?.term_id).toBeTruthy();
+    expect(usage?.term_id).not.toMatch(/^\d{4}-\d{2}$/);
   });
 });
 
@@ -1701,8 +1696,8 @@ describe("provider_selection_only_via_routing_policy", () => {
   });
 });
 
-describe("guard_reject_installation_suspended_no_journal_no_provider", () => {
-  it("T19 — installation_suspended taxonomy HTTP; no journal; no provider", async () => {
+describe("guard_reject_suspended_no_journal_no_provider", () => {
+  it("T19 — suspended taxonomy HTTP; no journal; no provider", async () => {
     await env.DB
       .prepare("UPDATE installation SET status = 'suspended' WHERE installation_id = ?")
       .bind(FIXTURE_INSTALLATION_ID)
@@ -1710,10 +1705,8 @@ describe("guard_reject_installation_suspended_no_journal_no_provider", () => {
     const before = await countAiRequests();
     const token = await mintAat();
     const response = await SELF.fetch(buildPostRequest({ token }));
-    expect(response.status).toBe(liveHttpStatusForCode("installation_suspended"));
-    expect(((await response.json()) as { code: string }).code).toBe(
-      "installation_suspended",
-    );
+    expect(response.status).toBe(liveHttpStatusForCode("suspended"));
+    expect(((await response.json()) as { code: string }).code).toBe("suspended");
     expect(response.headers.get("content-type")).toContain("application/json");
     expect(await countAiRequests()).toBe(before);
     expect(await countAiAttempts()).toBe(0);

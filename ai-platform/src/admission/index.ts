@@ -137,6 +137,7 @@ type JournaledRequestRow = {
   request_id: string;
   request_reference: string;
   state: string;
+  trace_id: string;
 };
 
 type AdmissionDoTransportResult =
@@ -248,6 +249,7 @@ function idempotentFromJournal(row: JournaledRequestRow): AdmissionResult {
       requestReference: row.request_reference,
       state: mapJournalState(row.state),
       requestId: row.request_id,
+      traceId: row.trace_id,
     },
   };
 }
@@ -271,7 +273,7 @@ async function selectAiRequestByKey(
 ): Promise<JournaledRequestRow | null> {
   const row = await db
     .prepare(
-      `SELECT request_id, request_reference, state
+      `SELECT request_id, request_reference, state, trace_id
        FROM ai_request
        WHERE installation_id = ? AND idempotency_key = ?
        ORDER BY created_at ASC
@@ -289,7 +291,7 @@ async function selectAiRequestById(
 ): Promise<JournaledRequestRow | null> {
   const row = await db
     .prepare(
-      `SELECT request_id, request_reference, state
+      `SELECT request_id, request_reference, state, trace_id
        FROM ai_request
        WHERE installation_id = ? AND request_id = ?
        LIMIT 1`,

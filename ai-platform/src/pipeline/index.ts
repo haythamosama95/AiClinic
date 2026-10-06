@@ -141,6 +141,8 @@ export type GuardFreshSuccess = {
   killedProviderIds?: readonly string[];
   /** Soft-threshold / grace admission flag; drives `degraded_notice` and router tier. */
   degraded?: boolean;
+  /** Term allowance band from admission (P3.4 soft-threshold input). */
+  band?: "ok" | "75" | "90" | "exhausted";
   /** Journaled and routed tier, derived from admission (never client-supplied). */
   routingTier?: "standard" | "degraded";
   /** Term admission fields from the DO answer — settlement and routing. */
@@ -331,7 +333,13 @@ export async function runGuard(
     capability_id: input.capabilityId,
   });
   // Stage 8 / identity clock: seconds (JWT NumericDate), never Date.now() ms.
-  const nowSeconds = input.now ?? Math.floor(Date.now() / 1000);
+  const nowSeconds =
+    input.verifyContext?.now ??
+    input.now ??
+    Math.floor(Date.now() / 1000);
+  const nowMs =
+    input.verifyContext?.nowMs ??
+    (input.now !== undefined ? input.now * 1000 : Date.now());
 
   // Stage 1 — ingress size + JSON shape
   const bodyBytes = new TextEncoder().encode(input.bodyText).byteLength;
@@ -484,7 +492,7 @@ export async function runGuard(
     { DB: bindings.DB, DO: bindings.DO } satisfies AdmissionBindings,
     {
       now: nowSeconds,
-      nowMs: input.now !== undefined ? input.now * 1000 : Date.now(),
+      nowMs,
     },
   );
   if (!admission.ok) {
@@ -621,6 +629,9 @@ export async function runGuard(
     ...(termAdmission !== undefined ? { termAdmission } : {}),
     ...(entitlementSnapshot !== undefined ? { entitlementSnapshot } : {}),
     ...(degraded ? { degraded: true } : {}),
+    ...(admission.outcome === "admitted" && admission.band !== undefined
+      ? { band: admission.band }
+      : {}),
     ...(validatedTranscript !== undefined
       ? { transcript: validatedTranscript }
       : {}),
