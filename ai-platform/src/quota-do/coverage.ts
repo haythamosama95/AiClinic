@@ -10,6 +10,7 @@ import {
 import { addDuration, type DurationScale } from "../coverage/calendar";
 import type { Logger } from "../logger";
 import { noopLogger } from "../logger";
+import { generateUlid } from "../trace";
 type SqlStorage = DurableObjectStorage & {
   sql?: {
     exec: (query: string, ...bindings: unknown[]) => Iterable<Record<string, unknown>>;
@@ -135,8 +136,10 @@ export interface ApplyGrantResponse {
     | "conflict"
     | "exceeds_ceiling"
     | "bad_request"
-    | "rejected";
+    | "rejected"
+    | "transient";
   code?: string;
+  detail?: string;
   receipt?: Record<string, unknown>;
 }
 
@@ -1530,6 +1533,13 @@ export async function applyGrantRPC(
   return blockConcurrencyWhile(async () => {
     ensureHotRow(storage, request.bindingEpoch);
     const hotForTransfer = loadHot(storage);
+    if (hotForTransfer.awaiting_transfer !== 0) {
+      return {
+        kind: "apply_grant",
+        result: "transient",
+        detail: "awaiting_transfer",
+      };
+    }
     if (
       hotForTransfer.transferred_out_to !== undefined &&
       hotForTransfer.transferred_out_to !== null &&
@@ -2948,4 +2958,213 @@ async function signTransferReceiptInDo(input: {
     kid: input.signingKey.kid,
   });
   return { ...unsigned, signature };
+}
+
+function sqlNullableString(value: string | null | undefined): string {
+  if (value === null || value === undefined) {
+    return "NULL";
+  }
+  return sqlString(value);
+}
+
+function sqlNullableNumber(value: number | null | undefined): string {
+  if (value === null || value === undefined) {
+    return "NULL";
+  }
+  return String(value);
+}
+
+async function transferGrantId(transferId: string, index: number): Promise<string> {
+  return sha256Hex(
+    new TextEncoder().encode(`grant:transfer:${transferId}:${index}`),
+  );
+}
+
+export interface SetTransferPendingRequest {
+  kind: "set_transfer_pending";
+  bindingEpoch: number;
+}
+
+export interface SetTransferPendingResponse {
+  kind: "set_transfer_pending";
+  result: "ok" | "bad_request";
+}
+
+export async function setTransferPendingRPC(
+  storage: DurableObjectStorage,
+  blockConcurrencyWhile: <T>(fn: () => Promise<T>) => Promise<T>,
+  request: SetTransferPendingRequest,
+): Promise<SetTransferPendingResponse> {
+  return blockConcurrencyWhile(async () => {
+    ensureHotRow(storage, request.bindingEpoch);
+    updateHot(storage, { transfer_pending: 1 });
+    return { kind: "set_transfer_pending", result: "ok" };
+  });
+}
+
+export interface TransferInRequest {
+  kind: "transfer_in";
+  installationId: string;
+  orgId: string;
+  vendorContractVersion: number;
+  bindingEpoch: number;
+  transferId: string;
+  package: TransferPackageTerm[];
+  platformSigningKeyJson: string;
+  durationScale?: DurationScale;
+  nowIso: string;
+}
+
+export interface TransferInResponse {
+  kind: "transfer_in";
+  result: "applied" | "bad_request";
+  term_ids?: string[];
+  ledger_seq?: number;
+  receipt?: Record<string, unknown>;
+}
+
+export async function transferInRPC(
+  state: DurableObjectState,
+  storage: DurableObjectStorage,
+  blockConcurrencyWhile: <T>(fn: () => Promise<T>) => Promise<T>,
+  request: TransferInRequest,
+): Promise<TransferInResponse> {
+  return blockConcurrencyWhile(async () => {
+    ensureHotRow(storage, request.bindingEpoch);
+    const signingKey = await loadPlatformSigningKey(request.platformSigningKeyJson);
+    if (signingKey === null) {
+      return { kind: "transfer_in", result: "bad_request" };
+    }
+
+    const createdTermIds: string[] = [];
+    let activeTermId: string | null = null;
+
+    for (let index = 0; index < request.package.length; index += 1) {
+      const pkg = request.package[index]!;
+      const termId = generateUlid();
+      const grantId = await transferGrantId(request.transferId, index);
+      const planSnapshotJson = JSON.stringify(pkg.plan_snapshot);
+      const graceCap =
+        pkg.grace_cap === null || pkg.grace_cap === undefined
+          ? "proportional"
+          : String(pkg.grace_cap);
+
+      sqlExec(
+        storage,
+        `INSERT INTO term (
+          term_id, grant_id, origin_grant_id, position, state, end_reason,
+          plan_snapshot, allowance, used_final, duration_unit, duration_count,
+          grace_days, grace_cap, calendar_start, starts_at, ends_at, grace_ends_at, ended_at
+        ) VALUES (
+          ${sqlString(termId)}, ${sqlString(grantId)}, ${sqlString(pkg.origin_grant_id)},
+          ${pkg.position}, ${sqlString(pkg.state)}, NULL,
+          ${sqlString(planSnapshotJson)}, ${sqlNullableNumber(pkg.allowance)}, NULL,
+          ${sqlNullableString(pkg.duration_unit)}, ${sqlNullableNumber(pkg.duration_count)},
+          ${sqlNullableNumber(pkg.grace_days)}, ${sqlString(graceCap)},
+          ${sqlNullableString(pkg.calendar_start)}, ${sqlNullableString(pkg.starts_at)},
+          ${sqlNullableString(pkg.ends_at)}, ${sqlNullableString(pkg.grace_ends_at)}, NULL
+        )`,
+      );
+      createdTermIds.push(termId);
+      if (pkg.state === "active") {
+        activeTermId = termId;
+      }
+
+      const envelopeSha256 = await sha256Hex(
+        new TextEncoder().encode(canonicalize(pkg)),
+      );
+      let hot = loadHot(storage);
+      hot = { ...hot, clinic_seq: hot.clinic_seq + 1 };
+      updateHot(storage, { clinic_seq: hot.clinic_seq });
+      const terms = loadTerms(storage);
+      const snapshot = buildCoverageSnapshot({
+        vendorContractVersion: request.vendorContractVersion,
+        orgId: request.orgId,
+        hot,
+        terms,
+        durationScale: request.durationScale,
+      });
+      snapshot.clinic_seq = hot.clinic_seq;
+      const ledgerSeq = hot.clinic_seq;
+
+      const receipt = await signReceipt({
+        signingKey,
+        vendorContractVersion: request.vendorContractVersion,
+        grantId,
+        installationId: request.installationId,
+        orgId: request.orgId,
+        termIds: [termId],
+        appliedAt: request.nowIso,
+        ledgerSeq,
+        envelopeSha256,
+      });
+
+      sqlExec(
+        storage,
+        `INSERT INTO grant (
+          grant_id, kind, source_kind, envelope_sha256, envelope, evidence, receipt, applied_at, voided_at, void_reason
+        ) VALUES (
+          ${sqlString(grantId)}, 'term', 'transfer', ${sqlString(envelopeSha256)},
+          ${sqlString(JSON.stringify({ transfer_id: request.transferId, index }))},
+          ${sqlString("{}")},
+          ${sqlString(JSON.stringify(receipt))},
+          ${sqlString(request.nowIso)}, NULL, NULL
+        )`,
+      );
+
+      insertOutbox(storage, "grant_ledger", {
+        grant_id: grantId,
+        origin_grant_id: pkg.origin_grant_id,
+        org_id: request.orgId,
+        installation_id: request.installationId,
+        kind: "term",
+        source_kind: "transfer",
+        operator_credential_id: "",
+        envelope_sha256: envelopeSha256,
+        receipt,
+        applied_at: request.nowIso,
+      });
+    }
+
+    updateHot(storage, {
+      awaiting_transfer: 0,
+      active_term_id: activeTermId,
+      used: 0,
+    });
+
+    const ledgerSeq = emitCoverageEvent(storage, {
+      installationId: request.installationId,
+      orgId: request.orgId,
+      vendorContractVersion: request.vendorContractVersion,
+      kind: "transfer",
+      at: request.nowIso,
+      durationScale: request.durationScale,
+    });
+
+    const envelopeSha256 = await sha256Hex(
+      new TextEncoder().encode(canonicalize(request.package)),
+    );
+
+    const receipt = await signTransferReceiptInDo({
+      signingKey,
+      vendorContractVersion: request.vendorContractVersion,
+      transferId: request.transferId,
+      installationId: request.installationId,
+      orgId: request.orgId,
+      termIds: createdTermIds,
+      appliedAt: request.nowIso,
+      ledgerSeq,
+      envelopeSha256,
+    });
+
+    await scheduleCoverageAlarm(state, storage, request.nowIso);
+
+    return {
+      kind: "transfer_in",
+      result: "applied",
+      term_ids: createdTermIds,
+      ledger_seq: ledgerSeq,
+      receipt,
+    };
+  });
 }

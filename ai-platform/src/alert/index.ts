@@ -911,6 +911,38 @@ export async function raiseAl11GrantFromOutbox(
   await sendAl11GrantBody(env, body, alertKey);
 }
 
+export async function raiseAl11Transfer(
+  env: CoverageAlertEnv,
+  transferId: string,
+  orgId: string,
+): Promise<void> {
+  const alertKey = `AL-11:transfer:${transferId}`;
+  const nowIso = await clockNowIso(env);
+  const existing = await readPlatformAlertSendState(env.DB, alertKey);
+  if (existing === "sent") {
+    return;
+  }
+  const body = { code: "AL-11", transfer_id: transferId, org_id: orgId };
+  await upsertPlatformAlert(env.DB, alertKey, "AL-11", nowIso);
+  await sendAl11GrantBody(env, body, alertKey);
+}
+
+export async function raiseAl18HeldBinding(
+  env: CoverageAlertEnv,
+  orgId: string,
+  installationId: string,
+): Promise<void> {
+  const alertKey = `AL-18:${installationId}`;
+  const nowIso = await clockNowIso(env);
+  const existing = await readPlatformAlertSendState(env.DB, alertKey);
+  if (existing === "sent") {
+    return;
+  }
+  const body = { code: "AL-18", org_id: orgId, installation_id: installationId };
+  await upsertPlatformAlert(env.DB, alertKey, "AL-18", nowIso);
+  await sendCoverageAlertBody(env, "AL-18", body, alertKey);
+}
+
 async function sendCoverageAlertBody(
   env: CoverageAlertEnv,
   subject: string,

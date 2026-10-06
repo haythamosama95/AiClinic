@@ -102,6 +102,8 @@ import {
   openAwaitingTransferRPC,
   readCoverageRPC,
   releaseHeldRPC,
+  setTransferPendingRPC,
+  transferInRPC,
   transferOutRPC,
   suspendResumeRPC,
   voidForReversalRPC,
@@ -1842,6 +1844,23 @@ export class GatewayObject extends DurableObject {
           this.ctx.storage,
           (fn) => this.ctx.blockConcurrencyWhile(fn),
           body as Parameters<typeof transferOutRPC>[3],
+        );
+        return Response.json({ ...result, contract_version: contractVersion });
+      }
+      if (kind === "transfer_in") {
+        const result = await transferInRPC(
+          this.ctx,
+          this.ctx.storage,
+          (fn) => this.ctx.blockConcurrencyWhile(fn),
+          body as Parameters<typeof transferInRPC>[3],
+        );
+        return Response.json({ ...result, contract_version: contractVersion });
+      }
+      if (kind === "set_transfer_pending") {
+        const result = await setTransferPendingRPC(
+          this.ctx.storage,
+          (fn) => this.ctx.blockConcurrencyWhile(fn),
+          body as Parameters<typeof setTransferPendingRPC>[2],
         );
         return Response.json({ ...result, contract_version: contractVersion });
       }

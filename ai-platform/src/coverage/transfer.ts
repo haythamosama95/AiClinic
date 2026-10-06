@@ -5,15 +5,19 @@ import {
   sha256Hex,
   signCompactJws,
 } from "vendor-contracts";
+import { raiseAl11Transfer, raiseAl18HeldBinding, type CoverageAlertEnv } from "../alert/index";
 import { clockNowIso, type ClockEnv } from "../clock";
+import { purgeByInstallationId } from "../retention/index";
 import { generateUlid } from "../trace";
 
-type TransferEnv = ClockEnv & {
-  DB: D1Database;
-  DO: DurableObjectNamespace;
-  PLATFORM_SIGNING_KEY: string;
-  DURATION_SCALE?: string;
-};
+type TransferEnv = ClockEnv &
+  CoverageAlertEnv & {
+    DB: D1Database;
+    DO: DurableObjectNamespace;
+    R2: R2Bucket;
+    PLATFORM_SIGNING_KEY: string;
+    DURATION_SCALE?: string;
+  };
 
 export type TransferRow = {
   transfer_id: string;
@@ -430,5 +434,287 @@ export async function executeTransferIn(
     };
   }
 
-  return { result: "bad_request" };
+  if (transfer.package === null) {
+    return { result: "bad_request" };
+  }
+
+  const packageValue = JSON.parse(transfer.package) as unknown;
+  if (!Array.isArray(packageValue)) {
+    return { result: "bad_request" };
+  }
+
+  const destBinding = await env.DB
+    .prepare(
+      `SELECT epoch FROM tenant_binding
+       WHERE org_id = ? AND installation_id = ?`,
+    )
+    .bind(transfer.org_id, transfer.to_installation_id)
+    .first<{ epoch: number }>();
+
+  const doResponse = await callCoverageDo(env, transfer.to_installation_id, {
+    kind: "transfer_in",
+    installationId: transfer.to_installation_id,
+    orgId: transfer.org_id,
+    vendorContractVersion,
+    bindingEpoch: destBinding?.epoch ?? 1,
+    transferId,
+    package: packageValue,
+    platformSigningKeyJson: env.PLATFORM_SIGNING_KEY,
+    durationScale: durationScaleFromEnv(env),
+    nowIso: await clockNowIso(env),
+  });
+
+  if (doResponse === null || doResponse.result !== "applied") {
+    return { result: "bad_request" };
+  }
+
+  const termIds = doResponse.term_ids;
+  const receiptRaw = doResponse.receipt;
+  if (
+    !Array.isArray(termIds) ||
+    typeof receiptRaw !== "object" ||
+    receiptRaw === null
+  ) {
+    return { result: "bad_request" };
+  }
+
+  const packageJson = transfer.package;
+  const receiptJson = JSON.stringify(receiptRaw);
+  const appliedAt = await clockNowIso(env);
+
+  await env.DB
+    .prepare(
+      `INSERT INTO transfer_step (transfer_id, step, receipt, applied_at)
+       VALUES (?, 'transfer_in', ?, ?)`,
+    )
+    .bind(transferId, receiptJson, appliedAt)
+    .run();
+
+  await raiseAl11Transfer(env, transferId, transfer.org_id);
+
+  return {
+    result: "applied",
+    detail: packageJson,
+    receipt: receiptRaw as Record<string, unknown>,
+  };
+}
+
+type InstallationRow = {
+  installation_id: string;
+  org_id: string;
+  status: string;
+  display_name: string;
+  region: string;
+  enrolled_at: string;
+};
+
+type TenantBindingRow = {
+  org_id: string;
+  installation_id: string;
+  epoch: number;
+  status: string;
+  retired_at: string | null;
+  reason: string | null;
+  created_at: string;
+};
+
+function installationDeleteDetail(
+  installation: InstallationRow,
+  binding: TenantBindingRow,
+): string {
+  return JSON.stringify({ installation, tenant_binding: binding });
+}
+
+async function readInstallationRow(
+  db: D1Database,
+  installationId: string,
+): Promise<InstallationRow | null> {
+  return db
+    .prepare(
+      `SELECT installation_id, org_id, status, display_name, region, enrolled_at
+       FROM installation WHERE installation_id = ?`,
+    )
+    .bind(installationId)
+    .first<InstallationRow>();
+}
+
+async function readBindingRow(
+  db: D1Database,
+  orgId: string,
+  installationId: string,
+): Promise<TenantBindingRow | null> {
+  return db
+    .prepare(
+      `SELECT org_id, installation_id, epoch, status, retired_at, reason, created_at
+       FROM tenant_binding WHERE org_id = ? AND installation_id = ?`,
+    )
+    .bind(orgId, installationId)
+    .first<TenantBindingRow>();
+}
+
+async function readLiveOrgBinding(
+  db: D1Database,
+  orgId: string,
+): Promise<TenantBindingRow | null> {
+  return db
+    .prepare(
+      `SELECT org_id, installation_id, epoch, status, retired_at, reason, created_at
+       FROM tenant_binding
+       WHERE org_id = ? AND status IN ('active', 'held_for_transfer')
+       ORDER BY epoch DESC
+       LIMIT 1`,
+    )
+    .bind(orgId)
+    .first<TenantBindingRow>();
+}
+
+async function installationHasOpenCoverage(
+  env: TransferEnv,
+  installationId: string,
+  orgId: string,
+): Promise<boolean> {
+  const inspected = await callCoverageDo(env, installationId, {
+    kind: "inspect_coverage",
+    installationId,
+    orgId,
+    vendorContractVersion: CHANNEL_VERSIONS.platformDo,
+  });
+  if (inspected === null || !Array.isArray(inspected.terms)) {
+    return false;
+  }
+  return (inspected.terms as Array<{ state?: string }>).some(
+    (row) =>
+      row.state === "active" ||
+      row.state === "grace" ||
+      row.state === "queued" ||
+      row.state === "held",
+  );
+}
+
+export async function executeDeleteInstallation(
+  env: TransferEnv,
+  input: {
+    orgId: string;
+    reason: string;
+    operatorId: string;
+  },
+): Promise<
+  | { result: "ok"; detail: string }
+  | { result: "bad_request" }
+> {
+  const binding = await readLiveOrgBinding(env.DB, input.orgId);
+  if (binding === null) {
+    return { result: "bad_request" };
+  }
+
+  const installation = await readInstallationRow(
+    env.DB,
+    binding.installation_id,
+  );
+  if (installation === null) {
+    return { result: "bad_request" };
+  }
+
+  if (
+    installation.status === "deleted" &&
+    (binding.status === "held_for_transfer" || binding.status === "retired")
+  ) {
+    return {
+      result: "ok",
+      detail: installationDeleteDetail(installation, binding),
+    };
+  }
+
+  const nowIso = await clockNowIso(env);
+  const hasCoverage = await installationHasOpenCoverage(
+    env,
+    binding.installation_id,
+    input.orgId,
+  );
+
+  await env.DB
+    .prepare(`UPDATE installation SET status = 'deleted' WHERE installation_id = ?`)
+    .bind(binding.installation_id)
+    .run();
+
+  if (hasCoverage) {
+    await env.DB
+      .prepare(
+        `UPDATE tenant_binding
+         SET status = 'held_for_transfer', retired_at = NULL, reason = NULL
+         WHERE org_id = ? AND installation_id = ?`,
+      )
+      .bind(input.orgId, binding.installation_id)
+      .run();
+
+    await callCoverageDo(env, binding.installation_id, {
+      kind: "set_transfer_pending",
+      bindingEpoch: binding.epoch,
+    });
+
+    await raiseAl18HeldBinding(env, input.orgId, binding.installation_id);
+  } else {
+    await env.DB
+      .prepare(
+        `UPDATE tenant_binding
+         SET status = 'retired', retired_at = ?, reason = ?
+         WHERE org_id = ? AND installation_id = ?`,
+      )
+      .bind(nowIso, input.reason, input.orgId, binding.installation_id)
+      .run();
+  }
+
+  const installationAfter = await readInstallationRow(
+    env.DB,
+    binding.installation_id,
+  );
+  const bindingAfter = await readBindingRow(
+    env.DB,
+    input.orgId,
+    binding.installation_id,
+  );
+  if (installationAfter === null || bindingAfter === null) {
+    return { result: "bad_request" };
+  }
+
+  const detail = installationDeleteDetail(installationAfter, bindingAfter);
+
+  await purgeByInstallationId(binding.installation_id, input.operatorId, {
+    db: env.DB,
+    r2: env.R2,
+  });
+
+  return {
+    result: "ok",
+    detail,
+  };
+}
+
+export async function retireHeldBindingIfEmpty(
+  env: TransferEnv,
+  orgId: string,
+  installationId: string,
+  reason: string,
+): Promise<void> {
+  const binding = await readBindingRow(env.DB, orgId, installationId);
+  if (binding === null || binding.status !== "held_for_transfer") {
+    return;
+  }
+  const hasCoverage = await installationHasOpenCoverage(
+    env,
+    installationId,
+    orgId,
+  );
+  if (hasCoverage) {
+    return;
+  }
+  const nowIso = await clockNowIso(env);
+  await env.DB
+    .prepare(
+      `UPDATE tenant_binding
+       SET status = 'retired', retired_at = ?, reason = ?
+       WHERE org_id = ? AND installation_id = ? AND status = 'held_for_transfer'`,
+    )
+    .bind(nowIso, reason, orgId, installationId)
+    .run();
 }

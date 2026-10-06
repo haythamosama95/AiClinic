@@ -20,9 +20,11 @@ import {
 import type { DurationScale } from "../coverage/calendar";
 import {
   executeBeginTransfer,
+  executeDeleteInstallation,
   executeTransferIn,
   executeTransferOut,
   readTransferByAssertionSha256,
+  retireHeldBindingIfEmpty,
   transferRowToDetail,
 } from "../coverage/transfer";
 import {
@@ -442,6 +444,46 @@ async function readActiveTenantBinding(
     .first<{ installation_id: string; epoch: number }>();
 }
 
+async function readLiveTenantBinding(
+  db: D1Database,
+  orgId: string,
+): Promise<{ installation_id: string; epoch: number; status: string } | null> {
+  return db
+    .prepare(
+      `SELECT installation_id, epoch, status FROM tenant_binding
+       WHERE org_id = ? AND status IN ('active', 'held_for_transfer')
+       ORDER BY epoch DESC
+       LIMIT 1`,
+    )
+    .bind(orgId)
+    .first<{ installation_id: string; epoch: number; status: string }>();
+}
+
+async function readTenantBindingForInstallation(
+  db: D1Database,
+  orgId: string,
+  installationId: string,
+): Promise<{ installation_id: string; epoch: number; status: string } | null> {
+  return db
+    .prepare(
+      `SELECT installation_id, epoch, status FROM tenant_binding
+       WHERE org_id = ? AND installation_id = ?`,
+    )
+    .bind(orgId, installationId)
+    .first<{ installation_id: string; epoch: number; status: string }>();
+}
+
+async function readMaxTenantBindingEpoch(
+  db: D1Database,
+  orgId: string,
+): Promise<number> {
+  const row = await db
+    .prepare(`SELECT MAX(epoch) AS max_epoch FROM tenant_binding WHERE org_id = ?`)
+    .bind(orgId)
+    .first<{ max_epoch: number | null }>();
+  return row?.max_epoch ?? 0;
+}
+
 async function callCoverageDo(
   env: VendorEnv,
   installationId: string,
@@ -478,13 +520,14 @@ async function resolveOrInsertGrantBinding(
   env: VendorEnv,
   orgId: string,
 ): Promise<string> {
-  const existing = await readActiveTenantBinding(env.DB, orgId);
+  const existing = await readLiveTenantBinding(env.DB, orgId);
   if (existing !== null) {
     return existing.installation_id;
   }
 
   const installationId = crypto.randomUUID();
   const createdAt = await clockNowIso(env);
+  const nextEpoch = (await readMaxTenantBindingEpoch(env.DB, orgId)) + 1;
 
   try {
     await env.DB.batch([
@@ -499,14 +542,14 @@ async function resolveOrInsertGrantBinding(
         .prepare(
           `INSERT INTO tenant_binding (
             org_id, installation_id, epoch, status, retired_at, reason, created_at
-          ) VALUES (?, ?, 1, 'active', NULL, NULL, ?)`,
+          ) VALUES (?, ?, ?, 'active', NULL, NULL, ?)`,
         )
-        .bind(orgId, installationId, createdAt),
+        .bind(orgId, installationId, nextEpoch, createdAt),
     ]);
   } catch {
-    const rebound = await readActiveTenantBinding(env.DB, orgId);
+    const rebound = await readLiveTenantBinding(env.DB, orgId);
     if (rebound === null) {
-      throw new Error("tenant_binding insert conflict without active row");
+      throw new Error("tenant_binding insert conflict without live row");
     }
     return rebound.installation_id;
   }
@@ -1458,6 +1501,11 @@ function mapApplyGrantDoResponse(
     const code =
       typeof doResponse.code === "string" ? doResponse.code : "bad_request";
     return grantRejected(version, code);
+  }
+  if (doResult === "transient") {
+    const detail =
+      typeof doResponse.detail === "string" ? doResponse.detail : "";
+    return grantTransient(version, detail);
   }
   return grantRejected(version, "coverage_unknown");
 }
@@ -3107,8 +3155,13 @@ export class VendorEntrypoint extends WorkerEntrypoint<VendorEnv> {
         );
       }
 
-      const installationId = await resolveOrInsertGrantBinding(this.env, orgId);
-      const binding = await readActiveTenantBinding(this.env.DB, orgId);
+      const liveBinding = await readLiveTenantBinding(this.env.DB, orgId);
+      const installationId =
+        liveBinding?.installation_id ??
+        (await resolveOrInsertGrantBinding(this.env, orgId));
+      const binding =
+        liveBinding ??
+        (await readLiveTenantBinding(this.env.DB, orgId));
       if (binding === null) {
         return grantRejected(version, "coverage_unknown");
       }
@@ -3333,6 +3386,11 @@ export class VendorEntrypoint extends WorkerEntrypoint<VendorEnv> {
     const orgId = envelope.org_id;
     if (typeof orgId !== "string") {
       return grantRejected(version, "bad_signature");
+    }
+
+    const heldBinding = await readLiveTenantBinding(this.env.DB, orgId);
+    if (heldBinding?.status === "held_for_transfer") {
+      return grantTransient(version, "transfer_pending");
     }
 
     const installationOverride =
@@ -3569,6 +3627,75 @@ export class VendorEntrypoint extends WorkerEntrypoint<VendorEnv> {
       code: "",
       detail: step.detail,
       receipt: step.receipt,
+    };
+  }
+
+  async deleteInstallation(
+    args: Record<string, unknown>,
+  ): Promise<GrantResultEnvelope> {
+    const requested = parseRequestedVersion(args);
+    const negotiated = negotiate(VENDOR_CHANNEL, requested);
+    if (!negotiated.ok) {
+      return grantRejected(VENDOR_CHANNEL, negotiated.code);
+    }
+    const version = negotiated.version;
+
+    const access = await verifyHpAccess(this.env, args.access_jwt);
+    if (!access.ok) {
+      return grantRejected(version, "unauthenticated");
+    }
+
+    const orgId = args.org_id;
+    const reason = args.reason;
+    if (typeof orgId !== "string" || typeof reason !== "string") {
+      return grantRejected(version, "bad_request");
+    }
+
+    const check = await runHpAssertionChecks(
+      this.env,
+      "deleteInstallation",
+      args,
+      access.email,
+      version,
+    );
+    if (!check.ok) {
+      const rejectedEnvelope = await rejectHpAssertion(
+        this.env,
+        access.email,
+        "deleteInstallation",
+        check,
+      );
+      return {
+        contract_version: rejectedEnvelope.contract_version,
+        result: "rejected",
+        code: rejectedEnvelope.code,
+        detail: rejectedEnvelope.detail,
+      };
+    }
+
+    const deleted = await executeDeleteInstallation(this.env, {
+      orgId,
+      reason,
+      operatorId: access.email,
+    });
+    if (deleted.result === "bad_request") {
+      await writeEntrypointAudit(
+        this.env.DB,
+        access.email,
+        "deleteInstallation",
+        check.auditTarget,
+        check.assertionSha256,
+      );
+      return grantRejected(version, "bad_request");
+    }
+
+    await finishHpAssertion(this.env, access.email, "deleteInstallation", check);
+
+    return {
+      contract_version: version,
+      result: "ok",
+      code: "",
+      detail: deleted.detail,
     };
   }
 
@@ -3919,7 +4046,11 @@ export class VendorEntrypoint extends WorkerEntrypoint<VendorEnv> {
     if (ledgerRow === null) {
       return grantRejected(version, "coverage_unknown");
     }
-    const binding = await readActiveTenantBinding(this.env.DB, ledgerRow.org_id);
+    const binding = await readTenantBindingForInstallation(
+      this.env.DB,
+      ledgerRow.org_id,
+      ledgerRow.installation_id,
+    );
     if (binding === null) {
       return grantRejected(version, "coverage_unknown");
     }
@@ -4002,7 +4133,16 @@ export class VendorEntrypoint extends WorkerEntrypoint<VendorEnv> {
     }
 
     await finishHpAssertion(this.env, access.email, "voidGrant", check);
-    return mapHpVoidDoResponse(version, doResponse);
+    const mapped = mapHpVoidDoResponse(version, doResponse);
+    if (mapped.result === "applied") {
+      await retireHeldBindingIfEmpty(
+        this.env,
+        ledgerRow.org_id,
+        ledgerRow.installation_id,
+        reason,
+      );
+    }
+    return mapped;
   }
 
   async listGrantsForVoid(

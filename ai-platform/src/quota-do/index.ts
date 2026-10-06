@@ -816,6 +816,15 @@ function admitOnHotRow(
   const capabilityId = resolveCapabilityId(request);
   const quotaWeight = resolveQuotaWeight(request);
 
+  if (hot.row.transfer_pending !== 0) {
+    persistIfChanged();
+    return returnStoredAdmission(storage, hot, request, {
+      kind: "admission",
+      outcome: "coverage_lapsed",
+      coverage_reason: "transfer_pending",
+    }, now);
+  }
+
   if (hot.row.suspended !== 0) {
     persistIfChanged();
     return returnStoredAdmission(storage, hot, request, {
@@ -1429,8 +1438,10 @@ export {
   readCoverageRPC,
   releaseHeldRPC,
   scheduleOutboxAlarmIfPending,
+  setTransferPendingRPC,
   shipCoverageOutboxAlarm,
   suspendResumeRPC,
+  transferInRPC,
   transferOutRPC,
   voidForReversalRPC,
   voidGrantRPC,
@@ -1444,6 +1455,10 @@ export {
   type OpenAwaitingTransferResponse,
   type TransferOutRequest,
   type TransferOutResponse,
+  type TransferInRequest,
+  type TransferInResponse,
+  type SetTransferPendingRequest,
+  type SetTransferPendingResponse,
   type ReleaseHeldRequest,
   type ReleaseHeldResponse,
   type SuspendResumeRequest,

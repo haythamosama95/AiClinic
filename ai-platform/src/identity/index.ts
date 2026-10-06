@@ -267,19 +267,27 @@ async function countEpochOneBindingsLast24Hours(
   return row?.count ?? 0;
 }
 
-async function readActiveBindingFromD1(
+async function readLiveBindingFromD1(
   db: D1Database,
   orgId: string,
 ): Promise<Record<string, unknown> | null> {
   return db
     .prepare(
       `SELECT * FROM tenant_binding
-       WHERE org_id = ? AND status = 'active'
+       WHERE org_id = ? AND status IN ('active', 'held_for_transfer')
        ORDER BY epoch DESC
        LIMIT 1`,
     )
     .bind(orgId)
     .first<Record<string, unknown>>();
+}
+
+async function readMaxBindingEpoch(db: D1Database, orgId: string): Promise<number> {
+  const row = await db
+    .prepare(`SELECT MAX(epoch) AS max_epoch FROM tenant_binding WHERE org_id = ?`)
+    .bind(orgId)
+    .first<{ max_epoch: number | null }>();
+  return row?.max_epoch ?? 0;
 }
 
 async function resolveInstallationId(
@@ -302,6 +310,12 @@ async function resolveInstallationId(
     return rejectUnauthenticated();
   }
 
+  const liveBinding = await readLiveBindingFromD1(ctx.db, orgId);
+  if (liveBinding !== null && isString(liveBinding.installation_id)) {
+    ctx.cache.remember("tenant_bindings", orgId, liveBinding, ctx.now * 1000);
+    return liveBinding.installation_id;
+  }
+
   const recentCreations = await countEpochOneBindingsLast24Hours(ctx.db, ctx.now);
   if (recentCreations >= 50) {
     if (ctx.alertEnv !== undefined) {
@@ -312,6 +326,7 @@ async function resolveInstallationId(
 
   const installationId = crypto.randomUUID();
   const createdAt = new Date(ctx.now * 1000).toISOString();
+  const nextEpoch = (await readMaxBindingEpoch(ctx.db, orgId)) + 1;
 
   try {
     await ctx.db.batch([
@@ -326,12 +341,12 @@ async function resolveInstallationId(
         .prepare(
           `INSERT INTO tenant_binding (
             org_id, installation_id, epoch, status, retired_at, reason, created_at
-          ) VALUES (?, ?, 1, 'active', NULL, NULL, ?)`,
+          ) VALUES (?, ?, ?, 'active', NULL, NULL, ?)`,
         )
-        .bind(orgId, installationId, createdAt),
+        .bind(orgId, installationId, nextEpoch, createdAt),
     ]);
   } catch {
-    const existing = await readActiveBindingFromD1(ctx.db, orgId);
+    const existing = await readLiveBindingFromD1(ctx.db, orgId);
     if (existing === null || !isString(existing.installation_id)) {
       return rejectUnauthenticated();
     }
@@ -347,7 +362,7 @@ async function resolveInstallationId(
   const bindingRow: Record<string, unknown> = {
     org_id: orgId,
     installation_id: installationId,
-    epoch: 1,
+    epoch: nextEpoch,
     status: "active",
     retired_at: null,
     reason: null,
@@ -506,7 +521,21 @@ export class IssuerTokenVerifier implements TokenVerifier {
     if (installation.status === "suspended") {
       return rejectSuspended(installationId);
     }
-    if (installation.status !== "active") {
+    if (installation.status === "deleted") {
+      if (ctx.db === undefined) {
+        return rejectUnauthenticated(installationId);
+      }
+      const binding = await ctx.db
+        .prepare(
+          `SELECT status FROM tenant_binding
+           WHERE org_id = ? AND installation_id = ?`,
+        )
+        .bind(payload.org, installationId)
+        .first<{ status: string }>();
+      if (binding?.status !== "held_for_transfer") {
+        return rejectUnauthenticated(installationId);
+      }
+    } else if (installation.status !== "active") {
       return rejectUnauthenticated(installationId);
     }
 

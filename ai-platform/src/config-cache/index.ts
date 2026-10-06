@@ -237,7 +237,7 @@ export function createD1ConfigReader(
           const row = await db
             .prepare(
               `SELECT * FROM tenant_binding
-               WHERE org_id = ? AND status = 'active'
+               WHERE org_id = ? AND status IN ('active', 'held_for_transfer')
                ORDER BY epoch DESC
                LIMIT 1`,
             )
