@@ -11,6 +11,7 @@ import {
   insertOutbox,
   loadHot,
   loadTerms,
+  resolveOrgIdFromStorage,
   sqlSelect,
   type HotRow,
   type TermRow,
@@ -602,6 +603,57 @@ function chargeStaleReservations(
   return changed;
 }
 
+function endGraceIfExhausted(
+  storage: DurableObjectStorage,
+  hot: ParsedHot,
+  graceTerm: TermRow,
+  context: {
+    installationId: string;
+    orgId: string;
+    vendorContractVersion: number;
+    durationScale?: DurationScale;
+    nowIso: string;
+  },
+): boolean {
+  const graceUsed =
+    hot.row.used + hot.row.reserved - hot.row.grace_base_used;
+  const graceAllowance = computeGraceAllowance(
+    graceTerm,
+    hot.row.grace_base_used,
+  );
+  if (graceUsed < graceAllowance) {
+    return false;
+  }
+  const usedFinal = hot.row.used + hot.row.reserved;
+  sqlExecLocal(
+    storage,
+    `UPDATE term SET state = 'ended', end_reason = 'grace_exhausted', used_final = ${usedFinal}, ended_at = ${sqlStringLocal(context.nowIso)}
+     WHERE term_id = ${sqlStringLocal(graceTerm.term_id)}`,
+  );
+  const terms = loadTerms(storage);
+  hot.row.active_term_id = null;
+  hot.row.grace_base_used = 0;
+  hot.row.clinic_seq += 1;
+  const endedSnapshot = buildCoverageSnapshot({
+    vendorContractVersion: context.vendorContractVersion,
+    orgId: context.orgId,
+    hot: hot.row,
+    terms,
+    durationScale: context.durationScale,
+  });
+  insertOutbox(storage, "coverage_event", {
+    event_id: coverageEventId(context.installationId, hot.row.clinic_seq),
+    org_id: context.orgId,
+    installation_id: context.installationId,
+    binding_epoch: hot.row.binding_epoch,
+    clinic_seq: hot.row.clinic_seq,
+    kind: "term_ended",
+    at: context.nowIso,
+    snapshot: endedSnapshot,
+  });
+  return true;
+}
+
 function emitBandCrossedIfNeeded(
   storage: DurableObjectStorage,
   hot: ParsedHot,
@@ -737,6 +789,9 @@ function admitOnHotRow(
     now,
     nowIso,
   );
+  if (stateChanged) {
+    persistParsedHot(storage, hot);
+  }
 
   const persistIfChanged = (): void => {
     if (stateChanged) {
@@ -811,6 +866,24 @@ function admitOnHotRow(
         (hot.row.used + hot.row.reserved - hot.row.grace_base_used)
       : allowance - hot.row.used - hot.row.reserved;
   if (creditsRemaining < 1) {
+    if (billableTerm.state === "grace") {
+      const graceEnded = endGraceIfExhausted(storage, hot, billableTerm, {
+        installationId: request.installationId,
+        orgId: request.orgId ?? "",
+        vendorContractVersion: request.vendorContractVersion ?? 1,
+        durationScale: request.durationScale,
+        nowIso,
+      });
+      if (graceEnded) {
+        stateChanged = true;
+      }
+      persistIfChanged();
+      return returnStoredAdmission(storage, hot, request, {
+        kind: "admission",
+        outcome: "coverage_lapsed",
+        coverage_reason: "grace_exhausted",
+      }, now);
+    }
     persistIfChanged();
     return returnStoredAdmission(storage, hot, request, {
       kind: "admission",
@@ -904,42 +977,16 @@ function admitOnHotRow(
   }
 
   if (billableTerm.state === "grace") {
-    const graceUsed =
-      hot.row.used + hot.row.reserved - hot.row.grace_base_used;
-    const graceAllowance = computeGraceAllowance(
-      billableTerm,
-      hot.row.grace_base_used,
-    );
-    if (graceUsed >= graceAllowance) {
-      const usedFinal = hot.row.used + hot.row.reserved;
-      sqlExecLocal(
-        storage,
-        `UPDATE term SET state = 'ended', end_reason = 'grace_exhausted', used_final = ${usedFinal}, ended_at = ${sqlStringLocal(nowIso)}
-         WHERE term_id = ${sqlStringLocal(billableTerm.term_id)}`,
-      );
-      terms = loadTerms(storage);
-      const orgId = request.orgId ?? "";
-      const vendorVersion = request.vendorContractVersion ?? 1;
-      hot.row.active_term_id = null;
-      hot.row.grace_base_used = 0;
-      hot.row.clinic_seq += 1;
-      const endedSnapshot = buildCoverageSnapshot({
-        vendorContractVersion: vendorVersion,
-        orgId,
-        hot: hot.row,
-        terms,
+    if (
+      endGraceIfExhausted(storage, hot, billableTerm, {
+        installationId: request.installationId,
+        orgId: request.orgId ?? "",
+        vendorContractVersion: request.vendorContractVersion ?? 1,
         durationScale: request.durationScale,
-      });
-      insertOutbox(storage, "coverage_event", {
-        event_id: coverageEventId(request.installationId, hot.row.clinic_seq),
-        org_id: orgId,
-        installation_id: request.installationId,
-        binding_epoch: hot.row.binding_epoch,
-        clinic_seq: hot.row.clinic_seq,
-        kind: "term_ended",
-        at: nowIso,
-        snapshot: endedSnapshot,
-      });
+        nowIso,
+      })
+    ) {
+      stateChanged = true;
     }
   }
 
@@ -1020,6 +1067,21 @@ function settleReservationOnHot(
   }
   hot.row.reserved = Math.max(0, hot.row.reserved - reservation.weight);
   hot.reservations.splice(index, 1);
+
+  const nowIso = new Date(now).toISOString();
+  const terms = loadTerms(storage);
+  const graceTerm = terms.find(
+    (term) =>
+      term.state === "grace" && term.term_id === hot.row.active_term_id,
+  );
+  if (graceTerm !== undefined) {
+    endGraceIfExhausted(storage, hot, graceTerm, {
+      installationId: request.installationId,
+      orgId: resolveOrgIdFromStorage(storage),
+      vendorContractVersion: 1,
+      nowIso,
+    });
+  }
 
   persistParsedHot(storage, hot);
   return {

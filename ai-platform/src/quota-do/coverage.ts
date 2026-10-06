@@ -324,11 +324,14 @@ export function buildCoverageSnapshot(input: {
   } else if (grace !== undefined) {
     coverageState = "grace";
     termObject = snapshotTermObject(grace, input.hot);
-  } else if (input.terms.some((term) => term.state === "exhausted")) {
-    coverageState = "exhausted";
   } else {
-    coverageState = "lapsed";
-    reason = lapsedSnapshotReason(input.terms);
+    const lastEnded = lastEndedTermForSnapshot(input.terms);
+    if (lastEnded?.state === "exhausted") {
+      coverageState = "exhausted";
+    } else {
+      coverageState = "lapsed";
+      reason = lapsedSnapshotReason(input.terms);
+    }
   }
 
   return {
@@ -475,7 +478,7 @@ export function computeGraceAllowance(
   return Math.min(allowance - graceBaseUsed, ceiling);
 }
 
-function resolveOrgIdFromStorage(storage: DurableObjectStorage): string {
+export function resolveOrgIdFromStorage(storage: DurableObjectStorage): string {
   const row = sqlSelect<{ envelope: string }>(
     storage,
     "SELECT envelope FROM grant ORDER BY applied_at DESC LIMIT 1",
