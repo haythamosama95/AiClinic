@@ -6,6 +6,7 @@ import type { PaymobAdapterEnv } from "../provider/paymob/adapter.js";
 
 const NOTIFY_ADAPTER_VERSION = 1;
 import type { ProviderNotificationRequest } from "../provider/port.js";
+import { runDueGrantWork, type GrantEnv } from "../work/grant.js";
 import { runConfirmForWorkId } from "../work/runner.js";
 
 const MAX_NOTIFY_BODY_BYTES = 1_048_576;
@@ -364,9 +365,12 @@ export async function handlePostNotifyPaymob(
   }
 
   if (confirmWorkId !== null) {
-    const confirmPromise = runConfirmForWorkId(env, confirmWorkId);
-    ctx.waitUntil(confirmPromise);
-    await confirmPromise;
+    const grantEnv = env as NotifyIntakeEnv & GrantEnv;
+    const confirmAndGrant = runConfirmForWorkId(env, confirmWorkId).then(() =>
+      runDueGrantWork(grantEnv),
+    );
+    ctx.waitUntil(confirmAndGrant);
+    await confirmAndGrant;
   }
 
   return emptyResponse(200);

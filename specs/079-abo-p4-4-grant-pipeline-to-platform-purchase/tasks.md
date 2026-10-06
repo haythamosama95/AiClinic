@@ -100,7 +100,7 @@ cd abo && node scripts/build-platform-for-hxw.mjs && npx vitest run --config vit
 
 **Independent Test**: E2E-P4.4-01, E2E-P4.4-02, E2E-P4.4-03, and E2E-P4.4-04 in harnesses H-XW and H-PAY.
 
-- [ ] T013 [US1] Add `abo/src/work/grant.ts` — produces the grant step and the signing-key check, FR-001, FR-002, FR-003, FR-004, FR-006, FR-007, FR-010, E2E-P4.4-01, E2E-P4.4-02, E2E-P4.4-03, E2E-P4.4-04, E2E-P4.4-06, E2E-P4.4-07. Depends on T011 and T012. Do not edit `abo/src/worker.ts`, `abo/src/notify/intake.ts`, `abo/src/alert/index.ts`, `abo/src/clinic-api/checkouts.ts`, or `abo/src/work/runner.ts` in this task. Export `refreshSigningKeyCheck` and `runDueGrantWork`.
+- [X] T013 [US1] Add `abo/src/work/grant.ts` — produces the grant step and the signing-key check, FR-001, FR-002, FR-003, FR-004, FR-006, FR-007, FR-010, E2E-P4.4-01, E2E-P4.4-02, E2E-P4.4-03, E2E-P4.4-04, E2E-P4.4-06, E2E-P4.4-07. Depends on T011 and T012. Do not edit `abo/src/worker.ts`, `abo/src/notify/intake.ts`, `abo/src/alert/index.ts`, `abo/src/clinic-api/checkouts.ts`, or `abo/src/work/runner.ts` in this task. Export `refreshSigningKeyCheck` and `runDueGrantWork`.
 
   Signing-key check. `refreshSigningKeyCheck` calls `PLATFORM.listServiceKeys({ contract_version: CHANNEL_VERSIONS.vendorEntrypoint })`. A successful `ok` parses `detail` as the JSON array of `{kid, status, not_before, not_after}`. The ABO kid comes from `ABO_GRANT_KEY`. The check passes only when that `kid` is listed with `status` `active` and the ABO clock is within `not_before` and `not_after` inclusive. Otherwise, and when the call throws or the result is not `ok`, the gate row is `paused = 1` and AL-23 is raised with key `AL-23:{kid}` (or `AL-23:missing` when the JSON has no kid). When the check passes, `paused = 0` and that alert row's `active` is set to 0. `runDueGrantWork` reads the gate first. While `paused = 1` it does not take `grant` or `reverse` rows. Those rows stay `open`. They are not parked.
 
@@ -114,7 +114,7 @@ cd abo && node scripts/build-platform-for-hxw.mjs && npx vitest run --config vit
 
 **Independent Test**: E2E-P4.4-01, E2E-P4.4-02, E2E-P4.4-03, and E2E-P4.4-04 in harnesses H-XW and H-PAY.
 
-- [ ] T014 [US1] Run the grant step after confirm in `abo/src/notify/intake.ts` — produces the paid-callback grant kick, FR-001, FR-008, E2E-P4.4-01, E2E-P4.4-08. Depends on T013. The processed-callback `waitUntil` still runs `runConfirmForWorkId`. When that promise settles, it runs `runDueGrantWork` on the same env. HMAC, rate limit, and the confirm step are unchanged. Do not edit `abo/src/worker.ts` or `abo/src/work/grant.ts` in this task.
+- [X] T014 [US1] Run the grant step after confirm in `abo/src/notify/intake.ts` — produces the paid-callback grant kick, FR-001, FR-008, E2E-P4.4-01, E2E-P4.4-08. Depends on T013. The processed-callback `waitUntil` still runs `runConfirmForWorkId`. When that promise settles, it runs `runDueGrantWork` on the same env. HMAC, rate limit, and the confirm step are unchanged. Do not edit `abo/src/worker.ts` or `abo/src/work/grant.ts` in this task.
 
 ### 4.5 User Story 1 - Turn a paid checkout into a live term (Priority: P1) — checkout Active
 
