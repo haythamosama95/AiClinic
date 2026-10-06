@@ -5,9 +5,9 @@ This file orients AI coding agents working in this repository. Keep the
 **current active feature's** plan reference when running Spec Kit phases.
 
 <!-- SPECKIT START -->
-Active feature plan: `specs/072-abo-p3-8-transfer-deletion-with-coverage-left/plan.md`
-Feature spec: `specs/072-abo-p3-8-transfer-deletion-with-coverage-left/spec.md`
-Branch: `ai/072-abo-p3-8-transfer-deletion-with-coverage-left`
+Active feature plan: `specs/073-abo-p3-9-fallback-admission-coverage-feed-administrator/plan.md`
+Feature spec: `specs/073-abo-p3-9-fallback-admission-coverage-feed-administrator/spec.md`
+Branch: `ai/073-abo-p3-9-fallback-admission-coverage-feed-administrator`
 <!-- SPECKIT END -->
 
 ## Repo layout quick reference

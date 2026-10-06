@@ -624,8 +624,8 @@ adversaries (AD-#), credentials (K-#) and seed requirement IDs.
 
 ### P3.9 — Fallback admission, coverage feed and administrator coverage read
 - **Spec** 073 · **Codebase** ai-platform · **Size** M · **Depends** P3.5 · **Parallel** P3.6–P3.8 (rule S10), P4.x
-- **Read:** 03 §6.5; 03 §6.6 (outage row); 03 §3.2 rows `fallback_admission`, `feed_consumer`, `coverage_mirror`; 04 §4.1 (first two paragraphs only);
-  04 §4.2 rows `/v1/coverage`, `/v1/usage`; 04 §1.3 row feedConsumerHealth; 02 §3.2 (Feed row); 04 §6.1 rows admission (fallback), credit (reconcile), usage-summary, `worker.ts` (`*/5`).
+- **Read:** 03 §6.5; 03 §6.6 (outage row); 03 §3.2 rows `fallback_admission`, `feed_consumer`, `coverage_mirror`; 03 §7 (Subscription reference row only); 04 §4.1 (first two paragraphs only);
+  04 §4.2 rows `/v1/coverage`, `/v1/usage`; 04 §1.7 (companion-list bullets for `queued_terms` and `recent_terms` only); 04 §1.3 row feedConsumerHealth; 02 §3.2 (Feed row); 04 §6.1 rows admission (fallback), credit (reconcile), usage-summary, `worker.ts` (`*/5`).
 - **Do not read:** 04 §4.1 backend pull cycle (→ P5.2).
 - **Implements:** fallback when the DO errors or takes > 2 s: mirror by primary key, then the four conditions (state, not suspended, before `hard_stop_at`,
   capability, outage weight ≤ 5 × w_max); otherwise `coverage_unknown` + `retry_after`; `fallback_admission` rows with `request_id`; `*/5` drain with dedupe;
