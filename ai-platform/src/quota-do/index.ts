@@ -379,12 +379,15 @@ type StoredAnswerEntry = {
   answer: AdmissionResponse;
 };
 
+type TermBandEmitted = Record<string, boolean>;
+
 type ParsedHot = {
   row: HotRow;
   reservations: ReservationRow[];
   replay: Record<string, StoredAnswerEntry>;
   idempotency: Record<string, StoredAnswerEntry>;
-  band_emitted: Record<string, boolean>;
+  /** Per-term band flags (`term_id` → `{ "75"?, "90"? }`). */
+  band_emitted: Record<string, TermBandEmitted>;
 };
 
 function parseHotRow(row: HotRow): ParsedHot {
@@ -396,8 +399,30 @@ function parseHotRow(row: HotRow): ParsedHot {
       string,
       StoredAnswerEntry
     >,
-    band_emitted: JSON.parse(row.band_emitted || "{}") as Record<string, boolean>,
+    band_emitted: parseBandEmitted(row.band_emitted || "{}"),
   };
+}
+
+function parseBandEmitted(raw: string): Record<string, TermBandEmitted> {
+  const parsed = JSON.parse(raw) as Record<string, unknown>;
+  const perTerm: Record<string, TermBandEmitted> = {};
+  for (const [key, value] of Object.entries(parsed)) {
+    if (value === true && (key === "75" || key === "90")) {
+      // Legacy clinic-wide flags — ignore; bands are tracked per term now.
+      continue;
+    }
+    if (value && typeof value === "object" && !Array.isArray(value)) {
+      perTerm[key] = value as TermBandEmitted;
+    }
+  }
+  return perTerm;
+}
+
+function termBandFlags(hot: ParsedHot, termId: string): TermBandEmitted {
+  if (hot.band_emitted[termId] === undefined) {
+    hot.band_emitted[termId] = {};
+  }
+  return hot.band_emitted[termId]!;
 }
 
 function persistParsedHot(storage: DurableObjectStorage, hot: ParsedHot): void {
@@ -442,6 +467,33 @@ function storeAnswer(
   const expiresAt = now + EPHEMERAL_HORIZON_MS;
   hot.replay[jti] = { expiresAt, answer };
   hot.idempotency[idempotencyKey] = { expiresAt, answer };
+}
+
+function returnStoredAdmission(
+  storage: DurableObjectStorage,
+  hot: ParsedHot,
+  request: AdmissionRequest,
+  answer: AdmissionResponse,
+  now: number,
+): AdmissionResponse {
+  storeAnswer(hot, request.jti, request.idempotencyKey, answer, now);
+  persistParsedHot(storage, hot);
+  return answer;
+}
+
+function adjustEndedTermUsedFinal(
+  storage: DurableObjectStorage,
+  termId: string,
+  delta: number,
+): void {
+  sqlExecLocal(
+    storage,
+    `UPDATE term SET used_final = CASE
+       WHEN COALESCE(used_final, 0) + (${delta}) < 0 THEN 0
+       ELSE COALESCE(used_final, 0) + (${delta})
+     END
+     WHERE term_id = ${sqlStringLocal(termId)}`,
+  );
 }
 
 function planSnapshotForTerm(term: TermRow): {
@@ -526,7 +578,9 @@ function chargeStaleReservations(
   const remaining: ReservationRow[] = [];
   for (const reservation of hot.reservations) {
     if (now - reservation.admitted_at > STALE_RESERVATION_MS) {
-      hot.row.used += reservation.weight;
+      if (reservation.term_id === hot.row.active_term_id) {
+        hot.row.used += reservation.weight;
+      }
       hot.row.reserved = Math.max(0, hot.row.reserved - reservation.weight);
       insertOutbox(storage, "usage_adjustment", {
         request_id: reservation.id,
@@ -551,6 +605,7 @@ function emitBandCrossedIfNeeded(
   hot: ParsedHot,
   terms: TermRow[],
   request: AdmissionRequest,
+  termId: string,
   usageTotal: number,
   allowance: number,
   nowIso: string,
@@ -560,21 +615,22 @@ function emitBandCrossedIfNeeded(
   }
   const orgId = request.orgId ?? "";
   const vendorVersion = request.vendorContractVersion ?? 1;
+  const bandFlags = termBandFlags(hot, termId);
   const bands: Array<"75" | "90"> = [];
   if (
     usageTotal * 4 >= allowance * 3 &&
-    !hot.band_emitted["75"]
+    !bandFlags["75"]
   ) {
     bands.push("75");
   }
   if (
     usageTotal * 10 >= allowance * 9 &&
-    !hot.band_emitted["90"]
+    !bandFlags["90"]
   ) {
     bands.push("90");
   }
   for (const band of bands) {
-    hot.band_emitted[band] = true;
+    bandFlags[band] = true;
     hot.row.clinic_seq += 1;
     const snapshot = buildCoverageSnapshot({
       vendorContractVersion: vendorVersion,
@@ -597,6 +653,7 @@ function emitBandCrossedIfNeeded(
       at: nowIso,
       snapshot,
     });
+    bandFlags[band] = true;
   }
 }
 
@@ -692,7 +749,10 @@ function admitOnHotRow(
 
   if (hot.row.suspended !== 0) {
     persistIfChanged();
-    return { kind: "admission", outcome: "suspended" };
+    return returnStoredAdmission(storage, hot, request, {
+      kind: "admission",
+      outcome: "suspended",
+    }, now);
   }
 
   const billableTerm = activeOrGraceTerm(terms);
@@ -700,35 +760,44 @@ function admitOnHotRow(
     const last = lastEndedTerm(terms);
     persistIfChanged();
     if (last?.state === "exhausted" || last?.end_reason === "exhausted") {
-      return { kind: "admission", outcome: "allowance_exhausted" };
+      return returnStoredAdmission(storage, hot, request, {
+        kind: "admission",
+        outcome: "allowance_exhausted",
+      }, now);
     }
-    return {
+    return returnStoredAdmission(storage, hot, request, {
       kind: "admission",
       outcome: "coverage_lapsed",
       coverage_reason: coverageLapseReason(terms),
-    };
+    }, now);
   }
 
   const plan = planSnapshotForTerm(billableTerm);
   if (!plan.capabilities.includes(capabilityId)) {
     persistIfChanged();
-    return { kind: "admission", outcome: "forbidden_capability" };
+    return returnStoredAdmission(storage, hot, request, {
+      kind: "admission",
+      outcome: "forbidden_capability",
+    }, now);
   }
 
   if (hot.reservations.length >= plan.concurrency_limit) {
     persistIfChanged();
-    return {
+    return returnStoredAdmission(storage, hot, request, {
       kind: "admission",
       outcome: "concurrency_limited",
       retry_after: CONCURRENCY_RETRY_AFTER_SECONDS,
-    };
+    }, now);
   }
 
   const allowance = billableTerm.allowance ?? 0;
   const creditsRemaining = allowance - hot.row.used - hot.row.reserved;
-  if (creditsRemaining < quotaWeight) {
+  if (creditsRemaining < 1) {
     persistIfChanged();
-    return { kind: "admission", outcome: "allowance_exhausted" };
+    return returnStoredAdmission(storage, hot, request, {
+      kind: "admission",
+      outcome: "allowance_exhausted",
+    }, now);
   }
 
   const reservationId = crypto.randomUUID();
@@ -741,10 +810,23 @@ function admitOnHotRow(
   });
   hot.row.reserved += quotaWeight;
 
-  if (
-    billableTerm.state === "active" &&
-    hot.row.used + hot.row.reserved >= allowance
-  ) {
+  const admittingTermId = billableTerm.term_id;
+  const usageTotal = hot.row.used + hot.row.reserved;
+  const willExhaust =
+    billableTerm.state === "active" && usageTotal >= allowance;
+
+  emitBandCrossedIfNeeded(
+    storage,
+    hot,
+    terms,
+    request,
+    admittingTermId,
+    usageTotal,
+    allowance,
+    nowIso,
+  );
+
+  if (willExhaust) {
     const usedFinal = hot.row.used + hot.row.reserved;
     sqlExecLocal(
       storage,
@@ -803,30 +885,20 @@ function admitOnHotRow(
     }
   }
 
-  emitBandCrossedIfNeeded(
-    storage,
-    hot,
-    loadTerms(storage),
-    request,
-    hot.row.used + hot.row.reserved,
-    allowance,
-    nowIso,
-  );
-
   const admittedAnswer: AdmissionAdmitted = {
     kind: "admission",
     outcome: "admitted",
     requestId: reservationId,
     reservation_id: reservationId,
-    term_id: billableTerm.term_id,
+    term_id: admittingTermId,
     snapshot: {
       capabilities: plan.capabilities,
       max_cost_class: plan.max_cost_class,
     },
     band: allowanceBand(
-      hot.row.used + hot.row.reserved,
+      usageTotal,
       allowance,
-      billableTerm.state,
+      willExhaust ? "exhausted" : billableTerm.state,
     ),
   };
 
@@ -878,8 +950,15 @@ function settleReservationOnHot(
   const reservation = hot.reservations[index]!;
   const consumed =
     request.usage.tokens > 0 || request.usage.cost > 0;
+  const onActiveTerm =
+    hot.row.active_term_id !== null &&
+    reservation.term_id === hot.row.active_term_id;
   if (consumed) {
-    hot.row.used += reservation.weight;
+    if (onActiveTerm) {
+      hot.row.used += reservation.weight;
+    }
+  } else if (!onActiveTerm) {
+    adjustEndedTermUsedFinal(storage, reservation.term_id, -reservation.weight);
   }
   hot.row.reserved = Math.max(0, hot.row.reserved - reservation.weight);
   hot.reservations.splice(index, 1);
@@ -1023,6 +1102,47 @@ export async function creditRPC(
  * Roll back a stage-8 admission reservation when stage-9 journal insert fails:
  * drop jti replay, idempotency key, and in-flight slot for `requestId`.
  */
+function releaseOnHotRow(
+  storage: DurableObjectStorage,
+  request: ReleaseRequest,
+  now: number,
+  logger: Logger,
+): ReleaseResponse {
+  const hotRows = sqlSelect<HotRow>(storage, "SELECT * FROM hot LIMIT 1");
+  if (hotRows.length === 0) {
+    return { kind: "release", ok: false, code: "unknown_request" };
+  }
+
+  let hot = parseHotRow(hotRows[0]!);
+  sweepStoredAnswers(hot, now);
+
+  const index = hot.reservations.findIndex(
+    (reservation) => reservation.id === request.requestId,
+  );
+  if (index < 0) {
+    persistParsedHot(storage, hot);
+    logger.info("Release rejected — unknown request", {
+      installation_id: request.installationId,
+      request_id: request.requestId,
+    });
+    return { kind: "release", ok: false, code: "unknown_request" };
+  }
+
+  const reservation = hot.reservations[index]!;
+  hot.reservations.splice(index, 1);
+  hot.row.reserved = Math.max(0, hot.row.reserved - reservation.weight);
+
+  delete hot.replay[request.jti];
+  delete hot.idempotency[request.idempotencyKey];
+
+  persistParsedHot(storage, hot);
+  logger.info("Admission reservation released", {
+    installation_id: request.installationId,
+    request_id: request.requestId,
+  });
+  return { kind: "release", ok: true };
+}
+
 export async function releaseRPC(
   storage: DurableObjectStorage,
   blockConcurrencyWhile: <T>(fn: () => Promise<T>) => Promise<T>,
@@ -1033,6 +1153,11 @@ export async function releaseRPC(
   const timestamp = now ?? Date.now();
 
   return blockConcurrencyWhile(async () => {
+    const sqlStorage = storage as SqlStorage;
+    if (sqlStorage.sql) {
+      return releaseOnHotRow(storage, request, timestamp, logger);
+    }
+
     const state = await loadState(storage);
 
     if (

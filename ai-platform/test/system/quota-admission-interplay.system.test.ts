@@ -11,7 +11,6 @@ import {
   clearConfigCache,
   count,
   newClinic,
-  entitleScenario,
   fakePolicyDocument,
   fakePolicyTarget,
   flushBackgroundWork,
@@ -32,7 +31,6 @@ import {
   terminalEventTypes,
   visitSummaryInvokeBody,
   type CoverClinicOptions,
-  type EntitlePayload,
 } from "./harness";
 
 beforeAll(async () => {
@@ -55,31 +53,6 @@ function assertSseOrder(events: { event: string }[]): void {
     ),
   );
   expect(events.slice(terminalIndex + 1)).toHaveLength(0);
-}
-
-function quotaEntitlePayload(overrides: Partial<EntitlePayload> = {}): EntitlePayload {
-  return {
-    period_start: "2026-08-01T00:00:00.000Z",
-    period_end: "2026-09-01T00:00:00.000Z",
-    request_quota: 2,
-    token_budget: 500_000,
-    cost_budget: 50.0,
-    soft_threshold: 0.5,
-    allowed_capabilities: [CAPABILITY_ID],
-    grants: [
-      {
-        capability_id: CAPABILITY_ID,
-        capability_version: CAPABILITY_VERSION,
-        scope: "installation",
-      },
-      {
-        capability_id: CAPABILITY_ID,
-        capability_version: CAPABILITY_VERSION,
-        scope: "plan",
-      },
-    ],
-    ...overrides,
-  };
 }
 
 async function setupQuotaScenario(
@@ -175,13 +148,10 @@ describe("quota admission interplay", () => {
   it("SYS-5.2 — Soft-threshold degraded tier", async () => {
     const scenario = await newScenario();
     await newClinic(scenario);
-    // G2: degraded is driven by the credit ratio (creditsUsed / credit_budget).
-    // credit_budget 2 + one settled credit (quotaWeight 1) crosses the 0.5
-    // threshold while leaving budget for the second admission.
-    await entitleScenario(
-      scenario,
-      quotaEntitlePayload({ request_quota: 2, credit_budget: 2 }),
-    );
+    // G2: degraded follows the admission allowance band (75 % / 90 %).
+    // allowance 2 + one settled credit leaves room for a second admission
+    // that crosses into the 90 % band.
+    await coverClinic(scenario, { max_allowance_per_month: 2 });
 
     const policyDocument = degradedTierPolicyDocument("50");
     await publishPolicy(POLICY_ID, "50", policyDocument);
@@ -219,14 +189,8 @@ describe("quota admission interplay", () => {
     expect(secondDecision.rule_id).toBe("degraded-tier");
     expect(secondDecision.routing_tier).toBe("degraded");
 
-    // Raise the credit budget too: two settled credits (2 >= 2) would
-    // otherwise exhaust G2 credit remaining-budget before this third invoke.
-    await env.DB.prepare(
-      "UPDATE entitlement SET soft_threshold = 0, request_quota = 100, credit_budget = 100 WHERE installation_id = ?",
-    )
-      .bind(scenario.installationId)
-      .run();
-    clearConfigCache();
+    // Fresh term with a large allowance so the third admission band is ok.
+    await coverClinic(scenario, { max_allowance_per_month: 100 });
 
     const third = await invoke(scenario, {
       token: await mintAat(scenario),
@@ -334,7 +298,7 @@ describe("quota admission interplay", () => {
   it("SYS-5.6 — Replay of failed and cancelled", async () => {
     const failedScenario = await newScenario();
     await newClinic(failedScenario);
-    await entitleScenario(failedScenario);
+    await coverClinic(failedScenario);
 
     const emptyChainDocument = fakePolicyDocument(POLICY_ID, "60", {
       targets: [fakePolicyTarget("fake-v1", { minContextWindow: 1_000 })],
@@ -362,10 +326,7 @@ describe("quota admission interplay", () => {
 
     const cancelledScenario = await newScenario();
     await newClinic(cancelledScenario);
-    await entitleScenario(
-      cancelledScenario,
-      quotaEntitlePayload({ request_quota: 100 }),
-    );
+    await coverClinic(cancelledScenario, { max_allowance_per_month: 100 });
     const cancelledPolicy = fakePolicyDocument(POLICY_ID, "61", {
       targets: [
         {

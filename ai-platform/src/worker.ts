@@ -626,9 +626,12 @@ async function settleMissingHandoffInternalError(
     .bind(row.installation_id)
     .first<{ term_snapshot: string }>();
   const termSnapshot = mirrorRow?.term_snapshot
-    ? (JSON.parse(mirrorRow.term_snapshot) as { term_id?: string })
+    ? (JSON.parse(mirrorRow.term_snapshot) as {
+        ref?: string;
+        term_id?: string;
+      })
     : undefined;
-  const termId = termSnapshot?.term_id;
+  const termId = termSnapshot?.ref ?? termSnapshot?.term_id;
   if (!termId) {
     log.error("missing_handoff_settle_term_missing");
     await recordTerminalState(

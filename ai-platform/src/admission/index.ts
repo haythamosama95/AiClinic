@@ -727,46 +727,18 @@ export async function runAdmission(
       };
     }
     if (transport.reason === "unavailable") {
-      logger.info("Quota DO unavailable — admitting under grace", {
+      logger.info("Quota DO unavailable", {
         installation_id: principal.installationId,
       });
-      let entitlementRow: D1Row;
-      try {
-        entitlementRow = await loadConfig(
-          cache,
-          reader,
-          "entitlements",
-          principal.installationId,
-        );
-      } catch (error) {
-        if (error instanceof ConfigCacheMissError) {
-          recordGuardRejection({
-            error_code: "coverage_lapsed",
-            installation_id: principal.installationId,
-          });
-          return {
-            ok: false,
-            code: "coverage_lapsed",
-            coverageReason: "none",
-          };
-        }
-        throw error;
-      }
-      const entitlement = mapEntitlementSnapshot(entitlementRow);
-      const graceResult = await admitUnderGrace(
-        bindings.DB,
-        principal,
-        idempotencyKey,
-        requestReference,
-        entitlement,
-      );
-      if (graceResult.ok && graceResult.outcome === "grace_admitted") {
-        logger.info("Grace admission granted", {
-          installation_id: principal.installationId,
-          request_id: graceResult.requestId,
-        });
-      }
-      return graceResult;
+      recordGuardRejection({
+        error_code: "coverage_unknown",
+        installation_id: principal.installationId,
+      });
+      return {
+        ok: false,
+        code: "coverage_unknown",
+        retryAfter: DEFAULT_RATE_LIMITED_RETRY_AFTER_SECONDS,
+      };
     }
     logger.error("Admission DO transport failed", {
       installation_id: principal.installationId,
