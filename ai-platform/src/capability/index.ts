@@ -14,6 +14,7 @@ import { noopLogger, type Logger } from "../logger";
 import { recordGuardRejection } from "../rate-limit";
 import { hashManifest, type Manifest } from "../manifest";
 import { planTierMeetsMinimum } from "../platform-vocabulary";
+import { mirrorTermViewFromSnapshot } from "../quota-do/coverage";
 
 export type CapabilityRegistry = Map<string, Manifest>;
 
@@ -197,18 +198,11 @@ export async function loadPlanSnapshotFromMirror(
   if (row === null) {
     return null;
   }
-  try {
-    const parsed = JSON.parse(row.term_snapshot) as { capabilities?: unknown };
-    if (!Array.isArray(parsed.capabilities)) {
-      return null;
-    }
-    if (!parsed.capabilities.every((entry) => typeof entry === "string")) {
-      return null;
-    }
-    return { capabilities: parsed.capabilities as string[] };
-  } catch {
+  const termView = mirrorTermViewFromSnapshot(row.term_snapshot);
+  if (termView === null) {
     return null;
   }
+  return { capabilities: termView.capabilities };
 }
 
 function parsePlanVersionCapabilities(raw: string): string[] {

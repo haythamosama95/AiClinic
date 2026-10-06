@@ -14,6 +14,7 @@ import {
 import { CHANNEL_VERSIONS } from "vendor-contracts";
 import { publishedQuotaWeightMax } from "../capability";
 import { clockNowIso, clockNowMs, type ClockEnv } from "../clock";
+import { mirrorTermViewFromSnapshot } from "../quota-do/coverage";
 import {
   type AdmissionResponse,
   type EntitlementSnapshot,
@@ -449,23 +450,11 @@ async function tryMirrorFallbackAdmission(input: {
     return null;
   }
 
-  let termRef = "";
-  let capabilities: string[] = [];
-  try {
-    const snapshot = JSON.parse(mirror.term_snapshot) as {
-      ref?: string;
-      capabilities?: unknown;
-    };
-    termRef = typeof snapshot.ref === "string" ? snapshot.ref : "";
-    capabilities = Array.isArray(snapshot.capabilities)
-      ? snapshot.capabilities.filter(
-          (entry): entry is string => typeof entry === "string",
-        )
-      : [];
-  } catch {
-    return null;
-  }
-  if (!termRef || !capabilities.includes(input.capabilityId)) {
+  const termView = mirrorTermViewFromSnapshot(mirror.term_snapshot);
+  if (
+    termView === null ||
+    !termView.capabilities.includes(input.capabilityId)
+  ) {
     return null;
   }
 
@@ -489,7 +478,7 @@ async function tryMirrorFallbackAdmission(input: {
     .bind(
       input.principal.installationId,
       input.idempotencyKey,
-      termRef,
+      termView.ref,
       input.requestId,
       w,
       admittedAt,

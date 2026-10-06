@@ -2531,6 +2531,43 @@ export async function voidGrantRPC(
   });
 }
 
+export type MirrorTermView = {
+  ref: string;
+  capabilities: string[];
+};
+
+/** `coverage_mirror.term_snapshot` may be the full coverage snapshot or legacy term-only JSON. */
+export function mirrorTermViewFromSnapshot(
+  termSnapshotJson: string,
+): MirrorTermView | null {
+  try {
+    const parsed = JSON.parse(termSnapshotJson) as Record<string, unknown>;
+    const termRaw =
+      parsed.term !== null &&
+      typeof parsed.term === "object" &&
+      !Array.isArray(parsed.term)
+        ? (parsed.term as Record<string, unknown>)
+        : parsed;
+    const ref =
+      typeof termRaw.ref === "string"
+        ? termRaw.ref
+        : typeof termRaw.term_id === "string"
+          ? termRaw.term_id
+          : "";
+    const capabilities = Array.isArray(termRaw.capabilities)
+      ? termRaw.capabilities.filter(
+          (entry): entry is string => typeof entry === "string",
+        )
+      : [];
+    if (!ref || capabilities.length === 0) {
+      return null;
+    }
+    return { ref, capabilities };
+  } catch {
+    return null;
+  }
+}
+
 async function mirrorFromSnapshot(
   db: D1Database,
   installationId: string,
@@ -2595,7 +2632,7 @@ async function mirrorFromSnapshot(
       mirrorState,
       snapshot.suspended ? 1 : 0,
       hardStopAt,
-      JSON.stringify(term),
+      JSON.stringify(snapshot),
     )
     .run();
 }
@@ -3351,12 +3388,46 @@ function applyUsageToDoTerm(
   );
 }
 
+function snapshotUsedByTermId(
+  snapshot: Record<string, unknown>,
+): Map<string, number> {
+  const usedByTerm = new Map<string, number>();
+  const termsRaw = snapshot.terms;
+  if (Array.isArray(termsRaw)) {
+    for (const entry of termsRaw) {
+      if (entry === null || typeof entry !== "object") {
+        continue;
+      }
+      const term = entry as Record<string, unknown>;
+      const termId = typeof term.term_id === "string" ? term.term_id : "";
+      if (termId.length === 0 || typeof term.used !== "number") {
+        continue;
+      }
+      usedByTerm.set(termId, term.used);
+    }
+  }
+  const termObject = snapshot.term;
+  if (
+    termObject !== null &&
+    typeof termObject === "object" &&
+    !Array.isArray(termObject)
+  ) {
+    const active = termObject as Record<string, unknown>;
+    const ref = typeof active.ref === "string" ? active.ref : "";
+    if (ref.length > 0 && typeof active.used === "number") {
+      usedByTerm.set(ref, active.used);
+    }
+  }
+  return usedByTerm;
+}
+
 async function reapplyUsageEventsAfterSnapshot(
   db: D1Database,
   storage: DurableObjectStorage,
   installationId: string,
   snapshotAt: string,
   termIds: string[],
+  anchorSnapshot: Record<string, unknown>,
 ): Promise<void> {
   if (termIds.length === 0) {
     return;
@@ -3364,21 +3435,42 @@ async function reapplyUsageEventsAfterSnapshot(
   const placeholders = termIds.map(() => "?").join(", ");
   const rows = await db
     .prepare(
-      `SELECT request_id, term_id, quota_weight FROM usage_event
-       WHERE installation_id = ? AND recorded_at > ?
+      `SELECT request_id, term_id, quota_weight, recorded_at FROM usage_event
+       WHERE installation_id = ? AND recorded_at >= ?
          AND term_id IN (${placeholders})
-       ORDER BY recorded_at ASC`,
+       ORDER BY recorded_at ASC, request_id ASC`,
     )
     .bind(installationId, snapshotAt, ...termIds)
-    .all<{ request_id: string; term_id: string; quota_weight: number }>();
+    .all<{
+      request_id: string;
+      term_id: string;
+      quota_weight: number;
+      recorded_at: string;
+    }>();
 
+  const snapshotUsedRemaining = snapshotUsedByTermId(anchorSnapshot);
   const appliedRequestIds = new Set<string>();
   for (const row of rows.results ?? []) {
     if (appliedRequestIds.has(row.request_id)) {
       continue;
     }
     appliedRequestIds.add(row.request_id);
-    applyUsageToDoTerm(storage, row.term_id, row.quota_weight);
+
+    let quotaWeight = row.quota_weight;
+    if (row.recorded_at === snapshotAt) {
+      const covered = snapshotUsedRemaining.get(row.term_id) ?? 0;
+      if (covered >= quotaWeight) {
+        snapshotUsedRemaining.set(row.term_id, covered - quotaWeight);
+        continue;
+      }
+      snapshotUsedRemaining.set(row.term_id, 0);
+      quotaWeight -= covered;
+    }
+
+    if (quotaWeight <= 0) {
+      continue;
+    }
+    applyUsageToDoTerm(storage, row.term_id, quotaWeight);
   }
 }
 
@@ -3497,7 +3589,12 @@ export type RebuildClinicDoRequest = {
 export type RebuildClinicDoResponse = {
   kind: "rebuild_clinic_do";
   result: "ok" | "not_found";
+  snapshot?: Record<string, unknown>;
 };
+
+export type RunRebuildClinicDoResult =
+  | { status: "not_found" }
+  | { status: "ok"; compare: "clean" | "mismatch" };
 
 export async function rebuildClinicDoRPC(
   state: DurableObjectState,
@@ -3530,12 +3627,15 @@ export async function rebuildClinicDoRPC(
       return { kind: "rebuild_clinic_do", result: "not_found" };
     }
 
-    const snapshot = JSON.parse(anchor.snapshot) as Record<string, unknown>;
+    const anchorSnapshot = JSON.parse(anchor.snapshot) as Record<
+      string,
+      unknown
+    >;
 
     wipeCoverageDoTables(storage);
     hydrateDoFromCoverageSnapshot(
       storage,
-      snapshot,
+      anchorSnapshot,
       request.bindingEpoch,
     );
     updateHot(storage, { reservations: "[]", reserved: 0 });
@@ -3614,10 +3714,101 @@ export async function rebuildClinicDoRPC(
       request.installationId,
       anchor.at,
       termIds,
+      anchorSnapshot,
     );
 
-    return { kind: "rebuild_clinic_do", result: "ok" };
+    const hotAfter = loadHot(storage);
+    const termsAfter = loadTerms(storage);
+    const rebuiltSnapshot = buildCoverageSnapshot({
+      vendorContractVersion: request.vendorContractVersion,
+      orgId: request.orgId,
+      hot: hotAfter,
+      terms: termsAfter,
+      durationScale: request.durationScale,
+    });
+    rebuiltSnapshot.clinic_seq = hotAfter.clinic_seq;
+
+    return { kind: "rebuild_clinic_do", result: "ok", snapshot: rebuiltSnapshot };
   });
+}
+
+export async function coverageMirrorMatchesSnapshot(
+  db: D1Database,
+  installationId: string,
+  snapshot: Record<string, unknown>,
+): Promise<boolean> {
+  const mirror = await db
+    .prepare(
+      `SELECT state, suspended, binding_epoch, clinic_seq, term_snapshot
+       FROM coverage_mirror WHERE installation_id = ?`,
+    )
+    .bind(installationId)
+    .first<{
+      state: string;
+      suspended: number;
+      binding_epoch: number;
+      clinic_seq: number;
+      term_snapshot: string;
+    }>();
+  if (mirror === null) {
+    return false;
+  }
+
+  const snapshotState = String(snapshot.state);
+  const expectedMirrorState =
+    snapshotState === "reversed" ? "lapsed" : snapshotState;
+  if (mirror.state !== expectedMirrorState) {
+    return false;
+  }
+
+  const suspended = snapshot.suspended ? 1 : 0;
+  if (mirror.suspended !== suspended) {
+    return false;
+  }
+  if (mirror.binding_epoch !== snapshot.binding_epoch) {
+    return false;
+  }
+  if (mirror.clinic_seq !== snapshot.clinic_seq) {
+    return false;
+  }
+
+  let mirrorSnapshot: Record<string, unknown> | null;
+  try {
+    const parsed = JSON.parse(mirror.term_snapshot) as Record<string, unknown>;
+    mirrorSnapshot =
+      parsed.contract_version !== undefined
+        ? parsed
+        : { term: parsed };
+  } catch {
+    return false;
+  }
+  if (
+    normalizeCoverageSnapshotForMirrorCompare(mirrorSnapshot) !==
+    normalizeCoverageSnapshotForMirrorCompare(snapshot)
+  ) {
+    return false;
+  }
+
+  return true;
+}
+
+function normalizeCoverageSnapshotForMirrorCompare(
+  snapshot: Record<string, unknown>,
+): string {
+  const clone = JSON.parse(JSON.stringify(snapshot)) as Record<string, unknown>;
+  const term = clone.term;
+  if (term !== null && typeof term === "object" && !Array.isArray(term)) {
+    const termObject = term as Record<string, unknown>;
+    delete termObject.used;
+    delete termObject.band;
+  }
+  if (Array.isArray(clone.terms)) {
+    for (const entry of clone.terms as Record<string, unknown>[]) {
+      delete entry.used;
+      delete entry.used_final;
+    }
+  }
+  return JSON.stringify(clone);
 }
 
 export async function runRebuildClinicDo(
@@ -3629,7 +3820,8 @@ export async function runRebuildClinicDo(
     DURATION_SCALE?: string;
   },
   installationId: string,
-): Promise<"ok" | "not_found"> {
+  options?: { onMismatch: (installationId: string) => Promise<void> },
+): Promise<RunRebuildClinicDoResult> {
   const binding = await env.DB.prepare(
     `SELECT org_id, binding_epoch FROM coverage_event
      WHERE installation_id = ?
@@ -3639,7 +3831,7 @@ export async function runRebuildClinicDo(
     .bind(installationId)
     .first<{ org_id: string; binding_epoch: number }>();
   if (binding === null) {
-    return "not_found";
+    return { status: "not_found" };
   }
 
   const durationScale =
@@ -3661,8 +3853,188 @@ export async function runRebuildClinicDo(
     }),
   });
   if (!response.ok) {
-    return "not_found";
+    return { status: "not_found" };
   }
   const body = (await response.json()) as RebuildClinicDoResponse;
-  return body.result === "ok" ? "ok" : "not_found";
+  if (body.result !== "ok" || body.snapshot === undefined) {
+    return { status: "not_found" };
+  }
+
+  const matches = await coverageMirrorMatchesSnapshot(
+    env.DB,
+    installationId,
+    body.snapshot,
+  );
+  if (!matches && options?.onMismatch !== undefined) {
+    await options.onMismatch(installationId);
+  }
+  return { status: "ok", compare: matches ? "clean" : "mismatch" };
+}
+
+export async function runRebuildGrantLedger(
+  env: { DB: D1Database; R2: R2Bucket },
+): Promise<{ grant_ledger: number; grant_void: number }> {
+  let grantLedger = 0;
+  let grantVoid = 0;
+  let cursor: string | undefined;
+  do {
+    const listed = await env.R2.list({ prefix: "grant-ledger/", cursor });
+    for (const object of listed.objects) {
+      const key = object.key;
+      const stored = await env.R2.get(key);
+      if (stored === null) {
+        continue;
+      }
+      const text = await stored.text();
+      const line = text.trim().split("\n")[0] ?? "";
+      if (line.length === 0) {
+        continue;
+      }
+      const parsed = JSON.parse(line) as Record<string, unknown>;
+      if (key.endsWith(".void.ndjson")) {
+        await env.DB.prepare(
+          `INSERT OR IGNORE INTO grant_void (grant_id, reason, source, evidence_sha256, at)
+           VALUES (?, ?, ?, ?, ?)`,
+        )
+          .bind(
+            parsed.grant_id,
+            parsed.reason,
+            parsed.source,
+            parsed.evidence_sha256,
+            parsed.at,
+          )
+          .run();
+        grantVoid += 1;
+      } else {
+        await env.DB.prepare(
+          `INSERT OR IGNORE INTO grant_ledger (
+            grant_id, origin_grant_id, org_id, installation_id, kind, source_kind,
+            operator_credential_id, envelope_sha256, receipt, applied_at
+          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        )
+          .bind(
+            parsed.grant_id,
+            parsed.origin_grant_id,
+            parsed.org_id,
+            parsed.installation_id,
+            parsed.kind,
+            parsed.source_kind,
+            parsed.operator_credential_id,
+            parsed.envelope_sha256,
+            JSON.stringify(parsed.receipt),
+            parsed.applied_at,
+          )
+          .run();
+        grantLedger += 1;
+      }
+    }
+    cursor = listed.truncated ? listed.cursor : undefined;
+  } while (cursor !== undefined);
+
+  return { grant_ledger: grantLedger, grant_void: grantVoid };
+}
+
+export type RefreshCoverageSnapshotRequest = {
+  kind: "refresh_coverage_snapshot";
+  installationId: string;
+  orgId: string;
+  vendorContractVersion: number;
+  durationScale?: DurationScale;
+  db: D1Database;
+  r2: R2Bucket;
+  nowIso: string;
+};
+
+export type RefreshCoverageSnapshotResponse = {
+  kind: "refresh_coverage_snapshot";
+  result: "ok" | "not_found";
+  event_id?: string;
+};
+
+export async function refreshCoverageSnapshotRPC(
+  state: DurableObjectState,
+  storage: DurableObjectStorage,
+  blockConcurrencyWhile: <T>(fn: () => Promise<T>) => Promise<T>,
+  request: RefreshCoverageSnapshotRequest,
+  logger: Logger = noopLogger,
+): Promise<RefreshCoverageSnapshotResponse> {
+  return blockConcurrencyWhile(async () => {
+    const hotRows = sqlSelect<HotRow>(storage, "SELECT * FROM hot LIMIT 1");
+    if (hotRows.length === 0) {
+      return { kind: "refresh_coverage_snapshot", result: "not_found" };
+    }
+
+    const clinicSeq = emitCoverageEvent(storage, {
+      installationId: request.installationId,
+      orgId: request.orgId,
+      vendorContractVersion: request.vendorContractVersion,
+      kind: "snapshot",
+      at: request.nowIso,
+      durationScale: request.durationScale,
+    });
+    const eventId = coverageEventId(request.installationId, clinicSeq);
+    await scheduleCoverageAlarm(state, storage, request.nowIso);
+    await shipCoverageOutboxAlarm(
+      state,
+      storage,
+      blockConcurrencyWhile,
+      { DB: request.db, R2: request.r2 },
+      request.installationId,
+      request.nowIso,
+      logger,
+      request.durationScale,
+    );
+
+    return {
+      kind: "refresh_coverage_snapshot",
+      result: "ok",
+      event_id: eventId,
+    };
+  });
+}
+
+export async function runRefreshCoverageSnapshot(
+  env: {
+    DB: D1Database;
+    DO: DurableObjectNamespace;
+    R2: R2Bucket;
+    DURATION_SCALE?: string;
+  },
+  installationId: string,
+  nowIso: string,
+): Promise<{ event_id: string } | "not_found"> {
+  const binding = await env.DB.prepare(
+    `SELECT org_id FROM coverage_event WHERE installation_id = ? LIMIT 1`,
+  )
+    .bind(installationId)
+    .first<{ org_id: string }>();
+  if (binding === null) {
+    return "not_found";
+  }
+
+  const durationScale =
+    env.DURATION_SCALE === "staging" ? ("staging" as DurationScale) : undefined;
+  const id = env.DO.idFromName(installationId);
+  const stub = env.DO.get(id);
+  const response = await stub.fetch("https://quota-do.internal/rpc", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      contract_version: CHANNEL_VERSIONS.platformDo,
+      kind: "refresh_coverage_snapshot",
+      installationId,
+      orgId: binding.org_id,
+      vendorContractVersion: CHANNEL_VERSIONS.platformDo,
+      durationScale,
+      nowIso,
+    }),
+  });
+  if (!response.ok) {
+    return "not_found";
+  }
+  const body = (await response.json()) as RefreshCoverageSnapshotResponse;
+  if (body.result !== "ok" || body.event_id === undefined) {
+    return "not_found";
+  }
+  return { event_id: body.event_id };
 }

@@ -25,6 +25,67 @@ const CONCURRENCY_RETRY_AFTER_SECONDS = 60;
 
 const STATE_KEY = "state";
 
+type PerRequestWriteCounts = {
+  hot: number;
+  events: number;
+};
+
+const perRequestWriteCounts = new Map<string, PerRequestWriteCounts>();
+
+export function getPerRequestWriteCounts(
+  requestId: string,
+): PerRequestWriteCounts | undefined {
+  return perRequestWriteCounts.get(requestId);
+}
+
+function readTotalChanges(storage: DurableObjectStorage): number {
+  const rows = sqlSelect<{ changes: number }>(
+    storage,
+    "SELECT total_changes() AS changes",
+  );
+  return Number(rows[0]?.changes ?? 0);
+}
+
+function recordHotWrites(
+  storage: DurableObjectStorage,
+  requestId: string | undefined,
+  write: () => void,
+): void {
+  if (requestId === undefined || requestId.length === 0) {
+    write();
+    return;
+  }
+  const before = readTotalChanges(storage);
+  write();
+  const delta = readTotalChanges(storage) - before;
+  if (delta <= 0) {
+    return;
+  }
+  const entry = perRequestWriteCounts.get(requestId) ?? { hot: 0, events: 0 };
+  entry.hot += delta;
+  perRequestWriteCounts.set(requestId, entry);
+}
+
+function recordEventWrites(
+  storage: DurableObjectStorage,
+  requestId: string | undefined,
+  write: () => void,
+): void {
+  if (requestId === undefined || requestId.length === 0) {
+    write();
+    return;
+  }
+  const before = readTotalChanges(storage);
+  write();
+  const delta = readTotalChanges(storage) - before;
+  if (delta <= 0) {
+    return;
+  }
+  const entry = perRequestWriteCounts.get(requestId) ?? { hot: 0, events: 0 };
+  entry.events += delta;
+  perRequestWriteCounts.set(requestId, entry);
+}
+
 export interface EphemeralEntry {
   expiresAt: number;
 }
@@ -764,7 +825,9 @@ function returnStoredAdmission(
   now: number,
 ): AdmissionResponse {
   storeAnswer(hot, request.jti, request.idempotencyKey, answer, now);
-  persistParsedHot(storage, hot);
+  recordHotWrites(storage, request.requestId, () =>
+    persistParsedHot(storage, hot),
+  );
   return answer;
 }
 
@@ -1074,12 +1137,16 @@ function admitOnHotRow(
     nowIso,
   );
   if (stateChanged) {
-    persistParsedHot(storage, hot);
+    recordHotWrites(storage, request.requestId, () =>
+      persistParsedHot(storage, hot),
+    );
   }
 
   const persistIfChanged = (): void => {
     if (stateChanged) {
-      persistParsedHot(storage, hot);
+      recordHotWrites(storage, request.requestId, () =>
+        persistParsedHot(storage, hot),
+      );
     }
   };
 
@@ -1212,11 +1279,14 @@ function admitOnHotRow(
 
   if (willExhaust) {
     const usedFinal = hot.row.used + hot.row.reserved;
-    sqlExecLocal(
-      storage,
-      `UPDATE term SET state = 'exhausted', end_reason = 'exhausted', used_final = ${usedFinal}, ended_at = ${sqlStringLocal(nowIso)}
+    const trackId = request.requestId;
+    recordEventWrites(storage, trackId, () => {
+      sqlExecLocal(
+        storage,
+        `UPDATE term SET state = 'exhausted', end_reason = 'exhausted', used_final = ${usedFinal}, ended_at = ${sqlStringLocal(nowIso)}
        WHERE term_id = ${sqlStringLocal(billableTerm.term_id)}`,
-    );
+      );
+    });
     terms = loadTerms(storage);
     const orgId = request.orgId ?? "";
     const vendorVersion = request.vendorContractVersion ?? 1;
@@ -1228,15 +1298,17 @@ function admitOnHotRow(
       terms,
       durationScale: request.durationScale,
     });
-    insertOutbox(storage, "coverage_event", {
-      event_id: coverageEventId(request.installationId, hot.row.clinic_seq),
-      org_id: orgId,
-      installation_id: request.installationId,
-      binding_epoch: hot.row.binding_epoch,
-      clinic_seq: hot.row.clinic_seq,
-      kind: "term_ended",
-      at: nowIso,
-      snapshot: endedSnapshot,
+    recordEventWrites(storage, trackId, () => {
+      insertOutbox(storage, "coverage_event", {
+        event_id: coverageEventId(request.installationId, hot.row.clinic_seq),
+        org_id: orgId,
+        installation_id: request.installationId,
+        binding_epoch: hot.row.binding_epoch,
+        clinic_seq: hot.row.clinic_seq,
+        kind: "term_ended",
+        at: nowIso,
+        snapshot: endedSnapshot,
+      });
     });
 
     const successor = activateSuccessorTerm(
@@ -1256,15 +1328,17 @@ function admitOnHotRow(
         terms,
         durationScale: request.durationScale,
       });
-      insertOutbox(storage, "coverage_event", {
-        event_id: coverageEventId(request.installationId, hot.row.clinic_seq),
-        org_id: orgId,
-        installation_id: request.installationId,
-        binding_epoch: hot.row.binding_epoch,
-        clinic_seq: hot.row.clinic_seq,
-        kind: "term_activated",
-        at: nowIso,
-        snapshot: activatedSnapshot,
+      recordEventWrites(storage, trackId, () => {
+        insertOutbox(storage, "coverage_event", {
+          event_id: coverageEventId(request.installationId, hot.row.clinic_seq),
+          org_id: orgId,
+          installation_id: request.installationId,
+          binding_epoch: hot.row.binding_epoch,
+          clinic_seq: hot.row.clinic_seq,
+          kind: "term_activated",
+          at: nowIso,
+          snapshot: activatedSnapshot,
+        });
       });
     }
   }
@@ -1301,7 +1375,9 @@ function admitOnHotRow(
   };
 
   storeAnswer(hot, request.jti, request.idempotencyKey, admittedAnswer, now);
-  persistParsedHot(storage, hot);
+  recordHotWrites(storage, request.requestId ?? reservationId, () =>
+    persistParsedHot(storage, hot),
+  );
 
   logger.info("Term admission granted", {
     installation_id: request.installationId,
@@ -1337,7 +1413,9 @@ function settleReservationOnHot(
     (reservation) => reservation.id === reservationId,
   );
   if (index < 0) {
-    persistParsedHot(storage, hot);
+    recordHotWrites(storage, request.requestId, () =>
+      persistParsedHot(storage, hot),
+    );
     return {
       kind: "credit",
       ok: true,
@@ -1356,7 +1434,9 @@ function settleReservationOnHot(
       hot.row.used += reservation.weight;
     }
   } else if (!onActiveTerm) {
-    adjustEndedTermUsedFinal(storage, reservation.term_id, -reservation.weight);
+    recordEventWrites(storage, request.requestId, () =>
+      adjustEndedTermUsedFinal(storage, reservation.term_id, -reservation.weight),
+    );
   }
   hot.row.reserved = Math.max(0, hot.row.reserved - reservation.weight);
   hot.reservations.splice(index, 1);
@@ -1376,7 +1456,9 @@ function settleReservationOnHot(
     });
   }
 
-  persistParsedHot(storage, hot);
+  recordHotWrites(storage, request.requestId, () =>
+    persistParsedHot(storage, hot),
+  );
   return {
     kind: "credit",
     ok: true,
@@ -1745,10 +1827,16 @@ export {
   voidForReversalRPC,
   voidGrantRPC,
   rebuildClinicDoRPC,
+  refreshCoverageSnapshotRPC,
   runRebuildClinicDo,
+  runRebuildGrantLedger,
+  runRefreshCoverageSnapshot,
   type ApplyGrantRequest,
   type RebuildClinicDoRequest,
   type RebuildClinicDoResponse,
+  type RefreshCoverageSnapshotRequest,
+  type RefreshCoverageSnapshotResponse,
+  type RunRebuildClinicDoResult,
   type ApplyGrantResponse,
   type InspectCoverageRequest,
   type InspectCoverageResponse,

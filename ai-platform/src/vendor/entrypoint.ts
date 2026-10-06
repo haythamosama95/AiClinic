@@ -28,6 +28,7 @@ import {
   transferRowToDetail,
 } from "../coverage/transfer";
 import {
+  insertDoRebuildMismatchAlert,
   raiseAl13,
   raiseAl13Bootstrap,
   raiseAl13IssuerKey,
@@ -69,7 +70,11 @@ import {
 } from "../retention";
 import { supportLookup as runSupportLookup } from "../support";
 import { raiseAl19FromOutbox } from "../alert/index";
-import { runRebuildClinicDo } from "../quota-do/coverage";
+import {
+  runRebuildClinicDo,
+  runRebuildGrantLedger,
+  runRefreshCoverageSnapshot,
+} from "../quota-do/coverage";
 
 const VENDOR_CHANNEL = CHANNEL_VERSIONS.vendorEntrypoint;
 const ACTIVATION_MS = 24 * 60 * 60 * 1000;
@@ -4800,9 +4805,27 @@ export class VendorEntrypoint extends WorkerEntrypoint<VendorEnv> {
       if (typeof installationId !== "string" || installationId.length === 0) {
         return rejected(version, "missing_installation_id");
       }
-      const outcome = await runRebuildClinicDo(this.env, installationId);
-      if (outcome === "not_found") {
+      const nowIso = await clockNowIso(this.env);
+      const outcome = await runRebuildClinicDo(this.env, installationId, {
+        onMismatch: async (mismatchInstallationId) => {
+          await insertDoRebuildMismatchAlert(
+            this.env.DB,
+            mismatchInstallationId,
+            nowIso,
+          );
+        },
+      });
+      if (outcome.status === "not_found") {
         return rejected(version, "not_found");
+      }
+      if (outcome.compare === "clean") {
+        return ok(
+          version,
+          JSON.stringify({
+            compare: "clean",
+            installation_id: installationId,
+          }),
+        );
       }
       return ok(version, JSON.stringify({}));
     });
@@ -4812,7 +4835,8 @@ export class VendorEntrypoint extends WorkerEntrypoint<VendorEnv> {
     args: Record<string, unknown>,
   ): Promise<VendorResultEnvelope> {
     return this.invokeClassH(args, async (version) => {
-      return ok(version, JSON.stringify({ grant_ledger: 0, grant_void: 0 }));
+      const counts = await runRebuildGrantLedger(this.env);
+      return ok(version, JSON.stringify(counts));
     });
   }
 
@@ -4832,7 +4856,22 @@ export class VendorEntrypoint extends WorkerEntrypoint<VendorEnv> {
       if (row === null) {
         return rejected(version, "not_found");
       }
-      return ok(version, JSON.stringify({}));
+      const nowIso = await clockNowIso(this.env);
+      const refreshed = await runRefreshCoverageSnapshot(
+        this.env,
+        installationId,
+        nowIso,
+      );
+      if (refreshed === "not_found") {
+        return rejected(version, "not_found");
+      }
+      return ok(
+        version,
+        JSON.stringify({
+          event_id: refreshed.event_id,
+          installation_id: installationId,
+        }),
+      );
     });
   }
 

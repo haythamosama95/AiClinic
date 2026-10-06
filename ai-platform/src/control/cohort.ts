@@ -1,4 +1,5 @@
 import { isCapabilityVersionRegistered } from "../capability";
+import { mirrorTermViewFromSnapshot } from "../quota-do/coverage";
 import { toCanonicalUuid } from "../platform-vocabulary";
 import { newId, nowIso } from "./audit";
 import type { ControlActionResult, ControlBindings } from "./types";
@@ -28,18 +29,7 @@ function parseAllowedCapabilities(raw: unknown): string[] {
 }
 
 function parseTermSnapshotCapabilities(termSnapshot: string): string[] {
-  try {
-    const parsed = JSON.parse(termSnapshot) as { capabilities?: unknown };
-    if (!Array.isArray(parsed.capabilities)) {
-      return [];
-    }
-    if (!parsed.capabilities.every((entry) => typeof entry === "string")) {
-      return [];
-    }
-    return parsed.capabilities as string[];
-  } catch {
-    return [];
-  }
+  return mirrorTermViewFromSnapshot(termSnapshot)?.capabilities ?? [];
 }
 
 async function assertInstallationsExist(

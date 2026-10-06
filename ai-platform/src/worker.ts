@@ -109,6 +109,7 @@ import {
   voidForReversalRPC,
   voidGrantRPC,
   rebuildClinicDoRPC,
+  refreshCoverageSnapshotRPC,
   releaseRPC,
   settleFallbackRPC,
   shipCoverageOutboxAlarm,
@@ -123,6 +124,7 @@ import {
   type ReadCoverageRequest,
   type ReleaseRequest,
 } from "./quota-do/index";
+import { mirrorTermViewFromSnapshot } from "./quota-do/coverage";
 import { clockNowIso } from "./clock";
 import {
   createChunkSourceFromInvocationEvents,
@@ -639,13 +641,10 @@ async function settleMissingHandoffInternalError(
   )
     .bind(row.installation_id)
     .first<{ term_snapshot: string }>();
-  const termSnapshot = mirrorRow?.term_snapshot
-    ? (JSON.parse(mirrorRow.term_snapshot) as {
-        ref?: string;
-        term_id?: string;
-      })
-    : undefined;
-  const termId = termSnapshot?.ref ?? termSnapshot?.term_id;
+  const termView = mirrorRow?.term_snapshot
+    ? mirrorTermViewFromSnapshot(mirrorRow.term_snapshot)
+    : null;
+  const termId = termView?.ref;
   if (!termId) {
     log.error("missing_handoff_settle_term_missing");
     await recordTerminalState(
@@ -796,6 +795,7 @@ async function settleTerminal(
       { DO: runtimeEnv.DO, DB: runtimeEnv.DB },
     );
   }
+  const recordedAt = await clockNowIso(runtimeEnv);
   await writeSettlementJournal(
     runtimeEnv,
     {
@@ -806,7 +806,7 @@ async function settleTerminal(
       composed: input.composed,
       attempts: input.attempts,
       result: placeholderTerminalResult(usage, input.code),
-      recordedAt: new Date().toISOString(),
+      recordedAt,
       usage,
       termId: input.termId,
     },
@@ -1393,7 +1393,7 @@ async function runFreshEventSource(
   await settleCompletedRequest(runtimeEnv, {
     ...terminalBase,
     result: invokeResult.result,
-    recordedAt: new Date().toISOString(),
+    recordedAt: await clockNowIso(runtimeEnv),
   }, journalLog);
 }
 
@@ -1942,6 +1942,34 @@ export class GatewayObject extends DurableObject {
             platformSigningKeyJson:
               rebuildBody.platformSigningKeyJson ??
               runtimeEnv.PLATFORM_SIGNING_KEY,
+          },
+        );
+        return Response.json({ ...result, contract_version: contractVersion });
+      }
+      if (kind === "refresh_coverage_snapshot") {
+        const refreshBody = body as Omit<
+          Parameters<typeof refreshCoverageSnapshotRPC>[3],
+          "db" | "r2"
+        >;
+        const runtimeEnv = this.env as Env;
+        const durationScale =
+          runtimeEnv.DURATION_SCALE === "staging" ? "staging" : undefined;
+        const nowIso =
+          typeof refreshBody.nowIso === "string"
+            ? refreshBody.nowIso
+            : await clockNowIso(runtimeEnv);
+        const result = await refreshCoverageSnapshotRPC(
+          this.ctx,
+          this.ctx.storage,
+          (fn) => this.ctx.blockConcurrencyWhile(fn),
+          {
+            ...refreshBody,
+            kind: "refresh_coverage_snapshot",
+            durationScale:
+              refreshBody.durationScale ?? durationScale,
+            db: runtimeEnv.DB,
+            r2: runtimeEnv.R2,
+            nowIso,
           },
         );
         return Response.json({ ...result, contract_version: contractVersion });

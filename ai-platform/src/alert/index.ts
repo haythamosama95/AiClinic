@@ -574,6 +574,22 @@ export async function raiseAl13Bootstrap(
   });
 }
 
+export async function insertDoRebuildMismatchAlert(
+  db: D1Database,
+  installationId: string,
+  nowIso: string,
+): Promise<void> {
+  const alertKey = `do-rebuild:${installationId}`;
+  await db
+    .prepare(
+      `INSERT INTO platform_alert
+         (alert_key, code, severity, first_at, last_at, count, send_state, next_send_at, resolved_at)
+       VALUES (?, ?, 'high', ?, ?, 1, 'unsent', NULL, NULL)`,
+    )
+    .bind(alertKey, "do_rebuild_mismatch", nowIso, nowIso)
+    .run();
+}
+
 function parseAl13AlertKey(
   alertKey: string,
 ): { credentialId: string; kind: Al13Kind } | null {
