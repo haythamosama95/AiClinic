@@ -111,13 +111,13 @@ cd ai-platform && npx vitest run --config vitest.workers.config.ts \
 
 **Independent Test**: E2E-P3.10-01 in harness H-AP.
 
-- [ ] T018 [US2] Add `ai-platform/migrations/20261006170000_drop_invoicing.sql` — produces the invoicing drop, FR-009, E2E-P3.10-08. Depends on T017. `DROP TABLE IF EXISTS invoice` and `DROP TABLE IF EXISTS credit_price`. Do not edit earlier migrations.
+- [X] T018 [US2] Add `ai-platform/migrations/20261006170000_drop_invoicing.sql` — produces the invoicing drop, FR-009, E2E-P3.10-08. Depends on T017. `DROP TABLE IF EXISTS invoice` and `DROP TABLE IF EXISTS credit_price`. Do not edit earlier migrations.
 
 ### 4.5 User Story 2 - Remove /control/* and boot without the bearer (Priority: P2) — drop plan and entitlement
 
 **Independent Test**: E2E-P3.10-01 in harness H-AP.
 
-- [ ] T019 [US2] Add `ai-platform/migrations/20261006170100_drop_plan_entitlement.sql` — produces the plan and entitlement drop, FR-009, E2E-P3.10-08. Depends on T017. `DROP TABLE IF EXISTS plan`, `DROP TABLE IF EXISTS entitlement`, and `DROP TABLE IF EXISTS grace_admission_queue`. Do not edit earlier migrations.
+- [X] T019 [US2] Add `ai-platform/migrations/20261006170100_drop_plan_entitlement.sql` — produces the plan and entitlement drop, FR-009, E2E-P3.10-08. Depends on T017. `DROP TABLE IF EXISTS plan`, `DROP TABLE IF EXISTS entitlement`, and `DROP TABLE IF EXISTS grace_admission_queue`. Do not edit earlier migrations.
 
 **Checkpoint**: Both drop migrations exist. Readers of those tables are removed in the next task.
 
