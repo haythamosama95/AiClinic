@@ -1490,6 +1490,116 @@ async function readVoidReceiptFromR2(
   }
 }
 
+type StoredReversalVoid = {
+  grant_id: string;
+  reason: string;
+  evidence_sha256: string;
+  receipt: Record<string, unknown>;
+};
+
+async function findStoredReversalVoid(
+  env: VendorEnv,
+  version: number,
+  reversalId: string,
+  ledgerRow: { org_id: string; installation_id: string } | null,
+  grantId: string,
+  reason: string,
+  evidenceSha256: string,
+  envelopeSha256: string,
+  nowIso: string,
+): Promise<StoredReversalVoid | "conflict" | null> {
+  if (ledgerRow !== null) {
+    const binding = await readActiveTenantBinding(env.DB, ledgerRow.org_id);
+    if (binding !== null) {
+      const doResponse = await callCoverageDo(env, ledgerRow.installation_id, {
+        kind: "void_for_reversal",
+        installationId: ledgerRow.installation_id,
+        orgId: ledgerRow.org_id,
+        vendorContractVersion: version,
+        bindingEpoch: binding.epoch,
+        grantId,
+        reversalId,
+        reason,
+        evidenceSha256,
+        envelopeSha256,
+        nowIso,
+        platformSigningKeyJson: env.PLATFORM_SIGNING_KEY,
+        durationScale: durationScaleFromEnv(env),
+        replayOnly: true,
+      });
+      if (doResponse !== null) {
+        if (doResponse.result === "conflict") {
+          return "conflict";
+        }
+        if (
+          doResponse.result === "already_applied" &&
+          isRecord(doResponse.receipt)
+        ) {
+          return {
+            grant_id: grantId,
+            reason,
+            evidence_sha256: evidenceSha256,
+            receipt: doResponse.receipt,
+          };
+        }
+      }
+    }
+  }
+
+  const rows = await env.DB.prepare(
+    "SELECT grant_id, reason, evidence_sha256 FROM grant_void",
+  ).all<{ grant_id: string; reason: string; evidence_sha256: string }>();
+
+  for (const row of rows.results ?? []) {
+    const receipt = await readVoidReceiptFromR2(env, row.grant_id);
+    if (receipt === null) {
+      continue;
+    }
+    const storedReversalId = receipt.reversal_id;
+    if (typeof storedReversalId !== "string" || storedReversalId !== reversalId) {
+      continue;
+    }
+    return {
+      grant_id: row.grant_id,
+      reason: row.reason,
+      evidence_sha256: row.evidence_sha256,
+      receipt,
+    };
+  }
+
+  return null;
+}
+
+function mapStoredReversalVoidReplay(
+  version: number,
+  stored: StoredReversalVoid,
+  grantId: string,
+  reason: string,
+  evidenceSha256: string,
+  partial: boolean,
+): GrantResultEnvelope {
+  if (
+    stored.grant_id === grantId &&
+    stored.reason === reason &&
+    stored.evidence_sha256 === evidenceSha256 &&
+    partial === false
+  ) {
+    return {
+      contract_version: version,
+      result: "already_applied",
+      code: "",
+      detail: "",
+      receipt: stored.receipt,
+    };
+  }
+  return {
+    contract_version: version,
+    result: "conflict",
+    code: "",
+    detail: "",
+  };
+}
+
 async function signReversalVoidReceipt(input: {
   signingKey: PlatformSigningMaterial;
   vendorContractVersion: number;
@@ -3326,51 +3436,6 @@ export class VendorEntrypoint extends WorkerEntrypoint<VendorEnv> {
       return grantRejected(version, "bad_signature");
     }
 
-    const existingVoid = await this.env.DB.prepare(
-      "SELECT grant_id, reason, evidence_sha256 FROM grant_void WHERE grant_id = ?",
-    )
-      .bind(grantId)
-      .first<{ grant_id: string; reason: string; evidence_sha256: string }>();
-
-    if (existingVoid !== null) {
-      const storedReceipt = await readVoidReceiptFromR2(this.env, grantId);
-      if (storedReceipt === null) {
-        return grantRejected(version, "coverage_unknown");
-      }
-      const storedReversalId = storedReceipt.reversal_id;
-      if (typeof storedReversalId !== "string" || storedReversalId !== reversalId) {
-        return {
-          contract_version: version,
-          result: "conflict",
-          code: "",
-          detail: "",
-        };
-      }
-      if (
-        existingVoid.reason === reason &&
-        existingVoid.evidence_sha256 === evidenceSha256 &&
-        partial === false
-      ) {
-        return {
-          contract_version: version,
-          result: "already_applied",
-          code: "",
-          detail: "",
-          receipt: storedReceipt,
-        };
-      }
-      return {
-        contract_version: version,
-        result: "conflict",
-        code: "",
-        detail: "",
-      };
-    }
-
-    if (partial) {
-      return grantRejected(version, "partial_void", "");
-    }
-
     const envelopeSha256 = await sha256Hex(canonicalize(signedBody));
 
     const ledgerRow = await this.env.DB.prepare(
@@ -3378,6 +3443,64 @@ export class VendorEntrypoint extends WorkerEntrypoint<VendorEnv> {
     )
       .bind(grantId)
       .first<{ grant_id: string; org_id: string; installation_id: string }>();
+
+    const storedVoid = await findStoredReversalVoid(
+      this.env,
+      version,
+      reversalId,
+      ledgerRow,
+      grantId,
+      reason,
+      evidenceSha256,
+      envelopeSha256,
+      nowIso,
+    );
+    if (storedVoid === "conflict") {
+      return {
+        contract_version: version,
+        result: "conflict",
+        code: "",
+        detail: "",
+      };
+    }
+    if (storedVoid !== null) {
+      return mapStoredReversalVoidReplay(
+        version,
+        storedVoid,
+        grantId,
+        reason,
+        evidenceSha256,
+        partial,
+      );
+    }
+
+    const voidForGrant = await this.env.DB.prepare(
+      "SELECT grant_id FROM grant_void WHERE grant_id = ?",
+    )
+      .bind(grantId)
+      .first<{ grant_id: string }>();
+    if (voidForGrant !== null) {
+      const receiptForGrant = await readVoidReceiptFromR2(this.env, grantId);
+      if (receiptForGrant === null) {
+        return grantRejected(version, "coverage_unknown");
+      }
+      const storedReversalIdForGrant = receiptForGrant.reversal_id;
+      if (
+        typeof storedReversalIdForGrant !== "string" ||
+        storedReversalIdForGrant !== reversalId
+      ) {
+        return {
+          contract_version: version,
+          result: "conflict",
+          code: "",
+          detail: "",
+        };
+      }
+    }
+
+    if (partial) {
+      return grantRejected(version, "partial_void", "");
+    }
 
     if (ledgerRow !== null) {
       const binding = await readActiveTenantBinding(this.env.DB, ledgerRow.org_id);

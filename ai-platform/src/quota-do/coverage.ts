@@ -1982,6 +1982,7 @@ export interface VoidForReversalRequest {
   nowIso: string;
   platformSigningKeyJson: string;
   durationScale?: DurationScale;
+  replayOnly?: boolean;
 }
 
 export interface VoidForReversalResponse {
@@ -2014,6 +2015,9 @@ export async function voidForReversalRPC(
         };
       }
       return { kind: "void_for_reversal", result: "conflict" };
+    }
+    if (request.replayOnly === true) {
+      return { kind: "void_for_reversal", result: "bad_request" };
     }
 
     const signingKey = await loadPlatformSigningKey(request.platformSigningKeyJson);
@@ -2228,15 +2232,11 @@ export async function releaseHeldRPC(
     }
 
     const position = nextTermPosition(terms);
-    const hasActive = terms.some(
-      (term) => term.state === "active" || term.state === "grace",
-    );
+    const hasActive = terms.some((term) => term.state === "active");
 
     if (!hasActive) {
       const endsAt =
-        held.duration_unit !== null &&
-        held.duration_count !== null &&
-        held.calendar_start !== null
+        held.duration_unit !== null && held.duration_count !== null
           ? addDuration(
               request.nowIso,
               held.duration_unit as "month" | "day",
@@ -2337,7 +2337,7 @@ export async function voidGrantRPC(
       return { kind: "void_grant", result: "bad_request" };
     }
 
-    const wasActive = term.state === "active" || term.state === "grace";
+    const wasActive = term.state === "active";
     sqlExec(
       storage,
       `UPDATE term SET state = 'ended', end_reason = 'voided', ended_at = ${sqlString(request.nowIso)}, grace_ends_at = NULL
