@@ -58,7 +58,21 @@ type P37VendorMethod =
   | VendorMethod
   | "voidForReversal"
   | "releaseHeld"
-  | "voidGrant";
+  | "voidGrant"
+  | "listGrantsForVoid";
+
+type GrantLedgerRow = {
+  grant_id: string;
+  origin_grant_id: string;
+  org_id: string;
+  installation_id: string;
+  kind: string;
+  source_kind: string;
+  operator_credential_id: string;
+  envelope_sha256: string;
+  receipt: string;
+  applied_at: string;
+};
 
 const p37VendorCall = vendorCall as (
   method: P37VendorMethod,
@@ -176,6 +190,7 @@ async function callVoidForReversal(input: {
   reversalId?: string;
   reason?: string;
   evidenceSha256?: string;
+  aboSignature?: string;
 }): Promise<GrantResultEnvelope> {
   const body = {
     contract_version: CONTRACT_VERSION,
@@ -185,12 +200,63 @@ async function callVoidForReversal(input: {
     evidence_sha256: input.evidenceSha256 ?? randomHex64(),
     partial: input.partial,
   };
-  const aboSignature = await signCoverAbo(body);
+  const aboSignature =
+    input.aboSignature ?? (await signCoverAbo(body));
   return p37VendorCall("voidForReversal", {
     ...body,
     abo_kid: coverClinicAboKid(),
     abo_signature: aboSignature,
   });
+}
+
+async function callVoidForReversalPayload(
+  payload: Record<string, unknown>,
+): Promise<GrantResultEnvelope> {
+  return p37VendorCall("voidForReversal", payload);
+}
+
+async function callListGrantsForVoid(input: {
+  credentialId: string;
+  window: { applied_from: string; applied_to: string };
+}): Promise<GrantResultEnvelope> {
+  const accessJwt = await mintVendorAccessJwt();
+  return p37VendorCall(
+    "listGrantsForVoid",
+    {
+      contract_version: CONTRACT_VERSION,
+      credential_id: input.credentialId,
+      window: input.window,
+    },
+    { accessJwt },
+  );
+}
+
+function mapGrantLedgerRows(rows: GrantLedgerRow[]): Record<string, unknown>[] {
+  return rows.map((row) => ({
+    grant_id: row.grant_id,
+    origin_grant_id: row.origin_grant_id,
+    org_id: row.org_id,
+    installation_id: row.installation_id,
+    kind: row.kind,
+    source_kind: row.source_kind,
+    operator_credential_id: row.operator_credential_id,
+    envelope_sha256: row.envelope_sha256,
+    receipt: JSON.parse(row.receipt) as Record<string, unknown>,
+    applied_at: row.applied_at,
+  }));
+}
+
+async function readGrantLedgerForCredential(
+  credentialId: string,
+): Promise<GrantLedgerRow[]> {
+  return queryAll<GrantLedgerRow>(
+    `SELECT grant_id, origin_grant_id, org_id, installation_id, kind, source_kind,
+            operator_credential_id, envelope_sha256, receipt, applied_at
+     FROM grant_ledger
+     WHERE operator_credential_id = ?
+     ORDER BY applied_at ASC, grant_id ASC`,
+    [credentialId],
+  );
 }
 
 async function inspectCoverageTerms(
@@ -633,5 +699,326 @@ describe("reversal voids, tombstones, held terms, operator voids", () => {
     expect(await r2Exists(`grant-ledger/${compGrantId}.void.ndjson`)).toBe(
       true,
     );
+  });
+
+  it("E2E-P3.7-07 listGrantsForVoid lists that credential inside the window", async () => {
+    const scenario = await newScenario();
+    await coverClinic(scenario);
+
+    const credRow = await queryOne<{ status: string }>(
+      "SELECT status FROM operator_credential WHERE credential_id = ?",
+      ["cred-001"],
+    );
+    expect(credRow?.status).not.toBe("active");
+
+    const firstLedger = (await readGrantLedgerForCredential("cred-001"))[0]!;
+    expect(firstLedger.operator_credential_id).toBe("cred-001");
+
+    const secondAppliedAt = new Date(
+      Date.parse(firstLedger.applied_at) + 60 * 60 * 1000,
+    ).toISOString();
+    await setTestClock(secondAppliedAt);
+
+    const secondGrantId = await grantIdPaid(crypto.randomUUID().replace(/-/g, ""));
+    expect((await paidGrant(scenario, secondGrantId)).result).toBe("applied");
+    await runDurableObjectAlarm(quotaDoStub(scenario.installationId));
+
+    const ledgerRows = await readGrantLedgerForCredential("cred-001");
+    expect(ledgerRows).toHaveLength(2);
+    expect(ledgerRows.every((row) => row.operator_credential_id === "cred-001")).toBe(
+      true,
+    );
+
+    const window = {
+      applied_from: ledgerRows[0]!.applied_at,
+      applied_to: ledgerRows[1]!.applied_at,
+    };
+    const listed = await callListGrantsForVoid({
+      credentialId: "cred-001",
+      window,
+    });
+    expect(listed.result).toBe("ok");
+    expect(listed.code).toBe("");
+    expect(listed.receipt).toBeUndefined();
+    expect(JSON.parse(listed.detail)).toEqual(mapGrantLedgerRows(ledgerRows));
+
+    const empty = await callListGrantsForVoid({
+      credentialId: "cred-001",
+      window: {
+        applied_from: "2000-01-01T00:00:00.000Z",
+        applied_to: "2000-01-02T00:00:00.000Z",
+      },
+    });
+    expect(empty.result).toBe("ok");
+    expect(empty.code).toBe("");
+    expect(JSON.parse(empty.detail)).toEqual([]);
+
+    const missingTo = await callListGrantsForVoid({
+      credentialId: "cred-001",
+      window: { applied_from: window.applied_from, applied_to: "" },
+    });
+    expect(missingTo.result).toBe("rejected");
+    expect(missingTo.code).toBe("window_invalid");
+    expect(missingTo.detail).toBe("");
+
+    const badTimestamp = await callListGrantsForVoid({
+      credentialId: "cred-001",
+      window: {
+        applied_from: "not-a-timestamp",
+        applied_to: window.applied_to,
+      },
+    });
+    expect(badTimestamp.result).toBe("rejected");
+    expect(badTimestamp.code).toBe("window_invalid");
+    expect(badTimestamp.detail).toBe("");
+
+    const inverted = await callListGrantsForVoid({
+      credentialId: "cred-001",
+      window: {
+        applied_from: window.applied_to,
+        applied_to: window.applied_from,
+      },
+    });
+    expect(inverted.result).toBe("rejected");
+    expect(inverted.code).toBe("window_invalid");
+    expect(inverted.detail).toBe("");
+  });
+
+  it("E2E-P3.7-08 reversal replay is already_applied, a changed body is conflict, and a rejected call does not consume reversal_id", async () => {
+    const scenario = await newScenario();
+    await coverClinic(scenario);
+
+    const grantsBefore = await readDoGrants(scenario.installationId);
+    const activeGrantId = grantsBefore[0]!.grant_id;
+
+    const queuedGrantId = await grantIdPaid(crypto.randomUUID().replace(/-/g, ""));
+    expect((await paidGrant(scenario, queuedGrantId)).result).toBe("applied");
+    await runDurableObjectAlarm(quotaDoStub(scenario.installationId));
+
+    const reversalId = randomHex64();
+    const reason = "chargeback";
+    const evidenceSha256 = randomHex64();
+    const applied = await callVoidForReversal({
+      grantId: activeGrantId,
+      partial: false,
+      reversalId,
+      reason,
+      evidenceSha256,
+    });
+    expect(applied.result).toBe("applied");
+    expect(applied.receipt).toBeDefined();
+    await runDurableObjectAlarm(quotaDoStub(scenario.installationId));
+
+    const storedVoid = await queryOne<{ reason: string; evidence_sha256: string }>(
+      "SELECT reason, evidence_sha256 FROM grant_void WHERE grant_id = ?",
+      [activeGrantId],
+    );
+    expect(storedVoid?.reason).toBe(reason);
+
+    const replay = await callVoidForReversal({
+      grantId: activeGrantId,
+      partial: false,
+      reversalId,
+      reason,
+      evidenceSha256,
+    });
+    expect(replay.result).toBe("already_applied");
+    expect(replay.receipt).toEqual(applied.receipt);
+
+    const conflictFields: Array<{
+      grantId?: string;
+      reason?: string;
+      evidenceSha256?: string;
+      reversalId?: string;
+      partial?: boolean;
+    }> = [
+      { grantId: queuedGrantId },
+      { reason: "different reason" },
+      { evidenceSha256: randomHex64() },
+      { reversalId: randomHex64() },
+      { partial: true },
+    ];
+    for (const override of conflictFields) {
+      const conflict = await callVoidForReversal({
+        grantId: activeGrantId,
+        partial: false,
+        reversalId,
+        reason,
+        evidenceSha256,
+        ...override,
+      });
+      expect(conflict.result).toBe("conflict");
+      const after = await queryOne<{ reason: string; evidence_sha256: string }>(
+        "SELECT reason, evidence_sha256 FROM grant_void WHERE grant_id = ?",
+        [activeGrantId],
+      );
+      expect(after).toEqual(storedVoid);
+    }
+
+    const eventsBeforeBadSig = await queryAll<{ event_id: string }>(
+      "SELECT event_id FROM coverage_event",
+    );
+    const badSigBody = {
+      contract_version: CONTRACT_VERSION,
+      grant_id: activeGrantId,
+      reversal_id: randomHex64(),
+      reason: "bad sig",
+      evidence_sha256: randomHex64(),
+      partial: false,
+    };
+    const badSig = await callVoidForReversalPayload({
+      ...badSigBody,
+      abo_kid: coverClinicAboKid(),
+      abo_signature: "not-a-valid-signature",
+    });
+    expect(badSig.result).toBe("rejected");
+    expect(badSig.code).toBe("bad_signature");
+    expect(
+      await queryOne("SELECT 1 AS ok FROM grant_void WHERE grant_id = ?", [
+        activeGrantId,
+      ]),
+    ).toBeTruthy();
+    const eventsAfterBadSig = await queryAll<{ event_id: string }>(
+      "SELECT event_id FROM coverage_event",
+    );
+    expect(eventsAfterBadSig).toHaveLength(eventsBeforeBadSig.length);
+
+    const partialReversalId = randomHex64();
+    const voidCountBeforePartial = (
+      await queryAll("SELECT grant_id FROM grant_void")
+    ).length;
+    const eventsBeforePartial = await queryAll<{ event_id: string }>(
+      "SELECT event_id FROM coverage_event",
+    );
+    const partialVoid = await callVoidForReversal({
+      grantId: queuedGrantId,
+      partial: true,
+      reversalId: partialReversalId,
+    });
+    expect(partialVoid.result).toBe("rejected");
+    expect(partialVoid.code).toBe("partial_void");
+    expect(partialVoid.detail).toBe("");
+    expect(
+      await queryOne("SELECT grant_id FROM grant_void WHERE grant_id = ?", [
+        queuedGrantId,
+      ]),
+    ).toBeNull();
+    expect(await r2Exists(`grant-ledger/${queuedGrantId}.void.ndjson`)).toBe(
+      false,
+    );
+    const eventsAfterPartial = await queryAll<{ event_id: string }>(
+      "SELECT event_id FROM coverage_event",
+    );
+    expect(eventsAfterPartial).toHaveLength(eventsBeforePartial.length);
+    expect(
+      (await queryAll("SELECT grant_id FROM grant_void")).length,
+    ).toBe(voidCountBeforePartial);
+
+    const missingPartialBody = {
+      contract_version: CONTRACT_VERSION,
+      grant_id: queuedGrantId,
+      reversal_id: randomHex64(),
+      reason: "missing partial",
+      evidence_sha256: randomHex64(),
+      abo_kid: coverClinicAboKid(),
+      abo_signature: await signCoverAbo({
+        contract_version: CONTRACT_VERSION,
+        grant_id: queuedGrantId,
+        reversal_id: randomHex64(),
+        reason: "missing partial",
+        evidence_sha256: randomHex64(),
+      }),
+    };
+    const missingPartial = await callVoidForReversalPayload(missingPartialBody);
+    expect(missingPartial.result).toBe("rejected");
+    expect(missingPartial.code).toBe("partial_invalid");
+    expect(missingPartial.detail).toBe("");
+
+    const nonBooleanPartialBody = {
+      contract_version: CONTRACT_VERSION,
+      grant_id: queuedGrantId,
+      reversal_id: randomHex64(),
+      reason: "non-boolean partial",
+      evidence_sha256: randomHex64(),
+      partial: "false",
+      abo_kid: coverClinicAboKid(),
+      abo_signature: "unused",
+    };
+    const nonBooleanPartial = await callVoidForReversalPayload(
+      nonBooleanPartialBody,
+    );
+    expect(nonBooleanPartial.result).toBe("rejected");
+    expect(nonBooleanPartial.code).toBe("partial_invalid");
+    expect(nonBooleanPartial.detail).toBe("");
+
+    const consumed = await callVoidForReversal({
+      grantId: queuedGrantId,
+      partial: false,
+      reversalId: partialReversalId,
+    });
+    expect(consumed.result).toBe("applied");
+  });
+
+  it("E2E-P3.7-09 an applied void writes grant_void, the R2 object, and coverage events", async () => {
+    const scenario = await newScenario();
+    await coverClinic(scenario);
+
+    const grantsBefore = await readDoGrants(scenario.installationId);
+    const grantId = grantsBefore[0]!.grant_id;
+    const ledgerRow = await queryOne<GrantLedgerRow>(
+      `SELECT grant_id, origin_grant_id, org_id, installation_id, kind, source_kind,
+              operator_credential_id, envelope_sha256, receipt, applied_at
+       FROM grant_ledger WHERE grant_id = ?`,
+      [grantId],
+    );
+    expect(ledgerRow).toBeTruthy();
+
+    const reason = "issuer reversal";
+    const evidenceSha256 = randomHex64();
+    const voided = await callVoidForReversal({
+      grantId,
+      partial: false,
+      reason,
+      evidenceSha256,
+    });
+    expect(voided.result).toBe("applied");
+    await runDurableObjectAlarm(quotaDoStub(scenario.installationId));
+
+    const grantVoid = await queryOne<{
+      reason: string;
+      evidence_sha256: string;
+      source: string;
+      at: string;
+    }>(
+      "SELECT reason, evidence_sha256, source, at FROM grant_void WHERE grant_id = ?",
+      [grantId],
+    );
+    expect(grantVoid?.source).toBe("reversal");
+    expect(grantVoid?.reason).toBe(reason);
+    expect(grantVoid?.evidence_sha256).toBe(evidenceSha256);
+
+    const voidKey = `grant-ledger/${grantId}.void.ndjson`;
+    expect(await r2Exists(voidKey)).toBe(true);
+    const r2Object = await env.R2.get(voidKey);
+    expect(r2Object).toBeTruthy();
+    const voidLine = (await r2Object!.text()).trimEnd();
+    expect(voidLine.split("\n")).toHaveLength(1);
+    const voidPayload = JSON.parse(voidLine) as Record<string, unknown>;
+    expect(voidPayload.grant_id).toBe(grantId);
+    expect(voidPayload.reason).toBe(reason);
+    expect(voidPayload.source).toBe("reversal");
+    expect(voidPayload.evidence_sha256).toBe(evidenceSha256);
+    expect(voidPayload.at).toBe(grantVoid?.at);
+    expect(voidPayload.receipt).toEqual(voided.receipt);
+
+    const events = await queryAll<{ org_id: string; kind: string }>(
+      "SELECT org_id, kind FROM coverage_event WHERE org_id = ?",
+      [scenario.orgId],
+    );
+    expect(events.length).toBeGreaterThan(0);
+
+    const receipt = voided.receipt as Record<string, unknown>;
+    expect(receipt.installation_id).toBe(ledgerRow!.installation_id);
+    expect(receipt.org_id).toBe(ledgerRow!.org_id);
   });
 });
