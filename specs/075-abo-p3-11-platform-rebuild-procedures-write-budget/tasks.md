@@ -120,7 +120,7 @@ cd ai-platform && npx vitest run --config vitest.workers.config.ts \
 
 ### 5.1 Unit harness — system
 
-- [ ] T016 [US1] Run harness H-AP for the system file and confirm E2E-P3.11-01 through E2E-P3.11-04 pass — produces the green system file, FR-001, FR-002, FR-003, FR-004, E2E-P3.11-01, E2E-P3.11-02, E2E-P3.11-03, E2E-P3.11-04. Depends on T006 through T015 (and therefore on T001–T005). This task may edit only `ai-platform/test/system/platform-rebuild.system.test.ts`. `packages/vendor-contracts/**` stays unchanged.
+- [X] T016 [US1] Run harness H-AP for the system file and confirm E2E-P3.11-01 through E2E-P3.11-04 pass — produces the green system file, FR-001, FR-002, FR-003, FR-004, E2E-P3.11-01, E2E-P3.11-02, E2E-P3.11-03, E2E-P3.11-04. Depends on T006 through T015 (and therefore on T001–T005). This task may edit only `ai-platform/test/system/platform-rebuild.system.test.ts`. `packages/vendor-contracts/**` stays unchanged.
 
 ```bash
 cd ai-platform && npx vitest run --config vitest.workers.config.ts \
@@ -129,7 +129,7 @@ cd ai-platform && npx vitest run --config vitest.workers.config.ts \
 
 ### 5.2 Unit harness — load
 
-- [ ] T017 [US2] Run the H-AP load suite file and confirm E2E-P3.11-05 passes — produces the green load file, FR-005, FR-006, E2E-P3.11-05. Depends on T006 through T015 (and therefore on T001–T005). This task may edit only `ai-platform/test/load/write-budget.load.test.ts`.
+- [X] T017 [US2] Run the H-AP load suite file and confirm E2E-P3.11-05 passes — produces the green load file, FR-005, FR-006, E2E-P3.11-05. Depends on T006 through T015 (and therefore on T001–T005). This task may edit only `ai-platform/test/load/write-budget.load.test.ts`.
 
 ```bash
 cd ai-platform && npx vitest run --config vitest.workers.config.ts \

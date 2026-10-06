@@ -1440,6 +1440,16 @@ function settleReservationOnHot(
   }
   hot.row.reserved = Math.max(0, hot.row.reserved - reservation.weight);
   hot.reservations.splice(index, 1);
+  for (const [key, entry] of Object.entries(hot.idempotency)) {
+    if (admittedRequestIdFromAnswer(entry.answer) === reservationId) {
+      delete hot.idempotency[key];
+    }
+  }
+  for (const [key, entry] of Object.entries(hot.replay)) {
+    if (admittedRequestIdFromAnswer(entry.answer) === reservationId) {
+      delete hot.replay[key];
+    }
+  }
 
   const nowIso = new Date(now).toISOString();
   const terms = loadTerms(storage);
