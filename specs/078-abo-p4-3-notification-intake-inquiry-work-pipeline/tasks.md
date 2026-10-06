@@ -166,7 +166,7 @@ cd abo && npx vitest run --config vitest.workers.config.ts test/system/notify.sy
 
 **Independent Test**: E2E-P4.3-08, E2E-P4.3-10, E2E-P4.3-11, and E2E-P4.3-12 in harnesses H-ABO and H-PAY.
 
-- [ ] T026 [US4] Run `npx vitest run --config vitest.workers.config.ts test/system/notify.system.test.ts` from `abo/` until E2E-P4.3-01 through E2E-P4.3-12 pass — produces the green unit harness, FR-001, FR-002, FR-003, FR-004, FR-005, FR-006, FR-007, FR-008, FR-009, FR-010, FR-011, FR-012, E2E-P4.3-01, E2E-P4.3-02, E2E-P4.3-03, E2E-P4.3-04, E2E-P4.3-05, E2E-P4.3-06, E2E-P4.3-07, E2E-P4.3-08, E2E-P4.3-09, E2E-P4.3-10, E2E-P4.3-11, E2E-P4.3-12. Depends on T025 (and therefore on T001–T024). This task may edit only files under `abo/test/`.
+- [X] T026 [US4] Run `npx vitest run --config vitest.workers.config.ts test/system/notify.system.test.ts` from `abo/` until E2E-P4.3-01 through E2E-P4.3-12 pass — produces the green unit harness, FR-001, FR-002, FR-003, FR-004, FR-005, FR-006, FR-007, FR-008, FR-009, FR-010, FR-011, FR-012, E2E-P4.3-01, E2E-P4.3-02, E2E-P4.3-03, E2E-P4.3-04, E2E-P4.3-05, E2E-P4.3-06, E2E-P4.3-07, E2E-P4.3-08, E2E-P4.3-09, E2E-P4.3-10, E2E-P4.3-11, E2E-P4.3-12. Depends on T025 (and therefore on T001–T024). This task may edit only files under `abo/test/`.
 
 ```bash
 cd abo && npx vitest run --config vitest.workers.config.ts test/system/notify.system.test.ts
@@ -182,7 +182,7 @@ cd abo && npx vitest run --config vitest.workers.config.ts test/system/notify.sy
 
 ### 6.1 Quickstart
 
-- [ ] T027 Create `specs/078-abo-p4-3-notification-intake-inquiry-work-pipeline/quickstart.md` from the plan's quickstart outline — produces this unit's quickstart, FR-001, FR-002, FR-003, FR-004, FR-005, FR-006, FR-007, FR-008, FR-009, FR-010, FR-011, FR-012, E2E-P4.3-01, E2E-P4.3-02, E2E-P4.3-03, E2E-P4.3-04, E2E-P4.3-05, E2E-P4.3-06, E2E-P4.3-07, E2E-P4.3-08, E2E-P4.3-09, E2E-P4.3-10, E2E-P4.3-11, E2E-P4.3-12. Depends on T026. Sections: (1) what was implemented, and the files added or modified; (2) the harness command below; (3) the entry point → module chain per E2E id below. No earlier-unit files, combined counts, or full-suite commands. No manual steps; the harness observes every scenario.
+- [X] T027 Create `specs/078-abo-p4-3-notification-intake-inquiry-work-pipeline/quickstart.md` from the plan's quickstart outline — produces this unit's quickstart, FR-001, FR-002, FR-003, FR-004, FR-005, FR-006, FR-007, FR-008, FR-009, FR-010, FR-011, FR-012, E2E-P4.3-01, E2E-P4.3-02, E2E-P4.3-03, E2E-P4.3-04, E2E-P4.3-05, E2E-P4.3-06, E2E-P4.3-07, E2E-P4.3-08, E2E-P4.3-09, E2E-P4.3-10, E2E-P4.3-11, E2E-P4.3-12. Depends on T026. Sections: (1) what was implemented, and the files added or modified; (2) the harness command below; (3) the entry point → module chain per E2E id below. No earlier-unit files, combined counts, or full-suite commands. No manual steps; the harness observes every scenario.
 
 ```bash
 cd abo && npx vitest run --config vitest.workers.config.ts test/system/notify.system.test.ts
