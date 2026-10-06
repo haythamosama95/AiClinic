@@ -139,7 +139,7 @@ The run fails because a complimentary grant is `rejected` with `unit_not_allowed
 
 **Independent Test**: E2E-P3.6-01, E2E-P3.6-02, E2E-P3.6-03, E2E-P3.6-04, E2E-P3.6-05, E2E-P3.6-07, and E2E-P3.6-09 in harness H-AP. E2E-P3.6-06 in harness H-AP. E2E-P3.6-08 in harness H-AP. Earlier H-AP suites stay green (rule S2).
 
-- [ ] T020 [US1][US2][US3] In `GatewayObject.fetch` in `ai-platform/src/worker.ts`, dispatch `suspend`, `resume`, and `inspect_coverage`; in `GatewayObject.alarm`, send AL-12 and AL-19 the way AL-11 is sent, through new raisers in `ai-platform/src/alert/index.ts`; add `setCeilingPolicy`, `suspend`, `resume`, and `inspectCoverage` to `VendorMethod` in `ai-platform/test/system/harness.ts` — produces the live entry points and the two alert codes, FR-002, FR-004, FR-008, FR-010, E2E-P3.6-02, E2E-P3.6-06, E2E-P3.6-08, E2E-P3.6-09. Depends on T019. Leave the `coverClinicSigner()` export from T001 in place. Do not change `coverClinic()`. Paid AL-11 bodies stay without `attention`.
+- [X] T020 [US1][US2][US3] In `GatewayObject.fetch` in `ai-platform/src/worker.ts`, dispatch `suspend`, `resume`, and `inspect_coverage`; in `GatewayObject.alarm`, send AL-12 and AL-19 the way AL-11 is sent, through new raisers in `ai-platform/src/alert/index.ts`; add `setCeilingPolicy`, `suspend`, `resume`, and `inspectCoverage` to `VendorMethod` in `ai-platform/test/system/harness.ts` — produces the live entry points and the two alert codes, FR-002, FR-004, FR-008, FR-010, E2E-P3.6-02, E2E-P3.6-06, E2E-P3.6-08, E2E-P3.6-09. Depends on T019. Leave the `coverClinicSigner()` export from T001 in place. Do not change `coverClinic()`. Paid AL-11 bodies stay without `attention`.
 
 **Checkpoint**: E2E-P3.6-01 through E2E-P3.6-09 are ready for the unit command.
 
@@ -151,7 +151,7 @@ The run fails because a complimentary grant is `rejected` with `unit_not_allowed
 
 ### 5.1 Unit harness
 
-- [ ] T021 Run harness H-AP for this unit and confirm E2E-P3.6-01 through E2E-P3.6-09 pass together — produces the green run, FR-001 through FR-011, E2E-P3.6-01 through E2E-P3.6-09. Depends on T010 through T020 (and therefore on T001–T009). This task may edit only `ai-platform/test/system/complimentary-grants-ceilings.system.test.ts`. `ai-platform/src/quota-do/index.ts`, `ai-platform/src/admission/index.ts`, `ai-platform/src/errors.ts`, `ai-platform/src/capability/index.ts`, `ai-platform/src/coverage/calendar.ts`, and `packages/vendor-contracts/**` stay unchanged. Do not edit `coverClinic()`. SC-002 is the review's run of earlier suites, not this command. The paid AL-11 body must stay without `attention`.
+- [X] T021 Run harness H-AP for this unit and confirm E2E-P3.6-01 through E2E-P3.6-09 pass together — produces the green run, FR-001 through FR-011, E2E-P3.6-01 through E2E-P3.6-09. Depends on T010 through T020 (and therefore on T001–T009). This task may edit only `ai-platform/test/system/complimentary-grants-ceilings.system.test.ts`. `ai-platform/src/quota-do/index.ts`, `ai-platform/src/admission/index.ts`, `ai-platform/src/errors.ts`, `ai-platform/src/capability/index.ts`, `ai-platform/src/coverage/calendar.ts`, and `packages/vendor-contracts/**` stay unchanged. Do not edit `coverClinic()`. SC-002 is the review's run of earlier suites, not this command. The paid AL-11 body must stay without `attention`.
 
 ```bash
 cd ai-platform && npx vitest run --config vitest.workers.config.ts \
@@ -166,7 +166,7 @@ cd ai-platform && npx vitest run --config vitest.workers.config.ts \
 
 ### 6.1 Quickstart
 
-- [ ] T022 Create `specs/070-abo-p3-6-complimentary-grants-ceilings-adjustments-suspension/quickstart.md` from the plan's quickstart outline — produces this unit's quickstart, FR-001 through FR-011, E2E-P3.6-01 through E2E-P3.6-09. Depends on T021. Sections: (1) what was implemented — complimentary grants, ceiling policy and the 90-day window, ceiling override, term adjustment, suspend and resume, and inspectCoverage; (2) files this unit adds or modifies — the Files section of `plan.md`; (3) harness command for this unit's tests only — the command below; (4) the entry point → module chain per E2E id below. Every scenario is asserted by H-AP, so this file records harness commands only.
+- [X] T022 Create `specs/070-abo-p3-6-complimentary-grants-ceilings-adjustments-suspension/quickstart.md` from the plan's quickstart outline — produces this unit's quickstart, FR-001 through FR-011, E2E-P3.6-01 through E2E-P3.6-09. Depends on T021. Sections: (1) what was implemented — complimentary grants, ceiling policy and the 90-day window, ceiling override, term adjustment, suspend and resume, and inspectCoverage; (2) files this unit adds or modifies — the Files section of `plan.md`; (3) harness command for this unit's tests only — the command below; (4) the entry point → module chain per E2E id below. Every scenario is asserted by H-AP, so this file records harness commands only.
 
 ```bash
 cd ai-platform && npx vitest run --config vitest.workers.config.ts \

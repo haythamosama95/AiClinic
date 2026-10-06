@@ -1581,7 +1581,11 @@ export type VendorMethod =
   | "grant"
   | "getCoverage"
   | "listGrants"
-  | "readCoverageEvents";
+  | "readCoverageEvents"
+  | "setCeilingPolicy"
+  | "suspend"
+  | "resume"
+  | "inspectCoverage";
 
 export const VENDOR_OPERATOR_EMAIL = "operator@clinic.test";
 
