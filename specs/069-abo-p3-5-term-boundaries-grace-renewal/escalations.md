@@ -1,0 +1,13 @@
+# P3.5 escalations
+
+Assumptions chosen by the resolver. Each one is written into the design docs named below.
+
+## 1. First coverClinic clock and AAT expiry
+
+**Question:** H-AP cannot go green within T014–T017 alone: `bootstrapHarnessOperatorCredential` in `ai-platform/test/system/harness.ts` calls `setTestClock(activates_at)` during the first `coverClinic()`, so the active term’s `ends_at` is one day after constants like `APR_1_10` (e.g. `2026-04-02T10:00:00.000Z`), and E2E-P3.5-01/08 alarms at `APR_1_10` never apply the queued successor. POST scenarios after large `setTestClock` jumps also return 401 because `mintAat` uses `exp: now + 300` and tests do not remint after grace/lapse clocks (E2E-P3.5-02–04, 06–07). May T018 be satisfied by adjusting the system test file and/or harness clock bootstrap, or should the plan/tasks be amended?
+
+**Assumption:** T018 is satisfied by editing only `ai-platform/test/system/term-boundaries-grace-renewal.system.test.ts`. `ai-platform/test/system/harness.ts` and `coverClinic()` stay unchanged. `resetPlatformState` deletes `operator_credential` before every test, so each test's first `coverClinic()` runs `bootstrapHarnessOperatorCredential`, which registers the operator at the current clock and then `setTestClock(activates_at)`. `activates_at` is that clock plus 24 hours, and the paid grant's `nowIso` is `activates_at`. Before that first `coverClinic()`, the test sets the clock to the worked grant instant minus 24 hours, so the grant lands on the instant T001–T008 name (1 Mar 10:00, 1 Feb 10:00, 1 May 14:00, the staging start, and the other named instants). A later `setTestClock` in the same test is that named instant and is not shifted, because the credential already exists. `mintAat` sets `exp` to the harness clock plus 300 seconds. Any `POST /v1/requests` after a `setTestClock` past that expiry calls `mintAat` again and uses the new token. A 401 from the previous token is not a coverage result. Scenario assertions stay on those named instants. T009–T017 are not reopened.
+
+**Why:** Test Layout already requires the grant `nowIso` to be the worked instant and forbids editing the harness. The 24-hour activation delay runs inside the first `coverClinic()`, so the test cannot set the clock between bootstrap and the grant. Pre-offsetting that first clock keeps the shared harness behavior other H-AP suites rely on and still hits 1 Apr 10:00 for the successor alarm. Reminting is required because a grace or lapse jump is longer than 300 seconds.
+
+**Amended:** `specs/069-abo-p3-5-term-boundaries-grace-renewal/plan.md` (Test Layout, Sequencing step 18); `specs/069-abo-p3-5-term-boundaries-grace-renewal/tasks.md` (section 3 Tests purpose, T018).

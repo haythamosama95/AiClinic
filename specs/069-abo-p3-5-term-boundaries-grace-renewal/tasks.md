@@ -28,7 +28,7 @@
 
 ## 3. Tests
 
-**Purpose**: One failing test per E2E id, under H-AP, in Sequencing order. Every test is added to `ai-platform/test/system/term-boundaries-grace-renewal.system.test.ts`. The unit command is that file only. `coverClinic()` is the paid-grant helper in `ai-platform/test/system/harness.ts`. It already sends `grace: { days: 7, cap_rule: "proportional" }` and calls `vendorCall` `grant`, then `runDurableObjectAlarm`. The test sets `setTestClock` before `coverClinic()` so the grant's `nowIso` is the worked instant. Term and `hot` rows are read with `runInDurableObject`. No `sleep` over 2 s. No ABO worker is constructed. Do not modify `packages/vendor-contracts`. Do not edit `coverClinic()`.
+**Purpose**: One failing test per E2E id, under H-AP, in Sequencing order. Every test is added to `ai-platform/test/system/term-boundaries-grace-renewal.system.test.ts`. The unit command is that file only. `coverClinic()` is the paid-grant helper in `ai-platform/test/system/harness.ts`. It already sends `grace: { days: 7, cap_rule: "proportional" }` and calls `vendorCall` `grant`, then `runDurableObjectAlarm`. Do not edit `coverClinic()` or `ai-platform/test/system/harness.ts`. Each test's first `coverClinic()` registers the harness operator and `setTestClock(activates_at)`, where `activates_at` is the registration clock plus 24 hours, and the grant's `nowIso` is that `activates_at`. T001–T008 name the worked grant instant (1 Mar 10:00, 1 Feb 10:00, 1 May 14:00, the staging start, and the other instants in each task). The `setTestClock` immediately before that first `coverClinic()` is that instant minus 24 hours, so the grant lands on the named instant. A later `setTestClock` in the same test is the instant the task names. `mintAat` sets `exp` to the harness clock plus 300 seconds. Any `POST /v1/requests` after a `setTestClock` past that expiry uses a new `mintAat` token. Term and `hot` rows are read with `runInDurableObject`. No `sleep` over 2 s. No ABO worker is constructed. Do not modify `packages/vendor-contracts`.
 
 ### 3.1 User Story 1 - Apply the term boundary (Priority: P1) (part 1)
 
@@ -97,9 +97,9 @@ The run fails because the alarm at T1 `ends_at` does not end T1 `expired` and ac
 
 **Independent Test**: E2E-P3.5-01, E2E-P3.5-02, E2E-P3.5-03, E2E-P3.5-06, E2E-P3.5-07, and E2E-P3.5-08 in harness H-AP, with the test clock and `runDurableObjectAlarm` (rule V4).
 
-- [ ] T014 [US1] In `ai-platform/src/quota-do/coverage.ts`, `buildCoverageSnapshot` sets `state` `grace` with `reason` `none` and the grace term in `term` while grace is running, and `state` `lapsed` with `reason` `expired` or `grace_exhausted` and `term` null after those ends — produces the frozen snapshot slice and `hard_stop_at`, FR-003, FR-004, FR-010, E2E-P3.5-02, E2E-P3.5-08. Depends on T013. `mirrorFromSnapshot` writes `hard_stop_at` from `term.ends_at` when `state` is `active` and from `term.grace_ends_at` when `state` is `grace`. A lapsed replace keeps the `hard_stop_at` already stored on that mirror row. `coverage_mirror` is replaced only by a higher `(binding_epoch, clinic_seq)`.
+- [X] T014 [US1] In `ai-platform/src/quota-do/coverage.ts`, `buildCoverageSnapshot` sets `state` `grace` with `reason` `none` and the grace term in `term` while grace is running, and `state` `lapsed` with `reason` `expired` or `grace_exhausted` and `term` null after those ends — produces the frozen snapshot slice and `hard_stop_at`, FR-003, FR-004, FR-010, E2E-P3.5-02, E2E-P3.5-08. Depends on T013. `mirrorFromSnapshot` writes `hard_stop_at` from `term.ends_at` when `state` is `active` and from `term.grace_ends_at` when `state` is `grace`. A lapsed replace keeps the `hard_stop_at` already stored on that mirror row. `coverage_mirror` is replaced only by a higher `(binding_epoch, clinic_seq)`.
 
-- [ ] T015 [US1] In `ai-platform/src/quota-do/coverage.ts`, `computeNextAlarmAt` takes the grace term's `grace_ends_at` as well as the active term's `ends_at`, and the pending-outbox instant when the outbox is non-empty — produces `setAlarm` only when the next instant moves, FR-001, E2E-P3.5-08. Depends on T014 (same file). `syncAlarm` calls `setAlarm` only when that instant differs from `hot.next_alarm_at`. Drop the `immediate` bypass that calls `setAlarm` when the instant is unchanged.
+- [X] T015 [US1] In `ai-platform/src/quota-do/coverage.ts`, `computeNextAlarmAt` takes the grace term's `grace_ends_at` as well as the active term's `ends_at`, and the pending-outbox instant when the outbox is non-empty — produces `setAlarm` only when the next instant moves, FR-001, E2E-P3.5-08. Depends on T014 (same file). `syncAlarm` calls `setAlarm` only when that instant differs from `hot.next_alarm_at`. Drop the `immediate` bypass that calls `setAlarm` when the instant is unchanged.
 
 **Checkpoint**: E2E-P3.5-08 still needs activate, end, and grace-start events to ship with `hard_stop_at`. E2E-P3.5-04 and E2E-P3.5-05 still fail. E2E-P3.5-07 still needs the staging scale on admission and the alarm.
 
@@ -107,7 +107,7 @@ The run fails because the alarm at T1 `ends_at` does not end T1 `expired` and ac
 
 **Independent Test**: E2E-P3.5-04 and E2E-P3.5-05 in harness H-AP. Earlier H-AP suites stay green (rule S2).
 
-- [ ] T016 [US2] On the existing grace branch of `applyGrantRPC` in `ai-platform/src/quota-do/coverage.ts`, set the grace term's `used_final` to `hot.used` and set `hot.grace_base_used` to 0 before `hot.used` resets to 0 — produces renewal during grace and the unchanged lapse start, FR-006, FR-007, E2E-P3.5-04, E2E-P3.5-05. Depends on T015 (same file). Leave `calendar_start` and `starts_at` at the grace term's `ends_at`. Leave the no-coverage branch that starts a term at `nowIso`. Do not edit `VendorEntrypoint.grant` or `coverClinic()`.
+- [X] T016 [US2] On the existing grace branch of `applyGrantRPC` in `ai-platform/src/quota-do/coverage.ts`, set the grace term's `used_final` to `hot.used` and set `hot.grace_base_used` to 0 before `hot.used` resets to 0 — produces renewal during grace and the unchanged lapse start, FR-006, FR-007, E2E-P3.5-04, E2E-P3.5-05. Depends on T015 (same file). Leave `calendar_start` and `starts_at` at the grace term's `ends_at`. Leave the no-coverage branch that starts a term at `nowIso`. Do not edit `VendorEntrypoint.grant` or `coverClinic()`.
 
 **Checkpoint**: E2E-P3.5-04 and E2E-P3.5-05 pass once the unit command runs after T016. E2E-P3.5-07 still needs the staging scale.
 
@@ -115,7 +115,7 @@ The run fails because the alarm at T1 `ends_at` does not end T1 `expired` and ac
 
 **Independent Test**: E2E-P3.5-01, E2E-P3.5-02, E2E-P3.5-03, E2E-P3.5-06, E2E-P3.5-07, and E2E-P3.5-08 in harness H-AP, with the test clock and `runDurableObjectAlarm` (rule V4).
 
-- [ ] T017 [US1] In `GatewayObject.fetch` in `ai-platform/src/worker.ts`, set admission `durationScale` from `env.DURATION_SCALE === "staging"` before `admissionRPC`, and pass that same scale into `shipCoverageOutboxAlarm` from `alarm()` — produces scaled boundaries, FR-008, FR-009, E2E-P3.5-07. Depends on T016. Do not edit `durationScaleFromEnv` or `VendorEntrypoint.grant`. Production has no scale.
+- [X] T017 [US1] In `GatewayObject.fetch` in `ai-platform/src/worker.ts`, set admission `durationScale` from `env.DURATION_SCALE === "staging"` before `admissionRPC`, and pass that same scale into `shipCoverageOutboxAlarm` from `alarm()` — produces scaled boundaries, FR-008, FR-009, E2E-P3.5-07. Depends on T016. Do not edit `durationScaleFromEnv` or `VendorEntrypoint.grant`. Production has no scale.
 
 **Checkpoint**: E2E-P3.5-07 passes once the unit command runs after T017.
 
@@ -127,7 +127,7 @@ The run fails because the alarm at T1 `ends_at` does not end T1 `expired` and ac
 
 ### 5.1 Unit harness
 
-- [ ] T018 Run harness H-AP for this unit and confirm E2E-P3.5-01 through E2E-P3.5-08 pass together — produces the green run, FR-001 through FR-010, E2E-P3.5-01 through E2E-P3.5-08. Depends on T009 through T017 (and therefore on T001–T008). `ai-platform/src/coverage/calendar.ts`, `ai-platform/src/vendor/entrypoint.ts`, `ai-platform/src/admission/index.ts`, `ai-platform/src/errors.ts`, `ai-platform/test/system/harness.ts`, and `packages/vendor-contracts/**` stay unchanged. SC-002 is the review's run of earlier suites, not this command.
+- [ ] T018 Run harness H-AP for this unit and confirm E2E-P3.5-01 through E2E-P3.5-08 pass together — produces the green run, FR-001 through FR-010, E2E-P3.5-01 through E2E-P3.5-08. Depends on T009 through T017 (and therefore on T001–T008). This task may edit `ai-platform/test/system/term-boundaries-grace-renewal.system.test.ts` so each test's first `coverClinic()` is preceded by `setTestClock` at the worked grant instant minus 24 hours, and so every `POST /v1/requests` after a later `setTestClock` uses a `mintAat` token minted at that new clock. Named scenario instants stay as T001–T008 wrote them. `ai-platform/src/coverage/calendar.ts`, `ai-platform/src/vendor/entrypoint.ts`, `ai-platform/src/admission/index.ts`, `ai-platform/src/errors.ts`, `ai-platform/test/system/harness.ts`, and `packages/vendor-contracts/**` stay unchanged. Do not edit `coverClinic()`. SC-002 is the review's run of earlier suites, not this command.
 
 ```bash
 cd ai-platform && npx vitest run --config vitest.workers.config.ts \
