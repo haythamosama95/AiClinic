@@ -57,7 +57,8 @@ type P38VendorMethod =
   | "transferOut"
   | "transferIn"
   | "deleteInstallation"
-  | "voidGrant";
+  | "voidGrant"
+  | "voidForReversal";
 
 const p38VendorCall = vendorCall as (
   method: P38VendorMethod,
@@ -408,6 +409,16 @@ function al18Emails(): Array<Record<string, unknown>> {
   return parseAlEmailBodies().filter((body) => body.code === "AL-18");
 }
 
+async function countTransferForOrg(orgId: string): Promise<number> {
+  const table = await queryOne<{ name: string }>(
+    "SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'transfer'",
+  );
+  if (!table) {
+    return 0;
+  }
+  return count("transfer", "org_id = ?", [orgId]);
+}
+
 async function readTransferPackage(
   transferId: string,
 ): Promise<string | null> {
@@ -444,6 +455,77 @@ async function setupActiveAndQueuedTerms(): Promise<{
   await runDurableObjectAlarm(quotaDoStub(scenario.installationId));
 
   return { scenario, activeGrantId, queuedGrantId };
+}
+
+function randomHex64(): string {
+  const bytes = new Uint8Array(32);
+  crypto.getRandomValues(bytes);
+  return [...bytes].map((b) => b.toString(16).padStart(2, "0")).join("");
+}
+
+async function callVoidForReversal(input: {
+  grantId: string;
+  partial: boolean;
+  reversalId?: string;
+  reason?: string;
+  evidenceSha256?: string;
+}): Promise<GrantResultEnvelope> {
+  const body = {
+    contract_version: CONTRACT_VERSION,
+    grant_id: input.grantId,
+    reversal_id: input.reversalId ?? randomHex64(),
+    reason: input.reason ?? "payment reversed",
+    evidence_sha256: input.evidenceSha256 ?? randomHex64(),
+    partial: input.partial,
+  };
+  const aboSignature = await signCoverAbo(body);
+  return p38VendorCall("voidForReversal", {
+    ...body,
+    abo_kid: coverClinicAboKid(),
+    abo_signature: aboSignature,
+  });
+}
+
+async function completePaidGrantTransfer(): Promise<{
+  scenario: Scenario;
+  oldInstallationId: string;
+  newInstallationId: string;
+  paidGrantId: string;
+  paidOriginGrantId: string;
+}> {
+  const scenario = await newScenario();
+  await coverClinic(scenario);
+  const oldInstallationId = scenario.installationId;
+  const termsBefore = await readDoTerms(oldInstallationId);
+  const activeBefore = termsBefore.find((row) => row.state === "active")!;
+  const paidGrantId = activeBefore.grant_id;
+  const paidOriginGrantId = activeBefore.origin_grant_id;
+
+  const begun = await hpBeginTransfer({
+    orgId: scenario.orgId,
+    fromInstallationId: oldInstallationId,
+  });
+  expect(begun.result).toBe("ok");
+  const transferRow = JSON.parse(begun.detail) as {
+    transfer_id: string;
+    to_installation_id: string;
+  };
+
+  const out = await transferOut(transferRow.transfer_id);
+  expect(out.result).toBe("applied");
+  await runDurableObjectAlarm(quotaDoStub(oldInstallationId));
+
+  const inResult = await transferIn(transferRow.transfer_id);
+  expect(inResult.result).toBe("applied");
+  await runDurableObjectAlarm(quotaDoStub(transferRow.to_installation_id));
+
+  return {
+    scenario,
+    oldInstallationId,
+    newInstallationId: transferRow.to_installation_id,
+    paidGrantId,
+    paidOriginGrantId,
+  };
 }
 
 async function setupBeginTransferOnly(): Promise<TransferSetup> {
@@ -790,5 +872,100 @@ describe("transfer, deletion with coverage left, ledger retention", () => {
       [scenario.orgId],
     );
     expect(latest?.epoch).toBe((held?.epoch ?? 0) + 1);
+  });
+
+  it("E2E-P3.8-07 voidForReversal of a moved paid grant lands on the new installation", async () => {
+    const {
+      scenario,
+      oldInstallationId,
+      newInstallationId,
+      paidGrantId,
+      paidOriginGrantId,
+    } = await completePaidGrantTransfer();
+
+    const voided = await callVoidForReversal({
+      grantId: paidGrantId,
+      partial: false,
+    });
+    expect(voided.result).toBe("applied");
+    await runDurableObjectAlarm(quotaDoStub(newInstallationId));
+
+    const inspected = await inspectCoverageTerms(scenario);
+    const reversed = inspected.find(
+      (row) => row.origin_grant_id === paidOriginGrantId,
+    );
+    expect(reversed?.state).toBe("ended");
+    expect(reversed?.end_reason).toBe("reversed");
+
+    const oldTerms = await readDoTerms(oldInstallationId);
+    const transferred = oldTerms.find(
+      (row) => row.origin_grant_id === paidOriginGrantId,
+    );
+    expect(transferred?.end_reason).toBe("transferred");
+  });
+
+  it("E2E-P3.8-08 purge of a deleted installation keeps the ledger", async () => {
+    const scenario = await newScenario();
+    await coverClinic(scenario);
+    const installationId = scenario.installationId;
+    const orgId = scenario.orgId;
+
+    const activeTerm = (await readDoTerms(installationId)).find(
+      (row) => row.state === "active",
+    );
+    expect(activeTerm?.term_id).toBeTruthy();
+
+    const recordedAt = getVendorTestClockIso() ?? new Date().toISOString();
+    const usageEventId = crypto.randomUUID();
+    await env.DB.prepare(
+      `INSERT INTO usage_event (
+        usage_event_id, installation_id, term_id, request_id, quota_weight, tokens, cost, recorded_at
+      ) VALUES (?, ?, ?, NULL, ?, ?, ?, ?)`,
+    )
+      .bind(usageEventId, installationId, activeTerm!.term_id, 1, 50, 0.01, recordedAt)
+      .run();
+
+    const ledgerBefore = await count("grant_ledger", "org_id = ?", [orgId]);
+    const voidBefore = await count(
+      "grant_void",
+      "grant_id IN (SELECT grant_id FROM grant_ledger WHERE org_id = ?)",
+      [orgId],
+    );
+    const eventsBefore = await count("coverage_event", "installation_id = ?", [
+      installationId,
+    ]);
+    const transfersBefore = await countTransferForOrg(orgId);
+    const usageBefore = await count("usage_event", "term_id = ?", [
+      activeTerm!.term_id,
+    ]);
+
+    expect(ledgerBefore).toBeGreaterThan(0);
+    expect(eventsBefore).toBeGreaterThan(0);
+    expect(usageBefore).toBe(1);
+
+    const deleted = await hpDeleteInstallation({ orgId });
+    expect(deleted.result).toBe("ok");
+
+    const installation = await queryOne<{ status: string }>(
+      "SELECT status FROM installation WHERE installation_id = ?",
+      [installationId],
+    );
+    expect(installation?.status).toBe("deleted");
+
+    expect(await count("grant_ledger", "org_id = ?", [orgId])).toBe(ledgerBefore);
+    expect(
+      await count(
+        "grant_void",
+        "grant_id IN (SELECT grant_id FROM grant_ledger WHERE org_id = ?)",
+        [orgId],
+      ),
+    ).toBe(voidBefore);
+    expect(
+      await count("coverage_event", "installation_id = ?", [installationId]),
+    ).toBe(eventsBefore);
+    expect(await countTransferForOrg(orgId)).toBe(transfersBefore);
+    expect(await count("usage_event", "term_id = ?", [activeTerm!.term_id])).toBe(
+      usageBefore,
+    );
   });
 });

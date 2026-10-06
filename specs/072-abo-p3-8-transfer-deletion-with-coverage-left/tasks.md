@@ -65,7 +65,7 @@ The run fails because `beginTransfer` is not a method.
 
 **Independent Test**: E2E-P3.8-07 in harness H-AP.
 
-- [ ] T007 [US3] Add the failing test `E2E-P3.8-07 voidForReversal of a moved paid grant lands on the new installation` in `ai-platform/test/system/transfer-deletion.system.test.ts` — red test, FR-007, E2E-P3.8-07. Depends on T006 (same file). After `transferIn`, `voidForReversal` for that paid `grant_id` with `partial` false is `applied`. `inspectCoverage` on the new installation shows that term `ended` with `end_reason` `reversed`. The old installation's term stays `end_reason` `transferred`. Do not add the four method names to `VendorMethod`. Do not change `voidForReversalRPC` or the tombstone branch. The unit command fails because `voidForReversal` does not change the new installation's term.
+- [X] T007 [US3] Add the failing test `E2E-P3.8-07 voidForReversal of a moved paid grant lands on the new installation` in `ai-platform/test/system/transfer-deletion.system.test.ts` — red test, FR-007, E2E-P3.8-07. Depends on T006 (same file). After `transferIn`, `voidForReversal` for that paid `grant_id` with `partial` false is `applied`. `inspectCoverage` on the new installation shows that term `ended` with `end_reason` `reversed`. The old installation's term stays `end_reason` `transferred`. Do not add the four method names to `VendorMethod`. Do not change `voidForReversalRPC` or the tombstone branch. The unit command fails because `voidForReversal` does not change the new installation's term.
 
 **Checkpoint**: E2E-P3.8-07 exists and fails.
 
@@ -73,7 +73,7 @@ The run fails because `beginTransfer` is not a method.
 
 **Independent Test**: E2E-P3.8-08 in harness H-AP. Earlier H-AP suites stay green (rule S2).
 
-- [ ] T008 [US4] Add the failing test `E2E-P3.8-08 purge of a deleted installation keeps the ledger` in `ai-platform/test/system/transfer-deletion.system.test.ts` — red test, FR-008, E2E-P3.8-08. Depends on T007 (same file). `deleteInstallation` reaches `purgeByInstallationId`. Afterward the `installation` row is still present with `status` `deleted`. `grant_ledger`, `grant_void`, `coverage_event`, and `transfer` rows for that clinic are still present. `usage_event` rows whose `term_id` is a term that has not ended are still present. Do not add the four method names to `VendorMethod`. The unit command fails because purge still removes the installation row.
+- [X] T008 [US4] Add the failing test `E2E-P3.8-08 purge of a deleted installation keeps the ledger` in `ai-platform/test/system/transfer-deletion.system.test.ts` — red test, FR-008, E2E-P3.8-08. Depends on T007 (same file). `deleteInstallation` reaches `purgeByInstallationId`. Afterward the `installation` row is still present with `status` `deleted`. `grant_ledger`, `grant_void`, `coverage_event`, and `transfer` rows for that clinic are still present. `usage_event` rows whose `term_id` is a term that has not ended are still present. Do not add the four method names to `VendorMethod`. The unit command fails because purge still removes the installation row.
 
 **Checkpoint**: E2E-P3.8-08 exists and fails.
 
