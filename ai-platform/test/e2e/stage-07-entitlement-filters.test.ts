@@ -263,22 +263,12 @@ describe("Stage 07 — entitlement filters (S07-019…S07-037)", () => {
     );
     expect(suspended.status).toBe(200);
     await flushBackgroundWork(300);
-    await seedSql([
-      {
-        sql: `UPDATE coverage_mirror SET suspended = 1 WHERE installation_id = ?`,
-        params: [scenario.installationId],
-      },
-      {
-        sql: `UPDATE installation SET status = 'suspended' WHERE installation_id = ?`,
-        params: [scenario.installationId],
-      },
-    ]);
     clearConfigCache();
 
     const result = await discoveryGet(token);
     expect(result.status).toBe(403);
     assertTaxonomyBody(result.json, {
-      code: "suspended",
+      code: "installation_suspended",
       retry_safe: false,
     });
     const body = result.json as { request_reference: string; trace_id: string };
@@ -385,7 +375,6 @@ describe("Stage 07 — entitlement filters (S07-019…S07-037)", () => {
       },
     ]);
     await revokeInstallationVisitSummaryGrant(scenario.installationId);
-    await setMirrorCapabilities(scenario, []);
 
     const token = await mintAat(scenario);
     await assertEmptyList(await discoveryGet(token));
@@ -451,7 +440,6 @@ describe("Stage 07 — entitlement filters (S07-019…S07-037)", () => {
         params: [CAPABILITY_ID, `installation:${scenario.installationId}`],
       },
     ]);
-    await setMirrorCapabilities(scenario, []);
     clearConfigCache();
 
     const token = await mintAat(scenario);

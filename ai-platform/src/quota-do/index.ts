@@ -322,6 +322,277 @@ function sweepEphemeral(state: QuotaDoState, now: number): void {
   }
 }
 
+function maybeResetPeriod(state: QuotaDoState, entitlement: EntitlementSnapshot): void {
+  const bounds = entitlement.period_bounds;
+
+  if (
+    state.periodBounds?.period_start === bounds.period_start &&
+    state.periodBounds?.period_end === bounds.period_end
+  ) {
+    return;
+  }
+
+  const inFlight = state.periodCounters.inFlight;
+  state.periodBounds = {
+    period_start: bounds.period_start,
+    period_end: bounds.period_end,
+  };
+  state.periodCounters = {
+    ...initialPeriodCounters(),
+    inFlight,
+  };
+}
+
+function isQuotaExhausted(
+  counters: PeriodCounters,
+  entitlement: EntitlementSnapshot,
+): boolean {
+  return (
+    counters.requestsUsed >= entitlement.request_quota ||
+    counters.creditsUsed >= entitlement.credit_budget
+  );
+}
+
+function hasCoverageHotRow(storage: DurableObjectStorage): boolean {
+  return sqlSelect<{ n: number }>(storage, "SELECT 1 AS n FROM hot LIMIT 1").length > 0;
+}
+
+function usesLegacyEntitlementAdmission(request: AdmissionRequest): boolean {
+  return request.entitlement !== undefined;
+}
+
+function usesLegacyEntitlementCredit(request: CreditRequest): boolean {
+  return request.entitlement !== undefined;
+}
+
+async function shouldUseLegacyCredit(
+  storage: DurableObjectStorage,
+  request: CreditRequest,
+): Promise<boolean> {
+  if (usesLegacyEntitlementCredit(request) || !hasCoverageHotRow(storage)) {
+    return true;
+  }
+  const state = await loadState(storage);
+  return (
+    state.admittedRequests[request.requestId] !== undefined ||
+    state.creditedRequests[request.requestId] !== undefined
+  );
+}
+
+async function mirrorProductionCreditToLegacy(
+  storage: DurableObjectStorage,
+  request: CreditRequest,
+  timestamp: number,
+): Promise<PeriodCounters> {
+  const state = await loadState(storage);
+  sweepEphemeral(state, timestamp);
+  const credits = request.credits ?? 1;
+  state.periodCounters.tokensUsed += request.usage.tokens;
+  state.periodCounters.costUsed += request.usage.cost;
+  state.periodCounters.creditsUsed += credits;
+  state.periodCounters.requestsUsed += 1;
+  await storage.put(STATE_KEY, state);
+  return { ...state.periodCounters };
+}
+
+async function applyFallbackWeightToLegacy(
+  storage: DurableObjectStorage,
+  weight: number,
+): Promise<void> {
+  const state = await loadState(storage);
+  state.periodCounters.requestsUsed += weight;
+  state.periodCounters.creditsUsed += weight;
+  await storage.put(STATE_KEY, state);
+}
+
+async function admissionOnLegacyState(
+  storage: DurableObjectStorage,
+  request: AdmissionRequest,
+  timestamp: number,
+  logger: Logger,
+): Promise<AdmissionResponse> {
+  const entitlement = request.entitlement;
+  if (entitlement === undefined) {
+    return {
+      kind: "admission",
+      outcome: "coverage_lapsed",
+      coverage_reason: "none",
+    };
+  }
+
+  const state = await loadState(storage);
+
+  assertInstallationBound(state, request.installationId);
+  sweepEphemeral(state, timestamp);
+  maybeResetPeriod(state, entitlement);
+
+  if (state.jtiReplay[request.jti]) {
+    logger.info("Admission replay detected", {
+      installation_id: request.installationId,
+      jti: request.jti,
+    });
+    await storage.put(STATE_KEY, state);
+    return { kind: "admission", outcome: "replay" };
+  }
+
+  const existingIdempotency = state.idempotency[request.idempotencyKey];
+  if (existingIdempotency) {
+    logger.info("Admission idempotent replay", {
+      installation_id: request.installationId,
+      request_id: existingIdempotency.requestId,
+      prior_state: existingIdempotency.state,
+    });
+    await storage.put(STATE_KEY, state);
+    return {
+      kind: "admission",
+      outcome: "idempotent",
+      priorState: {
+        requestReference: existingIdempotency.requestReference,
+        state: existingIdempotency.state,
+        requestId: existingIdempotency.requestId,
+        ...(existingIdempotency.terminalErrorCode !== undefined
+          ? { terminalErrorCode: existingIdempotency.terminalErrorCode }
+          : {}),
+      },
+    };
+  }
+
+  if (isQuotaExhausted(state.periodCounters, entitlement)) {
+    logger.info("Admission quota exhausted", {
+      installation_id: request.installationId,
+    });
+    await storage.put(STATE_KEY, state);
+    return {
+      kind: "admission",
+      outcome: "quota_exhausted",
+      period_end: entitlement.period_bounds.period_end,
+    };
+  }
+
+  if (state.periodCounters.inFlight >= CONCURRENCY_LIMIT) {
+    logger.info("Admission concurrency exhausted", {
+      installation_id: request.installationId,
+      in_flight: state.periodCounters.inFlight,
+    });
+    await storage.put(STATE_KEY, state);
+    return { kind: "admission", outcome: "concurrency_exhausted" };
+  }
+
+  const requestId = crypto.randomUUID();
+  const expiresAt = timestamp + EPHEMERAL_HORIZON_MS;
+
+  if (state.boundInstallationId === undefined) {
+    state.boundInstallationId = request.installationId;
+  }
+
+  state.jtiReplay[request.jti] = { expiresAt };
+  state.idempotency[request.idempotencyKey] = {
+    expiresAt,
+    requestReference: request.requestReference,
+    state: "admitted",
+    requestId,
+  };
+  state.admittedRequests[requestId] = {
+    requestReference: request.requestReference,
+    admittedAt: timestamp,
+    entitlement,
+  };
+  state.periodCounters.inFlight += 1;
+
+  const degraded = isSoftThresholdCrossed(state.periodCounters, entitlement);
+
+  await storage.put(STATE_KEY, state);
+  logger.info("Admission granted", {
+    installation_id: request.installationId,
+    request_id: requestId,
+    degraded,
+  });
+  return {
+    kind: "admission",
+    outcome: "admitted",
+    requestId,
+    ...(degraded ? { degraded: true } : {}),
+  };
+}
+
+async function creditOnLegacyState(
+  storage: DurableObjectStorage,
+  request: CreditRequest,
+  timestamp: number,
+  logger: Logger,
+): Promise<CreditResponse> {
+  const state = await loadState(storage);
+
+  if (
+    state.boundInstallationId !== undefined &&
+    state.boundInstallationId !== request.installationId
+  ) {
+    logger.info("Credit rejected — unknown request", {
+      installation_id: request.installationId,
+      request_id: request.requestId,
+    });
+    return { kind: "credit", ok: false, code: "unknown_request" };
+  }
+
+  sweepEphemeral(state, timestamp);
+
+  if (
+    !state.admittedRequests[request.requestId] ||
+    state.creditedRequests[request.requestId]
+  ) {
+    await storage.put(STATE_KEY, state);
+    logger.info("Credit rejected — unknown request", {
+      installation_id: request.installationId,
+      request_id: request.requestId,
+    });
+    return { kind: "credit", ok: false, code: "unknown_request" };
+  }
+
+  const admitted = state.admittedRequests[request.requestId];
+  const entitlement = request.entitlement ?? admitted.entitlement;
+  if (entitlement) {
+    maybeResetPeriod(state, entitlement);
+  }
+
+  const credits = request.credits ?? 1;
+  state.periodCounters.tokensUsed += request.usage.tokens;
+  state.periodCounters.costUsed += request.usage.cost;
+  state.periodCounters.creditsUsed += credits;
+  state.periodCounters.requestsUsed += 1;
+  state.periodCounters.inFlight = Math.max(0, state.periodCounters.inFlight - 1);
+
+  delete state.admittedRequests[request.requestId];
+  state.creditedRequests[request.requestId] = {
+    expiresAt: timestamp + EPHEMERAL_HORIZON_MS,
+  };
+
+  markIdempotencyOnCredit(
+    state,
+    request.requestId,
+    request.partial,
+    timestamp,
+    request.idempotencyState,
+    request.terminalErrorCode,
+  );
+
+  await storage.put(STATE_KEY, state);
+
+  logger.info("Credit applied", {
+    installation_id: request.installationId,
+    request_id: request.requestId,
+    partial: request.partial,
+    tokens: request.usage.tokens,
+    cost: request.usage.cost,
+    credits,
+  });
+
+  return {
+    kind: "credit",
+    ok: true,
+    periodCounters: { ...state.periodCounters },
+  };
+}
+
 /**
  * Soft threshold is a fraction of period budget (§4.3.3 / F4 contract §2).
  * `0` disables soft degradation (enroll's zero-threshold case); `(0, 1]` is active.
@@ -1159,23 +1430,32 @@ export async function settleFallbackRPC(
 ): Promise<SettleFallbackResponse> {
   return blockConcurrencyWhile(async () => {
     const sqlStorage = storage as SqlStorage;
-    if (!sqlStorage.sql) {
-      return { kind: "settleFallback", outcome: "skipped" };
+    if (!sqlStorage.sql || !hasCoverageHotRow(storage)) {
+      await applyFallbackWeightToLegacy(storage, request.weight);
+      return { kind: "settleFallback", outcome: "settled" };
     }
     const hotRows = sqlSelect<HotRow>(storage, "SELECT * FROM hot LIMIT 1");
     if (hotRows.length === 0) {
-      return { kind: "settleFallback", outcome: "skipped" };
+      await applyFallbackWeightToLegacy(storage, request.weight);
+      return { kind: "settleFallback", outcome: "settled" };
     }
     const hot = parseHotRow(hotRows[0]!);
-    if (hotStillHoldsRequestId(hot, request.request_id)) {
-      return { kind: "settleFallback", outcome: "skipped" };
+    const reservationIndex = hot.reservations.findIndex(
+      (reservation) => reservation.id === request.request_id,
+    );
+    if (reservationIndex >= 0) {
+      const reservation = hot.reservations[reservationIndex]!;
+      hot.reservations.splice(reservationIndex, 1);
+      hot.row.reserved = Math.max(0, hot.row.reserved - reservation.weight);
     }
     if (hot.row.active_term_id === request.term_id) {
       hot.row.used += request.weight;
       persistParsedHot(storage, hot);
     } else {
       adjustEndedTermUsedFinal(storage, request.term_id, request.weight);
+      persistParsedHot(storage, hot);
     }
+    await applyFallbackWeightToLegacy(storage, request.weight);
     return { kind: "settleFallback", outcome: "settled" };
   });
 }
@@ -1191,12 +1471,12 @@ export async function admissionRPC(
 
   return blockConcurrencyWhile(async () => {
     const sqlStorage = storage as SqlStorage;
-    if (!sqlStorage.sql) {
-      return {
-        kind: "admission",
-        outcome: "coverage_lapsed",
-        coverage_reason: "none",
-      };
+    if (
+      usesLegacyEntitlementAdmission(request) ||
+      !sqlStorage.sql ||
+      !hasCoverageHotRow(storage)
+    ) {
+      return admissionOnLegacyState(storage, request, timestamp, logger);
     }
     return admitOnHotRow(storage, request, timestamp, logger);
   });
@@ -1213,25 +1493,14 @@ export async function creditRPC(
 
   return blockConcurrencyWhile(async () => {
     const sqlStorage = storage as SqlStorage;
-    if (sqlStorage.sql) {
-      if (
-        hotRowInstallationMismatch(storage, request.installationId)
-      ) {
-        logger.info("Credit rejected — unknown request", {
-          installation_id: request.installationId,
-          request_id: request.requestId,
-        });
-        return { kind: "credit", ok: false, code: "unknown_request" };
-      }
-      return settleReservationOnHot(storage, request, timestamp);
+    if (
+      !sqlStorage.sql ||
+      (await shouldUseLegacyCredit(storage, request))
+    ) {
+      return creditOnLegacyState(storage, request, timestamp, logger);
     }
 
-    const state = await loadState(storage);
-
-    if (
-      state.boundInstallationId !== undefined &&
-      state.boundInstallationId !== request.installationId
-    ) {
+    if (hotRowInstallationMismatch(storage, request.installationId)) {
       logger.info("Credit rejected — unknown request", {
         installation_id: request.installationId,
         request_id: request.requestId,
@@ -1239,55 +1508,20 @@ export async function creditRPC(
       return { kind: "credit", ok: false, code: "unknown_request" };
     }
 
-    sweepEphemeral(state, timestamp);
-
-    if (
-      !state.admittedRequests[request.requestId] ||
-      state.creditedRequests[request.requestId]
-    ) {
-      await storage.put(STATE_KEY, state);
-      logger.info("Credit rejected — unknown request", {
-        installation_id: request.installationId,
-        request_id: request.requestId,
-      });
-      return { kind: "credit", ok: false, code: "unknown_request" };
+    const hotResult = settleReservationOnHot(storage, request, timestamp);
+    if (!hotResult.ok) {
+      return hotResult;
     }
 
-    state.periodCounters.tokensUsed += request.usage.tokens;
-    state.periodCounters.costUsed += request.usage.cost;
-    state.periodCounters.creditsUsed += request.credits;
-    state.periodCounters.requestsUsed += 1;
-    state.periodCounters.inFlight = Math.max(0, state.periodCounters.inFlight - 1);
-
-    delete state.admittedRequests[request.requestId];
-    state.creditedRequests[request.requestId] = {
-      expiresAt: timestamp + EPHEMERAL_HORIZON_MS,
-    };
-
-    markIdempotencyOnCredit(
-      state,
-      request.requestId,
-      request.partial,
+    const periodCounters = await mirrorProductionCreditToLegacy(
+      storage,
+      request,
       timestamp,
-      request.idempotencyState,
-      request.terminalErrorCode,
     );
-
-    await storage.put(STATE_KEY, state);
-
-    logger.info("Credit applied", {
-      installation_id: request.installationId,
-      request_id: request.requestId,
-      partial: request.partial,
-      tokens: request.usage.tokens,
-      cost: request.usage.cost,
-      credits: request.credits,
-    });
-
     return {
       kind: "credit",
       ok: true,
-      periodCounters: { ...state.periodCounters },
+      periodCounters,
     };
   });
 }
@@ -1348,7 +1582,7 @@ export async function releaseRPC(
 
   return blockConcurrencyWhile(async () => {
     const sqlStorage = storage as SqlStorage;
-    if (sqlStorage.sql) {
+    if (sqlStorage.sql && hasCoverageHotRow(storage)) {
       return releaseOnHotRow(storage, request, timestamp, logger);
     }
 

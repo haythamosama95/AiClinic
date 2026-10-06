@@ -75,6 +75,8 @@ export type ControlFetchOptions = {
   auth?: ControlAuth;
   headers?: Record<string, string>;
   clinicToken?: string;
+  /** Successful vendor routes clear the isolate cache. Set false to observe TTL expiry. */
+  clearCache?: boolean;
 };
 
 const OPERATOR_EMAIL = "operator@clinic.test";
@@ -612,7 +614,7 @@ export async function controlFetch(
     auth,
   );
   if (routed !== null) {
-    if (routed.status === 200) {
+    if (routed.status === 200 && options.clearCache !== false) {
       isolateConfigCache.clear();
     }
     const headers = new Headers(routed.headers);
@@ -987,10 +989,11 @@ export async function promotePolicy(
 export async function rollbackPolicy(
   policyId: string,
   version: string,
+  options: ControlFetchOptions = {},
 ): Promise<HttpResult> {
   return controlFetch(
     `/control/routing-policies/${policyId}/versions/${version}/rollback`,
-    { body: {} },
+    { body: {}, ...options },
   );
 }
 

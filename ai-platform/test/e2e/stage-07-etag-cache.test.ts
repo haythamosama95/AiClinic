@@ -488,6 +488,13 @@ describe("Stage 07 — discovery ETag, cache, lifecycle overlay (S07-038…S07-0
     try {
       const warm = await getCapabilities(token);
 
+      await seedSql([
+        {
+          sql: `DELETE FROM capability_grant WHERE scope LIKE 'plan:%'`,
+          params: [],
+        },
+      ]);
+
       await env.DB.prepare(
         `UPDATE capability_grant
          SET revoked_at = ?

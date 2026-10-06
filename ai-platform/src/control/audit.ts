@@ -28,13 +28,25 @@ export async function writeEntrypointAudit(
   action: string,
   target: string,
   assertionSha256: string | null,
+  beforePointer: string | null = null,
+  afterPointer: string | null = null,
 ): Promise<void> {
   await db
     .prepare(
       `INSERT INTO control_audit
          (audit_id, operator_id, actor, action, target, assertion_sha256, before_pointer, after_pointer, recorded_at)
-       VALUES (?, ?, ?, ?, ?, ?, NULL, NULL, ?)`,
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     )
-    .bind(newId(), actor, actor, action, target, assertionSha256, nowIso())
+    .bind(
+      newId(),
+      actor,
+      actor,
+      action,
+      target,
+      assertionSha256,
+      beforePointer,
+      afterPointer,
+      nowIso(),
+    )
     .run();
 }

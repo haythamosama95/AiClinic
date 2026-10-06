@@ -13,6 +13,7 @@ import type { Principal } from "../identity";
 import { noopLogger, type Logger } from "../logger";
 import { recordGuardRejection } from "../rate-limit";
 import { hashManifest, type Manifest } from "../manifest";
+import { planTierMeetsMinimum } from "../platform-vocabulary";
 
 export type CapabilityRegistry = Map<string, Manifest>;
 
@@ -210,6 +211,64 @@ export async function loadPlanSnapshotFromMirror(
   }
 }
 
+function parsePlanVersionCapabilities(raw: string): string[] {
+  return parseAllowedCapabilities({ allowed_capabilities: raw });
+}
+
+async function planGrantScopesForDiscovery(
+  db: D1Database,
+  capabilityId: string,
+): Promise<string[]> {
+  const planIds = new Set<string>(["professional"]);
+  const rows = await db
+    .prepare(
+      `SELECT plan_id, capabilities FROM plan_version WHERE status = 'published'`,
+    )
+    .all<{ plan_id: string; capabilities: string }>();
+  for (const row of rows.results ?? []) {
+    if (parsePlanVersionCapabilities(row.capabilities).includes(capabilityId)) {
+      planIds.add(row.plan_id);
+    }
+  }
+  return [...planIds].map((planId) => `plan:${planId}`);
+}
+
+async function discoveryGrantAllows(
+  installationId: string,
+  capabilityId: string,
+  capabilityVersion: string,
+  cache: ConfigCache,
+  reader: D1Reader,
+  db: D1Database,
+): Promise<boolean> {
+  const installationGrant = await loadMatchingGrant(
+    cache,
+    reader,
+    `${installationId}/${capabilityId}`,
+    capabilityVersion,
+  );
+  if (installationGrant === "granted") {
+    return true;
+  }
+  if (installationGrant === "version_mismatch") {
+    return false;
+  }
+
+  for (const planScope of await planGrantScopesForDiscovery(db, capabilityId)) {
+    const planGrant = await loadMatchingGrant(
+      cache,
+      reader,
+      `${planScope}/${capabilityId}`,
+      capabilityVersion,
+    );
+    if (planGrant === "granted") {
+      return true;
+    }
+  }
+
+  return false;
+}
+
 async function loadMatchingGrant(
   cache: ConfigCache,
   reader: D1Reader,
@@ -236,13 +295,9 @@ async function loadMatchingGrant(
   }
 }
 
-async function assertPlanAllowance(
+async function assertPlanIncludesCapability(
   principal: Principal,
   capabilityId: string,
-  _version: string,
-  manifest: Manifest,
-  _cache: ConfigCache,
-  _reader: D1Reader,
   db: D1Database,
 ): Promise<{ ok: true } | { ok: false; code: "forbidden_capability" }> {
   const installationId = principal.installationId;
@@ -270,6 +325,18 @@ async function assertPlanAllowance(
   ) {
     return forbidden;
   }
+
+  return { ok: true };
+}
+
+function assertManifestAccess(
+  principal: Principal,
+  manifest: Manifest,
+): { ok: true } | { ok: false; code: "forbidden_capability" } {
+  const forbidden = {
+    ok: false as const,
+    code: "forbidden_capability" as const,
+  };
 
   const requiredScope = manifest.Access.requiredCapabilityScope;
   if (
@@ -572,6 +639,25 @@ export async function resolve(
   logger: Logger = noopLogger,
   db: D1Database,
 ): Promise<ResolveResult> {
+  const planGate = await assertPlanIncludesCapability(
+    principal,
+    capabilityId,
+    db,
+  );
+  if (!planGate.ok) {
+    logger.debug("capability_resolve_rejected", {
+      capability_id: capabilityId,
+      version,
+      code: planGate.code,
+      installation_id: principal.installationId,
+    });
+    recordGuardRejection({
+      error_code: planGate.code,
+      installation_id: principal.installationId,
+    });
+    return planGate;
+  }
+
   const manifest = capabilityRegistry.get(registryKey(capabilityId, version));
   if (manifest === undefined) {
     logger.debug("capability_resolve_rejected", {
@@ -602,15 +688,7 @@ export async function resolve(
     return { ok: false, code: "capability_retired" };
   }
 
-  const allowance = await assertPlanAllowance(
-    principal,
-    capabilityId,
-    version,
-    manifest,
-    cache,
-    reader,
-    db,
-  );
+  const allowance = assertManifestAccess(principal, manifest);
   if (!allowance.ok) {
     logger.debug("capability_resolve_rejected", {
       capability_id: capabilityId,
@@ -697,6 +775,15 @@ export async function discover(
       continue;
     }
 
+    const minimumPlanTier = manifest.Access.minimumPlanTier;
+    if (
+      typeof minimumPlanTier === "string" &&
+      minimumPlanTier.length > 0 &&
+      !planTierMeetsMinimum("standard", minimumPlanTier)
+    ) {
+      continue;
+    }
+
     candidates.push(manifest);
   }
 
@@ -705,7 +792,21 @@ export async function discover(
       const capabilityId = manifest.Identity.capabilityId as string;
       const version = manifest.Identity.version as string;
 
-      const overlay = await loadLifecycleOverlay(cache, reader, capabilityId, version);
+      const [grantOutcome, overlay] = await Promise.all([
+        discoveryGrantAllows(
+          installationId,
+          capabilityId,
+          version,
+          cache,
+          reader,
+          db,
+        ),
+        loadLifecycleOverlay(cache, reader, capabilityId, version),
+      ]);
+
+      if (!grantOutcome) {
+        return null;
+      }
 
       const effective = effectiveLifecycle(manifest, overlay);
       if (effective.lifecycleState === "retired") {

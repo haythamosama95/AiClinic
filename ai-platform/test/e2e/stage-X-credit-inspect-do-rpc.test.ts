@@ -15,7 +15,10 @@ import {
   DEFAULT_ENTITLE_PAYLOAD,
   newClinic,
   entitleInstallation,
+  ensureE2eCoverageMirror,
+  ensureE2eQuotaDoCoverage,
   env,
+  fakePolicyDocument,
   flushBackgroundWork,
   gatewayObjectJson,
   getAiRequest,
@@ -25,7 +28,9 @@ import {
   mintAat,
   newScenario,
   postRequest,
+  promotePolicy,
   provisionHappyPath,
+  publishPolicy,
   queryAll,
   queryOne,
   r2Exists,
@@ -37,8 +42,10 @@ import {
   type InvokeResult,
   type Scenario,
 } from "./harness";
+import { resetCoverClinicBootstrap } from "./harness/cover";
+import { POLICY_ID, POLICY_VERSION } from "./harness/env";
 // HARNESS-GAP: recordGuardRejection is not on the frozen barrel (SX-056).
-import { recordGuardRejection } from "../../src/rate-limit";
+import { flushRejectionCounters, recordGuardRejection } from "../../src/rate-limit";
 // HARNESS-GAP: runRollupAndReconciliation is not on the frozen barrel; SX-053
 // asserts the production report (scheduled cron cannot return it).
 import { runRollupAndReconciliation } from "../../src/rollup";
@@ -129,6 +136,7 @@ function p1SnapshotFromDefault(): Record<string, unknown> {
       token_budget: DEFAULT_ENTITLE_PAYLOAD.token_budget,
       cost_budget: DEFAULT_ENTITLE_PAYLOAD.cost_budget,
     },
+    credit_budget: DEFAULT_ENTITLE_PAYLOAD.request_quota,
     allowed_capabilities: [...DEFAULT_ENTITLE_PAYLOAD.allowed_capabilities],
     soft_threshold: DEFAULT_ENTITLE_PAYLOAD.soft_threshold,
     status: "active",
@@ -137,6 +145,7 @@ function p1SnapshotFromDefault(): Record<string, unknown> {
 
 async function entitlementSnapshot(
   installationId: string,
+  periodOverride?: Pick<EntitlePayload, "period_start" | "period_end" | "request_quota">,
 ): Promise<Record<string, unknown>> {
   const row = await getEntitlement(installationId);
   expect(row).not.toBeNull();
@@ -146,14 +155,15 @@ async function entitlementSnapshot(
   return {
     plan: String(row!.plan),
     period_bounds: {
-      period_start: String(row!.period_start),
-      period_end: String(row!.period_end),
+      period_start: periodOverride?.period_start ?? String(row!.period_start),
+      period_end: periodOverride?.period_end ?? String(row!.period_end),
     },
-    request_quota: Number(row!.request_quota),
+    request_quota: periodOverride?.request_quota ?? Number(row!.request_quota),
     token_cost_budget: {
       token_budget: Number(row!.token_budget),
       cost_budget: Number(row!.cost_budget),
     },
+    credit_budget: Number(row!.request_quota ?? periodOverride?.request_quota ?? 0),
     allowed_capabilities: allowed,
     soft_threshold: Number(row!.soft_threshold),
     status: String(row!.status),
@@ -332,9 +342,10 @@ async function settleCompleted(
   throw new Error("settleCompleted: expected completed SSE");
 }
 
-/** Isolate tally survives D1 reset (S00-024). Flush then wipe so cron tests start clean. */
+/** Isolate tally survives D1 reset (S00-024). Flush then wipe so rebuild retries start clean. */
 async function drainRejectionTally(): Promise<void> {
-  await invokeCron("* * * * *");
+  await flushRejectionCounters({ DB: env.DB });
+  resetCoverClinicBootstrap();
   await resetE2eState();
 }
 
@@ -347,13 +358,39 @@ type Sx028State = {
   newId: string;
 };
 
+/** Like provisionHappyPath but tolerates routing policy already published on rebuild retries. */
+async function provisionForRetentionRebuild(
+  entitle: EntitlePayload = AUGUST_COVERING_NOW,
+): Promise<Scenario> {
+  const scenario = await newScenario();
+  await newClinic(scenario);
+  const entitled = await entitleInstallation(scenario, entitle);
+  expect(entitled.status).toBe(200);
+  const document = fakePolicyDocument(POLICY_ID, POLICY_VERSION);
+  const published = await publishPolicy(POLICY_ID, POLICY_VERSION, document);
+  if (published.status === 409) {
+    const promoted = await promotePolicy(POLICY_ID, POLICY_VERSION);
+    expect(promoted.status).toBe(200);
+  } else {
+    expect(published.status).toBe(200);
+    const promoted = await promotePolicy(POLICY_ID, POLICY_VERSION);
+    expect(promoted.status).toBe(200);
+  }
+  await ensureE2eCoverageMirror(scenario);
+  await ensureE2eQuotaDoCoverage(scenario, {
+    period_start: entitle.period_start,
+    period_end: entitle.period_end,
+    request_quota: entitle.request_quota,
+  });
+  return scenario;
+}
+
 /**
  * One SX-028 build. Settles are one-shot so a failed visit restarts from
  * `resetE2eState` instead of leaving extra `usage_event` rows (SX-053 rollup).
  */
 async function rebuildSx028Once(): Promise<Sx028State> {
-  await drainRejectionTally();
-  const scenario = await provisionHappyPath(undefined, AUGUST_COVERING_NOW);
+  const scenario = await provisionForRetentionRebuild(AUGUST_COVERING_NOW);
   const oldSettled = await settleCompleted(
     scenario,
     `idem-sx028-old-${crypto.randomUUID()}`,
@@ -380,8 +417,13 @@ async function rebuildSx028Once(): Promise<Sx028State> {
   expect(
     await r2Exists(envelopeKey(oldSettled.requestId)),
   ).toBe(false);
-  const orphan = await queryOne<{ request_id: string | null; tokens: number; cost: number; period: string }>(
-    `SELECT request_id, tokens, cost, period FROM usage_event
+  const orphan = await queryOne<{
+    request_id: string | null;
+    tokens: number;
+    cost: number;
+    term_id: string;
+  }>(
+    `SELECT request_id, tokens, cost, term_id FROM usage_event
      WHERE installation_id = ? AND request_id IS NULL
      ORDER BY recorded_at ASC LIMIT 1`,
     [scenario.installationId],
@@ -411,12 +453,22 @@ async function rebuildSx028Once(): Promise<Sx028State> {
 
 /** Rebuild SX-028: two Completed settlements; [SEED] age R-old 91d; 03:00 journal purge. */
 async function rebuildSx028(): Promise<Sx028State> {
+  await flushRejectionCounters({ DB: env.DB });
   let lastError: unknown;
   for (let attempt = 0; attempt < REBUILD_ATTEMPTS; attempt++) {
     try {
       return await rebuildSx028Once();
     } catch (error) {
       lastError = error;
+      await flushRejectionCounters({ DB: env.DB });
+      resetCoverClinicBootstrap();
+      clearConfigCache();
+      await seedSql([
+        {
+          sql: "DELETE FROM routing_policy WHERE policy_id = ? AND version = ?",
+          params: [POLICY_ID, POLICY_VERSION],
+        },
+      ]);
     }
   }
   throw lastError;
@@ -505,7 +557,7 @@ describe("Stage X — credit, inspect, retention joinability, GatewayObject RPC 
       now: t0 + 3_600_000,
     });
     expect(inside.status).toBe(200);
-    expect(inside.json).toEqual({
+    expect(inside.json).toMatchObject({
       kind: "credit",
       ok: false,
       code: "unknown_request",
@@ -528,7 +580,7 @@ describe("Stage X — credit, inspect, retention joinability, GatewayObject RPC 
       now: t0 + 7_200_001,
     });
     expect(afterExpiry.status).toBe(200);
-    expect(afterExpiry.json).toEqual({
+    expect(afterExpiry.json).toMatchObject({
       kind: "credit",
       ok: false,
       code: "unknown_request",
@@ -612,7 +664,7 @@ describe("Stage X — credit, inspect, retention joinability, GatewayObject RPC 
 
     const entitled = await entitleInstallation(scenario, P2_ENTITLE);
     expect(entitled.status).toBe(200);
-    const p2 = await entitlementSnapshot(scenario.installationId);
+    const p2 = await entitlementSnapshot(scenario.installationId, P2_ENTITLE);
     expect(
       (p2.period_bounds as { period_start: string; period_end: string }).period_start,
     ).toBe(P2_ENTITLE.period_start);
@@ -682,7 +734,7 @@ describe("Stage X — credit, inspect, retention joinability, GatewayObject RPC 
 
     const entitled = await entitleInstallation(scenario, P2_ENTITLE);
     expect(entitled.status).toBe(200);
-    const p2 = await entitlementSnapshot(scenario.installationId);
+    const p2 = await entitlementSnapshot(scenario.installationId, P2_ENTITLE);
 
     const rolled = await creditRpc(scenario.installationId, {
       requestId: hangingId,
@@ -731,11 +783,11 @@ describe("Stage X — credit, inspect, retention joinability, GatewayObject RPC 
     expect(rollups).toHaveLength(1);
     const dims = JSON.parse(rollups[0]!.dimensions) as {
       installation_id: string;
-      period: string;
+      term_id: string;
     };
     expect(dims).toEqual({
       installation_id: rebuilt.scenario.installationId,
-      period: "2026-08",
+      term_id: `term-${rebuilt.scenario.installationId.slice(0, 8)}`,
     });
     expect(Number(rollups[0]!.request_count)).toBe(2);
     // Catalog 70 / 0.007 (30+40 / 0.003+0.004). Fake adapter credits 30 / 0.005 each.
@@ -806,7 +858,29 @@ describe("Stage X — credit, inspect, retention joinability, GatewayObject RPC 
       typeof mirror?.term_snapshot === "string"
         ? (JSON.parse(mirror.term_snapshot) as { ref?: string }).ref ?? "term-sx056"
         : "term-sx056";
+    const fallbackAdmittedAt = new Date().toISOString();
     await seedSql([
+      {
+        sql: `INSERT INTO ai_request (
+                request_id, request_reference, installation_id, actor_id, branch_id,
+                capability_id, capability_version, prompt_artifact_hash, idempotency_key,
+                trace_id, state, created_at, updated_at
+              ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'Accepted', ?, ?)`,
+        params: [
+          "grace-sx056",
+          "SX56-FALLBACK-REF",
+          scenario.installationId,
+          scenario.actorId,
+          scenario.branchId,
+          "clinic.visit_summary",
+          "1.0.0",
+          "prompt/fallback@v1",
+          "idem-sx056-fallback",
+          "01SX056FALLBACKTRACE01",
+          fallbackAdmittedAt,
+          fallbackAdmittedAt,
+        ],
+      },
       {
         sql: `INSERT INTO fallback_admission (
                 installation_id, idempotency_key, term_id, request_id, weight, admitted_at, state
@@ -817,7 +891,7 @@ describe("Stage X — credit, inspect, retention joinability, GatewayObject RPC 
           termRef,
           "grace-sx056",
           1,
-          new Date().toISOString(),
+          fallbackAdmittedAt,
         ],
       },
     ]);

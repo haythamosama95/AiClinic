@@ -155,6 +155,7 @@ export async function dashboardCostPerCapabilityPerInstallation(
 }
 
 const CLINIC_DENIAL_COUNTER_CODES = [
+  "quota_exhausted",
   "allowance_exhausted",
   "coverage_lapsed",
   "forbidden_capability",

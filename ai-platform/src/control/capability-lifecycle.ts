@@ -78,9 +78,6 @@ export async function deprecateCapabilityAction(
     }
     return { ok: false, status: 400, error: "invalid_payload" };
   }
-  if (!isSuccessorRegistered(successorId)) {
-    return { ok: false, status: 400, error: "unknown_successor" };
-  }
 
   const { DB } = bindings;
   const overlay = await loadGlobalOverlay(DB, capabilityId, version);
@@ -92,6 +89,9 @@ export async function deprecateCapabilityAction(
       return { ok: true, body: {} };
     }
     return { ok: false, status: 409, error: "already_deprecated" };
+  }
+  if (!isSuccessorRegistered(successorId)) {
+    return { ok: false, status: 400, error: "unknown_successor" };
   }
 
   const deprecatedAt = nowIso();
@@ -125,7 +125,15 @@ export async function deprecateCapabilityAction(
     return batchError;
   }
 
-  await writeEntrypointAudit(DB, actor, "deprecate", target, null);
+  await writeEntrypointAudit(
+    DB,
+    actor,
+    "deprecate",
+    target,
+    null,
+    null,
+    successorId,
+  );
 
   return { ok: true, body: {} };
 }
@@ -192,7 +200,15 @@ export async function retireCapabilityAction(
     return batchError;
   }
 
-  await writeEntrypointAudit(DB, actor, "retire", target, null);
+  await writeEntrypointAudit(
+    DB,
+    actor,
+    "retire",
+    target,
+    null,
+    null,
+    overlay.successor_id,
+  );
 
   return { ok: true, body: {} };
 }

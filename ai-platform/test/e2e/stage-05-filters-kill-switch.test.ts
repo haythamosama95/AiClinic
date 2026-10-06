@@ -1,14 +1,17 @@
+import { runInDurableObject } from "cloudflare:test";
 import { beforeAll, beforeEach, describe, expect, it } from "vitest";
 import {
   assertSseSequence,
   bootstrapE2e,
   CAPABILITY_ID,
+  CAPABILITY_VERSION,
   clearConfigCache,
   controlFetch,
   count,
+  coverClinic,
   DEFAULT_ENTITLE_PAYLOAD,
+  ensureE2eCoverageMirror,
   newClinic,
-  entitleInstallation,
   env,
   generateTestKeypair,
   getAiRequest,
@@ -20,7 +23,6 @@ import {
   isolateConfigCache,
   mintAat,
   newScenario,
-  OPERATOR_BEARER,
   POLICY_ID,
   POLICY_REF,
   postRequest,
@@ -30,10 +32,14 @@ import {
   REQUEST_REFERENCE_PATTERN,
   resetE2eState,
   visitSummaryInvokeBody,
+  type EntitlePayload,
   type HttpResult,
   type InvokeResult,
   type Scenario,
 } from "./harness";
+import { vendorCall, vendorEnvelopeToHttp } from "./harness/vendor";
+import { gatewayObjectJson } from "./harness/gateway-object";
+import { mintVendorAccessJwt } from "./harness/aat";
 
 // HARNESS-GAP: Register 5 #26 — createD1ConfigReader / selectCandidateChain
 // are production exports but not on the frozen harness barrel.
@@ -200,15 +206,113 @@ async function scenarioWithId(installationId: string): Promise<Scenario> {
   return { ...scenario, installationId, kid: keypair.kid, keypair };
 }
 
+function e2eActiveTermId(installationId: string): string {
+  return `term-${installationId.slice(0, 8)}`;
+}
+
+function sqlLiteral(value: string): string {
+  return `'${value.replace(/'/g, "''")}'`;
+}
+
+/** Catalog invoke: admission snapshot max_cost_class premium (manifest cost class is standard in router). */
+async function ensureStage05QuotaDoCoverage(
+  scenario: Scenario,
+  payload: EntitlePayload,
+): Promise<void> {
+  await gatewayObjectJson(scenario.installationId, { kind: "inspect" });
+  const termId = e2eActiveTermId(scenario.installationId);
+  const planSnapshot = JSON.stringify({
+    capabilities: payload.allowed_capabilities,
+    max_cost_class: "premium",
+    concurrency_limit: 16,
+  });
+
+  await runInDurableObject(
+    env.DO.get(env.DO.idFromName(scenario.installationId)),
+    async (_instance, state) => {
+      const storage = state.storage as DurableObjectStorage & {
+        sql?: { exec: (query: string) => Iterable<Record<string, unknown>> };
+      };
+      if (!storage.sql) {
+        throw new Error("quota DO sql storage unavailable for stage-05 seed");
+      }
+      const hotExists = [...storage.sql.exec("SELECT 1 AS ok FROM hot LIMIT 1")];
+      if (hotExists.length === 0) {
+        storage.sql.exec(
+          `INSERT INTO hot (
+             suspended, transferred_out_to, awaiting_transfer, transfer_pending,
+             active_term_id, used, reserved, grace_base_used, reservations, replay,
+             idempotency, band_emitted, binding_epoch, clinic_seq, next_alarm_at
+           ) VALUES (
+             0, NULL, 0, 0, ${sqlLiteral(termId)}, 0, 0, 0, '[]', '{}', '{}', '{}', 0, 0, NULL
+           )`,
+        );
+      } else {
+        storage.sql.exec(
+          `UPDATE hot SET active_term_id = ${sqlLiteral(termId)}, suspended = 0`,
+        );
+      }
+      const termExists = [
+        ...storage.sql.exec(
+          `SELECT 1 AS ok FROM term WHERE term_id = ${sqlLiteral(termId)} LIMIT 1`,
+        ),
+      ];
+      if (termExists.length === 0) {
+        storage.sql.exec(
+          `INSERT INTO term (
+             term_id, grant_id, origin_grant_id, position, state, end_reason,
+             plan_snapshot, allowance, used_final, duration_unit, duration_count,
+             grace_days, grace_cap, calendar_start, starts_at, ends_at, grace_ends_at, ended_at
+           ) VALUES (
+             ${sqlLiteral(termId)}, 'e2e-seed', 'e2e-seed', 0, 'active', NULL,
+             ${sqlLiteral(planSnapshot)}, ${payload.request_quota},
+             NULL, 'month', 1, 0, 'proportional',
+             ${sqlLiteral(payload.period_start)}, ${sqlLiteral(payload.period_start)},
+             ${sqlLiteral(payload.period_end)}, NULL, NULL
+           )`,
+        );
+      } else {
+        storage.sql.exec(
+          `UPDATE term SET plan_snapshot = ${sqlLiteral(planSnapshot)} WHERE term_id = ${sqlLiteral(termId)}`,
+        );
+      }
+    },
+  );
+}
+
 async function enrollAndEntitle(
   scenario: Scenario,
-  entitle = DEFAULT_ENTITLE_PAYLOAD,
+  entitle: EntitlePayload = DEFAULT_ENTITLE_PAYLOAD,
 ): Promise<void> {
   const keypair = await generateTestKeypair(scenario.kid);
   scenario.keypair = keypair;
   await newClinic(scenario);
-const entitled = await entitleInstallation(scenario, entitle);
-  expect(entitled.status).toBe(200);
+  await coverClinic(scenario, {
+    capabilities: entitle.allowed_capabilities,
+    max_allowance_per_month: entitle.request_quota,
+  });
+  const accessJwt = await mintVendorAccessJwt();
+  const activated = await vendorCall(
+    "activateCohort",
+    {
+      capability_id: CAPABILITY_ID,
+      capability_version: CAPABILITY_VERSION,
+      installation_ids: [scenario.installationId],
+    },
+    { accessJwt },
+  );
+  expect(vendorEnvelopeToHttp(activated).status).toBe(200);
+  const promoted = await vendorCall(
+    "promoteCohort",
+    {
+      capability_id: CAPABILITY_ID,
+      capability_version: CAPABILITY_VERSION,
+    },
+    { accessJwt },
+  );
+  expect(vendorEnvelopeToHttp(promoted).status).toBe(200);
+  await ensureE2eCoverageMirror(scenario);
+  await ensureStage05QuotaDoCoverage(scenario, entitle);
 }
 
 async function publishAndPromote(
@@ -402,7 +506,7 @@ async function syntheticAttemptPayload(
 
 async function armProviderKill(target: string): Promise<HttpResult> {
   const result = await controlFetch("/control/kill-switches/arm", {
-    auth: { bearer: OPERATOR_BEARER },
+    auth: "operator",
     body: { scope: "provider", target },
   });
   expect(result.status).toBe(200);

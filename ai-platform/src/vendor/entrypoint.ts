@@ -63,6 +63,7 @@ import {
   beginTokenContractRotationAction,
   retireTokenContractAction,
 } from "../control/token-contract";
+import { setInstallationSuspendedAction } from "../control/installation-lifecycle";
 import {
   createManifestRetentionClassResolver,
 } from "../retention";
@@ -269,6 +270,12 @@ function envelopeFromControlResult(
 ): VendorResultEnvelope {
   if (result.ok) {
     return ok(version, JSON.stringify(result.body));
+  }
+  if (result.status === 409) {
+    return conflict(version, result.error);
+  }
+  if (result.status === 404) {
+    return rejected(version, result.error);
   }
   return rejected(version, result.error);
 }
@@ -4320,6 +4327,16 @@ export class VendorEntrypoint extends WorkerEntrypoint<VendorEnv> {
     });
     if (doResponse === null || !isRecord(doResponse.snapshot)) {
       return rejected(version, "coverage_unknown");
+    }
+
+    const lifecycle = await setInstallationSuspendedAction(
+      { DB: this.env.DB },
+      access.email,
+      binding.installation_id,
+      kind === "suspend",
+    );
+    if (!lifecycle.ok) {
+      return rejected(version, lifecycle.error);
     }
 
     return ok(version, JSON.stringify(doResponse.snapshot));

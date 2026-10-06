@@ -17,6 +17,7 @@ import {
   coverClinic,
   ensureE2eCoverageMirror,
   ensureE2eQuotaDoCoverage,
+  setMirrorCapabilities,
   newClinic,
   entitleInstallation,
   env,
@@ -297,11 +298,9 @@ describe("Stage 00 — platform boot, bindings, and routing (S00-001…S00-018)"
       replace: true,
     });
 
-    // Catalog entitled only test.echo then POSTed clinic.visit_summary expecting
-    // capability_unknown. Guard stage 3 (allowed_capabilities / grants) runs
-    // before stage 5 resolve, so that setup is forbidden_capability (403).
-    // Follow code: grant clinic.visit_summary so stage 3 passes; registry still
-    // has only test.echo so resolve returns capability_unknown (404).
+    // Catalog: mirror allows test.echo and clinic.visit_summary; registry only
+    // test.echo@9.9.9. POST clinic.visit_summary reaches stage-5 resolve and
+    // returns capability_unknown (404) on registry miss.
     const echoEntitle: EntitlePayload = {
       ...DEFAULT_ENTITLE_PAYLOAD,
       allowed_capabilities: ["test.echo", "clinic.visit_summary"],
@@ -327,6 +326,7 @@ describe("Stage 00 — platform boot, bindings, and routing (S00-001…S00-018)"
         capabilities: echoEntitle.allowed_capabilities,
       });
       await ensureE2eCoverageMirror(scenario);
+      await setMirrorCapabilities(scenario, echoEntitle.allowed_capabilities);
       await ensureE2eQuotaDoCoverage(scenario, {
         period_start: echoEntitle.period_start,
         period_end: echoEntitle.period_end,
@@ -353,16 +353,6 @@ describe("Stage 00 — platform boot, bindings, and routing (S00-001…S00-018)"
           },
         ]);
       }
-      await seedSql([
-        {
-          sql: `UPDATE coverage_mirror SET term_snapshot = ? WHERE installation_id = ?`,
-          params: [
-            JSON.stringify({ ref: "term-echo", capabilities: ["test.echo"] }),
-            scenario.installationId,
-          ],
-        },
-      ]);
-      clearConfigCache();
       const token = await mintAat(scenario);
       const discovery = await getCapabilities(token);
       expect(discovery.status).toBe(200);
@@ -438,17 +428,9 @@ describe("Stage 00 — platform boot, bindings, and routing (S00-001…S00-018)"
   });
 
   it("S00-011 — CONFIG_CACHE_TTL_MS = \"0\" disables caching", async () => {
-    // Phase 0 conflict: do not boot with CONFIG_CACHE_TTL_MS="0" — TTL 0
-    // expires preloadRoutingPolicyForInstallation in the same request
-    // (ConfigCacheMissError). Harness uses "100" plus clearConfigCache()
-    // after control mutations; entitleInstallation already clears the cache.
-    // Catalog assumed a Stage 4 re-entitle replacing allowed_capabilities with
-    // [] on an already-active row. handleEntitle is one-shot (status !==
-    // "pending" → 409 not_pending); no control route updates
-    // entitlement.allowed_capabilities after activate. Follow code: cohort-
-    // activate the installation grant onto a registered 2.0.0 that discovery
-    // filters out (enterprise minimumPlanTier), then clearConfigCache() so the
-    // next GET re-reads D1 immediately — same empty-list observable.
+    // Catalog: warm GET lists clinic.visit_summary@1.0.0; cohort-activate 2.0.0
+    // (enterprise minimumPlanTier); immediate re-GET is empty because pool
+    // CONFIG_CACHE_TTL_MS="0" expires cached grants before the next consult.
     const published = loadManifest(publishedVisitSummaryWire());
     const v2 = loadManifest(visitSummaryV2EnterpriseWire());
     setCapabilityRegistry(createCapabilityRegistry([published, v2]), {
@@ -470,16 +452,6 @@ describe("Stage 00 — platform boot, bindings, and routing (S00-001…S00-018)"
         { body: { installation_ids: [scenario.installationId] } },
       );
       expect(activated.status).toBe(200);
-      await seedSql([
-        {
-          sql: `UPDATE coverage_mirror SET term_snapshot = ? WHERE installation_id = ?`,
-          params: [
-            JSON.stringify({ ref: "term-cold", capabilities: [] }),
-            scenario.installationId,
-          ],
-        },
-      ]);
-      clearConfigCache();
 
       const cold = await getCapabilities(token);
       expect(cold.status).toBe(200);

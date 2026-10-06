@@ -28,6 +28,7 @@ import { creditUsage, reconcileGraceUsage } from "./credit";
 import type { CanonicalRequest, CanonicalResult } from "./contracts/canonical";
 import {
   buildErrorBody,
+  classifyErrorCode,
   getTaxonomyEntry,
   isTaxonomyCode,
   liveHttpStatusForCode,
@@ -1468,7 +1469,7 @@ function createProductionPreAccept(
       },
     );
     if (!guard.ok) {
-      const code = isTaxonomyCode(guard.code) ? guard.code : "internal_error";
+      const code = classifyErrorCode(guard.code);
       // Latent: `cancelled` maps to HTTP 500 at the adapter (no taxonomy status); unreachable for current non-conversational capabilities.
       log.info("guard_rejected", { code });
       return {

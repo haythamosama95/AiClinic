@@ -226,25 +226,31 @@ function assertDeprecatedOverlay(
   return row;
 }
 
-function assertDeprecateAudit(row: AuditRow | undefined): void {
+function assertDeprecateAudit(
+  row: AuditRow | undefined,
+  afterPointer: string,
+): void {
   expect(row).toBeDefined();
   expectCanonicalUuid(row?.audit_id);
   expect(row?.operator_id).toBe(OPERATOR_ID);
   expect(row?.action).toBe("deprecate");
   expect(row?.target).toBe(DEPRECATE_TARGET);
   expect(row?.before_pointer).toBeNull();
-  expect(row?.after_pointer).toBeNull();
+  expect(row?.after_pointer).toBe(afterPointer);
   assertIsoApproxNow(row?.recorded_at);
 }
 
-function assertRetireAudit(row: AuditRow | undefined): void {
+function assertRetireAudit(
+  row: AuditRow | undefined,
+  afterPointer: string,
+): void {
   expect(row).toBeDefined();
   expectCanonicalUuid(row?.audit_id);
   expect(row?.operator_id).toBe(OPERATOR_ID);
   expect(row?.action).toBe("retire");
   expect(row?.target).toBe(DEPRECATE_TARGET);
   expect(row?.before_pointer).toBeNull();
-  expect(row?.after_pointer).toBeNull();
+  expect(row?.after_pointer).toBe(afterPointer);
   assertIsoApproxNow(row?.recorded_at);
 }
 
@@ -277,7 +283,10 @@ async function assertRetiredOverlayWrites(
   await assertNoInstallationOrPlanGrants();
   const audits = await getAudits("retire", DEPRECATE_TARGET);
   expect(audits).toHaveLength(1);
-  assertRetireAudit(audits[0] as AuditRow);
+  assertRetireAudit(
+    audits[0] as AuditRow,
+    String(deprecatedBefore.successor_id),
+  );
 }
 
 describe("Stage 04 — deprecate, retire, and wrong-bearer auth (S04-086…S04-104)", () => {
@@ -292,7 +301,7 @@ describe("Stage 04 — deprecate, retire, and wrong-bearer auth (S04-086…S04-1
 
     const audits = await getAudits("deprecate", DEPRECATE_TARGET);
     expect(audits).toHaveLength(1);
-    assertDeprecateAudit(audits[0] as AuditRow);
+    assertDeprecateAudit(audits[0] as AuditRow, BARE_SUCCESSOR);
   });
 
   it("S04-087 — Deprecate successor pin clinic.visit_summary@2.0.0", async () => {
@@ -307,7 +316,7 @@ describe("Stage 04 — deprecate, retire, and wrong-bearer auth (S04-086…S04-1
 
       const audits = await getAudits("deprecate", DEPRECATE_TARGET);
       expect(audits).toHaveLength(1);
-      assertDeprecateAudit(audits[0] as AuditRow);
+      assertDeprecateAudit(audits[0] as AuditRow, PINNED_SUCCESSOR);
     });
   });
 

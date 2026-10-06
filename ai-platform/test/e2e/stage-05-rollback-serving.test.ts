@@ -7,6 +7,7 @@ import {
   clearConfigCache,
   controlFetch,
   count,
+  flushBackgroundWork,
   newClinic,
   entitleInstallation,
   env,
@@ -440,6 +441,7 @@ async function assertPostAcceptInternalError(ref: string): Promise<void> {
     payload?: { reason?: string };
   }>;
   expect(envelopeAttempts[0]?.payload?.reason).toBe("no_provider_attempt");
+  await flushBackgroundWork(500);
 }
 
 describe("Stage 05 — rollback, serving, and post-accept routing failures (S05-042…S05-062)", () => {
@@ -805,7 +807,7 @@ describe("Stage 05 — rollback, serving, and post-accept routing failures (S05-
       const warmDecision = await waitForPersistedDecision(warmRef);
       expect(warmDecision.policy_version).toBe(2);
 
-      const rolled = await controlFetch(rollbackPath("2"), { body: {} });
+      const rolled = await rollbackPolicy(POLICY_ID, "2", { clearCache: false });
       assertOkEmpty(rolled);
       expect((await getRoutingPolicy(POLICY_ID, "1"))?.status).toBe("active");
       expect((await getRoutingPolicy(POLICY_ID, "2"))?.status).toBe("superseded");

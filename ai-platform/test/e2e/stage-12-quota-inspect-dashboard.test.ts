@@ -167,9 +167,30 @@ async function entitlementSnapshot(
       token_budget: Number(row!.token_budget),
       cost_budget: Number(row!.cost_budget),
     },
+    credit_budget: Number(row!.request_quota),
     allowed_capabilities: allowed,
     soft_threshold: Number(row!.soft_threshold),
     status: String(row!.status),
+  };
+}
+
+/** Inline entitlement for DO-direct legacy admission (no coverage hot row). */
+function legacyAdmissionEntitlement(): Record<string, unknown> {
+  return {
+    plan: DEFAULT_ENTITLE_PAYLOAD.plan,
+    period_bounds: {
+      period_start: DEFAULT_ENTITLE_PAYLOAD.period_start,
+      period_end: DEFAULT_ENTITLE_PAYLOAD.period_end,
+    },
+    request_quota: DEFAULT_ENTITLE_PAYLOAD.request_quota,
+    token_cost_budget: {
+      token_budget: DEFAULT_ENTITLE_PAYLOAD.token_budget,
+      cost_budget: DEFAULT_ENTITLE_PAYLOAD.cost_budget,
+    },
+    credit_budget: DEFAULT_ENTITLE_PAYLOAD.request_quota,
+    allowed_capabilities: [...DEFAULT_ENTITLE_PAYLOAD.allowed_capabilities],
+    soft_threshold: DEFAULT_ENTITLE_PAYLOAD.soft_threshold,
+    status: "active",
   };
 }
 
@@ -408,12 +429,13 @@ describe("Stage 12 — quota inspect and dashboards (S12-056…S12-072)", () => 
 
 
   it("S12-065 — inspectRPC sweeps abandoned admissions in memory only", async () => {
-    const scenario = await enrollAndEntitle();
+    const scenario = await enrollThrowaway();
     const t = Date.now();
     const admitted = await admitOnce(scenario, {
       jti: "jti-s12-065",
       idempotencyKey: "idem-s12-065",
       requestReference: "S065-0001",
+      entitlement: legacyAdmissionEntitlement(),
       now: t,
     });
     expect(admitted.status).toBe(200);

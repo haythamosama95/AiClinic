@@ -1,6 +1,6 @@
 export type TaxonomyCode =
   | "unauthenticated"
-  | "suspended"
+  | "installation_suspended"
   | "forbidden_capability"
   | "rate_limited"
   | "allowance_exhausted"
@@ -35,8 +35,8 @@ const TAXONOMY: Record<TaxonomyCode, TaxonomyEntry> = {
     retryable: "After re-mint",
     consumesQuota: "No",
   },
-  suspended: {
-    code: "suspended",
+  installation_suspended: {
+    code: "installation_suspended",
     httpStatus: 403,
     retryable: "No",
     consumesQuota: "No",
@@ -167,6 +167,9 @@ export function isTaxonomyCode(code: string): code is TaxonomyCode {
 }
 
 export function classifyErrorCode(code: string): TaxonomyCode {
+  if (code === "suspended") {
+    return "installation_suspended";
+  }
   if (isTaxonomyCode(code)) {
     return code;
   }
@@ -181,11 +184,12 @@ export function isRetrySafe(retryable: string): boolean {
   return retryable !== "No" && retryable !== "—";
 }
 
-export function liveHttpStatusForCode(code: TaxonomyCode): number | null {
-  if (code === "cancelled") {
+export function liveHttpStatusForCode(code: string): number | null {
+  const classified = classifyErrorCode(code);
+  if (classified === "cancelled") {
     return null;
   }
-  return getTaxonomyEntry(code).httpStatus;
+  return getTaxonomyEntry(classified).httpStatus;
 }
 
 export type CoverageLapseReason =

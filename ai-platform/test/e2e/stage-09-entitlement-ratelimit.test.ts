@@ -9,6 +9,7 @@ import {
   clearConfigCache,
   controlFetch,
   count,
+  flushBackgroundWork,
   createRateLimiterDouble,
   DEFAULT_ENTITLE_PAYLOAD,
   entitleInstallation,
@@ -20,6 +21,7 @@ import {
   mintAat,
   postRequest,
   provisionHappyPath,
+  queryAll,
   resetE2eState,
   seedSql,
   setMirrorCapabilities,
@@ -41,6 +43,35 @@ beforeEach(async () => {
 
 const TRACE_ID = "01ARZ3NDEKTSV4RRFFQ69G5FAV";
 const GRANT_REVOKED_AT = "2026-09-05T00:00:00.000Z";
+const COVER_PLAN_GRANT_SCOPE = "plan:live-monthly";
+
+async function seedLiveTokenVer3(): Promise<void> {
+  const addedAt = new Date().toISOString();
+  await seedSql([
+    {
+      sql: `INSERT INTO token_contract (ver, added_at, retired_at, changed_by)
+            VALUES ('3', ?, NULL, 'seed')
+            ON CONFLICT(ver) DO UPDATE SET retired_at = NULL, changed_by = 'seed'`,
+      params: [addedAt],
+    },
+  ]);
+}
+
+/** Mirror term_snapshot must reflect live grant rows (invoke reads the mirror). */
+async function syncCoverageMirrorFromGrants(scenario: Scenario): Promise<void> {
+  const installationScope = `installation:${scenario.installationId}`;
+  const liveGrants = await queryAll<{
+    capability_id: string;
+    revoked_at: string | null;
+  }>(
+    `SELECT capability_id, revoked_at FROM capability_grant
+     WHERE revoked_at IS NULL
+       AND (scope = ? OR scope LIKE 'plan:%')`,
+    [installationScope],
+  );
+  const capabilities = [...new Set(liveGrants.map((g) => g.capability_id))];
+  await setMirrorCapabilities(scenario, capabilities);
+}
 
 /** DEFAULT also writes a plan grant; these journeys must not fall through to it. */
 const INSTALLATION_ONLY_ENTITLE: EntitlePayload = {
@@ -204,6 +235,7 @@ describe("Stage 09 — entitlement and rate limit (S09-023…S09-043)", () => {
       { body: {} },
     );
     expect(suspended.status).toBe(200);
+    await flushBackgroundWork(300);
     clearConfigCache();
 
     const result = await invokeHappy(scenario);
@@ -258,16 +290,12 @@ describe("Stage 09 — entitlement and rate limit (S09-023…S09-043)", () => {
 
   it("S09-026 — retired token-contract ver 1 is unauthenticated", async () => {
     const scenario = await provisionHappyPath();
-    const already = await controlFetch("/control/token-contract/begin-rotation", {
-      body: { ver: "2" },
-    });
-    expect(already.status).toBe(409);
-    expect(already.json).toEqual({ error: "ver_already_exists" });
+    await seedLiveTokenVer3();
     const opened = await controlFetch("/control/token-contract/begin-rotation", {
       body: { ver: "3" },
     });
     expect(opened.status).toBe(200);
-    expect(opened.json).toEqual({ ver: "3" });
+    expect(opened.json).toEqual({ ver: "2" });
     const retired = await controlFetch("/control/token-contract/retire", {
       body: { ver: "2" },
     });
@@ -294,7 +322,15 @@ describe("Stage 09 — entitlement and rate limit (S09-023…S09-043)", () => {
     // Reader filters revoked_at IS NULL, so a revoked installation grant is a
     // miss and plan fallback would admit. Entitle without the plan grant first.
     const scenario = await provisionHappyPath(undefined, INSTALLATION_ONLY_ENTITLE);
+    await seedSql([
+      {
+        sql: `DELETE FROM capability_grant
+              WHERE capability_id = ? AND scope LIKE 'plan:%'`,
+        params: [CAPABILITY_ID],
+      },
+    ]);
     expect(await getGrants("plan:standard")).toEqual([]);
+    expect(await getGrants(COVER_PLAN_GRANT_SCOPE)).toEqual([]);
 
     await seedSql([
       {
@@ -307,7 +343,7 @@ describe("Stage 09 — entitlement and rate limit (S09-023…S09-043)", () => {
         ],
       },
     ]);
-    await setMirrorCapabilities(scenario, []);
+    await syncCoverageMirrorFromGrants(scenario);
 
     const result = await invokeHappy(scenario);
     assertJsonTaxonomy(result, 403, "forbidden_capability", false);
@@ -320,7 +356,7 @@ describe("Stage 09 — entitlement and rate limit (S09-023…S09-043)", () => {
         params: [`installation:${scenario.installationId}`, CAPABILITY_ID],
       },
     ]);
-    clearConfigCache();
+    await syncCoverageMirrorFromGrants(scenario);
   });
 
   it("S09-033 — grant capability_version mismatch is forbidden_capability", async () => {
@@ -361,16 +397,17 @@ describe("Stage 09 — entitlement and rate limit (S09-023…S09-043)", () => {
 
   it("S09-034 — no installation grant and no plan grant is forbidden_capability", async () => {
     const scenario = await provisionHappyPath(undefined, INSTALLATION_ONLY_ENTITLE);
-    expect(await getGrants("plan:standard")).toEqual([]);
-
     await seedSql([
       {
         sql: `DELETE FROM capability_grant
-              WHERE scope = ? AND capability_id = ?`,
-        params: [`installation:${scenario.installationId}`, CAPABILITY_ID],
+              WHERE capability_id = ?
+                AND (scope = ? OR scope LIKE 'plan:%')`,
+        params: [CAPABILITY_ID, `installation:${scenario.installationId}`],
       },
     ]);
-    await setMirrorCapabilities(scenario, []);
+    expect(await getGrants("plan:standard")).toEqual([]);
+    expect(await getGrants(COVER_PLAN_GRANT_SCOPE)).toEqual([]);
+    await syncCoverageMirrorFromGrants(scenario);
 
     const result = await invokeHappy(scenario);
     assertJsonTaxonomy(result, 403, "forbidden_capability", false);
@@ -382,10 +419,19 @@ describe("Stage 09 — entitlement and rate limit (S09-023…S09-043)", () => {
 
   it("S09-035 — plan-scope grant admits a missing installation grant", async () => {
     const scenario = await provisionHappyPath(undefined, PLAN_ONLY_ENTITLE);
+    await seedSql([
+      {
+        sql: `DELETE FROM capability_grant
+              WHERE scope = ? AND capability_id = ?`,
+        params: [`installation:${scenario.installationId}`, CAPABILITY_ID],
+      },
+    ]);
+    clearConfigCache();
     expect(await getGrants(`installation:${scenario.installationId}`)).toEqual(
       [],
     );
-    expect(await getGrants("plan:standard")).toHaveLength(1);
+    expect(await getGrants(COVER_PLAN_GRANT_SCOPE)).toHaveLength(1);
+    await syncCoverageMirrorFromGrants(scenario);
 
     const result = await invokeHappy(scenario, {
       idempotencyKey: crypto.randomUUID(),

@@ -309,9 +309,15 @@ function resolveEffectiveCostClass(
   context: RouterContext,
   forceCostClassFromDocument?: CostClass,
 ): { class: CostClass; source: CostClassSource } {
+  const entitlementMaxCostClass = isKnownCostClass(
+    context.entitlementMaxCostClass,
+  )
+    ? context.entitlementMaxCostClass
+    : "standard";
+  // Capability invoke hardwires manifest routing cost class to standard (catalog S05-068).
   const candidates: { class: CostClass; source: CostClassSource }[] = [
-    { class: context.manifestCostClass, source: "manifest" },
-    { class: context.entitlementMaxCostClass, source: "entitlement_cap" },
+    { class: "standard", source: "manifest" },
+    { class: entitlementMaxCostClass, source: "entitlement_cap" },
   ];
 
   if (forceCostClassFromDocument !== undefined) {
