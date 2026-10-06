@@ -584,7 +584,7 @@ adversaries (AD-#), credentials (K-#) and seed requirement IDs.
 ### P3.7 — Reversal voids, tombstones, held terms and operator voids
 - **Spec** 071 · **Codebase** ai-platform · **Size** M · **Depends** P3.6 · **Parallel** P3.9, P4.x
 - **Read:** 03 §5.5; 03 §5.4 (rows: full reversal of the active/grace term, queued/held reversal, held release, grant voided); 03 §5.7 (`reversed`);
-  03 §3.2 rows `grant_void`, `grant_ledger`; 04 §1.3 rows voidForReversal, releaseHeld, voidGrant, listGrantsForVoid; 04 §1.4 step 5 (`voided`);
+  03 §3.2 rows `grant_void`, `grant_ledger`; 03 §3.3 void object; 04 §1.3 rows voidForReversal, releaseHeld, voidGrant, listGrantsForVoid; 04 §1.4 step 5 (`voided`);
   05 §3.2 ("Compromise response" paragraph).
 - **Implements:** `voidForReversal` (M, ABO-signed, idempotent by `reversal_id`) resolving the live term through `origin_grant_id`; effects `end_current`
   (no grace; queued → held), `remove_queued`, `none`; tombstone when the grant is not yet applied, so a later grant is `rejected voided`; partial voids rejected;
