@@ -1,0 +1,89 @@
+name = "abo"
+main = "src/worker.ts"
+compatibility_date = "2026-05-03"
+workers_dev = false
+preview_urls = false
+
+[observability]
+enabled = true
+
+[triggers]
+crons = ["* * * * *", "0 * * * *", "0 */6 * * *", "0 6 * * *"]
+
+[env.development]
+name = "abo-development"
+
+[env.development.vars]
+BILLING_HOST = "billing.vendor.test"
+OPS_HOST = "ops.vendor.test"
+HEARTBEAT_URL = "https://heartbeat.test/ping"
+ALERT_EMAIL_TO = "alerts@clinic.invalid"
+ISSUER_ID = "issuer-test"
+ISSUER_KEYS = "[]"
+CLOUDFLARE_ACCOUNT_ID = "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa"
+R2_BUCKET_NAME = "abo-development"
+
+[[env.development.send_email]]
+name = "SEND_EMAIL"
+destination_address = "alerts@clinic.invalid"
+
+[[env.development.d1_databases]]
+binding = "DB"
+database_name = "abo-development"
+database_id = "11111111-1111-1111-1111-111111111111"
+
+[[env.development.r2_buckets]]
+binding = "R2"
+bucket_name = "abo-development"
+
+[env.staging]
+name = "abo-staging"
+
+[env.staging.vars]
+BILLING_HOST = "billing.vendor.test"
+OPS_HOST = "ops.vendor.test"
+HEARTBEAT_URL = "https://heartbeat.test/ping"
+ALERT_EMAIL_TO = "alerts@clinic.invalid"
+ISSUER_ID = "issuer-test"
+ISSUER_KEYS = "[]"
+CLOUDFLARE_ACCOUNT_ID = "bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb"
+R2_BUCKET_NAME = "abo-staging"
+
+[[env.staging.send_email]]
+name = "SEND_EMAIL"
+destination_address = "alerts@clinic.invalid"
+
+[[env.staging.d1_databases]]
+binding = "DB"
+database_name = "abo-staging"
+database_id = "22222222-2222-2222-2222-222222222222"
+
+[[env.staging.r2_buckets]]
+binding = "R2"
+bucket_name = "abo-staging"
+
+[env.production]
+name = "abo-production"
+
+[env.production.vars]
+BILLING_HOST = "billing.vendor.test"
+OPS_HOST = "ops.vendor.test"
+HEARTBEAT_URL = "https://heartbeat.test/ping"
+ALERT_EMAIL_TO = "alerts@clinic.invalid"
+ISSUER_ID = "issuer-test"
+ISSUER_KEYS = "[]"
+CLOUDFLARE_ACCOUNT_ID = "cccccccc-cccc-cccc-cccc-cccccccccccc"
+R2_BUCKET_NAME = "abo-production"
+
+[[env.production.send_email]]
+name = "SEND_EMAIL"
+destination_address = "alerts@clinic.invalid"
+
+[[env.production.d1_databases]]
+binding = "DB"
+database_name = "abo-production"
+database_id = "33333333-3333-3333-3333-333333333333"
+
+[[env.production.r2_buckets]]
+binding = "R2"
+bucket_name = "abo-production"
