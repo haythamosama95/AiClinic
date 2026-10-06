@@ -39,8 +39,14 @@ const MAR_1_10 = "2026-03-01T10:00:00.000Z";
 const MAR_4_10 = "2026-03-04T10:00:00.000Z";
 const MAR_27_10 = "2026-03-27T10:00:00.000Z";
 const APR_1_10 = "2026-04-01T10:00:00.000Z";
+const MAY_1_10 = "2026-05-01T10:00:00.000Z";
 const MAY_1_14 = "2026-05-01T14:00:00.000Z";
 const JUN_1_14 = "2026-06-01T14:00:00.000Z";
+
+/** Operator bootstrap in the first `coverClinic()` advances the clock 24h to `activates_at`. */
+function clockBeforeFirstPaidGrant(grantInstantIso: string): string {
+  return addDuration(grantInstantIso, "day", -1);
+}
 
 const doGetReal = env.DO.get.bind(env.DO);
 
@@ -117,10 +123,8 @@ async function setupPromotedPolicy(scenario: Scenario): Promise<string> {
   return await mintAat(scenario);
 }
 
-async function completeChargedRequest(
-  scenario: Scenario,
-  token: string,
-): Promise<string | null> {
+async function completeChargedRequest(scenario: Scenario): Promise<string | null> {
+  const token = await mintAat(scenario);
   const invoked = await invoke(scenario, {
     token,
     idempotencyKey: crypto.randomUUID(),
@@ -270,7 +274,7 @@ beforeEach(async () => {
 describe("term boundaries, grace and renewal", () => {
   it("E2E-P3.5-01 A9 renewal paid five days early queues and activates at the old end", async () => {
     const scenario = await newScenario();
-    await setTestClock(MAR_1_10);
+    await setTestClock(clockBeforeFirstPaidGrant(MAR_1_10));
     await coverClinic(scenario);
 
     const t1AfterFirst = (await readDoTerms(scenario.installationId)).find(
@@ -311,10 +315,10 @@ describe("term boundaries, grace and renewal", () => {
 
   it("E2E-P3.5-02 A10 unpaid end enters grace then lapses as expired", async () => {
     const scenario = await newScenario();
-    await setTestClock(FEB_1_10);
+    await setTestClock(clockBeforeFirstPaidGrant(FEB_1_10));
     await coverClinic(scenario);
     await newClinic(scenario);
-    const token = await setupPromotedPolicy(scenario);
+    await setupPromotedPolicy(scenario);
 
     const active = (await readDoTerms(scenario.installationId)).find(
       (row) => row.state === "active",
@@ -324,13 +328,13 @@ describe("term boundaries, grace and renewal", () => {
     const graceTerm = await enterGraceAtTermEnd(scenario);
     expect(graceTerm.term_id).toBe(active!.term_id);
 
-    const admittedTermId = await completeChargedRequest(scenario, token);
+    const admittedTermId = await completeChargedRequest(scenario);
     expect(admittedTermId).toBe(graceTerm.term_id);
 
     await lapseGraceAtEnd(scenario);
 
     const denied = await invoke(scenario, {
-      token,
+      token: await mintAat(scenario),
       idempotencyKey: crypto.randomUUID(),
     });
     expect(denied.status).toBe(403);
@@ -341,10 +345,10 @@ describe("term boundaries, grace and renewal", () => {
   it("E2E-P3.5-03 The reservation that takes the last grace credit ends grace_exhausted", async () => {
     const allowance = 7;
     const scenario = await newScenario();
-    await setTestClock(FEB_1_10);
+    await setTestClock(clockBeforeFirstPaidGrant(FEB_1_10));
     await coverClinic(scenario, { max_allowance_per_month: allowance });
     await newClinic(scenario);
-    const token = await setupPromotedPolicy(scenario);
+    await setupPromotedPolicy(scenario);
 
     const activeBeforeGrace = (await readDoTerms(scenario.installationId)).find(
       (row) => row.state === "active",
@@ -364,11 +368,11 @@ describe("term boundaries, grace and renewal", () => {
     expect(remaining).toBeGreaterThan(0);
 
     for (let index = 0; index < remaining - 1; index += 1) {
-      await completeChargedRequest(scenario, token);
+      await completeChargedRequest(scenario);
     }
 
     const lastAdmission = await invoke(scenario, {
-      token,
+      token: await mintAat(scenario),
       idempotencyKey: crypto.randomUUID(),
     });
     expect(lastAdmission.status).toBe(200);
@@ -381,7 +385,7 @@ describe("term boundaries, grace and renewal", () => {
     expect(ended?.end_reason).toBe("grace_exhausted");
 
     const denied = await invoke(scenario, {
-      token,
+      token: await mintAat(scenario),
       idempotencyKey: crypto.randomUUID(),
     });
     expect(denied.status).toBe(403);
@@ -391,10 +395,10 @@ describe("term boundaries, grace and renewal", () => {
 
   it("E2E-P3.5-04 A grant on day three of grace keeps the old calendar", async () => {
     const scenario = await newScenario();
-    await setTestClock(FEB_1_10);
+    await setTestClock(clockBeforeFirstPaidGrant(FEB_1_10));
     await coverClinic(scenario);
     await newClinic(scenario);
-    const token = await setupPromotedPolicy(scenario);
+    await setupPromotedPolicy(scenario);
 
     const t1 = (await readDoTerms(scenario.installationId)).find(
       (row) => row.state === "active",
@@ -407,7 +411,7 @@ describe("term boundaries, grace and renewal", () => {
 
     const dayThreeOfGrace = addDuration(t1EndsAt, "day", 3);
     await setTestClock(dayThreeOfGrace);
-    await completeChargedRequest(scenario, token);
+    await completeChargedRequest(scenario);
     const hotAfterUsage = await readHotUsage(scenario.installationId);
     expect(hotAfterUsage.used).toBeGreaterThanOrEqual(QUOTA_WEIGHT);
 
@@ -427,7 +431,7 @@ describe("term boundaries, grace and renewal", () => {
 
   it("E2E-P3.5-05 A11 a lapsed clinic paid two months later starts now", async () => {
     const scenario = await newScenario();
-    await setTestClock(FEB_1_10);
+    await setTestClock(clockBeforeFirstPaidGrant(FEB_1_10));
     await coverClinic(scenario);
 
     const active = (await readDoTerms(scenario.installationId)).find(
@@ -461,19 +465,21 @@ describe("term boundaries, grace and renewal", () => {
 
   it("E2E-P3.5-06 A skipped alarm is applied by the next admission", async () => {
     const scenario = await newScenario();
-    await setTestClock(FEB_1_10);
+    await setTestClock(clockBeforeFirstPaidGrant(FEB_1_10));
     await coverClinic(scenario);
     await newClinic(scenario);
-    const token = await setupPromotedPolicy(scenario);
+    await setupPromotedPolicy(scenario);
 
     const graceTerm = await enterGraceAtTermEnd(scenario);
     expect(graceTerm.grace_ends_at).toBeTruthy();
 
-    const afterGraceEnd = addDuration(String(graceTerm.grace_ends_at), "second", 1);
+    const afterGraceEnd = new Date(
+      Date.parse(String(graceTerm.grace_ends_at)) + 1000,
+    ).toISOString();
     await setTestClock(afterGraceEnd);
 
     const denied = await invoke(scenario, {
-      token,
+      token: await mintAat(scenario),
       idempotencyKey: crypto.randomUUID(),
     });
     expect(denied.status).toBe(403);
@@ -485,10 +491,10 @@ describe("term boundaries, grace and renewal", () => {
     const stagingStart = "2026-03-01T12:00:00.000Z";
     const scenario = await newScenario();
     await withDurationScale("staging", async () => {
-      await setTestClock(stagingStart);
+      await setTestClock(clockBeforeFirstPaidGrant(stagingStart));
       await coverClinic(scenario);
       await newClinic(scenario);
-      const token = await setupPromotedPolicy(scenario);
+      await setupPromotedPolicy(scenario);
 
       const active = (await readDoTerms(scenario.installationId)).find(
         (row) => row.state === "active",
@@ -517,7 +523,7 @@ describe("term boundaries, grace and renewal", () => {
       await runQuotaAlarm(scenario.installationId);
 
       const denied = await invoke(scenario, {
-        token,
+        token: await mintAat(scenario),
         idempotencyKey: crypto.randomUUID(),
       });
       expect(denied.status).toBe(403);
@@ -527,6 +533,28 @@ describe("term boundaries, grace and renewal", () => {
   });
 
   it("E2E-P3.5-08 Activate, end, and grace start ship events and hard_stop_at", async () => {
+    const graceScenario = await newScenario();
+    await setTestClock(clockBeforeFirstPaidGrant(FEB_1_10));
+    await coverClinic(graceScenario);
+    const activeBeforeGrace = (await readDoTerms(graceScenario.installationId)).find(
+      (row) => row.state === "active",
+    );
+    expect(activeBeforeGrace?.ends_at).toBeTruthy();
+
+    await setTestClock(String(activeBeforeGrace!.ends_at));
+    await runQuotaAlarm(graceScenario.installationId);
+    await flushBackgroundWork();
+
+    const graceRow = (await readDoTerms(graceScenario.installationId)).find(
+      (row) => row.state === "grace",
+    );
+    expect(graceRow?.grace_ends_at).toBeTruthy();
+
+    let events = await listCoverageEventsForOrg(graceScenario.orgId);
+    expect(eventKinds(events)).toContain("grace_started");
+    let mirror = await coverageMirrorForInstallation(graceScenario.installationId);
+    expect(mirror?.hard_stop_at).toBe(graceRow!.grace_ends_at);
+
     const scenario = await newScenario();
     await setTestClock(MAR_1_10);
     await coverClinic(scenario);
@@ -536,9 +564,9 @@ describe("term boundaries, grace and renewal", () => {
     );
     expect(t1Active?.ends_at).toBeTruthy();
 
-    let events = await listCoverageEventsForOrg(scenario.orgId);
+    events = await listCoverageEventsForOrg(scenario.orgId);
     expect(eventKinds(events)).toContain("term_activated");
-    let mirror = await coverageMirrorForInstallation(scenario.installationId);
+    mirror = await coverageMirrorForInstallation(scenario.installationId);
     expect(mirror?.hard_stop_at).toBe(t1Active!.ends_at);
 
     await setTestClock(MAR_27_10);
@@ -551,26 +579,5 @@ describe("term boundaries, grace and renewal", () => {
     expect(eventKinds(events).filter((kind) => kind === "term_activated").length).toBeGreaterThanOrEqual(
       2,
     );
-
-    const graceScenario = await newScenario();
-    await setTestClock(FEB_1_10);
-    await coverClinic(graceScenario);
-    const activeBeforeGrace = (await readDoTerms(graceScenario.installationId)).find(
-      (row) => row.state === "active",
-    );
-    expect(activeBeforeGrace?.ends_at).toBeTruthy();
-
-    await setTestClock(String(activeBeforeGrace!.ends_at));
-    await runQuotaAlarm(graceScenario.installationId);
-
-    const graceRow = (await readDoTerms(graceScenario.installationId)).find(
-      (row) => row.state === "grace",
-    );
-    expect(graceRow?.grace_ends_at).toBeTruthy();
-
-    events = await listCoverageEventsForOrg(graceScenario.orgId);
-    expect(eventKinds(events)).toContain("grace_started");
-    mirror = await coverageMirrorForInstallation(graceScenario.installationId);
-    expect(mirror?.hard_stop_at).toBe(graceRow!.grace_ends_at);
   });
 });

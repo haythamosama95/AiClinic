@@ -256,6 +256,54 @@ export function allowanceBand(
   return "ok";
 }
 
+function snapshotTermObject(
+  term: TermRow,
+  hot: HotRow,
+): Record<string, unknown> {
+  const used =
+    term.term_id === hot.active_term_id ? hot.used : (term.used_final ?? 0);
+  const snapshot = JSON.parse(term.plan_snapshot) as {
+    display_name?: string;
+    capabilities?: unknown;
+  };
+  const allowance = term.allowance ?? 0;
+  const capabilities = Array.isArray(snapshot.capabilities)
+    ? snapshot.capabilities.filter((entry): entry is string => typeof entry === "string")
+    : [];
+  return {
+    ref: term.term_id,
+    plan_display_name: snapshot.display_name ?? "",
+    starts_at: term.starts_at ?? "",
+    ends_at: term.ends_at ?? "",
+    grace_ends_at: termGraceEndsAtDisplay(term),
+    allowance,
+    used,
+    band: allowanceBand(used, allowance, term.state),
+    capabilities,
+  };
+}
+
+function lastEndedTermForSnapshot(terms: TermRow[]): TermRow | undefined {
+  const ended = terms.filter(
+    (term) => term.state === "ended" || term.state === "exhausted",
+  );
+  if (ended.length === 0) {
+    return undefined;
+  }
+  return ended.sort((left, right) => right.position - left.position)[0];
+}
+
+function lapsedSnapshotReason(terms: TermRow[]): string {
+  const last = lastEndedTermForSnapshot(terms);
+  if (last?.end_reason === "expired") {
+    return "expired";
+  }
+  if (last?.end_reason === "grace_exhausted") {
+    return "grace_exhausted";
+  }
+  return "none";
+}
+
 export function buildCoverageSnapshot(input: {
   vendorContractVersion: number;
   orgId: string;
@@ -264,47 +312,29 @@ export function buildCoverageSnapshot(input: {
   durationScale?: DurationScale;
 }): Record<string, unknown> {
   const active = input.terms.find((term) => term.state === "active");
+  const grace = input.terms.find((term) => term.state === "grace");
   const queued = input.terms.filter((term) => term.state === "queued");
   let termObject: Record<string, unknown> | null = null;
-  if (active !== undefined) {
-    const used =
-      active.term_id === input.hot.active_term_id
-        ? input.hot.used
-        : (active.used_final ?? 0);
-    const snapshot = JSON.parse(active.plan_snapshot) as {
-      display_name?: string;
-      capabilities?: unknown;
-    };
-    const allowance = active.allowance ?? 0;
-    const capabilities = Array.isArray(snapshot.capabilities)
-      ? snapshot.capabilities.filter((entry): entry is string => typeof entry === "string")
-      : [];
-    termObject = {
-      ref: active.term_id,
-      plan_display_name: snapshot.display_name ?? "",
-      starts_at: active.starts_at ?? "",
-      ends_at: active.ends_at ?? "",
-      grace_ends_at: termGraceEndsAtDisplay(active),
-      allowance,
-      used,
-      band: allowanceBand(used, allowance, active.state),
-      capabilities,
-    };
-  }
+  let coverageState: string;
+  let reason = "none";
 
-  const coverageState =
-    active !== undefined
-      ? "active"
-      : input.terms.some((term) => term.state === "exhausted")
-        ? "exhausted"
-        : input.terms.length === 0
-          ? "lapsed"
-          : "lapsed";
+  if (active !== undefined) {
+    coverageState = "active";
+    termObject = snapshotTermObject(active, input.hot);
+  } else if (grace !== undefined) {
+    coverageState = "grace";
+    termObject = snapshotTermObject(grace, input.hot);
+  } else if (input.terms.some((term) => term.state === "exhausted")) {
+    coverageState = "exhausted";
+  } else {
+    coverageState = "lapsed";
+    reason = lapsedSnapshotReason(input.terms);
+  }
 
   return {
     contract_version: input.vendorContractVersion,
     state: coverageState,
-    reason: "none",
+    reason,
     suspended: input.hot.suspended !== 0,
     term: termObject,
     queued_count: queued.length,
@@ -456,6 +486,24 @@ function resolveOrgIdFromStorage(storage: DurableObjectStorage): string {
   try {
     const envelope = JSON.parse(row.envelope) as { org_id?: string };
     return typeof envelope.org_id === "string" ? envelope.org_id : "";
+  } catch {
+    return "";
+  }
+}
+
+function resolveInstallationIdFromStorage(storage: DurableObjectStorage): string {
+  const row = sqlSelect<{ receipt: string }>(
+    storage,
+    "SELECT receipt FROM grant ORDER BY applied_at DESC LIMIT 1",
+  )[0];
+  if (row === undefined) {
+    return "";
+  }
+  try {
+    const receipt = JSON.parse(row.receipt) as { installation_id?: string };
+    return typeof receipt.installation_id === "string"
+      ? receipt.installation_id
+      : "";
   } catch {
     return "";
   }
@@ -685,9 +733,8 @@ async function syncAlarm(
   _storage: DurableObjectStorage,
   nextAlarmAt: string | null,
   currentAlarmAt: string | null,
-  immediate = false,
 ): Promise<void> {
-  if (!immediate && nextAlarmAt === currentAlarmAt) {
+  if (nextAlarmAt === currentAlarmAt) {
     return;
   }
   if (nextAlarmAt === null) {
@@ -695,9 +742,7 @@ async function syncAlarm(
     return;
   }
   const targetMs = Date.parse(nextAlarmAt);
-  const scheduleMs = immediate
-    ? Date.now()
-    : Math.max(targetMs, Date.now() + 5_000);
+  const scheduleMs = Math.max(targetMs, Date.now() + 5_000);
   await state.storage.setAlarm(scheduleMs);
 }
 
@@ -718,7 +763,7 @@ export async function scheduleOutboxAlarmIfPending(
   const terms = loadTerms(storage);
   const nextAlarm = computeNextAlarmAt(terms, true, nowIso);
   updateHot(storage, { next_alarm_at: nextAlarm });
-  await syncAlarm(state, storage, nextAlarm, hot.next_alarm_at, true);
+  await syncAlarm(state, storage, nextAlarm, hot.next_alarm_at);
 }
 
 function computeNextAlarmAt(
@@ -728,11 +773,12 @@ function computeNextAlarmAt(
 ): string | null {
   const boundaries: number[] = [];
   const active = terms.find((term) => term.state === "active");
+  const grace = terms.find((term) => term.state === "grace");
   if (active?.ends_at) {
     boundaries.push(Date.parse(active.ends_at));
   }
-  if (active?.grace_ends_at) {
-    boundaries.push(Date.parse(active.grace_ends_at));
+  if (grace?.grace_ends_at) {
+    boundaries.push(Date.parse(grace.grace_ends_at));
   }
   const nextBoundary =
     boundaries.length > 0
@@ -805,11 +851,13 @@ export async function applyGrantRPC(
       pendingEvents.push({
         kind: "term_ended",
         mutate: () => {
+          const hotBeforeRenewal = loadHot(storage);
           sqlExec(
             storage,
-            `UPDATE term SET state = 'ended', end_reason = 'renewed', ended_at = ${sqlString(request.nowIso)}
+            `UPDATE term SET state = 'ended', end_reason = 'renewed', ended_at = ${sqlString(request.nowIso)}, used_final = ${hotBeforeRenewal.used}
              WHERE term_id = ${sqlString(graceTerm.term_id)}`,
           );
+          updateHot(storage, { grace_base_used: 0 });
           terms = loadTerms(storage);
         },
       });
@@ -1099,19 +1147,45 @@ async function mirrorFromSnapshot(
   }
 
   const term = snapshot.term as Record<string, unknown> | null;
+  const snapshotState = String(snapshot.state);
+  let hardStopAt: string | null = null;
+  if (term !== null) {
+    if (snapshotState === "active") {
+      hardStopAt =
+        typeof term.ends_at === "string" && term.ends_at.length > 0
+          ? term.ends_at
+          : null;
+    } else if (snapshotState === "grace") {
+      hardStopAt =
+        typeof term.grace_ends_at === "string" && term.grace_ends_at.length > 0
+          ? term.grace_ends_at
+          : null;
+    }
+  }
+  if (hardStopAt === null && snapshotState === "lapsed") {
+    const mirrorRow = await db
+      .prepare(
+        `SELECT hard_stop_at FROM coverage_mirror WHERE installation_id = ?`,
+      )
+      .bind(installationId)
+      .first<{ hard_stop_at: string | null }>();
+    hardStopAt = mirrorRow?.hard_stop_at ?? null;
+  }
+
   await db
     .prepare(
       `INSERT OR REPLACE INTO coverage_mirror (
         installation_id, org_id, binding_epoch, clinic_seq, state, suspended, hard_stop_at, term_snapshot
-      ) VALUES (?, ?, ?, ?, ?, ?, NULL, ?)`,
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
     )
     .bind(
       installationId,
       orgId,
       bindingEpoch,
       clinicSeq,
-      String(snapshot.state),
+      snapshotState,
       snapshot.suspended ? 1 : 0,
+      hardStopAt,
       JSON.stringify(term),
     )
     .run();
@@ -1134,10 +1208,12 @@ export async function shipCoverageOutboxAlarm(
   durationScale?: DurationScale,
 ): Promise<ShippedCoverageAlert[]> {
   return blockConcurrencyWhile(async () => {
+    const boundInstallationId =
+      resolveInstallationIdFromStorage(storage) || installationId;
     applyDueBoundaries({
       storage,
       clockNowIso: nowIso,
-      installationId,
+      installationId: boundInstallationId,
       orgId: resolveOrgIdFromStorage(storage),
       vendorContractVersion: CHANNEL_VERSIONS.platformDo,
       durationScale,

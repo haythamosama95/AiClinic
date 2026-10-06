@@ -1696,17 +1696,24 @@ export class GatewayObject extends DurableObject {
       });
       if (kind === "admission") {
         assertAdmissionArgs(body);
-        const result = await admissionRPC(
-          this.ctx.storage,
-          (fn) => this.ctx.blockConcurrencyWhile(fn),
-          body,
-          now,
-          quotaLog,
-        );
+        const runtimeEnv = this.env as Env;
         const admissionNowIso =
           typeof (body as { nowIso?: string }).nowIso === "string"
             ? (body as { nowIso: string }).nowIso
-            : await clockNowIso(this.env as Env);
+            : await clockNowIso(runtimeEnv);
+        const durationScale =
+          runtimeEnv.DURATION_SCALE === "staging" ? "staging" : undefined;
+        const result = await admissionRPC(
+          this.ctx.storage,
+          (fn) => this.ctx.blockConcurrencyWhile(fn),
+          {
+            ...(body as AdmissionRequest),
+            nowIso: admissionNowIso,
+            durationScale,
+          },
+          now,
+          quotaLog,
+        );
         await scheduleOutboxAlarmIfPending(
           this.ctx,
           this.ctx.storage,
@@ -1785,6 +1792,8 @@ export class GatewayObject extends DurableObject {
         ? this.ctx.id.toString()
         : "";
     const nowIso = await clockNowIso(runtimeEnv);
+    const durationScale =
+      runtimeEnv.DURATION_SCALE === "staging" ? "staging" : undefined;
     const shippedAlerts = await shipCoverageOutboxAlarm(
       this.ctx,
       this.ctx.storage,
@@ -1793,6 +1802,7 @@ export class GatewayObject extends DurableObject {
       installationId,
       nowIso,
       log,
+      durationScale,
     );
     for (const alert of shippedAlerts) {
       if (alert.code === "AL-11") {
