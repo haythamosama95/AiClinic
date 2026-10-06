@@ -270,9 +270,6 @@ function envelopeFromControlResult(
   if (result.ok) {
     return ok(version, JSON.stringify(result.body));
   }
-  if (result.status === 409) {
-    return conflict(version, result.error);
-  }
   return rejected(version, result.error);
 }
 
@@ -4563,10 +4560,7 @@ export class VendorEntrypoint extends WorkerEntrypoint<VendorEnv> {
     run: (version: number, accessEmail: string) => Promise<VendorResultEnvelope>,
   ): Promise<VendorResultEnvelope> {
     const requested = parseRequestedVersion(args);
-    const negotiated = negotiate(
-      VENDOR_CHANNEL,
-      requested === null ? VENDOR_CHANNEL : requested,
-    );
+    const negotiated = negotiate(VENDOR_CHANNEL, requested);
     if (!negotiated.ok) {
       return rejected(VENDOR_CHANNEL, negotiated.code);
     }
