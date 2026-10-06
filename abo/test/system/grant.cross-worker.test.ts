@@ -1,10 +1,10 @@
 /**
- * P4.4 — grant pipeline E2E tests (H-XW + H-PAY), E2E-P4.4-01 through E2E-P4.4-04.
+ * P4.4 — grant pipeline E2E tests (H-XW + H-PAY), E2E-P4.4-01 through E2E-P4.4-09.
  */
 
 import { env } from "cloudflare:test";
 import { beforeEach, describe, expect, it } from "vitest";
-import { CHANNEL_VERSIONS } from "vendor-contracts";
+import { CHANNEL_VERSIONS, humanRef } from "vendor-contracts";
 import {
   createSoftwareAuthenticator,
   type SoftwareAuthenticator,
@@ -833,6 +833,141 @@ async function setupGrantHarness(): Promise<{
   return { expectations: expectations!, offerVersions };
 }
 
+async function setupGrantHarnessWithoutAboKey(): Promise<{
+  expectations: OffersFixtureExpectations;
+  offerVersions: Record<number, { offerId: string; version: number }>;
+}> {
+  const expectations = await seedOffersCatalogueFixture();
+  expect(expectations).not.toBeNull();
+  const offerVersions = await seedTermOfferVersions(expectations!);
+  await publishPlanProOnPlatform();
+  await registerClinicIssuerKey();
+  await setupPromotedRoutingPolicy();
+  return { expectations: expectations!, offerVersions };
+}
+
+function jwsHeaderKid(signature: string): string | null {
+  const [headerSegment] = signature.split(".");
+  if (!headerSegment) {
+    return null;
+  }
+  const padded = headerSegment.replace(/-/g, "+").replace(/_/g, "/");
+  const binary = atob(padded);
+  const bytes = Uint8Array.from(binary, (char) => char.charCodeAt(0));
+  const header = JSON.parse(new TextDecoder().decode(bytes)) as { kid?: string };
+  return header.kid ?? null;
+}
+
+async function grantOutcomeReceiptKid(paymentId: string): Promise<string | null> {
+  try {
+    const row = await env.DB.prepare(
+      `SELECT go.receipt FROM grant_outcome go
+       JOIN grant_request gr ON gr.grant_id = go.grant_id
+       WHERE gr.source_ref = ?`,
+    )
+      .bind(paymentId)
+      .first<{ receipt: string }>();
+    if (!row?.receipt) {
+      return null;
+    }
+    const receipt = JSON.parse(row.receipt) as { signature?: string };
+    return receipt.signature ? jwsHeaderKid(receipt.signature) : null;
+  } catch {
+    return null;
+  }
+}
+
+async function seedHarnessPayment(
+  org: string,
+  index: number,
+  expectations: OffersFixtureExpectations,
+  options?: { paidAt?: string; classification?: string },
+): Promise<{ paymentId: string; reference: string }> {
+  const paymentId = `01JGRANTPAY${String(index).padStart(8, "0")}`;
+  const checkoutId = `01JGRANTCHK${String(index).padStart(8, "0")}`;
+  const reference = humanRef("PAY", paymentId);
+  const paidAt =
+    options?.paidAt ??
+    `2026-06-01T${String(index).padStart(2, "0")}:00:00.000Z`;
+  const classification = options?.classification ?? "normal";
+  const now = "2026-06-01T12:00:00.000Z";
+  await env.DB.prepare(
+    `INSERT INTO checkout (
+       checkout_id, reference, org_id, created_by_sub, billing_token_jti,
+       client_request_id, offer_id, offer_version, plan_id, plan_version,
+       term_unit, term_count, allowance_credits, grace_days, grace_cap_rule,
+       list_price_minor, charged_price_minor, currency, terms_version,
+       billing_contact_version, billing_contact_sha256, opened_with_coverage_through,
+       coverage_source, provider_id, initiator, expires_at, contract_version
+     ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+  )
+    .bind(
+      checkoutId,
+      humanRef("CK", checkoutId),
+      org,
+      "admin-sub",
+      `jti-${index}`,
+      `client-seed-${org}-${index}`,
+      expectations.offer_id,
+      expectations.version,
+      PLAN_ID,
+      PLAN_VERSION,
+      "month",
+      1,
+      ALLOWANCE_CREDITS,
+      7,
+      "proportional",
+      1000,
+      1000,
+      "EGP",
+      expectations.terms.version,
+      1,
+      "sha256-billing-contact",
+      null,
+      "none",
+      "paymob",
+      "administrator",
+      "2026-06-02T12:00:00.000Z",
+      1,
+    )
+    .run();
+  await env.DB.prepare(
+    `INSERT INTO checkout_status (checkout_id, state, last_event_at)
+     VALUES (?, 'paid', ?)`,
+  )
+    .bind(checkoutId, now)
+    .run();
+  await env.DB.prepare(
+    `INSERT INTO payment (
+       payment_id, reference, org_id, checkout_id, provider_id, amount_minor,
+       currency, paid_at, confirmed_at, confirmation_inquiry_id, offer_id,
+       offer_version, billing_contact_version, classification, disposition,
+       mismatch_detail, evidence_sha256
+     ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+  )
+    .bind(
+      paymentId,
+      reference,
+      org,
+      checkoutId,
+      "paymob",
+      1000,
+      "EGP",
+      paidAt,
+      now,
+      `inquiry-seed-${index}`,
+      expectations.offer_id,
+      expectations.version,
+      1,
+      classification,
+      "grant",
+      null,
+      `evidence-seed-${index}`,
+    )
+    .run();
+  return { paymentId, reference };
+}
+
 beforeEach(async () => {
   operatorBootstrap = null;
   registeredIssuerKid = null;
@@ -1005,5 +1140,216 @@ describe("grant cross-worker", () => {
     expect((snapshot?.term as { allowance?: number } | undefined)?.allowance).toBe(
       ALLOWANCE_CREDITS,
     );
+  });
+
+  it("E2E-P4.4-06 unregistered ABO kid pauses grant work and raises AL-23", async () => {
+    const { expectations, offerVersions } = await setupGrantHarnessWithoutAboKey();
+    const org = "org-grant-06-pause";
+    const txnId = 94060;
+    await putBillingContact(org);
+    const { checkoutId } = await postCheckout(
+      org,
+      offerVersions[1],
+      expectations,
+      `req-grant-06-${txnId}`,
+    );
+    await postPaymobProcessedCallback(successFixture as PaymobCallbackFixture, {
+      txnId,
+    });
+
+    await runScheduled("0 * * * *");
+
+    const paymentId = await paymentIdForCheckout(checkoutId);
+    expect(paymentId).not.toBeNull();
+
+    await runGrantStep();
+    expect(await grantWorkState(paymentId!)).toBe("open");
+    expect(await grantOutcomeCount()).toBe(0);
+    expect(await alertCountByCode("AL-23")).toBeGreaterThan(0);
+
+    await registerAboGrantKeyOnPlatform();
+    await runScheduled("0 * * * *");
+    await runGrantStep();
+
+    expect(await grantOutcomeCount()).toBeGreaterThan(0);
+    expect(await grantWorkState(paymentId!)).toBe("done");
+  });
+
+  it("E2E-P4.4-07 second configured platform kid receipts still verify", async () => {
+    const { expectations, offerVersions } = await setupGrantHarness();
+    const org = "org-grant-07-receipt";
+    const firstTxnId = 94071;
+    const secondTxnId = 94072;
+
+    const firstCheckout = await paidCheckoutFlow(
+      org,
+      offerVersions[1],
+      expectations,
+      firstTxnId,
+    );
+    const firstPaymentId = await paymentIdForCheckout(firstCheckout.checkoutId);
+    expect(firstPaymentId).not.toBeNull();
+    expect(await grantOutcomeCount()).toBe(1);
+    expect(await grantOutcomeReceiptKid(firstPaymentId!)).toBe("platform-test");
+
+    await paidCheckoutFlow(org, offerVersions[1], expectations, secondTxnId);
+    expect(await grantOutcomeCount()).toBe(2);
+  });
+
+  it("E2E-P4.4-05 second payment queues a term and subscription shows duplicate_payment", async () => {
+    const { expectations, offerVersions } = await setupGrantHarness();
+    const org = "org-grant-05-dup";
+    const firstTxnId = 94051;
+    const secondTxnId = 94052;
+    await putBillingContact(org);
+
+    const firstCheckout = await postCheckout(
+      org,
+      offerVersions[1],
+      expectations,
+      `req-grant-05-a-${firstTxnId}`,
+    );
+    const secondCheckout = await postCheckout(
+      org,
+      offerVersions[1],
+      expectations,
+      `req-grant-05-b-${secondTxnId}`,
+    );
+
+    await postPaymobProcessedCallback(successFixture as PaymobCallbackFixture, {
+      txnId: firstTxnId,
+    });
+    await runGrantStep();
+    await postPaymobProcessedCallback(successFixture as PaymobCallbackFixture, {
+      txnId: secondTxnId,
+      connectingIp: "203.0.113.52",
+    });
+    await runGrantStep();
+
+    const headers = await administratorHeaders(org);
+    const subscriptionRead = await billingFetch("/v1/subscription", { headers });
+    expect(subscriptionRead.status).toBe(200);
+    const subscriptionBody = (await subscriptionRead.json()) as {
+      snapshot?: { queued_count?: number };
+      notices?: string[];
+    };
+    expect((subscriptionBody.snapshot?.queued_count ?? 0) > 0).toBe(true);
+    expect(subscriptionBody.notices ?? []).toContain("duplicate_payment");
+
+    const firstCoverageThrough = await env.DB.prepare(
+      `SELECT opened_with_coverage_through FROM checkout WHERE checkout_id = ?`,
+    )
+      .bind(firstCheckout.checkoutId)
+      .first<{ opened_with_coverage_through: string | null }>();
+    const secondCoverageThrough = await env.DB.prepare(
+      `SELECT opened_with_coverage_through FROM checkout WHERE checkout_id = ?`,
+    )
+      .bind(secondCheckout.checkoutId)
+      .first<{ opened_with_coverage_through: string | null }>();
+    expect(firstCoverageThrough?.opened_with_coverage_through).not.toBeNull();
+    expect(secondCoverageThrough?.opened_with_coverage_through).toBe(
+      firstCoverageThrough?.opened_with_coverage_through,
+    );
+  });
+
+  it("E2E-P4.4-08 no clinic GET after create still shows Active on open checkouts", async () => {
+    const { expectations, offerVersions } = await setupGrantHarness();
+    const org = "org-grant-08-open";
+    const txnId = 94080;
+    await putBillingContact(org);
+    const { reference } = await postCheckout(
+      org,
+      offerVersions[1],
+      expectations,
+      `req-grant-08-${txnId}`,
+    );
+    await postPaymobProcessedCallback(successFixture as PaymobCallbackFixture, {
+      txnId,
+    });
+    await runGrantStep();
+
+    const headers = await administratorHeaders(org);
+    const listOpen = await billingFetch("/v1/checkouts?open=1", { headers });
+    expect(listOpen.status).toBe(200);
+    const listBody = (await listOpen.json()) as {
+      checkouts: Array<{ reference: string; shown_state: string }>;
+    };
+    const activeCheckout = listBody.checkouts.find(
+      (entry) => entry.reference === reference,
+    );
+    expect(activeCheckout?.shown_state).toBe("Active");
+  });
+
+  it("E2E-P4.4-09 payment cursor pages stay inside the tenant", async () => {
+    const expectations = await seedOffersCatalogueFixture();
+    expect(expectations).not.toBeNull();
+    const orgA = "org-grant-09-a";
+    const orgB = "org-grant-09-b";
+    const seededA: Array<{ paymentId: string; reference: string }> = [];
+    for (let index = 0; index < 21; index += 1) {
+      seededA.push(
+        await seedHarnessPayment(orgA, index, expectations!, {
+          paidAt: `2026-06-01T${String(index).padStart(2, "0")}:00:00.000Z`,
+        }),
+      );
+    }
+    const seededB = await seedHarnessPayment(orgB, 99, expectations!);
+
+    const headersA = await administratorHeaders(orgA);
+    const headersB = await administratorHeaders(orgB);
+
+    const firstPage = await billingFetch("/v1/payments", { headers: headersA });
+    expect(firstPage.status).toBe(200);
+    const firstBody = (await firstPage.json()) as {
+      payments: Array<{ reference: string }>;
+      next_cursor: string;
+      has_more: boolean;
+    };
+    expect(firstBody.payments).toHaveLength(20);
+    expect(firstBody.has_more).toBe(true);
+    expect(firstBody.next_cursor).toBe(
+      firstBody.payments[firstBody.payments.length - 1]?.reference,
+    );
+
+    const secondPage = await billingFetch(
+      `/v1/payments?cursor=${encodeURIComponent(firstBody.next_cursor)}`,
+      { headers: headersA },
+    );
+    expect(secondPage.status).toBe(200);
+    const secondBody = (await secondPage.json()) as {
+      payments: Array<{ reference: string }>;
+      has_more: boolean;
+    };
+    expect(secondBody.payments).toHaveLength(1);
+    expect(secondBody.has_more).toBe(false);
+    const allReferences = [
+      ...firstBody.payments.map((entry) => entry.reference),
+      ...secondBody.payments.map((entry) => entry.reference),
+    ];
+    expect(allReferences).toHaveLength(21);
+    for (const seeded of seededA) {
+      expect(allReferences).toContain(seeded.reference);
+    }
+
+    const tenantBPage = await billingFetch("/v1/payments", { headers: headersB });
+    expect(tenantBPage.status).toBe(200);
+    const tenantBBody = (await tenantBPage.json()) as {
+      payments: Array<{ reference: string }>;
+    };
+    expect(tenantBBody.payments).toHaveLength(1);
+    expect(tenantBBody.payments[0]?.reference).toBe(seededB.reference);
+    for (const seeded of seededA) {
+      expect(tenantBBody.payments.map((entry) => entry.reference)).not.toContain(
+        seeded.reference,
+      );
+    }
+
+    const invalidCursor = await billingFetch(
+      `/v1/payments?cursor=${encodeURIComponent(seededB.reference)}`,
+      { headers: headersA },
+    );
+    expect(invalidCursor.status).toBe(422);
+    const invalidBody = (await invalidCursor.json()) as { code: string };
+    expect(invalidBody.code).toBe("invalid_request");
   });
 });
