@@ -2,6 +2,7 @@
  * P3.5 — Term boundaries, grace and renewal (H-AP, E2E-P3.5-01–08).
  */
 
+import { env as workerBindings } from "cloudflare:workers";
 import { env, runDurableObjectAlarm, runInDurableObject } from "cloudflare:test";
 import { beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { addDuration } from "../../src/coverage/calendar";
@@ -20,6 +21,8 @@ import {
   POLICY_VERSION,
   promote,
   publishPolicy,
+  queryAll,
+  queryOne,
   registerVisitSummaryCapability,
   resetPlatformState,
   setTestClock,
@@ -181,6 +184,74 @@ async function lapseGraceAtEnd(scenario: Scenario): Promise<void> {
   expect(grace?.grace_ends_at).toBeTruthy();
   await setTestClock(String(grace!.grace_ends_at));
   await runQuotaAlarm(scenario.installationId);
+}
+
+type CoverageEventRow = {
+  feed_seq: number;
+  clinic_seq: number;
+  kind: string;
+  org_id: string;
+  event_id: string;
+};
+
+async function listCoverageEventsForOrg(orgId: string): Promise<CoverageEventRow[]> {
+  const exists = await queryOne<{ ok: number }>(
+    "SELECT 1 AS ok FROM sqlite_master WHERE type = 'table' AND name = 'coverage_event'",
+  );
+  if (!exists) {
+    return [];
+  }
+  return queryAll<CoverageEventRow>(
+    "SELECT feed_seq, clinic_seq, kind, org_id, event_id FROM coverage_event WHERE org_id = ? ORDER BY feed_seq ASC",
+    [orgId],
+  );
+}
+
+async function coverageMirrorForInstallation(
+  installationId: string,
+): Promise<Record<string, unknown> | null> {
+  const exists = await queryOne<{ ok: number }>(
+    "SELECT 1 AS ok FROM sqlite_master WHERE type = 'table' AND name = 'coverage_mirror'",
+  );
+  if (!exists) {
+    return null;
+  }
+  return queryOne<Record<string, unknown>>(
+    "SELECT * FROM coverage_mirror WHERE installation_id = ?",
+    [installationId],
+  );
+}
+
+function withDurationScale<T>(
+  scale: string | undefined,
+  fn: () => Promise<T>,
+): Promise<T> {
+  const targets = [
+    env as { DURATION_SCALE?: string },
+    workerBindings as { DURATION_SCALE?: string },
+  ];
+  const previous = targets.map((target) => target.DURATION_SCALE);
+  for (const target of targets) {
+    if (scale === undefined) {
+      delete target.DURATION_SCALE;
+    } else {
+      target.DURATION_SCALE = scale;
+    }
+  }
+  return fn().finally(() => {
+    for (let index = 0; index < targets.length; index += 1) {
+      const target = targets[index]!;
+      if (previous[index] === undefined) {
+        delete target.DURATION_SCALE;
+      } else {
+        target.DURATION_SCALE = previous[index];
+      }
+    }
+  });
+}
+
+function eventKinds(events: CoverageEventRow[]): string[] {
+  return events.map((row) => row.kind);
 }
 
 beforeAll(async () => {
@@ -386,5 +457,120 @@ describe("term boundaries, grace and renewal", () => {
     expect(activeAfterPay?.starts_at).toBe(MAY_1_14);
     expect(activeAfterPay?.calendar_start).toBe(MAY_1_14);
     expect(activeAfterPay?.ends_at).toBe(JUN_1_14);
+  });
+
+  it("E2E-P3.5-06 A skipped alarm is applied by the next admission", async () => {
+    const scenario = await newScenario();
+    await setTestClock(FEB_1_10);
+    await coverClinic(scenario);
+    await newClinic(scenario);
+    const token = await setupPromotedPolicy(scenario);
+
+    const graceTerm = await enterGraceAtTermEnd(scenario);
+    expect(graceTerm.grace_ends_at).toBeTruthy();
+
+    const afterGraceEnd = addDuration(String(graceTerm.grace_ends_at), "second", 1);
+    await setTestClock(afterGraceEnd);
+
+    const denied = await invoke(scenario, {
+      token,
+      idempotencyKey: crypto.randomUUID(),
+    });
+    expect(denied.status).toBe(403);
+    expect(denied.body?.code).toBe("coverage_lapsed");
+    expect(denied.body?.coverage_reason).toBe("expired");
+  });
+
+  it("E2E-P3.5-07 Staging DURATION_SCALE compresses the month and the grace window", async () => {
+    const stagingStart = "2026-03-01T12:00:00.000Z";
+    const scenario = await newScenario();
+    await withDurationScale("staging", async () => {
+      await setTestClock(stagingStart);
+      await coverClinic(scenario);
+      await newClinic(scenario);
+      const token = await setupPromotedPolicy(scenario);
+
+      const active = (await readDoTerms(scenario.installationId)).find(
+        (row) => row.state === "active",
+      );
+      expect(active?.calendar_start).toBeTruthy();
+      const calendarStart = String(active!.calendar_start);
+      const expectedTermEnd = addDuration(calendarStart, "month", 1, "staging");
+      expect(active?.ends_at).toBe(expectedTermEnd);
+
+      await setTestClock(String(active!.ends_at));
+      await runQuotaAlarm(scenario.installationId);
+
+      const grace = (await readDoTerms(scenario.installationId)).find(
+        (row) => row.state === "grace",
+      );
+      expect(grace).toBeTruthy();
+      const expectedGraceEnd = addDuration(
+        String(active!.ends_at),
+        "day",
+        GRACE_DAYS,
+        "staging",
+      );
+      expect(grace?.grace_ends_at).toBe(expectedGraceEnd);
+
+      await setTestClock(String(grace!.grace_ends_at));
+      await runQuotaAlarm(scenario.installationId);
+
+      const denied = await invoke(scenario, {
+        token,
+        idempotencyKey: crypto.randomUUID(),
+      });
+      expect(denied.status).toBe(403);
+      expect(denied.body?.code).toBe("coverage_lapsed");
+      expect(denied.body?.coverage_reason).toBe("expired");
+    });
+  });
+
+  it("E2E-P3.5-08 Activate, end, and grace start ship events and hard_stop_at", async () => {
+    const scenario = await newScenario();
+    await setTestClock(MAR_1_10);
+    await coverClinic(scenario);
+
+    const t1Active = (await readDoTerms(scenario.installationId)).find(
+      (row) => row.state === "active",
+    );
+    expect(t1Active?.ends_at).toBeTruthy();
+
+    let events = await listCoverageEventsForOrg(scenario.orgId);
+    expect(eventKinds(events)).toContain("term_activated");
+    let mirror = await coverageMirrorForInstallation(scenario.installationId);
+    expect(mirror?.hard_stop_at).toBe(t1Active!.ends_at);
+
+    await setTestClock(MAR_27_10);
+    await coverClinic(scenario);
+    await setTestClock(APR_1_10);
+    await runQuotaAlarm(scenario.installationId);
+
+    events = await listCoverageEventsForOrg(scenario.orgId);
+    expect(eventKinds(events)).toContain("term_ended");
+    expect(eventKinds(events).filter((kind) => kind === "term_activated").length).toBeGreaterThanOrEqual(
+      2,
+    );
+
+    const graceScenario = await newScenario();
+    await setTestClock(FEB_1_10);
+    await coverClinic(graceScenario);
+    const activeBeforeGrace = (await readDoTerms(graceScenario.installationId)).find(
+      (row) => row.state === "active",
+    );
+    expect(activeBeforeGrace?.ends_at).toBeTruthy();
+
+    await setTestClock(String(activeBeforeGrace!.ends_at));
+    await runQuotaAlarm(graceScenario.installationId);
+
+    const graceRow = (await readDoTerms(graceScenario.installationId)).find(
+      (row) => row.state === "grace",
+    );
+    expect(graceRow?.grace_ends_at).toBeTruthy();
+
+    events = await listCoverageEventsForOrg(graceScenario.orgId);
+    expect(eventKinds(events)).toContain("grace_started");
+    mirror = await coverageMirrorForInstallation(graceScenario.installationId);
+    expect(mirror?.hard_stop_at).toBe(graceRow!.grace_ends_at);
   });
 });
