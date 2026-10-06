@@ -19,17 +19,13 @@ import {
   ensurePaymobFetchMock,
   scriptPaymobStub,
 } from "./cross-worker-harness";
+import checkoutMigrationSql from "../../migrations/0002_checkout.sql?raw";
 
 type OffersFixtureExpectations = {
   offer_id: string;
   version: number;
   terms: { version: number; text: string };
 };
-
-const dynamicImport = new Function(
-  "specifier",
-  "return import(specifier)",
-) as (specifier: string) => Promise<{ default: unknown }>;
 
 const VIEW_COVERAGE_THROUGH = "2026-05-01T00:00:00.000Z";
 
@@ -56,10 +52,7 @@ const COVERAGE_VIEW_SNAPSHOT = {
 
 async function ensureCheckoutMigration(): Promise<void> {
   try {
-    const migrationModule = await dynamicImport(
-      "../../migrations/0002_checkout.sql?raw",
-    );
-    await applySql(String((migrationModule as { default: string }).default));
+    await applySql(checkoutMigrationSql);
   } catch {
     // Migration not present yet.
   }

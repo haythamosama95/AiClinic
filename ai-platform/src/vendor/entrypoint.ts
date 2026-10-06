@@ -453,6 +453,51 @@ function jwsPayloadBytes(jws: string): Uint8Array | null {
   return base64UrlDecode(parts[1]);
 }
 
+async function verifyJwsAgainstWirePayload(input: {
+  jws: string;
+  publicKey: CryptoKey;
+  kid: string;
+  payloadBytes: Uint8Array;
+}): Promise<boolean> {
+  const parts = input.jws.split(".");
+  if (parts.length !== 3) {
+    return false;
+  }
+  const [headerSegment, payloadSegment, signatureSegment] = parts;
+  if (!headerSegment || !payloadSegment || !signatureSegment) {
+    return false;
+  }
+  const headerBytes = base64UrlDecode(headerSegment);
+  const payloadBytes = base64UrlDecode(payloadSegment);
+  const signatureBytes = base64UrlDecode(signatureSegment);
+  if (
+    headerBytes === null ||
+    payloadBytes === null ||
+    signatureBytes === null
+  ) {
+    return false;
+  }
+  const headerValue = JSON.parse(new TextDecoder().decode(headerBytes)) as {
+    alg?: string;
+    kid?: string;
+  };
+  if (headerValue.alg !== "EdDSA" || headerValue.kid !== input.kid) {
+    return false;
+  }
+  if (!bytesEqual(payloadBytes, input.payloadBytes)) {
+    return false;
+  }
+  const signingInput = new TextEncoder().encode(
+    `${headerSegment}.${payloadSegment}`,
+  );
+  return crypto.subtle.verify(
+    { name: "Ed25519" },
+    input.publicKey,
+    signatureBytes,
+    signingInput,
+  );
+}
+
 function bytesEqual(a: Uint8Array, b: Uint8Array): boolean {
   if (a.byteLength !== b.byteLength) {
     return false;
@@ -3060,9 +3105,99 @@ export class VendorEntrypoint extends WorkerEntrypoint<VendorEnv> {
     }
     const version = negotiated.version;
 
-    const envelope = args.envelope;
+    if (typeof args.grant_rpc_json === "string") {
+      try {
+        const grantRpc = JSON.parse(args.grant_rpc_json) as Record<
+          string,
+          unknown
+        >;
+        if (typeof grantRpc.envelope_b64 === "string") {
+          args.envelope_b64 = grantRpc.envelope_b64;
+        }
+        if (typeof grantRpc.abo_kid === "string") {
+          args.abo_kid = grantRpc.abo_kid;
+        }
+        if (typeof grantRpc.abo_signature === "string") {
+          args.abo_signature = grantRpc.abo_signature;
+        }
+        if (grantRpc.envelope !== undefined) {
+          args.envelope = grantRpc.envelope;
+        }
+      } catch {
+        return grantRejected(version, "bad_signature");
+      }
+    }
+
+    let envelope: unknown = args.envelope;
+    if (typeof args.envelope_b64 === "string") {
+      try {
+        const bytes = Uint8Array.from(atob(args.envelope_b64), (char) =>
+          char.charCodeAt(0),
+        );
+        envelope = JSON.parse(new TextDecoder().decode(bytes)) as unknown;
+      } catch {
+        return grantRejected(version, "bad_signature");
+      }
+    } else if (envelope === undefined && typeof args.envelope_json === "string") {
+      try {
+        const envelopeJson = JSON.parse(args.envelope_json) as Record<
+          string,
+          unknown
+        >;
+        if (
+          typeof envelopeJson.envelope_b64 === "string" &&
+          typeof envelopeJson.abo_signature === "string"
+        ) {
+          args.envelope_b64 = envelopeJson.envelope_b64;
+          if (typeof envelopeJson.abo_kid === "string") {
+            args.abo_kid = envelopeJson.abo_kid;
+          }
+          args.abo_signature = envelopeJson.abo_signature;
+        } else {
+          envelope = envelopeJson;
+        }
+      } catch {
+        return grantRejected(version, "bad_signature");
+      }
+    } else if (typeof envelope === "string") {
+      const envelopeText = envelope;
+      try {
+        envelope = JSON.parse(envelopeText) as unknown;
+      } catch {
+        try {
+          const bytes = Uint8Array.from(atob(envelopeText), (char) =>
+            char.charCodeAt(0),
+          );
+          envelope = JSON.parse(new TextDecoder().decode(bytes)) as unknown;
+        } catch {
+          return grantRejected(version, "bad_signature");
+        }
+      }
+    }
     if (!isRecord(envelope)) {
       return grantRejected(version, "bad_signature");
+    }
+
+    if (
+      typeof envelope.envelope_b64 === "string" &&
+      typeof envelope.abo_signature === "string"
+    ) {
+      args.envelope_b64 = envelope.envelope_b64;
+      if (typeof envelope.abo_kid === "string") {
+        args.abo_kid = envelope.abo_kid;
+      }
+      args.abo_signature = envelope.abo_signature;
+      try {
+        const bytes = Uint8Array.from(atob(args.envelope_b64 as string), (char) =>
+          char.charCodeAt(0),
+        );
+        envelope = JSON.parse(new TextDecoder().decode(bytes)) as unknown;
+      } catch {
+        return grantRejected(version, "bad_signature");
+      }
+      if (!isRecord(envelope)) {
+        return grantRejected(version, "bad_signature");
+      }
     }
 
     const source = envelope.source;
@@ -3336,7 +3471,10 @@ export class VendorEntrypoint extends WorkerEntrypoint<VendorEnv> {
     }
 
     const payloadBytes = jwsPayloadBytes(aboSignature);
-    const envelopeBytes = canonicalize(envelope);
+    const envelopeBytes =
+      typeof args.envelope_b64 === "string"
+        ? Uint8Array.from(atob(args.envelope_b64), (char) => char.charCodeAt(0))
+        : canonicalize(envelope);
     if (payloadBytes === null || !bytesEqual(payloadBytes, envelopeBytes)) {
       return grantRejected(version, "bad_signature");
     }
@@ -3367,12 +3505,23 @@ export class VendorEntrypoint extends WorkerEntrypoint<VendorEnv> {
     if (verifyKey === null) {
       return grantRejected(version, "bad_signature");
     }
-    const signatureValid = await verifyGrantSignature({
-      envelope,
-      jws: aboSignature,
-      publicKey: verifyKey,
-      kid: aboKid,
-    });
+    const usedEnvelopeWire =
+      typeof args.envelope_b64 === "string" &&
+      payloadBytes !== null &&
+      bytesEqual(payloadBytes, envelopeBytes);
+    const signatureValid = usedEnvelopeWire
+      ? await verifyJwsAgainstWirePayload({
+          jws: aboSignature,
+          publicKey: verifyKey,
+          kid: aboKid,
+          payloadBytes: envelopeBytes,
+        })
+      : await verifyGrantSignature({
+          envelope,
+          jws: aboSignature,
+          publicKey: verifyKey,
+          kid: aboKid,
+        });
     if (!signatureValid) {
       return grantRejected(version, "bad_signature");
     }

@@ -324,7 +324,7 @@ function payloadBytesFromJws(jws: string): Uint8Array | null {
   const padded =
     base64 + "=".repeat((4 - (base64.length % 4 || 4)) % 4);
   try {
-    return Uint8Array.from(Buffer.from(padded, "base64"));
+    return Uint8Array.from(atob(padded), (char) => char.charCodeAt(0));
   } catch {
     return null;
   }

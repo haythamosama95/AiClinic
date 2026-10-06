@@ -3,7 +3,13 @@
  */
 
 import { env } from "cloudflare:test";
-import { CHANNEL_VERSIONS, grantIdPaid } from "vendor-contracts";
+import {
+  canonicalize,
+  CHANNEL_VERSIONS,
+  grantIdPaid,
+  sha256Hex,
+} from "vendor-contracts";
+import { mintHxwVendorAccessJwt } from "./hxw-access-fixture";
 import {
   createAboGrantSigner,
   createAccessTeam,
@@ -19,10 +25,55 @@ import {
   setClock as setHarnessClock,
 } from "./harness";
 
-const platformMigrationModules = import.meta.glob(
-  "../../../ai-platform/migrations/*.sql",
-  { query: "?raw", import: "default", eager: true },
-) as Record<string, string>;
+import platformSchemaSql from "../../../ai-platform/migrations/20260731120000_platform_schema.sql?raw";
+import capabilityGrantLifecycleSql from "../../../ai-platform/migrations/20260802100000_capability_grant_lifecycle.sql?raw";
+import routingPolicyCanarySql from "../../../ai-platform/migrations/20260803100000_routing_policy_canary.sql?raw";
+import tokenContractSql from "../../../ai-platform/migrations/20260803120000_token_contract.sql?raw";
+import retentionIndexesSql from "../../../ai-platform/migrations/20260805120000_f3_retention_indexes.sql?raw";
+import conversationIndexSql from "../../../ai-platform/migrations/20260805180000_h3_conversation_index.sql?raw";
+import routingPolicyStatusSql from "../../../ai-platform/migrations/20260805190000_routing_policy_status.sql?raw";
+import killSwitchSql from "../../../ai-platform/migrations/20260807120000_kill_switch.sql?raw";
+import graceAdmissionQueueSql from "../../../ai-platform/migrations/20260821120000_grace_admission_queue.sql?raw";
+import entitlementInstallationUniqueSql from "../../../ai-platform/migrations/20260821130000_entitlement_installation_unique.sql?raw";
+import planCatalogueSql from "../../../ai-platform/migrations/20260911120000_plan_catalogue.sql?raw";
+import usageRollupQuotaWeightSql from "../../../ai-platform/migrations/20260911180000_usage_rollup_quota_weight.sql?raw";
+import invoiceSql from "../../../ai-platform/migrations/20260911200000_invoice.sql?raw";
+import operatorCredentialSql from "../../../ai-platform/migrations/20261003120000_operator_credential_and_platform_alert.sql?raw";
+import issuerKeyTenantBindingSql from "../../../ai-platform/migrations/20261003130000_issuer_key_tenant_binding.sql?raw";
+import planVersionPaidGrantCoverageSql from "../../../ai-platform/migrations/20261003140000_plan_version_paid_grant_coverage.sql?raw";
+import usageTermSql from "../../../ai-platform/migrations/20261006120000_usage_term.sql?raw";
+import ceilingPolicySql from "../../../ai-platform/migrations/20261006130000_ceiling_policy.sql?raw";
+import grantVoidSql from "../../../ai-platform/migrations/20261006140000_grant_void.sql?raw";
+import transferSql from "../../../ai-platform/migrations/20261006150000_transfer.sql?raw";
+import fallbackAdmissionFeedSql from "../../../ai-platform/migrations/20261006160000_fallback_admission_feed.sql?raw";
+import dropInvoicingSql from "../../../ai-platform/migrations/20261006170000_drop_invoicing.sql?raw";
+import dropPlanEntitlementSql from "../../../ai-platform/migrations/20261006170100_drop_plan_entitlement.sql?raw";
+
+const PLATFORM_MIGRATION_SQL: string[] = [
+  platformSchemaSql,
+  capabilityGrantLifecycleSql,
+  routingPolicyCanarySql,
+  tokenContractSql,
+  retentionIndexesSql,
+  conversationIndexSql,
+  routingPolicyStatusSql,
+  killSwitchSql,
+  graceAdmissionQueueSql,
+  entitlementInstallationUniqueSql,
+  planCatalogueSql,
+  usageRollupQuotaWeightSql,
+  invoiceSql,
+  operatorCredentialSql,
+  issuerKeyTenantBindingSql,
+  planVersionPaidGrantCoverageSql,
+  usageTermSql,
+  ceilingPolicySql,
+  grantVoidSql,
+  transferSql,
+  fallbackAdmissionFeedSql,
+  dropInvoicingSql,
+  dropPlanEntitlementSql,
+];
 
 const VENDOR_CONTRACT_VERSION = CHANNEL_VERSIONS.vendorEntrypoint;
 const COVER_PLAN_ID = "live-monthly";
@@ -172,9 +223,8 @@ export async function applyPlatformMigrations(): Promise<void> {
   if (platformMigrationsApplied) {
     return;
   }
-  const paths = Object.keys(platformMigrationModules).sort();
-  for (const migrationPath of paths) {
-    await applyPlatformSql(platformMigrationModules[migrationPath]);
+  for (const sql of PLATFORM_MIGRATION_SQL) {
+    await applyPlatformSql(sql);
   }
   await env.PLATFORM_DB.prepare(
     `INSERT OR IGNORE INTO token_contract (ver, added_at, retired_at, changed_by)
@@ -207,21 +257,20 @@ export async function setClock(isoUtc: string): Promise<void> {
   await setPlatformTestClock(isoUtc);
 }
 
-async function vendorAccessIssuer() {
-  return {
-    issuerId: env.ISSUER_ID,
-    teamDomain: env.ACCESS_TEAM_DOMAIN,
-    aud: env.ACCESS_AUD,
-  };
-}
-
 async function ensureVendorAccessTeam(): Promise<
   Awaited<ReturnType<typeof createAccessTeam>>
 > {
   if (vendorAccessTeam === null) {
-    vendorAccessTeam = await createAccessTeam({
-      issuer: await vendorAccessIssuer(),
-    });
+    const issuer = `https://${env.ACCESS_TEAM_DOMAIN}`;
+    vendorAccessTeam = await createAccessTeam({ issuer });
+    const { fetchMock } = await import("cloudflare:test");
+    fetchMock.activate();
+    fetchMock.disableNetConnect();
+    fetchMock
+      .get(issuer)
+      .intercept({ path: "/cdn-cgi/access/certs", method: "GET" })
+      .reply(200, JSON.stringify({ keys: vendorAccessTeam.certs.keys }))
+      .persist();
   }
   return vendorAccessTeam;
 }
@@ -229,8 +278,8 @@ async function ensureVendorAccessTeam(): Promise<
 export async function mintVendorAccessJwt(
   email = VENDOR_OPERATOR_EMAIL,
 ): Promise<string> {
-  const team = await ensureVendorAccessTeam();
-  return team.mintAccessJwt({ email });
+  await ensureVendorAccessTeam();
+  return mintHxwVendorAccessJwt(env.ACCESS_AUD, email);
 }
 
 export async function platformCall(
@@ -247,6 +296,33 @@ export async function platformCall(
   }
   if (opts.assertion !== undefined) {
     payload.assertion = opts.assertion;
+  }
+  if (
+    method === "grant" &&
+    (typeof payload.envelope_b64 === "string" ||
+      typeof payload.abo_kid === "string" ||
+      typeof payload.abo_signature === "string")
+  ) {
+    const grantWire: Record<string, unknown> = {};
+    if (payload.envelope !== undefined) {
+      const bytes = grantEnvelopeWireBytes(
+        payload.envelope as Record<string, unknown>,
+      );
+      grantWire.envelope_b64 = grantEnvelopeWireB64(bytes);
+    } else if (typeof payload.envelope_b64 === "string") {
+      grantWire.envelope_b64 = payload.envelope_b64;
+    }
+    if (typeof payload.abo_kid === "string") {
+      grantWire.abo_kid = payload.abo_kid;
+    }
+    if (typeof payload.abo_signature === "string") {
+      grantWire.abo_signature = payload.abo_signature;
+    }
+    payload.envelope = grantWire;
+    delete payload.envelope_b64;
+    delete payload.abo_kid;
+    delete payload.abo_signature;
+    delete payload.envelope_json;
   }
   const entrypoint = env.PLATFORM as {
     [key: string]: (input: Record<string, unknown>) => Promise<Record<string, unknown>>;
@@ -303,37 +379,72 @@ export async function getLastPaymobIntentionBody(): Promise<
   return (await response.json()) as Record<string, unknown>;
 }
 
-async function bootstrapPlatformOperator(
-  authenticator: Awaited<ReturnType<typeof createSoftwareAuthenticator>>,
-): Promise<string> {
-  const existing = await env.PLATFORM_DB.prepare(
-    `SELECT credential_id FROM operator_credential
-     WHERE status = 'active'
-     ORDER BY rowid DESC
-     LIMIT 1`,
-  ).first<{ credential_id: string }>();
-  if (existing?.credential_id) {
-    return existing.credential_id;
-  }
+function canonicalGrantEnvelope(
+  envelope: Record<string, unknown>,
+): Record<string, unknown> {
+  return JSON.parse(
+    new TextDecoder().decode(canonicalize(envelope)),
+  ) as Record<string, unknown>;
+}
 
-  const credentialId = crypto.randomUUID();
-  const attestation = encodeVendorAttestation(await authenticator.attest());
-  const accessJwt = await mintVendorAccessJwt();
-  const result = await platformCall(
-    "registerOperatorCredential",
-    {
-      contract_version: VENDOR_CONTRACT_VERSION,
-      credential_id: credentialId,
-      attestation,
-    },
-    { accessJwt },
-  );
-  if (result.result !== "ok") {
-    throw new Error(`registerOperatorCredential failed: ${result.code}`);
+async function seedPlatformVendorCatalog(
+  input: {
+    signerCredentialId: string;
+    attestation: { alg: "ES256" | "EdDSA"; public_key: string };
+    aboKid: string;
+    aboPublicKeyB64: string;
+  },
+): Promise<void> {
+  const activatesAt = new Date(Date.now() - 60_000).toISOString();
+  await env.PLATFORM_DB.prepare(
+    `INSERT OR IGNORE INTO operator_credential
+       (credential_id, operator_email, public_key_cose, alg, status, activates_at, approved_by, revoked_by)
+     VALUES (?, ?, ?, ?, 'active', ?, NULL, NULL)`,
+  )
+    .bind(
+      input.signerCredentialId,
+      VENDOR_OPERATOR_EMAIL,
+      input.attestation.public_key,
+      input.attestation.alg,
+      activatesAt,
+    )
+    .run();
+
+  const notBefore = "2020-01-01T00:00:00.000Z";
+  const notAfter = "2099-01-01T00:00:00.000Z";
+  await env.PLATFORM_DB.prepare(
+    `INSERT OR REPLACE INTO service_key
+       (kid, service, public_key, status, not_before, not_after, registered_by, assertion_sha256)
+     VALUES (?, 'abo', ?, 'active', ?, ?, ?, 'harness')`,
+  )
+    .bind(input.aboKid, input.aboPublicKeyB64, notBefore, notAfter, VENDOR_OPERATOR_EMAIL)
+    .run();
+
+  const existingPlan = await env.PLATFORM_DB.prepare(
+    `SELECT 1 AS present FROM plan_version WHERE plan_id = ? AND version = ?`,
+  )
+    .bind(COVER_PLAN_ID, COVER_PLAN_VERSION)
+    .first<{ present: number }>();
+  if (!existingPlan?.present) {
+    await env.PLATFORM_DB.prepare(
+      `INSERT INTO plan_version (
+         plan_id, version, display_name, capabilities, max_cost_class,
+         concurrency_limit, max_allowance_per_month, status, published_by,
+         assertion_sha256
+       ) VALUES (?, ?, ?, ?, ?, ?, ?, 'published', ?, 'harness')`,
+    )
+      .bind(
+        COVER_PLAN_ID,
+        COVER_PLAN_VERSION,
+        COVER_PLAN_DISPLAY,
+        JSON.stringify(COVER_DEFAULT_CAPABILITIES),
+        String(COVER_DEFAULT_MAX_COST_CLASS),
+        COVER_DEFAULT_CONCURRENCY,
+        COVER_DEFAULT_ALLOWANCE,
+        VENDOR_OPERATOR_EMAIL,
+      )
+      .run();
   }
-  const row = JSON.parse(String(result.detail)) as Record<string, unknown>;
-  await setPlatformTestClock(String(row.activates_at));
-  return credentialId;
 }
 
 async function ensurePlatformBootstrap(): Promise<PlatformBootstrap> {
@@ -341,58 +452,17 @@ async function ensurePlatformBootstrap(): Promise<PlatformBootstrap> {
     return platformBootstrap;
   }
   const signerAuthenticator = await createSoftwareAuthenticator("EdDSA");
-  const signerCredentialId =
-    await bootstrapPlatformOperator(signerAuthenticator);
+  const signerCredentialId = crypto.randomUUID();
+  const attestation = encodeVendorAttestation(await signerAuthenticator.attest());
   const aboSigner = await createAboGrantSigner();
   const rawPublicKey = await crypto.subtle.exportKey("raw", aboSigner.publicKey);
   const publicKeyB64 = base64urlEncode(new Uint8Array(rawPublicKey));
-  const notBefore = new Date().toISOString();
-  const notAfter = new Date(
-    Date.parse(notBefore) + 365 * 24 * 60 * 60 * 1000,
-  ).toISOString();
-  const accessJwt = await mintVendorAccessJwt();
-  const registerOperation = {
-    op: "registerServiceKey",
-    params: {
-      contract_version: VENDOR_CONTRACT_VERSION,
-      access_jwt: accessJwt,
-      kid: aboSigner.kid,
-      public_key: publicKeyB64,
-      not_before: notBefore,
-      not_after: notAfter,
-    },
-    actor_email: VENDOR_OPERATOR_EMAIL,
-    issued_at: notBefore,
-    nonce: crypto.randomUUID(),
-    contract_version: VENDOR_CONTRACT_VERSION,
-  };
-  const registerAssertion = encodeVendorAssertion(
-    await signerAuthenticator.assert({
-      operation: registerOperation,
-      rpId: env.WEBAUTHN_RP_ID,
-      origin: env.WEBAUTHN_ORIGIN,
-      up: true,
-      uv: true,
-    }),
-  );
-  const registerResult = await platformCall(
-    "registerServiceKey",
-    {
-      contract_version: VENDOR_CONTRACT_VERSION,
-      kid: aboSigner.kid,
-      public_key: publicKeyB64,
-      not_before: notBefore,
-      not_after: notAfter,
-      signer_credential_id: signerCredentialId,
-      operation: registerOperation,
-      assertion: registerAssertion,
-    },
-    { accessJwt },
-  );
-  if (registerResult.result !== "ok") {
-    throw new Error(`registerServiceKey failed: ${registerResult.code}`);
-  }
-
+  await seedPlatformVendorCatalog({
+    signerCredentialId,
+    attestation,
+    aboKid: aboSigner.kid,
+    aboPublicKeyB64: publicKeyB64,
+  });
   platformBootstrap = {
     signerCredentialId,
     signerAuthenticator,
@@ -402,93 +472,152 @@ async function ensurePlatformBootstrap(): Promise<PlatformBootstrap> {
   return platformBootstrap;
 }
 
+function grantEnvelopeWireBytes(envelope: Record<string, unknown>): Uint8Array {
+  return canonicalize(envelope);
+}
+
+function grantEnvelopeWireB64(envelopeBytes: Uint8Array): string {
+  let binary = "";
+  for (const byte of envelopeBytes) {
+    binary += String.fromCharCode(byte);
+  }
+  return btoa(binary);
+}
+
 async function buildPaidGrantEnvelope(input: {
   orgId: string;
   grantId: string;
   allowanceCredits: number;
+  signerCredentialId: string;
 }): Promise<Record<string, unknown>> {
-  const issuedAt = new Date().toISOString();
+  const paidAt = new Date().toISOString();
+  const paymentRef = crypto.randomUUID().replace(/-/g, "");
+  const contentSha256 = await sha256Hex(
+    new TextEncoder().encode(paymentRef),
+  );
   return {
     contract_version: VENDOR_CONTRACT_VERSION,
     grant_id: input.grantId,
     org_id: input.orgId,
-    plan_id: COVER_PLAN_ID,
-    plan_version: COVER_PLAN_VERSION,
-    term_unit: "month",
-    term_count: 1,
+    kind: "term",
+    placement: "queue",
+    source: { kind: "paid", ref: paymentRef },
+    plan: { plan_id: COVER_PLAN_ID, plan_version: COVER_PLAN_VERSION },
+    duration: { unit: "month", count: 1 },
     allowance_credits: input.allowanceCredits,
-    grace_days: 0,
-    issued_at: issuedAt,
-    payment_reference: input.grantId,
+    grace: { days: 7, cap_rule: "proportional" },
+    paid_at: paidAt,
+    evidence: {
+      content_sha256: contentSha256,
+      approvals: [
+        { credential_id: input.signerCredentialId, assertion: "stub" },
+      ],
+    },
   };
+}
+
+function buildHarnessCoverageSnapshot(
+  bindingEpoch: number,
+  clinicSeq: number,
+): Record<string, unknown> {
+  const at = "2026-04-01T12:00:00.000Z";
+  return {
+    contract_version: 1,
+    state: "active",
+    suspended: false,
+    term: {
+      ref: "term-hxw-feed",
+      plan_display_name: COVER_PLAN_DISPLAY,
+      starts_at: at,
+      ends_at: "2026-05-01T12:00:00.000Z",
+      grace_ends_at: "2026-05-08T12:00:00.000Z",
+      allowance: COVER_DEFAULT_ALLOWANCE,
+      used: 0,
+      band: "ok",
+    },
+    queued_count: 0,
+    held_count: 0,
+    coverage_through: "2026-05-01T12:00:00.000Z",
+    binding_epoch: bindingEpoch,
+    clinic_seq: clinicSeq,
+  };
+}
+
+/** Seeds platform `coverage_event` rows without HP vendor RPC (H-XW feed cron). */
+export async function setupPlatformCoverageFeed(orgId: string): Promise<void> {
+  await applyPlatformMigrations();
+  const installationId = `inst-${orgId}`;
+  const bindingEpoch = 1;
+  const clinicSeq = 1;
+  const at = "2026-04-01T12:00:00.000Z";
+  const snapshot = buildHarnessCoverageSnapshot(bindingEpoch, clinicSeq);
+  await env.PLATFORM_DB.prepare(
+    `INSERT INTO coverage_event (
+       event_id, org_id, installation_id, binding_epoch, clinic_seq, kind, snapshot, at
+     ) VALUES (?, ?, ?, ?, ?, 'snapshot', ?, ?)`,
+  )
+    .bind(
+      crypto.randomUUID(),
+      orgId,
+      installationId,
+      bindingEpoch,
+      clinicSeq,
+      JSON.stringify(snapshot),
+      at,
+    )
+    .run();
+}
+
+async function ensureGrantTenantBinding(orgId: string): Promise<void> {
+  const existing = await env.PLATFORM_DB.prepare(
+    `SELECT installation_id FROM tenant_binding
+     WHERE org_id = ? AND status = 'active'`,
+  )
+    .bind(orgId)
+    .first<{ installation_id: string }>();
+  if (existing?.installation_id) {
+    return;
+  }
+  const installationId = crypto.randomUUID();
+  const createdAt = "2026-06-01T12:00:00.000Z";
+  await env.PLATFORM_DB.batch([
+    env.PLATFORM_DB.prepare(
+      `INSERT INTO installation (
+         installation_id, org_id, status, display_name, region, enrolled_at
+       ) VALUES (?, ?, 'active', '', '', ?)`,
+    ).bind(installationId, orgId, createdAt),
+    env.PLATFORM_DB.prepare(
+      `INSERT INTO tenant_binding (
+         org_id, installation_id, epoch, status, retired_at, reason, created_at
+       ) VALUES (?, ?, 1, 'active', NULL, NULL, ?)`,
+    ).bind(orgId, installationId, createdAt),
+  ]);
 }
 
 export async function setupActivePlatformCoverage(orgId: string): Promise<void> {
   const boot = await ensurePlatformBootstrap();
-  const accessJwt = await mintVendorAccessJwt();
-  const publishOperation = {
-    op: "publishPlanVersion",
-    params: {
-      contract_version: VENDOR_CONTRACT_VERSION,
-      access_jwt: accessJwt,
-      plan_id: COVER_PLAN_ID,
-      version: COVER_PLAN_VERSION,
-      display_name: COVER_PLAN_DISPLAY,
-      capabilities: COVER_DEFAULT_CAPABILITIES,
-      max_cost_class: COVER_DEFAULT_MAX_COST_CLASS,
-      concurrency_limit: COVER_DEFAULT_CONCURRENCY,
-      max_allowance_per_month: COVER_DEFAULT_ALLOWANCE,
-    },
-    actor_email: VENDOR_OPERATOR_EMAIL,
-    issued_at: new Date().toISOString(),
-    nonce: crypto.randomUUID(),
-    contract_version: VENDOR_CONTRACT_VERSION,
-  };
-  const publishAssertion = encodeVendorAssertion(
-    await boot.signerAuthenticator.assert({
-      operation: publishOperation,
-      rpId: env.WEBAUTHN_RP_ID,
-      origin: env.WEBAUTHN_ORIGIN,
-      up: true,
-      uv: true,
-    }),
-  );
-  const published = await platformCall(
-    "publishPlanVersion",
-    {
-      contract_version: VENDOR_CONTRACT_VERSION,
-      plan_id: COVER_PLAN_ID,
-      version: COVER_PLAN_VERSION,
-      display_name: COVER_PLAN_DISPLAY,
-      capabilities: COVER_DEFAULT_CAPABILITIES,
-      max_cost_class: COVER_DEFAULT_MAX_COST_CLASS,
-      concurrency_limit: COVER_DEFAULT_CONCURRENCY,
-      max_allowance_per_month: COVER_DEFAULT_ALLOWANCE,
-      signer_credential_id: boot.signerCredentialId,
-      operation: publishOperation,
-      assertion: publishAssertion,
-    },
-    { accessJwt },
-  );
-  if (published.result !== "ok") {
-    throw new Error(`publishPlanVersion failed: ${published.code}`);
-  }
+  await setPlatformTestClock("2026-06-01T12:00:00.000Z");
+  await ensureGrantTenantBinding(orgId);
 
   const grantId = await grantIdPaid(crypto.randomUUID().replace(/-/g, ""));
-  const envelope = await buildPaidGrantEnvelope({
-    orgId,
-    grantId,
-    allowanceCredits: COVER_DEFAULT_ALLOWANCE,
-  });
+  const envelope = canonicalGrantEnvelope(
+    await buildPaidGrantEnvelope({
+      orgId,
+      grantId,
+      allowanceCredits: COVER_DEFAULT_ALLOWANCE,
+      signerCredentialId: boot.signerCredentialId,
+    }),
+  );
+  const envelopeBytes = grantEnvelopeWireBytes(envelope);
   const aboSignature = await boot.aboSigner.sign(envelope);
   const granted = await platformCall("grant", {
     contract_version: VENDOR_CONTRACT_VERSION,
-    envelope,
+    envelope_b64: grantEnvelopeWireB64(envelopeBytes),
     abo_kid: boot.aboKid,
     abo_signature: aboSignature,
   });
   if (granted.result !== "applied" && granted.result !== "already_applied") {
-    throw new Error(`grant failed: ${granted.code}`);
+    throw new Error(`grant failed: ${String(granted.code)}`);
   }
 
   const coverage = await platformCall("getCoverage", {
@@ -502,6 +631,7 @@ export async function setupActivePlatformCoverage(orgId: string): Promise<void> 
 
 export async function setupCrossWorkerHarness(): Promise<void> {
   await setupHarness();
+  await ensureVendorAccessTeam();
   await applyPlatformMigrations();
   await ensurePaymobFetchMock();
   platformBootstrap = null;

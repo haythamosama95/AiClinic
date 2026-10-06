@@ -84,7 +84,7 @@ cd abo && npx vitest run --config vitest.platform-throw.config.ts
 
 **Independent Test**: E2E-P4.2-07 in harnesses H-XW and H-PAY.
 
-- [ ] T013 [US2] Add the failing test `E2E-P4.2-07 other tenant 404 and two open checkouts listed` in `abo/test/system/checkout.cross-worker.test.ts` — red test, FR-007, E2E-P4.2-07. Depends on T012 (same file). `SELF.fetch` `GET /v1/checkouts/{id}` and `GET /v1/checkouts?open=1` on the billing host. Administrator B requesting A's checkout id gets HTTP 404 `not_found`. Tenant A with two open checkouts receives both from `?open=1`. The command fails because B's GET is not 404.
+- [X] T013 [US2] Add the failing test `E2E-P4.2-07 other tenant 404 and two open checkouts listed` in `abo/test/system/checkout.cross-worker.test.ts` — red test, FR-007, E2E-P4.2-07. Depends on T012 (same file). `SELF.fetch` `GET /v1/checkouts/{id}` and `GET /v1/checkouts?open=1` on the billing host. Administrator B requesting A's checkout id gets HTTP 404 `not_found`. Tenant A with two open checkouts receives both from `?open=1`. The command fails because B's GET is not 404.
 
 **Checkpoint**: E2E-P4.2-07 exists and fails.
 
@@ -92,7 +92,7 @@ cd abo && npx vitest run --config vitest.platform-throw.config.ts
 
 **Independent Test**: E2E-P4.2-08 in harness H-XW.
 
-- [ ] T014 [US3] Add the failing test `E2E-P4.2-08 minute cron updates coverage_view and ignores an older pair` in `abo/test/system/coverage-view.cross-worker.test.ts` — red test, FR-008, E2E-P4.2-08. Depends on T004 and T006. `runScheduled` for cron `* * * * *` against the real `PLATFORM` `VendorEntrypoint`. After platform grant events (setup in `contracts/harness.md`), `coverage_view` is updated and `feed_cursor` holds the last `feed_seq`. The test then raises the stored `(binding_epoch, clinic_seq)` and resets `feed_cursor`. The next cron run does not replace the snapshot with the older pair. The command fails because `coverage_view` is unchanged.
+- [X] T014 [US3] Add the failing test `E2E-P4.2-08 minute cron updates coverage_view and ignores an older pair` in `abo/test/system/coverage-view.cross-worker.test.ts` — red test, FR-008, E2E-P4.2-08. Depends on T004 and T006. `runScheduled` for cron `* * * * *` against the real `PLATFORM` `VendorEntrypoint`. After platform grant events (setup in `contracts/harness.md`), `coverage_view` is updated and `feed_cursor` holds the last `feed_seq`. The test then raises the stored `(binding_epoch, clinic_seq)` and resets `feed_cursor`. The next cron run does not replace the snapshot with the older pair. The command fails because `coverage_view` is unchanged.
 
 **Checkpoint**: E2E-P4.2-08 exists and fails.
 
@@ -100,7 +100,7 @@ cd abo && npx vitest run --config vitest.platform-throw.config.ts
 
 **Independent Test**: E2E-P4.2-09 on the import-boundary CI check. E2E-P4.2-01 through E2E-P4.2-08 still pass.
 
-- [ ] T015 [US4] Add the failing test `E2E-P4.2-09 domain import of the adapter fails the boundary check` in `abo/test/import-boundary/boundary.test.mjs` — red test, FR-009, E2E-P4.2-09. Depends on T006. Run with `node --test test/import-boundary/boundary.test.mjs` from `abo/`. The test runs `abo/scripts/check-import-boundary.mjs` on `abo/test/fixtures/import-boundary/bad` and expects exit 1. The title starts with `E2E-P4.2-09`. The command fails because the script is not present yet.
+- [X] T015 [US4] Add the failing test `E2E-P4.2-09 domain import of the adapter fails the boundary check` in `abo/test/import-boundary/boundary.test.mjs` — red test, FR-009, E2E-P4.2-09. Depends on T006. Run with `node --test test/import-boundary/boundary.test.mjs` from `abo/`. The test runs `abo/scripts/check-import-boundary.mjs` on `abo/test/fixtures/import-boundary/bad` and expects exit 1. The title starts with `E2E-P4.2-09`. The command fails because the script is not present yet.
 
 **Checkpoint**: E2E-P4.2-09 exists and fails.
 
@@ -108,9 +108,9 @@ cd abo && npx vitest run --config vitest.platform-throw.config.ts
 
 **Independent Test**: E2E-P4.2-09 on the import-boundary CI check. E2E-P4.2-01 through E2E-P4.2-08 still pass.
 
-- [ ] T016 [US4] Add `abo/scripts/check-import-boundary.mjs` — produces the G6 check, FR-009, E2E-P4.2-09. Depends on T015. The argument is a tree root (`src` or the bad fixture). Exit 1 when any module other than `abo/src/provider/paymob/adapter.ts` imports `abo/src/provider/paymob/client.ts`, or when a module outside `abo/src/provider/` imports `abo/src/provider/paymob/adapter.ts`. Domain modules may import `abo/src/provider/port.ts` and `abo/src/provider/registry.ts`. The same rules apply to a fixture tree whose imports name those paymob paths.
+- [X] T016 [US4] Add `abo/scripts/check-import-boundary.mjs` — produces the G6 check, FR-009, E2E-P4.2-09. Depends on T015. The argument is a tree root (`src` or the bad fixture). Exit 1 when any module other than `abo/src/provider/paymob/adapter.ts` imports `abo/src/provider/paymob/client.ts`, or when a module outside `abo/src/provider/` imports `abo/src/provider/paymob/adapter.ts`. Domain modules may import `abo/src/provider/port.ts` and `abo/src/provider/registry.ts`. The same rules apply to a fixture tree whose imports name those paymob paths.
 
-- [ ] T017 [US4] Add the bad fixture under `abo/test/fixtures/import-boundary/bad/src/` — produces the domain-imports-adapter tree, FR-009, E2E-P4.2-09. Depends on T016. One domain module imports the Paymob adapter path. It sits outside the worker bundle. `node scripts/check-import-boundary.mjs test/fixtures/import-boundary/bad` from `abo/` exits 1. T015 then passes on that fixture. E2E-P4.2-01 through E2E-P4.2-08 still fail.
+- [X] T017 [US4] Add the bad fixture under `abo/test/fixtures/import-boundary/bad/src/` — produces the domain-imports-adapter tree, FR-009, E2E-P4.2-09. Depends on T016. One domain module imports the Paymob adapter path. It sits outside the worker bundle. `node scripts/check-import-boundary.mjs test/fixtures/import-boundary/bad` from `abo/` exits 1. T015 then passes on that fixture. E2E-P4.2-01 through E2E-P4.2-08 still fail.
 
 **Checkpoint**: E2E-P4.2-09 fails the bad fixture. E2E-P4.2-01 through E2E-P4.2-08 still fail.
 
@@ -124,7 +124,7 @@ cd abo && npx vitest run --config vitest.platform-throw.config.ts
 
 **Independent Test**: E2E-P4.2-01, E2E-P4.2-02, E2E-P4.2-03, E2E-P4.2-04, E2E-P4.2-05, and E2E-P4.2-06 in harnesses H-XW and H-PAY.
 
-- [ ] T018 [US1] Add `abo/migrations/0002_checkout.sql` — produces the checkout and coverage tables, FR-001, FR-005, FR-008, E2E-P4.2-01, E2E-P4.2-05, E2E-P4.2-08. Depends on T017. Tables `checkout`, `checkout_event`, `checkout_status`, `paymob_intention`, `coverage_view`, and `feed_cursor`. Spec columns: checkout `checkout_id`, `reference`, `org_id`, `created_by_sub`, `client_request_id` unique per org, `offer_id`, `offer_version`, the FR-001 snapshot fields, `opened_with_coverage_through`, `coverage_source`, `provider_id`, `initiator`, `expires_at`, and `billing_token_jti`; `checkout_event` `checkout_id`, `kind`, `source`, `ref`, `actor`, `at`; `checkout_status` `checkout_id`, `state`, `last_event_at`; `paymob_intention` `checkout_id`, `intention_id`, `order_id`, `client_secret`, `special_reference`, `expires_at`; `coverage_view` `org_id`, `binding_epoch`, `clinic_seq`, `snapshot`; `feed_cursor` the last platform `feed_seq`. Keys, indexes, and append-only abort triggers for the append-only facts follow `data-model.md` and the trigger form in `abo/migrations/0001_records.sql`. The harness applies this file before the checkout tests.
+- [X] T018 [US1] Add `abo/migrations/0002_checkout.sql` — produces the checkout and coverage tables, FR-001, FR-005, FR-008, E2E-P4.2-01, E2E-P4.2-05, E2E-P4.2-08. Depends on T017. Tables `checkout`, `checkout_event`, `checkout_status`, `paymob_intention`, `coverage_view`, and `feed_cursor`. Spec columns: checkout `checkout_id`, `reference`, `org_id`, `created_by_sub`, `client_request_id` unique per org, `offer_id`, `offer_version`, the FR-001 snapshot fields, `opened_with_coverage_through`, `coverage_source`, `provider_id`, `initiator`, `expires_at`, and `billing_token_jti`; `checkout_event` `checkout_id`, `kind`, `source`, `ref`, `actor`, `at`; `checkout_status` `checkout_id`, `state`, `last_event_at`; `paymob_intention` `checkout_id`, `intention_id`, `order_id`, `client_secret`, `special_reference`, `expires_at`; `coverage_view` `org_id`, `binding_epoch`, `clinic_seq`, `snapshot`; `feed_cursor` the last platform `feed_seq`. Keys, indexes, and append-only abort triggers for the append-only facts follow `data-model.md` and the trigger form in `abo/migrations/0001_records.sql`. The harness applies this file before the checkout tests.
 
 ### 4.2 User Story 1 - Open a checkout and a Paymob intention (Priority: P1) — provider port
 

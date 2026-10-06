@@ -2,6 +2,12 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { defineWorkersConfig } from "@cloudflare/vitest-pool-workers/config";
 import { pinWorkerdCompatibilityDate } from "../ai-platform/test/pin-workerd-compatibility-date";
+import {
+  hxwPlatformOutboundFetch,
+  installCrossWorkerFetchMock,
+} from "./test/system/cross-worker-fetch-mock.mjs";
+
+const crossWorkerFetchMock = installCrossWorkerFetchMock();
 
 const rootDir = path.dirname(fileURLToPath(import.meta.url));
 const compatibilityDate = pinWorkerdCompatibilityDate();
@@ -18,6 +24,7 @@ const platformWorkerBindings = {
   LOG_VERBOSITY: "2",
   CONFIG_CACHE_TTL_MS: "100",
   DURATION_SCALE: "staging",
+  TEST_CLOCK: "1",
   ACCESS_TEAM_DOMAIN: "access.test",
   ACCESS_AUD: "vendor-access-aud",
   WEBAUTHN_RP_ID: "ops.vendor.test",
@@ -46,6 +53,7 @@ export default defineWorkersConfig({
         },
         miniflare: {
           compatibilityDate,
+          fetchMock: crossWorkerFetchMock,
           d1Databases: {
             DB: "11111111-1111-1111-1111-111111111111",
             PLATFORM_DB: PLATFORM_DB_ID,
@@ -70,6 +78,7 @@ export default defineWorkersConfig({
             {
               name: "platform",
               compatibilityDate,
+              outboundService: hxwPlatformOutboundFetch,
               modules: true,
               scriptPath: platformBundle,
               modulesRoot: platformBundleDir,

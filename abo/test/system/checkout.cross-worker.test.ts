@@ -23,6 +23,7 @@ import {
   setupCrossWorkerHarness,
 } from "./cross-worker-harness";
 import { CHANNEL_VERSIONS } from "vendor-contracts";
+import checkoutMigrationSql from "../../migrations/0002_checkout.sql?raw";
 
 type OffersFixtureExpectations = {
   offer_id: string;
@@ -32,17 +33,9 @@ type OffersFixtureExpectations = {
   price_minor: number;
 };
 
-const dynamicImport = new Function(
-  "specifier",
-  "return import(specifier)",
-) as (specifier: string) => Promise<{ default: unknown }>;
-
 async function ensureCheckoutMigration(): Promise<void> {
   try {
-    const migrationModule = await dynamicImport(
-      "../../migrations/0002_checkout.sql?raw",
-    );
-    await applySql(String((migrationModule as { default: string }).default));
+    await applySql(checkoutMigrationSql);
   } catch {
     // Migration not present yet.
   }
@@ -230,7 +223,7 @@ describe("checkout cross-worker", () => {
   it("E2E-P4.2-02 active coverage starts after_current", async () => {
     const expectations = await seedOffersCatalogueFixture();
     expect(expectations).not.toBeNull();
-    const org = "org-checkout-02";
+    const org = crypto.randomUUID();
     await putBillingContact(org);
     await setupActivePlatformCoverage(org);
 
@@ -404,5 +397,55 @@ describe("checkout cross-worker", () => {
     expect(eleventh.status).toBe(429);
     const eleventhBody = (await eleventh.json()) as Record<string, unknown>;
     expect(eleventhBody.code).toBe("rate_limited");
+  });
+
+  it("E2E-P4.2-07 other tenant 404 and two open checkouts listed", async () => {
+    const expectations = await seedOffersCatalogueFixture();
+    expect(expectations).not.toBeNull();
+
+    const orgA = "org-checkout-07-a";
+    const orgB = "org-checkout-07-b";
+    await putBillingContact(orgA);
+    await putBillingContact(orgB);
+
+    const first = await postCheckout(orgA, {
+      client_request_id: "req-checkout-07-a1",
+      offer_id: expectations!.offer_id,
+      offer_version: expectations!.version,
+      terms_version: expectations!.terms.version,
+    });
+    expect(first.status).toBe(201);
+    const firstBody = (await first.json()) as Record<string, unknown>;
+
+    const second = await postCheckout(orgA, {
+      client_request_id: "req-checkout-07-a2",
+      offer_id: expectations!.offer_id,
+      offer_version: expectations!.version,
+      terms_version: expectations!.terms.version,
+    });
+    expect(second.status).toBe(201);
+    const secondBody = (await second.json()) as Record<string, unknown>;
+
+    const tenantB = await administratorHeaders(orgB);
+    const crossTenant = await billingFetch(
+      `/v1/checkouts/${String(firstBody.checkout_id)}`,
+      { headers: tenantB.headers },
+    );
+    expect(crossTenant.status).toBe(404);
+    const crossTenantBody = (await crossTenant.json()) as Record<string, unknown>;
+    expect(crossTenantBody.code).toBe("not_found");
+
+    const tenantA = await administratorHeaders(orgA);
+    const listOpen = await billingFetch("/v1/checkouts?open=1", {
+      headers: tenantA.headers,
+    });
+    expect(listOpen.status).toBe(200);
+    const listBody = (await listOpen.json()) as {
+      checkouts: Array<{ reference: string }>;
+    };
+    expect(listBody.checkouts).toHaveLength(2);
+    const references = listBody.checkouts.map((entry) => entry.reference);
+    expect(references).toContain(String(firstBody.reference));
+    expect(references).toContain(String(secondBody.reference));
   });
 });
