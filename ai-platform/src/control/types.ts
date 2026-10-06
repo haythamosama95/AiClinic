@@ -1,3 +1,7 @@
+export type ControlActionResult =
+  | { ok: true; body: Record<string, unknown> }
+  | { ok: false; status: number; error: string };
+
 export type OperatorPrincipal = {
   operatorId: string;
 };

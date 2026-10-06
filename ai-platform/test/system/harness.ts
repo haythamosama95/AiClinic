@@ -1621,7 +1621,20 @@ export type VendorMethod =
   | "transferOut"
   | "transferIn"
   | "deleteInstallation"
-  | "feedConsumerHealth";
+  | "feedConsumerHealth"
+  | "publishRoutingPolicy"
+  | "canaryRoutingPolicy"
+  | "promoteRoutingPolicy"
+  | "rollbackRoutingPolicy"
+  | "armKillSwitch"
+  | "disarmKillSwitch"
+  | "deprecateCapability"
+  | "retireCapability"
+  | "activateCohort"
+  | "promoteCohort"
+  | "beginTokenContractRotation"
+  | "retireTokenContract"
+  | "supportLookup";
 
 export const VENDOR_OPERATOR_EMAIL = "operator@clinic.test";
 

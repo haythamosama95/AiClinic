@@ -63,7 +63,7 @@ cd ai-platform && npx vitest run --config vitest.workers.config.ts \
 
 **Independent Test**: E2E-P3.10-07 in harness H-AP.
 
-- [ ] T007 [US3] Add the failing test `E2E-P3.10-07 monthly period close is gone and 0 3 and 0 4 run retention and rollup` in `ai-platform/test/system/control-plane-port.system.test.ts` — red test, FR-010, FR-011, E2E-P3.10-07. Depends on T006 (same file). `[triggers].crons` in `ai-platform/wrangler.toml` has `0 3 * * *`, `0 4 * * *`, and `*/5 * * * *`, and does not have `0 5 1 * *`. `runScheduled("0 3 * * *")` runs retention. `runScheduled("0 4 * * *")` runs rollup whose dimensions include `term_id`. The unit command fails because `[triggers].crons` still lists `0 5 1 * *`.
+- [X] T007 [US3] Add the failing test `E2E-P3.10-07 monthly period close is gone and 0 3 and 0 4 run retention and rollup` in `ai-platform/test/system/control-plane-port.system.test.ts` — red test, FR-010, FR-011, E2E-P3.10-07. Depends on T006 (same file). `[triggers].crons` in `ai-platform/wrangler.toml` has `0 3 * * *`, `0 4 * * *`, and `*/5 * * * *`, and does not have `0 5 1 * *`. `runScheduled("0 3 * * *")` runs retention. `runScheduled("0 4 * * *")` runs rollup whose dimensions include `term_id`. The unit command fails because `[triggers].crons` still lists `0 5 1 * *`.
 
 **Checkpoint**: E2E-P3.10-07 exists and fails.
 
@@ -77,15 +77,11 @@ cd ai-platform && npx vitest run --config vitest.workers.config.ts \
 
 **Independent Test**: E2E-P3.10-02, E2E-P3.10-03, E2E-P3.10-04, E2E-P3.10-05, and E2E-P3.10-06 in harness H-AP.
 
-- [ ] T008 [US1] Add the thirteen class-H names to `METHOD_CLASS` in `ai-platform/src/vendor/entrypoint.ts` and to `VendorMethod` in `ai-platform/test/system/harness.ts` — produces the method names, FR-001, FR-006, E2E-P3.10-02. Depends on T007. Names: `publishRoutingPolicy`, `canaryRoutingPolicy`, `promoteRoutingPolicy`, `rollbackRoutingPolicy`, `armKillSwitch`, `disarmKillSwitch`, `deprecateCapability`, `retireCapability`, `activateCohort`, `promoteCohort`, `beginTokenContractRotation`, `retireTokenContract`, `supportLookup`. All are class H. Each method checks `access_jwt` with `verifyHpAccess` and negotiates the vendor channel. No assertion is required.
-
-- [ ] T009 [US1] Implement `publishRoutingPolicy`, `canaryRoutingPolicy`, `promoteRoutingPolicy`, and `rollbackRoutingPolicy` on `VendorEntrypoint` — produces routing policy over the entrypoint, FR-001, FR-002, E2E-P3.10-02. Depends on T008. Files: `ai-platform/src/vendor/entrypoint.ts`, `ai-platform/src/control/routing-policy.ts`. They call the existing logic in `src/control/routing-policy.ts`. Input fields stay the handler bodies today (`document`, policy id, version, canary installation ids). Success `detail` is that handler's ok object. Illegal transitions stay rejected with the handler's current code. Drop the `Request` and bearer arguments from that module.
-
-- [ ] T010 [US1] Implement `armKillSwitch` and `disarmKillSwitch` on `VendorEntrypoint` — produces the kill switch, AL-19, and the Access-email actor, FR-001, FR-003, E2E-P3.10-03. Depends on T009. Files: `ai-platform/src/vendor/entrypoint.ts`, `ai-platform/src/control/kill-switch.ts`, `ai-platform/src/control/audit.ts`. They call the existing logic in `src/control/kill-switch.ts` (`scope`, `target`). The actor passed into `writeEntrypointAudit` is the Access email. `assertion_sha256` is the column value (null on class H). On a kill-switch change, call `raiseAl19FromOutbox` so `platform_alert.code` is `AL-19` and the email body is that code plus ids. A live `POST /v1/requests` for an armed capability still returns `capability_disabled` through the existing capability check.
-
-- [ ] T011 [US1] Implement `deprecateCapability` and `retireCapability` on `VendorEntrypoint` — produces capability lifecycle over the entrypoint, FR-001, FR-004, E2E-P3.10-04. Depends on T010. Files: `ai-platform/src/vendor/entrypoint.ts`, `ai-platform/src/control/capability-lifecycle.ts`. They call the existing logic in `src/control/capability-lifecycle.ts`. `GET /v1/capabilities` already reads the overlay those handlers write. Drop the `Request` and bearer arguments.
-
-- [ ] T012 [US1] Implement `beginTokenContractRotation` and `retireTokenContract` on `VendorEntrypoint` — produces token-contract rotation, FR-001, FR-005, E2E-P3.10-05. Depends on T011. Files: `ai-platform/src/vendor/entrypoint.ts`, `ai-platform/src/control/token-contract.ts`. `beginTokenContractRotation` uses `src/control/token-contract.ts` to make ver `"2"` current (`retired_at` null). If ver `2` is already current, the result is `ok` and nothing else is inserted. `retireTokenContract` keeps today's retire rules. Drop the caller-supplied `ver` on the rotation method. Drop the `Request` and bearer arguments.
+- [X] T008 [US1] Add the thirteen class-H names to `METHOD_CLASS`
+- [X] T009 [US1] Implement `publishRoutingPolicy`, `canaryRoutingPolicy`, `promoteRoutingPolicy`, and `rollbackRoutingPolicy`
+- [X] T010 [US1] Implement `armKillSwitch` and `disarmKillSwitch`
+- [X] T011 [US1] Implement `deprecateCapability` and `retireCapability`
+- [X] T012 [US1] Implement `beginTokenContractRotation` and `retireTokenContract`
 
 **Checkpoint**: E2E-P3.10-02, E2E-P3.10-03, E2E-P3.10-04, and E2E-P3.10-05 have their class-H methods. The unit file is not required to pass until verification.
 

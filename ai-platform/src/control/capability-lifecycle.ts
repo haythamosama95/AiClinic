@@ -3,6 +3,7 @@ import {
   isCapabilityVersionRegistered,
   isSuccessorRegistered,
 } from "../capability";
+import { writeEntrypointAudit } from "./audit";
 import {
   newId,
   nowIso,
@@ -14,6 +15,7 @@ import {
 } from "./http";
 import type {
   CapabilityRoute,
+  ControlActionResult,
   ControlBindings,
   DeprecatePayload,
   OperatorAuth,
@@ -53,14 +55,13 @@ async function loadGlobalOverlay(
 function requireRegisteredVersion(
   capabilityId: string,
   version: string,
-): Response | null {
+): ControlActionResult | null {
   if (!isCapabilityVersionRegistered(capabilityId, version)) {
-    return reject(404, "capability_not_found");
+    return { ok: false, status: 404, error: "capability_not_found" };
   }
   return null;
 }
 
-/** Epoch-ms window gate; unparseable retire_after is treated as not yet elapsed. */
 function overlapWindowStillActive(retireAfter: string, now: string): boolean {
   const retireAfterMs = Date.parse(retireAfter);
   const nowMs = Date.parse(now);
@@ -82,6 +83,158 @@ async function runControlBatch(
   }
 }
 
+export async function deprecateCapabilityAction(
+  bindings: ControlBindings,
+  actor: string,
+  args: Record<string, unknown>,
+): Promise<ControlActionResult> {
+  const capabilityId = requireNonEmptyString(args.capability_id);
+  const version = requireNonEmptyString(args.capability_version);
+  if (!capabilityId || !version) {
+    return { ok: false, status: 400, error: "invalid_payload" };
+  }
+
+  const missing = requireRegisteredVersion(capabilityId, version);
+  if (missing) {
+    return missing;
+  }
+
+  const successorId = requireNonEmptyString(args.successor_id);
+  if (!successorId) {
+    if (args.successor_id == null || args.successor_id === "") {
+      return { ok: false, status: 400, error: "missing_successor_id" };
+    }
+    return { ok: false, status: 400, error: "invalid_payload" };
+  }
+  if (!isSuccessorRegistered(successorId)) {
+    return { ok: false, status: 400, error: "unknown_successor" };
+  }
+
+  const { DB } = bindings;
+  const overlay = await loadGlobalOverlay(DB, capabilityId, version);
+  if (overlay?.lifecycle_state === "retired") {
+    return { ok: false, status: 409, error: "already_retired" };
+  }
+  if (overlay?.lifecycle_state === "deprecated") {
+    if (overlay.successor_id === successorId) {
+      return { ok: true, body: {} };
+    }
+    return { ok: false, status: 409, error: "already_deprecated" };
+  }
+
+  const deprecatedAt = nowIso();
+  const retireAfter = new Date(
+    new Date(deprecatedAt).getTime() + OVERLAP_WINDOW_MS,
+  ).toISOString();
+  const grantId = newId();
+  const target = `${capabilityId}@${version}`;
+
+  const batchError = await runControlBatch(DB, [
+    DB.prepare(
+      `INSERT INTO capability_grant (
+         grant_id, scope, capability_id, capability_version,
+         granted_at, revoked_at, changed_at, changed_by,
+         lifecycle_state, successor_id, deprecated_at, retire_after
+       ) VALUES (?, 'global', ?, ?, ?, ?, ?, ?, 'deprecated', ?, ?, ?)`,
+    ).bind(
+      grantId,
+      capabilityId,
+      version,
+      deprecatedAt,
+      deprecatedAt,
+      deprecatedAt,
+      actor,
+      successorId,
+      deprecatedAt,
+      retireAfter,
+    ),
+  ]);
+  if (batchError) {
+    const err = (await batchError.json()) as { error?: string };
+    return {
+      ok: false,
+      status: batchError.status,
+      error: err.error ?? "storage_error",
+    };
+  }
+
+  await writeEntrypointAudit(DB, actor, "deprecate", target, null);
+
+  return { ok: true, body: {} };
+}
+
+export async function retireCapabilityAction(
+  bindings: ControlBindings,
+  actor: string,
+  args: Record<string, unknown>,
+): Promise<ControlActionResult> {
+  const capabilityId = requireNonEmptyString(args.capability_id);
+  const version = requireNonEmptyString(args.capability_version);
+  if (!capabilityId || !version) {
+    return { ok: false, status: 400, error: "invalid_payload" };
+  }
+
+  const missing = requireRegisteredVersion(capabilityId, version);
+  if (missing) {
+    return missing;
+  }
+
+  const { DB } = bindings;
+  const overlay = await loadGlobalOverlay(DB, capabilityId, version);
+
+  if (
+    !overlay ||
+    overlay.lifecycle_state !== "deprecated" ||
+    typeof overlay.successor_id !== "string" ||
+    !overlay.successor_id
+  ) {
+    return { ok: false, status: 400, error: "not_deprecated" };
+  }
+
+  const retireAfter =
+    typeof overlay.retire_after === "string" ? overlay.retire_after : null;
+  const recordedAt = nowIso();
+  if (!retireAfter || overlapWindowStillActive(retireAfter, recordedAt)) {
+    return { ok: false, status: 400, error: "overlap_window_active" };
+  }
+
+  const grantId = newId();
+  const target = `${capabilityId}@${version}`;
+
+  const batchError = await runControlBatch(DB, [
+    DB.prepare(
+      `INSERT INTO capability_grant (
+         grant_id, scope, capability_id, capability_version,
+         granted_at, revoked_at, changed_at, changed_by,
+         lifecycle_state, successor_id, deprecated_at, retire_after
+       ) VALUES (?, 'global', ?, ?, ?, ?, ?, ?, 'retired', ?, ?, ?)`,
+    ).bind(
+      grantId,
+      capabilityId,
+      version,
+      recordedAt,
+      recordedAt,
+      recordedAt,
+      actor,
+      overlay.successor_id,
+      overlay.deprecated_at,
+      overlay.retire_after,
+    ),
+  ]);
+  if (batchError) {
+    const err = (await batchError.json()) as { error?: string };
+    return {
+      ok: false,
+      status: batchError.status,
+      error: err.error ?? "storage_error",
+    };
+  }
+
+  await writeEntrypointAudit(DB, actor, "retire", target, null);
+
+  return { ok: true, body: {} };
+}
+
 export async function handleDeprecate(
   request: Request,
   bindings: ControlBindings,
@@ -94,16 +247,7 @@ export async function handleDeprecate(
 
   const route = parseCapabilityRoute(request);
   if (!route || route.action !== "deprecate") {
-    // Unreachable via HTTP because dispatch pre-filters with identical regexes; reachable via direct handler invocation in tests; kept as a safety net.
     return reject(400, "invalid_route");
-  }
-
-  const missingCapability = requireRegisteredVersion(
-    route.capabilityId,
-    route.version,
-  );
-  if (missingCapability) {
-    return missingCapability;
   }
 
   const body = await parseJsonBody<DeprecatePayload>(request);
@@ -111,68 +255,14 @@ export async function handleDeprecate(
     return body;
   }
 
-  const successorId = requireNonEmptyString(body.successor_id);
-  if (!successorId) {
-    if (body.successor_id == null || body.successor_id === "") {
-      return reject(400, "missing_successor_id");
-    }
-    return reject(400, "invalid_payload");
+  const result = await deprecateCapabilityAction(bindings, auth.operatorId, {
+    capability_id: route.capabilityId,
+    capability_version: route.version,
+    successor_id: body.successor_id,
+  });
+  if (!result.ok) {
+    return reject(result.status, result.error);
   }
-  if (!isSuccessorRegistered(successorId)) {
-    return reject(400, "unknown_successor");
-  }
-
-  const { DB } = bindings;
-  const overlay = await loadGlobalOverlay(DB, route.capabilityId, route.version);
-  if (overlay?.lifecycle_state === "retired") {
-    return reject(409, "already_retired");
-  }
-  if (overlay?.lifecycle_state === "deprecated") {
-    if (overlay.successor_id === successorId) {
-      return ok();
-    }
-    return reject(409, "already_deprecated");
-  }
-
-  const deprecatedAt = nowIso();
-  const retireAfter = new Date(
-    new Date(deprecatedAt).getTime() + OVERLAP_WINDOW_MS,
-  ).toISOString();
-  const grantId = newId();
-  const target = `${route.capabilityId}@${route.version}`;
-
-  // Overlay rows are not live grants: stamp revoked_at = changed_at so
-  // `revoked_at IS NULL` grant readers never treat them as active grants.
-  // granted_at remains NOT NULL on the A5 schema, so it mirrors changed_at.
-  const batchError = await runControlBatch(DB, [
-    DB.prepare(
-      `INSERT INTO capability_grant (
-         grant_id, scope, capability_id, capability_version,
-         granted_at, revoked_at, changed_at, changed_by,
-         lifecycle_state, successor_id, deprecated_at, retire_after
-       ) VALUES (?, 'global', ?, ?, ?, ?, ?, ?, 'deprecated', ?, ?, ?)`,
-    ).bind(
-      grantId,
-      route.capabilityId,
-      route.version,
-      deprecatedAt,
-      deprecatedAt,
-      deprecatedAt,
-      auth.operatorId,
-      successorId,
-      deprecatedAt,
-      retireAfter,
-    ),
-    DB.prepare(
-      `INSERT INTO control_audit
-         (audit_id, operator_id, action, target, before_pointer, after_pointer, recorded_at)
-       VALUES (?, ?, 'deprecate', ?, NULL, ?, ?)`,
-    ).bind(newId(), auth.operatorId, target, successorId, deprecatedAt),
-  ]);
-  if (batchError) {
-    return batchError;
-  }
-
   return ok();
 }
 
@@ -188,68 +278,15 @@ export async function handleRetire(
 
   const route = parseCapabilityRoute(request);
   if (!route || route.action !== "retire") {
-    // Unreachable via HTTP because dispatch pre-filters with identical regexes; reachable via direct handler invocation in tests; kept as a safety net.
     return reject(400, "invalid_route");
   }
 
-  const missingCapability = requireRegisteredVersion(
-    route.capabilityId,
-    route.version,
-  );
-  if (missingCapability) {
-    return missingCapability;
+  const result = await retireCapabilityAction(bindings, auth.operatorId, {
+    capability_id: route.capabilityId,
+    capability_version: route.version,
+  });
+  if (!result.ok) {
+    return reject(result.status, result.error);
   }
-
-  const { DB } = bindings;
-  const overlay = await loadGlobalOverlay(DB, route.capabilityId, route.version);
-
-  if (
-    !overlay ||
-    overlay.lifecycle_state !== "deprecated" ||
-    typeof overlay.successor_id !== "string" ||
-    !overlay.successor_id
-  ) {
-    return reject(400, "not_deprecated");
-  }
-
-  const retireAfter =
-    typeof overlay.retire_after === "string" ? overlay.retire_after : null;
-  const recordedAt = nowIso();
-  if (!retireAfter || overlapWindowStillActive(retireAfter, recordedAt)) {
-    return reject(400, "overlap_window_active");
-  }
-
-  const grantId = newId();
-  const target = `${route.capabilityId}@${route.version}`;
-
-  const batchError = await runControlBatch(DB, [
-    DB.prepare(
-      `INSERT INTO capability_grant (
-         grant_id, scope, capability_id, capability_version,
-         granted_at, revoked_at, changed_at, changed_by,
-         lifecycle_state, successor_id, deprecated_at, retire_after
-       ) VALUES (?, 'global', ?, ?, ?, ?, ?, ?, 'retired', ?, ?, ?)`,
-    ).bind(
-      grantId,
-      route.capabilityId,
-      route.version,
-      recordedAt,
-      recordedAt,
-      recordedAt,
-      auth.operatorId,
-      overlay.successor_id,
-      overlay.deprecated_at,
-      overlay.retire_after,
-    ),
-    DB.prepare(
-      `INSERT INTO control_audit
-         (audit_id, operator_id, action, target, before_pointer, after_pointer, recorded_at)
-       VALUES (?, ?, 'retire', ?, NULL, ?, ?)`,
-    ).bind(newId(), auth.operatorId, target, overlay.successor_id, recordedAt),
-  ]);
-  if (batchError) {
-    return batchError;
-  }
-
   return ok();
 }

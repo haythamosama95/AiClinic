@@ -8,6 +8,7 @@ import {
 } from "./http";
 import type {
   CohortPayload,
+  ControlActionResult,
   ControlBindings,
   OperatorAuth,
   PublishPayload,
@@ -161,6 +162,342 @@ export function parseRoutingPolicyRoute(
   };
 }
 
+async function installationsExist(
+  db: D1Database,
+  ids: string[],
+): Promise<ControlActionResult | null> {
+  for (const id of ids) {
+    const row = await db
+      .prepare(
+        `SELECT installation_id FROM installation WHERE installation_id = ?`,
+      )
+      .bind(id)
+      .first<{ installation_id: string }>();
+    if (!row) {
+      return { ok: false, status: 404, error: "installation_not_found" };
+    }
+  }
+  return null;
+}
+
+export async function publishRoutingPolicyAction(
+  bindings: ControlBindings,
+  actor: string,
+  document: Record<string, unknown>,
+): Promise<ControlActionResult> {
+  if (!bindings.R2) {
+    return { ok: false, status: 500, error: "missing_r2_binding" };
+  }
+
+  const policyId = document.policy_id;
+  const policyVersion = document.policy_version;
+  if (
+    typeof policyId !== "string" ||
+    policyId.length === 0 ||
+    typeof policyVersion !== "number" ||
+    !Number.isInteger(policyVersion) ||
+    policyVersion < 1
+  ) {
+    return { ok: false, status: 400, error: "invalid_policy_identity" };
+  }
+  const version = String(policyVersion);
+
+  const { DB, R2 } = bindings;
+  const recordedAt = nowIso();
+  const contentPointer = `control/routing-policy/${policyId}/${version}.json`;
+  const target = `${policyId}@${version}`;
+
+  const alreadyPublished = await DB.prepare(
+    `SELECT policy_id FROM routing_policy WHERE policy_id = ? AND version = ?`,
+  )
+    .bind(policyId, version)
+    .first();
+  if (alreadyPublished) {
+    return { ok: false, status: 409, error: "already_published" };
+  }
+
+  await R2.put(contentPointer, JSON.stringify(document), {
+    httpMetadata: { contentType: "application/json" },
+  });
+
+  try {
+    await DB.batch([
+      DB.prepare(
+        `INSERT INTO routing_policy (
+           policy_id, version, content_pointer, active_from, activated_by,
+           canary_installation_ids, status
+         ) VALUES (?, ?, ?, ?, ?, NULL, 'published')`,
+      ).bind(policyId, version, contentPointer, recordedAt, actor),
+      DB.prepare(
+        `INSERT INTO control_audit
+           (audit_id, operator_id, action, target, before_pointer, after_pointer, recorded_at)
+         VALUES (?, ?, 'routing_policy_publish', ?, NULL, ?, ?)`,
+      ).bind(newId(), actor, target, contentPointer, recordedAt),
+    ]);
+  } catch (err) {
+    if (isUniqueConstraint(err)) {
+      return { ok: false, status: 409, error: "already_published" };
+    }
+    return { ok: false, status: 500, error: "storage_error" };
+  }
+
+  const warnings = latencyMismatchWarnings(document, policyId);
+  return warnings.length > 0 ? { ok: true, body: { warnings } } : { ok: true, body: {} };
+}
+
+export async function canaryRoutingPolicyAction(
+  bindings: ControlBindings,
+  actor: string,
+  policyId: string,
+  version: string,
+  installationIds: string[],
+  cohortName?: string,
+): Promise<ControlActionResult> {
+  if (!Array.isArray(installationIds) || installationIds.length === 0) {
+    return { ok: false, status: 400, error: "missing_installation_ids" };
+  }
+
+  const missing = await installationsExist(bindings.DB, installationIds);
+  if (missing) {
+    return missing;
+  }
+
+  const { DB } = bindings;
+  const recordedAt = nowIso();
+  const target = `${policyId}@${version}`;
+
+  const existing = await DB.prepare(
+    `SELECT policy_id, version, status, canary_installation_ids, active_from
+     FROM routing_policy WHERE policy_id = ? AND version = ?`,
+  )
+    .bind(policyId, version)
+    .first<RoutingPolicyRow>();
+
+  if (!existing) {
+    return { ok: false, status: 404, error: "policy_version_not_found" };
+  }
+
+  if (existing.status !== "published" && existing.status !== "canary") {
+    return { ok: false, status: 409, error: "illegal_policy_transition" };
+  }
+
+  const priorCanary = await DB.prepare(
+    `SELECT canary_installation_ids FROM routing_policy
+     WHERE policy_id = ? AND status = 'canary'
+     ORDER BY active_from DESC, rowid DESC LIMIT 1`,
+  )
+    .bind(policyId)
+    .first<{ canary_installation_ids: string | null }>();
+
+  const beforePointer = priorCanary?.canary_installation_ids ?? null;
+  const afterPointer =
+    typeof cohortName === "string" && cohortName.length > 0
+      ? JSON.stringify({
+          installation_ids: installationIds,
+          details: { cohort_name: cohortName },
+        })
+      : JSON.stringify(installationIds);
+
+  const batchError = await runControlBatch(DB, [
+    DB.prepare(
+      `UPDATE routing_policy
+       SET status = 'canary', canary_installation_ids = ?
+       WHERE policy_id = ? AND version = ?`,
+    ).bind(JSON.stringify(installationIds), policyId, version),
+    DB.prepare(
+      `INSERT INTO control_audit
+         (audit_id, operator_id, action, target, before_pointer, after_pointer, recorded_at)
+       VALUES (?, ?, 'routing_policy_canary', ?, ?, ?, ?)`,
+    ).bind(newId(), actor, target, beforePointer, afterPointer, recordedAt),
+  ]);
+  if (batchError) {
+    const err = (await batchError.json()) as { error?: string };
+    return {
+      ok: false,
+      status: batchError.status,
+      error: err.error ?? "storage_error",
+    };
+  }
+
+  return { ok: true, body: {} };
+}
+
+export async function promoteRoutingPolicyAction(
+  bindings: ControlBindings,
+  actor: string,
+  policyId: string,
+  version: string,
+): Promise<ControlActionResult> {
+  const { DB } = bindings;
+  const recordedAt = nowIso();
+  const target = `${policyId}@${version}`;
+
+  const existing = await DB.prepare(
+    `SELECT policy_id, version, status, canary_installation_ids, active_from
+     FROM routing_policy WHERE policy_id = ? AND version = ?`,
+  )
+    .bind(policyId, version)
+    .first<RoutingPolicyRow>();
+
+  if (!existing) {
+    return { ok: false, status: 404, error: "policy_version_not_found" };
+  }
+
+  if (existing.status === "active" || existing.status === "superseded") {
+    return { ok: false, status: 409, error: "illegal_policy_transition" };
+  }
+
+  const priorActive = await DB.prepare(
+    `SELECT version FROM routing_policy
+     WHERE policy_id = ? AND status = 'active'
+     ORDER BY active_from DESC, rowid DESC LIMIT 1`,
+  )
+    .bind(policyId)
+    .first<{ version: string }>();
+
+  const beforePointer = priorActive
+    ? `${policyId}@${priorActive.version}`
+    : null;
+  const afterPointer = target;
+
+  const batchError = await runControlBatch(DB, [
+    DB.prepare(
+      `UPDATE routing_policy
+       SET status = 'superseded', canary_installation_ids = NULL
+       WHERE policy_id = ? AND status = 'active' AND version != ?`,
+    ).bind(policyId, version),
+    DB.prepare(
+      `UPDATE routing_policy
+       SET status = 'superseded', canary_installation_ids = NULL
+       WHERE policy_id = ? AND status = 'canary' AND version != ?`,
+    ).bind(policyId, version),
+    DB.prepare(
+      `UPDATE routing_policy
+       SET status = 'active', canary_installation_ids = NULL
+       WHERE policy_id = ? AND version = ?`,
+    ).bind(policyId, version),
+    DB.prepare(
+      `INSERT INTO control_audit
+         (audit_id, operator_id, action, target, before_pointer, after_pointer, recorded_at)
+       VALUES (?, ?, 'routing_policy_promote', ?, ?, ?, ?)`,
+    ).bind(newId(), actor, target, beforePointer, afterPointer, recordedAt),
+  ]);
+  if (batchError) {
+    const err = (await batchError.json()) as { error?: string };
+    return {
+      ok: false,
+      status: batchError.status,
+      error: err.error ?? "storage_error",
+    };
+  }
+
+  return { ok: true, body: {} };
+}
+
+export async function rollbackRoutingPolicyAction(
+  bindings: ControlBindings,
+  actor: string,
+  policyId: string,
+  version: string,
+): Promise<ControlActionResult> {
+  const { DB } = bindings;
+  const recordedAt = nowIso();
+  const target = `${policyId}@${version}`;
+
+  const existing = await DB.prepare(
+    `SELECT policy_id, version, status, canary_installation_ids, active_from
+     FROM routing_policy WHERE policy_id = ? AND version = ?`,
+  )
+    .bind(policyId, version)
+    .first<RoutingPolicyRow>();
+
+  if (!existing) {
+    return { ok: false, status: 404, error: "policy_version_not_found" };
+  }
+
+  const statements: D1PreparedStatement[] = [];
+  let beforePointer: string | null = `${policyId}@${version}`;
+  let afterPointer: string | null = null;
+
+  if (existing.status === "canary") {
+    const active = await DB.prepare(
+      `SELECT version FROM routing_policy
+       WHERE policy_id = ? AND status = 'active'
+       ORDER BY active_from DESC, rowid DESC LIMIT 1`,
+    )
+      .bind(policyId)
+      .first<{ version: string }>();
+
+    statements.push(
+      DB.prepare(
+        `UPDATE routing_policy
+         SET status = 'published', canary_installation_ids = NULL
+         WHERE policy_id = ? AND version = ?`,
+      ).bind(policyId, version),
+    );
+    afterPointer = active ? `${policyId}@${active.version}` : null;
+  } else if (existing.status === "active") {
+    const prior = await DB.prepare(
+      `SELECT version FROM routing_policy
+       WHERE policy_id = ? AND status = 'superseded'
+       ORDER BY active_from DESC, rowid DESC LIMIT 1`,
+    )
+      .bind(policyId)
+      .first<{ version: string }>();
+
+    if (!prior) {
+      return { ok: false, status: 409, error: "illegal_policy_transition" };
+    }
+
+    statements.push(
+      DB.prepare(
+        `UPDATE routing_policy
+         SET status = 'superseded', canary_installation_ids = NULL
+         WHERE policy_id = ? AND version = ?`,
+      ).bind(policyId, version),
+    );
+    statements.push(
+      DB.prepare(
+        `UPDATE routing_policy
+         SET status = 'active', canary_installation_ids = NULL
+         WHERE policy_id = ? AND version = ?`,
+      ).bind(policyId, prior.version),
+    );
+    afterPointer = `${policyId}@${prior.version}`;
+  } else {
+    return { ok: false, status: 409, error: "illegal_policy_transition" };
+  }
+
+  statements.push(
+    DB.prepare(
+      `UPDATE routing_policy
+       SET status = CASE WHEN status = 'canary' THEN 'published' ELSE status END,
+           canary_installation_ids = NULL
+       WHERE policy_id = ? AND (status = 'canary' OR canary_installation_ids IS NOT NULL)`,
+    ).bind(policyId),
+  );
+
+  statements.push(
+    DB.prepare(
+      `INSERT INTO control_audit
+         (audit_id, operator_id, action, target, before_pointer, after_pointer, recorded_at)
+       VALUES (?, ?, 'routing_policy_rollback', ?, ?, ?, ?)`,
+    ).bind(newId(), actor, target, beforePointer, afterPointer, recordedAt),
+  );
+
+  const batchError = await runControlBatch(DB, statements);
+  if (batchError) {
+    const err = (await batchError.json()) as { error?: string };
+    return {
+      ok: false,
+      status: batchError.status,
+      error: err.error ?? "storage_error",
+    };
+  }
+
+  return { ok: true, body: {} };
+}
+
 export async function handleRoutingPolicyPublish(
   request: Request,
   bindings: ControlBindings,
@@ -190,67 +527,15 @@ export async function handleRoutingPolicyPublish(
     return reject(400, "missing_document");
   }
 
-  const document = body.document as Record<string, unknown>;
-  const policyId = document.policy_id;
-  const policyVersion = document.policy_version;
-  if (
-    typeof policyId !== "string" ||
-    policyId.length === 0 ||
-    typeof policyVersion !== "number" ||
-    !Number.isInteger(policyVersion) ||
-    policyVersion < 1
-  ) {
-    return reject(400, "invalid_policy_identity");
+  const result = await publishRoutingPolicyAction(
+    bindings,
+    auth.operatorId,
+    body.document as Record<string, unknown>,
+  );
+  if (!result.ok) {
+    return reject(result.status, result.error);
   }
-  const version = String(policyVersion);
-
-  const { DB, R2 } = bindings;
-  const recordedAt = nowIso();
-  const contentPointer = `control/routing-policy/${policyId}/${version}.json`;
-  const target = `${policyId}@${version}`;
-
-  const alreadyPublished = await DB.prepare(
-    `SELECT policy_id FROM routing_policy WHERE policy_id = ? AND version = ?`,
-  )
-    .bind(policyId, version)
-    .first();
-  if (alreadyPublished) {
-    return reject(409, "already_published");
-  }
-
-  await R2.put(contentPointer, JSON.stringify(document), {
-    httpMetadata: { contentType: "application/json" },
-  });
-
-  try {
-    await DB.batch([
-      DB.prepare(
-        `INSERT INTO routing_policy (
-           policy_id, version, content_pointer, active_from, activated_by,
-           canary_installation_ids, status
-         ) VALUES (?, ?, ?, ?, ?, NULL, 'published')`,
-      ).bind(
-        policyId,
-        version,
-        contentPointer,
-        recordedAt,
-        auth.operatorId,
-      ),
-      DB.prepare(
-        `INSERT INTO control_audit
-           (audit_id, operator_id, action, target, before_pointer, after_pointer, recorded_at)
-         VALUES (?, ?, 'routing_policy_publish', ?, NULL, ?, ?)`,
-      ).bind(newId(), auth.operatorId, target, contentPointer, recordedAt),
-    ]);
-  } catch (err) {
-    if (isUniqueConstraint(err)) {
-      return reject(409, "already_published");
-    }
-    return reject(500, "storage_error");
-  }
-
-  const warnings = latencyMismatchWarnings(document, policyId);
-  return warnings.length > 0 ? ok({ warnings }) : ok();
+  return ok(result.body);
 }
 
 export async function handleRoutingPolicyCanary(
@@ -278,73 +563,17 @@ export async function handleRoutingPolicyCanary(
     return reject(400, "missing_installation_ids");
   }
 
-  const { DB } = bindings;
-  const recordedAt = nowIso();
-  const target = `${route.policyId}@${route.version}`;
-
-  const existing = await DB.prepare(
-    `SELECT policy_id, version, status, canary_installation_ids, active_from
-     FROM routing_policy WHERE policy_id = ? AND version = ?`,
-  )
-    .bind(route.policyId, route.version)
-    .first<RoutingPolicyRow>();
-
-  if (!existing) {
-    return reject(404, "policy_version_not_found");
-  }
-
-  if (existing.status !== "published" && existing.status !== "canary") {
-    return reject(409, "illegal_policy_transition");
-  }
-
-  const missingInstallations = await assertInstallationsExist(
-    DB,
+  const result = await canaryRoutingPolicyAction(
+    bindings,
+    auth.operatorId,
+    route.policyId,
+    route.version,
     body.installation_ids,
+    body.cohort_name,
   );
-  if (missingInstallations) {
-    return missingInstallations;
+  if (!result.ok) {
+    return reject(result.status, result.error);
   }
-
-  const priorCanary = await DB.prepare(
-    `SELECT canary_installation_ids FROM routing_policy
-     WHERE policy_id = ? AND status = 'canary'
-     ORDER BY active_from DESC, rowid DESC LIMIT 1`,
-  )
-    .bind(route.policyId)
-    .first<{ canary_installation_ids: string | null }>();
-
-  const beforePointer = priorCanary?.canary_installation_ids ?? null;
-  const afterPointer =
-    typeof body.cohort_name === "string" && body.cohort_name.length > 0
-      ? JSON.stringify({
-          installation_ids: body.installation_ids,
-          details: { cohort_name: body.cohort_name },
-        })
-      : JSON.stringify(body.installation_ids);
-
-  const batchError = await runControlBatch(DB, [
-    DB.prepare(
-      `UPDATE routing_policy
-       SET status = 'canary', canary_installation_ids = ?
-       WHERE policy_id = ? AND version = ?`,
-    ).bind(JSON.stringify(body.installation_ids), route.policyId, route.version),
-    DB.prepare(
-      `INSERT INTO control_audit
-         (audit_id, operator_id, action, target, before_pointer, after_pointer, recorded_at)
-       VALUES (?, ?, 'routing_policy_canary', ?, ?, ?, ?)`,
-    ).bind(
-      newId(),
-      auth.operatorId,
-      target,
-      beforePointer,
-      afterPointer,
-      recordedAt,
-    ),
-  ]);
-  if (batchError) {
-    return batchError;
-  }
-
   return ok();
 }
 
@@ -364,71 +593,15 @@ export async function handleRoutingPolicyPromote(
     return reject(400, "invalid_route");
   }
 
-  const { DB } = bindings;
-  const recordedAt = nowIso();
-  const target = `${route.policyId}@${route.version}`;
-
-  const existing = await DB.prepare(
-    `SELECT policy_id, version, status, canary_installation_ids, active_from
-     FROM routing_policy WHERE policy_id = ? AND version = ?`,
-  )
-    .bind(route.policyId, route.version)
-    .first<RoutingPolicyRow>();
-
-  if (!existing) {
-    return reject(404, "policy_version_not_found");
+  const result = await promoteRoutingPolicyAction(
+    bindings,
+    auth.operatorId,
+    route.policyId,
+    route.version,
+  );
+  if (!result.ok) {
+    return reject(result.status, result.error);
   }
-
-  if (existing.status === "active" || existing.status === "superseded") {
-    return reject(409, "illegal_policy_transition");
-  }
-
-  const priorActive = await DB.prepare(
-    `SELECT version FROM routing_policy
-     WHERE policy_id = ? AND status = 'active'
-     ORDER BY active_from DESC, rowid DESC LIMIT 1`,
-  )
-    .bind(route.policyId)
-    .first<{ version: string }>();
-
-  const beforePointer = priorActive
-    ? `${route.policyId}@${priorActive.version}`
-    : null;
-  const afterPointer = target;
-
-  const batchError = await runControlBatch(DB, [
-    DB.prepare(
-      `UPDATE routing_policy
-       SET status = 'superseded', canary_installation_ids = NULL
-       WHERE policy_id = ? AND status = 'active' AND version != ?`,
-    ).bind(route.policyId, route.version),
-    DB.prepare(
-      `UPDATE routing_policy
-       SET status = 'superseded', canary_installation_ids = NULL
-       WHERE policy_id = ? AND status = 'canary' AND version != ?`,
-    ).bind(route.policyId, route.version),
-    DB.prepare(
-      `UPDATE routing_policy
-       SET status = 'active', canary_installation_ids = NULL
-       WHERE policy_id = ? AND version = ?`,
-    ).bind(route.policyId, route.version),
-    DB.prepare(
-      `INSERT INTO control_audit
-         (audit_id, operator_id, action, target, before_pointer, after_pointer, recorded_at)
-       VALUES (?, ?, 'routing_policy_promote', ?, ?, ?, ?)`,
-    ).bind(
-      newId(),
-      auth.operatorId,
-      target,
-      beforePointer,
-      afterPointer,
-      recordedAt,
-    ),
-  ]);
-  if (batchError) {
-    return batchError;
-  }
-
   return ok();
 }
 
@@ -448,104 +621,14 @@ export async function handleRoutingPolicyRollback(
     return reject(400, "invalid_route");
   }
 
-  const { DB } = bindings;
-  const recordedAt = nowIso();
-  const target = `${route.policyId}@${route.version}`;
-
-  const existing = await DB.prepare(
-    `SELECT policy_id, version, status, canary_installation_ids, active_from
-     FROM routing_policy WHERE policy_id = ? AND version = ?`,
-  )
-    .bind(route.policyId, route.version)
-    .first<RoutingPolicyRow>();
-
-  if (!existing) {
-    return reject(404, "policy_version_not_found");
-  }
-
-  const statements: D1PreparedStatement[] = [];
-  let beforePointer: string | null = `${route.policyId}@${route.version}`;
-  let afterPointer: string | null = null;
-
-  if (existing.status === "canary") {
-    const active = await DB.prepare(
-      `SELECT version FROM routing_policy
-       WHERE policy_id = ? AND status = 'active'
-       ORDER BY active_from DESC, rowid DESC LIMIT 1`,
-    )
-      .bind(route.policyId)
-      .first<{ version: string }>();
-
-    statements.push(
-      DB.prepare(
-        `UPDATE routing_policy
-         SET status = 'published', canary_installation_ids = NULL
-         WHERE policy_id = ? AND version = ?`,
-      ).bind(route.policyId, route.version),
-    );
-    afterPointer = active
-      ? `${route.policyId}@${active.version}`
-      : null;
-  } else if (existing.status === "active") {
-    const prior = await DB.prepare(
-      `SELECT version FROM routing_policy
-       WHERE policy_id = ? AND status = 'superseded'
-       ORDER BY active_from DESC, rowid DESC LIMIT 1`,
-    )
-      .bind(route.policyId)
-      .first<{ version: string }>();
-
-    if (!prior) {
-      return reject(409, "illegal_policy_transition");
-    }
-
-    statements.push(
-      DB.prepare(
-        `UPDATE routing_policy
-         SET status = 'superseded', canary_installation_ids = NULL
-         WHERE policy_id = ? AND version = ?`,
-      ).bind(route.policyId, route.version),
-    );
-    statements.push(
-      DB.prepare(
-        `UPDATE routing_policy
-         SET status = 'active', canary_installation_ids = NULL
-         WHERE policy_id = ? AND version = ?`,
-      ).bind(route.policyId, prior.version),
-    );
-    afterPointer = `${route.policyId}@${prior.version}`;
-  } else {
-    return reject(409, "illegal_policy_transition");
-  }
-
-  // Always clear canary split on this policy_id.
-  statements.push(
-    DB.prepare(
-      `UPDATE routing_policy
-       SET status = CASE WHEN status = 'canary' THEN 'published' ELSE status END,
-           canary_installation_ids = NULL
-       WHERE policy_id = ? AND (status = 'canary' OR canary_installation_ids IS NOT NULL)`,
-    ).bind(route.policyId),
+  const result = await rollbackRoutingPolicyAction(
+    bindings,
+    auth.operatorId,
+    route.policyId,
+    route.version,
   );
-
-  statements.push(
-    DB.prepare(
-      `INSERT INTO control_audit
-         (audit_id, operator_id, action, target, before_pointer, after_pointer, recorded_at)
-       VALUES (?, ?, 'routing_policy_rollback', ?, ?, ?, ?)`,
-    ).bind(
-      newId(),
-      auth.operatorId,
-      target,
-      beforePointer,
-      afterPointer,
-      recordedAt,
-    ),
-  );
-
-  const batchError = await runControlBatch(DB, statements);
-  if (batchError) {
-    return batchError;
+  if (!result.ok) {
+    return reject(result.status, result.error);
   }
   return ok();
 }

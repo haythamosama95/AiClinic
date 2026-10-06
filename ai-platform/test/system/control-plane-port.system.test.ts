@@ -1,8 +1,9 @@
 /**
- * P3.10 — Control-plane port to VendorEntrypoint (E2E-P3.10-01…06).
+ * P3.10 — Control-plane port to VendorEntrypoint (E2E-P3.10-01…07).
  */
 
 import { env, SELF } from "cloudflare:test";
+import wranglerToml from "../../wrangler.toml?raw";
 import { subscriptionRef } from "vendor-contracts";
 import { beforeAll, beforeEach, describe, expect, it } from "vitest";
 import {
@@ -25,6 +26,8 @@ import {
   POLICY_ID,
   registerVisitSummaryCapability,
   resetPlatformState,
+  r2Exists,
+  runScheduled,
   setupPromotedFakePolicy,
   setupVendorHarness,
   vendorCall,
@@ -70,6 +73,16 @@ async function controlPost(path: string): Promise<Response> {
 
 async function controlGet(path: string): Promise<Response> {
   return SELF.fetch(new Request(`${GATEWAY_ORIGIN}${path}`, { method: "GET" }));
+}
+
+function triggerCrons(): string[] {
+  const match = wranglerToml.match(
+    /\[triggers\][\s\S]*?crons\s*=\s*\[([^\]]+)\]/u,
+  )?.[1];
+  if (!match) {
+    throw new Error("wrangler.toml [triggers].crons not found");
+  }
+  return [...match.matchAll(/"([^"]+)"/gu)].map((entry) => entry[1]!);
 }
 
 function formerControlPaths(): string[] {
@@ -361,5 +374,50 @@ describe("P3.10 control-plane port", () => {
     expect(
       requests.some((entry) => entry.requestReference === ref),
     ).toBe(true);
+  });
+
+  it("E2E-P3.10-07 monthly period close is gone and 0 3 and 0 4 run retention and rollup", async () => {
+    const crons = triggerCrons();
+    expect(crons).toContain("0 3 * * *");
+    expect(crons).toContain("0 4 * * *");
+    expect(crons).toContain("*/5 * * * *");
+    expect(crons).not.toContain("0 5 1 * *");
+
+    const scenario = await newScenario();
+    await setupPromotedFakePolicy(scenario);
+    const invoked = await invoke(scenario);
+    expect(invoked.status).toBe(200);
+    const ref = String(invoked.events[0]?.data.request_reference);
+    await flushBackgroundWork();
+
+    const request = await getAiRequest(ref);
+    const requestId = String(request?.request_id);
+    expect(requestId.length).toBeGreaterThan(0);
+
+    await env.DB.prepare(
+      `UPDATE ai_request
+       SET created_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now', '-91 days')
+       WHERE request_id = ?`,
+    )
+      .bind(requestId)
+      .run();
+
+    await runScheduled("0 3 * * *");
+    expect(await getAiRequest(ref)).toBeNull();
+    expect(await r2Exists(`request/${requestId}/envelope`)).toBe(false);
+
+    await invoke(scenario);
+    await flushBackgroundWork();
+
+    await runScheduled("0 4 * * *");
+    const rollup = await env.DB.prepare(
+      "SELECT dimensions FROM usage_rollup",
+    ).all<{ dimensions: string }>();
+    expect(rollup.results?.length).toBeGreaterThanOrEqual(1);
+    const hasTermDimension = (rollup.results ?? []).some((row) => {
+      const dimensions = JSON.parse(row.dimensions) as { term_id?: string };
+      return typeof dimensions.term_id === "string" && dimensions.term_id.length > 0;
+    });
+    expect(hasTermDimension).toBe(true);
   });
 });

@@ -1,4 +1,5 @@
 import { isCanonicalUuid } from "../platform-vocabulary";
+import { writeEntrypointAudit } from "./audit";
 import {
   newId,
   nowIso,
@@ -8,7 +9,7 @@ import {
   requireNonEmptyString,
   requireOperator,
 } from "./http";
-import type { ControlBindings, OperatorAuth } from "./types";
+import type { ControlActionResult, ControlBindings, OperatorAuth } from "./types";
 
 type KillSwitchScope = "global" | "capability" | "installation" | "provider";
 
@@ -120,6 +121,133 @@ async function loadKillSwitchRow(
     .first<KillSwitchRow>();
 }
 
+function payloadFromArgs(args: Record<string, unknown>): KillSwitchPayload | ControlActionResult {
+  const scopeRaw = requireNonEmptyString(args.scope);
+  const targetRaw = requireNonEmptyString(args.target);
+  if (!scopeRaw || !targetRaw) {
+    return { ok: false, status: 400, error: "invalid_payload" };
+  }
+  if (!isKillSwitchScope(scopeRaw)) {
+    return { ok: false, status: 400, error: "invalid_payload" };
+  }
+  if (scopeRaw === "global" && targetRaw !== "global") {
+    return { ok: false, status: 400, error: "invalid_payload" };
+  }
+  if (scopeRaw === "installation" && !isCanonicalUuid(targetRaw)) {
+    return { ok: false, status: 400, error: "invalid_payload" };
+  }
+  return { scope: scopeRaw, target: targetRaw };
+}
+
+export async function armKillSwitchAction(
+  bindings: ControlBindings,
+  actor: string,
+  args: Record<string, unknown>,
+): Promise<ControlActionResult> {
+  const body = payloadFromArgs(args);
+  if ("ok" in body && body.ok === false) {
+    return body;
+  }
+  const payload = body as KillSwitchPayload;
+  const { DB } = bindings;
+
+  if (payload.scope === "installation") {
+    const missingInstallation = await assertInstallationExists(DB, payload.target);
+    if (missingInstallation) {
+      const err = (await missingInstallation.json()) as { error?: string };
+      return {
+        ok: false,
+        status: missingInstallation.status,
+        error: err.error ?? "installation_not_found",
+      };
+    }
+  }
+
+  const existing = await loadKillSwitchRow(DB, payload.scope, payload.target);
+  if (existing && isKillSwitchRowActive(existing)) {
+    return { ok: false, status: 409, error: "illegal_kill_switch_transition" };
+  }
+
+  const recordedAt = nowIso();
+  const target = auditTarget(payload.scope, payload.target);
+
+  const batchError = await runControlBatch(DB, [
+    DB.prepare(
+      `INSERT INTO kill_switch (scope, target, active, changed_at, changed_by)
+       VALUES (?, ?, 1, ?, ?)
+       ON CONFLICT(scope, target) DO UPDATE SET
+         active = 1,
+         changed_at = excluded.changed_at,
+         changed_by = excluded.changed_by`,
+    ).bind(payload.scope, payload.target, recordedAt, actor),
+  ]);
+  if (batchError) {
+    const err = (await batchError.json()) as { error?: string };
+    return {
+      ok: false,
+      status: batchError.status,
+      error: err.error ?? "storage_error",
+    };
+  }
+
+  await writeEntrypointAudit(
+    DB,
+    actor,
+    armAuditAction(payload.scope),
+    target,
+    null,
+  );
+
+  return { ok: true, body: {} };
+}
+
+export async function disarmKillSwitchAction(
+  bindings: ControlBindings,
+  actor: string,
+  args: Record<string, unknown>,
+): Promise<ControlActionResult> {
+  const body = payloadFromArgs(args);
+  if ("ok" in body && body.ok === false) {
+    return body;
+  }
+  const payload = body as KillSwitchPayload;
+  const { DB } = bindings;
+
+  const existing = await loadKillSwitchRow(DB, payload.scope, payload.target);
+  if (!existing || !isKillSwitchRowActive(existing)) {
+    return { ok: false, status: 409, error: "illegal_kill_switch_transition" };
+  }
+
+  const recordedAt = nowIso();
+  const target = auditTarget(payload.scope, payload.target);
+
+  const batchError = await runControlBatch(DB, [
+    DB.prepare(
+      `UPDATE kill_switch
+       SET active = 0, changed_at = ?, changed_by = ?
+       WHERE scope = ? AND target = ? AND active = 1`,
+    ).bind(recordedAt, actor, payload.scope, payload.target),
+  ]);
+  if (batchError) {
+    const err = (await batchError.json()) as { error?: string };
+    return {
+      ok: false,
+      status: batchError.status,
+      error: err.error ?? "storage_error",
+    };
+  }
+
+  await writeEntrypointAudit(
+    DB,
+    actor,
+    disarmAuditAction(payload.scope),
+    target,
+    null,
+  );
+
+  return { ok: true, body: {} };
+}
+
 export async function handleKillSwitchArm(
   request: Request,
   bindings: ControlBindings,
@@ -132,7 +260,6 @@ export async function handleKillSwitchArm(
 
   const route = parseKillSwitchRoute(request);
   if (route !== "arm") {
-    // Unreachable via HTTP: dispatch pre-filters with identical regexes; reachable via direct handler invocation in tests; kept as a safety net.
     return reject(400, "invalid_route");
   }
 
@@ -146,50 +273,10 @@ export async function handleKillSwitchArm(
     return body;
   }
 
-  const { DB } = bindings;
-  if (body.scope === "installation") {
-    const missingInstallation = await assertInstallationExists(DB, body.target);
-    if (missingInstallation) {
-      return missingInstallation;
-    }
+  const result = await armKillSwitchAction(bindings, auth.operatorId, body);
+  if (!result.ok) {
+    return reject(result.status, result.error);
   }
-
-  const existing = await loadKillSwitchRow(DB, body.scope, body.target);
-  if (existing && isKillSwitchRowActive(existing)) {
-    return reject(409, "illegal_kill_switch_transition");
-  }
-
-  const recordedAt = nowIso();
-  const target = auditTarget(body.scope, body.target);
-  const beforePointer = existing ? "0" : null;
-
-  const batchError = await runControlBatch(DB, [
-    DB.prepare(
-      `INSERT INTO kill_switch (scope, target, active, changed_at, changed_by)
-       VALUES (?, ?, 1, ?, ?)
-       ON CONFLICT(scope, target) DO UPDATE SET
-         active = 1,
-         changed_at = excluded.changed_at,
-         changed_by = excluded.changed_by`,
-    ).bind(body.scope, body.target, recordedAt, auth.operatorId),
-    DB.prepare(
-      `INSERT INTO control_audit
-         (audit_id, operator_id, action, target, before_pointer, after_pointer, recorded_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?)`,
-    ).bind(
-      newId(),
-      auth.operatorId,
-      armAuditAction(body.scope),
-      target,
-      beforePointer,
-      "1",
-      recordedAt,
-    ),
-  ]);
-  if (batchError) {
-    return batchError;
-  }
-
   return ok();
 }
 
@@ -205,7 +292,6 @@ export async function handleKillSwitchDisarm(
 
   const route = parseKillSwitchRoute(request);
   if (route !== "disarm") {
-    // Unreachable via HTTP: dispatch pre-filters with identical regexes; reachable via direct handler invocation in tests; kept as a safety net.
     return reject(400, "invalid_route");
   }
 
@@ -219,38 +305,9 @@ export async function handleKillSwitchDisarm(
     return body;
   }
 
-  const { DB } = bindings;
-  const existing = await loadKillSwitchRow(DB, body.scope, body.target);
-  if (!existing || !isKillSwitchRowActive(existing)) {
-    return reject(409, "illegal_kill_switch_transition");
+  const result = await disarmKillSwitchAction(bindings, auth.operatorId, body);
+  if (!result.ok) {
+    return reject(result.status, result.error);
   }
-
-  const recordedAt = nowIso();
-  const target = auditTarget(body.scope, body.target);
-
-  const batchError = await runControlBatch(DB, [
-    DB.prepare(
-      `UPDATE kill_switch
-       SET active = 0, changed_at = ?, changed_by = ?
-       WHERE scope = ? AND target = ? AND active = 1`,
-    ).bind(recordedAt, auth.operatorId, body.scope, body.target),
-    DB.prepare(
-      `INSERT INTO control_audit
-         (audit_id, operator_id, action, target, before_pointer, after_pointer, recorded_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?)`,
-    ).bind(
-      newId(),
-      auth.operatorId,
-      disarmAuditAction(body.scope),
-      target,
-      "1",
-      "0",
-      recordedAt,
-    ),
-  ]);
-  if (batchError) {
-    return batchError;
-  }
-
   return ok();
 }

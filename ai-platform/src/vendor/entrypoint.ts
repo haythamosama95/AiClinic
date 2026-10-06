@@ -40,6 +40,26 @@ import {
   type ClockEnv,
 } from "../clock";
 import { writeEntrypointAudit } from "../control/audit";
+import {
+  deprecateCapabilityAction,
+  retireCapabilityAction,
+} from "../control/capability-lifecycle";
+import {
+  armKillSwitchAction,
+  disarmKillSwitchAction,
+} from "../control/kill-switch";
+import {
+  canaryRoutingPolicyAction,
+  promoteRoutingPolicyAction,
+  publishRoutingPolicyAction,
+  rollbackRoutingPolicyAction,
+} from "../control/routing-policy";
+import type { ControlActionResult } from "../control/types";
+import {
+  beginTokenContractRotationAction,
+  retireTokenContractAction,
+} from "../control/token-contract";
+import { raiseAl19FromOutbox } from "../alert/index";
 
 const VENDOR_CHANNEL = CHANNEL_VERSIONS.vendorEntrypoint;
 const ACTIVATION_MS = 24 * 60 * 60 * 1000;
@@ -72,6 +92,19 @@ const METHOD_CLASS = {
   transferOut: "M",
   transferIn: "M",
   deleteInstallation: "HP",
+  publishRoutingPolicy: "H",
+  canaryRoutingPolicy: "H",
+  promoteRoutingPolicy: "H",
+  rollbackRoutingPolicy: "H",
+  armKillSwitch: "H",
+  disarmKillSwitch: "H",
+  deprecateCapability: "H",
+  retireCapability: "H",
+  activateCohort: "H",
+  promoteCohort: "H",
+  beginTokenContractRotation: "H",
+  retireTokenContract: "H",
+  supportLookup: "H",
 } as const;
 
 type VendorMethod = keyof typeof METHOD_CLASS;
@@ -220,6 +253,19 @@ function conflict(contractVersion: number, code: string): VendorResultEnvelope {
     code,
     detail: "",
   };
+}
+
+function envelopeFromControlResult(
+  version: number,
+  result: ControlActionResult,
+): VendorResultEnvelope {
+  if (result.ok) {
+    return ok(version, JSON.stringify(result.body));
+  }
+  if (result.status === 409) {
+    return conflict(version, result.error);
+  }
+  return rejected(version, result.error);
 }
 
 function rowToDetail(row: OperatorCredentialRow): string {
@@ -4502,6 +4548,223 @@ export class VendorEntrypoint extends WorkerEntrypoint<VendorEnv> {
       has_more: moreRow !== null,
     });
     return ok(version, detail);
+  }
+
+  private async invokeClassH(
+    args: Record<string, unknown>,
+    run: (version: number, accessEmail: string) => Promise<VendorResultEnvelope>,
+  ): Promise<VendorResultEnvelope> {
+    const requested = parseRequestedVersion(args);
+    const negotiated = negotiate(
+      VENDOR_CHANNEL,
+      requested === null ? VENDOR_CHANNEL : requested,
+    );
+    if (!negotiated.ok) {
+      return rejected(VENDOR_CHANNEL, negotiated.code);
+    }
+    const version = negotiated.version;
+
+    const access = await verifyHpAccess(this.env, args.access_jwt);
+    if (!access.ok) {
+      return rejected(version, "unauthenticated");
+    }
+
+    return run(version, access.email);
+  }
+
+  async publishRoutingPolicy(
+    args: Record<string, unknown>,
+  ): Promise<VendorResultEnvelope> {
+    return this.invokeClassH(args, async (version, email) => {
+      const document = args.document;
+      if (!isRecord(document)) {
+        return rejected(version, "missing_document");
+      }
+      const result = await publishRoutingPolicyAction(
+        { DB: this.env.DB, R2: this.env.R2 },
+        email,
+        document,
+      );
+      return envelopeFromControlResult(version, result);
+    });
+  }
+
+  async canaryRoutingPolicy(
+    args: Record<string, unknown>,
+  ): Promise<VendorResultEnvelope> {
+    return this.invokeClassH(args, async (version, email) => {
+      const policyId = args.policy_id;
+      const policyVersion = args.version;
+      const installationIds = args.installation_ids;
+      if (typeof policyId !== "string" || typeof policyVersion !== "string") {
+        return rejected(version, "bad_request");
+      }
+      if (!Array.isArray(installationIds)) {
+        return rejected(version, "missing_installation_ids");
+      }
+      const cohortName =
+        typeof args.cohort_name === "string" ? args.cohort_name : undefined;
+      const result = await canaryRoutingPolicyAction(
+        { DB: this.env.DB },
+        email,
+        policyId,
+        policyVersion,
+        installationIds as string[],
+        cohortName,
+      );
+      return envelopeFromControlResult(version, result);
+    });
+  }
+
+  async promoteRoutingPolicy(
+    args: Record<string, unknown>,
+  ): Promise<VendorResultEnvelope> {
+    return this.invokeClassH(args, async (version, email) => {
+      const policyId = args.policy_id;
+      const policyVersion = args.version;
+      if (typeof policyId !== "string" || typeof policyVersion !== "string") {
+        return rejected(version, "bad_request");
+      }
+      const result = await promoteRoutingPolicyAction(
+        { DB: this.env.DB },
+        email,
+        policyId,
+        policyVersion,
+      );
+      return envelopeFromControlResult(version, result);
+    });
+  }
+
+  async rollbackRoutingPolicy(
+    args: Record<string, unknown>,
+  ): Promise<VendorResultEnvelope> {
+    return this.invokeClassH(args, async (version, email) => {
+      const policyId = args.policy_id;
+      const policyVersion = args.version;
+      if (typeof policyId !== "string" || typeof policyVersion !== "string") {
+        return rejected(version, "bad_request");
+      }
+      const result = await rollbackRoutingPolicyAction(
+        { DB: this.env.DB },
+        email,
+        policyId,
+        policyVersion,
+      );
+      return envelopeFromControlResult(version, result);
+    });
+  }
+
+  async armKillSwitch(
+    args: Record<string, unknown>,
+  ): Promise<VendorResultEnvelope> {
+    return this.invokeClassH(args, async (version, email) => {
+      const result = await armKillSwitchAction({ DB: this.env.DB }, email, args);
+      if (!result.ok) {
+        return envelopeFromControlResult(version, result);
+      }
+      const scope = String(args.scope);
+      const target = String(args.target);
+      await raiseAl19FromOutbox(this.env, `AL-19:kill_switch:${scope}:${target}`, {
+        code: "AL-19",
+        scope,
+        target,
+      });
+      return envelopeFromControlResult(version, result);
+    });
+  }
+
+  async disarmKillSwitch(
+    args: Record<string, unknown>,
+  ): Promise<VendorResultEnvelope> {
+    return this.invokeClassH(args, async (version, email) => {
+      const result = await disarmKillSwitchAction({ DB: this.env.DB }, email, args);
+      if (!result.ok) {
+        return envelopeFromControlResult(version, result);
+      }
+      const scope = String(args.scope);
+      const target = String(args.target);
+      await raiseAl19FromOutbox(this.env, `AL-19:kill_switch:${scope}:${target}`, {
+        code: "AL-19",
+        scope,
+        target,
+      });
+      return envelopeFromControlResult(version, result);
+    });
+  }
+
+  async deprecateCapability(
+    args: Record<string, unknown>,
+  ): Promise<VendorResultEnvelope> {
+    return this.invokeClassH(args, async (version, email) => {
+      const result = await deprecateCapabilityAction(
+        { DB: this.env.DB },
+        email,
+        args,
+      );
+      return envelopeFromControlResult(version, result);
+    });
+  }
+
+  async retireCapability(
+    args: Record<string, unknown>,
+  ): Promise<VendorResultEnvelope> {
+    return this.invokeClassH(args, async (version, email) => {
+      const result = await retireCapabilityAction(
+        { DB: this.env.DB },
+        email,
+        args,
+      );
+      return envelopeFromControlResult(version, result);
+    });
+  }
+
+  async beginTokenContractRotation(
+    args: Record<string, unknown>,
+  ): Promise<VendorResultEnvelope> {
+    return this.invokeClassH(args, async (version, email) => {
+      const result = await beginTokenContractRotationAction(
+        { DB: this.env.DB },
+        email,
+      );
+      return envelopeFromControlResult(version, result);
+    });
+  }
+
+  async retireTokenContract(
+    args: Record<string, unknown>,
+  ): Promise<VendorResultEnvelope> {
+    return this.invokeClassH(args, async (version, email) => {
+      const result = await retireTokenContractAction(
+        { DB: this.env.DB },
+        email,
+        args,
+      );
+      return envelopeFromControlResult(version, result);
+    });
+  }
+
+  async activateCohort(
+    args: Record<string, unknown>,
+  ): Promise<VendorResultEnvelope> {
+    return this.invokeClassH(args, async (version) =>
+      rejected(version, "not_implemented"),
+    );
+  }
+
+  async promoteCohort(
+    args: Record<string, unknown>,
+  ): Promise<VendorResultEnvelope> {
+    return this.invokeClassH(args, async (version) =>
+      rejected(version, "not_implemented"),
+    );
+  }
+
+  async supportLookup(
+    args: Record<string, unknown>,
+  ): Promise<VendorResultEnvelope> {
+    return this.invokeClassH(args, async (version) =>
+      rejected(version, "not_implemented"),
+    );
   }
 
   async feedConsumerHealth(
