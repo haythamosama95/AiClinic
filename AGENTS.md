@@ -5,9 +5,9 @@ This file orients AI coding agents working in this repository. Keep the
 **current active feature's** plan reference when running Spec Kit phases.
 
 <!-- SPECKIT START -->
-Active feature plan: `specs/073-abo-p3-9-fallback-admission-coverage-feed-administrator/plan.md`
-Feature spec: `specs/073-abo-p3-9-fallback-admission-coverage-feed-administrator/spec.md`
-Branch: `ai/073-abo-p3-9-fallback-admission-coverage-feed-administrator`
+Active feature plan: `specs/074-abo-p3-10-control-plane-port-vendor-entrypoint-removal/plan.md`
+Feature spec: `specs/074-abo-p3-10-control-plane-port-vendor-entrypoint-removal/spec.md`
+Branch: `ai/074-abo-p3-10-control-plane-port-vendor-entrypoint-removal`
 <!-- SPECKIT END -->
 
 ## Repo layout quick reference
