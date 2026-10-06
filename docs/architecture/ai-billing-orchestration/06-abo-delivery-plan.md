@@ -749,7 +749,7 @@ frozen, and always call the real platform worker over the service binding (rules
   04 §5.3 (rows parseNotification, inquire, order binding, normalisation, `payment_id` input); 05 §6.1 ("HMAC replay fixture" bullet).
 - **Do not read:** 03 §2.7, §5.5 (→ P4.5).
 - **Implements:**
-  - `POST /notify/paymob`: body cap, rate limit, HMAC-SHA512 over the 20 fields in constant time; evidence to R2 `evidence/` + `notification` + `confirm` work row in one D1 batch;
+  - `POST /notify/paymob`: body cap of 1_048_576 bytes (HTTP 413) and a rate limit of 60 requests per 60 seconds per `CF-Connecting-IP` (a missing header uses the key `unknown`; the request over the limit is HTTP 429); either trip is an empty body and stores and enqueues nothing; HMAC-SHA512 over the 20 fields in constant time; evidence to R2 `evidence/` + `notification` + `confirm` work row in one D1 batch;
     invalid-HMAC counter + ≤ 10 samples per hour (30-day prefix); AL-02; state dedupe key [SR-02]. `GET` response callback and `GET /return/paymob` (any `v`) only schedule an inquiry.
   - Work-row framework: lease by conditional update, backoff 1 → 15 min, `parked`, inline `waitUntil` + minute cron (≤ 50 rows); AL-01 for rows open > 5 min.
   - Confirm step: `inquire` (cached auth token; order inquiry / transaction lookup), `bound` check, normalisation, `payment_id` in the adapter, payment fact

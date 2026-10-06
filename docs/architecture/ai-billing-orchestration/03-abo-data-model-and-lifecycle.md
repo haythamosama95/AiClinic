@@ -156,7 +156,7 @@ Every payment with disposition `grant` has exactly one `grant_request` (FR-80), 
 | `work` | mutable | `work_id`, `kind` (`confirm`, `grant`, `reverse`, `sweep_checkout`, `sweep_payment`, `transfer_step`), `subject_id`, `dedupe_key` (unique), `state` (§5.6), `attempts`, `next_attempt_at`, `lease_until`, `last_error` |
 
 
-Work rows are operational, not commercial facts, so they are mutable. The index is `(state, next_attempt_at)`. A runner takes a row with a conditional update on `lease_until`, so an inline attempt and the cron never process the same row at once.
+Work rows are operational, not commercial facts, so they are mutable. The index is `(state, next_attempt_at)`. A runner takes a row with a conditional update on `lease_until`, so an inline attempt and the cron never process the same row at once. The lease is 60 seconds: that update sets `lease_until` to 60 seconds ahead, and a row can be taken only when `lease_until` is null or already past.
 
 **Step atomicity.** A runner finishes a step with one D1 batch that inserts the step's facts (with their `fact_log` rows), inserts the next step's work row, and sets its own row to `done`, conditional on still holding the lease. If the batch fails, nothing is written and the row is retried. The notification intake does the same: the `notification` row and its `confirm` work row are one batch. So every payment with disposition `grant` has a `grant` work row from the moment it exists, and a stall always shows up as an open row (AL-01).
 
@@ -409,7 +409,7 @@ stateDiagram-v2
   parked --> open: operator retry
 ```
 
-Transient failures retry forever (NFR-01). An `open` row older than 5 minutes alerts (01 §3.3).
+Transient failures retry forever (NFR-01). An `open` row older than 5 minutes alerts (01 §3.3). A take sets `lease_until` 60 seconds ahead and succeeds only when `lease_until` is null or already past (§2.9).
 
 ### 5.7 Clinic coverage state
 

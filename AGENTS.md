@@ -5,9 +5,9 @@ This file orients AI coding agents working in this repository. Keep the
 **current active feature's** plan reference when running Spec Kit phases.
 
 <!-- SPECKIT START -->
-Active feature plan: `specs/077-abo-p4-2-checkout-paymob-intention/plan.md`
-Feature spec: `specs/077-abo-p4-2-checkout-paymob-intention/spec.md`
-Branch: `ai/077-abo-p4-2-checkout-paymob-intention`
+Active feature plan: `specs/078-abo-p4-3-notification-intake-inquiry-work-pipeline/plan.md`
+Feature spec: `specs/078-abo-p4-3-notification-intake-inquiry-work-pipeline/spec.md`
+Branch: `ai/078-abo-p4-3-notification-intake-inquiry-work-pipeline`
 <!-- SPECKIT END -->
 
 ## Repo layout quick reference
