@@ -605,7 +605,7 @@ adversaries (AD-#), credentials (K-#) and seed requirement IDs.
 ### P3.8 — Transfer, deletion with coverage left, and ledger retention
 - **Spec** 072 · **Codebase** ai-platform · **Size** L · **Depends** P3.7 · **Parallel** P3.9 (if not yet done), P4.x
 - **Read:** 03 §5.4 (`transferred` rows + "Deletion with coverage left"); 03 §3.2 rows `tenant_binding`, `transfer`/`transfer_step`, `installation`;
-  03 §4 (ordering-rule paragraph); 04 §1.2 (`transient` details); 04 §1.3 rows beginTransfer, transferOut/In, deleteInstallation; 03 §8 (platform rows);
+  03 §4 (ordering-rule paragraph); 04 §1.2 (`ok` list and `transient` details); 04 §1.3 rows beginTransfer, transferOut/In, deleteInstallation; 04 §1.6 (transfer receipt); 03 §8 (platform rows);
   04 §6.1 rows retention, control/support-purge, control/lifecycle (delete); 05 §2 row AL-18.
 - **Implements:** `beginTransfer` (HP: retire the source binding, new binding epoch + 1, new DO `awaiting_transfer`); `transferOut`/`transferIn` (M, idempotent by
   `transfer_id`) moving the package with `origin_grant_id`; the old DO is `transferred_out` and refuses grants; `deleteInstallation` (HP: no coverage → retire;
