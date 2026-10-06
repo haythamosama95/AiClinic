@@ -5,9 +5,9 @@ This file orients AI coding agents working in this repository. Keep the
 **current active feature's** plan reference when running Spec Kit phases.
 
 <!-- SPECKIT START -->
-Active feature plan: `specs/069-abo-p3-5-term-boundaries-grace-renewal/plan.md`
-Feature spec: `specs/069-abo-p3-5-term-boundaries-grace-renewal/spec.md`
-Branch: `ai/069-abo-p3-5-term-boundaries-grace-renewal`
+Active feature plan: `specs/070-abo-p3-6-complimentary-grants-ceilings-adjustments-suspension/plan.md`
+Feature spec: `specs/070-abo-p3-6-complimentary-grants-ceilings-adjustments-suspension/spec.md`
+Branch: `ai/070-abo-p3-6-complimentary-grants-ceilings-adjustments-suspension`
 <!-- SPECKIT END -->
 
 ## Repo layout quick reference
