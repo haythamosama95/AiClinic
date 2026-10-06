@@ -1,6 +1,7 @@
 import {
   canonicalize,
   CHANNEL_VERSIONS,
+  grantIdPaid,
   humanRef,
   sha256Hex,
   ulid,
@@ -764,12 +765,39 @@ export async function handlePostCheckout(
   );
 }
 
-function shownState(state: string): string | null {
+function shownStateForOpenStates(state: string): string | null {
   if (state === "open") {
     return "Waiting";
   }
   if (state === "open_failed") {
     return "Abandoned";
+  }
+  return null;
+}
+
+async function shownStateForPaidCheckout(
+  env: CheckoutsEnv,
+  checkoutId: string,
+): Promise<string | null> {
+  const payment = await env.DB.prepare(
+    `SELECT payment_id FROM payment WHERE checkout_id = ?`,
+  )
+    .bind(checkoutId)
+    .first<{ payment_id: string }>();
+  if (payment === null) {
+    return null;
+  }
+  const grantId = await grantIdPaid(payment.payment_id);
+  const outcome = await env.DB.prepare(
+    `SELECT result FROM grant_outcome WHERE grant_id = ?`,
+  )
+    .bind(grantId)
+    .first<{ result: string }>();
+  if (
+    outcome?.result === "applied" ||
+    outcome?.result === "already_applied"
+  ) {
+    return "Active";
   }
   return null;
 }
@@ -801,7 +829,13 @@ async function checkoutReadObject(
   if (row === null) {
     return null;
   }
-  const display = shownState(row.state);
+  let display = shownStateForOpenStates(row.state);
+  if (
+    display === null &&
+    (row.state === "paid" || row.state === "paid_late")
+  ) {
+    display = await shownStateForPaidCheckout(env, checkoutId);
+  }
   if (display === null) {
     return null;
   }
