@@ -1,5 +1,9 @@
 import { authenticateBilling } from "./clinic-api/auth.js";
 import {
+  handleGetPayments,
+  handleGetSubscription,
+} from "./clinic-api/billing-reads.js";
+import {
   handleGetBillingContact,
   handlePutBillingContact,
 } from "./clinic-api/billing-contact.js";
@@ -20,6 +24,7 @@ import {
   handlePostNotifyPaymob,
 } from "./notify/intake.js";
 import { exportFacts } from "./records/export.js";
+import { refreshSigningKeyCheck, runDueGrantWork } from "./work/grant.js";
 import { runDueConfirmWork } from "./work/runner.js";
 
 export interface Env {
@@ -42,9 +47,15 @@ export interface Env {
   PAYMOB_HMAC_SECRET: string;
   PAYMOB_API_KEY: string;
   PAYMOB_STUB?: Fetcher;
+  ABO_GRANT_KEY: string;
+  PLATFORM_PUBLIC_KEYS: string;
   PLATFORM: {
     getCoverage(args: Record<string, unknown>): Promise<Record<string, unknown>>;
     readCoverageEvents(
+      args: Record<string, unknown>,
+    ): Promise<Record<string, unknown>>;
+    grant(args: Record<string, unknown>): Promise<Record<string, unknown>>;
+    listServiceKeys(
       args: Record<string, unknown>,
     ): Promise<Record<string, unknown>>;
   };
@@ -58,8 +69,30 @@ export interface Env {
   };
 }
 
+const SIGNING_KEY_GATE_ROW_ID = 1;
+
 function emptyNotFound(): Response {
   return new Response(null, { status: 404 });
+}
+
+async function signingKeyGateMissing(env: Env): Promise<boolean> {
+  const row = await env.DB.prepare(
+    `SELECT id FROM signing_key_gate WHERE id = ?`,
+  )
+    .bind(SIGNING_KEY_GATE_ROW_ID)
+    .first<{ id: number }>();
+  return row === null;
+}
+
+async function maybeRefreshSigningKeyCheck(env: Env): Promise<void> {
+  if (!(await signingKeyGateMissing(env))) {
+    return;
+  }
+  try {
+    await refreshSigningKeyCheck(env);
+  } catch {
+    // Signing-key check failures must not block fetch or cron.
+  }
 }
 
 function isCrossHostRejection(host: string, path: string, env: Env): boolean {
@@ -112,6 +145,14 @@ async function handleBillingV1(
 
   if (request.method === "GET" && path === "/v1/offers") {
     return handleGetOffers(env, versionGate.version);
+  }
+
+  if (request.method === "GET" && path === "/v1/subscription") {
+    return handleGetSubscription(env, auth.claims.org, versionGate.version);
+  }
+
+  if (request.method === "GET" && path === "/v1/payments") {
+    return handleGetPayments(request, env, auth.claims.org, versionGate.version);
   }
 
   if (path === "/v1/billing-contact") {
@@ -171,6 +212,8 @@ export default {
     env: Env,
     ctx: ExecutionContext,
   ): Promise<Response> {
+    await maybeRefreshSigningKeyCheck(env);
+
     const url = new URL(request.url);
     const host = url.hostname;
     const path = url.pathname;
@@ -214,9 +257,18 @@ export default {
     env: Env,
   ): Promise<void> {
     const cron = controller.cron;
-    if (cron === "0 * * * *" || cron === "0 */6 * * *") {
+    if (cron === "0 */6 * * *") {
       return;
     }
+    if (cron === "0 * * * *") {
+      try {
+        await refreshSigningKeyCheck(env);
+      } catch {
+        // Signing-key check failures must not block the hourly cron.
+      }
+      return;
+    }
+    await maybeRefreshSigningKeyCheck(env);
     if (cron === "* * * * *") {
       await markExportLagIfDue(env);
       try {
@@ -234,6 +286,11 @@ export default {
         await runDueConfirmWork(env);
       } catch {
         // Confirm failures must not block the minute cron.
+      }
+      try {
+        await runDueGrantWork(env);
+      } catch {
+        // Grant failures must not block the minute cron.
       }
       await markExportLagIfDue(env);
       return;
