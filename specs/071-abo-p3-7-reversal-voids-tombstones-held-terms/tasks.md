@@ -139,7 +139,7 @@ The run fails because `voidForReversal` is not a method, so T2 is not `held` and
 
 ### 5.1 Unit harness
 
-- [ ] T021 Run harness H-AP for this unit and confirm E2E-P3.7-01 through E2E-P3.7-09 pass together — produces the green run, FR-001 through FR-010, E2E-P3.7-01 through E2E-P3.7-09. Depends on T010 through T020 (and therefore on T001–T009). This task may edit only `ai-platform/test/system/reversal-voids-held-terms.system.test.ts`. `ai-platform/src/quota-do/index.ts`, `ai-platform/src/admission/index.ts`, `ai-platform/src/coverage/calendar.ts`, and `packages/vendor-contracts/**` stay unchanged. Do not edit `coverClinic()`. SC-002 is the review's run of earlier suites, not this command.
+- [X] T021 Run harness H-AP for this unit and confirm E2E-P3.7-01 through E2E-P3.7-09 pass together — produces the green run, FR-001 through FR-010, E2E-P3.7-01 through E2E-P3.7-09. Depends on T010 through T020 (and therefore on T001–T009). This task may edit only `ai-platform/test/system/reversal-voids-held-terms.system.test.ts`. `ai-platform/src/quota-do/index.ts`, `ai-platform/src/admission/index.ts`, `ai-platform/src/coverage/calendar.ts`, and `packages/vendor-contracts/**` stay unchanged. Do not edit `coverClinic()`. SC-002 is the review's run of earlier suites, not this command.
 
 ```bash
 cd ai-platform && npx vitest run --config vitest.workers.config.ts \
@@ -154,7 +154,7 @@ cd ai-platform && npx vitest run --config vitest.workers.config.ts \
 
 ### 6.1 Quickstart
 
-- [ ] T022 Create `specs/071-abo-p3-7-reversal-voids-tombstones-held-terms/quickstart.md` from the plan's quickstart outline — produces this unit's quickstart, FR-001 through FR-010, E2E-P3.7-01 through E2E-P3.7-09. Depends on T021. Sections: (1) what was implemented — `voidForReversal` (effects, tombstone, partial rejection, replay), `releaseHeld`, `voidGrant`, and `listGrantsForVoid`; (2) files this unit adds or modifies — the Files section of `plan.md`; (3) harness command for this unit's tests only — the command below; (4) the entry point → module chain per E2E id below. Every scenario is asserted by H-AP, so this file records harness commands only.
+- [X] T022 Create `specs/071-abo-p3-7-reversal-voids-tombstones-held-terms/quickstart.md` from the plan's quickstart outline — produces this unit's quickstart, FR-001 through FR-010, E2E-P3.7-01 through E2E-P3.7-09. Depends on T021. Sections: (1) what was implemented — `voidForReversal` (effects, tombstone, partial rejection, replay), `releaseHeld`, `voidGrant`, and `listGrantsForVoid`; (2) files this unit adds or modifies — the Files section of `plan.md`; (3) harness command for this unit's tests only — the command below; (4) the entry point → module chain per E2E id below. Every scenario is asserted by H-AP, so this file records harness commands only.
 
 ```bash
 cd ai-platform && npx vitest run --config vitest.workers.config.ts \
