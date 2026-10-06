@@ -333,6 +333,22 @@ function lapsedSnapshotReason(terms: TermRow[]): string {
   return "none";
 }
 
+function coverageSnapshotHotFields(hot: HotRow): Record<string, unknown> {
+  const fields: Record<string, unknown> = {
+    grace_base_used: hot.grace_base_used,
+    awaiting_transfer: hot.awaiting_transfer ?? 0,
+    transfer_pending: hot.transfer_pending ?? 0,
+  };
+  if (
+    hot.transferred_out_to !== undefined &&
+    hot.transferred_out_to !== null &&
+    hot.transferred_out_to.length > 0
+  ) {
+    fields.transferred_out_to = hot.transferred_out_to;
+  }
+  return fields;
+}
+
 function buildSnapshotTermsArray(
   terms: TermRow[],
   hot: HotRow,
@@ -392,6 +408,7 @@ export function buildCoverageSnapshot(input: {
       binding_epoch: input.hot.binding_epoch,
       clinic_seq: input.hot.clinic_seq,
       terms: buildSnapshotTermsArray(input.terms, input.hot),
+      ...coverageSnapshotHotFields(input.hot),
     };
   }
 
@@ -438,6 +455,7 @@ export function buildCoverageSnapshot(input: {
     binding_epoch: input.hot.binding_epoch,
     clinic_seq: input.hot.clinic_seq,
     terms: buildSnapshotTermsArray(input.terms, input.hot),
+    ...coverageSnapshotHotFields(input.hot),
   };
 }
 
@@ -2643,17 +2661,15 @@ export type ShippedCoverageAlert = {
   body: Record<string, unknown>;
 };
 
-export async function shipCoverageOutboxAlarm(
+async function shipCoverageOutboxInLock(
   state: DurableObjectState,
   storage: DurableObjectStorage,
-  blockConcurrencyWhile: <T>(fn: () => Promise<T>) => Promise<T>,
   env: CoverageShipEnv,
   installationId: string,
   nowIso: string,
-  logger: Logger = noopLogger,
+  logger: Logger,
   durationScale?: DurationScale,
 ): Promise<ShippedCoverageAlert[]> {
-  return blockConcurrencyWhile(async () => {
     const boundInstallationId =
       resolveInstallationIdFromStorage(storage) || installationId;
     applyDueBoundaries({
@@ -2807,7 +2823,29 @@ export async function shipCoverageOutboxAlarm(
       rows: rows.length,
     });
     return shippedAlerts;
-  });
+}
+
+export async function shipCoverageOutboxAlarm(
+  state: DurableObjectState,
+  storage: DurableObjectStorage,
+  blockConcurrencyWhile: <T>(fn: () => Promise<T>) => Promise<T>,
+  env: CoverageShipEnv,
+  installationId: string,
+  nowIso: string,
+  logger: Logger = noopLogger,
+  durationScale?: DurationScale,
+): Promise<ShippedCoverageAlert[]> {
+  return blockConcurrencyWhile(async () =>
+    shipCoverageOutboxInLock(
+      state,
+      storage,
+      env,
+      installationId,
+      nowIso,
+      logger,
+      durationScale,
+    ),
+  );
 }
 
 export interface OpenAwaitingTransferRequest {
@@ -3274,11 +3312,21 @@ function snapshotTermPlanSnapshot(term: SnapshotTermEntry): string {
   return JSON.stringify(raw ?? {});
 }
 
-function hydrateDoFromCoverageSnapshot(
-  storage: DurableObjectStorage,
-  snapshot: Record<string, unknown>,
-  bindingEpoch: number,
-): void {
+function snapshotTermUsedFinal(entry: SnapshotTermEntry): number | null {
+  const usedFinal = entry.used_final;
+  if (usedFinal === null || usedFinal === undefined) {
+    if (entry.state === "active" || entry.state === "grace") {
+      return null;
+    }
+    return typeof entry.used === "number" ? entry.used : null;
+  }
+  return typeof usedFinal === "number" ? usedFinal : null;
+}
+
+function hotActiveUsageFromSnapshot(snapshot: Record<string, unknown>): {
+  activeTermId: string | null;
+  hotUsed: number;
+} {
   const termsRaw = snapshot.terms;
   const termEntries: SnapshotTermEntry[] = Array.isArray(termsRaw)
     ? (termsRaw as SnapshotTermEntry[])
@@ -3286,7 +3334,6 @@ function hydrateDoFromCoverageSnapshot(
 
   let activeTermId: string | null = null;
   let hotUsed = 0;
-  let graceBaseUsed = 0;
 
   const termObject = snapshot.term as Record<string, unknown> | null;
   if (termObject !== null && typeof termObject.ref === "string") {
@@ -3305,6 +3352,128 @@ function hydrateDoFromCoverageSnapshot(
     }
   }
 
+  return { activeTermId, hotUsed };
+}
+
+function insertOrUpdateTermFromSnapshotEntry(
+  storage: DurableObjectStorage,
+  entry: SnapshotTermEntry,
+): void {
+  const termId = String(entry.term_id ?? "");
+  if (termId.length === 0) {
+    return;
+  }
+  const usedFinal = snapshotTermUsedFinal(entry);
+  const existing = sqlSelect<{ term_id: string }>(
+    storage,
+    `SELECT term_id FROM term WHERE term_id = ${sqlString(termId)} LIMIT 1`,
+  )[0];
+  const columns = `term_id, grant_id, origin_grant_id, position, state, end_reason,
+        plan_snapshot, allowance, used_final, duration_unit, duration_count,
+        grace_days, grace_cap, calendar_start, starts_at, ends_at, grace_ends_at, ended_at`;
+  const values = `
+        ${sqlString(termId)},
+        ${sqlString(String(entry.grant_id ?? ""))},
+        ${sqlString(String(entry.origin_grant_id ?? entry.grant_id ?? ""))},
+        ${Number(entry.position ?? 0)},
+        ${sqlString(String(entry.state ?? "ended"))},
+        ${entry.end_reason === null || entry.end_reason === undefined ? "NULL" : sqlString(String(entry.end_reason))},
+        ${sqlString(snapshotTermPlanSnapshot(entry))},
+        ${entry.allowance === null || entry.allowance === undefined ? "NULL" : String(entry.allowance)},
+        ${usedFinal === null ? "NULL" : String(usedFinal)},
+        ${entry.duration_unit === null || entry.duration_unit === undefined ? "NULL" : sqlString(String(entry.duration_unit))},
+        ${entry.duration_count === null || entry.duration_count === undefined ? "NULL" : String(entry.duration_count)},
+        ${entry.grace_days === null || entry.grace_days === undefined ? "NULL" : String(entry.grace_days)},
+        ${entry.grace_cap === null || entry.grace_cap === undefined ? "NULL" : sqlString(String(entry.grace_cap))},
+        ${entry.calendar_start === null || entry.calendar_start === undefined ? "NULL" : sqlString(String(entry.calendar_start))},
+        ${entry.starts_at === null || entry.starts_at === undefined ? "NULL" : sqlString(String(entry.starts_at))},
+        ${entry.ends_at === null || entry.ends_at === undefined ? "NULL" : sqlString(String(entry.ends_at))},
+        ${entry.grace_ends_at === null || entry.grace_ends_at === undefined ? "NULL" : sqlString(String(entry.grace_ends_at))},
+        ${entry.ended_at === null || entry.ended_at === undefined ? "NULL" : sqlString(String(entry.ended_at))}`;
+  if (existing === undefined) {
+    sqlExec(storage, `INSERT INTO term (${columns}) VALUES (${values})`);
+    return;
+  }
+  sqlExec(
+    storage,
+    `UPDATE term SET
+      grant_id = ${sqlString(String(entry.grant_id ?? ""))},
+      origin_grant_id = ${sqlString(String(entry.origin_grant_id ?? entry.grant_id ?? ""))},
+      position = ${Number(entry.position ?? 0)},
+      state = ${sqlString(String(entry.state ?? "ended"))},
+      end_reason = ${entry.end_reason === null || entry.end_reason === undefined ? "NULL" : sqlString(String(entry.end_reason))},
+      plan_snapshot = ${sqlString(snapshotTermPlanSnapshot(entry))},
+      allowance = ${entry.allowance === null || entry.allowance === undefined ? "NULL" : String(entry.allowance)},
+      used_final = ${usedFinal === null ? "NULL" : String(usedFinal)},
+      duration_unit = ${entry.duration_unit === null || entry.duration_unit === undefined ? "NULL" : sqlString(String(entry.duration_unit))},
+      duration_count = ${entry.duration_count === null || entry.duration_count === undefined ? "NULL" : String(entry.duration_count)},
+      grace_days = ${entry.grace_days === null || entry.grace_days === undefined ? "NULL" : String(entry.grace_days)},
+      grace_cap = ${entry.grace_cap === null || entry.grace_cap === undefined ? "NULL" : sqlString(String(entry.grace_cap))},
+      calendar_start = ${entry.calendar_start === null || entry.calendar_start === undefined ? "NULL" : sqlString(String(entry.calendar_start))},
+      starts_at = ${entry.starts_at === null || entry.starts_at === undefined ? "NULL" : sqlString(String(entry.starts_at))},
+      ends_at = ${entry.ends_at === null || entry.ends_at === undefined ? "NULL" : sqlString(String(entry.ends_at))},
+      grace_ends_at = ${entry.grace_ends_at === null || entry.grace_ends_at === undefined ? "NULL" : sqlString(String(entry.grace_ends_at))},
+      ended_at = ${entry.ended_at === null || entry.ended_at === undefined ? "NULL" : sqlString(String(entry.ended_at))}
+     WHERE term_id = ${sqlString(termId)}`,
+  );
+}
+
+function syncDoTermsAndHotFromCoverageSnapshot(
+  storage: DurableObjectStorage,
+  snapshot: Record<string, unknown>,
+): void {
+  const termsRaw = snapshot.terms;
+  const termEntries: SnapshotTermEntry[] = Array.isArray(termsRaw)
+    ? (termsRaw as SnapshotTermEntry[])
+    : [];
+  const { activeTermId, hotUsed } = hotActiveUsageFromSnapshot(snapshot);
+  const graceBaseUsed =
+    typeof snapshot.grace_base_used === "number" ? snapshot.grace_base_used : 0;
+  const awaitingTransfer =
+    snapshot.awaiting_transfer === true || snapshot.awaiting_transfer === 1 ? 1 : 0;
+  const transferPending =
+    snapshot.transfer_pending === true || snapshot.transfer_pending === 1 ? 1 : 0;
+  const transferredOutTo =
+    typeof snapshot.transferred_out_to === "string" &&
+    snapshot.transferred_out_to.length > 0
+      ? snapshot.transferred_out_to
+      : null;
+  updateHot(storage, {
+    active_term_id: activeTermId,
+    used: hotUsed,
+    grace_base_used: graceBaseUsed,
+    awaiting_transfer: awaitingTransfer,
+    transfer_pending: transferPending,
+    transferred_out_to: transferredOutTo,
+  });
+  for (const entry of termEntries) {
+    insertOrUpdateTermFromSnapshotEntry(storage, entry);
+  }
+}
+
+function hydrateDoFromCoverageSnapshot(
+  storage: DurableObjectStorage,
+  snapshot: Record<string, unknown>,
+  bindingEpoch: number,
+): void {
+  const termsRaw = snapshot.terms;
+  const termEntries: SnapshotTermEntry[] = Array.isArray(termsRaw)
+    ? (termsRaw as SnapshotTermEntry[])
+    : [];
+
+  const { activeTermId, hotUsed } = hotActiveUsageFromSnapshot(snapshot);
+  const graceBaseUsed =
+    typeof snapshot.grace_base_used === "number" ? snapshot.grace_base_used : 0;
+  const awaitingTransfer =
+    snapshot.awaiting_transfer === true || snapshot.awaiting_transfer === 1 ? 1 : 0;
+  const transferPending =
+    snapshot.transfer_pending === true || snapshot.transfer_pending === 1 ? 1 : 0;
+  const transferredOutTo =
+    typeof snapshot.transferred_out_to === "string" &&
+    snapshot.transferred_out_to.length > 0
+      ? snapshot.transferred_out_to
+      : null;
+
   const suspended = snapshot.suspended === true ? 1 : 0;
   const clinicSeq =
     typeof snapshot.clinic_seq === "number" ? snapshot.clinic_seq : 0;
@@ -3320,7 +3489,9 @@ function hydrateDoFromCoverageSnapshot(
       active_term_id, used, reserved, grace_base_used, reservations, replay,
       idempotency, band_emitted, binding_epoch, clinic_seq, next_alarm_at
     ) VALUES (
-      ${suspended}, NULL, 0, 0,
+      ${suspended},
+      ${transferredOutTo === null ? "NULL" : sqlString(transferredOutTo)},
+      ${awaitingTransfer}, ${transferPending},
       ${activeTermId === null ? "NULL" : sqlString(activeTermId)},
       ${hotUsed}, 0, ${graceBaseUsed}, '[]', '{}', '{}', '{}',
       ${snapshotBindingEpoch}, ${clinicSeq}, NULL
@@ -3328,41 +3499,7 @@ function hydrateDoFromCoverageSnapshot(
   );
 
   for (const entry of termEntries) {
-    const usedFinal =
-      entry.used_final === null || entry.used_final === undefined
-        ? entry.state === "active" || entry.state === "grace"
-          ? null
-          : typeof entry.used === "number"
-            ? entry.used
-            : null
-        : entry.used_final;
-    sqlExec(
-      storage,
-      `INSERT INTO term (
-        term_id, grant_id, origin_grant_id, position, state, end_reason,
-        plan_snapshot, allowance, used_final, duration_unit, duration_count,
-        grace_days, grace_cap, calendar_start, starts_at, ends_at, grace_ends_at, ended_at
-      ) VALUES (
-        ${sqlString(String(entry.term_id))},
-        ${sqlString(String(entry.grant_id ?? ""))},
-        ${sqlString(String(entry.origin_grant_id ?? entry.grant_id ?? ""))},
-        ${Number(entry.position ?? 0)},
-        ${sqlString(String(entry.state ?? "ended"))},
-        ${entry.end_reason === null || entry.end_reason === undefined ? "NULL" : sqlString(String(entry.end_reason))},
-        ${sqlString(snapshotTermPlanSnapshot(entry))},
-        ${entry.allowance === null || entry.allowance === undefined ? "NULL" : String(entry.allowance)},
-        ${usedFinal === null || usedFinal === undefined ? "NULL" : String(usedFinal)},
-        ${entry.duration_unit === null || entry.duration_unit === undefined ? "NULL" : sqlString(String(entry.duration_unit))},
-        ${entry.duration_count === null || entry.duration_count === undefined ? "NULL" : String(entry.duration_count)},
-        ${entry.grace_days === null || entry.grace_days === undefined ? "NULL" : String(entry.grace_days)},
-        ${entry.grace_cap === null || entry.grace_cap === undefined ? "NULL" : sqlString(String(entry.grace_cap))},
-        ${entry.calendar_start === null || entry.calendar_start === undefined ? "NULL" : sqlString(String(entry.calendar_start))},
-        ${entry.starts_at === null || entry.starts_at === undefined ? "NULL" : sqlString(String(entry.starts_at))},
-        ${entry.ends_at === null || entry.ends_at === undefined ? "NULL" : sqlString(String(entry.ends_at))},
-        ${entry.grace_ends_at === null || entry.grace_ends_at === undefined ? "NULL" : sqlString(String(entry.grace_ends_at))},
-        ${entry.ended_at === null || entry.ended_at === undefined ? "NULL" : sqlString(String(entry.ended_at))}
-      )`,
-    );
+    insertOrUpdateTermFromSnapshotEntry(storage, entry);
   }
 }
 
@@ -3474,36 +3611,40 @@ async function reapplyUsageEventsAfterSnapshot(
   }
 }
 
-async function applyGrantLedgerRowToDo(
-  storage: DurableObjectStorage,
-  row: {
-    grant_id: string;
-    origin_grant_id: string;
-    org_id: string;
-    installation_id: string;
-    kind: string;
-    source_kind: string;
-    envelope_sha256: string;
-    receipt: string;
-    applied_at: string;
-  },
+type GrantLedgerRebuildRow = {
+  grant_id: string;
+  origin_grant_id: string;
+  org_id: string;
+  installation_id: string;
+  kind: string;
+  source_kind: string;
+  envelope_sha256: string;
+  receipt: string;
+  applied_at: string;
+};
+
+async function loadGrantLedgerR2Line(
   r2: R2Bucket,
-): Promise<void> {
-  const key = `grant-ledger/${row.grant_id}.ndjson`;
+  grantId: string,
+): Promise<Record<string, unknown> | null> {
+  const key = `grant-ledger/${grantId}.ndjson`;
   const object = await r2.get(key);
   if (object === null) {
-    return;
+    return null;
   }
   const text = await object.text();
   const line = text.trim().split("\n")[0] ?? "";
   if (line.length === 0) {
-    return;
+    return null;
   }
-  const parsed = JSON.parse(line) as Record<string, unknown>;
-  const receipt =
-    typeof parsed.receipt === "object" && parsed.receipt !== null
-      ? (parsed.receipt as Record<string, unknown>)
-      : (JSON.parse(row.receipt) as Record<string, unknown>);
+  return JSON.parse(line) as Record<string, unknown>;
+}
+
+function insertDoGrantRowFromLedger(
+  storage: DurableObjectStorage,
+  row: GrantLedgerRebuildRow,
+  r2Line: Record<string, unknown> | null,
+): void {
   const existing = sqlSelect<{ grant_id: string }>(
     storage,
     `SELECT grant_id FROM grant WHERE grant_id = ${sqlString(row.grant_id)} LIMIT 1`,
@@ -3511,17 +3652,117 @@ async function applyGrantLedgerRowToDo(
   if (existing !== undefined) {
     return;
   }
+  const receipt =
+    r2Line !== null &&
+    typeof r2Line.receipt === "object" &&
+    r2Line.receipt !== null
+      ? (r2Line.receipt as Record<string, unknown>)
+      : (JSON.parse(row.receipt) as Record<string, unknown>);
+  const envelopeJson =
+    r2Line !== null ? JSON.stringify(r2Line) : JSON.stringify({ grant_id: row.grant_id });
   sqlExec(
     storage,
     `INSERT INTO grant (
       grant_id, kind, source_kind, envelope_sha256, envelope, evidence, receipt, applied_at, voided_at, void_reason
     ) VALUES (
       ${sqlString(row.grant_id)}, ${sqlString(row.kind)}, ${sqlString(row.source_kind)},
-      ${sqlString(row.envelope_sha256)}, ${sqlString(JSON.stringify(parsed))},
+      ${sqlString(row.envelope_sha256)}, ${sqlString(envelopeJson)},
       ${sqlString("{}")}, ${sqlString(JSON.stringify(receipt))},
       ${sqlString(row.applied_at)}, NULL, NULL
     )`,
   );
+}
+
+async function restoreDoGrantRowsFromLedger(
+  storage: DurableObjectStorage,
+  db: D1Database,
+  installationId: string,
+  anchorAt: string,
+  r2: R2Bucket,
+): Promise<void> {
+  const rows = await db
+    .prepare(
+      `SELECT grant_id, origin_grant_id, org_id, installation_id, kind, source_kind,
+              envelope_sha256, receipt, applied_at
+       FROM grant_ledger
+       WHERE installation_id = ? AND applied_at <= ?
+       ORDER BY applied_at ASC, grant_id ASC`,
+    )
+    .bind(installationId, anchorAt)
+    .all<GrantLedgerRebuildRow>();
+  for (const row of rows.results ?? []) {
+    const r2Line = await loadGrantLedgerR2Line(r2, row.grant_id);
+    insertDoGrantRowFromLedger(storage, row, r2Line);
+  }
+}
+
+function snapshotTermsIncludeGrant(
+  snapshot: Record<string, unknown>,
+  grantId: string,
+): boolean {
+  const termsRaw = snapshot.terms;
+  if (!Array.isArray(termsRaw)) {
+    return false;
+  }
+  for (const entry of termsRaw) {
+    if (entry === null || typeof entry !== "object") {
+      continue;
+    }
+    const term = entry as Record<string, unknown>;
+    if (term.grant_id === grantId || term.origin_grant_id === grantId) {
+      return true;
+    }
+  }
+  return false;
+}
+
+async function findGrantAppliedSnapshotForGrant(
+  db: D1Database,
+  installationId: string,
+  grantId: string,
+  afterClinicSeq: number,
+): Promise<Record<string, unknown> | null> {
+  const rows = await db
+    .prepare(
+      `SELECT snapshot, clinic_seq FROM coverage_event
+       WHERE installation_id = ? AND kind = 'grant_applied' AND clinic_seq > ?
+       ORDER BY clinic_seq ASC`,
+    )
+    .bind(installationId, afterClinicSeq)
+    .all<{ snapshot: string; clinic_seq: number }>();
+  for (const row of rows.results ?? []) {
+    try {
+      const snapshot = JSON.parse(row.snapshot) as Record<string, unknown>;
+      if (snapshotTermsIncludeGrant(snapshot, grantId)) {
+        return snapshot;
+      }
+    } catch {
+      continue;
+    }
+  }
+  return null;
+}
+
+async function applyGrantLedgerRowToDo(
+  storage: DurableObjectStorage,
+  row: GrantLedgerRebuildRow,
+  r2: R2Bucket,
+  db: D1Database,
+  installationId: string,
+  anchorClinicSeq: number,
+): Promise<void> {
+  const r2Line = await loadGrantLedgerR2Line(r2, row.grant_id);
+  insertDoGrantRowFromLedger(storage, row, r2Line);
+
+  const grantAppliedSnapshot = await findGrantAppliedSnapshotForGrant(
+    db,
+    installationId,
+    row.grant_id,
+    anchorClinicSeq,
+  );
+  if (grantAppliedSnapshot !== null) {
+    syncDoTermsAndHotFromCoverageSnapshot(storage, grantAppliedSnapshot);
+  }
 }
 
 function applyGrantVoidRowToDo(
@@ -3639,6 +3880,13 @@ export async function rebuildClinicDoRPC(
       request.bindingEpoch,
     );
     updateHot(storage, { reservations: "[]", reserved: 0 });
+    await restoreDoGrantRowsFromLedger(
+      storage,
+      request.db,
+      request.installationId,
+      anchor.at,
+      request.r2,
+    );
 
     const ledgerRows = await request.db
       .prepare(
@@ -3663,7 +3911,14 @@ export async function rebuildClinicDoRPC(
       }>();
 
     for (const row of ledgerRows.results ?? []) {
-      await applyGrantLedgerRowToDo(storage, row, request.r2);
+      await applyGrantLedgerRowToDo(
+        storage,
+        row,
+        request.r2,
+        request.db,
+        request.installationId,
+        anchor.clinic_seq,
+      );
     }
 
     const voidRows = await request.db
@@ -3795,20 +4050,7 @@ export async function coverageMirrorMatchesSnapshot(
 function normalizeCoverageSnapshotForMirrorCompare(
   snapshot: Record<string, unknown>,
 ): string {
-  const clone = JSON.parse(JSON.stringify(snapshot)) as Record<string, unknown>;
-  const term = clone.term;
-  if (term !== null && typeof term === "object" && !Array.isArray(term)) {
-    const termObject = term as Record<string, unknown>;
-    delete termObject.used;
-    delete termObject.band;
-  }
-  if (Array.isArray(clone.terms)) {
-    for (const entry of clone.terms as Record<string, unknown>[]) {
-      delete entry.used;
-      delete entry.used_final;
-    }
-  }
-  return JSON.stringify(clone);
+  return canonicalize(snapshot);
 }
 
 export async function runRebuildClinicDo(
@@ -3974,10 +4216,9 @@ export async function refreshCoverageSnapshotRPC(
     });
     const eventId = coverageEventId(request.installationId, clinicSeq);
     await scheduleCoverageAlarm(state, storage, request.nowIso);
-    await shipCoverageOutboxAlarm(
+    await shipCoverageOutboxInLock(
       state,
       storage,
-      blockConcurrencyWhile,
       { DB: request.db, R2: request.r2 },
       request.installationId,
       request.nowIso,

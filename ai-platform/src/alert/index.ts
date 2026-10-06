@@ -580,14 +580,7 @@ export async function insertDoRebuildMismatchAlert(
   nowIso: string,
 ): Promise<void> {
   const alertKey = `do-rebuild:${installationId}`;
-  await db
-    .prepare(
-      `INSERT INTO platform_alert
-         (alert_key, code, severity, first_at, last_at, count, send_state, next_send_at, resolved_at)
-       VALUES (?, ?, 'high', ?, ?, 1, 'unsent', NULL, NULL)`,
-    )
-    .bind(alertKey, "do_rebuild_mismatch", nowIso, nowIso)
-    .run();
+  await upsertPlatformAlert(db, alertKey, "do_rebuild_mismatch", nowIso);
 }
 
 function parseAl13AlertKey(
