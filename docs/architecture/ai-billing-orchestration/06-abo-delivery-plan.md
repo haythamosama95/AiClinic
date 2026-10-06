@@ -139,7 +139,7 @@ to the new membership-checked `current_org_id()`, rather than rewriting every po
 **S6. Spikes live in the research step of the first unit that consumes them.** They are not separate
 units: Spec Kit's `research.md` is where they belong. Each must record its outcome and, if it fails, pick
 the fallback the design names (05 §10 "Spike-dependent items"). R-5 → P2.2 (WebAuthn/ES256) and P3.1
-(Access `amr`, service-binding caller identity); R-2 → P4.2 (intention expiry default) and P4.3
+(Access `amr`, service-binding caller identity); R-2 → P4.2 (intention expiry default, bound by OQ-3) and P4.3
 (redelivery, second success, order listing, rate limits); R-3 → P5.1; R-4 → P5.2 (local, then confirmed
 in P8.1); R-6 → P8.1; R-7 → P3.11. OQ-3 covers the accounts these need.
 
@@ -1255,7 +1255,7 @@ Until the owner answers an item, units proceed on the default stated in it.
    membership the claim carries no organisation.
 2. **OQ-3: Staging accounts earlier than P8.** The R-2 spike (Paymob sandbox, in P4.2/P4.3 research) and the R-4 spike (hosted pg_cron/pg_net, P5.2) need a Paymob
    test integration and a staging Supabase project well before P8.1. Can those accounts be provisioned at the start of P4.2?
-   **Default:** yes, provisioned at the start of P4.2; if not available, P4.2 and P5.2 stop at their spike step.
+   **Default:** yes, provisioned at the start of P4.2. If the staging Supabase project is not available, P5.2 stops at its spike step. If the Paymob test integration is not available, P4.2 does not stop. The R-2 intention-expiry default is bound: `POST /v1/intention/` with `expiration` = 1800 s is the expiry that call is taken to honor, and checkout `expires_at` is creation plus 30 minutes (01 §3.3, 04 §5.3). P4.2 records that outcome and verifies `expiration` and `expires_at` against the H-PAY stub. A live Paymob account is not required for this unit. The remaining R-2 items stay with P4.3.
 3. **OQ-4: R-3 fallback adds a runtime part.** If Vault + SQL signing fails the P5.1 spike, the design's fallback is a single-purpose Supabase Edge Function signer.
    That is a new deployable on the backend side. Is it acceptable under the constitution, or must the spike pass with SQL?
    **Default:** P5.1 stops and escalates if the spike fails; the fallback is used only with the owner's approval.

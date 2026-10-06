@@ -5,9 +5,9 @@ This file orients AI coding agents working in this repository. Keep the
 **current active feature's** plan reference when running Spec Kit phases.
 
 <!-- SPECKIT START -->
-Active feature plan: `specs/076-abo-p4-1-abo-skeleton-records-layer-billing-token/plan.md`
-Feature spec: `specs/076-abo-p4-1-abo-skeleton-records-layer-billing-token/spec.md`
-Branch: `ai/076-abo-p4-1-abo-skeleton-records-layer-billing-token`
+Active feature plan: `specs/077-abo-p4-2-checkout-paymob-intention/plan.md`
+Feature spec: `specs/077-abo-p4-2-checkout-paymob-intention/spec.md`
+Branch: `ai/077-abo-p4-2-checkout-paymob-intention`
 <!-- SPECKIT END -->
 
 ## Repo layout quick reference
