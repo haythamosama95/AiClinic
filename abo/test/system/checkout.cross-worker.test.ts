@@ -241,13 +241,15 @@ describe("checkout cross-worker", () => {
     });
     expect(coverage.result).toBe("ok");
     const snapshot = JSON.parse(String(coverage.detail)) as {
-      coverage_through: string;
+      snapshot?: { coverage_through?: string };
     };
+    const coverageThrough = snapshot.snapshot?.coverage_through;
+    expect(typeof coverageThrough).toBe("string");
 
     expect(response.status).toBe(201);
     const body = (await response.json()) as Record<string, unknown>;
     expect(body.starts).toBe("after_current");
-    expect(body.projected_start).toBe(snapshot.coverage_through);
+    expect(body.projected_start).toBe(coverageThrough);
   });
 
   it("E2E-P4.2-04 superseded offer missing contact stale terms", async () => {

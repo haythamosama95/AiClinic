@@ -48,19 +48,34 @@ function normalizeSpecifier(specifier) {
   return specifier.replace(/\\/g, "/").replace(/\.(ts|js|mts|mjs)$/u, "");
 }
 
-function classifyImport(specifier) {
-  const normalized = normalizeSpecifier(specifier);
-  if (
-    normalized.endsWith(CLIENT_SUFFIX) ||
-    normalized.includes("/provider/paymob/client")
-  ) {
-    return "client";
+function specifierCandidates(importerPath, specifier, scanRoot) {
+  const candidates = [specifier];
+  if (specifier.startsWith(".")) {
+    const resolved = path.resolve(path.dirname(importerPath), specifier);
+    candidates.push(resolved);
+    const relativeToScan = path.relative(scanRoot, resolved);
+    if (!relativeToScan.startsWith("..") && !path.isAbsolute(relativeToScan)) {
+      candidates.push(relativeToScan.replace(/\\/g, "/"));
+    }
   }
-  if (
-    normalized.endsWith(ADAPTER_SUFFIX) ||
-    normalized.includes("/provider/paymob/adapter")
-  ) {
-    return "adapter";
+  return candidates;
+}
+
+function classifyImport(specifier, importerPath, scanRoot) {
+  for (const candidate of specifierCandidates(importerPath, specifier, scanRoot)) {
+    const normalized = normalizeSpecifier(candidate);
+    if (
+      normalized.endsWith(CLIENT_SUFFIX) ||
+      normalized.includes("/provider/paymob/client")
+    ) {
+      return "client";
+    }
+    if (
+      normalized.endsWith(ADAPTER_SUFFIX) ||
+      normalized.includes("/provider/paymob/adapter")
+    ) {
+      return "adapter";
+    }
   }
   return null;
 }
@@ -118,7 +133,7 @@ function main() {
   for (const filePath of walkSourceFiles(scanRoot)) {
     const source = fs.readFileSync(filePath, "utf8");
     for (const specifier of extractImportSpecifiers(source)) {
-      const kind = classifyImport(specifier);
+      const kind = classifyImport(specifier, filePath, scanRoot);
       if (kind === "client" && !isAdapterFile(filePath)) {
         violations.push(
           `${filePath}: imports paymob client (${specifier}) outside adapter`,

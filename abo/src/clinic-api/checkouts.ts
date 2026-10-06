@@ -316,14 +316,20 @@ async function resolveCoverage(
       const projectedStart =
         typeof detail.coverage_through === "string"
           ? detail.coverage_through
-          : null;
+          : typeof snapshot?.coverage_through === "string"
+            ? snapshot.coverage_through
+            : null;
       return decisionFromSnapshot(snapshot, "live", projectedStart);
     }
   } catch {
     // Fall through to coverage_view.
   }
   const viewSnapshot = await loadCoverageViewSnapshot(env, orgId);
-  return decisionFromSnapshot(viewSnapshot, "view", null);
+  const projectedStart =
+    typeof viewSnapshot?.coverage_through === "string"
+      ? viewSnapshot.coverage_through
+      : null;
+  return decisionFromSnapshot(viewSnapshot, "view", projectedStart);
 }
 
 async function appendCheckoutFact(
@@ -414,9 +420,6 @@ async function rebuildRedirect(
   env: CheckoutsEnv,
   checkoutId: string,
   reference: string,
-  expiresAt: string,
-  offer: OfferVersionRow,
-  contact: BillingContactRow,
 ): Promise<{ ok: true; redirect_url: string; expires_at: string } | { ok: false }> {
   const provider = providerForId(env, PAYMOB_PROVIDER_ID);
   if (provider === null) {
@@ -425,13 +428,13 @@ async function rebuildRedirect(
   const result = await provider.createCheckout({
     checkout_id: checkoutId,
     reference,
-    amount_minor: offer.price_minor,
-    currency: offer.currency,
-    item_name: offerItemName(offer.copy),
+    amount_minor: 0,
+    currency: "EGP",
+    item_name: "Clinic subscription",
     payer: {
-      name: contact.name,
-      email: contact.email,
-      phone: contact.phone,
+      name: "",
+      email: "",
+      phone: "",
     },
     expires_in_s: CHECKOUT_EXPIRES_S,
     return_url: paymobReturnUrl(env),
@@ -443,12 +446,28 @@ async function rebuildRedirect(
   return { ok: true, redirect_url: result.redirect_url, expires_at: result.expires_at };
 }
 
+function coverageFromStoredCheckout(checkout: StoredCheckout): CoverageDecision {
+  if (typeof checkout.opened_with_coverage_through === "string") {
+    return {
+      starts: "after_current",
+      projected_start: checkout.opened_with_coverage_through,
+      opened_with_coverage_through: checkout.opened_with_coverage_through,
+      coverage_source:
+        checkout.coverage_source === "view" ? "view" : "live",
+    };
+  }
+  return {
+    starts: "now",
+    opened_with_coverage_through: null,
+    coverage_source:
+      checkout.coverage_source === "view" ? "view" : "live",
+  };
+}
+
 async function handleExistingCheckout(
   env: CheckoutsEnv,
   contractVersion: number,
   existing: { checkout: StoredCheckout; status: CheckoutStatusRow },
-  offer: OfferVersionRow,
-  contact: BillingContactRow,
 ): Promise<Response> {
   const { checkout, status } = existing;
   if (status.state === "open_failed") {
@@ -463,9 +482,6 @@ async function handleExistingCheckout(
     env,
     checkout.checkout_id,
     checkout.reference,
-    checkout.expires_at,
-    offer,
-    contact,
   );
   if (!rebuilt.ok) {
     return clinicErrorResponse(
@@ -475,7 +491,7 @@ async function handleExistingCheckout(
       { checkout_id: checkout.checkout_id },
     );
   }
-  const coverage = await resolveCoverage(env, checkout.org_id);
+  const coverage = coverageFromStoredCheckout(checkout);
   return clinicJsonResponse(
     successResponseBody(
       contractVersion,
@@ -516,16 +532,7 @@ export async function handlePostCheckout(
     parsed.client_request_id,
   );
   if (existing !== null) {
-    const offer = await loadOfferVersion(
-      env,
-      existing.checkout.offer_id,
-      existing.checkout.offer_version,
-    );
-    const contact = await loadBillingContact(env, orgId);
-    if (offer === null || contact === null) {
-      return clinicErrorResponse("not_found", 404, contractVersion);
-    }
-    return handleExistingCheckout(env, contractVersion, existing, offer, contact);
+    return handleExistingCheckout(env, contractVersion, existing);
   }
 
   if ((await hourlyCheckoutCount(env, orgId)) >= HOURLY_CHECKOUT_LIMIT) {
