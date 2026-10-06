@@ -1778,11 +1778,9 @@ export async function mintFeedToken(): Promise<string> {
     ver: "2",
   };
   const header = { alg: "EdDSA", kid: issuer.kid, typ: "JWT" };
-  const headerB64 = base64urlEncode(JSON.stringify(header));
   const { canonicalize } = await import("vendor-contracts");
-  const payloadB64 = base64urlEncode(
-    new TextEncoder().encode(canonicalize(payload)),
-  );
+  const headerB64 = base64urlEncode(canonicalize(header));
+  const payloadB64 = base64urlEncode(canonicalize(payload));
   const signingInput = `${headerB64}.${payloadB64}`;
   const signature = await crypto.subtle.sign(
     { name: "Ed25519" },

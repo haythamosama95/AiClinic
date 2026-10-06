@@ -1,5 +1,9 @@
 import { DurableObject, env } from "cloudflare:workers";
-import { CHANNEL_VERSIONS, negotiate } from "vendor-contracts";
+import {
+  CHANNEL_VERSIONS,
+  negotiate,
+  validateTokenClaims,
+} from "vendor-contracts";
 import {
   handleAdapterRequest,
   pushTerminalEvent,
@@ -15,7 +19,9 @@ import {
 import {
   configureIsolateConfigCache,
   createD1ConfigReader,
+  ConfigCacheMissError,
   isolateConfigCache,
+  loadConfig,
   resolveConfigCacheTtlMs,
 } from "./config-cache";
 import { creditUsage, reconcileGraceUsage } from "./credit";
@@ -28,7 +34,7 @@ import {
   type TaxonomyCode,
 } from "./errors";
 import { handleDiscoveryRequest } from "./discovery";
-import { handleUsageSummaryRequest } from "./usage-summary";
+import { handleCoverageReadRequest } from "./coverage-read";
 import {
   requireAipContractVersion,
   withAipContractVersion,
@@ -134,6 +140,7 @@ import {
 import type { ProseGuardThresholds } from "./stream/prose-guards";
 import {
   createLoggerFactory,
+  noopLogger,
   verbosityFromEnv,
   type Logger,
   type LoggerFactory,
@@ -1979,6 +1986,271 @@ export class GatewayObject extends DurableObject {
   }
 }
 
+const AIP_CONTRACT_VERSION_HEADER = "Aip-Contract-Version";
+const FEED_CONSUMER = "backend-feed";
+
+function parseRequestedFeedVersion(request: Request): number | null {
+  const raw = request.headers.get(AIP_CONTRACT_VERSION_HEADER);
+  if (raw === null) {
+    return null;
+  }
+  if (!/^(0|[1-9][0-9]*)$/.test(raw)) {
+    return Number.MIN_SAFE_INTEGER;
+  }
+  return Number(raw);
+}
+
+function base64UrlDecode(segment: string): Uint8Array | null {
+  const base64 = segment.replace(/-/g, "+").replace(/_/g, "/");
+  const padded = base64 + "=".repeat((4 - (base64.length % 4 || 4)) % 4);
+  try {
+    const binary = atob(padded);
+    const bytes = new Uint8Array(binary.length);
+    for (let index = 0; index < binary.length; index += 1) {
+      bytes[index] = binary.charCodeAt(index);
+    }
+    return bytes;
+  } catch {
+    return null;
+  }
+}
+
+function parseJwtKid(token: string): string | null {
+  const segment = token.split(".")[0];
+  if (!segment) {
+    return null;
+  }
+  const headerBytes = base64UrlDecode(segment);
+  if (headerBytes === null) {
+    return null;
+  }
+  try {
+    const header = JSON.parse(new TextDecoder().decode(headerBytes)) as {
+      kid?: unknown;
+    };
+    return typeof header.kid === "string" && header.kid.length > 0
+      ? header.kid
+      : null;
+  } catch {
+    return null;
+  }
+}
+
+async function importIssuerPublicKey(
+  keyRow: Record<string, unknown>,
+): Promise<CryptoKey | null> {
+  if (typeof keyRow.public_key !== "string") {
+    return null;
+  }
+  const rawBytes = base64UrlDecode(keyRow.public_key);
+  if (rawBytes === null) {
+    return null;
+  }
+  try {
+    return await crypto.subtle.importKey(
+      "raw",
+      rawBytes,
+      { name: "Ed25519" },
+      false,
+      ["verify"],
+    );
+  } catch {
+    return null;
+  }
+}
+
+function issuerKeyUsable(
+  keyRow: Record<string, unknown>,
+  nowSeconds: number,
+): boolean {
+  const status = keyRow.status;
+  if (status === "revoked") {
+    return false;
+  }
+  if (status !== "active" && status !== "retiring") {
+    return false;
+  }
+  if (typeof keyRow.not_before === "string") {
+    const notBeforeMs = Date.parse(keyRow.not_before);
+    if (
+      !Number.isNaN(notBeforeMs) &&
+      nowSeconds < Math.floor(notBeforeMs / 1000)
+    ) {
+      return false;
+    }
+  }
+  if (typeof keyRow.not_after === "string") {
+    const notAfterMs = Date.parse(keyRow.not_after);
+    if (
+      !Number.isNaN(notAfterMs) &&
+      nowSeconds >= Math.floor(notAfterMs / 1000)
+    ) {
+      return false;
+    }
+  }
+  return true;
+}
+
+function feedUnauthorizedResponse(): Response {
+  return new Response(null, { status: 401 });
+}
+
+async function verifyFeedBearerToken(
+  request: Request,
+  runtimeEnv: Env,
+): Promise<{ ok: true; token: string } | { ok: false; response: Response }> {
+  const header = request.headers.get("Authorization");
+  if (header === null || !header.startsWith("Bearer ")) {
+    return { ok: false, response: feedUnauthorizedResponse() };
+  }
+  const token = header.slice("Bearer ".length).trim();
+  if (token.length === 0) {
+    return { ok: false, response: feedUnauthorizedResponse() };
+  }
+
+  const kid = parseJwtKid(token);
+  if (kid === null) {
+    return { ok: false, response: feedUnauthorizedResponse() };
+  }
+
+  const reader = createD1ConfigReader(runtimeEnv.DB, runtimeEnv.R2);
+  const nowMs = await clockNowMs(runtimeEnv);
+  const nowSeconds = Math.floor(nowMs / 1000);
+  let keyRow: Record<string, unknown>;
+  try {
+    keyRow = await loadConfig(
+      isolateConfigCache,
+      reader,
+      "issuer_keys",
+      kid,
+      noopLogger,
+      nowMs,
+    );
+  } catch (error) {
+    if (error instanceof ConfigCacheMissError) {
+      return { ok: false, response: feedUnauthorizedResponse() };
+    }
+    throw error;
+  }
+
+  if (!issuerKeyUsable(keyRow, nowSeconds)) {
+    return { ok: false, response: feedUnauthorizedResponse() };
+  }
+
+  const publicKey = await importIssuerPublicKey(keyRow);
+  if (publicKey === null) {
+    return { ok: false, response: feedUnauthorizedResponse() };
+  }
+
+  const claimsResult = await validateTokenClaims({
+    jwt: token,
+    audience: "ai-platform-feed",
+    issuerId: runtimeEnv.ISSUER_ID,
+    publicKey,
+    kid,
+  });
+  if (!claimsResult.ok) {
+    return { ok: false, response: feedUnauthorizedResponse() };
+  }
+
+  return { ok: true, token };
+}
+
+async function handleFeedCoverageRequest(
+  request: Request,
+  runtimeEnv: Env,
+  feedVersion: number,
+): Promise<Response> {
+  const url = new URL(request.url);
+  const afterRaw = url.searchParams.get("after");
+  const after =
+    afterRaw === null || afterRaw === ""
+      ? 0
+      : Number.isInteger(Number(afterRaw))
+        ? Number(afterRaw)
+        : 0;
+
+  const limitRaw = url.searchParams.get("limit");
+  const parsedLimit =
+    limitRaw === null || limitRaw === "" ? null : Number(limitRaw);
+  const limit =
+    parsedLimit === null ||
+    !Number.isInteger(parsedLimit) ||
+    parsedLimit < 1 ||
+    parsedLimit > 200
+      ? 200
+      : parsedLimit;
+
+  const auth = await verifyFeedBearerToken(request, runtimeEnv);
+  if (!auth.ok) {
+    return auth.response;
+  }
+
+  const pageRows = await runtimeEnv.DB.prepare(
+    `SELECT event_id, feed_seq, org_id, installation_id, binding_epoch, clinic_seq,
+            kind, at, snapshot
+     FROM coverage_event
+     WHERE feed_seq > ?
+     ORDER BY feed_seq ASC
+     LIMIT ?`,
+  )
+    .bind(after, limit)
+    .all<{
+      event_id: string;
+      feed_seq: number;
+      org_id: string;
+      installation_id: string;
+      binding_epoch: number;
+      clinic_seq: number;
+      kind: string;
+      at: string;
+      snapshot: string;
+    }>();
+
+  const events = (pageRows.results ?? []).map((row) => ({
+    event_id: row.event_id,
+    feed_seq: row.feed_seq,
+    org_id: row.org_id,
+    installation_id: row.installation_id,
+    binding_epoch: row.binding_epoch,
+    clinic_seq: row.clinic_seq,
+    kind: row.kind,
+    at: row.at,
+    snapshot: JSON.parse(row.snapshot) as Record<string, unknown>,
+  }));
+
+  const nextAfter =
+    events.length > 0 ? events[events.length - 1]!.feed_seq : after;
+
+  const moreRow = await runtimeEnv.DB.prepare(
+    `SELECT feed_seq FROM coverage_event WHERE feed_seq > ? LIMIT 1`,
+  )
+    .bind(nextAfter)
+    .first<{ feed_seq: number }>();
+
+  const pullAt = await clockNowIso(runtimeEnv);
+  await runtimeEnv.DB.prepare(
+    `INSERT INTO feed_consumer (consumer, last_pull_at, last_cursor)
+     VALUES (?, ?, ?)
+     ON CONFLICT(consumer) DO UPDATE SET
+       last_pull_at = excluded.last_pull_at,
+       last_cursor = excluded.last_cursor`,
+  )
+    .bind(FEED_CONSUMER, pullAt, nextAfter)
+    .run();
+
+  return withAipContractVersion(
+    Response.json({
+      contract_version: feedVersion,
+      after,
+      events,
+      next_after: nextAfter,
+      has_more: moreRow !== null,
+    }),
+    feedVersion,
+  );
+}
+
 export { VendorEntrypoint } from "./vendor/entrypoint";
 
 export default {
@@ -2015,11 +2287,25 @@ export default {
       );
     }
 
-    if (url.pathname === "/v1/usage" && request.method === "GET") {
-      return handleUsageSummaryRequest(
+    if (url.pathname === "/v1/feed/coverage" && request.method === "GET") {
+      const requestedFeedVersion = parseRequestedFeedVersion(request);
+      const feedNegotiated = negotiate(
+        CHANNEL_VERSIONS.platformFeed,
+        requestedFeedVersion,
+      );
+      if (!feedNegotiated.ok) {
+        return Response.json(
+          {
+            code: feedNegotiated.code,
+            accepted_versions: feedNegotiated.accepted_versions,
+          },
+          { status: 400 },
+        );
+      }
+      return handleFeedCoverageRequest(
         request,
         runtimeEnv,
-        makeLog("usage-summary/index.ts"),
+        feedNegotiated.version,
       );
     }
 
@@ -2142,8 +2428,13 @@ export default {
       if (!contractVersion.ok) {
         return contractVersion.response;
       }
+      const coverageResponse = await handleCoverageReadRequest(
+        request,
+        runtimeEnv,
+        makeLog("coverage-read/index.ts"),
+      );
       return withAipContractVersion(
-        new Response("Not Found", { status: 404 }),
+        coverageResponse,
         contractVersion.version,
       );
     }

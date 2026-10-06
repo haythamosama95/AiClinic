@@ -63,6 +63,7 @@ const METHOD_CLASS = {
   getCoverage: "M",
   listGrants: "M",
   readCoverageEvents: "M",
+  feedConsumerHealth: "M",
   voidForReversal: "M",
   releaseHeld: "HP",
   voidGrant: "HP",
@@ -4499,6 +4500,27 @@ export class VendorEntrypoint extends WorkerEntrypoint<VendorEnv> {
       events,
       next_after: nextAfter,
       has_more: moreRow !== null,
+    });
+    return ok(version, detail);
+  }
+
+  async feedConsumerHealth(
+    args: Record<string, unknown>,
+  ): Promise<VendorResultEnvelope> {
+    const requested = parseRequestedVersion(args);
+    const negotiated = negotiate(VENDOR_CHANNEL, requested);
+    if (!negotiated.ok) {
+      return rejected(VENDOR_CHANNEL, negotiated.code);
+    }
+    const version = negotiated.version;
+
+    const row = await this.env.DB.prepare(
+      `SELECT last_pull_at, last_cursor FROM feed_consumer WHERE consumer = 'backend-feed'`,
+    ).first<{ last_pull_at: string | null; last_cursor: number | null }>();
+
+    const detail = JSON.stringify({
+      last_pull_at: row?.last_pull_at ?? null,
+      last_cursor: row?.last_cursor ?? null,
     });
     return ok(version, detail);
   }
