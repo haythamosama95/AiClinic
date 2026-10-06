@@ -10,6 +10,8 @@
     "deploy": "wrangler deploy",
     "check": "wrangler check",
     "test": "vitest run --config vitest.workers.config.ts test/system",
+    "test:cross-worker": "node scripts/build-platform-for-hxw.mjs && vitest run --config vitest.cross-worker.config.ts && vitest run --config vitest.platform-throw.config.ts",
+    "test:import-boundary": "node scripts/check-import-boundary.mjs src && node --test test/import-boundary/boundary.test.mjs",
     "types": "wrangler types"
   },
   "devDependencies": {

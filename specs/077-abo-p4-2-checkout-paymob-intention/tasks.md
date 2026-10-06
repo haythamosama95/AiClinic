@@ -172,13 +172,13 @@ cd abo && npx vitest run --config vitest.platform-throw.config.ts
 
 **Independent Test**: E2E-P4.2-01, E2E-P4.2-02, E2E-P4.2-03, E2E-P4.2-04, E2E-P4.2-05, and E2E-P4.2-06 in harnesses H-XW and H-PAY.
 
-- [ ] T026 [US1] Bind Paymob and `PLATFORM` in `abo/wrangler.toml` — produces the runtime bindings, FR-001, FR-002, E2E-P4.2-01, E2E-P4.2-02. Depends on T025. On `development`, `staging`, and `production`, add `PAYMOB_BASE_URL`, `PAYMOB_SECRET_KEY`, `PAYMOB_PUBLIC_KEY`, and `PAYMOB_CARD_INTEGRATION_ID`, plus a `PLATFORM` service binding with `entrypoint = "VendorEntrypoint"` to `ai-platform-gateway-development`, `ai-platform-gateway-staging`, and `ai-platform-gateway-production` respectively. Add no `TEST_CLOCK` var.
+- [X] T026 [US1] Bind Paymob and `PLATFORM` in `abo/wrangler.toml` — produces the runtime bindings, FR-001, FR-002, E2E-P4.2-01, E2E-P4.2-02. Depends on T025. On `development`, `staging`, and `production`, add `PAYMOB_BASE_URL`, `PAYMOB_SECRET_KEY`, `PAYMOB_PUBLIC_KEY`, and `PAYMOB_CARD_INTEGRATION_ID`, plus a `PLATFORM` service binding with `entrypoint = "VendorEntrypoint"` to `ai-platform-gateway-development`, `ai-platform-gateway-staging`, and `ai-platform-gateway-production` respectively. Add no `TEST_CLOCK` var.
 
 ### 4.10 User Story 4 - Fail the import-boundary check on a domain import (Priority: P4) — package scripts
 
 **Independent Test**: E2E-P4.2-09 on the import-boundary CI check. E2E-P4.2-01 through E2E-P4.2-08 still pass.
 
-- [ ] T027 [US4] Add the harness scripts in `abo/package.json` — produces the two unit commands, FR-009, E2E-P4.2-09. Depends on T006, T016, and T025. `test:cross-worker` runs `node scripts/build-platform-for-hxw.mjs`, then `vitest run --config vitest.cross-worker.config.ts`, then `vitest run --config vitest.platform-throw.config.ts`. `test:import-boundary` runs `node scripts/check-import-boundary.mjs src` and `node --test test/import-boundary/boundary.test.mjs`. Leave the existing `test` script unchanged.
+- [X] T027 [US4] Add the harness scripts in `abo/package.json` — produces the two unit commands, FR-009, E2E-P4.2-09. Depends on T006, T016, and T025. `test:cross-worker` runs `node scripts/build-platform-for-hxw.mjs`, then `vitest run --config vitest.cross-worker.config.ts`, then `vitest run --config vitest.platform-throw.config.ts`. `test:import-boundary` runs `node scripts/check-import-boundary.mjs src` and `node --test test/import-boundary/boundary.test.mjs`. Leave the existing `test` script unchanged.
 
 ### 4.11 User Story 4 - Fail the import-boundary check on a domain import (Priority: P4) — CI jobs
 
