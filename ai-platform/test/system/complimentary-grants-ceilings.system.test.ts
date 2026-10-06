@@ -24,6 +24,7 @@ import {
   mintVendorAccessJwt,
   newClinic,
   newScenario,
+  queryOne,
   registerVisitSummaryCapability,
   resetPlatformState,
   setTestClock,
@@ -49,7 +50,9 @@ type GrantResultEnvelope = VendorResultEnvelope & {
 type ExtendedVendorMethod =
   | Parameters<typeof vendorCall>[0]
   | "suspend"
-  | "resume";
+  | "resume"
+  | "inspectCoverage"
+  | "setCeilingPolicy";
 
 const extendedVendorCall = vendorCall as (
   method: ExtendedVendorMethod,
@@ -267,6 +270,115 @@ async function encodeCeilingOverrideAssertion(input: {
 function parseAlertBodies(): Array<Record<string, unknown>> {
   return getCapturedVendorEmails().map(
     (email) => JSON.parse(email.text) as Record<string, unknown>,
+  );
+}
+
+const LAUNCH_CEILING_POLICY = {
+  per_grant_max_days: 31,
+  per_grant_max_allowance_months: 1,
+  window_days: 90,
+  window_max_days: 62,
+  window_max_allowance_months: 2,
+  max_paid_grace_days: 7,
+  paid_cap_rule: "proportional",
+} as const;
+
+async function readDoLedger(installationId: string): Promise<{
+  terms: Record<string, unknown>[];
+  grants: Record<string, unknown>[];
+  reservations: unknown;
+}> {
+  return runInDurableObject(quotaDoStub(installationId), async (_instance, state) => {
+    const terms = sqlSelect<Record<string, unknown>>(
+      state,
+      "SELECT * FROM term ORDER BY position ASC",
+    );
+    const grants = sqlSelect<Record<string, unknown>>(
+      state,
+      "SELECT * FROM grant ORDER BY applied_at ASC",
+    );
+    const hotRows = sqlSelect<{ reservations: string }>(
+      state,
+      "SELECT reservations FROM hot LIMIT 1",
+    );
+    const reservations = JSON.parse(hotRows[0]?.reservations ?? "[]") as unknown;
+    return { terms, grants, reservations };
+  });
+}
+
+async function countCeilingPolicyRows(): Promise<number> {
+  const row = await env.DB.prepare(
+    "SELECT COUNT(*) AS count FROM ceiling_policy",
+  ).first<{ count: number }>();
+  return row?.count ?? 0;
+}
+
+function termIntervalsOverlap(
+  active: DoTermRow,
+  queued: DoTermRow,
+): boolean {
+  if (
+    !active.starts_at ||
+    !active.ends_at ||
+    !queued.starts_at ||
+    !queued.ends_at
+  ) {
+    return false;
+  }
+  return (
+    Date.parse(active.starts_at) < Date.parse(queued.ends_at) &&
+    Date.parse(queued.starts_at) < Date.parse(active.ends_at)
+  );
+}
+
+async function operationForSetCeilingPolicy(input: {
+  accessJwt: string;
+}): Promise<Record<string, unknown>> {
+  return {
+    op: "setCeilingPolicy",
+    params: {
+      contract_version: CONTRACT_VERSION,
+      access_jwt: input.accessJwt,
+      ...LAUNCH_CEILING_POLICY,
+    },
+    actor_email: VENDOR_OPERATOR_EMAIL,
+    issued_at: new Date().toISOString(),
+    nonce: crypto.randomUUID(),
+    contract_version: CONTRACT_VERSION,
+  };
+}
+
+async function hpSetCeilingPolicy(input: {
+  accessJwt?: string;
+  operation?: Record<string, unknown>;
+  assertion?: Record<string, string>;
+}): Promise<VendorResultEnvelope> {
+  const signer = coverClinicSigner();
+  const accessJwt = input.accessJwt ?? (await mintVendorAccessJwt());
+  const operation =
+    input.operation ??
+    (await operationForSetCeilingPolicy({ accessJwt }));
+  const assertion =
+    input.assertion ??
+    encodeVendorAssertion(
+      await signer.signerAuthenticator.assert({
+        operation,
+        rpId: env.WEBAUTHN_RP_ID,
+        origin: env.WEBAUTHN_ORIGIN,
+        up: true,
+        uv: true,
+      }),
+    );
+  return extendedVendorCall(
+    "setCeilingPolicy",
+    {
+      contract_version: CONTRACT_VERSION,
+      ...LAUNCH_CEILING_POLICY,
+      signer_credential_id: signer.signerCredentialId,
+      operation,
+      assertion,
+    },
+    { accessJwt },
   );
 }
 
@@ -697,5 +809,128 @@ describe("complimentary grants, ceilings, adjustments, suspension", () => {
 
     const admitted = await invoke(scenario);
     expect(admitted.status).toBe(200);
+  });
+
+  it("E2E-P3.6-07 A19 a 14-day trial then a paid grant queues the paid term", async () => {
+    await coverClinic(await newScenario());
+
+    const scenario = await newScenario();
+    const grantId = await grantIdComp(crypto.randomUUID().replace(/-/g, ""));
+    const envelope = await buildComplimentaryEnvelope({
+      orgId: scenario.orgId,
+      grantId,
+      count: 14,
+      operatorEmail: VENDOR_OPERATOR_EMAIL,
+      reason: "trial onboarding",
+    });
+
+    const trial = await hpComplimentaryGrant({ envelope });
+    expect(trial.result).toBe("applied");
+
+    const binding = await queryOne<{ installation_id: string }>(
+      "SELECT installation_id FROM tenant_binding WHERE org_id = ? AND status = 'active'",
+      [scenario.orgId],
+    );
+    expect(binding?.installation_id).toBeTruthy();
+    scenario.installationId = binding!.installation_id;
+
+    const afterTrial = await readDoTerms(scenario.installationId);
+    const activeTrial = afterTrial.find((row) => row.state === "active");
+    expect(activeTrial).toBeTruthy();
+    expect(activeTrial!.calendar_start).toBeTruthy();
+    expect(activeTrial!.ends_at).toBe(
+      addDuration(String(activeTrial!.calendar_start), "day", 14),
+    );
+
+    await coverClinic(scenario);
+
+    const afterPaid = await readDoTerms(scenario.installationId);
+    const active = afterPaid.find((row) => row.state === "active");
+    const queued = afterPaid.find((row) => row.state === "queued");
+    expect(active).toBeTruthy();
+    expect(queued).toBeTruthy();
+    expect(termIntervalsOverlap(active!, queued!)).toBe(false);
+  });
+
+  it("E2E-P3.6-08 inspectCoverage returns the ledger and rejects a missing Access JWT", async () => {
+    const scenario = await newScenario();
+    await coverClinic(scenario);
+
+    const ledger = await readDoLedger(scenario.installationId);
+    const accessJwt = await mintVendorAccessJwt();
+
+    const inspected = await extendedVendorCall(
+      "inspectCoverage",
+      {
+        contract_version: CONTRACT_VERSION,
+        org_id: scenario.orgId,
+      },
+      { accessJwt },
+    );
+    expect(inspected.result).toBe("ok");
+    const detail = JSON.parse(inspected.detail) as {
+      terms: Record<string, unknown>[];
+      grants: Record<string, unknown>[];
+      reservations: unknown;
+    };
+    expect(detail.terms).toEqual(ledger.terms);
+    expect(detail.grants).toEqual(ledger.grants);
+    expect(detail.reservations).toEqual(ledger.reservations);
+
+    const missingJwt = await extendedVendorCall("inspectCoverage", {
+      contract_version: CONTRACT_VERSION,
+      org_id: scenario.orgId,
+    });
+    expect(missingJwt.result).toBe("rejected");
+    expect(missingJwt.code).toBe("unauthenticated");
+  });
+
+  it("E2E-P3.6-09 Pilot grant of 30 days is accepted under the default policy", async () => {
+    const scenario = await newScenario();
+    await coverClinic(scenario);
+
+    const accessJwt = await mintVendorAccessJwt();
+    const operation = await operationForSetCeilingPolicy({ accessJwt });
+    const signer = coverClinicSigner();
+    const assertion = encodeVendorAssertion(
+      await signer.signerAuthenticator.assert({
+        operation,
+        rpId: env.WEBAUTHN_RP_ID,
+        origin: env.WEBAUTHN_ORIGIN,
+        up: true,
+        uv: true,
+      }),
+    );
+
+    const first = await hpSetCeilingPolicy({
+      accessJwt,
+      operation,
+      assertion,
+    });
+    expect(first.result).toBe("ok");
+    const firstDetail = JSON.parse(first.detail) as { version: number };
+    expect(firstDetail.version).toBe(2);
+    const rowsAfterFirst = await countCeilingPolicyRows();
+
+    const second = await hpSetCeilingPolicy({
+      accessJwt,
+      operation,
+      assertion,
+    });
+    expect(second.result).toBe("ok");
+    const secondDetail = JSON.parse(second.detail) as { version: number };
+    expect(secondDetail.version).toBe(2);
+    expect(await countCeilingPolicyRows()).toBe(rowsAfterFirst);
+
+    const grantId = await grantIdComp(crypto.randomUUID().replace(/-/g, ""));
+    const envelope = await buildComplimentaryEnvelope({
+      orgId: scenario.orgId,
+      grantId,
+      count: 30,
+      operatorEmail: VENDOR_OPERATOR_EMAIL,
+      reason: "pilot program",
+    });
+    const pilot = await hpComplimentaryGrant({ envelope });
+    expect(pilot.result).toBe("applied");
   });
 });

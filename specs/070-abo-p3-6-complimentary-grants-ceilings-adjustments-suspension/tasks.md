@@ -65,7 +65,7 @@ The run fails because a complimentary grant is `rejected` with `unit_not_allowed
 
 **Independent Test**: E2E-P3.6-01, E2E-P3.6-02, E2E-P3.6-03, E2E-P3.6-04, E2E-P3.6-05, E2E-P3.6-07, and E2E-P3.6-09 in harness H-AP.
 
-- [ ] T007 [US1] Add the failing test `E2E-P3.6-07 A19 a 14-day trial then a paid grant queues the paid term` in `ai-platform/test/system/complimentary-grants-ceilings.system.test.ts` — red test, FR-009, E2E-P3.6-07. Depends on T006 (same file). No `coverClinic()` before the trial. Complimentary 14-day grant is `applied` and the term is `active` with `ends_at` 14 days after `calendar_start`. The following paid `vendorCall("grant")` is `applied` and that term is `queued`. The active term's interval does not overlap the queued term. The unit command fails because the trial grant is not `applied` and the paid term is not queued after it.
+- [X] T007 [US1] Add the failing test `E2E-P3.6-07 A19 a 14-day trial then a paid grant queues the paid term` in `ai-platform/test/system/complimentary-grants-ceilings.system.test.ts` — red test, FR-009, E2E-P3.6-07. Depends on T006 (same file). No `coverClinic()` before the trial. Complimentary 14-day grant is `applied` and the term is `active` with `ends_at` 14 days after `calendar_start`. The following paid `vendorCall("grant")` is `applied` and that term is `queued`. The active term's interval does not overlap the queued term. The unit command fails because the trial grant is not `applied` and the paid term is not queued after it.
 
 **Checkpoint**: E2E-P3.6-07 exists and fails.
 
@@ -73,7 +73,7 @@ The run fails because a complimentary grant is `rejected` with `unit_not_allowed
 
 **Independent Test**: E2E-P3.6-08 in harness H-AP. Earlier H-AP suites stay green (rule S2).
 
-- [ ] T008 [US3] Add the failing test `E2E-P3.6-08 inspectCoverage returns the ledger and rejects a missing Access JWT` in `ai-platform/test/system/complimentary-grants-ceilings.system.test.ts` — red test, FR-010, E2E-P3.6-08. Depends on T007 (same file). After `coverClinic()`, `inspectCoverage` with an Access JWT returns `ok` and `detail` JSON whose `terms`, `grants`, and `reservations` match the DO rows for that org. The same call with no `access_jwt` is `rejected`. Do not add `inspectCoverage` to `VendorMethod` in this task. The unit command fails because `inspectCoverage` is not a method.
+- [X] T008 [US3] Add the failing test `E2E-P3.6-08 inspectCoverage returns the ledger and rejects a missing Access JWT` in `ai-platform/test/system/complimentary-grants-ceilings.system.test.ts` — red test, FR-010, E2E-P3.6-08. Depends on T007 (same file). After `coverClinic()`, `inspectCoverage` with an Access JWT returns `ok` and `detail` JSON whose `terms`, `grants`, and `reservations` match the DO rows for that org. The same call with no `access_jwt` is `rejected`. Do not add `inspectCoverage` to `VendorMethod` in this task. The unit command fails because `inspectCoverage` is not a method.
 
 **Checkpoint**: E2E-P3.6-08 exists and fails.
 
@@ -81,7 +81,7 @@ The run fails because a complimentary grant is `rejected` with `unit_not_allowed
 
 **Independent Test**: E2E-P3.6-01, E2E-P3.6-02, E2E-P3.6-03, E2E-P3.6-04, E2E-P3.6-05, E2E-P3.6-07, and E2E-P3.6-09 in harness H-AP.
 
-- [ ] T009 [US1] Add the failing test `E2E-P3.6-09 Pilot grant of 30 days is accepted under the default policy` in `ai-platform/test/system/complimentary-grants-ceilings.system.test.ts` — red test, FR-003, FR-011, E2E-P3.6-09. Depends on T008 (same file). `setCeilingPolicy` with the launch ceilings and one assertion returns `ok` and `detail.version` 2. The same assertion again returns `ok` with that same version and does not insert a row. A complimentary grant, unit `day`, count 30, is `applied`. Do not add `setCeilingPolicy` to `VendorMethod` in this task. The unit command fails because `setCeilingPolicy` is not a method and a 30-day complimentary grant is not `applied`.
+- [X] T009 [US1] Add the failing test `E2E-P3.6-09 Pilot grant of 30 days is accepted under the default policy` in `ai-platform/test/system/complimentary-grants-ceilings.system.test.ts` — red test, FR-003, FR-011, E2E-P3.6-09. Depends on T008 (same file). `setCeilingPolicy` with the launch ceilings and one assertion returns `ok` and `detail.version` 2. The same assertion again returns `ok` with that same version and does not insert a row. A complimentary grant, unit `day`, count 30, is `applied`. Do not add `setCeilingPolicy` to `VendorMethod` in this task. The unit command fails because `setCeilingPolicy` is not a method and a 30-day complimentary grant is not `applied`.
 
 **Checkpoint**: E2E-P3.6-09 exists and fails. User Story 1's seven tests are red.
 
