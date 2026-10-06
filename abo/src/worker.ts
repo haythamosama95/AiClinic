@@ -3,9 +3,15 @@ import {
   handleGetBillingContact,
   handlePutBillingContact,
 } from "./clinic-api/billing-contact.js";
+import {
+  handleGetCheckout,
+  handleListOpenCheckouts,
+  handlePostCheckout,
+} from "./clinic-api/checkouts.js";
 import { handleGetOffers } from "./clinic-api/offers.js";
 import { checkTokenRate } from "./clinic-api/rate.js";
 import { checkContractVersion } from "./clinic-api/version.js";
+import { refreshCoverageView } from "./coverage/view.js";
 import { markExportLagIfDue, sendDueAlerts } from "./alert/index.js";
 import { checkR2BucketLock } from "./alert/lock.js";
 import { exportFacts } from "./records/export.js";
@@ -23,6 +29,17 @@ export interface Env {
   R2_BUCKET_NAME: string;
   R2_LOCK_READ_TOKEN: string;
   TEST_CLOCK: string;
+  PAYMOB_BASE_URL: string;
+  PAYMOB_SECRET_KEY: string;
+  PAYMOB_PUBLIC_KEY: string;
+  PAYMOB_CARD_INTEGRATION_ID: string;
+  PAYMOB_STUB?: Fetcher;
+  PLATFORM: {
+    getCoverage(args: Record<string, unknown>): Promise<Record<string, unknown>>;
+    readCoverageEvents(
+      args: Record<string, unknown>,
+    ): Promise<Record<string, unknown>>;
+  };
   SEND_EMAIL: {
     send(message: {
       from: string;
@@ -103,6 +120,28 @@ async function handleBillingV1(
     }
   }
 
+  if (request.method === "POST" && path === "/v1/checkouts") {
+    return handlePostCheckout(request, env, auth.claims, versionGate.version);
+  }
+
+  if (request.method === "GET" && path === "/v1/checkouts") {
+    const url = new URL(request.url);
+    if (url.searchParams.get("open") === "1") {
+      return handleListOpenCheckouts(env, auth.claims.org, versionGate.version);
+    }
+    return emptyNotFound();
+  }
+
+  const checkoutIdMatch = /^\/v1\/checkouts\/([^/]+)$/u.exec(path);
+  if (request.method === "GET" && checkoutIdMatch !== null) {
+    return handleGetCheckout(
+      env,
+      auth.claims.org,
+      checkoutIdMatch[1]!,
+      versionGate.version,
+    );
+  }
+
   return emptyNotFound();
 }
 
@@ -159,6 +198,11 @@ export default {
       await exportFacts(env);
       await fetch(env.HEARTBEAT_URL);
       await sendDueAlerts(env);
+      try {
+        await refreshCoverageView(env);
+      } catch {
+        // Platform feed failures must not block the minute cron.
+      }
       await markExportLagIfDue(env);
       return;
     }

@@ -345,20 +345,23 @@ export async function ensurePaymobFetchMock(): Promise<void> {
     .get(origin)
     .intercept({ path: () => true, method: () => true })
     .reply(async (opts) => {
-      const pathPart = typeof opts.path === "string" ? opts.path : "/";
-      const target = new URL(pathPart, baseUrl).toString();
-      const response = await env.PAYMOB_STUB.fetch(target, {
-        method: opts.method,
-        headers: opts.headers as HeadersInit | undefined,
-        body: opts.body as BodyInit | undefined,
-        signal: opts.signal as AbortSignal | undefined,
-      });
-      const data = await response.arrayBuffer();
-      return {
-        statusCode: response.status,
-        data: Buffer.from(data),
-        headers: Object.fromEntries(response.headers.entries()),
-      };
+      try {
+        const pathPart = typeof opts.path === "string" ? opts.path : "/";
+        const target = new URL(pathPart, baseUrl).toString();
+        const response = await env.PAYMOB_STUB.fetch(target, {
+          method: opts.method,
+          headers: opts.headers as HeadersInit | undefined,
+          body: opts.body as BodyInit | undefined,
+          signal: opts.signal as AbortSignal | undefined,
+        });
+        const data = await response.arrayBuffer();
+        return {
+          statusCode: response.status,
+          data: new TextDecoder().decode(data),
+        };
+      } catch {
+        return { statusCode: 502, data: "paymob stub forward failed" };
+      }
     })
     .persist();
   paymobMockReady = true;
@@ -642,6 +645,7 @@ export async function resetCrossWorkerHarness(): Promise<void> {
   await resetHarnessState();
   platformBootstrap = null;
   vendorAccessTeam = null;
+  platformMigrationsApplied = false;
   paymobMockReady = false;
   await scriptPaymobStub("ok");
 }

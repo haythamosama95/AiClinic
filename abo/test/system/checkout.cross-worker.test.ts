@@ -189,8 +189,9 @@ describe("checkout cross-worker", () => {
     await putBillingContact(org);
 
     const clientRequestId = "req-checkout-01";
+    const checkout01Jti = "a0000001-0001-4001-8001-000000000001";
     const { jti } = await administratorHeaders(org, {
-      jti: "jti-checkout-01",
+      jti: checkout01Jti,
     });
     const response = await postCheckout(
       org,

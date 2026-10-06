@@ -7,6 +7,7 @@ export type PaymobClientEnv = {
   PAYMOB_SECRET_KEY: string;
   PAYMOB_CARD_INTEGRATION_ID: string;
   TEST_CLOCK?: string;
+  PAYMOB_STUB?: Fetcher;
 };
 
 export type PaymobPayer = {
@@ -130,16 +131,20 @@ export async function createPaymobIntention(
     intentionAbortMs(env),
   );
 
+  const intentionRequest = intentionUrl(env.PAYMOB_BASE_URL);
+  const requestInit: RequestInit = {
+    method: "POST",
+    headers: {
+      Authorization: `Token ${env.PAYMOB_SECRET_KEY}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify(body),
+    signal: controller.signal,
+  };
   try {
-    const response = await fetch(intentionUrl(env.PAYMOB_BASE_URL), {
-      method: "POST",
-      headers: {
-        Authorization: `Token ${env.PAYMOB_SECRET_KEY}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify(body),
-      signal: controller.signal,
-    });
+    const response = env.PAYMOB_STUB
+      ? await env.PAYMOB_STUB.fetch(intentionRequest, requestInit)
+      : await fetch(intentionRequest, requestInit);
 
     if (!response.ok) {
       return { ok: false };
