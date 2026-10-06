@@ -1,19 +1,5 @@
-import {
-  newId,
-  nowIso,
-  ok,
-  parseJsonBody,
-  reject,
-  requireOperator,
-} from "./http";
-import type {
-  CohortPayload,
-  ControlActionResult,
-  ControlBindings,
-  OperatorAuth,
-  PublishPayload,
-  RoutingPolicyRoute,
-} from "./types";
+import { newId, nowIso } from "./audit";
+import type { ControlActionResult, ControlBindings } from "./types";
 import visitSummaryPublished from "../../manifests/published/clinic.visit_summary@1.0.0.json";
 
 type RoutingPolicyRow = {
@@ -90,12 +76,12 @@ function isUniqueConstraint(err: unknown): boolean {
 async function runControlBatch(
   db: D1Database,
   statements: D1PreparedStatement[],
-): Promise<Response | null> {
+): Promise<ControlActionResult | null> {
   try {
     await db.batch(statements);
     return null;
   } catch {
-    return reject(500, "storage_error");
+    return { ok: false, status: 500, error: "storage_error" };
   }
 }
 
@@ -122,44 +108,6 @@ function latencyMismatchWarnings(
     }
   }
   return [];
-}
-
-async function assertInstallationsExist(
-  db: D1Database,
-  ids: string[],
-): Promise<Response | null> {
-  for (const id of ids) {
-    const row = await db
-      .prepare(
-        `SELECT installation_id FROM installation WHERE installation_id = ?`,
-      )
-      .bind(id)
-      .first<{ installation_id: string }>();
-    if (!row) {
-      return reject(404, "installation_not_found");
-    }
-  }
-  return null;
-}
-
-export function parseRoutingPolicyRoute(
-  request: Request,
-): RoutingPolicyRoute | null {
-  const pathname = new URL(request.url).pathname;
-  if (pathname === "/control/routing-policies/publish") {
-    return { action: "publish" };
-  }
-  const match = pathname.match(
-    /^\/control\/routing-policies\/([^/]+)\/versions\/([^/]+)\/(canary|promote|rollback)$/,
-  );
-  if (!match) {
-    return null;
-  }
-  return {
-    policyId: match[1],
-    version: match[2],
-    action: match[3] as "canary" | "promote" | "rollback",
-  };
 }
 
 async function installationsExist(
@@ -311,12 +259,7 @@ export async function canaryRoutingPolicyAction(
     ).bind(newId(), actor, target, beforePointer, afterPointer, recordedAt),
   ]);
   if (batchError) {
-    const err = (await batchError.json()) as { error?: string };
-    return {
-      ok: false,
-      status: batchError.status,
-      error: err.error ?? "storage_error",
-    };
+    return batchError;
   }
 
   return { ok: true, body: {} };
@@ -383,12 +326,7 @@ export async function promoteRoutingPolicyAction(
     ).bind(newId(), actor, target, beforePointer, afterPointer, recordedAt),
   ]);
   if (batchError) {
-    const err = (await batchError.json()) as { error?: string };
-    return {
-      ok: false,
-      status: batchError.status,
-      error: err.error ?? "storage_error",
-    };
+    return batchError;
   }
 
   return { ok: true, body: {} };
@@ -487,148 +425,8 @@ export async function rollbackRoutingPolicyAction(
 
   const batchError = await runControlBatch(DB, statements);
   if (batchError) {
-    const err = (await batchError.json()) as { error?: string };
-    return {
-      ok: false,
-      status: batchError.status,
-      error: err.error ?? "storage_error",
-    };
+    return batchError;
   }
 
   return { ok: true, body: {} };
-}
-
-export async function handleRoutingPolicyPublish(
-  request: Request,
-  bindings: ControlBindings,
-  operatorAuth: OperatorAuth,
-): Promise<Response> {
-  const auth = requireOperator(request, operatorAuth);
-  if (auth instanceof Response) {
-    return auth;
-  }
-
-  const route = parseRoutingPolicyRoute(request);
-  if (!route || route.action !== "publish") {
-    // Unreachable via HTTP: dispatch pre-filters with identical regexes; reachable via direct handler invocation in tests; kept as a safety net.
-    return reject(400, "invalid_route");
-  }
-
-  if (!bindings.R2) {
-    return reject(500, "missing_r2_binding");
-  }
-
-  const body = await parseJsonBody<PublishPayload>(request);
-  if (body instanceof Response) {
-    return body;
-  }
-
-  if (!body.document || typeof body.document !== "object") {
-    return reject(400, "missing_document");
-  }
-
-  const result = await publishRoutingPolicyAction(
-    bindings,
-    auth.operatorId,
-    body.document as Record<string, unknown>,
-  );
-  if (!result.ok) {
-    return reject(result.status, result.error);
-  }
-  return ok(result.body);
-}
-
-export async function handleRoutingPolicyCanary(
-  request: Request,
-  bindings: ControlBindings,
-  operatorAuth: OperatorAuth,
-): Promise<Response> {
-  const auth = requireOperator(request, operatorAuth);
-  if (auth instanceof Response) {
-    return auth;
-  }
-
-  const route = parseRoutingPolicyRoute(request);
-  if (!route || route.action !== "canary") {
-    // Unreachable via HTTP: dispatch pre-filters with identical regexes; reachable via direct handler invocation in tests; kept as a safety net.
-    return reject(400, "invalid_route");
-  }
-
-  const body = await parseJsonBody<CohortPayload>(request);
-  if (body instanceof Response) {
-    return body;
-  }
-
-  if (!Array.isArray(body.installation_ids) || body.installation_ids.length === 0) {
-    return reject(400, "missing_installation_ids");
-  }
-
-  const result = await canaryRoutingPolicyAction(
-    bindings,
-    auth.operatorId,
-    route.policyId,
-    route.version,
-    body.installation_ids,
-    body.cohort_name,
-  );
-  if (!result.ok) {
-    return reject(result.status, result.error);
-  }
-  return ok();
-}
-
-export async function handleRoutingPolicyPromote(
-  request: Request,
-  bindings: ControlBindings,
-  operatorAuth: OperatorAuth,
-): Promise<Response> {
-  const auth = requireOperator(request, operatorAuth);
-  if (auth instanceof Response) {
-    return auth;
-  }
-
-  const route = parseRoutingPolicyRoute(request);
-  if (!route || route.action !== "promote") {
-    // Unreachable via HTTP: dispatch pre-filters with identical regexes; reachable via direct handler invocation in tests; kept as a safety net.
-    return reject(400, "invalid_route");
-  }
-
-  const result = await promoteRoutingPolicyAction(
-    bindings,
-    auth.operatorId,
-    route.policyId,
-    route.version,
-  );
-  if (!result.ok) {
-    return reject(result.status, result.error);
-  }
-  return ok();
-}
-
-export async function handleRoutingPolicyRollback(
-  request: Request,
-  bindings: ControlBindings,
-  operatorAuth: OperatorAuth,
-): Promise<Response> {
-  const auth = requireOperator(request, operatorAuth);
-  if (auth instanceof Response) {
-    return auth;
-  }
-
-  const route = parseRoutingPolicyRoute(request);
-  if (!route || route.action !== "rollback") {
-    // Unreachable via HTTP: dispatch pre-filters with identical regexes; reachable via direct handler invocation in tests; kept as a safety net.
-    return reject(400, "invalid_route");
-  }
-
-  const result = await rollbackRoutingPolicyAction(
-    bindings,
-    auth.operatorId,
-    route.policyId,
-    route.version,
-  );
-  if (!result.ok) {
-    return reject(result.status, result.error);
-  }
-  return ok();
 }

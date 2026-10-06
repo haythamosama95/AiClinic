@@ -56,9 +56,17 @@ import {
 } from "../control/routing-policy";
 import type { ControlActionResult } from "../control/types";
 import {
+  activateCohortAction,
+  promoteCohortAction,
+} from "../control/cohort";
+import {
   beginTokenContractRotationAction,
   retireTokenContractAction,
 } from "../control/token-contract";
+import {
+  createManifestRetentionClassResolver,
+} from "../retention";
+import { supportLookup as runSupportLookup } from "../support";
 import { raiseAl19FromOutbox } from "../alert/index";
 
 const VENDOR_CHANNEL = CHANNEL_VERSIONS.vendorEntrypoint;
@@ -4746,25 +4754,76 @@ export class VendorEntrypoint extends WorkerEntrypoint<VendorEnv> {
   async activateCohort(
     args: Record<string, unknown>,
   ): Promise<VendorResultEnvelope> {
-    return this.invokeClassH(args, async (version) =>
-      rejected(version, "not_implemented"),
-    );
+    return this.invokeClassH(args, async (version, email) => {
+      const result = await activateCohortAction(
+        { DB: this.env.DB },
+        email,
+        args,
+      );
+      return envelopeFromControlResult(version, result);
+    });
   }
 
   async promoteCohort(
     args: Record<string, unknown>,
   ): Promise<VendorResultEnvelope> {
-    return this.invokeClassH(args, async (version) =>
-      rejected(version, "not_implemented"),
-    );
+    return this.invokeClassH(args, async (version, email) => {
+      const result = await promoteCohortAction(
+        { DB: this.env.DB },
+        email,
+        args,
+      );
+      return envelopeFromControlResult(version, result);
+    });
   }
 
   async supportLookup(
     args: Record<string, unknown>,
   ): Promise<VendorResultEnvelope> {
-    return this.invokeClassH(args, async (version) =>
-      rejected(version, "not_implemented"),
-    );
+    return this.invokeClassH(args, async (version) => {
+      const reference =
+        typeof args.reference === "string" ? args.reference : undefined;
+      const subscriptionRefArg =
+        typeof args.subscription_ref === "string"
+          ? args.subscription_ref
+          : undefined;
+      const orgId = typeof args.org_id === "string" ? args.org_id : undefined;
+
+      if (!reference && !subscriptionRefArg && !orgId) {
+        return rejected(version, "missing_lookup_key");
+      }
+
+      const result = await runSupportLookup(
+        { reference, subscription_ref: subscriptionRefArg, org_id: orgId },
+        {
+          db: this.env.DB,
+          r2: this.env.R2,
+          resolveRetentionClass: createManifestRetentionClassResolver(),
+        },
+      );
+
+      if (!result.found) {
+        return rejected(version, "not_found");
+      }
+
+      if ("requests" in result) {
+        const body = {
+          requests: result.requests.map((entry) => ({
+            request: entry.request,
+            attempts: entry.attempts,
+            envelope: entry.envelope,
+          })),
+        };
+        return ok(version, JSON.stringify(body));
+      }
+
+      const body = {
+        request: result.request,
+        attempts: result.attempts,
+        envelope: result.envelope,
+      };
+      return ok(version, JSON.stringify(body));
+    });
   }
 
   async feedConsumerHealth(

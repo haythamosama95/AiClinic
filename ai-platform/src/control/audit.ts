@@ -1,4 +1,10 @@
-import { newId, nowIso } from "./http";
+export function nowIso(): string {
+  return new Date().toISOString();
+}
+
+export function newId(): string {
+  return crypto.randomUUID();
+}
 
 export async function writeAudit(
   db: D1Database,

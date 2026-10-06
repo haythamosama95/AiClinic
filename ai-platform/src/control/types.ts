@@ -2,118 +2,15 @@ export type ControlActionResult =
   | { ok: true; body: Record<string, unknown> }
   | { ok: false; status: number; error: string };
 
-export type OperatorPrincipal = {
-  operatorId: string;
-};
-
-/** Port seam resolving an operator principal or rejecting (Clarification Q2). */
-export type OperatorAuth = {
-  resolve(request: Request): OperatorPrincipal | null;
-};
-
 export type ControlBindings = {
   DB: D1Database;
   R2?: R2Bucket;
   DO?: DurableObjectNamespace;
 };
 
-export type EnrollPayload = {
-  org_id: string;
-  display_name: string;
-  region: string;
-  plan: string;
-  public_key: string;
-  algorithm: string;
-  kid: string;
-};
-
-export type RotatePayload = {
-  kid: string;
-  public_key: string;
-  algorithm: string;
-};
-
-export type DeprecatePayload = {
-  successor_id: string;
-};
-
-export type CapabilityRoute = {
-  capabilityId: string;
-  version: string;
-  action: "deprecate" | "retire";
-};
-
-export type CohortPayload = {
-  installation_ids: string[];
-  cohort_name?: string;
-};
-
-export type PublishPayload = {
-  document: Record<string, unknown>;
-};
-
-export type CohortCapabilityRoute = {
-  capabilityId: string;
-  version: string;
-  action: "activate" | "promote";
-};
-
-export type RoutingPolicyRoute =
-  | { action: "publish" }
-  | {
-      policyId: string;
-      version: string;
-      action: "canary" | "promote" | "rollback";
-    };
-
-export type TokenContractBeginPayload = {
-  ver: string;
-};
-
-export type TokenContractRetirePayload = {
-  ver: string;
-};
-
-export type EntitleGrantInput = {
-  capability_id: string;
-  capability_version: string;
-  scope?: "installation" | "plan";
-};
-
-export type EntitlePayload = {
-  period_start: string;
-  period_end: string;
-  request_quota: number;
-  token_budget: number;
-  cost_budget: number;
-  soft_threshold: number;
-  allowed_capabilities: string[];
-  grants: EntitleGrantInput[];
-};
-
-export type PlanPayload = {
-  name: string;
-  credit_budget: number;
-  request_quota: number;
-  max_cost_class: string;
-  soft_threshold: number;
-  allowed_capabilities: string[];
-  status: string;
-};
-
-export type OverridePayload = {
-  credit_budget?: number;
-  request_quota?: number;
-  token_budget?: number;
-  cost_budget?: number;
-  period_start?: string;
-  period_end?: string;
-  soft_threshold?: number;
-};
-
-export type CreditPriceActivatePayload = {
-  version: string;
-  price_per_credit: number;
-  currency: string;
-  active_from: string;
-};
+export function requireNonEmptyString(value: unknown): string | null {
+  if (typeof value !== "string" || value.trim() === "") {
+    return null;
+  }
+  return value;
+}

@@ -1,37 +1,8 @@
 import { isCapabilityVersionRegistered } from "../capability";
 import { toCanonicalUuid } from "../platform-vocabulary";
-import {
-  newId,
-  nowIso,
-  ok,
-  parseJsonBody,
-  reject,
-  requireOperator,
-} from "./http";
-import type {
-  CohortCapabilityRoute,
-  CohortPayload,
-  ControlBindings,
-  OperatorAuth,
-} from "./types";
-
-async function assertInstallationsExist(
-  db: D1Database,
-  ids: string[],
-): Promise<Response | null> {
-  for (const id of ids) {
-    const row = await db
-      .prepare(
-        `SELECT installation_id FROM installation WHERE installation_id = ?`,
-      )
-      .bind(id)
-      .first<{ installation_id: string }>();
-    if (!row) {
-      return reject(404, "installation_not_found");
-    }
-  }
-  return null;
-}
+import { newId, nowIso } from "./audit";
+import type { ControlActionResult, ControlBindings } from "./types";
+import { requireNonEmptyString } from "./types";
 
 function parseAllowedCapabilities(raw: unknown): string[] {
   if (Array.isArray(raw)) {
@@ -56,65 +27,118 @@ function parseAllowedCapabilities(raw: unknown): string[] {
   return [];
 }
 
+function parseTermSnapshotCapabilities(termSnapshot: string): string[] {
+  try {
+    const parsed = JSON.parse(termSnapshot) as { capabilities?: unknown };
+    if (!Array.isArray(parsed.capabilities)) {
+      return [];
+    }
+    if (!parsed.capabilities.every((entry) => typeof entry === "string")) {
+      return [];
+    }
+    return parsed.capabilities as string[];
+  } catch {
+    return [];
+  }
+}
+
+async function assertInstallationsExist(
+  db: D1Database,
+  ids: string[],
+): Promise<ControlActionResult | null> {
+  for (const id of ids) {
+    const row = await db
+      .prepare(
+        `SELECT installation_id FROM installation WHERE installation_id = ?`,
+      )
+      .bind(id)
+      .first<{ installation_id: string }>();
+    if (!row) {
+      return { ok: false, status: 404, error: "installation_not_found" };
+    }
+  }
+  return null;
+}
+
 async function runControlBatch(
   db: D1Database,
   statements: D1PreparedStatement[],
-): Promise<Response | null> {
+): Promise<ControlActionResult | null> {
   try {
     await db.batch(statements);
     return null;
   } catch {
-    return reject(500, "storage_error");
+    return { ok: false, status: 500, error: "storage_error" };
   }
 }
 
-export function parseCohortCapabilityRoute(
-  request: Request,
-): CohortCapabilityRoute | null {
-  const match = new URL(request.url).pathname.match(
-    /^\/control\/capabilities\/([^/]+)\/versions\/([^/]+)\/(activate|promote)$/,
-  );
-  if (!match) {
-    return null;
+async function installationIdsWithCapability(
+  db: D1Database,
+  capabilityId: string,
+): Promise<string[]> {
+  const rows = await db
+    .prepare(
+      `SELECT tb.installation_id, cm.term_snapshot
+       FROM tenant_binding tb
+       INNER JOIN coverage_mirror cm ON cm.installation_id = tb.installation_id
+       WHERE tb.status = 'active'`,
+    )
+    .all<{ installation_id: string; term_snapshot: string }>();
+
+  const installationIds: string[] = [];
+  for (const row of rows.results ?? []) {
+    const capabilities = parseTermSnapshotCapabilities(row.term_snapshot);
+    if (capabilities.includes(capabilityId)) {
+      installationIds.push(row.installation_id);
+    }
   }
-  return {
-    capabilityId: match[1],
-    version: match[2],
-    action: match[3] as "activate" | "promote",
-  };
+  return installationIds;
 }
 
-export async function handleCohortActivate(
-  request: Request,
+async function publishedPlansAllowingCapability(
+  db: D1Database,
+  capabilityId: string,
+): Promise<string[]> {
+  const rows = await db
+    .prepare(
+      `SELECT plan_id, capabilities FROM plan_version WHERE status = 'published'`,
+    )
+    .all<{ plan_id: string; capabilities: string }>();
+
+  const planIds: string[] = [];
+  for (const row of rows.results ?? []) {
+    const allowed = parseAllowedCapabilities(row.capabilities);
+    if (allowed.includes(capabilityId)) {
+      planIds.push(row.plan_id);
+    }
+  }
+  return planIds;
+}
+
+export async function activateCohortAction(
   bindings: ControlBindings,
-  operatorAuth: OperatorAuth,
-): Promise<Response> {
-  const auth = requireOperator(request, operatorAuth);
-  if (auth instanceof Response) {
-    return auth;
+  actor: string,
+  args: Record<string, unknown>,
+): Promise<ControlActionResult> {
+  const capabilityId = requireNonEmptyString(args.capability_id);
+  const version = requireNonEmptyString(args.capability_version);
+  if (!capabilityId || !version) {
+    return { ok: false, status: 400, error: "invalid_payload" };
   }
 
-  const route = parseCohortCapabilityRoute(request);
-  if (!route || route.action !== "activate") {
-    // Unreachable via HTTP because dispatch pre-filters with identical regexes; reachable via direct handler invocation in tests; kept as a safety net.
-    return reject(400, "invalid_route");
+  if (!isCapabilityVersionRegistered(capabilityId, version)) {
+    return { ok: false, status: 404, error: "capability_not_found" };
   }
 
-  if (!isCapabilityVersionRegistered(route.capabilityId, route.version)) {
-    return reject(404, "capability_not_found");
-  }
-
-  const body = await parseJsonBody<CohortPayload>(request);
-  if (body instanceof Response) {
-    return body;
-  }
-
-  if (!Array.isArray(body.installation_ids) || body.installation_ids.length === 0) {
-    return reject(400, "missing_installation_ids");
+  const installationIdsRaw = args.installation_ids;
+  if (!Array.isArray(installationIdsRaw) || installationIdsRaw.length === 0) {
+    return { ok: false, status: 400, error: "missing_installation_ids" };
   }
 
   const installationIds = [
-    ...new Set(body.installation_ids.map((id) => toCanonicalUuid(String(id)))),
+    ...new Set(
+      installationIdsRaw.map((id) => toCanonicalUuid(String(id))),
+    ),
   ];
 
   const { DB } = bindings;
@@ -126,10 +150,12 @@ export async function handleCohortActivate(
     return missingInstallations;
   }
 
+  const cohortName =
+    typeof args.cohort_name === "string" ? args.cohort_name : undefined;
   const recordedAt = nowIso();
-  const target = body.cohort_name
-    ? `${route.capabilityId}@${route.version}:${body.cohort_name}`
-    : `${route.capabilityId}@${route.version}`;
+  const target = cohortName
+    ? `${capabilityId}@${version}:${cohortName}`
+    : `${capabilityId}@${version}`;
 
   const priorVersions: Record<string, string | null> = {};
   const statements: D1PreparedStatement[] = [];
@@ -140,7 +166,7 @@ export async function handleCohortActivate(
        WHERE scope = ? AND capability_id = ? AND revoked_at IS NULL
        ORDER BY changed_at DESC LIMIT 1`,
     )
-      .bind(`installation:${installationId}`, route.capabilityId)
+      .bind(`installation:${installationId}`, capabilityId)
       .first<{ grant_id: string; capability_version: string }>();
 
     priorVersions[installationId] = existing?.capability_version ?? null;
@@ -151,7 +177,7 @@ export async function handleCohortActivate(
           `UPDATE capability_grant
            SET capability_version = ?, changed_at = ?, changed_by = ?
            WHERE grant_id = ?`,
-        ).bind(route.version, recordedAt, auth.operatorId, existing.grant_id),
+        ).bind(version, recordedAt, actor, existing.grant_id),
       );
     } else {
       statements.push(
@@ -163,11 +189,11 @@ export async function handleCohortActivate(
         ).bind(
           newId(),
           `installation:${installationId}`,
-          route.capabilityId,
-          route.version,
+          capabilityId,
+          version,
           recordedAt,
           recordedAt,
-          auth.operatorId,
+          actor,
         ),
       );
     }
@@ -177,66 +203,54 @@ export async function handleCohortActivate(
     Object.values(priorVersions).some((v) => v !== null)
       ? JSON.stringify(priorVersions)
       : null;
-  const afterPointer = route.version;
+  const afterPointer = version;
 
   statements.push(
     DB.prepare(
       `INSERT INTO control_audit
          (audit_id, operator_id, action, target, before_pointer, after_pointer, recorded_at)
        VALUES (?, ?, 'cohort_activate', ?, ?, ?, ?)`,
-    ).bind(
-      newId(),
-      auth.operatorId,
-      target,
-      beforePointer,
-      afterPointer,
-      recordedAt,
-    ),
+    ).bind(newId(), actor, target, beforePointer, afterPointer, recordedAt),
   );
 
   const batchError = await runControlBatch(DB, statements);
   if (batchError) {
     return batchError;
   }
-  return ok();
+  return { ok: true, body: {} };
 }
 
-export async function handleCohortPromote(
-  request: Request,
+export async function promoteCohortAction(
   bindings: ControlBindings,
-  operatorAuth: OperatorAuth,
-): Promise<Response> {
-  const auth = requireOperator(request, operatorAuth);
-  if (auth instanceof Response) {
-    return auth;
+  actor: string,
+  args: Record<string, unknown>,
+): Promise<ControlActionResult> {
+  const capabilityId = requireNonEmptyString(args.capability_id);
+  const version = requireNonEmptyString(args.capability_version);
+  if (!capabilityId || !version) {
+    return { ok: false, status: 400, error: "invalid_payload" };
   }
 
-  const route = parseCohortCapabilityRoute(request);
-  if (!route || route.action !== "promote") {
-    // Unreachable via HTTP because dispatch pre-filters with identical regexes; reachable via direct handler invocation in tests; kept as a safety net.
-    return reject(400, "invalid_route");
-  }
-
-  if (!isCapabilityVersionRegistered(route.capabilityId, route.version)) {
-    return reject(404, "capability_not_found");
+  if (!isCapabilityVersionRegistered(capabilityId, version)) {
+    return { ok: false, status: 404, error: "capability_not_found" };
   }
 
   const { DB } = bindings;
   const recordedAt = nowIso();
-  const target = `${route.capabilityId}@${route.version}`;
+  const target = `${capabilityId}@${version}`;
 
   const liveInstallationGrants = await DB.prepare(
     `SELECT grant_id, scope, capability_version FROM capability_grant
      WHERE capability_id = ? AND scope LIKE 'installation:%' AND revoked_at IS NULL`,
   )
-    .bind(route.capabilityId)
+    .bind(capabilityId)
     .all<{ grant_id: string; scope: string; capability_version: string }>();
 
   const livePlanGrants = await DB.prepare(
     `SELECT grant_id, scope, capability_version FROM capability_grant
      WHERE capability_id = ? AND scope LIKE 'plan:%' AND revoked_at IS NULL`,
   )
-    .bind(route.capabilityId)
+    .bind(capabilityId)
     .all<{ grant_id: string; scope: string; capability_version: string }>();
 
   const beforePointer = JSON.stringify({
@@ -249,7 +263,7 @@ export async function handleCohortPromote(
       version: g.capability_version,
     })),
   });
-  const afterPointer = route.version;
+  const afterPointer = version;
 
   const statements: D1PreparedStatement[] = [];
 
@@ -259,7 +273,7 @@ export async function handleCohortPromote(
         `UPDATE capability_grant
          SET capability_version = ?, changed_at = ?, changed_by = ?
          WHERE grant_id = ?`,
-      ).bind(route.version, recordedAt, auth.operatorId, grant.grant_id),
+      ).bind(version, recordedAt, actor, grant.grant_id),
     );
   }
 
@@ -269,42 +283,33 @@ export async function handleCohortPromote(
         `UPDATE capability_grant
          SET capability_version = ?, changed_at = ?, changed_by = ?
          WHERE grant_id = ?`,
-      ).bind(route.version, recordedAt, auth.operatorId, grant.grant_id),
+      ).bind(version, recordedAt, actor, grant.grant_id),
     );
   }
-
-  // Upsert plan grants for distinct plans on active entitlements that allow this capability.
-  const entitlements = await DB.prepare(
-    `SELECT installation_id, plan, allowed_capabilities FROM entitlement
-     WHERE status = 'active'`,
-  ).all<{
-    installation_id: string;
-    plan: string;
-    allowed_capabilities: string;
-  }>();
 
   const existingPlanScopes = new Set(
     (livePlanGrants.results ?? []).map((g) => g.scope),
   );
   const plansNeedingGrant = new Set<string>();
+  for (const planId of await publishedPlansAllowingCapability(
+    DB,
+    capabilityId,
+  )) {
+    if (!existingPlanScopes.has(`plan:${planId}`)) {
+      plansNeedingGrant.add(planId);
+    }
+  }
+
   const installationsWithLiveGrant = new Set(
     (liveInstallationGrants.results ?? []).map((g) =>
       g.scope.replace(/^installation:/, ""),
     ),
   );
 
-  const entitledInstallations: string[] = [];
-
-  for (const ent of entitlements.results ?? []) {
-    const allowed = parseAllowedCapabilities(ent.allowed_capabilities);
-    if (!allowed.includes(route.capabilityId)) {
-      continue;
-    }
-    entitledInstallations.push(ent.installation_id);
-    if (!existingPlanScopes.has(`plan:${ent.plan}`)) {
-      plansNeedingGrant.add(ent.plan);
-    }
-  }
+  const entitledInstallations = await installationIdsWithCapability(
+    DB,
+    capabilityId,
+  );
 
   for (const plan of plansNeedingGrant) {
     const scope = `plan:${plan}`;
@@ -313,7 +318,7 @@ export async function handleCohortPromote(
        WHERE scope = ? AND capability_id = ? AND revoked_at IS NULL
        ORDER BY changed_at DESC LIMIT 1`,
     )
-      .bind(scope, route.capabilityId)
+      .bind(scope, capabilityId)
       .first<{ grant_id: string }>();
 
     if (existing) {
@@ -322,7 +327,7 @@ export async function handleCohortPromote(
           `UPDATE capability_grant
            SET capability_version = ?, changed_at = ?, changed_by = ?
            WHERE grant_id = ?`,
-        ).bind(route.version, recordedAt, auth.operatorId, existing.grant_id),
+        ).bind(version, recordedAt, actor, existing.grant_id),
       );
     } else {
       statements.push(
@@ -334,17 +339,16 @@ export async function handleCohortPromote(
         ).bind(
           newId(),
           scope,
-          route.capabilityId,
-          route.version,
+          capabilityId,
+          version,
           recordedAt,
           recordedAt,
-          auth.operatorId,
+          actor,
         ),
       );
     }
   }
 
-  // Materialize installation grants for entitled installations missing a live grant.
   for (const installationId of entitledInstallations) {
     if (installationsWithLiveGrant.has(installationId)) {
       continue;
@@ -355,7 +359,7 @@ export async function handleCohortPromote(
        WHERE scope = ? AND capability_id = ? AND revoked_at IS NULL
        ORDER BY changed_at DESC LIMIT 1`,
     )
-      .bind(`installation:${installationId}`, route.capabilityId)
+      .bind(`installation:${installationId}`, capabilityId)
       .first<{ grant_id: string }>();
 
     if (existing) {
@@ -364,7 +368,7 @@ export async function handleCohortPromote(
           `UPDATE capability_grant
            SET capability_version = ?, changed_at = ?, changed_by = ?
            WHERE grant_id = ?`,
-        ).bind(route.version, recordedAt, auth.operatorId, existing.grant_id),
+        ).bind(version, recordedAt, actor, existing.grant_id),
       );
     } else {
       statements.push(
@@ -376,11 +380,11 @@ export async function handleCohortPromote(
         ).bind(
           newId(),
           `installation:${installationId}`,
-          route.capabilityId,
-          route.version,
+          capabilityId,
+          version,
           recordedAt,
           recordedAt,
-          auth.operatorId,
+          actor,
         ),
       );
     }
@@ -393,7 +397,7 @@ export async function handleCohortPromote(
        VALUES (?, ?, 'cohort_promote', ?, ?, ?, ?)`,
     ).bind(
       newId(),
-      auth.operatorId,
+      actor,
       target,
       beforePointer,
       afterPointer,
@@ -405,5 +409,5 @@ export async function handleCohortPromote(
   if (batchError) {
     return batchError;
   }
-  return ok();
+  return { ok: true, body: {} };
 }

@@ -39,12 +39,6 @@ import {
   requireAipContractVersion,
   withAipContractVersion,
 } from "./vendor/contract-version";
-import {
-  createSecretOperatorAuth,
-  dispatchControlRequest,
-  isControlRoute,
-  isQuotaInspectRoute,
-} from "./control";
 import { clockNowMs, clockNowSeconds } from "./clock";
 import { IssuerTokenVerifier } from "./identity";
 import {
@@ -79,7 +73,6 @@ import {
   runRetentionPurge,
 } from "./retention";
 import { runRollupAndReconciliation } from "./rollup";
-import { runPeriodClose } from "./period-close";
 import {
   preloadRoutingPolicyForInstallation,
   selectCandidateChain,
@@ -164,8 +157,6 @@ interface Env extends AlertEnv {
   CONFIG_CACHE_TTL_MS?: string;
   ISSUER_ID: string;
   TEST_CLOCK?: string;
-  OPERATOR_BEARER_TOKEN: string;
-  OPERATOR_ID: string;
   PLATFORM_SIGNING_KEY: string;
   DURATION_SCALE?: string;
   RATE_LIMITER_INSTALLATION: RateLimit;
@@ -2323,29 +2314,6 @@ export default {
     }
 
     if (
-      isControlRoute(url.pathname) &&
-      (request.method === "POST" ||
-        (request.method === "GET" && isQuotaInspectRoute(url.pathname)))
-    ) {
-      // Installation lifecycle, capability deprecate/retire, cohort activate/promote,
-      // routing-policy publish/canary/rollback, support lookup, purge, quota inspect.
-      const operatorAuth = createSecretOperatorAuth({
-        bearerToken: runtimeEnv.OPERATOR_BEARER_TOKEN ?? "",
-        operatorId: runtimeEnv.OPERATOR_ID ?? "",
-      });
-      return dispatchControlRequest(
-        request,
-        {
-          DB: runtimeEnv.DB,
-          R2: runtimeEnv.R2,
-          DO: runtimeEnv.DO,
-        },
-        operatorAuth,
-        makeLog("control/index.ts"),
-      );
-    }
-
-    if (
       request.method === "GET" &&
       url.pathname.startsWith("/v1/requests/")
     ) {
@@ -2506,22 +2474,6 @@ export default {
         log.debug("usage_rollup_reconciliation_detail", { report: result.report });
       } catch (error) {
         log.error("scheduled_rollup_failed", {
-          error: error instanceof Error ? error.message : String(error),
-        });
-      }
-    } else if (cron === "0 5 1 * *") {
-      log.info("scheduled_period_close_start");
-      const scheduledDate = new Date(controller.scheduledTime);
-      const previousMonth = new Date(
-        Date.UTC(scheduledDate.getUTCFullYear(), scheduledDate.getUTCMonth() - 1, 1),
-      );
-      const period = `${previousMonth.getUTCFullYear()}-${String(previousMonth.getUTCMonth() + 1).padStart(2, "0")}`;
-      try {
-        await runPeriodClose({ db: runtimeEnv.DB, period });
-        log.info("scheduled_period_close_complete", { period });
-      } catch (error) {
-        log.error("scheduled_period_close_failed", {
-          period,
           error: error instanceof Error ? error.message : String(error),
         });
       }

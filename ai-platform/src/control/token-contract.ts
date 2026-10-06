@@ -1,19 +1,6 @@
-import { writeEntrypointAudit } from "./audit";
-import {
-  newId,
-  nowIso,
-  ok,
-  parseJsonBody,
-  reject,
-  requireNonEmptyString,
-  requireOperator,
-} from "./http";
-import type {
-  ControlActionResult,
-  ControlBindings,
-  OperatorAuth,
-  TokenContractRetirePayload,
-} from "./types";
+import { newId, nowIso, writeEntrypointAudit } from "./audit";
+import type { ControlActionResult, ControlBindings } from "./types";
+import { requireNonEmptyString } from "./types";
 
 const ROTATION_TARGET_VER = "2";
 
@@ -115,53 +102,4 @@ export async function retireTokenContractAction(
   }
 
   return { ok: true, body: { ver, retired_at: retiredAt } };
-}
-
-export async function handleTokenContractBeginRotation(
-  request: Request,
-  bindings: ControlBindings,
-  operatorAuth: OperatorAuth,
-): Promise<Response> {
-  const auth = requireOperator(request, operatorAuth);
-  if (auth instanceof Response) {
-    return auth;
-  }
-
-  const body = await parseJsonBody<{ ver: string }>(request);
-  if (body instanceof Response) {
-    return body;
-  }
-
-  const verRaw = requireNonEmptyString(body.ver);
-  if (verRaw === null) {
-    return reject(400, "invalid_ver");
-  }
-
-  const result = await beginTokenContractRotationAction(bindings, auth.operatorId);
-  if (!result.ok) {
-    return reject(result.status, result.error);
-  }
-  return ok(result.body);
-}
-
-export async function handleTokenContractRetire(
-  request: Request,
-  bindings: ControlBindings,
-  operatorAuth: OperatorAuth,
-): Promise<Response> {
-  const auth = requireOperator(request, operatorAuth);
-  if (auth instanceof Response) {
-    return auth;
-  }
-
-  const body = await parseJsonBody<TokenContractRetirePayload>(request);
-  if (body instanceof Response) {
-    return body;
-  }
-
-  const result = await retireTokenContractAction(bindings, auth.operatorId, body);
-  if (!result.ok) {
-    return reject(result.status, result.error);
-  }
-  return ok(result.body);
 }

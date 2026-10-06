@@ -3,37 +3,9 @@ import {
   isCapabilityVersionRegistered,
   isSuccessorRegistered,
 } from "../capability";
-import { writeEntrypointAudit } from "./audit";
-import {
-  newId,
-  nowIso,
-  ok,
-  parseJsonBody,
-  reject,
-  requireNonEmptyString,
-  requireOperator,
-} from "./http";
-import type {
-  CapabilityRoute,
-  ControlActionResult,
-  ControlBindings,
-  DeprecatePayload,
-  OperatorAuth,
-} from "./types";
-
-export function parseCapabilityRoute(request: Request): CapabilityRoute | null {
-  const match = new URL(request.url).pathname.match(
-    /^\/control\/capabilities\/([^/]+)\/versions\/([^/]+)\/(deprecate|retire)$/,
-  );
-  if (!match) {
-    return null;
-  }
-  return {
-    capabilityId: match[1],
-    version: match[2],
-    action: match[3] as "deprecate" | "retire",
-  };
-}
+import { newId, nowIso, writeEntrypointAudit } from "./audit";
+import type { ControlActionResult, ControlBindings } from "./types";
+import { requireNonEmptyString } from "./types";
 
 async function loadGlobalOverlay(
   db: D1Database,
@@ -74,12 +46,12 @@ function overlapWindowStillActive(retireAfter: string, now: string): boolean {
 async function runControlBatch(
   db: D1Database,
   statements: D1PreparedStatement[],
-): Promise<Response | null> {
+): Promise<ControlActionResult | null> {
   try {
     await db.batch(statements);
     return null;
   } catch {
-    return reject(500, "storage_error");
+    return { ok: false, status: 500, error: "storage_error" };
   }
 }
 
@@ -150,12 +122,7 @@ export async function deprecateCapabilityAction(
     ),
   ]);
   if (batchError) {
-    const err = (await batchError.json()) as { error?: string };
-    return {
-      ok: false,
-      status: batchError.status,
-      error: err.error ?? "storage_error",
-    };
+    return batchError;
   }
 
   await writeEntrypointAudit(DB, actor, "deprecate", target, null);
@@ -222,71 +189,10 @@ export async function retireCapabilityAction(
     ),
   ]);
   if (batchError) {
-    const err = (await batchError.json()) as { error?: string };
-    return {
-      ok: false,
-      status: batchError.status,
-      error: err.error ?? "storage_error",
-    };
+    return batchError;
   }
 
   await writeEntrypointAudit(DB, actor, "retire", target, null);
 
   return { ok: true, body: {} };
-}
-
-export async function handleDeprecate(
-  request: Request,
-  bindings: ControlBindings,
-  operatorAuth: OperatorAuth,
-): Promise<Response> {
-  const auth = requireOperator(request, operatorAuth);
-  if (auth instanceof Response) {
-    return auth;
-  }
-
-  const route = parseCapabilityRoute(request);
-  if (!route || route.action !== "deprecate") {
-    return reject(400, "invalid_route");
-  }
-
-  const body = await parseJsonBody<DeprecatePayload>(request);
-  if (body instanceof Response) {
-    return body;
-  }
-
-  const result = await deprecateCapabilityAction(bindings, auth.operatorId, {
-    capability_id: route.capabilityId,
-    capability_version: route.version,
-    successor_id: body.successor_id,
-  });
-  if (!result.ok) {
-    return reject(result.status, result.error);
-  }
-  return ok();
-}
-
-export async function handleRetire(
-  request: Request,
-  bindings: ControlBindings,
-  operatorAuth: OperatorAuth,
-): Promise<Response> {
-  const auth = requireOperator(request, operatorAuth);
-  if (auth instanceof Response) {
-    return auth;
-  }
-
-  const route = parseCapabilityRoute(request);
-  if (!route || route.action !== "retire") {
-    return reject(400, "invalid_route");
-  }
-
-  const result = await retireCapabilityAction(bindings, auth.operatorId, {
-    capability_id: route.capabilityId,
-    capability_version: route.version,
-  });
-  if (!result.ok) {
-    return reject(result.status, result.error);
-  }
-  return ok();
 }
