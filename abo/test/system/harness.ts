@@ -31,6 +31,10 @@ declare module "cloudflare:test" {
     R2_BUCKET_NAME: string;
     R2_LOCK_READ_TOKEN: string;
     TEST_CLOCK: string;
+    PAYMOB_STUB: Fetcher;
+    PAYMOB_BASE_URL: string;
+    PAYMOB_HMAC_SECRET: string;
+    PAYMOB_API_KEY: string;
     SEND_EMAIL: {
       send(message: {
         from: string;
@@ -338,6 +342,118 @@ export function getCapturedEmails(): ReadonlyArray<{
   return harnessState.capturedEmails;
 }
 
+let paymobMockReady = false;
+let intakeR2PutThrows = false;
+let d1BatchThrows = false;
+let r2PutWrapped = false;
+let dbBatchWrapped = false;
+
+export type PaymobInquiryScript =
+  | "bound_success"
+  | "unbound"
+  | "amount_mismatch"
+  | "reversed"
+  | "pending"
+  | "timeout"
+  | "rate_limit";
+
+async function ensurePaymobFetchMock(): Promise<void> {
+  if (paymobMockReady) {
+    return;
+  }
+  const { fetchMock } = await import("cloudflare:test");
+  const baseUrl = env.PAYMOB_BASE_URL;
+  const origin = new URL(baseUrl).origin;
+  fetchMock.activate();
+  fetchMock.disableNetConnect();
+  fetchMock
+    .get(origin)
+    .intercept({ path: () => true, method: () => true })
+    .reply(async (opts) => {
+      try {
+        const pathPart = typeof opts.path === "string" ? opts.path : "/";
+        const target = new URL(pathPart, baseUrl).toString();
+        const response = await env.PAYMOB_STUB.fetch(target, {
+          method: opts.method,
+          headers: opts.headers as HeadersInit | undefined,
+          body: opts.body as BodyInit | undefined,
+          signal: opts.signal as AbortSignal | undefined,
+        });
+        const data = await response.arrayBuffer();
+        return {
+          statusCode: response.status,
+          data: new TextDecoder().decode(data),
+        };
+      } catch {
+        return { statusCode: 502, data: "paymob stub forward failed" };
+      }
+    })
+    .persist();
+  paymobMockReady = true;
+}
+
+function ensureR2PutWrapper(): void {
+  if (r2PutWrapped) {
+    return;
+  }
+  const originalPut = env.R2.put.bind(env.R2);
+  env.R2.put = async (
+    key: string,
+    value:
+      | ReadableStream
+      | ArrayBuffer
+      | ArrayBufferView
+      | string
+      | null
+      | Blob,
+    options?: R2PutOptions,
+  ): Promise<R2Object | null> => {
+    if (intakeR2PutThrows) {
+      intakeR2PutThrows = false;
+      throw new Error("R2 put failure injected by harness");
+    }
+    return originalPut(key, value, options);
+  };
+  r2PutWrapped = true;
+}
+
+function ensureD1BatchWrapper(): void {
+  if (dbBatchWrapped) {
+    return;
+  }
+  const originalBatch = env.DB.batch.bind(env.DB);
+  env.DB.batch = async (
+    statements: D1PreparedStatement[],
+  ): Promise<D1Result[]> => {
+    if (d1BatchThrows) {
+      d1BatchThrows = false;
+      throw new Error("D1 batch failure injected by harness");
+    }
+    return originalBatch(statements);
+  };
+  dbBatchWrapped = true;
+}
+
+export function setIntakeR2PutThrows(active: boolean): void {
+  intakeR2PutThrows = active;
+  ensureR2PutWrapper();
+}
+
+export function setD1BatchThrows(active: boolean): void {
+  d1BatchThrows = active;
+  ensureD1BatchWrapper();
+}
+
+export async function scriptPaymobInquiry(
+  script: PaymobInquiryScript,
+): Promise<void> {
+  await env.PAYMOB_STUB.fetch("http://paymob.stub/__script", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ inquiry: script }),
+  });
+}
+
 export async function runScheduled(cron: string): Promise<void> {
   await ensureHeartbeatFetchMock();
   const workerModule = await import("../../src/worker");
@@ -367,13 +483,21 @@ export async function setupHarness(): Promise<void> {
   await applyRecordsMigration();
   await ensureHarnessSchema();
   await ensureHeartbeatFetchMock();
+  await ensurePaymobFetchMock();
   Object.assign(env.SEND_EMAIL, sendEmailBinding);
   lockRulesBody = DEFAULT_LOCK_BODY;
   harnessState.sendEmailThrows = false;
   heartbeatHarness.fetchThrows = false;
+  intakeR2PutThrows = false;
+  d1BatchThrows = false;
   clearCapturedEmails();
   clearCapturedHeartbeatFetches();
   await setClock(new Date().toISOString());
+  try {
+    await scriptPaymobInquiry("bound_success");
+  } catch {
+    // PAYMOB_STUB binding not configured yet.
+  }
 }
 
 export async function resetHarnessState(): Promise<void> {
