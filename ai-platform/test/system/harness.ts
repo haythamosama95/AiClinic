@@ -1427,6 +1427,20 @@ export function coverClinicSigner(): {
   };
 }
 
+export function coverClinicAboKid(): string {
+  if (coverClinicBootstrap === null) {
+    throw new Error("coverClinicAboKid: call coverClinic() first");
+  }
+  return coverClinicBootstrap.aboKid;
+}
+
+export async function signCoverAbo(
+  body: Record<string, unknown>,
+): Promise<string> {
+  const boot = await ensureCoverClinicBootstrap();
+  return boot.aboSigner.sign(body);
+}
+
 async function buildCoverPaidGrantEnvelope(input: {
   orgId: string;
   grantId: string;
