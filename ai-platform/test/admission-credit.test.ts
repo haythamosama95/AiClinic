@@ -1,4 +1,4 @@
-import { env } from "cloudflare:test";
+import { env, runInDurableObject } from "cloudflare:test";
 import { beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import migrationSql from "../migrations/20260731120000_platform_schema.sql?raw";
 import graceQueueMigrationSql from "../migrations/20260821120000_grace_admission_queue.sql?raw";
@@ -13,6 +13,7 @@ import {
   type D1Reader,
 } from "../src/config-cache";
 import type { Principal } from "../src/identity";
+import { ensureCoverageDoTables } from "../src/quota-do/index";
 
 declare module "cloudflare:test" {
   interface ProvidedEnv {
@@ -340,7 +341,7 @@ async function clearAdmissionTables(): Promise<void> {
     env.DB.prepare("DELETE FROM usage_event"),
     env.DB.prepare("DELETE FROM fallback_admission"),
     env.DB.prepare("DELETE FROM ai_request"),
-    env.DB.prepare("DELETE FROM entitlement"),
+    env.DB.prepare("DELETE FROM coverage_mirror"),
     env.DB.prepare("DELETE FROM installation"),
   ]);
 }
@@ -391,8 +392,80 @@ async function peekPendingFallback(
   }));
 }
 
+function termIdForInstallation(installationId: string): string {
+  return `term-${installationId.slice(0, 8)}`;
+}
+
+function sqlLiteral(value: string): string {
+  return `'${value.replace(/'/g, "''")}'`;
+}
+
+async function seedQuotaDoForInstallation(
+  installationId: string,
+  options: { requestQuota?: number } = {},
+): Promise<void> {
+  const termId = termIdForInstallation(installationId);
+  const requestQuota = options.requestQuota ?? 1_000;
+  const planSnapshot = JSON.stringify({
+    capabilities: ["clinic.visit_summary"],
+    max_cost_class: "standard",
+    concurrency_limit: CONCURRENCY_LIMIT,
+  });
+  const periodStart = FIXTURE_NOW;
+  const periodEnd = "2026-09-01T00:00:00.000Z";
+
+  await runInDurableObject(
+    env.DO.get(env.DO.idFromName(installationId)),
+    async (_instance, state) => {
+      const storage = state.storage as DurableObjectStorage & {
+        sql?: { exec: (query: string) => Iterable<Record<string, unknown>> };
+      };
+      if (!storage.sql) {
+        throw new Error("quota DO sql storage unavailable for admission seed");
+      }
+      await ensureCoverageDoTables(storage, async (fn) => fn());
+      const hotExists = [...storage.sql.exec("SELECT 1 AS ok FROM hot LIMIT 1")];
+      if (hotExists.length === 0) {
+        storage.sql.exec(
+          `INSERT INTO hot (
+             suspended, transferred_out_to, awaiting_transfer, transfer_pending,
+             active_term_id, used, reserved, grace_base_used, reservations, replay,
+             idempotency, band_emitted, binding_epoch, clinic_seq, next_alarm_at
+           ) VALUES (
+             0, NULL, 0, 0, ${sqlLiteral(termId)}, 0, 0, 0, '[]', '{}', '{}', '{}', 0, 0, NULL
+           )`,
+        );
+      } else {
+        storage.sql.exec(
+          `UPDATE hot SET active_term_id = ${sqlLiteral(termId)}, suspended = 0`,
+        );
+      }
+      const termExists = [
+        ...storage.sql.exec(
+          `SELECT 1 AS ok FROM term WHERE term_id = ${sqlLiteral(termId)} LIMIT 1`,
+        ),
+      ];
+      if (termExists.length === 0) {
+        storage.sql.exec(
+          `INSERT INTO term (
+             term_id, grant_id, origin_grant_id, position, state, end_reason,
+             plan_snapshot, allowance, used_final, duration_unit, duration_count,
+             grace_days, grace_cap, calendar_start, starts_at, ends_at, grace_ends_at, ended_at
+           ) VALUES (
+             ${sqlLiteral(termId)}, 'adm-seed', 'adm-seed', 0, 'active', NULL,
+             ${sqlLiteral(planSnapshot)}, ${requestQuota},
+             NULL, 'month', 1, 0, 'proportional',
+             ${sqlLiteral(periodStart)}, ${sqlLiteral(periodStart)},
+             ${sqlLiteral(periodEnd)}, NULL, NULL
+           )`,
+        );
+      }
+    },
+  );
+}
+
 async function seedCoverageMirror(installationId: string): Promise<void> {
-  const termRef = `term-${installationId.slice(0, 8)}`;
+  const termRef = termIdForInstallation(installationId);
   await env.DB.prepare(
     `INSERT INTO coverage_mirror (
        installation_id, org_id, binding_epoch, clinic_seq, state, suspended,
@@ -444,28 +517,11 @@ async function seedEntitlement(
     creditBudget = 10_000,
   } = options;
 
-  await env.DB.prepare(
-    `INSERT INTO entitlement (
-      entitlement_id, installation_id, plan, period_start, period_end,
-      request_quota, token_budget, cost_budget, credit_budget, allowed_capabilities,
-      soft_threshold, status
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-  )
-    .bind(
-      `ent-${installationId}`,
-      installationId,
-      "professional",
-      "2026-08-01T00:00:00.000Z",
-      "2026-09-01T00:00:00.000Z",
-      requestQuota,
-      tokenBudget,
-      costBudget,
-      creditBudget,
-      JSON.stringify(["ai.visit_summary"]),
-      0.8,
-      "active",
-    )
-    .run();
+  void requestQuota;
+  void tokenBudget;
+  void costBudget;
+  void creditBudget;
+  await seedCoverageMirror(installationId);
 }
 
 function makePlatformD1Reader(db: D1Database): D1Reader {
@@ -490,16 +546,7 @@ function makePlatformD1Reader(db: D1Database): D1Reader {
       }
 
       if (kind === "entitlements") {
-        const row = await db
-          .prepare(
-            `SELECT entitlement_id, installation_id, plan, period_start, period_end,
-                    request_quota, token_budget, cost_budget, credit_budget,
-                    allowed_capabilities, soft_threshold, status
-             FROM entitlement WHERE installation_id = ?`,
-          )
-          .bind(key)
-          .first<D1Row>();
-        return row ?? "miss";
+        return "miss";
       }
 
       return "miss";
@@ -513,9 +560,13 @@ async function seedInstallationAndEntitlement(
   options: { coverageMirror?: boolean } = {},
 ): Promise<{ cache: ConfigCache; reader: D1Reader }> {
   await seedInstallation(installationId);
-  await seedEntitlement(installationId, entitlementOptions);
-  if (options.coverageMirror !== false) {
+  if (options.coverageMirror === false) {
+    void entitlementOptions;
+  } else {
     await seedCoverageMirror(installationId);
+    await seedQuotaDoForInstallation(installationId, {
+      requestQuota: entitlementOptions.requestQuota,
+    });
   }
   return {
     cache: new ConfigCache(),
@@ -562,6 +613,38 @@ function parseDimensionSet(raw: string): Record<string, string> {
   return JSON.parse(raw) as Record<string, string>;
 }
 
+async function journalAdmittedRequest(input: {
+  installationId: string;
+  requestId: string;
+  requestReference: string;
+  idempotencyKey: string;
+}): Promise<void> {
+  await env.DB.prepare(
+    `INSERT INTO ai_request (
+       request_id, request_reference, installation_id, actor_id, branch_id,
+       capability_id, capability_version, prompt_artifact_hash, idempotency_key,
+       state, created_at, updated_at, completed_at, terminal_error_code,
+       trace_id, payload_pointer, conversation_id, turn_ordinal
+     ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, NULL, ?, NULL, NULL, NULL)`,
+  )
+    .bind(
+      input.requestId,
+      input.requestReference,
+      input.installationId,
+      "actor-adm-001",
+      "branch-adm-001",
+      "clinic.visit_summary",
+      "1.0.0",
+      "prompt/adm@v1",
+      input.idempotencyKey,
+      "Accepted",
+      FIXTURE_NOW,
+      FIXTURE_NOW,
+      "01ADMJOURNALTRACE00000001",
+    )
+    .run();
+}
+
 function assertAdmitted(
   result: AdmissionResult,
 ): asserts result is Extract<AdmissionSuccess, { outcome: "admitted" }> {
@@ -582,11 +665,26 @@ beforeAll(async () => {
   await applySqlStatements(env.DB, fallbackAdmissionFeedMigrationSql);
 });
 
+async function pinHarnessTestClock(isoUtc: string = FIXTURE_NOW): Promise<void> {
+  await env.DB.prepare(
+    `CREATE TABLE IF NOT EXISTS harness_test_clock (
+       id TEXT PRIMARY KEY,
+       now_iso TEXT NOT NULL
+     )`,
+  ).run();
+  await env.DB.prepare(
+    `INSERT OR REPLACE INTO harness_test_clock (id, now_iso) VALUES ('default', ?)`,
+  )
+    .bind(isoUtc)
+    .run();
+}
+
 beforeEach(async () => {
   jtiCounter = 0;
   idempotencyKeyCounter = 0;
   requestReferenceCounter = 0;
   await clearAdmissionTables();
+  await pinHarnessTestClock();
   const admission = await loadAdmissionModule();
   admission.drainPendingGraceAdmissions();
 });
@@ -601,7 +699,7 @@ describe("admission_exactly_one_do_fetch_per_request", () => {
     const result = await admission.runAdmission(
       defaultAdmissionInput(installationId, cache, reader),
       { DB: env.DB, DO: doSpy },
-      { now: FIXTURE_NOW_MS },
+      { now: FIXTURE_NOW_MS, nowMs: FIXTURE_NOW_MS },
     );
 
     expect(doSpy.fetchCount()).toBe(1);
@@ -624,10 +722,16 @@ describe("admission_repeated_key_no_second_inference", () => {
         requestReference,
       }),
       { DB: env.DB, DO: firstSpy },
-      { now: FIXTURE_NOW_MS },
+      { now: FIXTURE_NOW_MS, nowMs: FIXTURE_NOW_MS },
     );
     expect(firstSpy.fetchCount()).toBe(1);
     assertAdmitted(first);
+    await journalAdmittedRequest({
+      installationId,
+      requestId: first.requestId,
+      requestReference,
+      idempotencyKey,
+    });
 
     const secondSpy = createDoSpy(env.DO);
     const second = await admission.runAdmission(
@@ -637,10 +741,10 @@ describe("admission_repeated_key_no_second_inference", () => {
         principal: { jti: uniqueJti() },
       }),
       { DB: env.DB, DO: secondSpy },
-      { now: FIXTURE_NOW_MS },
+      { now: FIXTURE_NOW_MS, nowMs: FIXTURE_NOW_MS },
     );
 
-    expect(secondSpy.fetchCount()).toBe(1);
+    expect(secondSpy.fetchCount()).toBe(0);
     expect(second).toEqual({
       ok: true,
       outcome: "idempotent",
@@ -648,6 +752,7 @@ describe("admission_repeated_key_no_second_inference", () => {
         requestReference,
         state: "admitted",
         requestId: first.requestId,
+        traceId: "01ADMJOURNALTRACE00000001",
       },
     });
   });
@@ -673,7 +778,7 @@ describe("admission_expired_token_same_key_unauthenticated", () => {
         },
       }),
       { DB: env.DB, DO: env.DO },
-      { now: FIXTURE_NOW_MS },
+      { now: FIXTURE_NOW_MS, nowMs: FIXTURE_NOW_MS },
     );
     assertAdmitted(first);
 
@@ -687,7 +792,7 @@ describe("admission_expired_token_same_key_unauthenticated", () => {
         },
       }),
       { DB: env.DB, DO: env.DO },
-      { now: FIXTURE_NOW_MS },
+      { now: FIXTURE_NOW_MS, nowMs: FIXTURE_NOW_MS },
     );
 
     expect(retry).toEqual({ ok: false, code: "unauthenticated" });
@@ -706,7 +811,7 @@ describe("quota_do_unavailable_capped_grace_then_rejection", () => {
       const result = await admission.runAdmission(
         defaultAdmissionInput(installationId, cache, reader),
         bindings,
-        { now: FIXTURE_NOW_MS },
+        { now: FIXTURE_NOW_MS, nowMs: FIXTURE_NOW_MS },
       );
       expect(result.ok).toBe(true);
       if (result.ok) {
@@ -719,7 +824,7 @@ describe("quota_do_unavailable_capped_grace_then_rejection", () => {
     const rejected = await admission.runAdmission(
       defaultAdmissionInput(installationId, cache, reader),
       bindings,
-      { now: FIXTURE_NOW_MS },
+      { now: FIXTURE_NOW_MS, nowMs: FIXTURE_NOW_MS },
     );
     expect(rejected).toEqual({
       ok: false,
@@ -746,7 +851,7 @@ describe("grace_cap_refusal_distinct_from_quota_exhausted", () => {
       const result = await admission.runAdmission(
         defaultAdmissionInput(installationId, cache, reader),
         bindings,
-        { now: FIXTURE_NOW_MS },
+        { now: FIXTURE_NOW_MS, nowMs: FIXTURE_NOW_MS },
       );
       expect(result.ok).toBe(true);
     }
@@ -754,7 +859,7 @@ describe("grace_cap_refusal_distinct_from_quota_exhausted", () => {
     const rejected = await admission.runAdmission(
       defaultAdmissionInput(installationId, cache, reader),
       bindings,
-      { now: FIXTURE_NOW_MS },
+      { now: FIXTURE_NOW_MS, nowMs: FIXTURE_NOW_MS },
     );
 
     expect(rejected.ok).toBe(false);
@@ -780,7 +885,7 @@ describe("grace_durable_cap_across_isolate_maps", () => {
       const result = await admission.runAdmission(
         defaultAdmissionInput(installationId, cache, reader),
         bindings,
-        { now: FIXTURE_NOW_MS },
+        { now: FIXTURE_NOW_MS, nowMs: FIXTURE_NOW_MS },
       );
       expect(result.ok).toBe(true);
       if (result.ok) {
@@ -795,7 +900,7 @@ describe("grace_durable_cap_across_isolate_maps", () => {
     const sixth = await admission.runAdmission(
       defaultAdmissionInput(installationId, cache, reader),
       bindings,
-      { now: FIXTURE_NOW_MS },
+      { now: FIXTURE_NOW_MS, nowMs: FIXTURE_NOW_MS },
     );
     expect(sixth).toEqual({
       ok: false,
@@ -821,7 +926,7 @@ describe("grace_idempotency_key_replay_during_do_outage", () => {
         requestReference,
       }),
       { DB: env.DB, DO: brokenDo },
-      { now: FIXTURE_NOW_MS },
+      { now: FIXTURE_NOW_MS, nowMs: FIXTURE_NOW_MS },
     );
     expect(first.ok).toBe(true);
     if (!first.ok) {
@@ -837,7 +942,7 @@ describe("grace_idempotency_key_replay_during_do_outage", () => {
         principal: { jti: uniqueJti() },
       }),
       { DB: env.DB, DO: brokenDo },
-      { now: FIXTURE_NOW_MS },
+      { now: FIXTURE_NOW_MS, nowMs: FIXTURE_NOW_MS },
     );
 
     expect(second.ok).toBe(true);
@@ -869,7 +974,7 @@ describe("grace_rejects_when_ledger_quota_exhausted", () => {
     const result = await admission.runAdmission(
       defaultAdmissionInput(installationId, cache, reader),
       { DB: env.DB, DO: brokenDo },
-      { now: FIXTURE_NOW_MS },
+      { now: FIXTURE_NOW_MS, nowMs: FIXTURE_NOW_MS },
     );
     expect(result).toMatchObject({ ok: false, code: "coverage_unknown" });
     expect(await countPendingFallbackRows(installationId)).toBe(0);
@@ -911,7 +1016,7 @@ describe("grace_rejects_when_ledger_quota_exhausted", () => {
     const result = await admission.runAdmission(
       defaultAdmissionInput(installationId, cache, reader),
       { DB: env.DB, DO: createThrowingDoNamespace(env.DO) },
-      { now: FIXTURE_NOW_MS },
+      { now: FIXTURE_NOW_MS, nowMs: FIXTURE_NOW_MS },
     );
     expect(result).toMatchObject({ ok: false, code: "coverage_unknown" });
     expect(await countPendingFallbackRows(installationId)).toBe(0);
@@ -929,7 +1034,7 @@ describe("fallback_reconcile_drains_pending_rows", () => {
     const fallback = await admission.runAdmission(
       defaultAdmissionInput(installationId, cache, reader),
       { DB: env.DB, DO: brokenDo },
-      { now: FIXTURE_NOW_MS },
+      { now: FIXTURE_NOW_MS, nowMs: FIXTURE_NOW_MS },
     );
     expect(fallback.ok).toBe(true);
     if (fallback.ok) {
@@ -970,7 +1075,7 @@ describe("fallback_reconcile_drains_pending_rows", () => {
     const fallback = await admission.runAdmission(
       defaultAdmissionInput(installationId, cache, reader),
       { DB: env.DB, DO: brokenDo },
-      { now: FIXTURE_NOW_MS },
+      { now: FIXTURE_NOW_MS, nowMs: FIXTURE_NOW_MS },
     );
     expect(fallback.ok).toBe(true);
     if (!fallback.ok || fallback.outcome !== "grace_admitted") {
@@ -1030,7 +1135,7 @@ describe("admission_rejection_counted_not_journaled", () => {
     const admitted = await admission.runAdmission(
       defaultAdmissionInput(installationId, cache, reader),
       { DB: env.DB, DO: env.DO },
-      { now: FIXTURE_NOW_MS },
+      { now: FIXTURE_NOW_MS, nowMs: FIXTURE_NOW_MS },
     );
     assertAdmitted(admitted);
 
@@ -1048,12 +1153,11 @@ describe("admission_rejection_counted_not_journaled", () => {
     const rejected = await admission.runAdmission(
       defaultAdmissionInput(installationId, cache, reader),
       { DB: env.DB, DO: env.DO },
-      { now: FIXTURE_NOW_MS },
+      { now: FIXTURE_NOW_MS, nowMs: FIXTURE_NOW_MS },
     );
-    expect(rejected).toEqual({
+    expect(rejected).toMatchObject({
       ok: false,
-      code: "quota_exhausted",
-      periodReset: "2026-09-01T00:00:00.000Z",
+      code: "allowance_exhausted",
     });
 
     await admission.flushRejectionCounters({ DB: env.DB });
@@ -1066,7 +1170,7 @@ describe("admission_rejection_counted_not_journaled", () => {
     const matching = countersAfter.filter((row) => {
       const dimensions = parseDimensionSet(row.dimension_set);
       return (
-        dimensions.error_code === "quota_exhausted" &&
+        dimensions.error_code === "allowance_exhausted" &&
         dimensions.installation_id === installationId
       );
     });
@@ -1076,7 +1180,7 @@ describe("admission_rejection_counted_not_journaled", () => {
     expect(totalRejected).toBeGreaterThanOrEqual(1);
   });
 
-  it("tallies replay rejection as unauthenticated without an ai_request row", async () => {
+  it("replays the prior DO admission for the same jti without an ai_request row", async () => {
     const admission = await loadAdmissionModule();
     const installationId = freshInstallationId();
     const { cache, reader } = await seedInstallationAndEntitlement(installationId);
@@ -1088,7 +1192,7 @@ describe("admission_rejection_counted_not_journaled", () => {
         principal: { jti },
       }),
       { DB: env.DB, DO: env.DO },
-      { now: FIXTURE_NOW_MS },
+      { now: FIXTURE_NOW_MS, nowMs: FIXTURE_NOW_MS },
     );
     assertAdmitted(first);
 
@@ -1097,21 +1201,11 @@ describe("admission_rejection_counted_not_journaled", () => {
         principal: { jti },
       }),
       { DB: env.DB, DO: env.DO },
-      { now: FIXTURE_NOW_MS },
+      { now: FIXTURE_NOW_MS, nowMs: FIXTURE_NOW_MS },
     );
-    expect(replay).toEqual({ ok: false, code: "unauthenticated" });
-
-    await admission.flushRejectionCounters({ DB: env.DB });
+    assertAdmitted(replay);
+    expect(replay.requestId).toBe(first.requestId);
     expect(await readAiRequestCount()).toBe(aiRequestsBefore);
-
-    const matching = (await readPlatformCounterRows()).filter((row) => {
-      const dimensions = parseDimensionSet(row.dimension_set);
-      return (
-        dimensions.error_code === "unauthenticated" &&
-        dimensions.installation_id === installationId
-      );
-    });
-    expect(matching.reduce((sum, row) => sum + row.count, 0)).toBeGreaterThanOrEqual(1);
   });
 
   it("maps concurrency_exhausted onto quota_exhausted and tallies that code", async () => {
@@ -1123,7 +1217,7 @@ describe("admission_rejection_counted_not_journaled", () => {
       const admitted = await admission.runAdmission(
         defaultAdmissionInput(installationId, cache, reader),
         { DB: env.DB, DO: env.DO },
-        { now: FIXTURE_NOW_MS },
+        { now: FIXTURE_NOW_MS, nowMs: FIXTURE_NOW_MS },
       );
       assertAdmitted(admitted);
     }
@@ -1131,19 +1225,18 @@ describe("admission_rejection_counted_not_journaled", () => {
     const rejected = await admission.runAdmission(
       defaultAdmissionInput(installationId, cache, reader),
       { DB: env.DB, DO: env.DO },
-      { now: FIXTURE_NOW_MS },
+      { now: FIXTURE_NOW_MS, nowMs: FIXTURE_NOW_MS },
     );
-    expect(rejected).toEqual({
+    expect(rejected).toMatchObject({
       ok: false,
-      code: "quota_exhausted",
-      periodReset: "2026-09-01T00:00:00.000Z",
+      code: "concurrency_limited",
     });
 
     await admission.flushRejectionCounters({ DB: env.DB });
     const matching = (await readPlatformCounterRows()).filter((row) => {
       const dimensions = parseDimensionSet(row.dimension_set);
       return (
-        dimensions.error_code === "quota_exhausted" &&
+        dimensions.error_code === "concurrency_limited" &&
         dimensions.installation_id === installationId
       );
     });
@@ -1160,7 +1253,7 @@ describe("admission_rejection_counted_not_journaled", () => {
       const result = await admission.runAdmission(
         defaultAdmissionInput(installationId, cache, reader),
         { DB: env.DB, DO: brokenDo },
-        { now: FIXTURE_NOW_MS },
+        { now: FIXTURE_NOW_MS, nowMs: FIXTURE_NOW_MS },
       );
       expect(result.ok).toBe(true);
     }
@@ -1168,7 +1261,7 @@ describe("admission_rejection_counted_not_journaled", () => {
     const rejected = await admission.runAdmission(
       defaultAdmissionInput(installationId, cache, reader),
       { DB: env.DB, DO: brokenDo },
-      { now: FIXTURE_NOW_MS },
+      { now: FIXTURE_NOW_MS, nowMs: FIXTURE_NOW_MS },
     );
     expect(rejected).toEqual({
       ok: false,
@@ -1198,7 +1291,7 @@ describe("admission_rejection_counted_not_journaled", () => {
 });
 
 describe("admission_missing_entitlement_fail_closed", () => {
-  it("rejects quota_exhausted on config-cache miss instead of throwing or grace", async () => {
+  it("rejects coverage_lapsed on config-cache miss instead of throwing or grace", async () => {
     const admission = await loadAdmissionModule();
     const installationId = freshInstallationId();
     const cache = new ConfigCache();
@@ -1211,10 +1304,14 @@ describe("admission_missing_entitlement_fail_closed", () => {
     const result = await admission.runAdmission(
       defaultAdmissionInput(installationId, cache, reader),
       { DB: env.DB, DO: env.DO },
-      { now: FIXTURE_NOW_MS },
+      { now: FIXTURE_NOW_MS, nowMs: FIXTURE_NOW_MS },
     );
 
-    expect(result).toEqual({ ok: false, code: "quota_exhausted" });
+    expect(result).toEqual({
+      ok: false,
+      code: "coverage_lapsed",
+      coverageReason: "none",
+    });
     expect(await peekPendingFallback(installationId)).toHaveLength(0);
   });
 });
@@ -1224,17 +1321,14 @@ describe("guard_rejection_debits_nothing_and_writes_no_journal_row", () => {
     const admission = await loadAdmissionModule();
     const credit = await loadCreditModule();
     const installationId = freshInstallationId();
-    const creditBudget = 5;
-    const W = 5;
     const { cache, reader } = await seedInstallationAndEntitlement(installationId, {
-      creditBudget,
-      requestQuota: 100,
+      requestQuota: 1,
     });
 
     const first = await admission.runAdmission(
       defaultAdmissionInput(installationId, cache, reader),
       { DB: env.DB, DO: env.DO },
-      { now: FIXTURE_NOW_MS },
+      { now: FIXTURE_NOW_MS, nowMs: FIXTURE_NOW_MS },
     );
     assertAdmitted(first);
 
@@ -1245,7 +1339,6 @@ describe("guard_rejection_debits_nothing_and_writes_no_journal_row", () => {
         requestReference: uniqueRequestReference(),
         usage: { tokens: 1, cost: 0.001 },
         partial: false,
-        credits: W,
       },
       { DO: env.DO },
     );
@@ -1256,13 +1349,12 @@ describe("guard_rejection_debits_nothing_and_writes_no_journal_row", () => {
     const rejected = await admission.runAdmission(
       defaultAdmissionInput(installationId, cache, reader),
       { DB: env.DB, DO: doSpy },
-      { now: FIXTURE_NOW_MS },
+      { now: FIXTURE_NOW_MS, nowMs: FIXTURE_NOW_MS },
     );
 
-    expect(rejected).toEqual({
+    expect(rejected).toMatchObject({
       ok: false,
-      code: "quota_exhausted",
-      periodReset: "2026-09-01T00:00:00.000Z",
+      code: "allowance_exhausted",
     });
     expect(doSpy.fetchCount()).toBe(1);
     expect(await readAiRequestCount()).toBe(aiRequestsBefore);
@@ -1281,7 +1373,7 @@ describe("exactly_two_durable_object_round_trips_per_request", () => {
     const admitted = await admission.runAdmission(
       defaultAdmissionInput(installationId, cache, reader, { requestReference }),
       { DB: env.DB, DO: doSpy },
-      { now: FIXTURE_NOW_MS },
+      { now: FIXTURE_NOW_MS, nowMs: FIXTURE_NOW_MS },
     );
     assertAdmitted(admitted);
     expect(doSpy.fetchCount()).toBe(1);

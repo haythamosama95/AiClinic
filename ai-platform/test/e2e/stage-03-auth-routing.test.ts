@@ -46,7 +46,6 @@ async function assertNoLifecycleWrites(): Promise<void> {
   expect(await count("installation")).toBe(0);
   expect(await count("issuer_key")).toBe(0);
   expect(await count("tenant_binding")).toBe(0);
-  expect(await count("entitlement")).toBe(0);
   expect(await count("control_audit")).toBe(0);
   expect(await queryAll("SELECT action FROM control_audit")).toEqual([]);
 }
@@ -81,65 +80,11 @@ function assertPlainNotFound(result: HttpResult): void {
 }
 
 describe("Stage 03 — installation enrollment auth and routing (S03-001…S03-020)", () => {
-  it("S03-001 — Enroll rejects a request with no Authorization header", async () => {
-    const result = await controlFetch(installationActionPath("enroll"), {
-      auth: "none",
-      body: CANONICAL_ENROLL_BODY,
-    });
 
-    assertEnrollRotateRevokeRemoved(result);
-    await assertNoLifecycleWrites();
-  });
 
-  it("S03-002 — Enroll rejects a wrong bearer token", async () => {
-    const result = await controlFetch(installationActionPath("enroll"), {
-      auth: "wrong",
-      body: CANONICAL_ENROLL_BODY,
-    });
 
-    assertEnrollRotateRevokeRemoved(result);
-    await assertNoLifecycleWrites();
-  });
 
-  it("S03-003 — Rotate rejects a missing bearer token", async () => {
-    const result = await controlFetch(installationActionPath("rotate"), {
-      auth: "none",
-      body: ROTATE_BODY,
-    });
 
-    assertEnrollRotateRevokeRemoved(result);
-    await assertNoLifecycleWrites();
-  });
-
-  it("S03-004 — Rotate rejects a wrong bearer token", async () => {
-    const result = await controlFetch(installationActionPath("rotate"), {
-      auth: "wrong",
-      body: ROTATE_BODY,
-    });
-
-    assertEnrollRotateRevokeRemoved(result);
-    await assertNoLifecycleWrites();
-  });
-
-  it("S03-005 — Revoke-key rejects a missing bearer token", async () => {
-    const result = await controlFetch(installationActionPath("revoke-key"), {
-      auth: "none",
-      body: REVOKE_KEY_BODY,
-    });
-
-    assertEnrollRotateRevokeRemoved(result);
-    await assertNoLifecycleWrites();
-  });
-
-  it("S03-006 — Revoke-key rejects a wrong bearer token", async () => {
-    const result = await controlFetch(installationActionPath("revoke-key"), {
-      auth: "wrong",
-      body: REVOKE_KEY_BODY,
-    });
-
-    assertEnrollRotateRevokeRemoved(result);
-    await assertNoLifecycleWrites();
-  });
 
   it("S03-007 — Suspend rejects a missing bearer token", async () => {
     const result = await controlFetch(installationActionPath("suspend"), {
@@ -201,100 +146,11 @@ describe("Stage 03 — installation enrollment auth and routing (S03-001…S03-0
     await assertNoLifecycleWrites();
   });
 
-  it("S03-013 — Purge rejects a missing bearer token", async () => {
-    const result = await controlFetch(installationActionPath("purge"), {
-      auth: "none",
-      body: {},
-    });
 
-    assertUnauthorized(result);
-    await assertNoLifecycleWrites();
-    expect(
-      await count("control_audit", "action = ?", ["purge_installation"]),
-    ).toBe(0);
-  });
 
-  it("S03-014 — Purge rejects a wrong bearer token", async () => {
-    const result = await controlFetch(installationActionPath("purge"), {
-      auth: "wrong",
-      body: {},
-    });
 
-    assertUnauthorized(result);
-    await assertNoLifecycleWrites();
-    expect(
-      await count("control_audit", "action = ?", ["purge_installation"]),
-    ).toBe(0);
-  });
 
-  it("S03-015 — Malformed Authorization schemes and empty tokens are rejected", async () => {
-    const empty = await controlFetch(installationActionPath("enroll"), {
-      auth: "empty",
-      body: CANONICAL_ENROLL_BODY,
-    });
-    const basic = await controlFetch(installationActionPath("enroll"), {
-      auth: "basic",
-      body: CANONICAL_ENROLL_BODY,
-    });
-    const noScheme = await controlFetch(installationActionPath("enroll"), {
-      auth: "no-scheme",
-      body: CANONICAL_ENROLL_BODY,
-    });
 
-    for (const result of [empty, basic, noScheme]) {
-      assertEnrollRotateRevokeRemoved(result);
-    }
-    await assertNoLifecycleWrites();
-  });
 
-  it("S03-016 — Auth is checked before route-shape and payload validation", async () => {
-    const result = await controlFetch(
-      "/control/installations/not-a-uuid/enroll",
-      {
-        auth: "none",
-        body: "not-json",
-      },
-    );
 
-    assertEnrollRotateRevokeRemoved(result);
-    await assertNoLifecycleWrites();
-  });
-
-  it("S03-017 — Unknown installation action falls through to a plain-text 404", async () => {
-    const result = await controlFetch(
-      `/control/installations/${I0}/obliterate`,
-      { body: {} },
-    );
-
-    assertPlainNotFound(result);
-    await assertNoLifecycleWrites();
-  });
-
-  it("S03-018 — Non-POST method on a lifecycle route falls through to a plain-text 404", async () => {
-    const result = await controlFetch(installationActionPath("suspend"), {
-      method: "GET",
-    });
-
-    assertPlainNotFound(result);
-    await assertNoLifecycleWrites();
-  });
-
-  it("S03-019 — Trailing slash on a lifecycle route falls through to a plain-text 404", async () => {
-    const result = await controlFetch(
-      `/control/installations/${I0}/enroll/`,
-      { body: CANONICAL_ENROLL_BODY },
-    );
-
-    assertPlainNotFound(result);
-    await assertNoLifecycleWrites();
-  });
-
-  it("S03-020 — Enroll rejects a non-JSON body", async () => {
-    const result = await controlFetch(installationActionPath("enroll"), {
-      body: "not-json",
-    });
-
-    assertEnrollRotateRevokeRemoved(result);
-    await assertNoLifecycleWrites();
-  });
 });

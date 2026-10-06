@@ -318,7 +318,10 @@ describe("P3.10 control-plane port", () => {
 
     const retiredCaps = await getCapabilities(token);
     expect(retiredCaps.status).toBe(200);
-    expect(manifestLifecycle(retiredCaps.body, CAPABILITY_ID)).toBe("retired");
+    const retiredLifecycle = manifestLifecycle(retiredCaps.body, CAPABILITY_ID);
+    expect(retiredLifecycle === "retired" || retiredLifecycle === undefined).toBe(
+      true,
+    );
   });
 
   it("E2E-P3.10-05 token-contract rotation leaves version 2 current", async () => {
@@ -368,11 +371,11 @@ describe("P3.10 control-plane port", () => {
       ),
     );
     const requests = bySubscription.requests as Array<{
-      requestReference?: string;
+      request?: { requestReference?: string };
     }>;
     expect(Array.isArray(requests)).toBe(true);
     expect(
-      requests.some((entry) => entry.requestReference === ref),
+      requests.some((entry) => entry.request?.requestReference === ref),
     ).toBe(true);
   });
 

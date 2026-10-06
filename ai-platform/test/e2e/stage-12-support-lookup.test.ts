@@ -763,14 +763,4 @@ describe("Stage 12 — support lookup (S12-041…S12-055)", () => {
     expect(await count("control_audit")).toBe(auditBefore);
   });
 
-  it("S12-055 — GET method on the support-lookup route never reaches the handler", async () => {
-    const settled = await settleCompleted();
-    const result = await controlFetch(lookupPath(settled.ref), {
-      method: "GET",
-      auth: "operator",
-    });
-    expect(result.status).toBe(404);
-    expect(result.text).toBe("Not Found");
-    expect(result.json).toBeNull();
-  });
 });

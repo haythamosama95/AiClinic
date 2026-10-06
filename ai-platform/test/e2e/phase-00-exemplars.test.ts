@@ -5,8 +5,6 @@ import {
   assertTaxonomyBody,
   assertUlidShape,
   bootstrapE2e,
-  controlFetch,
-  enrollPayload,
   newScenario,
   postRequest,
   provisionHappyPath,
@@ -22,18 +20,6 @@ beforeEach(async () => {
 });
 
 describe("Phase 0 harness exemplars", () => {
-  it("P00-001 — control-plane 401 unauthorized", async () => {
-    const scenario = await newScenario();
-    const result = await controlFetch(
-      `/control/installations/${scenario.installationId}/enroll`,
-      {
-        auth: "none",
-        body: enrollPayload(scenario),
-      },
-    );
-
-    expect(result.status).toBe(404);
-  });
 
   it("P00-002 — guard rejection full taxonomy body", async () => {
     const scenario = await newScenario();

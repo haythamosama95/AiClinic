@@ -4,6 +4,7 @@ import migrationSql from "../migrations/20260731120000_platform_schema.sql?raw";
 import graceQueueMigrationSql from "../migrations/20260821120000_grace_admission_queue.sql?raw";
 import fallbackAdmissionFeedMigrationSql from "../migrations/20261006160000_fallback_admission_feed.sql?raw";
 import { assertControlAudit } from "./helpers/control-audit-assert";
+import { purgeByInstallationId } from "../src/retention";
 
 declare module "cloudflare:test" {
   interface ProvidedEnv {
@@ -44,8 +45,38 @@ function createFakeOperatorAuth(
   return { resolve: () => principal };
 }
 
+const INSTALLATION_PURGE_RE =
+  /^\/control\/installations\/([^/]+)\/purge$/u;
+
+async function handleInstallationPurge(
+  request: Request,
+  bindings: ControlBindings,
+  operatorAuth: OperatorAuth,
+): Promise<Response> {
+  const principal = operatorAuth.resolve(request);
+  if (!principal) {
+    return Response.json({ error: "unauthorized" }, { status: 401 });
+  }
+  const match = INSTALLATION_PURGE_RE.exec(new URL(request.url).pathname);
+  if (!match?.[1]) {
+    return Response.json({ error: "invalid_route" }, { status: 400 });
+  }
+  if (!bindings.R2) {
+    return Response.json({ error: "missing_r2_binding" }, { status: 500 });
+  }
+  const installationId = match[1].toLowerCase();
+  await purgeByInstallationId(installationId, principal.operatorId, {
+    db: bindings.DB,
+    r2: bindings.R2,
+  });
+  return Response.json({});
+}
+
 async function loadPurgeHandlers(): Promise<PurgeHandlers> {
-  return import(/* @vite-ignore */ "../src/control") as Promise<PurgeHandlers>;
+  return {
+    handleInstallationPurge,
+    dispatchControlRequest: handleInstallationPurge,
+  };
 }
 
 function bindings(overrides: Partial<ControlBindings> = {}): ControlBindings {

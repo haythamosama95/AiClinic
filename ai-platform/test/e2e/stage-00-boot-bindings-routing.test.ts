@@ -14,6 +14,9 @@ import {
   count,
   createCapabilityRegistry,
   DEFAULT_ENTITLE_PAYLOAD,
+  coverClinic,
+  ensureE2eCoverageMirror,
+  ensureE2eQuotaDoCoverage,
   newClinic,
   entitleInstallation,
   env,
@@ -26,6 +29,7 @@ import {
   postRequest,
   queryOne,
   resetE2eState,
+  seedSql,
   setCapabilityRegistry,
   type EntitlePayload,
   type Manifest,
@@ -317,7 +321,49 @@ describe("Stage 00 — platform boot, bindings, and routing (S00-001…S00-018)"
     };
 
     try {
-      const { scenario, token } = await enrollAndEntitle(echoEntitle);
+      const scenario = await newScenario();
+      await newClinic(scenario);
+      await coverClinic(scenario, {
+        capabilities: echoEntitle.allowed_capabilities,
+      });
+      await ensureE2eCoverageMirror(scenario);
+      await ensureE2eQuotaDoCoverage(scenario, {
+        period_start: echoEntitle.period_start,
+        period_end: echoEntitle.period_end,
+        request_quota: echoEntitle.request_quota,
+      });
+      for (const grant of echoEntitle.grants) {
+        await seedSql([
+          {
+            sql: `INSERT INTO capability_grant (
+                    grant_id, scope, capability_id, capability_version,
+                    granted_at, revoked_at, changed_at, changed_by
+                  ) VALUES (?, ?, ?, ?, ?, NULL, ?, ?)`,
+            params: [
+              crypto.randomUUID(),
+              grant.scope === "plan"
+                ? "plan:live-monthly"
+                : `installation:${scenario.installationId}`,
+              grant.capability_id,
+              grant.capability_version,
+              echoEntitle.period_start,
+              echoEntitle.period_start,
+              "e2e",
+            ],
+          },
+        ]);
+      }
+      await seedSql([
+        {
+          sql: `UPDATE coverage_mirror SET term_snapshot = ? WHERE installation_id = ?`,
+          params: [
+            JSON.stringify({ ref: "term-echo", capabilities: ["test.echo"] }),
+            scenario.installationId,
+          ],
+        },
+      ]);
+      clearConfigCache();
+      const token = await mintAat(scenario);
       const discovery = await getCapabilities(token);
       expect(discovery.status).toBe(200);
       const keys = discoveryKeys(discovery.body);
@@ -424,6 +470,15 @@ describe("Stage 00 — platform boot, bindings, and routing (S00-001…S00-018)"
         { body: { installation_ids: [scenario.installationId] } },
       );
       expect(activated.status).toBe(200);
+      await seedSql([
+        {
+          sql: `UPDATE coverage_mirror SET term_snapshot = ? WHERE installation_id = ?`,
+          params: [
+            JSON.stringify({ ref: "term-cold", capabilities: [] }),
+            scenario.installationId,
+          ],
+        },
+      ]);
       clearConfigCache();
 
       const cold = await getCapabilities(token);

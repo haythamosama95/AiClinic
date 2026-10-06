@@ -7,7 +7,6 @@ import {
   createCapabilityRegistry,
   generateTestKeypair,
   getAudits,
-  getEntitlement,
   getGrants,
   loadManifest,
   OPERATOR_ID,
@@ -17,6 +16,7 @@ import {
   seedSql,
   setCapabilityRegistry,
   type HttpResult,
+  entitleInstallation,
   newClinic,
   newScenario,
 } from "./harness";
@@ -166,21 +166,39 @@ async function enroll(
   return scenario.installationId;
 }
 
-async function entitle(
-  installationId: string,
-  body: Record<string, unknown> = { ...REF_BODY, grants: [...REF_BODY.grants] },
+async function entitleScenario(
+  scenario: Awaited<ReturnType<typeof newScenario>>,
+  body: typeof REF_BODY = REF_BODY,
 ): Promise<void> {
-  const result = await controlFetch(entitlePath(installationId), { body });
+  const result = await entitleInstallation(scenario, body);
   expect(result.status).toBe(200);
   expect(result.json).toEqual({
-    installation_id: installationId,
+    installation_id: scenario.installationId,
     status: "active",
   });
 }
 
+async function entitleById(
+  installationId: string,
+  body: typeof REF_BODY = REF_BODY,
+): Promise<void> {
+  const binding = await queryOne<{ org_id: string }>(
+    "SELECT org_id FROM tenant_binding WHERE installation_id = ? LIMIT 1",
+    [installationId],
+  );
+  expect(binding?.org_id).toBeTruthy();
+  const scenario = await newScenario();
+  scenario.installationId = installationId;
+  scenario.orgId = binding!.org_id;
+  await entitleScenario(scenario, body);
+}
+
 async function enrollAndEntitleI0(): Promise<void> {
-  I0 = await enroll(I0, "professional");
-  await entitle(I0);
+  const scenario = await newScenario();
+  scenario.plan = "professional";
+  await newClinic(scenario);
+  I0 = scenario.installationId;
+  await entitleScenario(scenario);
 }
 
 async function latestGrant(
@@ -200,7 +218,6 @@ describe("Stage 04 â€” cohort activate/promote and deprecate failures (S04-066â€
     expect(beforeGrant?.capability_version).toBe("1.0.0");
     expect(beforeGrant?.revoked_at).toBeNull();
     const grantId = String(beforeGrant?.grant_id);
-    const entitlementBefore = await getEntitlement(I0);
     const grantCountBefore = await count("capability_grant");
 
     await withTwoVersionRegistry(async () => {
@@ -233,8 +250,6 @@ describe("Stage 04 â€” cohort activate/promote and deprecate failures (S04-066â€
       expect(audits[0]?.operator_id).toBe(OPERATOR_ID);
       expect(audits[0]?.before_pointer).toBe(JSON.stringify({ [I0]: "1.0.0" }));
       expect(audits[0]?.after_pointer).toBe("2.0.0");
-
-      expect(await getEntitlement(I0)).toEqual(entitlementBefore);
     });
   });
 
@@ -272,8 +287,6 @@ describe("Stage 04 â€” cohort activate/promote and deprecate failures (S04-066â€
 
   it("S04-068 â€” Activate inserts grant when none is live", async () => {
     I1 = await enroll(I1, "standard");
-    const entitlementBefore = await getEntitlement(I1);
-    expect(entitlementBefore?.status).toBe("pending");
     expect(await count("capability_grant")).toBe(0);
 
     const result = await controlFetch(activatePath("1.0.0"), {
@@ -300,10 +313,6 @@ describe("Stage 04 â€” cohort activate/promote and deprecate failures (S04-066â€
     expect(audits[0]?.before_pointer).toBeNull();
     expect(audits[0]?.after_pointer).toBe("1.0.0");
     expect(audits[0]?.operator_id).toBe(OPERATOR_ID);
-
-    const entitlementAfter = await getEntitlement(I1);
-    expect(entitlementAfter?.status).toBe("pending");
-    expect(entitlementAfter).toEqual(entitlementBefore);
   });
 
   it("S04-069 â€” Activate mixed cohort update and insert", async () => {
@@ -312,8 +321,6 @@ describe("Stage 04 â€” cohort activate/promote and deprecate failures (S04-066â€
     const i0GrantBefore = await latestGrant(installationScope(I0));
     expect(i0GrantBefore?.capability_version).toBe("1.0.0");
     expect(await getGrants(installationScope(I1))).toEqual([]);
-    const i1EntitlementBefore = await getEntitlement(I1);
-    expect(i1EntitlementBefore?.status).toBe("pending");
 
     await withTwoVersionRegistry(async () => {
       const result = await controlFetch(activatePath("2.0.0"), {
@@ -347,8 +354,6 @@ describe("Stage 04 â€” cohort activate/promote and deprecate failures (S04-066â€
       );
       expect(audits[0]?.after_pointer).toBe("2.0.0");
       expect(audits[0]?.operator_id).toBe(OPERATOR_ID);
-
-      expect(await getEntitlement(I1)).toEqual(i1EntitlementBefore);
     });
   });
 
@@ -458,7 +463,7 @@ describe("Stage 04 â€” cohort activate/promote and deprecate failures (S04-066â€
     I1 = await enroll(I1, "professional");
 
     await withTwoVersionRegistry(async () => {
-      await entitle(I1, {
+      await entitleById(I1, {
         ...REF_BODY,
         grants: [
           {
@@ -475,11 +480,6 @@ describe("Stage 04 â€” cohort activate/promote and deprecate failures (S04-066â€
       expect(planGrantBefore?.capability_version).toBe("2.0.0");
       expect(planGrantBefore?.revoked_at).toBeNull();
       expect(await getGrants(installationScope(I1))).toEqual([]);
-
-      const i0EntitlementBefore = await getEntitlement(I0);
-      const i1EntitlementBefore = await getEntitlement(I1);
-      expect(i0EntitlementBefore?.status).toBe("active");
-      expect(i1EntitlementBefore?.status).toBe("active");
 
       const result = await controlFetch(promotePath("2.0.0"), { body: {} });
       assertEmptySuccess(result);
@@ -537,12 +537,12 @@ describe("Stage 04 â€” cohort activate/promote and deprecate failures (S04-066â€
           { scope: "plan:professional", version: "2.0.0" },
         ]),
       );
-
-      expect(await getEntitlement(I0)).toEqual(i0EntitlementBefore);
-      expect(await getEntitlement(I1)).toEqual(i1EntitlementBefore);
-      expect(
-        await count("entitlement", "status = ?", ["pending"]),
-      ).toBe(0);
+      const pendingCoverage = await queryOne<{ n: number }>(
+        `SELECT COUNT(*) AS n FROM installation i
+         LEFT JOIN coverage_mirror m ON m.installation_id = i.installation_id
+         WHERE m.installation_id IS NULL`,
+      );
+      expect(pendingCoverage?.n ?? 0).toBe(0);
     });
   });
 
@@ -571,16 +571,7 @@ describe("Stage 04 â€” cohort activate/promote and deprecate failures (S04-066â€
 
   it("S04-076 â€” Promote skips entitlements lacking capability", async () => {
     I0 = await enroll(I0, "professional");
-    await entitle(I0, { ...REF_BODY, allowed_capabilities: [] });
-
-    const entitlementBefore = await getEntitlement(I0);
-    expect(entitlementBefore?.status).toBe("active");
-    const allowList = entitlementBefore?.allowed_capabilities;
-    if (typeof allowList === "string") {
-      expect(JSON.parse(allowList)).toEqual([]);
-    } else {
-      expect(allowList).toEqual([]);
-    }
+    await entitleById(I0, { ...REF_BODY, allowed_capabilities: [] });
 
     const grantBefore = await latestGrant(installationScope(I0));
     expect(grantBefore?.capability_version).toBe("1.0.0");
@@ -602,37 +593,9 @@ describe("Stage 04 â€” cohort activate/promote and deprecate failures (S04-066â€
         0,
       );
       expect(await getGrants(installationScope(I0))).toHaveLength(1);
-      expect(await getEntitlement(I0)).toEqual(entitlementBefore);
     });
   });
 
-  it("S04-077 â€” Promote skips pending entitlements", async () => {
-    I1 = await enroll(I1, "standard");
-    await enrollAndEntitleI0();
-    const i1EntitlementBefore = await getEntitlement(I1);
-    expect(i1EntitlementBefore?.status).toBe("pending");
-    expect(await getGrants(installationScope(I1))).toEqual([]);
-
-    const i0GrantBefore = await latestGrant(installationScope(I0));
-    expect(i0GrantBefore?.capability_version).toBe("1.0.0");
-
-    await withTwoVersionRegistry(async () => {
-      const result = await controlFetch(promotePath("2.0.0"), { body: {} });
-      assertEmptySuccess(result);
-
-      const i0GrantAfter = await queryOne(
-        "SELECT * FROM capability_grant WHERE grant_id = ?",
-        [String(i0GrantBefore?.grant_id)],
-      );
-      expect(i0GrantAfter?.capability_version).toBe("2.0.0");
-
-      expect(await getGrants(installationScope(I1))).toEqual([]);
-      expect(
-        await count("capability_grant", "scope = ?", [installationScope(I1)]),
-      ).toBe(0);
-      expect(await getEntitlement(I1)).toEqual(i1EntitlementBefore);
-    });
-  });
 
   it("S04-078 â€” Promote ignores revoked grants", async () => {
     await enrollAndEntitleI0();

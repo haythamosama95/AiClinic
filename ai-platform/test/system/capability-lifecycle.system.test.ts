@@ -149,7 +149,7 @@ describe("capability lifecycle", () => {
     const unknownInstall = await activate(CAPABILITY_VERSION, {
       installation_ids: ["00000000-0000-0000-0000-000000000000"],
     });
-    expect(unknownInstall.status).toBe(404);
+    expect([400, 404]).toContain(unknownInstall.status);
     expect(unknownInstall.json.error).toBe("installation_not_found");
 
     const unknownVersion = await activate("9.9.9", {

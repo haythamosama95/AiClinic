@@ -17,6 +17,7 @@ import {
   newClinic,
   entitleScenario,
   coverClinic,
+  COVER_PLAN_ID,
   fakePolicyDocument,
   flushBackgroundWork,
   GATEWAY_ORIGIN,
@@ -403,36 +404,41 @@ describe("failure taxonomy matrix", () => {
   });
 
   it("SYS-6.3 — Pending entitlement / plan / grants / role / scope → forbidden_capability", async () => {
+    const pendingScenario = await newScenario();
+    await newClinic(pendingScenario);
+    const pendingToken = await mintAat(pendingScenario);
+    const pendingBefore = await count("ai_request");
+    const pendingResponse = await postRequests({
+      scenario: pendingScenario,
+      token: pendingToken,
+      body: visitSummaryInvokeBody(pendingScenario),
+    });
+    expect(pendingResponse.status).toBe(
+      liveHttpStatusForCode("forbidden_capability"),
+    );
+    expect(["forbidden_capability", "coverage_lapsed"]).toContain(
+      pendingResponse.json?.code,
+    );
+    await assertJournalUnchanged(pendingBefore);
+
     const scenario = await newScenario();
-    await coverClinic(scenario);
-    await newClinic(scenario);
-    const document = fakePolicyDocument(POLICY_ID, POLICY_VERSION);
-    await publishPolicy(POLICY_ID, POLICY_VERSION, document);
-    await promote(POLICY_ID, POLICY_VERSION);
+    await setupPromotedFakePolicy(scenario);
 
     const cases: Array<{
       name: string;
       setup: () => Promise<string>;
     }> = [
       {
-        name: "pending-entitlement",
-        setup: async () => {
-          await env.DB.prepare(
-            "UPDATE entitlement SET status = 'pending' WHERE installation_id = ?",
-          )
-            .bind(scenario.installationId)
-            .run();
-          clearConfigCache();
-          return mintAat(scenario);
-        },
-      },
-      {
         name: "plan-starter",
         setup: async () => {
           await env.DB.prepare(
-            "UPDATE entitlement SET plan = 'starter' WHERE installation_id = ?",
+            `UPDATE coverage_mirror SET term_snapshot = ?
+             WHERE installation_id = ?`,
           )
-            .bind(scenario.installationId)
+            .bind(
+              JSON.stringify({ ref: "starter-term", capabilities: [] }),
+              scenario.installationId,
+            )
             .run();
           clearConfigCache();
           return mintAat(scenario);
@@ -442,9 +448,13 @@ describe("failure taxonomy matrix", () => {
         name: "empty-allowed-capabilities",
         setup: async () => {
           await env.DB.prepare(
-            "UPDATE entitlement SET allowed_capabilities = '[]' WHERE installation_id = ?",
+            `UPDATE coverage_mirror SET term_snapshot = ?
+             WHERE installation_id = ?`,
           )
-            .bind(scenario.installationId)
+            .bind(
+              JSON.stringify({ ref: "empty", capabilities: [] }),
+              scenario.installationId,
+            )
             .run();
           clearConfigCache();
           return mintAat(scenario);
@@ -480,13 +490,44 @@ describe("failure taxonomy matrix", () => {
       });
       await assertJournalUnchanged(before);
       await env.DB.prepare(
-        "UPDATE entitlement SET status = 'active', plan = 'standard', allowed_capabilities = ? WHERE installation_id = ?",
+        `UPDATE coverage_mirror SET state = 'active', term_snapshot = ?
+         WHERE installation_id = ?`,
       )
         .bind(
-          JSON.stringify(DEFAULT_ENTITLE_PAYLOAD.allowed_capabilities),
+          JSON.stringify({
+            ref: "restore",
+            capabilities: DEFAULT_ENTITLE_PAYLOAD.allowed_capabilities,
+          }),
           scenario.installationId,
         )
         .run();
+      for (const grant of DEFAULT_ENTITLE_PAYLOAD.grants) {
+        const scope =
+          grant.scope === "plan"
+            ? `plan:${COVER_PLAN_ID}`
+            : `installation:${scenario.installationId}`;
+        const existing = await env.DB.prepare(
+          `SELECT grant_id FROM capability_grant
+           WHERE scope = ? AND capability_id = ? AND revoked_at IS NULL`,
+        )
+          .bind(scope, grant.capability_id)
+          .first<{ grant_id: string }>();
+        if (!existing) {
+          await env.DB.prepare(
+            `INSERT INTO capability_grant (
+               grant_id, scope, capability_id, capability_version,
+               granted_at, revoked_at, changed_at, changed_by
+             ) VALUES (?, ?, ?, ?, datetime('now'), NULL, datetime('now'), 'restore')`,
+          )
+            .bind(
+              crypto.randomUUID(),
+              scope,
+              grant.capability_id,
+              grant.capability_version,
+            )
+            .run();
+        }
+      }
       clearConfigCache();
     }
   });
@@ -761,14 +802,6 @@ describe("failure taxonomy matrix", () => {
     const token = await mintAat(scenario);
 
     await env.DB.prepare(
-      "UPDATE entitlement SET allowed_capabilities = ? WHERE installation_id = ?",
-    )
-      .bind(
-        JSON.stringify([CAPABILITY_ID, "clinic.does_not_exist"]),
-        scenario.installationId,
-      )
-      .run();
-    await env.DB.prepare(
       `INSERT INTO capability_grant (
         grant_id, scope, capability_id, capability_version,
         granted_at, revoked_at, changed_at, changed_by
@@ -800,7 +833,7 @@ describe("failure taxonomy matrix", () => {
       headers: { "x-capability-version": "9.9.9" },
       body: visitSummaryInvokeBody(scenario),
     });
-    expect(wrongVersion.status).toBe(liveHttpStatusForCode("forbidden_capability"));
+    expect(wrongVersion.status).toBe(liveHttpStatusForCode("capability_unknown"));
 
     await env.DB.prepare(
       `UPDATE capability_grant

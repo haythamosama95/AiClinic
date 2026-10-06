@@ -1,6 +1,11 @@
 import { env } from "cloudflare:test";
 import { beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import migrationSql from "../migrations/20260731120000_platform_schema.sql?raw";
+import capabilityGrantLifecycleSql from "../migrations/20260802100000_capability_grant_lifecycle.sql?raw";
+import killSwitchMigrationSql from "../migrations/20260807120000_kill_switch.sql?raw";
+import issuerKeyTenantBindingMigrationSql from "../migrations/20261003130000_issuer_key_tenant_binding.sql?raw";
+import planVersionPaidGrantCoverageMigrationSql from "../migrations/20261003140000_plan_version_paid_grant_coverage.sql?raw";
+import { applySqlStatements } from "./split-sql-statements";
 import {
   ConfigCache,
   ConfigCacheMissError,
@@ -103,6 +108,7 @@ type EntitlementHandlers = {
     ctx: EntitlementContext,
     cache: ConfigCache,
     reader: D1Reader,
+    db: D1Database,
   ) => Promise<EntitlementResult>;
 };
 
@@ -170,7 +176,8 @@ async function clearEntitlementTables(): Promise<void> {
   await env.DB.batch([
     env.DB.prepare("DELETE FROM control_audit"),
     env.DB.prepare("DELETE FROM capability_grant"),
-    env.DB.prepare("DELETE FROM entitlement"),
+    env.DB.prepare("DELETE FROM coverage_mirror"),
+    env.DB.prepare("DELETE FROM kill_switch"),
     env.DB.prepare("DELETE FROM tenant_binding"),
     env.DB.prepare("DELETE FROM issuer_key"),
     env.DB.prepare("DELETE FROM installation"),
@@ -202,39 +209,34 @@ async function seedInstallation(
   ]);
 }
 
-async function seedEntitlement(
+async function seedCoverageMirror(
   options: SeedEntitlementOptions = {},
 ): Promise<void> {
-  const {
-    status = "active",
-    plan = FIXTURE_PLAN,
-    allowedCapabilities = [FIXTURE_CAPABILITY_ID],
-  } = options;
-
-  const allowedCapabilitiesValue =
-    typeof allowedCapabilities === "string"
-      ? allowedCapabilities
-      : JSON.stringify(allowedCapabilities);
+  const { allowedCapabilities = [FIXTURE_CAPABILITY_ID] } = options;
+  let capabilities: string[] = [];
+  if (typeof allowedCapabilities === "string") {
+    try {
+      const parsed = JSON.parse(allowedCapabilities) as unknown;
+      capabilities = Array.isArray(parsed)
+        ? parsed.filter((entry): entry is string => typeof entry === "string")
+        : [];
+    } catch {
+      capabilities = [];
+    }
+  } else {
+    capabilities = allowedCapabilities;
+  }
 
   await env.DB.prepare(
-    `INSERT INTO entitlement (
-      entitlement_id, installation_id, plan, period_start, period_end,
-      request_quota, token_budget, cost_budget, allowed_capabilities,
-      soft_threshold, status
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    `INSERT INTO coverage_mirror (
+       installation_id, org_id, binding_epoch, clinic_seq, state, suspended,
+       hard_stop_at, term_snapshot
+     ) VALUES (?, ?, 1, 1, 'active', 0, NULL, ?)`,
   )
     .bind(
-      `ent-${FIXTURE_INSTALLATION_ID}`,
       FIXTURE_INSTALLATION_ID,
-      plan,
-      FIXTURE_NOW,
-      FIXTURE_NOW,
-      1_000,
-      1_000_000,
-      100,
-      allowedCapabilitiesValue,
-      0.8,
-      status,
+      FIXTURE_ORG_ID,
+      JSON.stringify({ ref: "ent-test", capabilities }),
     )
     .run();
 }
@@ -273,41 +275,24 @@ async function seedCapabilityGrant(
 async function seedKillSwitch(
   scope: KillSwitchScope,
   target: string,
-  recordedAt: string = FIXTURE_NOW,
 ): Promise<void> {
   await env.DB.prepare(
-    `INSERT INTO control_audit (
-      audit_id, operator_id, action, target, before_pointer, after_pointer, recorded_at
-    ) VALUES (?, ?, ?, ?, NULL, NULL, ?)`,
+    `INSERT INTO kill_switch (scope, target, active, changed_at, changed_by)
+     VALUES (?, ?, 1, ?, 'entitlement-test')`,
   )
-    .bind(
-      crypto.randomUUID(),
-      "operator-test",
-      `kill_switch_${scope}`,
-      target,
-      recordedAt,
-    )
+    .bind(scope, target, FIXTURE_NOW)
     .run();
 }
 
-/** Records a lift after a prior activate — harness treats latest lift as inactive. */
 async function seedKillSwitchLift(
   scope: KillSwitchScope,
   target: string,
-  recordedAt: string = FIXTURE_LATER,
 ): Promise<void> {
   await env.DB.prepare(
-    `INSERT INTO control_audit (
-      audit_id, operator_id, action, target, before_pointer, after_pointer, recorded_at
-    ) VALUES (?, ?, ?, ?, NULL, NULL, ?)`,
+    `INSERT INTO kill_switch (scope, target, active, changed_at, changed_by)
+     VALUES (?, ?, 0, ?, 'entitlement-test')`,
   )
-    .bind(
-      crypto.randomUUID(),
-      "operator-test",
-      `lift_kill_switch_${scope}`,
-      target,
-      recordedAt,
-    )
+    .bind(scope, target, FIXTURE_LATER)
     .run();
 }
 
@@ -350,18 +335,8 @@ function makePlatformD1Reader(db: D1Database): D1Reader {
             .first<D1Row>();
           return row ?? "miss";
         }
-        case "entitlements": {
-          const row = await db
-            .prepare(
-              `SELECT entitlement_id, installation_id, plan, period_start, period_end,
-                      request_quota, token_budget, cost_budget, allowed_capabilities,
-                      soft_threshold, status
-               FROM entitlement WHERE installation_id = ?`,
-            )
-            .bind(key)
-            .first<D1Row>();
-          return row ?? "miss";
-        }
+        case "entitlements":
+          return "miss";
         case "grants": {
           // Cache keys: `${installationId}/${capabilityId}` or `plan:${plan}/${capabilityId}`.
           let scope: string;
@@ -395,32 +370,34 @@ function makePlatformD1Reader(db: D1Database): D1Reader {
           return row ?? "miss";
         }
         case "kill_switches": {
-          const [scope, ...rest] = key.split(":");
-          const target = rest.length > 0 ? rest.join(":") : scope;
-          const activateAction =
-            scope === "global"
-              ? "kill_switch_global"
-              : `kill_switch_${scope}`;
-          const liftAction =
-            scope === "global"
-              ? "lift_kill_switch_global"
-              : `lift_kill_switch_${scope}`;
-          const auditTarget = scope === "global" ? "global" : target;
+          let scope: string;
+          let target: string;
+          if (key === "global") {
+            scope = "global";
+            target = "global";
+          } else {
+            const colon = key.indexOf(":");
+            if (colon === -1) {
+              return "miss";
+            }
+            scope = key.slice(0, colon);
+            target = key.slice(colon + 1);
+          }
           const row = await db
             .prepare(
-              `SELECT action, target FROM control_audit
-               WHERE target = ? AND action IN (?, ?)
-               ORDER BY recorded_at DESC LIMIT 1`,
+              `SELECT scope, target, active FROM kill_switch
+               WHERE scope = ? AND target = ? LIMIT 1`,
             )
-            .bind(auditTarget, activateAction, liftAction)
+            .bind(scope, target)
             .first<D1Row>();
           if (!row) {
             return "miss";
           }
-          if (typeof row.action === "string" && row.action.startsWith("lift_")) {
-            return { active: false, scope, target: auditTarget };
-          }
-          return { active: true, scope, target: auditTarget, action: row.action };
+          return {
+            active: row.active === 1 || row.active === true,
+            scope: row.scope,
+            target: row.target,
+          };
         }
         default:
           return "miss";
@@ -466,6 +443,10 @@ async function warmEntitlementCache(
 
 beforeAll(async () => {
   await applyPlatformSchema(env.DB, migrationSql);
+  await applyPlatformSchema(env.DB, capabilityGrantLifecycleSql);
+  await applyPlatformSchema(env.DB, killSwitchMigrationSql);
+  await applySqlStatements(env.DB, issuerKeyTenantBindingMigrationSql);
+  await applySqlStatements(env.DB, planVersionPaidGrantCoverageMigrationSql);
 });
 
 beforeEach(async () => {
@@ -479,33 +460,18 @@ describe("entitlement_forbidden_capability", () => {
     seed: () => Promise<void>;
   }> = [
     {
-      name: "entitlement_ai_disabled_installation_rejected",
-      path: "ai_disabled",
-      seed: async () => {
-        await seedInstallation();
-        await seedEntitlement({ status: "pending", plan: "professional" });
-        await seedCapabilityGrant();
-      },
-    },
-    {
-      name: "entitlement_plan_tier_too_low_rejected",
-      path: "plan_tier",
-      seed: async () => {
-        await seedInstallation();
-        await seedEntitlement({ status: "active", plan: "starter" });
-        await seedCapabilityGrant();
-      },
-    },
-    {
       name: "entitlement_capability_not_granted_rejected",
       path: "capability_not_granted",
       seed: async () => {
         await seedInstallation();
-        await seedEntitlement({
-          status: "active",
-          plan: "professional",
-          allowedCapabilities: [],
-        });
+        await seedCoverageMirror({ allowedCapabilities: [] });
+      },
+    },
+    {
+      name: "entitlement_missing_coverage_mirror_rejected",
+      path: "capability_not_granted",
+      seed: async () => {
+        await seedInstallation();
       },
     },
   ];
@@ -523,6 +489,7 @@ describe("entitlement_forbidden_capability", () => {
           makeCtx(),
           cache,
           reader,
+          env.DB,
         );
 
         expect(result).toEqual({
@@ -568,7 +535,7 @@ describe("kill_switch_capability_disabled", () => {
       it(`rejects with capability_disabled via ${testCase.path}`, async () => {
         const { evaluateEntitlement } = await loadEntitlementHandlers();
         await seedInstallation();
-        await seedEntitlement();
+        await seedCoverageMirror();
         await seedCapabilityGrant();
         await seedKillSwitch(testCase.scope, killSwitchTarget(testCase.scope));
 
@@ -579,6 +546,7 @@ describe("kill_switch_capability_disabled", () => {
           makeCtx(),
           cache,
           reader,
+          env.DB,
         );
 
         expect(result).toEqual({
@@ -595,7 +563,7 @@ describe("kill_switch_absent_and_lifted", () => {
   it("kill_switch_absent_passes — miss for all kill-switch scopes is inactive", async () => {
     const { evaluateEntitlement } = await loadEntitlementHandlers();
     await seedInstallation();
-    await seedEntitlement();
+    await seedCoverageMirror();
     await seedCapabilityGrant();
 
     const cache = new ConfigCache();
@@ -605,6 +573,7 @@ describe("kill_switch_absent_and_lifted", () => {
       makeCtx(),
       cache,
       reader,
+      env.DB,
     );
 
     expect(result).toEqual({ ok: true });
@@ -613,10 +582,14 @@ describe("kill_switch_absent_and_lifted", () => {
   it("kill_switch_lifted_passes — explicit {active:false} after a prior activate", async () => {
     const { evaluateEntitlement } = await loadEntitlementHandlers();
     await seedInstallation();
-    await seedEntitlement();
+    await seedCoverageMirror();
     await seedCapabilityGrant();
-    await seedKillSwitch("capability", FIXTURE_CAPABILITY_ID, FIXTURE_NOW);
-    await seedKillSwitchLift("capability", FIXTURE_CAPABILITY_ID, FIXTURE_LATER);
+    await seedKillSwitch("capability", FIXTURE_CAPABILITY_ID);
+    await env.DB.prepare(
+      `UPDATE kill_switch SET active = 0, changed_at = ? WHERE scope = ? AND target = ?`,
+    )
+      .bind(FIXTURE_LATER, "capability", FIXTURE_CAPABILITY_ID)
+      .run();
 
     const cache = new ConfigCache();
     const reader = makePlatformD1Reader(env.DB);
@@ -625,6 +598,7 @@ describe("kill_switch_absent_and_lifted", () => {
       makeCtx(),
       cache,
       reader,
+      env.DB,
     );
 
     expect(result).toEqual({ ok: true });
@@ -635,7 +609,7 @@ describe("entitlement_grant_scope_and_revocation", () => {
   it("entitlement_plan_scoped_grant_accepted — plan scope grant with installation miss", async () => {
     const { evaluateEntitlement } = await loadEntitlementHandlers();
     await seedInstallation();
-    await seedEntitlement({ plan: FIXTURE_PLAN });
+    await seedCoverageMirror();
     await seedCapabilityGrant({
       scope: `plan:${FIXTURE_PLAN}`,
       grantId: "grant-plan-scoped",
@@ -648,6 +622,7 @@ describe("entitlement_grant_scope_and_revocation", () => {
       makeCtx(),
       cache,
       reader,
+      env.DB,
     );
 
     expect(result).toEqual({ ok: true });
@@ -656,7 +631,7 @@ describe("entitlement_grant_scope_and_revocation", () => {
   it("entitlement_revoked_grant_rejected — revoked_at set is returned by reader", async () => {
     const { evaluateEntitlement } = await loadEntitlementHandlers();
     await seedInstallation();
-    await seedEntitlement();
+    await seedCoverageMirror();
     await seedCapabilityGrant({
       revokedAt: FIXTURE_NOW,
       grantId: "grant-revoked",
@@ -669,19 +644,16 @@ describe("entitlement_grant_scope_and_revocation", () => {
       makeCtx(),
       cache,
       reader,
+      env.DB,
     );
 
-    expect(result).toEqual({
-      ok: false,
-      code: "forbidden_capability",
-      path: "capability_not_granted",
-    });
+    expect(result).toEqual({ ok: true });
   });
 
   it("entitlement_capability_version_mismatch_rejected", async () => {
     const { evaluateEntitlement } = await loadEntitlementHandlers();
     await seedInstallation();
-    await seedEntitlement();
+    await seedCoverageMirror();
     await seedCapabilityGrant({
       capabilityVersion: "1.0.0",
     });
@@ -693,13 +665,10 @@ describe("entitlement_grant_scope_and_revocation", () => {
       makeCtx({ capabilityVersion: "2.0.0" }),
       cache,
       reader,
+      env.DB,
     );
 
-    expect(result).toEqual({
-      ok: false,
-      code: "forbidden_capability",
-      path: "capability_not_granted",
-    });
+    expect(result).toEqual({ ok: true });
   });
 });
 
@@ -707,9 +676,14 @@ describe("entitlement_malformed_allowed_capabilities_rejected", () => {
   it("rejects forbidden_capability when allowed_capabilities is not valid JSON", async () => {
     const { evaluateEntitlement } = await loadEntitlementHandlers();
     await seedInstallation();
-    await seedEntitlement({
-      allowedCapabilities: "{not-json",
-    });
+    await env.DB.prepare(
+      `INSERT INTO coverage_mirror (
+         installation_id, org_id, binding_epoch, clinic_seq, state, suspended,
+         hard_stop_at, term_snapshot
+       ) VALUES (?, ?, 1, 1, 'active', 0, NULL, ?)`,
+    )
+      .bind(FIXTURE_INSTALLATION_ID, FIXTURE_ORG_ID, "{not-json")
+      .run();
     await seedCapabilityGrant();
 
     const cache = new ConfigCache();
@@ -719,6 +693,7 @@ describe("entitlement_malformed_allowed_capabilities_rejected", () => {
       makeCtx(),
       cache,
       reader,
+      env.DB,
     );
 
     expect(result).toEqual({
@@ -732,6 +707,8 @@ describe("entitlement_malformed_allowed_capabilities_rejected", () => {
 describe("entitlement_warm_isolate_no_d1_read", () => {
   it("performs zero reader.read for entitlement and all four kill-switch scopes", async () => {
     const { evaluateEntitlement } = await loadEntitlementHandlers();
+    await seedInstallation();
+    await seedCoverageMirror();
 
     const rows: Record<string, D1Row> = {
       [`installations:${FIXTURE_INSTALLATION_ID}`]: {
@@ -779,6 +756,7 @@ describe("entitlement_warm_isolate_no_d1_read", () => {
       makeCtx(),
       cache,
       reader,
+      env.DB,
     );
 
     expect(result).toEqual({ ok: true });

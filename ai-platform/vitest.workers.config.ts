@@ -63,9 +63,8 @@ export default defineWorkersConfig({
             },
           },
           bindings: {
-            OPERATOR_BEARER_TOKEN: "test-operator-bearer-token",
-            OPERATOR_ID: "operator-test-principal",
             TEST_CLOCK: "1",
+            DURATION_SCALE: "staging",
             ACCESS_TEAM_DOMAIN: "access.test",
             ACCESS_AUD: "vendor-access-aud",
             WEBAUTHN_RP_ID: "ops.vendor.test",

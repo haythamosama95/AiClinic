@@ -61,7 +61,7 @@ vi.mock("../src/prompt/registry", () => ({
   resolvePromptVersion: resolvePromptVersionMock,
 }));
 
-import { env, SELF } from "cloudflare:test";
+import { env, runInDurableObject, SELF } from "cloudflare:test";
 import { beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import migrationSql from "../migrations/20260731120000_platform_schema.sql?raw";
 import tokenContractMigrationSql from "../migrations/20260803120000_token_contract.sql?raw";
@@ -73,7 +73,8 @@ import planCatalogueMigrationSql from "../migrations/20260911120000_plan_catalog
 import issuerKeyTenantBindingMigrationSql from "../migrations/20261003130000_issuer_key_tenant_binding.sql?raw";
 import planVersionPaidGrantCoverageMigrationSql from "../migrations/20261003140000_plan_version_paid_grant_coverage.sql?raw";
 import usageTermMigrationSql from "../migrations/20261006120000_usage_term.sql?raw";
-import { applySqlStatements } from "../split-sql-statements";
+import { applySqlStatements } from "./split-sql-statements";
+import { CONCURRENCY_LIMIT, ensureCoverageDoTables } from "../src/quota-do/index";
 import {
   createCapabilityRegistry,
   setCapabilityRegistry,
@@ -110,8 +111,121 @@ const FIXTURE_CAPABILITY_VERSION = "1.0.0";
 const FIXTURE_POLICY_ID = "standard";
 const FIXTURE_POLICY_REF = "routing/standard";
 const FIXTURE_NOW = "2026-07-31T12:00:00.000Z";
+const FIXTURE_NOW_MS = Date.parse(FIXTURE_NOW);
 function fixtureNowSeconds(): number {
-  return Math.floor(Date.now() / 1000);
+  return Math.floor(FIXTURE_NOW_MS / 1000);
+}
+
+function termIdForInstallation(installationId: string): string {
+  return `term-${installationId.slice(0, 8)}`;
+}
+
+function sqlLiteral(value: string): string {
+  return `'${value.replace(/'/g, "''")}'`;
+}
+
+async function pinHarnessTestClock(isoUtc: string = FIXTURE_NOW): Promise<void> {
+  await env.DB.prepare(
+    `CREATE TABLE IF NOT EXISTS harness_test_clock (
+       id TEXT PRIMARY KEY,
+       now_iso TEXT NOT NULL
+     )`,
+  ).run();
+  await env.DB.prepare(
+    `INSERT OR REPLACE INTO harness_test_clock (id, now_iso) VALUES ('default', ?)`,
+  )
+    .bind(isoUtc)
+    .run();
+}
+
+async function seedQuotaDoForInstallation(
+  installationId: string,
+  options: { requestQuota?: number } = {},
+): Promise<void> {
+  const termId = termIdForInstallation(installationId);
+  const requestQuota = options.requestQuota ?? 10_000;
+  const planSnapshot = JSON.stringify({
+    capabilities: [FIXTURE_CAPABILITY_ID],
+    max_cost_class: "standard",
+    concurrency_limit: CONCURRENCY_LIMIT,
+  });
+  const periodStart = FIXTURE_NOW;
+  const periodEnd = "2026-12-31T23:59:59.000Z";
+
+  await runInDurableObject(
+    env.DO.get(env.DO.idFromName(installationId)),
+    async (_instance, state) => {
+      const storage = state.storage as DurableObjectStorage & {
+        sql?: { exec: (query: string) => Iterable<Record<string, unknown>> };
+      };
+      if (!storage.sql) {
+        throw new Error("quota DO sql storage unavailable for orchestrator seed");
+      }
+      await ensureCoverageDoTables(storage, async (fn) => fn());
+      const hotExists = [...storage.sql.exec("SELECT 1 AS ok FROM hot LIMIT 1")];
+      if (hotExists.length === 0) {
+        storage.sql.exec(
+          `INSERT INTO hot (
+             suspended, transferred_out_to, awaiting_transfer, transfer_pending,
+             active_term_id, used, reserved, grace_base_used, reservations, replay,
+             idempotency, band_emitted, binding_epoch, clinic_seq, next_alarm_at
+           ) VALUES (
+             0, NULL, 0, 0, ${sqlLiteral(termId)}, 0, 0, 0, '[]', '{}', '{}', '{}', 0, 0, NULL
+           )`,
+        );
+      } else {
+        storage.sql.exec(
+          `UPDATE hot SET active_term_id = ${sqlLiteral(termId)}, used = 0, reserved = 0, suspended = 0, reservations = '[]'`,
+        );
+      }
+      storage.sql.exec(`DELETE FROM term`);
+      storage.sql.exec(
+        `INSERT INTO term (
+           term_id, grant_id, origin_grant_id, position, state, end_reason,
+           plan_snapshot, allowance, used_final, duration_unit, duration_count,
+           grace_days, grace_cap, calendar_start, starts_at, ends_at, grace_ends_at, ended_at
+         ) VALUES (
+           ${sqlLiteral(termId)}, 'orch-seed', 'orch-seed', 0, 'active', NULL,
+           ${sqlLiteral(planSnapshot)}, ${requestQuota},
+           NULL, 'month', 1, 0, 'proportional',
+           ${sqlLiteral(periodStart)}, ${sqlLiteral(periodStart)},
+           ${sqlLiteral(periodEnd)}, NULL, NULL
+         )`,
+      );
+    },
+  );
+}
+
+async function seedCoverageMirror(
+  installationId: string,
+  capabilities: string[] = [FIXTURE_CAPABILITY_ID],
+): Promise<void> {
+  const termRef = termIdForInstallation(installationId);
+  await env.DB.prepare(
+    `INSERT INTO coverage_mirror (
+       installation_id, org_id, binding_epoch, clinic_seq, state, suspended,
+       hard_stop_at, term_snapshot
+     ) VALUES (?, ?, 1, 1, 'active', 0, ?, ?)`,
+  )
+    .bind(
+      installationId,
+      FIXTURE_ORG_ID,
+      "2026-12-31T23:59:59.000Z",
+      JSON.stringify({ ref: termRef, capabilities }),
+    )
+    .run();
+}
+
+async function setMirrorCapabilities(
+  installationId: string,
+  capabilities: string[],
+): Promise<void> {
+  const termRef = termIdForInstallation(installationId);
+  await env.DB.prepare(
+    `UPDATE coverage_mirror SET term_snapshot = ? WHERE installation_id = ?`,
+  )
+    .bind(JSON.stringify({ ref: termRef, capabilities }), installationId)
+    .run();
 }
 const FIXTURE_TRACE_ID = "01I1ORCHTRACE00000000001";
 
@@ -468,7 +582,7 @@ async function seedInstallationFixture(installationId: string): Promise<void> {
     env.DB.prepare("DELETE FROM ai_attempt"),
     env.DB.prepare("DELETE FROM ai_request"),
     env.DB.prepare("DELETE FROM capability_grant"),
-    env.DB.prepare("DELETE FROM entitlement"),
+    env.DB.prepare("DELETE FROM coverage_mirror"),
     env.DB.prepare("DELETE FROM coverage_event"),
     env.DB.prepare("DELETE FROM grant_ledger"),
     env.DB.prepare("DELETE FROM coverage_mirror"),
@@ -484,31 +598,8 @@ async function seedInstallationFixture(installationId: string): Promise<void> {
   await seedInstallationRow(installationId);
   await seedIssuerBinding(installationId, FIXTURE_ORG_ID, fixtureKeypair);
 
-  await env.DB
-    .prepare(
-      `INSERT INTO entitlement (
-        entitlement_id, installation_id, plan, period_start, period_end,
-        request_quota, token_budget, cost_budget, credit_budget,
-        allowed_capabilities, soft_threshold, status
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-    )
-    .bind(
-      `ent-${installationId}`,
-      installationId,
-      "professional",
-      "2026-08-01T00:00:00.000Z",
-      "2026-09-01T00:00:00.000Z",
-      10_000,
-      10_000_000,
-      1_000,
-      // G2: positive credit budget so admission is not immediately exhausted
-      // (`creditsUsed >= credit_budget`; G1 pending DEFAULT is 0).
-      10_000,
-      JSON.stringify([FIXTURE_CAPABILITY_ID]),
-      0.8,
-      "active",
-    )
-    .run();
+  await seedCoverageMirror(installationId);
+  await seedQuotaDoForInstallation(installationId);
 
   await env.DB
     .prepare(
@@ -672,6 +763,7 @@ beforeAll(async () => {
 
 beforeEach(async () => {
   isolateConfigCache.clear();
+  await pinHarnessTestClock();
   await seedInstallationFixture(FIXTURE_INSTALLATION_ID);
   setCapabilityRegistry(createCapabilityRegistry([visitSummaryManifest()]), {
     replace: true,
@@ -733,12 +825,8 @@ describe("guard_reject_rate_limited_no_journal_no_provider", () => {
 
 describe("guard_reject_forbidden_capability_no_journal_no_provider", () => {
   it("T7 — forbidden_capability taxonomy HTTP", async () => {
-    await env.DB
-      .prepare(
-        "UPDATE entitlement SET allowed_capabilities = ? WHERE installation_id = ?",
-      )
-      .bind(JSON.stringify(["clinic.other_capability"]), FIXTURE_INSTALLATION_ID)
-      .run();
+    await setMirrorCapabilities(FIXTURE_INSTALLATION_ID, ["clinic.other_capability"]);
+    await seedQuotaDoForInstallation(FIXTURE_INSTALLATION_ID);
     const token = await mintAat();
     const response = await SELF.fetch(buildPostRequest({ token }));
     expect(response.status).toBe(liveHttpStatusForCode("forbidden_capability"));
@@ -750,15 +838,11 @@ describe("guard_reject_forbidden_capability_no_journal_no_provider", () => {
 
 describe("guard_reject_capability_unknown_no_journal_no_provider", () => {
   it("T8 — capability_unknown taxonomy HTTP", async () => {
-    await env.DB
-      .prepare(
-        "UPDATE entitlement SET allowed_capabilities = ? WHERE installation_id = ?",
-      )
-      .bind(
-        JSON.stringify([FIXTURE_CAPABILITY_ID, "clinic.unknown_cap"]),
-        FIXTURE_INSTALLATION_ID,
-      )
-      .run();
+    await setMirrorCapabilities(FIXTURE_INSTALLATION_ID, [
+      FIXTURE_CAPABILITY_ID,
+      "clinic.unknown_cap",
+    ]);
+    await seedQuotaDoForInstallation(FIXTURE_INSTALLATION_ID);
     await env.DB
       .prepare(
         `INSERT INTO capability_grant (
@@ -804,21 +888,15 @@ describe("guard_reject_capability_retired_no_journal_no_provider", () => {
 
 describe("guard_reject_capability_disabled_no_journal_no_provider", () => {
   it("T10 — capability_disabled taxonomy HTTP", async () => {
-    const entitlementMod = await import("../src/entitlement");
-    const disabledSpy = vi
-      .spyOn(entitlementMod, "evaluateEntitlement")
-      .mockResolvedValue({
-        ok: false,
-        code: "capability_disabled",
-        path: "kill_switch_capability",
-      });
-    try {
-      const token = await mintAat();
-      const response = await SELF.fetch(buildPostRequest({ token }));
-      expect(response.status).toBe(liveHttpStatusForCode("capability_disabled"));
-    } finally {
-      disabledSpy.mockRestore();
-    }
+    await env.DB.prepare(
+      `INSERT INTO kill_switch (scope, target, active, changed_at, changed_by)
+       VALUES ('capability', ?, 1, ?, 'operator-i1')`,
+    )
+      .bind(FIXTURE_CAPABILITY_ID, FIXTURE_NOW)
+      .run();
+    const token = await mintAat();
+    const response = await SELF.fetch(buildPostRequest({ token }));
+    expect(response.status).toBe(liveHttpStatusForCode("capability_disabled"));
   });
 });
 
@@ -1608,12 +1686,13 @@ describe("cancel_disconnect_aborts_cancelled_credits_partial", () => {
       expect(attempts?.c).toBeGreaterThan(0);
       const usage = await env.DB
         .prepare(
-          "SELECT tokens, period FROM usage_event WHERE request_id = ?",
+          "SELECT tokens, term_id FROM usage_event WHERE request_id = ?",
         )
         .bind(request?.request_id)
-        .first<{ tokens: number; period: string }>();
+        .first<{ tokens: number; term_id: string }>();
       expect(usage).toBeTruthy();
       expect(usage?.tokens).toBeGreaterThan(0);
+      expect(usage?.term_id.length).toBeGreaterThan(0);
     } finally {
       invokeSpy.mockRestore();
       creditSpy.mockRestore();
@@ -1755,13 +1834,7 @@ async function seedSoftThresholdTieredFixture(): Promise<void> {
   // G2: degraded is driven by the credit ratio (creditsUsed / credit_budget).
   // credit_budget 2 + one settled credit (quotaWeight 1) crosses the 0.5
   // threshold while leaving budget for the second admission.
-  await env.DB
-    .prepare(
-      `UPDATE entitlement SET request_quota = 2, soft_threshold = 0.5, credit_budget = 2
-       WHERE installation_id = ?`,
-    )
-    .bind(FIXTURE_INSTALLATION_ID)
-    .run();
+  await seedQuotaDoForInstallation(FIXTURE_INSTALLATION_ID, { requestQuota: 2 });
 }
 
 describe("live_soft_threshold_degraded_notice_and_routing_agree", () => {
@@ -1797,21 +1870,17 @@ describe("live_grace_admission_routing_tier_matches_router", () => {
     const graceSpy = vi.spyOn(admissionMod, "runAdmission").mockImplementation(
       async (input) => ({
         ok: true,
-        outcome: "grace_admitted",
+        outcome: "admitted",
         requestId: crypto.randomUUID(),
         requestReference: input.requestReference,
-        entitlement: {
-          plan: "professional",
-          period_bounds: {
-            period_start: "2026-08-01T00:00:00.000Z",
-            period_end: "2026-09-01T00:00:00.000Z",
-          },
-          request_quota: 10_000,
-          token_cost_budget: { token_budget: 10_000_000, cost_budget: 1_000 },
-          allowed_capabilities: [FIXTURE_CAPABILITY_ID],
-          soft_threshold: 0.8,
-          status: "active",
+        termId: termIdForInstallation(FIXTURE_INSTALLATION_ID),
+        reservationId: crypto.randomUUID(),
+        snapshot: {
+          capabilities: [FIXTURE_CAPABILITY_ID],
+          max_cost_class: "standard",
         },
+        degraded: true,
+        band: "75" as const,
       }),
     );
     try {

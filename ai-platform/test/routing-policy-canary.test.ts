@@ -3,6 +3,9 @@ import { beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import migrationSql from "../migrations/20260731120000_platform_schema.sql?raw";
 import canaryMigrationSql from "../migrations/20260803100000_routing_policy_canary.sql?raw";
 import statusMigrationSql from "../migrations/20260805190000_routing_policy_status.sql?raw";
+import operatorCredentialMigrationSql from "../migrations/20261003120000_operator_credential_and_platform_alert.sql?raw";
+import planVersionPaidGrantCoverageMigrationSql from "../migrations/20261003140000_plan_version_paid_grant_coverage.sql?raw";
+import { applySqlStatements } from "./split-sql-statements";
 import {
   ConfigCache,
   createD1ConfigReader,
@@ -18,6 +21,17 @@ import {
   assertControlAudit,
   countControlAuditsForAction,
 } from "./helpers/control-audit-assert";
+import {
+  canaryRoutingPolicyAction,
+  promoteRoutingPolicyAction,
+  publishRoutingPolicyAction,
+  rollbackRoutingPolicyAction,
+} from "../src/control/routing-policy";
+import {
+  activateCohortAction,
+  promoteCohortAction,
+} from "../src/control/cohort";
+import type { ControlActionResult, ControlBindings } from "../src/control/types";
 
 declare module "cloudflare:test" {
   interface ProvidedEnv {
@@ -83,8 +97,128 @@ type RoutingControlHandlers = {
   ) => Promise<Response>;
 };
 
+function controlResultToResponse(result: ControlActionResult): Response {
+  if (result.ok) {
+    return new Response(JSON.stringify(result.body ?? {}), {
+      status: 200,
+      headers: { "content-type": "application/json" },
+    });
+  }
+  return new Response(JSON.stringify({ error: result.error }), {
+    status: result.status,
+    headers: { "content-type": "application/json" },
+  });
+}
+
+function resolveOperator(
+  request: Request,
+  operatorAuth: OperatorAuth,
+): string | null {
+  return operatorAuth.resolve(request)?.operatorId ?? null;
+}
+
 async function loadRoutingControlHandlers(): Promise<RoutingControlHandlers> {
-  return import(/* @vite-ignore */ "../src/control") as Promise<RoutingControlHandlers>;
+  return {
+    handleRoutingPolicyPublish: async (request, bindings, operatorAuth) => {
+      const actor = resolveOperator(request, operatorAuth);
+      if (!actor) {
+        return Response.json({ error: "unauthorized" }, { status: 401 });
+      }
+      const body = (await request.json()) as { document: Record<string, unknown> };
+      return controlResultToResponse(
+        await publishRoutingPolicyAction(bindings, actor, body.document),
+      );
+    },
+    handleRoutingPolicyCanary: async (request, bindings, operatorAuth) => {
+      const actor = resolveOperator(request, operatorAuth);
+      if (!actor) {
+        return Response.json({ error: "unauthorized" }, { status: 401 });
+      }
+      const url = new URL(request.url);
+      const parts = url.pathname.split("/");
+      let body: { installation_ids?: string[] };
+      try {
+        body = (await request.json()) as { installation_ids?: string[] };
+      } catch {
+        return controlResultToResponse({
+          ok: false,
+          status: 400,
+          error: "invalid_json",
+        });
+      }
+      return controlResultToResponse(
+        await canaryRoutingPolicyAction(
+          bindings,
+          actor,
+          parts[3]!,
+          parts[5]!,
+          body.installation_ids ?? [],
+        ),
+      );
+    },
+    handleRoutingPolicyPromote: async (request, bindings, operatorAuth) => {
+      const actor = resolveOperator(request, operatorAuth);
+      if (!actor) {
+        return Response.json({ error: "unauthorized" }, { status: 401 });
+      }
+      const url = new URL(request.url);
+      const parts = url.pathname.split("/");
+      return controlResultToResponse(
+        await promoteRoutingPolicyAction(
+          bindings,
+          actor,
+          parts[3]!,
+          parts[5]!,
+        ),
+      );
+    },
+    handleRoutingPolicyRollback: async (request, bindings, operatorAuth) => {
+      const actor = resolveOperator(request, operatorAuth);
+      if (!actor) {
+        return Response.json({ error: "unauthorized" }, { status: 401 });
+      }
+      const url = new URL(request.url);
+      const parts = url.pathname.split("/");
+      return controlResultToResponse(
+        await rollbackRoutingPolicyAction(
+          bindings,
+          actor,
+          parts[3]!,
+          parts[5]!,
+        ),
+      );
+    },
+    handleCohortActivate: async (request, bindings, operatorAuth) => {
+      const actor = resolveOperator(request, operatorAuth);
+      if (!actor) {
+        return Response.json({ error: "unauthorized" }, { status: 401 });
+      }
+      const url = new URL(request.url);
+      const parts = url.pathname.split("/");
+      const body = (await request.json()) as { installation_ids?: string[] };
+      return controlResultToResponse(
+        await activateCohortAction(bindings, actor, {
+          capability_id: parts[3]!,
+          capability_version: parts[5]!,
+          installation_ids: body.installation_ids ?? [],
+        }),
+      );
+    },
+    handleCohortPromote: async (request, bindings, operatorAuth) => {
+      const actor = resolveOperator(request, operatorAuth);
+      if (!actor) {
+        return Response.json({ error: "unauthorized" }, { status: 401 });
+      }
+      const url = new URL(request.url);
+      const parts = url.pathname.split("/");
+      return controlResultToResponse(
+        await promoteCohortAction(bindings, actor, {
+          capability_id: parts[3]!,
+          capability_version: parts[5]!,
+        }),
+      );
+    },
+  };
 }
 
 function policyDocument(version: number, providerId: string): Record<string, unknown> {
@@ -213,7 +347,6 @@ async function clearTables(db: D1Database): Promise<void> {
     db.prepare("DELETE FROM control_audit"),
     db.prepare("DELETE FROM routing_policy"),
     db.prepare("DELETE FROM capability_grant"),
-    db.prepare("DELETE FROM entitlement"),
     db.prepare("DELETE FROM tenant_binding"),
     db.prepare("DELETE FROM issuer_key"),
     db.prepare("DELETE FROM installation"),
@@ -454,6 +587,8 @@ beforeAll(async () => {
   await applyPlatformSchema(env.DB, migrationSql);
   await applyPlatformSchema(env.DB, canaryMigrationSql);
   await applyPlatformSchema(env.DB, statusMigrationSql);
+  await applySqlStatements(env.DB, operatorCredentialMigrationSql);
+  await applySqlStatements(env.DB, planVersionPaidGrantCoverageMigrationSql);
 });
 
 beforeEach(async () => {
@@ -985,6 +1120,7 @@ describe("routing_policy_canary_split", () => {
   it("rejects canary, promote, and rollback of unpublished version with 404", async () => {
     const operatorAuth = createFakeOperatorAuth();
     const bindings = { DB: env.DB, R2: env.R2 };
+    await seedInstallation(env.DB, COHORT_INSTALLATION_ID);
     const {
       handleRoutingPolicyCanary,
       handleRoutingPolicyPromote,

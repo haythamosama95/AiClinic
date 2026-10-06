@@ -18,6 +18,8 @@ export {
   TOKEN_CONTRACT_VER,
   ULID_PATTERN,
   WRONG_OPERATOR_BEARER,
+  OPERATOR_BEARER,
+  OPERATOR_ID,
   emptyExecutionContext,
   env,
   flushBackgroundWork,
@@ -92,6 +94,15 @@ export {
 } from "./control";
 
 export {
+  coverClinic,
+  coverClinicSigner,
+  vendorInspectCoverage,
+  vendorResume,
+  vendorSuspend,
+  VENDOR_OPERATOR_EMAIL,
+} from "./cover";
+
+export {
   clinicFetch,
   getCapabilities,
   getHealth,
@@ -133,6 +144,11 @@ export {
   type RateLimiterOutcome,
 } from "./faults";
 
+export {
+  ensureE2eCoverageMirror,
+  ensureE2eQuotaDoCoverage,
+  setMirrorCapabilities,
+} from "./e2e-coverage-seed";
 export { newScenario, provisionHappyPath, type Scenario } from "./scenario";
 
 export {

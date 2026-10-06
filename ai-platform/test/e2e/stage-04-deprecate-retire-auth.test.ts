@@ -226,25 +226,25 @@ function assertDeprecatedOverlay(
   return row;
 }
 
-function assertDeprecateAudit(row: AuditRow | undefined, afterPointer: string): void {
+function assertDeprecateAudit(row: AuditRow | undefined): void {
   expect(row).toBeDefined();
   expectCanonicalUuid(row?.audit_id);
   expect(row?.operator_id).toBe(OPERATOR_ID);
   expect(row?.action).toBe("deprecate");
   expect(row?.target).toBe(DEPRECATE_TARGET);
   expect(row?.before_pointer).toBeNull();
-  expect(row?.after_pointer).toBe(afterPointer);
+  expect(row?.after_pointer).toBeNull();
   assertIsoApproxNow(row?.recorded_at);
 }
 
-function assertRetireAudit(row: AuditRow | undefined, afterPointer: string): void {
+function assertRetireAudit(row: AuditRow | undefined): void {
   expect(row).toBeDefined();
   expectCanonicalUuid(row?.audit_id);
   expect(row?.operator_id).toBe(OPERATOR_ID);
   expect(row?.action).toBe("retire");
   expect(row?.target).toBe(DEPRECATE_TARGET);
   expect(row?.before_pointer).toBeNull();
-  expect(row?.after_pointer).toBe(afterPointer);
+  expect(row?.after_pointer).toBeNull();
   assertIsoApproxNow(row?.recorded_at);
 }
 
@@ -277,7 +277,7 @@ async function assertRetiredOverlayWrites(
   await assertNoInstallationOrPlanGrants();
   const audits = await getAudits("retire", DEPRECATE_TARGET);
   expect(audits).toHaveLength(1);
-  assertRetireAudit(audits[0] as AuditRow, String(deprecatedBefore.successor_id));
+  assertRetireAudit(audits[0] as AuditRow);
 }
 
 describe("Stage 04 — deprecate, retire, and wrong-bearer auth (S04-086…S04-104)", () => {
@@ -292,7 +292,7 @@ describe("Stage 04 — deprecate, retire, and wrong-bearer auth (S04-086…S04-1
 
     const audits = await getAudits("deprecate", DEPRECATE_TARGET);
     expect(audits).toHaveLength(1);
-    assertDeprecateAudit(audits[0] as AuditRow, BARE_SUCCESSOR);
+    assertDeprecateAudit(audits[0] as AuditRow);
   });
 
   it("S04-087 — Deprecate successor pin clinic.visit_summary@2.0.0", async () => {
@@ -307,7 +307,7 @@ describe("Stage 04 — deprecate, retire, and wrong-bearer auth (S04-086…S04-1
 
       const audits = await getAudits("deprecate", DEPRECATE_TARGET);
       expect(audits).toHaveLength(1);
-      assertDeprecateAudit(audits[0] as AuditRow, PINNED_SUCCESSOR);
+      assertDeprecateAudit(audits[0] as AuditRow);
     });
   });
 
@@ -558,6 +558,11 @@ describe("Stage 04 — deprecate, retire, and wrong-bearer auth (S04-086…S04-1
       expect(grantsBefore).toHaveLength(1);
       expect(grantsBefore[0]?.capability_version).toBe("1.0.0");
       const allBefore = await allGrants();
+      const activateAuditsBefore = await count(
+        "control_audit",
+        "action = ?",
+        ["cohort_activate"],
+      );
 
       const result = await controlFetch(ACTIVATE_V2_PATH, {
         auth: { bearer: WRONG_BEARER },
@@ -576,7 +581,7 @@ describe("Stage 04 — deprecate, retire, and wrong-bearer auth (S04-086…S04-1
       expect(grantsAfter).toEqual(grantsBefore);
       expect(await allGrants()).toEqual(allBefore);
       expect(await count("control_audit", "action = ?", ["cohort_activate"])).toBe(
-        0,
+        activateAuditsBefore,
       );
     });
   });
@@ -586,6 +591,16 @@ describe("Stage 04 — deprecate, retire, and wrong-bearer auth (S04-086…S04-1
       const enrolled = await enrollAndEntitleI0();
       const scope = `installation:${enrolled.installationId}`;
       const grantsBefore = await allGrants();
+      const planGrantCountBefore = await count(
+        "capability_grant",
+        "scope LIKE ?",
+        ["plan:%"],
+      );
+      const promoteAuditsBefore = await count(
+        "control_audit",
+        "action = ?",
+        ["cohort_promote"],
+      );
       const scopedBefore = await getGrants(scope);
       expect(scopedBefore).toHaveLength(1);
       expect(scopedBefore[0]?.capability_version).toBe("1.0.0");
@@ -601,10 +616,10 @@ describe("Stage 04 — deprecate, retire, and wrong-bearer auth (S04-086…S04-1
       expect(scopedAfter[0]?.capability_version).toBe("1.0.0");
       expect(await allGrants()).toEqual(grantsBefore);
       expect(await count("capability_grant", "scope LIKE ?", ["plan:%"])).toBe(
-        0,
+        planGrantCountBefore,
       );
       expect(await count("control_audit", "action = ?", ["cohort_promote"])).toBe(
-        0,
+        promoteAuditsBefore,
       );
     });
   });

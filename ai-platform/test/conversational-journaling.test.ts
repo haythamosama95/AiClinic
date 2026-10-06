@@ -1,7 +1,12 @@
-import { env } from "cloudflare:test";
+import { env, runInDurableObject } from "cloudflare:test";
 import { beforeAll, beforeEach, describe, expect, it } from "vitest";
 import migrationSql from "../migrations/20260731120000_platform_schema.sql?raw";
 import conversationIndexSql from "../migrations/20260805180000_h3_conversation_index.sql?raw";
+import issuerKeyTenantBindingMigrationSql from "../migrations/20261003130000_issuer_key_tenant_binding.sql?raw";
+import planVersionPaidGrantCoverageMigrationSql from "../migrations/20261003140000_plan_version_paid_grant_coverage.sql?raw";
+import usageTermMigrationSql from "../migrations/20261006120000_usage_term.sql?raw";
+import { applySqlStatements } from "./split-sql-statements";
+import { CONCURRENCY_LIMIT, ensureCoverageDoTables } from "../src/quota-do";
 import wranglerToml from "../wrangler.toml?raw";
 import journalSource from "../src/journal/index.ts?raw";
 import pipelineSource from "../src/pipeline/index.ts?raw";
@@ -276,16 +281,7 @@ function makePlatformD1Reader(db: D1Database): D1Reader {
       }
 
       if (kind === "entitlements") {
-        const row = await db
-          .prepare(
-            `SELECT entitlement_id, installation_id, plan, period_start, period_end,
-                    request_quota, token_budget, cost_budget, allowed_capabilities,
-                    soft_threshold, status
-             FROM entitlement WHERE installation_id = ?`,
-          )
-          .bind(key)
-          .first<D1Row>();
-        return row ?? "miss";
+        return "miss";
       }
 
       if (kind === "grants") {
@@ -334,7 +330,7 @@ async function clearTables(): Promise<void> {
     env.DB.prepare("DELETE FROM ai_attempt"),
     env.DB.prepare("DELETE FROM ai_request"),
     env.DB.prepare("DELETE FROM capability_grant"),
-    env.DB.prepare("DELETE FROM entitlement"),
+    env.DB.prepare("DELETE FROM coverage_mirror"),
     env.DB.prepare("DELETE FROM installation"),
   ]);
 }
@@ -356,28 +352,88 @@ async function seedInstallation(installationId: string): Promise<void> {
     .run();
 }
 
-async function seedEntitlement(installationId: string): Promise<void> {
+function termIdForInstallation(installationId: string): string {
+  return `term-${installationId.slice(0, 8)}`;
+}
+
+function sqlLiteral(value: string): string {
+  return `'${value.replace(/'/g, "''")}'`;
+}
+
+async function pinHarnessTestClock(): Promise<void> {
   await env.DB.prepare(
-    `INSERT INTO entitlement (
-      entitlement_id, installation_id, plan, period_start, period_end,
-      request_quota, token_budget, cost_budget, allowed_capabilities,
-      soft_threshold, status
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    `CREATE TABLE IF NOT EXISTS harness_test_clock (
+       id TEXT PRIMARY KEY,
+       now_iso TEXT NOT NULL
+     )`,
+  ).run();
+  await env.DB.prepare(
+    `INSERT OR REPLACE INTO harness_test_clock (id, now_iso) VALUES ('default', ?)`,
+  )
+    .bind(FIXTURE_NOW)
+    .run();
+}
+
+async function seedQuotaDoForInstallation(installationId: string): Promise<void> {
+  const termId = termIdForInstallation(installationId);
+  const planSnapshot = JSON.stringify({
+    capabilities: [FIXTURE_CAPABILITY_ID],
+    max_cost_class: "standard",
+    concurrency_limit: CONCURRENCY_LIMIT,
+  });
+
+  await runInDurableObject(
+    env.DO.get(env.DO.idFromName(installationId)),
+    async (_instance, state) => {
+      const storage = state.storage as DurableObjectStorage & {
+        sql?: { exec: (query: string) => Iterable<Record<string, unknown>> };
+      };
+      if (!storage.sql) {
+        throw new Error("quota DO sql storage unavailable for H3 seed");
+      }
+      await ensureCoverageDoTables(storage, async (fn) => fn());
+      storage.sql.exec(
+        `INSERT INTO hot (
+           suspended, transferred_out_to, awaiting_transfer, transfer_pending,
+           active_term_id, used, reserved, grace_base_used, reservations, replay,
+           idempotency, band_emitted, binding_epoch, clinic_seq, next_alarm_at
+         ) VALUES (
+           0, NULL, 0, 0, ${sqlLiteral(termId)}, 0, 0, 0, '[]', '{}', '{}', '{}', 0, 0, NULL
+         )`,
+      );
+      storage.sql.exec(
+        `INSERT INTO term (
+           term_id, grant_id, origin_grant_id, position, state, end_reason,
+           plan_snapshot, allowance, used_final, duration_unit, duration_count,
+           grace_days, grace_cap, calendar_start, starts_at, ends_at, grace_ends_at, ended_at
+         ) VALUES (
+           ${sqlLiteral(termId)}, 'h3-seed', 'h3-seed', 0, 'active', NULL,
+           ${sqlLiteral(planSnapshot)}, 10000,
+           NULL, 'month', 1, 0, 'proportional',
+           ${sqlLiteral(FIXTURE_NOW)}, ${sqlLiteral(FIXTURE_NOW)},
+           '2026-12-31T23:59:59.000Z', NULL, NULL
+         )`,
+      );
+    },
+  );
+}
+
+async function seedEntitlement(installationId: string): Promise<void> {
+  const termRef = termIdForInstallation(installationId);
+  await env.DB.prepare(
+    `INSERT INTO coverage_mirror (
+       installation_id, org_id, binding_epoch, clinic_seq, state, suspended,
+       hard_stop_at, term_snapshot
+     ) VALUES (?, ?, 1, 1, 'active', 0, ?, ?)`,
   )
     .bind(
-      `ent-${installationId}`,
       installationId,
-      "professional",
-      "2026-08-01T00:00:00.000Z",
-      "2026-09-01T00:00:00.000Z",
-      10_000,
-      10_000_000,
-      1_000,
-      JSON.stringify([FIXTURE_CAPABILITY_ID]),
-      0.8,
-      "active",
+      FIXTURE_ORG_ID,
+      "2026-12-31T23:59:59.000Z",
+      JSON.stringify({ ref: termRef, capabilities: [FIXTURE_CAPABILITY_ID] }),
     )
     .run();
+  await seedQuotaDoForInstallation(installationId);
 }
 
 async function seedGrant(installationId: string): Promise<void> {
@@ -454,9 +510,10 @@ async function prepareInstallation(
 ): Promise<{ cache: ConfigCache; reader: D1Reader }> {
   await seedInstallation(installationId);
   await seedEntitlement(installationId);
+  await seedGrant(installationId);
   const cache = new ConfigCache();
   const reader = makePlatformD1Reader(env.DB);
-  await loadConfig(cache, reader, "entitlements", installationId);
+  await loadConfig(cache, reader, "grants", `${installationId}/${FIXTURE_CAPABILITY_ID}`);
   return { cache, reader };
 }
 
@@ -508,7 +565,7 @@ function buildPostResponseInput(
   return {
     requestId,
     installationId,
-    period: FIXTURE_PERIOD,
+    termId: termIdForInstallation(installationId),
     quotaWeight: 1,
     totalTokens,
     totalCost: 0.001,
@@ -552,9 +609,17 @@ async function runConversationalLeg(
   const requestReference = uniqueRequestReference();
 
   const admissionResult = await admission.runAdmission(
-    { principal, idempotencyKey, requestReference, cache, reader },
+    {
+      principal,
+      idempotencyKey,
+      requestReference,
+      capabilityId: FIXTURE_CAPABILITY_ID,
+      quotaWeight: 1,
+      cache,
+      reader,
+    },
     { DB: spies.db, DO: spies.do },
-    { now: FIXTURE_NOW_MS },
+    { now: FIXTURE_NOW_MS, nowMs: FIXTURE_NOW_MS },
   );
   assertAdmitted(admissionResult);
 
@@ -650,6 +715,9 @@ async function listSchemaTables(): Promise<string[]> {
 beforeAll(async () => {
   await applyPlatformSchema(env.DB, migrationSql);
   await applyPlatformSchema(env.DB, conversationIndexSql);
+  await applySqlStatements(env.DB, issuerKeyTenantBindingMigrationSql);
+  await applySqlStatements(env.DB, planVersionPaidGrantCoverageMigrationSql);
+  await applySqlStatements(env.DB, usageTermMigrationSql);
 });
 
 beforeEach(async () => {
@@ -657,6 +725,7 @@ beforeEach(async () => {
   idempotencyKeyCounter = 0;
   requestReferenceCounter = 0;
   await clearTables();
+  await pinHarnessTestClock();
 });
 
 describe("conversation_id_and_turn_ordinal_written_per_leg", () => {
@@ -1078,13 +1147,6 @@ describe("run_guard_writes_conversational_grouping_from_body", () => {
   it("writes conversation_id and turn_ordinal when runGuard receives a conversational body", async () => {
     const installationId = env.DO.newUniqueId().toString();
     const { cache, reader } = await prepareInstallation(installationId);
-    await seedGrant(installationId);
-    await loadConfig(
-      cache,
-      reader,
-      "grants",
-      `${installationId}/${FIXTURE_CAPABILITY_ID}`,
-    );
 
     setCapabilityRegistry(createCapabilityRegistry([conversationalManifest()]), {
       replace: true,
@@ -1132,6 +1194,7 @@ describe("run_guard_writes_conversational_grouping_from_body", () => {
         cache,
         reader,
         now: FIXTURE_NOW_MS,
+        nowMs: FIXTURE_NOW_MS,
         composeRequest: () => stubComposeRequest(),
       },
       {

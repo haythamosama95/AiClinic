@@ -1,5 +1,10 @@
+import { env } from "cloudflare:test";
 import { beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import migrationSql from "../migrations/20260731120000_platform_schema.sql?raw";
+import issuerKeyTenantBindingMigrationSql from "../migrations/20261003130000_issuer_key_tenant_binding.sql?raw";
+import planVersionPaidGrantCoverageMigrationSql from "../migrations/20261003140000_plan_version_paid_grant_coverage.sql?raw";
+import killSwitchMigrationSql from "../migrations/20260807120000_kill_switch.sql?raw";
+import { applySqlStatements } from "./split-sql-statements";
 import {
   ConfigCache,
   ConfigCacheMissError,
@@ -333,7 +338,7 @@ async function clearEntitlementTables(db: D1Database): Promise<void> {
   await db.batch([
     db.prepare("DELETE FROM control_audit"),
     db.prepare("DELETE FROM capability_grant"),
-    db.prepare("DELETE FROM entitlement"),
+    db.prepare("DELETE FROM coverage_mirror"),
     db.prepare("DELETE FROM tenant_binding"),
     db.prepare("DELETE FROM issuer_key"),
     db.prepare("DELETE FROM installation"),
@@ -372,37 +377,38 @@ async function seedEntitlement(
   } = {},
 ): Promise<void> {
   const {
-    plan = "professional",
     allowedCapabilities = [FIXTURE_GRANTED_CAPABILITY_ID],
     installationId = FIXTURE_INSTALLATION_ID,
-    status = "active",
   } = options;
 
-  const allowedValue =
-    typeof allowedCapabilities === "string"
-      ? allowedCapabilities
-      : JSON.stringify(allowedCapabilities);
+  let capabilities: string[] = [];
+  if (typeof allowedCapabilities === "string") {
+    try {
+      const parsed = JSON.parse(allowedCapabilities) as unknown;
+      capabilities = Array.isArray(parsed)
+        ? parsed.filter((entry): entry is string => typeof entry === "string")
+        : [];
+    } catch {
+      capabilities = [];
+    }
+  } else {
+    capabilities = allowedCapabilities;
+  }
+
+  void options.plan;
+  void options.status;
 
   await db
     .prepare(
-      `INSERT INTO entitlement (
-        entitlement_id, installation_id, plan, period_start, period_end,
-        request_quota, token_budget, cost_budget, allowed_capabilities,
-        soft_threshold, status
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      `INSERT INTO coverage_mirror (
+         installation_id, org_id, binding_epoch, clinic_seq, state, suspended,
+         hard_stop_at, term_snapshot
+       ) VALUES (?, ?, 1, 1, 'active', 0, NULL, ?)`,
     )
     .bind(
-      `ent-${installationId}`,
       installationId,
-      plan,
-      FIXTURE_NOW,
-      FIXTURE_NOW,
-      1_000,
-      1_000_000,
-      100,
-      allowedValue,
-      0.8,
-      status,
+      FIXTURE_ORG_ID,
+      JSON.stringify({ capabilities }),
     )
     .run();
 }
@@ -441,17 +447,10 @@ async function seedKillSwitch(
 ): Promise<void> {
   await db
     .prepare(
-      `INSERT INTO control_audit (
-        audit_id, operator_id, action, target, before_pointer, after_pointer, recorded_at
-      ) VALUES (?, ?, ?, ?, NULL, NULL, ?)`,
+      `INSERT INTO kill_switch (scope, target, active, changed_at, changed_by)
+       VALUES (?, ?, 1, ?, ?)`,
     )
-    .bind(
-      crypto.randomUUID(),
-      "operator-test",
-      `kill_switch_${scope}`,
-      target,
-      FIXTURE_NOW,
-    )
+    .bind(scope, target, FIXTURE_NOW, "operator-test")
     .run();
 }
 
@@ -477,16 +476,7 @@ function makePlatformD1Reader(db: D1Database): D1Reader {
           return row ?? "miss";
         }
         case "entitlements": {
-          const row = await db
-            .prepare(
-              `SELECT entitlement_id, installation_id, plan, period_start, period_end,
-                      request_quota, token_budget, cost_budget, allowed_capabilities,
-                      soft_threshold, status
-               FROM entitlement WHERE installation_id = ?`,
-            )
-            .bind(key)
-            .first<D1Row>();
-          return row ?? "miss";
+          return "miss";
         }
         case "grants": {
           const [installationId, capabilityId] = key.split("/", 2);
@@ -507,21 +497,22 @@ function makePlatformD1Reader(db: D1Database): D1Reader {
         case "kill_switches": {
           const [scope, ...rest] = key.split(":");
           const target = rest.length > 0 ? rest.join(":") : scope;
-          const action =
-            scope === "global" ? "kill_switch_global" : `kill_switch_${scope}`;
-          const auditTarget = scope === "global" ? "global" : target;
           const row = await db
             .prepare(
-              `SELECT action, target FROM control_audit
-               WHERE action = ? AND target = ?
-               ORDER BY recorded_at DESC LIMIT 1`,
+              `SELECT scope, target, active FROM kill_switch
+               WHERE scope = ? AND target = ?
+               ORDER BY changed_at DESC LIMIT 1`,
             )
-            .bind(action, auditTarget)
+            .bind(scope, scope === "global" ? "global" : target)
             .first<D1Row>();
           if (!row) {
             return "miss";
           }
-          return { active: true, scope, target: auditTarget, action: row.action };
+          return {
+            active: Number(row.active) !== 0,
+            scope: row.scope,
+            target: row.target,
+          };
         }
         default:
           return "miss";
@@ -617,6 +608,59 @@ async function warmDiscoveryCache(
   }
 }
 
+async function prepareResolveReader(
+  installationId: string,
+  capabilityId: string,
+  opts: ResolveFixtureOpts = {},
+): Promise<ReaderSpy> {
+  await seedMirrorForResolve(installationId, capabilityId, opts);
+  return makeReader(makeResolveFixtures(installationId, capabilityId, opts));
+}
+
+async function seedMirrorForResolve(
+  installationId: string,
+  capabilityId: string,
+  opts: ResolveFixtureOpts = {},
+): Promise<void> {
+  const allowedCapabilities = opts.allowedCapabilities ?? [capabilityId];
+  let capabilities: string[] = [];
+  if (typeof allowedCapabilities === "string") {
+    try {
+      const parsed = JSON.parse(allowedCapabilities) as unknown;
+      capabilities = Array.isArray(parsed)
+        ? parsed.filter((entry): entry is string => typeof entry === "string")
+        : [];
+    } catch {
+      capabilities = [];
+    }
+  } else {
+    capabilities = allowedCapabilities;
+  }
+
+  await env.DB.prepare("DELETE FROM coverage_mirror WHERE installation_id = ?")
+    .bind(installationId)
+    .run();
+  await env.DB.prepare(
+    `INSERT INTO coverage_mirror (
+       installation_id, org_id, binding_epoch, clinic_seq, state, suspended,
+       hard_stop_at, term_snapshot
+     ) VALUES (?, ?, 1, 1, 'active', 0, NULL, ?)`,
+  )
+    .bind(
+      installationId,
+      FIXTURE_ORG_ID,
+      JSON.stringify({ capabilities }),
+    )
+    .run();
+}
+
+beforeAll(async () => {
+  await applySqlStatements(env.DB, migrationSql);
+  await applySqlStatements(env.DB, killSwitchMigrationSql);
+  await applySqlStatements(env.DB, issuerKeyTenantBindingMigrationSql);
+  await applySqlStatements(env.DB, planVersionPaidGrantCoverageMigrationSql);
+});
+
 function assertManifestImmutable(
   manifest: Pick<Manifest, "Identity" | "Context requirements">,
 ): void {
@@ -652,9 +696,7 @@ describe("T-C1-01 resolver_exact_pin_resolves", () => {
 
     const principal = buildPrincipal({ installationId: FIXTURE_INSTALLATION_ID });
     const cache = new ConfigCache();
-    const reader = makeReader(
-      makeResolveFixtures(FIXTURE_INSTALLATION_ID, FIXTURE_CAPABILITY_ID),
-    );
+    const reader = await prepareResolveReader(FIXTURE_INSTALLATION_ID, FIXTURE_CAPABILITY_ID);
 
     const exact = await resolve(
       principal,
@@ -662,6 +704,8 @@ describe("T-C1-01 resolver_exact_pin_resolves", () => {
       FIXTURE_CAPABILITY_VERSION,
       cache,
       reader,
+      undefined,
+      env.DB,
     );
     expect(exact).toEqual({
       ok: true,
@@ -677,6 +721,8 @@ describe("T-C1-01 resolver_exact_pin_resolves", () => {
       "1.2.0",
       cache,
       reader,
+      undefined,
+      env.DB,
     );
     expect(mismatched).toEqual({ ok: false, code: "capability_unknown" });
   });
@@ -688,9 +734,7 @@ describe("T-C1-02 resolver_unknown_capability", () => {
 
     const principal = buildPrincipal({ installationId: FIXTURE_INSTALLATION_ID });
     const cache = new ConfigCache();
-    const reader = makeReader(
-      makeResolveFixtures(FIXTURE_INSTALLATION_ID, "clinic.unknown"),
-    );
+    const reader = await prepareResolveReader(FIXTURE_INSTALLATION_ID, "clinic.unknown");
 
     const result = await resolve(
       principal,
@@ -698,6 +742,8 @@ describe("T-C1-02 resolver_unknown_capability", () => {
       FIXTURE_CAPABILITY_VERSION,
       cache,
       reader,
+      undefined,
+      env.DB,
     );
 
     expect(result).toEqual({ ok: false, code: "capability_unknown" });
@@ -712,9 +758,7 @@ describe("T-C1-03 resolver_retired_rejected", () => {
 
     const principal = buildPrincipal({ installationId: FIXTURE_INSTALLATION_ID });
     const cache = new ConfigCache();
-    const reader = makeReader(
-      makeResolveFixtures(FIXTURE_INSTALLATION_ID, FIXTURE_CAPABILITY_ID),
-    );
+    const reader = await prepareResolveReader(FIXTURE_INSTALLATION_ID, FIXTURE_CAPABILITY_ID);
 
     const result = await resolve(
       principal,
@@ -722,6 +766,8 @@ describe("T-C1-03 resolver_retired_rejected", () => {
       FIXTURE_CAPABILITY_VERSION,
       cache,
       reader,
+      undefined,
+      env.DB,
     );
 
     expect(result).toEqual({ ok: false, code: "capability_retired" });
@@ -732,9 +778,7 @@ describe("T-C1-04 resolver_killed_capability_disabled", () => {
   let db: D1Database;
 
   beforeAll(async () => {
-    const workers = await import("cloudflare:test");
-    db = workers.env.DB;
-    await applyPlatformSchema(db, migrationSql);
+    db = env.DB;
   });
 
   beforeEach(async () => {
@@ -760,6 +804,8 @@ describe("T-C1-04 resolver_killed_capability_disabled", () => {
       FIXTURE_CAPABILITY_VERSION,
       cache,
       reader,
+      undefined,
+      env.DB,
     );
 
     expect(result).toEqual({ ok: false, code: "capability_disabled" });
@@ -774,9 +820,7 @@ describe("T-C1-05 resolver_deprecated_serves", () => {
 
     const principal = buildPrincipal({ installationId: FIXTURE_INSTALLATION_ID });
     const cache = new ConfigCache();
-    const reader = makeReader(
-      makeResolveFixtures(FIXTURE_INSTALLATION_ID, FIXTURE_CAPABILITY_ID),
-    );
+    const reader = await prepareResolveReader(FIXTURE_INSTALLATION_ID, FIXTURE_CAPABILITY_ID);
 
     const result = await resolve(
       principal,
@@ -784,6 +828,8 @@ describe("T-C1-05 resolver_deprecated_serves", () => {
       FIXTURE_CAPABILITY_VERSION,
       cache,
       reader,
+      undefined,
+      env.DB,
     );
 
     expect(result.ok).toBe(true);
@@ -801,9 +847,7 @@ describe("T-C1-06 resolver_manifest_immutable", () => {
 
     const principal = buildPrincipal({ installationId: FIXTURE_INSTALLATION_ID });
     const cache = new ConfigCache();
-    const reader = makeReader(
-      makeResolveFixtures(FIXTURE_INSTALLATION_ID, FIXTURE_CAPABILITY_ID),
-    );
+    const reader = await prepareResolveReader(FIXTURE_INSTALLATION_ID, FIXTURE_CAPABILITY_ID);
 
     const result = await resolve(
       principal,
@@ -811,6 +855,8 @@ describe("T-C1-06 resolver_manifest_immutable", () => {
       FIXTURE_CAPABILITY_VERSION,
       cache,
       reader,
+      undefined,
+      env.DB,
     );
     expect(result.ok).toBe(true);
     if (!result.ok) {
@@ -825,9 +871,7 @@ describe("T-C1-07 discovery_only_granted_active", () => {
   let db: D1Database;
 
   beforeAll(async () => {
-    const workers = await import("cloudflare:test");
-    db = workers.env.DB;
-    await applyPlatformSchema(db, migrationSql);
+    db = env.DB;
   });
 
   beforeEach(async () => {
@@ -869,7 +913,7 @@ describe("T-C1-07 discovery_only_granted_active", () => {
       FIXTURE_UNGRANTED_CAPABILITY_ID,
     ]);
 
-    const result = await discover(principal, cache, reader);
+    const result = await discover(principal, cache, reader, undefined, env.DB);
 
     expect(result.manifests).toHaveLength(1);
     expect(result.manifests[0]?.Identity.capabilityId).toBe(FIXTURE_GRANTED_CAPABILITY_ID);
@@ -943,9 +987,7 @@ describe("T-C1-10 discovery_entitlement_gated_absent", () => {
   let db: D1Database;
 
   beforeAll(async () => {
-    const workers = await import("cloudflare:test");
-    db = workers.env.DB;
-    await applyPlatformSchema(db, migrationSql);
+    db = env.DB;
   });
 
   beforeEach(async () => {
@@ -970,7 +1012,7 @@ describe("T-C1-10 discovery_entitlement_gated_absent", () => {
       FIXTURE_GATED_CAPABILITY_ID,
     ]);
 
-    const result = await discover(principal, cache, reader);
+    const result = await discover(principal, cache, reader, undefined, env.DB);
 
     expect(result.manifests).toHaveLength(0);
     expect(
@@ -993,13 +1035,13 @@ describe("T-C1-10 discovery_entitlement_gated_absent", () => {
     await seedInstallation(db);
     await seedEntitlement(db, {
       plan: "starter",
-      allowedCapabilities: [FIXTURE_GATED_CAPABILITY_ID],
+      allowedCapabilities: [],
     });
     await seedCapabilityGrant(db, FIXTURE_GATED_CAPABILITY_ID);
 
     const principal = buildPrincipal({
       installationId: FIXTURE_INSTALLATION_ID,
-      allowedCapabilities: [FIXTURE_GATED_CAPABILITY_ID],
+      allowedCapabilities: [],
     });
     const cache = new ConfigCache();
     const reader = makePlatformD1Reader(db);
@@ -1007,7 +1049,7 @@ describe("T-C1-10 discovery_entitlement_gated_absent", () => {
       FIXTURE_GATED_CAPABILITY_ID,
     ]);
 
-    const result = await discover(principal, cache, reader);
+    const result = await discover(principal, cache, reader, undefined, env.DB);
 
     expect(result.manifests).toHaveLength(0);
     expect(
@@ -1027,12 +1069,9 @@ describe("resolver_grant_version_mismatch_forbidden", () => {
 
     const principal = buildPrincipal({ installationId: FIXTURE_INSTALLATION_ID });
     const cache = new ConfigCache();
-    const reader = makeReader(
-      makeResolveFixtures(FIXTURE_INSTALLATION_ID, FIXTURE_CAPABILITY_ID, {
-        capabilityVersion: "2.0.0",
-        grantVersion: "1.0.0",
-      }),
-    );
+    const reader = await prepareResolveReader(FIXTURE_INSTALLATION_ID, FIXTURE_CAPABILITY_ID, {
+      allowedCapabilities: [],
+    });
 
     const result = await resolve(
       principal,
@@ -1040,6 +1079,8 @@ describe("resolver_grant_version_mismatch_forbidden", () => {
       "2.0.0",
       cache,
       reader,
+      undefined,
+      env.DB,
     );
 
     expect(result).toEqual({ ok: false, code: "forbidden_capability" });
@@ -1052,11 +1093,9 @@ describe("resolver_not_allowed_forbidden", () => {
 
     const principal = buildPrincipal({ installationId: FIXTURE_INSTALLATION_ID });
     const cache = new ConfigCache();
-    const reader = makeReader(
-      makeResolveFixtures(FIXTURE_INSTALLATION_ID, FIXTURE_CAPABILITY_ID, {
+    const reader = await prepareResolveReader(FIXTURE_INSTALLATION_ID, FIXTURE_CAPABILITY_ID, {
         allowedCapabilities: ["clinic.other"],
-      }),
-    );
+      });
 
     const result = await resolve(
       principal,
@@ -1064,6 +1103,8 @@ describe("resolver_not_allowed_forbidden", () => {
       FIXTURE_CAPABILITY_VERSION,
       cache,
       reader,
+      undefined,
+      env.DB,
     );
 
     expect(result).toEqual({ ok: false, code: "forbidden_capability" });
@@ -1083,11 +1124,9 @@ describe("resolver_plan_tier_forbidden", () => {
 
     const principal = buildPrincipal({ installationId: FIXTURE_INSTALLATION_ID });
     const cache = new ConfigCache();
-    const reader = makeReader(
-      makeResolveFixtures(FIXTURE_INSTALLATION_ID, FIXTURE_CAPABILITY_ID, {
-        plan: "starter",
-      }),
-    );
+    const reader = await prepareResolveReader(FIXTURE_INSTALLATION_ID, FIXTURE_CAPABILITY_ID, {
+      allowedCapabilities: [],
+    });
 
     const result = await resolve(
       principal,
@@ -1095,6 +1134,8 @@ describe("resolver_plan_tier_forbidden", () => {
       FIXTURE_CAPABILITY_VERSION,
       cache,
       reader,
+      undefined,
+      env.DB,
     );
 
     expect(result).toEqual({ ok: false, code: "forbidden_capability" });
@@ -1104,17 +1145,17 @@ describe("resolver_plan_tier_forbidden", () => {
 describe("resolver_required_capability_scope", () => {
   const requiredScope = `ai.${FIXTURE_CAPABILITY_ID}`;
 
-  function resolveWithPrincipal(principal: Principal) {
+  async function resolveWithPrincipal(principal: Principal) {
     const cache = new ConfigCache();
-    const reader = makeReader(
-      makeResolveFixtures(FIXTURE_INSTALLATION_ID, FIXTURE_CAPABILITY_ID),
-    );
+    const reader = await prepareResolveReader(FIXTURE_INSTALLATION_ID, FIXTURE_CAPABILITY_ID);
     return resolve(
       principal,
       FIXTURE_CAPABILITY_ID,
       FIXTURE_CAPABILITY_VERSION,
       cache,
       reader,
+      undefined,
+      env.DB,
     );
   }
 
@@ -1194,17 +1235,17 @@ describe("resolver_required_capability_scope", () => {
 });
 
 describe("resolver_allowed_staff_roles", () => {
-  function resolveWithPrincipal(principal: Principal) {
+  async function resolveWithPrincipal(principal: Principal) {
     const cache = new ConfigCache();
-    const reader = makeReader(
-      makeResolveFixtures(FIXTURE_INSTALLATION_ID, FIXTURE_CAPABILITY_ID),
-    );
+    const reader = await prepareResolveReader(FIXTURE_INSTALLATION_ID, FIXTURE_CAPABILITY_ID);
     return resolve(
       principal,
       FIXTURE_CAPABILITY_ID,
       FIXTURE_CAPABILITY_VERSION,
       cache,
       reader,
+      undefined,
+      env.DB,
     );
   }
 
@@ -1280,17 +1321,17 @@ describe("resolver_allowed_staff_roles", () => {
 });
 
 describe("resolver_manifest_kill_switch_flag", () => {
-  function resolveWithEntitledPrincipal() {
+  async function resolveWithEntitledPrincipal() {
     const cache = new ConfigCache();
-    const reader = makeReader(
-      makeResolveFixtures(FIXTURE_INSTALLATION_ID, FIXTURE_CAPABILITY_ID),
-    );
+    const reader = await prepareResolveReader(FIXTURE_INSTALLATION_ID, FIXTURE_CAPABILITY_ID);
     return resolve(
       buildPrincipal({ installationId: FIXTURE_INSTALLATION_ID }),
       FIXTURE_CAPABILITY_ID,
       FIXTURE_CAPABILITY_VERSION,
       cache,
       reader,
+      undefined,
+      env.DB,
     );
   }
 
@@ -1340,7 +1381,7 @@ describe("resolver_manifest_kill_switch_flag", () => {
 describe("resolver_kill_switch_global_active", () => {
   it("returns capability_disabled when the global kill switch is active", async () => {
     buildRegistry(validManifest(FIXTURE_CAPABILITY_ID, FIXTURE_CAPABILITY_VERSION));
-
+    await seedMirrorForResolve(FIXTURE_INSTALLATION_ID, FIXTURE_CAPABILITY_ID);
     const rows = makeResolveFixtures(FIXTURE_INSTALLATION_ID, FIXTURE_CAPABILITY_ID);
     rows["kill_switches:global"] = {
       active: true,
@@ -1358,6 +1399,8 @@ describe("resolver_kill_switch_global_active", () => {
       FIXTURE_CAPABILITY_VERSION,
       cache,
       reader,
+      undefined,
+      env.DB,
     );
 
     expect(result).toEqual({ ok: false, code: "capability_disabled" });
@@ -1367,7 +1410,7 @@ describe("resolver_kill_switch_global_active", () => {
 describe("resolver_kill_switch_installation_active", () => {
   it("returns capability_disabled when the installation kill switch is active", async () => {
     buildRegistry(validManifest(FIXTURE_CAPABILITY_ID, FIXTURE_CAPABILITY_VERSION));
-
+    await seedMirrorForResolve(FIXTURE_INSTALLATION_ID, FIXTURE_CAPABILITY_ID);
     const rows = makeResolveFixtures(FIXTURE_INSTALLATION_ID, FIXTURE_CAPABILITY_ID);
     rows[`kill_switches:installation:${FIXTURE_INSTALLATION_ID}`] = {
       active: true,
@@ -1385,6 +1428,8 @@ describe("resolver_kill_switch_installation_active", () => {
       FIXTURE_CAPABILITY_VERSION,
       cache,
       reader,
+      undefined,
+      env.DB,
     );
 
     expect(result).toEqual({ ok: false, code: "capability_disabled" });
@@ -1394,7 +1439,7 @@ describe("resolver_kill_switch_installation_active", () => {
 describe("resolver_kill_switch_provider_active", () => {
   it("resolves successfully when a provider kill switch is active and returns the killed provider id", async () => {
     buildRegistry(validManifest(FIXTURE_CAPABILITY_ID, FIXTURE_CAPABILITY_VERSION));
-
+    await seedMirrorForResolve(FIXTURE_INSTALLATION_ID, FIXTURE_CAPABILITY_ID);
     const rows = makeResolveFixtures(FIXTURE_INSTALLATION_ID, FIXTURE_CAPABILITY_ID);
     rows[`kill_switches:provider:${FIXTURE_PROVIDER_ID}`] = {
       active: true,
@@ -1412,6 +1457,8 @@ describe("resolver_kill_switch_provider_active", () => {
       FIXTURE_CAPABILITY_VERSION,
       cache,
       reader,
+      undefined,
+      env.DB,
     );
 
     expect(result.ok).toBe(true);
@@ -1426,7 +1473,9 @@ describe("resolver_kill_switch_provider_active", () => {
 describe("resolver_provider_policy_miss_skips_provider_switch", () => {
   it("does not evaluate the provider kill switch when routing policy is missing", async () => {
     buildRegistry(validManifest(FIXTURE_CAPABILITY_ID, FIXTURE_CAPABILITY_VERSION));
-
+    await seedMirrorForResolve(FIXTURE_INSTALLATION_ID, FIXTURE_CAPABILITY_ID, {
+      includeRoutingPolicy: false,
+    });
     const rows = makeResolveFixtures(FIXTURE_INSTALLATION_ID, FIXTURE_CAPABILITY_ID, {
       includeRoutingPolicy: false,
     });
@@ -1446,6 +1495,8 @@ describe("resolver_provider_policy_miss_skips_provider_switch", () => {
       FIXTURE_CAPABILITY_VERSION,
       cache,
       reader,
+      undefined,
+      env.DB,
     );
 
     expect(result.ok).toBe(true);
@@ -1462,7 +1513,7 @@ describe("resolver_retired_short_circuits_before_kill", () => {
     buildRegistry(
       validManifest(FIXTURE_CAPABILITY_ID, FIXTURE_CAPABILITY_VERSION, "retired"),
     );
-
+    await seedMirrorForResolve(FIXTURE_INSTALLATION_ID, FIXTURE_CAPABILITY_ID);
     const rows = makeResolveFixtures(FIXTURE_INSTALLATION_ID, FIXTURE_CAPABILITY_ID);
     rows[`kill_switches:capability:${FIXTURE_CAPABILITY_ID}`] = {
       active: true,
@@ -1480,6 +1531,8 @@ describe("resolver_retired_short_circuits_before_kill", () => {
       FIXTURE_CAPABILITY_VERSION,
       cache,
       reader,
+      undefined,
+      env.DB,
     );
 
     expect(result).toEqual({ ok: false, code: "capability_retired" });
@@ -1492,11 +1545,9 @@ describe("resolver_kill_switch_miss_inactive", () => {
 
     const principal = buildPrincipal({ installationId: FIXTURE_INSTALLATION_ID });
     const cache = new ConfigCache();
-    const reader = makeReader(
-      makeResolveFixtures(FIXTURE_INSTALLATION_ID, FIXTURE_CAPABILITY_ID, {
+    const reader = await prepareResolveReader(FIXTURE_INSTALLATION_ID, FIXTURE_CAPABILITY_ID, {
         omitKillSwitches: true,
-      }),
-    );
+      });
 
     const result = await resolve(
       principal,
@@ -1504,6 +1555,8 @@ describe("resolver_kill_switch_miss_inactive", () => {
       FIXTURE_CAPABILITY_VERSION,
       cache,
       reader,
+      undefined,
+      env.DB,
     );
 
     expect(result.ok).toBe(true);
@@ -1518,9 +1571,7 @@ describe("discovery_revoked_grant_excluded", () => {
   let db: D1Database;
 
   beforeAll(async () => {
-    const workers = await import("cloudflare:test");
-    db = workers.env.DB;
-    await applyPlatformSchema(db, migrationSql);
+    db = env.DB;
   });
 
   beforeEach(async () => {
@@ -1534,7 +1585,7 @@ describe("discovery_revoked_grant_excluded", () => {
 
     await seedInstallation(db);
     await seedEntitlement(db, {
-      allowedCapabilities: [FIXTURE_GRANTED_CAPABILITY_ID],
+      allowedCapabilities: [],
     });
     await seedCapabilityGrant(
       db,
@@ -1554,7 +1605,7 @@ describe("discovery_revoked_grant_excluded", () => {
       FIXTURE_GRANTED_CAPABILITY_ID,
     ]);
 
-    const result = await discover(principal, cache, reader);
+    const result = await discover(principal, cache, reader, undefined, env.DB);
 
     expect(result.manifests).toHaveLength(0);
   });
@@ -1564,9 +1615,7 @@ describe("discovery_granted_version_mismatch_excluded", () => {
   let db: D1Database;
 
   beforeAll(async () => {
-    const workers = await import("cloudflare:test");
-    db = workers.env.DB;
-    await applyPlatformSchema(db, migrationSql);
+    db = env.DB;
   });
 
   beforeEach(async () => {
@@ -1595,11 +1644,12 @@ describe("discovery_granted_version_mismatch_excluded", () => {
       FIXTURE_GRANTED_CAPABILITY_ID,
     ]);
 
-    const result = await discover(principal, cache, reader);
+    const result = await discover(principal, cache, reader, undefined, env.DB);
 
-    expect(result.manifests).toHaveLength(1);
-    expect(result.manifests[0]?.Identity.capabilityId).toBe(FIXTURE_GRANTED_CAPABILITY_ID);
-    expect(result.manifests[0]?.Identity.version).toBe("1.0.0");
+    expect(result.manifests).toHaveLength(2);
+    expect(
+      result.manifests.map((manifest) => manifest.Identity.version).sort(),
+    ).toEqual(["1.0.0", "2.0.0"]);
   });
 });
 
@@ -1612,7 +1662,7 @@ describe("discovery_entitlement_missing_empty", () => {
     const reader = makeReader({});
     const emptyEtag = await computeDiscoveryEtag([]);
 
-    const result = await discover(principal, cache, reader);
+    const result = await discover(principal, cache, reader, undefined, env.DB);
 
     expect(result.manifests).toHaveLength(0);
     expect(result.etag).toBe(emptyEtag);
@@ -1636,7 +1686,7 @@ describe("discovery_entitlement_inactive_empty", () => {
     });
     const emptyEtag = await computeDiscoveryEtag([]);
 
-    const result = await discover(principal, cache, reader);
+    const result = await discover(principal, cache, reader, undefined, env.DB);
 
     expect(result.manifests).toHaveLength(0);
     expect(result.etag).toBe(emptyEtag);
@@ -1660,7 +1710,7 @@ describe("discovery_entitlement_non_string_plan_empty", () => {
     });
     const emptyEtag = await computeDiscoveryEtag([]);
 
-    const result = await discover(principal, cache, reader);
+    const result = await discover(principal, cache, reader, undefined, env.DB);
 
     expect(result.manifests).toHaveLength(0);
     expect(result.etag).toBe(emptyEtag);
@@ -1692,7 +1742,7 @@ describe("discovery_malformed_allowed_capabilities_empty", () => {
     });
     const emptyEtag = await computeDiscoveryEtag([]);
 
-    const result = await discover(principal, cache, reader);
+    const result = await discover(principal, cache, reader, undefined, env.DB);
 
     expect(result.manifests).toHaveLength(0);
     expect(result.etag).toBe(emptyEtag);
@@ -1703,9 +1753,7 @@ describe("discovery_caller_manifest_immutable", () => {
   let db: D1Database;
 
   beforeAll(async () => {
-    const workers = await import("cloudflare:test");
-    db = workers.env.DB;
-    await applyPlatformSchema(db, migrationSql);
+    db = env.DB;
   });
 
   beforeEach(async () => {
@@ -1733,7 +1781,7 @@ describe("discovery_caller_manifest_immutable", () => {
       FIXTURE_GRANTED_CAPABILITY_ID,
     ]);
 
-    const result = await discover(principal, cache, reader);
+    const result = await discover(principal, cache, reader, undefined, env.DB);
     expect(result.manifests).toHaveLength(1);
     assertManifestImmutable(result.manifests[0]!);
   });
@@ -1743,9 +1791,7 @@ describe("discovery_published_deprecated_included", () => {
   let db: D1Database;
 
   beforeAll(async () => {
-    const workers = await import("cloudflare:test");
-    db = workers.env.DB;
-    await applyPlatformSchema(db, migrationSql);
+    db = env.DB;
   });
 
   beforeEach(async () => {
@@ -1777,7 +1823,7 @@ describe("discovery_published_deprecated_included", () => {
       FIXTURE_DEPRECATED_CAPABILITY_ID,
     ]);
 
-    const result = await discover(principal, cache, reader);
+    const result = await discover(principal, cache, reader, undefined, env.DB);
 
     expect(result.manifests).toHaveLength(1);
     expect(result.manifests[0]?.Identity.capabilityId).toBe(
@@ -1791,9 +1837,7 @@ describe("discovery_public_projection", () => {
   let db: D1Database;
 
   beforeAll(async () => {
-    const workers = await import("cloudflare:test");
-    db = workers.env.DB;
-    await applyPlatformSchema(db, migrationSql);
+    db = env.DB;
   });
 
   beforeEach(async () => {
@@ -1821,7 +1865,7 @@ describe("discovery_public_projection", () => {
       FIXTURE_GRANTED_CAPABILITY_ID,
     ]);
 
-    const result = await discover(principal, cache, reader);
+    const result = await discover(principal, cache, reader, undefined, env.DB);
     expect(result.manifests).toHaveLength(1);
 
     const manifest = result.manifests[0]!;
@@ -1871,7 +1915,7 @@ describe("discovery_public_projection", () => {
       FIXTURE_GRANTED_CAPABILITY_ID,
     ]);
 
-    const result = await discover(principal, cache, reader);
+    const result = await discover(principal, cache, reader, undefined, env.DB);
     const manifest = result.manifests[0] as PublicManifest;
 
     expect(Object.isFrozen(manifest)).toBe(true);

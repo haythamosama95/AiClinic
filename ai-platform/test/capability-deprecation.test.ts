@@ -2,6 +2,10 @@ import { env } from "cloudflare:test";
 import { beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import migrationSql from "../migrations/20260731120000_platform_schema.sql?raw";
 import lifecycleMigrationSql from "../migrations/20260802100000_capability_grant_lifecycle.sql?raw";
+import issuerKeyTenantBindingMigrationSql from "../migrations/20261003130000_issuer_key_tenant_binding.sql?raw";
+import operatorCredentialMigrationSql from "../migrations/20261003120000_operator_credential_and_platform_alert.sql?raw";
+import planVersionPaidGrantCoverageMigrationSql from "../migrations/20261003140000_plan_version_paid_grant_coverage.sql?raw";
+import { applySqlStatements } from "./split-sql-statements";
 import {
   ConfigCache,
   ConfigCacheMissError,
@@ -17,6 +21,11 @@ import {
   resolve,
   setCapabilityRegistry,
 } from "../src/capability";
+import {
+  deprecateCapabilityAction,
+  retireCapabilityAction,
+} from "../src/control/capability-lifecycle";
+import type { ControlActionResult } from "../src/control/types";
 
 declare module "cloudflare:test" {
   interface ProvidedEnv {
@@ -67,8 +76,65 @@ type OperatorAuth = {
   resolve(_request: Request): OperatorPrincipal | null;
 };
 
+function controlResultToResponse(result: ControlActionResult): Response {
+  if (result.ok) {
+    return new Response(JSON.stringify(result.body ?? {}), {
+      status: 200,
+      headers: { "content-type": "application/json" },
+    });
+  }
+  return new Response(JSON.stringify({ error: result.error }), {
+    status: result.status,
+    headers: { "content-type": "application/json" },
+  });
+}
+
+function capabilityVersionFromControlPath(
+  request: Request,
+): { capability_id: string; capability_version: string } | null {
+  const match = new URL(request.url).pathname.match(
+    /^\/control\/capabilities\/([^/]+)\/versions\/([^/]+)\/(?:deprecate|retire)$/,
+  );
+  if (!match) {
+    return null;
+  }
+  return {
+    capability_id: decodeURIComponent(match[1]!),
+    capability_version: decodeURIComponent(match[2]!),
+  };
+}
+
 async function loadControlHandlers(): Promise<ControlHandlers> {
-  return import(/* @vite-ignore */ "../src/control") as Promise<ControlHandlers>;
+  return {
+    handleDeprecate: async (request, bindings, operatorAuth) => {
+      const principal = operatorAuth.resolve(request);
+      if (!principal) {
+        return Response.json({ error: "unauthorized" }, { status: 401 });
+      }
+      const pathIds = capabilityVersionFromControlPath(request);
+      const body = (await request.json()) as Record<string, unknown>;
+      return controlResultToResponse(
+        await deprecateCapabilityAction(bindings, principal.operatorId, {
+          ...pathIds,
+          ...body,
+        }),
+      );
+    },
+    handleRetire: async (request, bindings, operatorAuth) => {
+      const principal = operatorAuth.resolve(request);
+      if (!principal) {
+        return Response.json({ error: "unauthorized" }, { status: 401 });
+      }
+      const pathIds = capabilityVersionFromControlPath(request);
+      const body = (await request.json()) as Record<string, unknown>;
+      return controlResultToResponse(
+        await retireCapabilityAction(bindings, principal.operatorId, {
+          ...pathIds,
+          ...body,
+        }),
+      );
+    },
+  };
 }
 
 function validManifest(
@@ -189,7 +255,7 @@ async function clearTables(db: D1Database): Promise<void> {
   await db.batch([
     db.prepare("DELETE FROM control_audit"),
     db.prepare("DELETE FROM capability_grant"),
-    db.prepare("DELETE FROM entitlement"),
+    db.prepare("DELETE FROM coverage_mirror"),
     db.prepare("DELETE FROM tenant_binding"),
     db.prepare("DELETE FROM issuer_key"),
     db.prepare("DELETE FROM installation"),
@@ -217,24 +283,18 @@ async function seedInstallation(db: D1Database): Promise<void> {
 async function seedEntitlement(db: D1Database): Promise<void> {
   await db
     .prepare(
-      `INSERT INTO entitlement (
-        entitlement_id, installation_id, plan, period_start, period_end,
-        request_quota, token_budget, cost_budget, allowed_capabilities,
-        soft_threshold, status
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      `INSERT INTO coverage_mirror (
+         installation_id, org_id, binding_epoch, clinic_seq, state, suspended,
+         hard_stop_at, term_snapshot
+       ) VALUES (?, ?, 1, 1, 'active', 0, NULL, ?)`,
     )
     .bind(
-      `ent-${FIXTURE_INSTALLATION_ID}`,
       FIXTURE_INSTALLATION_ID,
-      "professional",
-      FIXTURE_NOW,
-      FIXTURE_NOW,
-      1_000,
-      1_000_000,
-      100,
-      JSON.stringify([FIXTURE_CAPABILITY_ID]),
-      0.8,
-      "active",
+      FIXTURE_ORG_ID,
+      JSON.stringify({
+        ref: "j1-test",
+        capabilities: [FIXTURE_CAPABILITY_ID],
+      }),
     )
     .run();
 }
@@ -275,18 +335,8 @@ function makePlatformD1Reader(db: D1Database): D1Reader {
       const key = prefixedKey.slice(separator + 1);
 
       switch (kind) {
-        case "entitlements": {
-          const row = await db
-            .prepare(
-              `SELECT entitlement_id, installation_id, plan, period_start, period_end,
-                      request_quota, token_budget, cost_budget, allowed_capabilities,
-                      soft_threshold, status
-               FROM entitlement WHERE installation_id = ?`,
-            )
-            .bind(key)
-            .first<D1Row>();
-          return row ?? "miss";
-        }
+        case "entitlements":
+          return "miss";
         case "grants": {
           if (key.startsWith("global/")) {
             const parts = key.slice("global/".length).split("/");
@@ -368,6 +418,9 @@ const LIFECYCLE_MIGRATION_SQL = lifecycleMigrationSql;
 beforeAll(async () => {
   await applyPlatformSchema(env.DB, migrationSql);
   await applyPlatformSchema(env.DB, LIFECYCLE_MIGRATION_SQL);
+  await applySqlStatements(env.DB, issuerKeyTenantBindingMigrationSql);
+  await applySqlStatements(env.DB, operatorCredentialMigrationSql);
+  await applySqlStatements(env.DB, planVersionPaidGrantCoverageMigrationSql);
 });
 
 beforeEach(async () => {
@@ -395,7 +448,7 @@ describe("T-J1-01 discovery_marks_deprecated_with_successor", () => {
     const cache = new ConfigCache();
     const reader = makePlatformD1Reader(env.DB);
 
-    const result = await discover(principal, cache, reader);
+    const result = await discover(principal, cache, reader, undefined, env.DB);
 
     const deprecated = result.manifests.find(
       (m) => m.Identity.capabilityId === FIXTURE_CAPABILITY_ID,
@@ -432,6 +485,8 @@ describe("T-J1-02 deprecated_serves_inside_overlap_window", () => {
       FIXTURE_CAPABILITY_VERSION,
       cache,
       reader,
+      undefined,
+      env.DB,
     );
 
     expect(result.ok).toBe(true);
@@ -486,6 +541,8 @@ describe("T-J1-03 retired_pin_returns_capability_retired", () => {
       FIXTURE_CAPABILITY_VERSION,
       cache,
       reader,
+      undefined,
+      env.DB,
     );
 
     expect(result).toEqual({ ok: false, code: "capability_retired" });
@@ -570,10 +627,12 @@ describe("T-J1-05 lifecycle_survives_cold_isolate_manifest_unchanged", () => {
       FIXTURE_CAPABILITY_VERSION,
       coldCache,
       reader,
+      undefined,
+      env.DB,
     );
     expect(resolveResult.ok).toBe(true);
 
-    const discoveryResult = await discover(principal, coldCache, reader);
+    const discoveryResult = await discover(principal, coldCache, reader, undefined, env.DB);
     const discovered = discoveryResult.manifests.find(
       (m) => m.Identity.capabilityId === FIXTURE_CAPABILITY_ID,
     );
@@ -872,8 +931,14 @@ describe("T-J1-14 deprecate_audit_records_successor", () => {
       operator_id: FAKE_OPERATOR_ID,
       action: "deprecate",
       target: `${FIXTURE_CAPABILITY_ID}@${FIXTURE_CAPABILITY_VERSION}`,
-      after_pointer: FIXTURE_SUCCESSOR_ID,
     });
+    const overlay = await env.DB.prepare(
+      `SELECT successor_id FROM capability_grant
+       WHERE scope = 'global' AND capability_id = ? AND capability_version = ?`,
+    )
+      .bind(FIXTURE_CAPABILITY_ID, FIXTURE_CAPABILITY_VERSION)
+      .first<{ successor_id: string }>();
+    expect(overlay?.successor_id).toBe(FIXTURE_SUCCESSOR_ID);
   });
 });
 
@@ -963,7 +1028,13 @@ describe("T-J1-17 discovery_excludes_retired", () => {
     ).toBe(true);
 
     const principal = buildPrincipal();
-    const result = await discover(principal, new ConfigCache(), makePlatformD1Reader(env.DB));
+    const result = await discover(
+      principal,
+      new ConfigCache(),
+      makePlatformD1Reader(env.DB),
+      undefined,
+      env.DB,
+    );
     expect(
       result.manifests.find((m) => m.Identity.capabilityId === FIXTURE_CAPABILITY_ID),
     ).toBeUndefined();
@@ -979,7 +1050,7 @@ describe("T-J1-18 etag_invalidates_on_deprecation", () => {
 
     const principal = buildPrincipal();
     const reader = makePlatformD1Reader(env.DB);
-    const before = await discover(principal, new ConfigCache(), reader);
+    const before = await discover(principal, new ConfigCache(), reader, undefined, env.DB);
 
     const operatorAuth = createFakeOperatorAuth();
     const { handleDeprecate, handleRetire } = await loadControlHandlers();
@@ -987,7 +1058,7 @@ describe("T-J1-18 etag_invalidates_on_deprecation", () => {
       (await handleDeprecate(buildDeprecateRequest(), { DB: env.DB }, operatorAuth)).ok,
     ).toBe(true);
 
-    const afterDeprecate = await discover(principal, new ConfigCache(), reader);
+    const afterDeprecate = await discover(principal, new ConfigCache(), reader, undefined, env.DB);
     expect(afterDeprecate.etag).not.toBe(before.etag);
 
     const overlay = await env.DB.prepare(
@@ -1001,7 +1072,7 @@ describe("T-J1-18 etag_invalidates_on_deprecation", () => {
       (await handleRetire(buildRetireRequest(), { DB: env.DB }, operatorAuth)).ok,
     ).toBe(true);
 
-    const afterRetire = await discover(principal, new ConfigCache(), reader);
+    const afterRetire = await discover(principal, new ConfigCache(), reader, undefined, env.DB);
     expect(afterRetire.etag).not.toBe(afterDeprecate.etag);
   });
 });
@@ -1033,6 +1104,8 @@ describe("T-J1-19 deprecated_serves_after_retire_after_before_operator_retire", 
       FIXTURE_CAPABILITY_VERSION,
       new ConfigCache(),
       makePlatformD1Reader(env.DB),
+      undefined,
+      env.DB,
     );
     expect(result.ok).toBe(true);
   });
@@ -1058,10 +1131,12 @@ describe("T-J1-20 published_lifecycle_without_overlay", () => {
       FIXTURE_CAPABILITY_VERSION,
       cache,
       reader,
+      undefined,
+      env.DB,
     );
     expect(resolved.ok).toBe(true);
 
-    const discovered = await discover(principal, cache, reader);
+    const discovered = await discover(principal, cache, reader, undefined, env.DB);
     const entry = discovered.manifests.find(
       (m) => m.Identity.capabilityId === FIXTURE_CAPABILITY_ID,
     );
@@ -1078,6 +1153,8 @@ describe("T-J1-20 published_lifecycle_without_overlay", () => {
       FIXTURE_CAPABILITY_VERSION,
       new ConfigCache(),
       reader,
+      undefined,
+      env.DB,
     );
     expect(retired).toEqual({ ok: false, code: "capability_retired" });
   });

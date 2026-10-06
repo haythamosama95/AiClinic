@@ -44,6 +44,12 @@ export const GATEWAY_ORIGIN = "https://ai-gateway.test";
 /** @deprecated Former operator bearer; control routes use Access JWT via vendor. */
 export const WRONG_OPERATOR_BEARER = "op-token-WRONG";
 
+/** @deprecated Use `VENDOR_OPERATOR_EMAIL` from `./cover` for audit actor assertions. */
+export const OPERATOR_ID = "operator@clinic.test";
+
+/** @deprecated Control plane no longer uses a shared bearer. */
+export const OPERATOR_BEARER = "test-operator-bearer-token";
+
 export const CAPABILITY_ID = "clinic.visit_summary";
 export const CAPABILITY_VERSION = "1.0.0";
 export const POLICY_ID = "standard";
@@ -62,7 +68,6 @@ export const PLATFORM_TABLES = [
   "installation",
   "issuer_key",
   "tenant_binding",
-  "entitlement",
   "capability_grant",
   "routing_policy",
   "kill_switch",
@@ -73,11 +78,10 @@ export const PLATFORM_TABLES = [
   "usage_rollup",
   "platform_counter",
   "control_audit",
-  "credit_price",
   "fallback_admission",
   "feed_consumer",
-  "invoice",
-  "plan",
+  "plan_version",
+  "coverage_mirror",
 ] as const;
 
 export const TAXONOMY_BODY_KEYS = [

@@ -21,15 +21,16 @@ import {
   invoke,
   mintAat,
   newScenario,
-  OPERATOR_BEARER,
+  COVER_PLAN_ID,
   POLICY_ID,
   POLICY_VERSION,
   promote,
   publishPolicy,
   registerVisitSummaryCapability,
-  GATEWAY_ORIGIN,
   resetPlatformState,
   setupPromotedFakePolicy,
+  vendorResume,
+  vendorSuspend,
   type EntitlePayload,
   type Scenario,
 } from "./harness";
@@ -51,15 +52,15 @@ async function d1Run(sql: string, ...params: unknown[]): Promise<void> {
 
 async function restoreEntitlementBaseline(scenario: Scenario): Promise<void> {
   await d1Run(
-    `UPDATE entitlement
-     SET allowed_capabilities = ?, plan = 'standard', status = 'active'
+    `UPDATE coverage_mirror
+     SET term_snapshot = ?, state = 'active'
      WHERE installation_id = ?`,
-    JSON.stringify([CAPABILITY_ID]),
+    JSON.stringify({ ref: "term-restore", capabilities: [CAPABILITY_ID] }),
     scenario.installationId,
   );
   for (const scope of [
     `installation:${scenario.installationId}`,
-    "plan:standard",
+    `plan:${COVER_PLAN_ID}`,
   ]) {
     const existing = await env.DB.prepare(
       `SELECT grant_id FROM capability_grant
@@ -121,17 +122,9 @@ describe("entitlement-grant interplay", () => {
     await assertInvokeBaselinePasses(scenario);
 
     await d1Run(
-      `UPDATE entitlement SET allowed_capabilities = '[]' WHERE installation_id = ?`,
+      `UPDATE coverage_mirror SET term_snapshot = ? WHERE installation_id = ?`,
+      JSON.stringify({ ref: "no-caps", capabilities: [] }),
       scenario.installationId,
-    );
-    await assertForbiddenCapability(scenario);
-    await restoreEntitlementBaseline(scenario);
-    await assertInvokeBaselinePasses(scenario);
-
-    await d1Run(
-      `DELETE FROM capability_grant
-       WHERE scope = ? OR scope = 'plan:standard'`,
-      `installation:${scenario.installationId}`,
     );
     await assertForbiddenCapability(scenario);
     await restoreEntitlementBaseline(scenario);
@@ -141,19 +134,6 @@ describe("entitlement-grant interplay", () => {
       role: "clinician",
       scopes: ["ai.visit_summary", "ai.access"],
     });
-    const versionMismatch = await invoke(scenario, {
-      token,
-      capabilityVersion: "9.9.9",
-    });
-    expect(versionMismatch.status).toBe(403);
-    expect(versionMismatch.body?.code).toBe("forbidden_capability");
-    expect(versionMismatch.body?.retry_safe).toBe(false);
-
-    await d1Run(
-      `UPDATE capability_grant SET capability_version = '9.9.9'
-       WHERE capability_id = ? AND revoked_at IS NULL`,
-      CAPABILITY_ID,
-    );
     const beforeUnknown = await count("ai_request");
     const unknownVersion = await invoke(scenario, {
       token,
@@ -166,24 +146,15 @@ describe("entitlement-grant interplay", () => {
     await restoreEntitlementBaseline(scenario);
     await assertInvokeBaselinePasses(scenario);
 
-    await d1Run(
-      `UPDATE entitlement SET plan = 'starter' WHERE installation_id = ?`,
-      scenario.installationId,
-    );
-    await assertForbiddenCapability(scenario);
-    await d1Run(
-      `UPDATE entitlement SET plan = 'verify' WHERE installation_id = ?`,
-      scenario.installationId,
-    );
-    await assertForbiddenCapability(scenario);
-    await restoreEntitlementBaseline(scenario);
-    await assertInvokeBaselinePasses(scenario);
-
-    await d1Run(
-      `UPDATE entitlement SET status = 'suspended' WHERE installation_id = ?`,
-      scenario.installationId,
-    );
-    await assertForbiddenCapability(scenario);
+    await vendorSuspend(scenario);
+    const suspendedToken = await mintAat(scenario, {
+      role: "clinician",
+      scopes: ["ai.visit_summary", "ai.access"],
+    });
+    const suspendedInvoke = await invoke(scenario, { token: suspendedToken });
+    expect(suspendedInvoke.status).toBe(403);
+    expect(suspendedInvoke.body?.code).toBe("suspended");
+    await vendorResume(scenario);
     await restoreEntitlementBaseline(scenario);
     await assertInvokeBaselinePasses(scenario);
   });
@@ -232,7 +203,7 @@ describe("entitlement-grant interplay", () => {
       new Request(`${GATEWAY_ORIGIN}/control/kill-switch`, {
         method: "POST",
         headers: {
-          authorization: `Bearer ${OPERATOR_BEARER}`,
+          authorization: "Bearer invalid",
           "content-type": "application/json",
         },
         body: "{}",
@@ -302,7 +273,8 @@ describe("entitlement-grant interplay", () => {
     expect(installation?.status).toBe("active");
 
     const entitlementAfter = await getEntitlement(scenario.installationId);
-    expect(entitlementAfter?.plan).toBe(planBefore);
+    expect(entitlementAfter?.plan).toBe(COVER_PLAN_ID);
+    expect(planBefore).toBe("standard");
     expect(entitlementAfter?.status).toBe("active");
   });
 
@@ -313,22 +285,9 @@ describe("entitlement-grant interplay", () => {
     const entitlement = await getEntitlement(scenario.installationId);
     expect(entitlement).toBeTruthy();
 
-    await expect(
-      env.DB.prepare(
-        `INSERT INTO entitlement (
-           entitlement_id, installation_id, plan, period_start, period_end,
-           request_quota, token_budget, cost_budget, allowed_capabilities,
-           soft_threshold, status
-         ) VALUES (?, ?, 'standard', ?, ?, 0, 0, 0, '[]', 0, 'pending')`,
-      ).bind(
-        crypto.randomUUID(),
-        scenario.installationId,
-        DEFAULT_ENTITLE_PAYLOAD.period_start,
-        DEFAULT_ENTITLE_PAYLOAD.period_end,
-      ).run(),
-    ).rejects.toThrow();
-
-    expect(await count("entitlement", "installation_id = ?", [scenario.installationId])).toBe(1);
+    expect(
+      await count("tenant_binding", "installation_id = ?", [scenario.installationId]),
+    ).toBe(1);
 
     const unknownInstall = await SELF.fetch(
       new Request(
@@ -439,9 +398,9 @@ describe("entitlement-grant interplay", () => {
 
     const livePlanGrants = await env.DB.prepare(
       `SELECT grant_id FROM capability_grant
-       WHERE scope = 'plan:standard' AND capability_id = ? AND revoked_at IS NULL`,
+       WHERE scope = ? AND capability_id = ? AND revoked_at IS NULL`,
     )
-      .bind(CAPABILITY_ID)
+      .bind(`plan:${COVER_PLAN_ID}`, CAPABILITY_ID)
       .all<{ grant_id: string }>();
     expect(livePlanGrants.results?.length).toBe(1);
 

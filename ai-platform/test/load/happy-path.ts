@@ -71,6 +71,7 @@ vi.mock("../../src/prompt/registry", () => ({
   resolvePromptVersion: resolvePromptVersionMock,
 }));
 
+import { runInDurableObject } from "cloudflare:test";
 import {
   ConfigCache,
   loadConfig,
@@ -87,7 +88,7 @@ import { load, type Manifest } from "../../src/manifest";
 import { composeRequest, promptScaffoldByteLength } from "../../src/prompt/composer";
 import { resolvePromptVersion } from "../../src/prompt/registry";
 import { runGuard, settleHappyPath } from "../../src/pipeline";
-import { CONCURRENCY_LIMIT } from "../../src/quota-do";
+import { CONCURRENCY_LIMIT, ensureCoverageDoTables } from "../../src/quota-do";
 import type { RateLimitBindings } from "../../src/rate-limit";
 import type { D1Spy, DoSpy, R2Spy } from "./binding-spies";
 import {
@@ -274,18 +275,8 @@ function makePlatformD1Reader(db: D1Database): D1Reader {
             .first<D1Row>();
           return row ?? "miss";
         }
-        case "entitlements": {
-          const row = await db
-            .prepare(
-              `SELECT entitlement_id, installation_id, plan, period_start, period_end,
-                      request_quota, token_budget, cost_budget, allowed_capabilities,
-                      soft_threshold, status
-               FROM entitlement WHERE installation_id = ?`,
-            )
-            .bind(key)
-            .first<D1Row>();
-          return row ?? "miss";
-        }
+        case "entitlements":
+          return "miss";
         case "grants": {
           const [installationId, capabilityId] = key.split("/", 2);
           if (!installationId || !capabilityId) {
@@ -345,27 +336,103 @@ async function seedInstallation(db: D1Database, installationId: string): Promise
     .run();
 }
 
-async function seedEntitlement(db: D1Database, installationId: string): Promise<void> {
-  await db
-    .prepare(
-      `INSERT INTO entitlement (
-        entitlement_id, installation_id, plan, period_start, period_end,
-        request_quota, token_budget, cost_budget, allowed_capabilities,
-        soft_threshold, status
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-    )
+function termIdForInstallation(installationId: string): string {
+  return `term-${installationId.slice(0, 8)}`;
+}
+
+function sqlLiteral(value: string): string {
+  return `'${value.replace(/'/g, "''")}'`;
+}
+
+async function pinHarnessTestClock(db: D1Database): Promise<void> {
+  await db.prepare(
+    `CREATE TABLE IF NOT EXISTS harness_test_clock (
+       id TEXT PRIMARY KEY,
+       now_iso TEXT NOT NULL
+     )`,
+  ).run();
+  await db.prepare(
+    `INSERT OR REPLACE INTO harness_test_clock (id, now_iso) VALUES ('default', ?)`,
+  )
+    .bind(FIXTURE_NOW)
+    .run();
+}
+
+async function seedQuotaDoForInstallation(
+  doNamespace: DurableObjectNamespace,
+  installationId: string,
+): Promise<void> {
+  const termId = termIdForInstallation(installationId);
+  const planSnapshot = JSON.stringify({
+    capabilities: [FIXTURE_CAPABILITY_ID],
+    max_cost_class: "standard",
+    concurrency_limit: CONCURRENCY_LIMIT,
+  });
+  const periodStart = FIXTURE_NOW;
+  const periodEnd = "2026-12-31T23:59:59.000Z";
+
+  await runInDurableObject(
+    doNamespace.get(doNamespace.idFromName(installationId)),
+    async (_instance, state) => {
+      const storage = state.storage as DurableObjectStorage & {
+        sql?: { exec: (query: string) => Iterable<Record<string, unknown>> };
+      };
+      if (!storage.sql) {
+        throw new Error("quota DO sql storage unavailable for load seed");
+      }
+      await ensureCoverageDoTables(storage, async (fn) => fn());
+      const hotExists = [...storage.sql.exec("SELECT 1 AS ok FROM hot LIMIT 1")];
+      if (hotExists.length === 0) {
+        storage.sql.exec(
+          `INSERT INTO hot (
+             suspended, transferred_out_to, awaiting_transfer, transfer_pending,
+             active_term_id, used, reserved, grace_base_used, reservations, replay,
+             idempotency, band_emitted, binding_epoch, clinic_seq, next_alarm_at
+           ) VALUES (
+             0, NULL, 0, 0, ${sqlLiteral(termId)}, 0, 0, 0, '[]', '{}', '{}', '{}', 0, 0, NULL
+           )`,
+        );
+      }
+      const termExists = [
+        ...storage.sql.exec(
+          `SELECT 1 AS ok FROM term WHERE term_id = ${sqlLiteral(termId)} LIMIT 1`,
+        ),
+      ];
+      if (termExists.length === 0) {
+        storage.sql.exec(
+          `INSERT INTO term (
+             term_id, grant_id, origin_grant_id, position, state, end_reason,
+             plan_snapshot, allowance, used_final, duration_unit, duration_count,
+             grace_days, grace_cap, calendar_start, starts_at, ends_at, grace_ends_at, ended_at
+           ) VALUES (
+             ${sqlLiteral(termId)}, 'f5-seed', 'f5-seed', 0, 'active', NULL,
+             ${sqlLiteral(planSnapshot)}, 10000,
+             NULL, 'month', 1, 0, 'proportional',
+             ${sqlLiteral(periodStart)}, ${sqlLiteral(periodStart)},
+             ${sqlLiteral(periodEnd)}, NULL, NULL
+           )`,
+        );
+      }
+    },
+  );
+}
+
+async function seedCoverageMirror(
+  db: D1Database,
+  installationId: string,
+): Promise<void> {
+  const termRef = termIdForInstallation(installationId);
+  await db.prepare(
+    `INSERT INTO coverage_mirror (
+       installation_id, org_id, binding_epoch, clinic_seq, state, suspended,
+       hard_stop_at, term_snapshot
+     ) VALUES (?, ?, 1, 1, 'active', 0, ?, ?)`,
+  )
     .bind(
-      `ent-${installationId}`,
       installationId,
-      "professional",
-      "2026-08-01T00:00:00.000Z",
-      "2026-09-01T00:00:00.000Z",
-      10_000,
-      10_000_000,
-      1_000,
-      JSON.stringify([FIXTURE_CAPABILITY_ID]),
-      0.8,
-      "active",
+      FIXTURE_ORG_ID,
+      "2026-12-31T23:59:59.000Z",
+      JSON.stringify({ ref: termRef, capabilities: [FIXTURE_CAPABILITY_ID] }),
     )
     .run();
 }
@@ -452,13 +519,14 @@ export async function runLoadHappyPath(
     replace: true,
   });
 
+  await pinHarnessTestClock(bindings.db);
   await seedInstallation(bindings.db, installationId);
-  await seedEntitlement(bindings.db, installationId);
+  await seedCoverageMirror(bindings.db, installationId);
+  await seedQuotaDoForInstallation(bindings.realDo, installationId);
   await seedGrant(bindings.db, installationId);
 
   const cache = new ConfigCache();
   const reader = makePlatformD1Reader(bindings.db);
-  await loadConfig(cache, reader, "entitlements", installationId);
   await loadConfig(
     cache,
     reader,
@@ -537,7 +605,7 @@ export async function runLoadHappyPath(
               installationId,
               composed: guard.composed,
               filteredContext: guard.filteredContext,
-              period: FIXTURE_PERIOD,
+              termId: termIdForInstallation(installationId),
               quotaWeight: 1,
               recordedAt: FIXTURE_NOW,
             },

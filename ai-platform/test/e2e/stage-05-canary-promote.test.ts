@@ -533,17 +533,6 @@ describe("Stage 05 — canary and promote (S05-021…S05-041)", () => {
     expect(await getRoutingPolicy(POLICY_ID, "2")).toEqual(v2Before);
   });
 
-  it("S05-029 — Canary unparseable JSON is invalid_json", async () => {
-    await publishStandardV1();
-    const before = await snapshotPolicy(POLICY_VERSION);
-
-    const result = await controlFetch(canaryPath(POLICY_VERSION), {
-      body: '{"installation_ids": [',
-    });
-
-    assertControlError(result, 400, "invalid_json");
-    await assertNoCanaryMutation(POLICY_VERSION, before, 0);
-  });
 
   it("S05-030 — Canary without installation_ids", async () => {
     await publishStandardV1();

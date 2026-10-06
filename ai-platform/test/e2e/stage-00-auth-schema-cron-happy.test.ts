@@ -53,23 +53,21 @@ const EXPECTED_PLATFORM_TABLES = [
   "ai_request",
   "assertion_used",
   "capability_grant",
+  "ceiling_policy",
   "control_audit",
   "coverage_event",
   "coverage_mirror",
-  "credit_price",
-  "entitlement",
   "fallback_admission",
   "feed_consumer",
   "grant_ledger",
+  "grant_void",
   "installation",
-  "invoice",
   "issuer_key",
   "kill_switch",
   "operator_credential",
-  "plan",
+  "plan_version",
   "platform_alert",
   "platform_counter",
-  "plan_version",
   "routing_policy",
   "service_key",
   "tenant_binding",
@@ -167,10 +165,6 @@ async function assertTokenContractSeed(): Promise<TokenContractRow> {
 
 async function assertBusinessTablesEmpty(): Promise<void> {
   for (const table of BUSINESS_TABLES) {
-    if (table === "plan") {
-      expect(await count(table), "plan holds the catalogue re-seed").toBe(4);
-      continue;
-    }
     expect(await count(table), `${table} must be empty`).toBe(0);
   }
 }
@@ -261,7 +255,6 @@ describe("Stage 00 — auth, schema, cron, happy path (S00-019…S00-037)", () =
       "capability_grant",
       "routing_policy",
       "kill_switch",
-      "entitlement",
       "issuer_key",
       "tenant_binding",
       "ai_request",
@@ -346,16 +339,6 @@ describe("Stage 00 — auth, schema, cron, happy path (S00-019…S00-037)", () =
     const names = filterCatalogTables(await listTableNames()).sort();
     expect(names).toEqual([...EXPECTED_PLATFORM_TABLES]);
 
-    const index = await queryOne<{ name: string; tbl_name: string; sql: string }>(
-      `SELECT name, tbl_name, sql FROM sqlite_master
-       WHERE type = 'index' AND name = ?`,
-      ["idx_entitlement_installation_id"],
-    );
-    expect(index).not.toBeNull();
-    expect(index?.name).toBe("idx_entitlement_installation_id");
-    expect(index?.tbl_name).toBe("entitlement");
-    expect(String(index?.sql).toLowerCase()).toContain("installation_id");
-
     await assertTokenContractSeed();
     await assertBusinessTablesEmpty();
   });
@@ -377,7 +360,6 @@ describe("Stage 00 — auth, schema, cron, happy path (S00-019…S00-037)", () =
     for (const table of [
       "installation",
       "issuer_key",
-      "entitlement",
       "capability_grant",
       "routing_policy",
       "kill_switch",

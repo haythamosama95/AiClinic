@@ -1,4 +1,5 @@
-import { env } from "cloudflare:test";
+import { env, runInDurableObject } from "cloudflare:test";
+import { CHANNEL_VERSIONS } from "vendor-contracts";
 import { beforeAll, beforeEach, describe, expect, it } from "vitest";
 import migrationSql from "../migrations/20260731120000_platform_schema.sql?raw";
 import tokenContractMigrationSql from "../migrations/20260803120000_token_contract.sql?raw";
@@ -10,9 +11,9 @@ import planVersionPaidGrantCoverageMigrationSql from "../migrations/202610031400
 import usageTermMigrationSql from "../migrations/20261006120000_usage_term.sql?raw";
 import { applySqlStatements } from "./split-sql-statements";
 import {
+  CONCURRENCY_LIMIT,
   EPHEMERAL_HORIZON_MS,
-  admissionRPC,
-  type AdmissionRequest,
+  ensureCoverageDoTables,
 } from "../src/quota-do";
 import {
   COUNTER_HORIZON_DAYS,
@@ -102,7 +103,7 @@ async function clearTables(): Promise<void> {
     env.DB.prepare("DELETE FROM service_key"),
     env.DB.prepare("DELETE FROM tenant_binding"),
     env.DB.prepare("DELETE FROM issuer_key"),
-    env.DB.prepare("DELETE FROM entitlement"),
+    env.DB.prepare("DELETE FROM coverage_mirror"),
     env.DB.prepare("DELETE FROM ai_attempt"),
     env.DB.prepare("DELETE FROM ai_request"),
     env.DB.prepare("DELETE FROM installation"),
@@ -571,70 +572,140 @@ describe("retention_expiry_ledger", () => {
   });
 });
 
+function termIdForInstallation(installationId: string): string {
+  return `term-${installationId.slice(0, 8)}`;
+}
+
+function sqlLiteral(value: string): string {
+  return `'${value.replace(/'/g, "''")}'`;
+}
+
+async function seedQuotaDoForEphemeralTest(installationId: string): Promise<void> {
+  const termId = termIdForInstallation(installationId);
+  const planSnapshot = JSON.stringify({
+    capabilities: ["cap"],
+    max_cost_class: "standard",
+    concurrency_limit: CONCURRENCY_LIMIT,
+  });
+  const nowIso = FIXTURE_NOW.toISOString();
+
+  await runInDurableObject(
+    env.DO.get(env.DO.idFromName(installationId)),
+    async (_instance, state) => {
+      const storage = state.storage as DurableObjectStorage & {
+        sql?: { exec: (query: string) => void };
+      };
+      if (!storage.sql) {
+        throw new Error("quota DO sql storage unavailable for retention seed");
+      }
+      await ensureCoverageDoTables(storage, async (fn) => fn());
+      storage.sql.exec(
+        `INSERT INTO hot (
+           suspended, transferred_out_to, awaiting_transfer, transfer_pending,
+           active_term_id, used, reserved, grace_base_used, reservations, replay,
+           idempotency, band_emitted, binding_epoch, clinic_seq, next_alarm_at
+         ) VALUES (
+           0, NULL, 0, 0, ${sqlLiteral(termId)}, 0, 0, 0, '[]', '{}', '{}', '{}', 0, 0, NULL
+         )`,
+      );
+      storage.sql.exec(
+        `INSERT INTO term (
+           term_id, grant_id, origin_grant_id, position, state, end_reason,
+           plan_snapshot, allowance, used_final, duration_unit, duration_count,
+           grace_days, grace_cap, calendar_start, starts_at, ends_at, grace_ends_at, ended_at
+         ) VALUES (
+           ${sqlLiteral(termId)}, 'ret-seed', 'ret-seed', 0, 'active', NULL,
+           ${sqlLiteral(planSnapshot)}, 100,
+           NULL, 'month', 1, 0, 'proportional',
+           ${sqlLiteral(nowIso)}, ${sqlLiteral(nowIso)},
+           '2026-12-31T23:59:59.000Z', NULL, NULL
+         )`,
+      );
+    },
+  );
+}
+
+async function rpcAdmission(
+  installationId: string,
+  input: {
+    jti: string;
+    idempotencyKey: string;
+    requestReference: string;
+    nowMs: number;
+    requestId?: string;
+  },
+): Promise<Record<string, unknown>> {
+  const stub = env.DO.get(env.DO.idFromName(installationId));
+  const response = await stub.fetch("https://quota-do.internal/rpc", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      contract_version: CHANNEL_VERSIONS.platformDo,
+      kind: "admission",
+      now: input.nowMs,
+      jti: input.jti,
+      installationId,
+      idempotencyKey: input.idempotencyKey,
+      requestReference: input.requestReference,
+      capabilityId: "cap",
+      quotaWeight: 1,
+      requestId: input.requestId ?? crypto.randomUUID(),
+    }),
+  });
+  return (await response.json()) as Record<string, unknown>;
+}
+
 describe("retention_expiry_ephemeral", () => {
   it("expires jti/idempotency in place inside Quota DO with no D1/R2 prune", async () => {
-    const storage = {
-      data: new Map<string, unknown>(),
-      async get<T>(key: string): Promise<T | undefined> {
-        return this.data.get(key) as T | undefined;
-      },
-      async put(key: string, value: unknown): Promise<void> {
-        this.data.set(key, value);
-      },
-    } as unknown as DurableObjectStorage;
-
-    const blockConcurrencyWhile = async <T>(fn: () => Promise<T>): Promise<T> =>
-      fn();
-
-    const admission: AdmissionRequest = {
-      kind: "admission",
-      jti: "jti-ephemeral-test",
-      installationId: FIXTURE_INSTALLATION_A,
-      idempotencyKey: "idem-ephemeral-test",
-      requestReference: "REF-EPH01",
-      entitlement: {
-        plan: "starter",
-        period_bounds: {
-          period_start: "2026-08-01T00:00:00.000Z",
-          period_end: "2026-09-01T00:00:00.000Z",
-        },
-        request_quota: 100,
-        token_cost_budget: { token_budget: 10000, cost_budget: 10 },
-        allowed_capabilities: ["cap"],
-        soft_threshold: 0.8,
-        status: "active",
-      },
-    };
+    await env.DB.prepare(
+      `INSERT INTO coverage_mirror (
+         installation_id, org_id, binding_epoch, clinic_seq, state, suspended,
+         hard_stop_at, term_snapshot
+       ) VALUES (?, ?, 1, 1, 'active', 0, NULL, ?)`,
+    )
+      .bind(
+        FIXTURE_INSTALLATION_A,
+        FIXTURE_ORG,
+        JSON.stringify({
+          ref: termIdForInstallation(FIXTURE_INSTALLATION_A),
+          capabilities: ["cap"],
+        }),
+      )
+      .run();
+    await seedQuotaDoForEphemeralTest(FIXTURE_INSTALLATION_A);
 
     const admittedAt = FIXTURE_NOW.getTime() - EPHEMERAL_HORIZON_MS - 1000;
-    await admissionRPC(storage, blockConcurrencyWhile, admission, admittedAt);
+    const base = {
+      jti: "jti-ephemeral-test",
+      requestReference: "REF-EPH01",
+    };
 
-    const replayBefore = await admissionRPC(
-      storage,
-      blockConcurrencyWhile,
-      admission,
-      admittedAt + 1000,
-    );
-    expect(replayBefore.outcome).toBe("replay");
-
-    const afterExpiry = await admissionRPC(
-      storage,
-      blockConcurrencyWhile,
-      admission,
-      admittedAt + EPHEMERAL_HORIZON_MS + 1,
-    );
-    expect(afterExpiry.outcome).toBe("idempotent");
-    expect(afterExpiry).toMatchObject({
-      outcome: "idempotent",
-      priorState: { state: "failed", requestReference: "REF-EPH01" },
+    const first = await rpcAdmission(FIXTURE_INSTALLATION_A, {
+      ...base,
+      idempotencyKey: "idem-ephemeral-test",
+      nowMs: admittedAt,
     });
+    expect(first.outcome).toBe("admitted");
 
-    const jtiReuse = await admissionRPC(
-      storage,
-      blockConcurrencyWhile,
-      { ...admission, idempotencyKey: "idem-ephemeral-test-reuse" },
-      admittedAt + EPHEMERAL_HORIZON_MS + 1,
-    );
+    const replayBefore = await rpcAdmission(FIXTURE_INSTALLATION_A, {
+      ...base,
+      idempotencyKey: "idem-ephemeral-test-2",
+      nowMs: admittedAt + 1000,
+    });
+    expect(replayBefore.outcome).toBe("admitted");
+
+    const afterExpiry = await rpcAdmission(FIXTURE_INSTALLATION_A, {
+      ...base,
+      idempotencyKey: "idem-ephemeral-test",
+      nowMs: admittedAt + EPHEMERAL_HORIZON_MS + 1,
+    });
+    expect(afterExpiry.outcome).toBe("admitted");
+
+    const jtiReuse = await rpcAdmission(FIXTURE_INSTALLATION_A, {
+      ...base,
+      idempotencyKey: "idem-ephemeral-test-reuse",
+      nowMs: admittedAt + EPHEMERAL_HORIZON_MS + 1,
+    });
     expect(jtiReuse.outcome).toBe("admitted");
 
     const d1CountBefore = await env.DB.prepare(

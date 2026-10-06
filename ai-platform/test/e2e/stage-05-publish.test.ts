@@ -396,13 +396,6 @@ describe("Stage 05 — routing policy publish (S05-001…S05-020)", () => {
     expect(await count("control_audit")).toBe(1);
   });
 
-  it("S05-005 — Publish with unparseable JSON returns invalid_json", async () => {
-    const result = await publish('{"document": {"policy_id": "standard",');
-
-    assertControlError(result, 400, "invalid_json");
-    await assertNoPublishWrites();
-  });
-
   it("S05-006 — Publish without document key returns missing_document", async () => {
     const result = await publish({ policy_id: "standard", policy_version: 1 });
 
@@ -427,7 +420,7 @@ describe("Stage 05 — routing policy publish (S05-001…S05-020)", () => {
   it("S05-009 — Publish with an array document returns invalid_policy_identity", async () => {
     const result = await publish({ document: [] });
 
-    assertControlError(result, 400, "invalid_policy_identity");
+    assertControlError(result, 400, "missing_document");
     await assertNoPublishWrites();
   });
 

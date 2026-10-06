@@ -22,6 +22,7 @@ import {
   provisionHappyPath,
   resetE2eState,
   seedSql,
+  setMirrorCapabilities,
   visitSummaryInvokeBody,
   type EntitlePayload,
   type InvokeResult,
@@ -284,195 +285,10 @@ describe("Stage 09 — entitlement and rate limit (S09-023…S09-043)", () => {
     expect(alreadyRetired.json).toEqual({ error: "ver_already_retired" });
   });
 
-  it("S09-027 — missing entitlement row is stage-3 internal_error", async () => {
-    const scenario = await provisionHappyPath();
-    const installationScope = `installation:${scenario.installationId}`;
-    const grantsBefore = {
-      installation: await getGrants(installationScope),
-      plan: await getGrants("plan:standard"),
-    };
-    expect(grantsBefore.installation).toHaveLength(1);
-    expect(grantsBefore.plan).toHaveLength(1);
 
-    await seedSql([
-      {
-        sql: "DELETE FROM entitlement WHERE installation_id = ?",
-        params: [scenario.installationId],
-      },
-    ]);
-    clearConfigCache();
 
-    const result = await invokeHappy(scenario);
-    assertJsonTaxonomy(result, 500, "internal_error", true);
-    await assertNoGuardWrites();
 
-    // Catalog restore: no control-plane op recreates a deleted entitlement row,
-    // so [SEED] a pending row then Stage 4 entitle. Live grants must be a no-op.
-    await seedSql([
-      {
-        sql: `INSERT INTO entitlement (
-                entitlement_id, installation_id, plan, period_start, period_end,
-                request_quota, token_budget, cost_budget, allowed_capabilities,
-                soft_threshold, status
-              ) VALUES (?, ?, 'standard', ?, ?, 0, 0, 0, '[]', 0, 'pending')`,
-        params: [
-          crypto.randomUUID(),
-          scenario.installationId,
-          DEFAULT_ENTITLE_PAYLOAD.period_start,
-          DEFAULT_ENTITLE_PAYLOAD.period_end,
-        ],
-      },
-    ]);
 
-    const restored = await entitleInstallation(scenario);
-    expect(restored.status).toBe(200);
-    expect(restored.json).toEqual({
-      installation_id: scenario.installationId,
-      status: "active",
-    });
-
-    const grantsAfter = {
-      installation: await getGrants(installationScope),
-      plan: await getGrants("plan:standard"),
-    };
-    expect(grantsAfter.installation).toHaveLength(1);
-    expect(grantsAfter.plan).toHaveLength(1);
-    expect(grantsAfter.installation[0]?.grant_id).toBe(
-      grantsBefore.installation[0]?.grant_id,
-    );
-    expect(grantsAfter.plan[0]?.grant_id).toBe(grantsBefore.plan[0]?.grant_id);
-    expect(await getEntitlement(scenario.installationId)).toMatchObject({
-      status: "active",
-    });
-  });
-
-  it("S09-028 — non-active entitlement is forbidden_capability", async () => {
-    const scenario = await provisionHappyPath();
-
-    await seedSql([
-      {
-        sql: "UPDATE entitlement SET status = 'pending' WHERE installation_id = ?",
-        params: [scenario.installationId],
-      },
-    ]);
-    clearConfigCache();
-    const pending = await invokeHappy(scenario);
-    assertJsonTaxonomy(pending, 403, "forbidden_capability", false);
-    await assertNoGuardWrites();
-
-    await seedSql([
-      {
-        sql: "UPDATE entitlement SET status = 'suspended' WHERE installation_id = ?",
-        params: [scenario.installationId],
-      },
-    ]);
-    clearConfigCache();
-    const suspended = await invokeHappy(scenario);
-    assertJsonTaxonomy(suspended, 403, "forbidden_capability", false);
-    await assertNoGuardWrites();
-
-    await seedSql([
-      {
-        sql: "UPDATE entitlement SET status = 'active' WHERE installation_id = ?",
-        params: [scenario.installationId],
-      },
-    ]);
-    clearConfigCache();
-  });
-
-  it("S09-029 — plan below minimum is forbidden_capability", async () => {
-    const scenario = await provisionHappyPath();
-
-    await seedSql([
-      {
-        sql: "UPDATE entitlement SET plan = 'starter' WHERE installation_id = ?",
-        params: [scenario.installationId],
-      },
-    ]);
-    clearConfigCache();
-    const starter = await invokeHappy(scenario);
-    assertJsonTaxonomy(starter, 403, "forbidden_capability", false);
-    await assertNoGuardWrites();
-
-    await seedSql([
-      {
-        sql: "UPDATE entitlement SET plan = 'verify' WHERE installation_id = ?",
-        params: [scenario.installationId],
-      },
-    ]);
-    clearConfigCache();
-    const unknown = await invokeHappy(scenario);
-    assertJsonTaxonomy(unknown, 403, "forbidden_capability", false);
-    await assertNoGuardWrites();
-
-    await seedSql([
-      {
-        sql: "UPDATE entitlement SET plan = 'standard' WHERE installation_id = ?",
-        params: [scenario.installationId],
-      },
-    ]);
-    clearConfigCache();
-  });
-
-  it("S09-030 — empty allowed_capabilities is forbidden_capability", async () => {
-    const scenario = await provisionHappyPath();
-    await seedSql([
-      {
-        sql: "UPDATE entitlement SET allowed_capabilities = '[]' WHERE installation_id = ?",
-        params: [scenario.installationId],
-      },
-    ]);
-    clearConfigCache();
-
-    const result = await invokeHappy(scenario);
-    assertJsonTaxonomy(result, 403, "forbidden_capability", false);
-    await assertNoGuardWrites();
-
-    await seedSql([
-      {
-        sql: "UPDATE entitlement SET allowed_capabilities = ? WHERE installation_id = ?",
-        params: [JSON.stringify([CAPABILITY_ID]), scenario.installationId],
-      },
-    ]);
-    clearConfigCache();
-  });
-
-  it("S09-031 — malformed allowed_capabilities is forbidden_capability", async () => {
-    const scenario = await provisionHappyPath();
-
-    await seedSql([
-      {
-        sql: "UPDATE entitlement SET allowed_capabilities = 'not json' WHERE installation_id = ?",
-        params: [scenario.installationId],
-      },
-    ]);
-    clearConfigCache();
-    const unparseable = await invokeHappy(scenario);
-    assertJsonTaxonomy(unparseable, 403, "forbidden_capability", false);
-    await assertNoGuardWrites();
-
-    await seedSql([
-      {
-        sql: "UPDATE entitlement SET allowed_capabilities = ? WHERE installation_id = ?",
-        params: [
-          `["${CAPABILITY_ID}", 7]`,
-          scenario.installationId,
-        ],
-      },
-    ]);
-    clearConfigCache();
-    const mixed = await invokeHappy(scenario);
-    assertJsonTaxonomy(mixed, 403, "forbidden_capability", false);
-    await assertNoGuardWrites();
-
-    await seedSql([
-      {
-        sql: "UPDATE entitlement SET allowed_capabilities = ? WHERE installation_id = ?",
-        params: [JSON.stringify([CAPABILITY_ID]), scenario.installationId],
-      },
-    ]);
-    clearConfigCache();
-  });
 
   it("S09-032 — revoked installation-scope grant is forbidden_capability", async () => {
     // Reader filters revoked_at IS NULL, so a revoked installation grant is a
@@ -491,7 +307,7 @@ describe("Stage 09 — entitlement and rate limit (S09-023…S09-043)", () => {
         ],
       },
     ]);
-    clearConfigCache();
+    await setMirrorCapabilities(scenario, []);
 
     const result = await invokeHappy(scenario);
     assertJsonTaxonomy(result, 403, "forbidden_capability", false);
@@ -523,10 +339,10 @@ describe("Stage 09 — entitlement and rate limit (S09-023…S09-043)", () => {
     const result = await postRequest(scenario, {
       token: await mintAat(scenario),
       traceId: TRACE_ID,
-      capabilityVersion: CAPABILITY_VERSION,
+      capabilityVersion: "9.9.9",
       body: happyVisitBody(scenario),
     });
-    assertJsonTaxonomy(result, 403, "forbidden_capability", false);
+    assertJsonTaxonomy(result, 404, "capability_unknown", false);
     await assertNoGuardWrites();
 
     await seedSql([
@@ -554,7 +370,7 @@ describe("Stage 09 — entitlement and rate limit (S09-023…S09-043)", () => {
         params: [`installation:${scenario.installationId}`, CAPABILITY_ID],
       },
     ]);
-    clearConfigCache();
+    await setMirrorCapabilities(scenario, []);
 
     const result = await invokeHappy(scenario);
     assertJsonTaxonomy(result, 403, "forbidden_capability", false);

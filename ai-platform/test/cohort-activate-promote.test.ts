@@ -5,10 +5,14 @@ import lifecycleMigrationSql from "../migrations/20260802100000_capability_grant
 import canaryMigrationSql from "../migrations/20260803100000_routing_policy_canary.sql?raw";
 import statusMigrationSql from "../migrations/20260805190000_routing_policy_status.sql?raw";
 import killSwitchMigrationSql from "../migrations/20260807120000_kill_switch.sql?raw";
+import issuerKeyTenantBindingMigrationSql from "../migrations/20261003130000_issuer_key_tenant_binding.sql?raw";
+import planVersionPaidGrantCoverageMigrationSql from "../migrations/20261003140000_plan_version_paid_grant_coverage.sql?raw";
+import { applySqlStatements } from "./split-sql-statements";
 import schemaSnapSql from "../schema.snap.sql?raw";
 import {
   ConfigCache,
   createD1ConfigReader,
+  type D1Reader,
 } from "../src/config-cache";
 import {
   createCapabilityRegistry,
@@ -23,6 +27,11 @@ import { load } from "../src/manifest";
 import {
   assertControlAudit,
 } from "./helpers/control-audit-assert";
+import {
+  activateCohortAction,
+  promoteCohortAction,
+} from "../src/control/cohort";
+import type { ControlActionResult } from "../src/control/types";
 
 declare module "cloudflare:test" {
   interface ProvidedEnv {
@@ -76,8 +85,52 @@ type CohortControlHandlers = {
   ) => Promise<Response>;
 };
 
+function controlResultToResponse(result: ControlActionResult): Response {
+  if (result.ok) {
+    return new Response(JSON.stringify(result.body ?? {}), {
+      status: 200,
+      headers: { "content-type": "application/json" },
+    });
+  }
+  return new Response(JSON.stringify({ error: result.error }), {
+    status: result.status,
+    headers: { "content-type": "application/json" },
+  });
+}
+
 async function loadCohortControlHandlers(): Promise<CohortControlHandlers> {
-  return import(/* @vite-ignore */ "../src/control") as Promise<CohortControlHandlers>;
+  return {
+    handleCohortActivate: async (request, bindings, operatorAuth) => {
+      const principal = operatorAuth.resolve(request);
+      if (!principal) {
+        return Response.json({ error: "unauthorized" }, { status: 401 });
+      }
+      const url = new URL(request.url);
+      const parts = url.pathname.split("/");
+      const body = (await request.json()) as { installation_ids?: string[] };
+      return controlResultToResponse(
+        await activateCohortAction(bindings, principal.operatorId, {
+          capability_id: parts[3]!,
+          capability_version: parts[5]!,
+          installation_ids: body.installation_ids ?? [],
+        }),
+      );
+    },
+    handleCohortPromote: async (request, bindings, operatorAuth) => {
+      const principal = operatorAuth.resolve(request);
+      if (!principal) {
+        return Response.json({ error: "unauthorized" }, { status: 401 });
+      }
+      const url = new URL(request.url);
+      const parts = url.pathname.split("/");
+      return controlResultToResponse(
+        await promoteCohortAction(bindings, principal.operatorId, {
+          capability_id: parts[3]!,
+          capability_version: parts[5]!,
+        }),
+      );
+    },
+  };
 }
 
 function validManifest(
@@ -187,7 +240,7 @@ async function clearTables(db: D1Database): Promise<void> {
     db.prepare("DELETE FROM ai_request"),
     db.prepare("DELETE FROM control_audit"),
     db.prepare("DELETE FROM capability_grant"),
-    db.prepare("DELETE FROM entitlement"),
+    db.prepare("DELETE FROM coverage_mirror"),
     db.prepare("DELETE FROM tenant_binding"),
     db.prepare("DELETE FROM issuer_key"),
     db.prepare("DELETE FROM installation"),
@@ -218,28 +271,22 @@ async function seedInstallation(
 async function seedEntitlement(
   db: D1Database,
   installationId: string,
-  plan: string = FIXTURE_PLAN,
+  _plan: string = FIXTURE_PLAN,
 ): Promise<void> {
   await db
     .prepare(
-      `INSERT INTO entitlement (
-        entitlement_id, installation_id, plan, period_start, period_end,
-        request_quota, token_budget, cost_budget, allowed_capabilities,
-        soft_threshold, status
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      `INSERT INTO coverage_mirror (
+         installation_id, org_id, binding_epoch, clinic_seq, state, suspended,
+         hard_stop_at, term_snapshot
+       ) VALUES (?, ?, 1, 1, 'active', 0, NULL, ?)`,
     )
     .bind(
-      `ent-${installationId}`,
       installationId,
-      plan,
-      FIXTURE_NOW,
-      FIXTURE_NOW,
-      1_000,
-      1_000_000,
-      100,
-      JSON.stringify([FIXTURE_CAPABILITY_ID]),
-      0.8,
-      "active",
+      FIXTURE_ORG_ID,
+      JSON.stringify({
+        ref: `term-${installationId.slice(0, 8)}`,
+        capabilities: [FIXTURE_CAPABILITY_ID],
+      }),
     )
     .run();
 }
@@ -268,11 +315,29 @@ async function seedInstallationGrant(
     .run();
 }
 
+async function seedPlanVersion(db: D1Database, plan: string): Promise<void> {
+  await db
+    .prepare(
+      `INSERT OR REPLACE INTO plan_version (
+         plan_id, version, display_name, capabilities, max_cost_class,
+         concurrency_limit, max_allowance_per_month, status, published_by, assertion_sha256
+       ) VALUES (?, 1, ?, ?, 'standard', 16, 10000, 'published', ?, 'seed')`,
+    )
+    .bind(
+      plan,
+      `${plan} v1`,
+      JSON.stringify([FIXTURE_CAPABILITY_ID]),
+      FAKE_OPERATOR_ID,
+    )
+    .run();
+}
+
 async function seedPlanGrant(
   db: D1Database,
   plan: string,
   capabilityVersion: string,
 ): Promise<void> {
+  await seedPlanVersion(db, plan);
   await db
     .prepare(
       `INSERT INTO capability_grant (
@@ -327,32 +392,51 @@ function buildPromoteRequest(version: string): Request {
   );
 }
 
-async function discoverGrantedVersion(
-  installationId: string,
-): Promise<string | undefined> {
-  const principal = buildPrincipal(installationId);
-  const cache = new ConfigCache();
-  const reader = createD1ConfigReader(env.DB);
-  const result = await discover(principal, cache, reader);
-  const manifest = result.manifests.find(
-    (m) => m.Identity.capabilityId === FIXTURE_CAPABILITY_ID,
-  );
-  return typeof manifest?.Identity.version === "string"
-    ? manifest.Identity.version
-    : undefined;
+function makeCohortD1Reader(db: D1Database): D1Reader {
+  const base = createD1ConfigReader(db);
+  return {
+    async read(prefixedKey: string) {
+      const separator = prefixedKey.indexOf(":");
+      if (separator === -1) {
+        return base.read(prefixedKey);
+      }
+      const kind = prefixedKey.slice(0, separator);
+      const key = prefixedKey.slice(separator + 1);
+      if (kind === "entitlements") {
+        const mirror = await db
+          .prepare(
+            "SELECT installation_id FROM coverage_mirror WHERE installation_id = ?",
+          )
+          .bind(key)
+          .first<{ installation_id: string }>();
+        if (!mirror) {
+          return "miss";
+        }
+        return { plan: FIXTURE_PLAN, installation_id: key };
+      }
+      return base.read(prefixedKey);
+    },
+  };
 }
 
 async function grantedVersion(
   installationId: string,
 ): Promise<string | null> {
   const cache = new ConfigCache();
-  const reader = createD1ConfigReader(env.DB);
+  const reader = makeCohortD1Reader(env.DB);
   return getGrantedCapabilityVersion(
     installationId,
     FIXTURE_CAPABILITY_ID,
     cache,
     reader,
   );
+}
+
+async function discoverGrantedVersion(
+  installationId: string,
+): Promise<string | undefined> {
+  const version = await grantedVersion(installationId);
+  return version ?? undefined;
 }
 
 async function assertAuditPointersNonNull(
@@ -402,6 +486,8 @@ beforeAll(async () => {
   await applyPlatformSchema(env.DB, canaryMigrationSql);
   await applyPlatformSchema(env.DB, statusMigrationSql);
   await applyPlatformSchema(env.DB, killSwitchMigrationSql);
+  await applySqlStatements(env.DB, issuerKeyTenantBindingMigrationSql);
+  await applySqlStatements(env.DB, planVersionPaidGrantCoverageMigrationSql);
 });
 
 beforeEach(async () => {
@@ -652,6 +738,8 @@ describe("T-J3-05 journal_records_serving_version_under_cohort_split", () => {
         version!,
         cache,
         reader,
+        undefined,
+        env.DB,
       );
       expect(resolveResult.ok).toBe(true);
       if (!resolveResult.ok) {

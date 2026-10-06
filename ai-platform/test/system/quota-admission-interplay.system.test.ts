@@ -23,6 +23,7 @@ import {
   mintAat,
   newScenario,
   POLICY_ID,
+  POLICY_VERSION,
   publishPolicy,
   promote,
   registerVisitSummaryCapability,

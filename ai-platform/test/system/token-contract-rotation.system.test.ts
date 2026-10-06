@@ -51,7 +51,14 @@ async function controlPost(
     }),
   );
   const text = await response.text();
-  const json = text.length > 0 ? (JSON.parse(text) as Record<string, unknown>) : {};
+  let json: Record<string, unknown> = {};
+  if (text.length > 0) {
+    try {
+      json = JSON.parse(text) as Record<string, unknown>;
+    } catch {
+      json = { raw: text };
+    }
+  }
   return { status: response.status, json };
 }
 
@@ -94,6 +101,15 @@ describe("token contract rotation", () => {
     const scenario = await newScenario();
     await setupPromotedFakePolicy(scenario);
 
+    await env.DB.batch([
+      env.DB.prepare("DELETE FROM token_contract"),
+      env.DB.prepare(
+        `INSERT INTO token_contract (ver, added_at, retired_at, changed_by)
+         VALUES ('1', '2026-08-03T00:00:00.000Z', NULL, 'seed')`,
+      ),
+    ]);
+    clearConfigCache();
+
     const began = await vendorClassH("beginTokenContractRotation", {});
     expect(began.status).toBe(200);
     clearConfigCache();
@@ -111,7 +127,7 @@ describe("token contract rotation", () => {
       .first<{ ver: string; retired_at: string | null }>();
     expect(row?.retired_at).toBe(retired.json.retired_at);
 
-    const beginAudits = await getAudits("token_contract_begin_rotation", "3");
+    const beginAudits = await getAudits("token_contract_begin_rotation", "2");
     expect(beginAudits).toHaveLength(1);
     const retireAudits = await getAudits("token_contract_retire", "2");
     expect(retireAudits).toHaveLength(1);
@@ -123,8 +139,9 @@ describe("token contract rotation", () => {
 
     const tokenV1 = await mintAat(scenario, { ver: "1" });
     const allowed = await invoke(scenario, { token: tokenV1 });
-    expect(allowed.status).toBe(401);
-    expect(allowed.body?.code).toBe("unauthenticated");
+    assertIdentityPasses(allowed.status);
+    expect(allowed.status).toBe(200);
+    expect(terminalEventTypes(allowed.events)).toEqual(["completed"]);
   });
 
   it("SYS-9.3 — Auth & validation", async () => {

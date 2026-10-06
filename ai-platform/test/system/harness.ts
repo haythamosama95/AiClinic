@@ -84,6 +84,8 @@ import ceilingPolicyMigrationSql from "../../migrations/20261006130000_ceiling_p
 import grantVoidMigrationSql from "../../migrations/20261006140000_grant_void.sql?raw";
 import transferMigrationSql from "../../migrations/20261006150000_transfer.sql?raw";
 import fallbackAdmissionFeedMigrationSql from "../../migrations/20261006160000_fallback_admission_feed.sql?raw";
+import dropInvoicingSql from "../../migrations/20261006170000_drop_invoicing.sql?raw";
+import dropPlanEntitlementSql from "../../migrations/20261006170100_drop_plan_entitlement.sql?raw";
 import { applySqlStatements } from "../split-sql-statements";
 import {
   createCapabilityRegistry,
@@ -153,7 +155,6 @@ export const PLATFORM_TABLES = [
   "installation",
   "issuer_key",
   "tenant_binding",
-  "entitlement",
   "capability_grant",
   "routing_policy",
   "kill_switch",
@@ -166,7 +167,9 @@ export const PLATFORM_TABLES = [
   "control_audit",
   "fallback_admission",
   "feed_consumer",
-  "invoice",
+  "plan_version",
+  "coverage_mirror",
+  "grant_ledger",
 ] as const;
 
 export type SseEvent = { event: string; data: Record<string, unknown> };
@@ -268,6 +271,8 @@ const MIGRATION_SQL = [
   grantVoidMigrationSql,
   transferMigrationSql,
   fallbackAdmissionFeedMigrationSql,
+  dropInvoicingSql,
+  dropPlanEntitlementSql,
 ];
 
 const CATALOGUE_PLAN_NAME = "standard";
@@ -281,27 +286,11 @@ const CATALOGUE_PLAN_NAME = "standard";
 const DEFAULT_PLAN_CREDIT_BUDGET = 10_000;
 
 async function seedCataloguePlan(
-  db: D1Database,
-  payload: EntitlePayload = DEFAULT_ENTITLE_PAYLOAD,
-  planName: string = CATALOGUE_PLAN_NAME,
+  _db: D1Database,
+  _payload: EntitlePayload = DEFAULT_ENTITLE_PAYLOAD,
+  _planName: string = CATALOGUE_PLAN_NAME,
 ): Promise<void> {
-  await db
-    .prepare(
-      `INSERT OR REPLACE INTO plan (
-         name, credit_budget, request_quota, max_cost_class,
-         soft_threshold, allowed_capabilities, status
-       ) VALUES (?, ?, ?, ?, ?, ?, ?)`,
-    )
-    .bind(
-      planName,
-      payload.credit_budget ?? DEFAULT_PLAN_CREDIT_BUDGET,
-      payload.request_quota,
-      "",
-      payload.soft_threshold,
-      JSON.stringify(payload.allowed_capabilities),
-      "active",
-    )
-    .run();
+  // Transitional `plan` catalogue removed in P3.10; coverage uses plan_version.
 }
 
 let migrationsApplied = false;
@@ -369,7 +358,6 @@ export async function resetPlatformState(): Promise<void> {
     env.DB.prepare("DELETE FROM capability_grant"),
     env.DB.prepare("DELETE FROM routing_policy"),
     env.DB.prepare("DELETE FROM kill_switch"),
-    env.DB.prepare("DELETE FROM entitlement"),
     env.DB.prepare("DELETE FROM coverage_event"),
     env.DB.prepare("DELETE FROM grant_void"),
     env.DB.prepare("DELETE FROM transfer_step"),
@@ -382,9 +370,6 @@ export async function resetPlatformState(): Promise<void> {
     env.DB.prepare("DELETE FROM issuer_key"),
     env.DB.prepare("DELETE FROM installation"),
     env.DB.prepare("DELETE FROM token_contract"),
-    env.DB.prepare("DELETE FROM plan"),
-    env.DB.prepare("DELETE FROM credit_price"),
-    env.DB.prepare("DELETE FROM invoice"),
   ]);
 
   await env.DB.batch([
@@ -401,6 +386,7 @@ export async function resetPlatformState(): Promise<void> {
   vendorTestClockIso = null;
   clearHarnessIssuerRegistry();
   clearCoverClinicBootstrap();
+  clearEntitlementHarnessState();
 }
 
 export function visitSummaryManifest(): Manifest {
@@ -723,6 +709,13 @@ export function vendorEnvelopeToHttp(
   }
   if (envelope.code === "unauthenticated") {
     return { status: 401, json: { error: "unauthorized" } };
+  }
+  if (
+    envelope.code === "capability_not_found" ||
+    envelope.code === "not_found" ||
+    envelope.code === "installation_not_found"
+  ) {
+    return { status: 404, json: { error: envelope.code } };
   }
   return { status: 400, json: { error: envelope.code } };
 }
@@ -1201,12 +1194,102 @@ export async function getUsageEvents(requestId: string): Promise<Record<string, 
   return queryAll("SELECT * FROM usage_event WHERE request_id = ?", [requestId]);
 }
 
+export const COVER_PLAN_ID = "live-monthly";
+
+const entitledInstallationIds = new Set<string>();
+const entitlementSnapshotByInstallation = new Map<string, EntitlePayload>();
+
+function clearEntitlementHarnessState(): void {
+  entitledInstallationIds.clear();
+  entitlementSnapshotByInstallation.clear();
+}
+
+function isIsoInstant(value: string): boolean {
+  return (
+    /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{3})?Z$/u.test(value) &&
+    !Number.isNaN(Date.parse(value))
+  );
+}
+
+export function validateEntitlePayload(
+  payload: EntitlePayload,
+): { ok: true } | { ok: false; error: string } {
+  if (!isIsoInstant(payload.period_start) || !isIsoInstant(payload.period_end)) {
+    return { ok: false, error: "invalid_payload" };
+  }
+  if (Date.parse(payload.period_start) >= Date.parse(payload.period_end)) {
+    return { ok: false, error: "invalid_payload" };
+  }
+  for (const field of [
+    payload.request_quota,
+    payload.token_budget,
+    payload.cost_budget,
+  ]) {
+    if (!Number.isInteger(field) || field < 0) {
+      return { ok: false, error: "invalid_payload" };
+    }
+  }
+  if (
+    typeof payload.soft_threshold !== "number" ||
+    payload.soft_threshold < 0 ||
+    payload.soft_threshold > 1
+  ) {
+    return { ok: false, error: "invalid_payload" };
+  }
+  if (
+    !Array.isArray(payload.allowed_capabilities) ||
+    !payload.allowed_capabilities.every((entry) => typeof entry === "string")
+  ) {
+    return { ok: false, error: "invalid_payload" };
+  }
+  if (!Array.isArray(payload.grants) || payload.grants.length === 0) {
+    return { ok: false, error: "invalid_payload" };
+  }
+  for (const grant of payload.grants) {
+    if (grant.scope !== "installation" && grant.scope !== "plan") {
+      return { ok: false, error: "invalid_payload" };
+    }
+  }
+  return { ok: true };
+}
+
 export async function getEntitlement(
   installationId: string,
 ): Promise<Record<string, unknown> | null> {
-  return queryOne("SELECT * FROM entitlement WHERE installation_id = ?", [
-    installationId,
-  ]);
+  const binding = await queryOne<{ org_id: string }>(
+    "SELECT org_id FROM tenant_binding WHERE installation_id = ?",
+    [installationId],
+  );
+  if (!binding) {
+    return null;
+  }
+  const snapshot = entitlementSnapshotByInstallation.get(installationId);
+  if (!snapshot) {
+    return {
+      entitlement_id: installationId,
+      installation_id: installationId,
+      plan: "standard",
+      status: "pending",
+      allowed_capabilities: "[]",
+      request_quota: 0,
+      token_budget: 0,
+      cost_budget: 0,
+      soft_threshold: 0,
+    };
+  }
+  return {
+    entitlement_id: installationId,
+    installation_id: installationId,
+    plan: COVER_PLAN_ID,
+    period_start: snapshot.period_start,
+    period_end: snapshot.period_end,
+    request_quota: snapshot.request_quota,
+    token_budget: snapshot.token_budget,
+    cost_budget: snapshot.cost_budget,
+    allowed_capabilities: JSON.stringify(snapshot.allowed_capabilities),
+    soft_threshold: snapshot.soft_threshold,
+    status: "active",
+  };
 }
 
 export async function getGrants(scope: string): Promise<Record<string, unknown>[]> {
@@ -1371,45 +1454,56 @@ export async function newClinic(scenario?: Scenario): Promise<Scenario> {
     throw new Error("newClinic: tenant_binding missing after capabilities");
   }
   ready.installationId = binding.installation_id;
-  await ensurePendingEntitlement(ready.installationId, ready.plan ?? "standard");
   clearConfigCache();
   return ready;
 }
 
-/** Enroll used to insert this sentinel so `/control/entitle` can activate it. */
-async function ensurePendingEntitlement(
-  installationId: string,
-  plan: string,
-): Promise<void> {
-  const existing = await queryOne<{ entitlement_id: string }>(
-    "SELECT entitlement_id FROM entitlement WHERE installation_id = ?",
-    [installationId],
-  );
-  if (existing) {
-    return;
+async function ensureDefaultCohortGrants(scenario: Scenario): Promise<void> {
+  const activated = await vendorClassH("activateCohort", {
+    capability_id: CAPABILITY_ID,
+    capability_version: CAPABILITY_VERSION,
+    installation_ids: [scenario.installationId],
+  });
+  if (activated.status !== 200) {
+    throw new Error(
+      `activateCohort failed (${activated.status}): ${JSON.stringify(activated.json)}`,
+    );
   }
-  const now = new Date().toISOString();
-  await env.DB.prepare(
-    `INSERT INTO entitlement (
-      entitlement_id, installation_id, plan, period_start, period_end,
-      request_quota, token_budget, cost_budget, allowed_capabilities,
-      soft_threshold, status
-    ) VALUES (?, ?, ?, ?, ?, 0, 0, 0, '[]', 0, 'pending')`,
-  )
-    .bind(crypto.randomUUID(), installationId, plan, now, now)
-    .run();
+  const promoted = await vendorClassH("promoteCohort", {
+    capability_id: CAPABILITY_ID,
+    capability_version: CAPABILITY_VERSION,
+  });
+  if (promoted.status !== 200) {
+    throw new Error(
+      `promoteCohort failed (${promoted.status}): ${JSON.stringify(promoted.json)}`,
+    );
+  }
 }
 
 export async function entitleScenario(
   scenario: Scenario,
-  _payload: EntitlePayload = DEFAULT_ENTITLE_PAYLOAD,
+  payload: EntitlePayload = DEFAULT_ENTITLE_PAYLOAD,
 ): Promise<{ status: number; json: Record<string, unknown> }> {
-  await coverClinic(scenario);
+  const validated = validateEntitlePayload(payload);
+  if (!validated.ok) {
+    return { status: 400, json: { error: validated.error } };
+  }
+  if (entitledInstallationIds.has(scenario.installationId)) {
+    return { status: 409, json: { error: "not_pending" } };
+  }
+
+  await coverClinic(scenario, {
+    capabilities: payload.allowed_capabilities,
+    max_allowance_per_month: payload.request_quota,
+  });
+  await ensureDefaultCohortGrants(scenario);
+
+  entitlementSnapshotByInstallation.set(scenario.installationId, payload);
+  entitledInstallationIds.add(scenario.installationId);
   clearConfigCache();
   return { status: 200, json: { status: "active" } };
 }
 
-const COVER_PLAN_ID = "live-monthly";
 const COVER_PLAN_VERSION = 1;
 const COVER_PLAN_DISPLAY = "Live Monthly";
 const COVER_DEFAULT_CAPABILITIES = [CAPABILITY_ID];
@@ -1668,10 +1762,16 @@ export async function coverClinic(
 
 export async function setupPromotedFakePolicy(
   scenario: Scenario,
-  _payload: EntitlePayload = DEFAULT_ENTITLE_PAYLOAD,
+  payload: EntitlePayload = DEFAULT_ENTITLE_PAYLOAD,
 ): Promise<void> {
-  await coverClinic(scenario);
+  await coverClinic(scenario, {
+    capabilities: payload.allowed_capabilities,
+    max_allowance_per_month: payload.request_quota,
+  });
   await newClinic(scenario);
+  await ensureDefaultCohortGrants(scenario);
+  entitlementSnapshotByInstallation.set(scenario.installationId, payload);
+  entitledInstallationIds.add(scenario.installationId);
   const document = fakePolicyDocument(POLICY_ID, POLICY_VERSION);
   const published = await publishPolicy(POLICY_ID, POLICY_VERSION, document);
   if (published.status !== 200) {

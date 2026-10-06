@@ -189,8 +189,6 @@ const token = await mintAat(scenario);
   });
 
   it("S08-042 — unpublished x-capability-version is 403 forbidden_capability", async () => {
-    // Catalog 404 capability_unknown (stage 5). Code: stage 3 entitlement
-    // rejects version mismatch as capability_not_granted before registry.
     const { scenario, token } = await entitledJourney();
 
     const result = await postRequest(scenario, {
@@ -199,12 +197,10 @@ const token = await mintAat(scenario);
       body: happyVisitBody(scenario),
     });
 
-    assertJsonTaxonomy(result, 403, "forbidden_capability", false);
+    assertJsonTaxonomy(result, 404, "capability_unknown", false);
   });
 
   it("S08-043 — unknown capability_id is 403 forbidden_capability", async () => {
-    // Catalog 404 capability_unknown (stage 5). Code: stage 3 entitlement
-    // rejects unknown id as capability_not_granted before registry.
     const { scenario, token } = await entitledJourney();
 
     const result = await postRequest(scenario, {
@@ -214,7 +210,7 @@ const token = await mintAat(scenario);
       }),
     });
 
-    assertJsonTaxonomy(result, 403, "forbidden_capability", false);
+    assertJsonTaxonomy(result, 404, "capability_unknown", false);
   });
 
   it("S08-044 — rate_limited maps to 429 with retry_after", async () => {

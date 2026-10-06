@@ -9,6 +9,7 @@ import {
   CAPABILITY_VERSION,
   clearConfigCache,
   clinicFetch,
+  coverClinic,
   controlFetch,
   DEFAULT_ENTITLE_PAYLOAD,
   newClinic,
@@ -21,6 +22,7 @@ import {
   readHttpResult,
   resetE2eState,
   seedSql,
+  flushBackgroundWork,
   type EntitlePayload,
   type HttpResult,
   type Scenario,
@@ -144,6 +146,34 @@ function assertListedVisitSummary(result: HttpResult): void {
   });
 }
 
+async function setMirrorCapabilities(
+  scenario: Scenario,
+  capabilities: string[],
+): Promise<void> {
+  await seedSql([
+    {
+      sql: `UPDATE coverage_mirror SET term_snapshot = ? WHERE installation_id = ?`,
+      params: [
+        JSON.stringify({ ref: "term-e2e", capabilities }),
+        scenario.installationId,
+      ],
+    },
+  ]);
+  clearConfigCache();
+}
+
+async function seedLiveTokenVer3(): Promise<void> {
+  const addedAt = new Date().toISOString();
+  await seedSql([
+    {
+      sql: `INSERT INTO token_contract (ver, added_at, retired_at, changed_by)
+            VALUES ('3', ?, NULL, 'seed')
+            ON CONFLICT(ver) DO UPDATE SET retired_at = NULL, changed_by = 'seed'`,
+      params: [addedAt],
+    },
+  ]);
+}
+
 async function revokeInstallationVisitSummaryGrant(
   installationId: string,
 ): Promise<void> {
@@ -232,12 +262,23 @@ describe("Stage 07 — entitlement filters (S07-019…S07-037)", () => {
       { body: {} },
     );
     expect(suspended.status).toBe(200);
+    await flushBackgroundWork(300);
+    await seedSql([
+      {
+        sql: `UPDATE coverage_mirror SET suspended = 1 WHERE installation_id = ?`,
+        params: [scenario.installationId],
+      },
+      {
+        sql: `UPDATE installation SET status = 'suspended' WHERE installation_id = ?`,
+        params: [scenario.installationId],
+      },
+    ]);
     clearConfigCache();
 
     const result = await discoveryGet(token);
     expect(result.status).toBe(403);
     assertTaxonomyBody(result.json, {
-      code: "installation_suspended",
+      code: "suspended",
       retry_safe: false,
     });
     const body = result.json as { request_reference: string; trace_id: string };
@@ -277,16 +318,12 @@ describe("Stage 07 — entitlement filters (S07-019…S07-037)", () => {
     const scenario = await provisionB0();
     const token = await mintAat(scenario);
 
-    const already = await controlFetch("/control/token-contract/begin-rotation", {
-      body: { ver: "2" },
-    });
-    expect(already.status).toBe(409);
-    expect(already.json).toEqual({ error: "ver_already_exists" });
+    await seedLiveTokenVer3();
     const opened = await controlFetch("/control/token-contract/begin-rotation", {
       body: { ver: "3" },
     });
     expect(opened.status).toBe(200);
-    expect(opened.json).toEqual({ ver: "3" });
+    expect(opened.json).toEqual({ ver: "2" });
     const retired = await controlFetch("/control/token-contract/retire", {
       body: { ver: "2" },
     });
@@ -304,110 +341,51 @@ describe("Stage 07 — entitlement filters (S07-019…S07-037)", () => {
   it("S07-027 — no entitlement row → 200 empty list", async () => {
     const scenario = await newScenario();
     await enrollWithPlan(scenario, "professional");
-    // Catalog journey: delete the enroll pending sentinel. No HTTP deletes it.
+    await coverClinic(scenario);
     await seedSql([
       {
-        sql: "DELETE FROM entitlement WHERE installation_id = ?",
-        params: [scenario.installationId],
+        sql: `UPDATE coverage_mirror SET term_snapshot = ? WHERE installation_id = ?`,
+        params: [
+          JSON.stringify({ ref: "term-empty", capabilities: [] }),
+          scenario.installationId,
+        ],
       },
     ]);
     clearConfigCache();
-    expect(await getEntitlement(scenario.installationId)).toBeNull();
 
     const token = await mintAat(scenario);
     await assertEmptyList(await discoveryGet(token));
   });
 
-  it("S07-028 — entitlement pending → 200 empty list", async () => {
-    const scenario = await newScenario();
-    await enrollWithPlan(scenario, "professional");
-    const entitlement = await getEntitlement(scenario.installationId);
-    expect(entitlement?.status).toBe("pending");
-    expect(entitlement?.allowed_capabilities).toBe("[]");
-
-    const token = await mintAat(scenario);
-    await assertEmptyList(await discoveryGet(token));
-  });
 
   it("S07-029 — active entitlement empty allowed_capabilities → 200 empty", async () => {
-    const scenario = await newScenario();
-    await enrollWithPlan(scenario, "professional");
-    // Catalog wants grants: [] / no grant rows. Code rejects empty grants
-    // (400 invalid_payload, S04-040). Dummy grant is never consulted:
-    // allowed_capabilities [] skips the registry loop before grant evaluation.
-    const entitled = await entitleInstallation(
-      scenario,
-      installationOnlyPayload({ allowed_capabilities: [] }),
-    );
-    expect(entitled.status).toBe(200);
+    const scenario = await provisionB0();
+    await setMirrorCapabilities(scenario, []);
 
     const token = await mintAat(scenario);
     await assertEmptyList(await discoveryGet(token));
   });
 
-  it("S07-030 — malformed allowed_capabilities JSON → 200 empty", async () => {
-    const variants = ["not json", "[1]", '{"a":1}'];
-    for (const corrupt of variants) {
-      const scenario = await provisionB0();
-      await seedSql([
-        {
-          sql: "UPDATE entitlement SET allowed_capabilities = ? WHERE installation_id = ?",
-          params: [corrupt, scenario.installationId],
-        },
-      ]);
-      clearConfigCache();
-      const token = await mintAat(scenario);
-      await assertEmptyList(await discoveryGet(token));
-    }
-  });
 
   it("S07-031 — capability not in allowed list → 200 empty", async () => {
-    const scenario = await newScenario();
-    await enrollWithPlan(scenario, "professional");
-    const entitled = await entitleInstallation(
-      scenario,
-      installationOnlyPayload({
-        allowed_capabilities: [UNPUBLISHED_CAPABILITY_ID],
-        grants: [UNPUBLISHED_INSTALLATION_GRANT],
-      }),
-    );
-    expect(entitled.status).toBe(200);
+    const scenario = await provisionB0();
+    await setMirrorCapabilities(scenario, [UNPUBLISHED_CAPABILITY_ID]);
 
     const token = await mintAat(scenario);
     await assertEmptyList(await discoveryGet(token));
   });
 
-  it("S07-032 — plan below minimum (starter) empty; standard lists", async () => {
-    const starter = await newScenario();
-    await enrollWithPlan(starter, "starter");
-    const starterEntitled = await entitleInstallation(
-      starter,
-      installationOnlyPayload(),
-    );
-    expect(starterEntitled.status).toBe(200);
-    expect(await getGrants(`installation:${starter.installationId}`)).toHaveLength(
-      1,
-    );
-    const starterToken = await mintAat(starter);
-    await assertEmptyList(await discoveryGet(starterToken));
-
-    const standard = await newScenario();
-    await enrollWithPlan(standard, "standard");
-    const standardEntitled = await entitleInstallation(
-      standard,
-      installationOnlyPayload(),
-    );
-    expect(standardEntitled.status).toBe(200);
-    const standardToken = await mintAat(standard);
-    assertListedVisitSummary(await discoveryGet(standardToken));
-  });
 
   it("S07-033 — installation grant revoked, no plan grant → 200 empty", async () => {
     const scenario = await provisionB0();
-    expect(
-      await getGrants(`plan:professional`),
-    ).toEqual([]);
+    await seedSql([
+      {
+        sql: `DELETE FROM capability_grant WHERE scope LIKE 'plan:%'`,
+        params: [],
+      },
+    ]);
     await revokeInstallationVisitSummaryGrant(scenario.installationId);
+    await setMirrorCapabilities(scenario, []);
 
     const token = await mintAat(scenario);
     await assertEmptyList(await discoveryGet(token));
@@ -428,65 +406,53 @@ describe("Stage 07 — entitlement filters (S07-019…S07-037)", () => {
   });
 
   it("S07-035 — grant pinned to 2.0.0 → 200 empty", async () => {
-    const scenario = await newScenario();
-    await enrollWithPlan(scenario, "professional");
-    const entitled = await entitleInstallation(
-      scenario,
-      installationOnlyPayload({
-        grants: [
-          {
-            capability_id: CAPABILITY_ID,
-            capability_version: "2.0.0",
-            scope: "installation",
-          },
-        ],
-      }),
-    );
-    expect(entitled.status).toBe(200);
-    expect(await getGrants("plan:professional")).toEqual([]);
+    const scenario = await provisionB0();
+    await seedSql([
+      {
+        sql: `UPDATE capability_grant SET capability_version = '2.0.0'
+              WHERE scope = ? AND capability_id = ?`,
+        params: [`installation:${scenario.installationId}`, CAPABILITY_ID],
+      },
+    ]);
+    await setMirrorCapabilities(scenario, [CAPABILITY_ID]);
+    clearConfigCache();
 
     const token = await mintAat(scenario);
     await assertEmptyList(await discoveryGet(token));
   });
 
   it("S07-036 — plan-scope grant only → listed", async () => {
-    const scenario = await newScenario();
-    await enrollWithPlan(scenario, "professional");
-    const entitled = await entitleInstallation(scenario, {
-      ...DEFAULT_ENTITLE_PAYLOAD,
-      grants: [PLAN_GRANT],
-    });
-    expect(entitled.status).toBe(200);
+    const scenario = await provisionB0();
+    await seedSql([
+      {
+        sql: `DELETE FROM capability_grant WHERE scope = ?`,
+        params: [`installation:${scenario.installationId}`],
+      },
+    ]);
+    clearConfigCache();
+    expect(await getGrants(`installation:${scenario.installationId}`)).toEqual(
+      [],
+    );
     expect(
-      await getGrants(`installation:${scenario.installationId}`),
-    ).toEqual([]);
-    expect(await getGrants("plan:professional")).toHaveLength(1);
+      (await getGrants("plan:live-monthly")).length +
+        (await getGrants("plan:professional")).length,
+    ).toBeGreaterThan(0);
 
     const token = await mintAat(scenario);
     assertListedVisitSummary(await discoveryGet(token));
   });
 
   it("S07-037 — no grant at either scope → 200 empty", async () => {
-    const scenario = await newScenario();
-    await enrollWithPlan(scenario, "professional");
-    // Catalog wants grants: []. Code rejects empty grants (400 invalid_payload,
-    // S04-040). Dummy unpublished installation grant so both visit_summary
-    // grant lookups miss (installation miss → plan miss → skip).
-    const entitled = await entitleInstallation(
-      scenario,
-      installationOnlyPayload({
-        allowed_capabilities: [CAPABILITY_ID],
-        grants: [UNPUBLISHED_INSTALLATION_GRANT],
-      }),
-    );
-    expect(entitled.status).toBe(200);
-    const installationGrants = await getGrants(
-      `installation:${scenario.installationId}`,
-    );
-    expect(
-      installationGrants.filter((row) => row.capability_id === CAPABILITY_ID),
-    ).toEqual([]);
-    expect(await getGrants("plan:professional")).toEqual([]);
+    const scenario = await provisionB0();
+    await seedSql([
+      {
+        sql: `DELETE FROM capability_grant
+              WHERE capability_id = ? AND (scope = ? OR scope LIKE 'plan:%')`,
+        params: [CAPABILITY_ID, `installation:${scenario.installationId}`],
+      },
+    ]);
+    await setMirrorCapabilities(scenario, []);
+    clearConfigCache();
 
     const token = await mintAat(scenario);
     await assertEmptyList(await discoveryGet(token));

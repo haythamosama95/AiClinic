@@ -3,11 +3,16 @@
  * Workers-pool: real D1 + Quota DO; assert per-stage codes and later sinks untouched.
  */
 
-import { env } from "cloudflare:test";
+import { env, runInDurableObject } from "cloudflare:test";
 import { beforeAll, beforeEach, describe, expect, it } from "vitest";
 import migrationSql from "../migrations/20260731120000_platform_schema.sql?raw";
 import conversationIndexSql from "../migrations/20260805180000_h3_conversation_index.sql?raw";
 import planCatalogueSql from "../migrations/20260911120000_plan_catalogue.sql?raw";
+import issuerKeyTenantBindingMigrationSql from "../migrations/20261003130000_issuer_key_tenant_binding.sql?raw";
+import planVersionPaidGrantCoverageMigrationSql from "../migrations/20261003140000_plan_version_paid_grant_coverage.sql?raw";
+import { applySqlStatements } from "./split-sql-statements";
+import { ensureCoverageDoTables } from "../src/quota-do/index";
+import { CONCURRENCY_LIMIT } from "../src/quota-do";
 import {
   createCapabilityRegistry,
   setCapabilityRegistry,
@@ -258,16 +263,7 @@ function makePlatformD1Reader(db: D1Database): D1Reader {
         return row ?? "miss";
       }
       if (kind === "entitlements") {
-        const row = await db
-          .prepare(
-            `SELECT entitlement_id, installation_id, plan, period_start, period_end,
-                    request_quota, token_budget, cost_budget, credit_budget,
-                    allowed_capabilities, soft_threshold, status
-             FROM entitlement WHERE installation_id = ?`,
-          )
-          .bind(key)
-          .first<D1Row>();
-        return row ?? "miss";
+        return "miss";
       }
       if (kind === "grants") {
         const [installationId, capabilityId] = key.split("/", 2);
@@ -312,7 +308,7 @@ async function clearTables(): Promise<void> {
     env.DB.prepare("DELETE FROM ai_attempt"),
     env.DB.prepare("DELETE FROM ai_request"),
     env.DB.prepare("DELETE FROM capability_grant"),
-    env.DB.prepare("DELETE FROM entitlement"),
+    env.DB.prepare("DELETE FROM coverage_mirror"),
     env.DB.prepare("DELETE FROM installation"),
   ]);
 }
@@ -327,6 +323,119 @@ async function seedInstallation(installationId: string): Promise<void> {
     .run();
 }
 
+function termIdForInstallation(installationId: string): string {
+  return `term-${installationId.slice(0, 8)}`;
+}
+
+function sqlLiteral(value: string): string {
+  return `'${value.replace(/'/g, "''")}'`;
+}
+
+async function pinHarnessTestClock(isoUtc: string = FIXTURE_NOW): Promise<void> {
+  await env.DB.prepare(
+    `CREATE TABLE IF NOT EXISTS harness_test_clock (
+       id TEXT PRIMARY KEY,
+       now_iso TEXT NOT NULL
+     )`,
+  ).run();
+  await env.DB.prepare(
+    `INSERT OR REPLACE INTO harness_test_clock (id, now_iso) VALUES ('default', ?)`,
+  )
+    .bind(isoUtc)
+    .run();
+}
+
+async function seedQuotaDoForInstallation(
+  installationId: string,
+  options: {
+    requestQuota?: number;
+    capabilities?: string[];
+  } = {},
+): Promise<void> {
+  const termId = termIdForInstallation(installationId);
+  const requestQuota = options.requestQuota ?? 10_000;
+  const capabilities =
+    options.capabilities ?? [FIXTURE_CAPABILITY_ID, FIXTURE_CHAT_CAPABILITY_ID];
+  const planSnapshot = JSON.stringify({
+    capabilities,
+    max_cost_class: "standard",
+    concurrency_limit: CONCURRENCY_LIMIT,
+  });
+  const periodStart = FIXTURE_NOW;
+  const periodEnd = "2026-12-31T23:59:59.000Z";
+
+  await runInDurableObject(
+    env.DO.get(env.DO.idFromName(installationId)),
+    async (_instance, state) => {
+      const storage = state.storage as DurableObjectStorage & {
+        sql?: { exec: (query: string) => Iterable<Record<string, unknown>> };
+      };
+      if (!storage.sql) {
+        throw new Error("quota DO sql storage unavailable for pipeline seed");
+      }
+      await ensureCoverageDoTables(storage, async (fn) => fn());
+      const hotExists = [...storage.sql.exec("SELECT 1 AS ok FROM hot LIMIT 1")];
+      if (hotExists.length === 0) {
+        storage.sql.exec(
+          `INSERT INTO hot (
+             suspended, transferred_out_to, awaiting_transfer, transfer_pending,
+             active_term_id, used, reserved, grace_base_used, reservations, replay,
+             idempotency, band_emitted, binding_epoch, clinic_seq, next_alarm_at
+           ) VALUES (
+             0, NULL, 0, 0, ${sqlLiteral(termId)}, 0, 0, 0, '[]', '{}', '{}', '{}', 0, 0, NULL
+           )`,
+        );
+      } else {
+        storage.sql.exec(
+          `UPDATE hot SET active_term_id = ${sqlLiteral(termId)}, suspended = 0`,
+        );
+      }
+      const termExists = [
+        ...storage.sql.exec(
+          `SELECT 1 AS ok FROM term WHERE term_id = ${sqlLiteral(termId)} LIMIT 1`,
+        ),
+      ];
+      if (termExists.length === 0) {
+        storage.sql.exec(
+          `INSERT INTO term (
+             term_id, grant_id, origin_grant_id, position, state, end_reason,
+             plan_snapshot, allowance, used_final, duration_unit, duration_count,
+             grace_days, grace_cap, calendar_start, starts_at, ends_at, grace_ends_at, ended_at
+           ) VALUES (
+             ${sqlLiteral(termId)}, 'pipe-seed', 'pipe-seed', 0, 'active', NULL,
+             ${sqlLiteral(planSnapshot)}, ${requestQuota},
+             NULL, 'month', 1, 0, 'proportional',
+             ${sqlLiteral(periodStart)}, ${sqlLiteral(periodStart)},
+             ${sqlLiteral(periodEnd)}, NULL, NULL
+           )`,
+        );
+      }
+    },
+  );
+}
+
+async function seedCoverageMirror(
+  installationId: string,
+  capabilities: string[],
+  options: { suspended?: boolean } = {},
+): Promise<void> {
+  const termRef = termIdForInstallation(installationId);
+  await env.DB.prepare(
+    `INSERT INTO coverage_mirror (
+       installation_id, org_id, binding_epoch, clinic_seq, state, suspended,
+       hard_stop_at, term_snapshot
+     ) VALUES (?, ?, 1, 1, 'active', ?, ?, ?)`,
+  )
+    .bind(
+      installationId,
+      FIXTURE_ORG_ID,
+      options.suspended ? 1 : 0,
+      "2026-12-31T23:59:59.000Z",
+      JSON.stringify({ ref: termRef, capabilities }),
+    )
+    .run();
+}
+
 async function seedEntitlement(
   installationId: string,
   overrides: {
@@ -337,35 +446,21 @@ async function seedEntitlement(
     creditBudget?: number;
   } = {},
 ): Promise<void> {
-  await env.DB.prepare(
-    `INSERT INTO entitlement (
-      entitlement_id, installation_id, plan, period_start, period_end,
-      request_quota, token_budget, cost_budget, credit_budget,
-      allowed_capabilities, soft_threshold, status
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-  )
-    .bind(
-      `ent-${installationId}`,
-      installationId,
-      "professional",
-      "2026-08-01T00:00:00.000Z",
-      "2026-09-01T00:00:00.000Z",
-      overrides.requestQuota ?? 10_000,
-      10_000_000,
-      1_000,
-      // G2: positive default so admission is not immediately exhausted
-      // (`creditsUsed >= credit_budget`; G1 pending DEFAULT is 0).
-      overrides.creditBudget ?? 10_000,
-      JSON.stringify(
-        overrides.allowedCapabilities ?? [
-          FIXTURE_CAPABILITY_ID,
-          FIXTURE_CHAT_CAPABILITY_ID,
-        ],
-      ),
-      overrides.softThreshold ?? 0.8,
-      overrides.status ?? "active",
-    )
-    .run();
+  void overrides.status;
+  void overrides.softThreshold;
+  void overrides.creditBudget;
+  const capabilities =
+    overrides.allowedCapabilities ?? [
+      FIXTURE_CAPABILITY_ID,
+      FIXTURE_CHAT_CAPABILITY_ID,
+    ];
+  await seedCoverageMirror(installationId, capabilities, {
+    suspended: overrides.status === "suspended",
+  });
+  await seedQuotaDoForInstallation(installationId, {
+    requestQuota: overrides.requestQuota,
+    capabilities,
+  });
 }
 
 async function seedGrant(
@@ -416,7 +511,6 @@ async function prepareInstallation(
   }
   const cache = new ConfigCache();
   const reader = makePlatformD1Reader(env.DB);
-  await loadConfig(cache, reader, "entitlements", installationId);
   for (const cap of caps) {
     await loadConfig(cache, reader, "grants", `${installationId}/${cap}`);
   }
@@ -513,24 +607,28 @@ function countingDo(namespace: DurableObjectNamespace): {
 }
 
 function failingInsertDb(): D1Database {
+  const real = env.DB;
   return {
-    prepare(_query: string) {
+    prepare(query: string) {
+      const stmt = real.prepare(query);
+      const failInsert = /INSERT\s+INTO\s+ai_request/i.test(query);
       return {
-        bind(..._args: unknown[]) {
+        bind(...args: unknown[]) {
+          const bound = stmt.bind(...args);
           return {
-            async run() {
-              throw new Error("forced_d1_insert_failure");
+            run: async () => {
+              if (failInsert) {
+                throw new Error("forced_d1_insert_failure");
+              }
+              return bound.run();
             },
-            async first() {
-              throw new Error("forced_d1_insert_failure");
-            },
-            async all() {
-              throw new Error("forced_d1_insert_failure");
-            },
+            first: bound.first.bind(bound),
+            all: bound.all.bind(bound),
           };
         },
       };
     },
+    batch: real.batch.bind(real),
   } as unknown as D1Database;
 }
 
@@ -628,8 +726,9 @@ async function countAiRequests(): Promise<number> {
 beforeAll(async () => {
   await applyPlatformSchema(env.DB, migrationSql);
   await applyPlatformSchema(env.DB, conversationIndexSql);
-  // G1 plan catalogue: adds entitlement.credit_budget consumed by G2 admission.
   await applyPlatformSchema(env.DB, planCatalogueSql);
+  await applySqlStatements(env.DB, issuerKeyTenantBindingMigrationSql);
+  await applySqlStatements(env.DB, planVersionPaidGrantCoverageMigrationSql);
 });
 
 beforeEach(async () => {
@@ -637,6 +736,7 @@ beforeEach(async () => {
   idempotencyKeyCounter = 0;
   requestReferenceCounter = 0;
   await clearTables();
+  await pinHarnessTestClock();
   setCapabilityRegistry(
     createCapabilityRegistry([singleShotManifest(), conversationalManifest()]),
     { replace: true },
@@ -745,7 +845,7 @@ describe("pipeline_stage_failures", () => {
     expect(result).toMatchObject({
       ok: false,
       stage: 3,
-      code: "forbidden_capability",
+      code: "suspended",
     });
     expect(doSpy.fetchCount()).toBe(0);
     expect(await countAiRequests()).toBe(0);
@@ -1011,7 +1111,11 @@ describe("pipeline_stage_failures", () => {
       },
     );
 
-    expect(result).toMatchObject({ ok: false, stage: 8, code: "quota_exhausted" });
+    expect(result).toMatchObject({
+      ok: false,
+      stage: 8,
+      code: "allowance_exhausted",
+    });
     expect(doSpy.fetchCount()).toBeGreaterThanOrEqual(1);
     expect(await countAiRequests()).toBe(0);
   });

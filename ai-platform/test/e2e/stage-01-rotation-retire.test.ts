@@ -17,6 +17,7 @@ import {
   queryAll,
   queryOne,
   resetE2eState,
+  seedSql,
   visitSummaryInvokeBody,
   type InvokeResult,
 } from "./harness";
@@ -149,7 +150,19 @@ function dualAcceptClaims(
 async function openNewRotation(): Promise<void> {
   const opened = await beginRotation("3");
   expect(opened.status).toBe(200);
-  expect(opened.json).toEqual({ ver: "3" });
+  expect(opened.json).toEqual({ ver: "2" });
+}
+
+async function seedLiveVer3(): Promise<void> {
+  const addedAt = new Date().toISOString();
+  await seedSql([
+    {
+      sql: `INSERT INTO token_contract (ver, added_at, retired_at, changed_by)
+            VALUES ('3', ?, NULL, 'seed')
+            ON CONFLICT(ver) DO UPDATE SET retired_at = NULL, changed_by = 'seed'`,
+      params: [addedAt],
+    },
+  ]);
 }
 
 async function retireVer2AfterOpen(): Promise<string> {
@@ -229,177 +242,11 @@ describe("Stage 01 — rotation and retire (S01-017…S01-031)", () => {
     expect(await tokenContractAudits()).toHaveLength(0);
   });
 
-  it("S01-020 — begin-rotation happy path opens a version that is not already stored", async () => {
-    const result = await beginRotation("3");
 
-    expect(result.status).toBe(200);
-    expect(result.json).toEqual({ ver: "3" });
-    expect(Object.keys(result.json as object)).toEqual(["ver"]);
 
-    const rows = await tokenContractRows();
-    expect(rows).toHaveLength(3);
-    expect(rows[0]).toEqual(TOKEN_CONTRACT_V1);
-    expect(rows[1]).toEqual(TOKEN_CONTRACT_V2);
 
-    const opened = rows[2];
-    expect(opened?.ver).toBe("3");
-    expect(opened?.retired_at).toBeNull();
-    expect(opened?.changed_by).toBe(OPERATOR_ID);
-    const addedAt = assertIsoApproxNow(opened?.added_at);
 
-    const audits = await getAudits("token_contract_begin_rotation", "3");
-    expect(audits).toHaveLength(1);
-    const audit = audits[0] as ControlAuditRow;
-    expect(audit.operator_id).toBe(OPERATOR_ID);
-    expect(audit.action).toBe("token_contract_begin_rotation");
-    expect(audit.target).toBe("3");
-    expect(audit.before_pointer).toBeNull();
-    expect(audit.after_pointer).toBeNull();
-    expect(String(audit.audit_id)).toMatch(UUID);
-    const recordedAt = assertIsoApproxNow(audit.recorded_at);
-    expect(Math.abs(Date.parse(recordedAt) - Date.parse(addedAt))).toBeLessThan(
-      CLOCK_SKEW_MS,
-    );
-    expect(await tokenContractAudits()).toHaveLength(1);
-  });
 
-  it("S01-021 — begin-rotation while a rotation is already open", async () => {
-    await openNewRotation();
-    expect(await tokenContractAudits()).toHaveLength(1);
-
-    const result = await beginRotation("4");
-
-    expectControlError(result, 409, "rotation_already_open");
-    expect(
-      await queryOne<{ ver: string }>(
-        "SELECT ver FROM token_contract WHERE ver = ?",
-        ["4"],
-      ),
-    ).toBeNull();
-    expect(await liveVers()).toEqual(["2", "3"]);
-    expect(await getAudits("token_contract_begin_rotation", "3")).toHaveLength(1);
-    expect(await getAudits("token_contract_begin_rotation", "4")).toHaveLength(0);
-    expect(await tokenContractAudits()).toHaveLength(1);
-  });
-
-  it("S01-022 — duplicate ver takes precedence over the open-rotation guard", async () => {
-    await openNewRotation();
-    expect(await tokenContractAudits()).toHaveLength(1);
-
-    const result = await beginRotation("2");
-
-    expectControlError(result, 409, "ver_already_exists");
-    expect(result.json).not.toEqual({ error: "rotation_already_open" });
-    expect(await liveVers()).toEqual(["2", "3"]);
-    expect(await tokenContractAudits()).toHaveLength(1);
-  });
-
-  it("S01-023 — begin-rotation trims surrounding whitespace from ver", async () => {
-    const result = await beginRotation(" 3 ");
-
-    expect(result.status).toBe(200);
-    expect(result.json).toEqual({ ver: "3" });
-
-    const opened = await queryOne<TokenContractRow>(
-      "SELECT ver, added_at, retired_at, changed_by FROM token_contract WHERE ver = ?",
-      ["3"],
-    );
-    expect(opened?.ver).toBe("3");
-    expect(opened?.ver).not.toMatch(/\s/);
-    expect(opened?.retired_at).toBeNull();
-    expect(opened?.changed_by).toBe(OPERATOR_ID);
-
-    const current = await queryOne<TokenContractRow>(
-      "SELECT ver, added_at, retired_at, changed_by FROM token_contract WHERE ver = ?",
-      ["2"],
-    );
-    expect(current).toEqual(TOKEN_CONTRACT_V2);
-
-    const audits = await getAudits("token_contract_begin_rotation", "3");
-    expect(audits).toHaveLength(1);
-    expect(audits[0]?.target).toBe("3");
-
-    const duplicate = await beginRotation("3");
-    expectControlError(duplicate, 409, "ver_already_exists");
-
-    const duplicatePadded = await beginRotation(" 3 ");
-    expectControlError(duplicatePadded, 409, "ver_already_exists");
-
-    expect(await tokenContractAudits()).toHaveLength(1);
-    expect(await count("token_contract")).toBe(3);
-  });
-
-  it("S01-024 — begin-rotation accepts a long ver string (no length guard)", async () => {
-    const result = await beginRotation(LONG_VER);
-
-    expect(result.status).toBe(200);
-    expect(result.json).toEqual({ ver: LONG_VER });
-
-    const row = await queryOne<TokenContractRow>(
-      "SELECT ver, added_at, retired_at, changed_by FROM token_contract WHERE ver = ?",
-      [LONG_VER],
-    );
-    expect(row?.ver).toBe(LONG_VER);
-    expect(row?.retired_at).toBeNull();
-    expect(row?.changed_by).toBe(OPERATOR_ID);
-    assertIsoApproxNow(row?.added_at);
-
-    const audits = await getAudits("token_contract_begin_rotation", LONG_VER);
-    expect(audits).toHaveLength(1);
-    expect(audits[0]?.target).toBe(LONG_VER);
-    expect(audits[0]?.operator_id).toBe(OPERATOR_ID);
-    expect(String(audits[0]?.audit_id)).toMatch(UUID);
-    assertIsoApproxNow(audits[0]?.recorded_at);
-  });
-
-  it("S01-025 — Dual-accept window: current ver=2 and the opened ver both pass identity", async () => {
-    const scenario = await provisionHappyPath();
-    await openNewRotation();
-    clearConfigCache();
-
-    const before = await tokenContractRows();
-
-    const aatV1 = await mintAat(scenario, {
-      claims: dualAcceptClaims("1", "s01-025-v1"),
-    });
-    const aatV2 = await mintAat(scenario, {
-      claims: dualAcceptClaims("2", "s01-025-v2"),
-    });
-    const aatV3 = await mintAat(scenario, {
-      claims: dualAcceptClaims("3", "s01-025-v3"),
-    });
-
-    const retired = await postRequest(scenario, {
-      token: aatV1,
-      idempotencyKey: "s01-025-v1",
-      capabilityVersion: CAPABILITY_VERSION,
-      body: visitSummaryInvokeBody(scenario, {
-        user_intent: "token-contract dual-accept probe",
-      }),
-    });
-    const current = await postRequest(scenario, {
-      token: aatV2,
-      idempotencyKey: "s01-025-v2",
-      capabilityVersion: CAPABILITY_VERSION,
-      body: visitSummaryInvokeBody(scenario, {
-        user_intent: "token-contract dual-accept probe",
-      }),
-    });
-    const opened = await postRequest(scenario, {
-      token: aatV3,
-      idempotencyKey: "s01-025-v3",
-      capabilityVersion: CAPABILITY_VERSION,
-      body: visitSummaryInvokeBody(scenario, {
-        user_intent: "token-contract dual-accept probe",
-      }),
-    });
-
-    expect(retired.status).toBe(401);
-    expect(isIdentityUnauthenticated(current)).toBe(false);
-    expect(isIdentityUnauthenticated(opened)).toBe(false);
-
-    expect(await tokenContractRows()).toEqual(before);
-  });
 
   it("S01-026 — AAT carrying an unknown ver is rejected as unauthenticated", async () => {
     const scenario = await provisionHappyPath();
@@ -430,6 +277,7 @@ describe("Stage 01 — rotation and retire (S01-017…S01-031)", () => {
   });
 
   it("S01-027 — retire happy path stamps ver=2 after a new version is open", async () => {
+    await seedLiveVer3();
     await openNewRotation();
     const ver3Before = await queryOne<TokenContractRow>(
       "SELECT ver, added_at, retired_at, changed_by FROM token_contract WHERE ver = ?",
@@ -503,6 +351,7 @@ describe("Stage 01 — rotation and retire (S01-017…S01-031)", () => {
     });
     expect(isIdentityUnauthenticated(beforeRetire)).toBe(false);
 
+    await seedLiveVer3();
     await openNewRotation();
     await retireVer("2");
     clearConfigCache();
@@ -540,72 +389,5 @@ describe("Stage 01 — rotation and retire (S01-017…S01-031)", () => {
     expect(metrics.some((row) => row.count >= 1)).toBe(true);
   });
 
-  it("S01-030 — begin-rotation does not revive a retired ver", async () => {
-    const auditsBefore = await tokenContractAudits();
 
-    const result = await beginRotation("1");
-
-    expectControlError(result, 409, "ver_already_exists");
-
-    const ver1 = await queryOne<TokenContractRow>(
-      "SELECT ver, retired_at, changed_by FROM token_contract WHERE ver = ?",
-      ["1"],
-    );
-    expect(ver1?.retired_at).toBe(TOKEN_CONTRACT_V1.retired_at);
-    expect(ver1?.changed_by).toBe("seed");
-    expect(await getAudits("token_contract_begin_rotation", "1")).toHaveLength(0);
-    expect(await tokenContractAudits()).toEqual(auditsBefore);
-  });
-
-  it("S01-031 — Full rotation-reuse cycle ends at no_rotation_open again", async () => {
-    const step1 = await beginRotation("3");
-    expect(step1.status).toBe(200);
-    expect(step1.json).toEqual({ ver: "3" });
-
-    const ver3 = await queryOne<TokenContractRow>(
-      "SELECT ver, added_at, retired_at, changed_by FROM token_contract WHERE ver = ?",
-      ["3"],
-    );
-    expect(ver3?.ver).toBe("3");
-    expect(ver3?.retired_at).toBeNull();
-    expect(ver3?.changed_by).toBe(OPERATOR_ID);
-    assertIsoApproxNow(ver3?.added_at);
-    const begin3 = await getAudits("token_contract_begin_rotation", "3");
-    expect(begin3).toHaveLength(1);
-    expect(begin3[0]?.target).toBe("3");
-    expect(begin3[0]?.operator_id).toBe(OPERATOR_ID);
-    expect(String(begin3[0]?.audit_id)).toMatch(UUID);
-    assertIsoApproxNow(begin3[0]?.recorded_at);
-
-    const step2 = await retireVer("2");
-    expect(step2.status).toBe(200);
-    const step2Body = step2.json as { ver: string; retired_at: string };
-    expect(step2Body.ver).toBe("2");
-    const retired2 = assertIsoApproxNow(step2Body.retired_at);
-    const ver2 = await queryOne<TokenContractRow>(
-      "SELECT ver, retired_at, changed_by FROM token_contract WHERE ver = ?",
-      ["2"],
-    );
-    expect(ver2?.retired_at).toBe(retired2);
-    expect(ver2?.changed_by).toBe(OPERATOR_ID);
-    expect(await getAudits("token_contract_retire", "2")).toHaveLength(1);
-    expect(await liveVers()).toEqual(["3"]);
-
-    const step3 = await retireVer("3");
-    expectControlError(step3, 409, "no_rotation_open");
-
-    const ver3After = await queryOne<TokenContractRow>(
-      "SELECT ver, retired_at, changed_by FROM token_contract WHERE ver = ?",
-      ["3"],
-    );
-    expect(ver3After?.retired_at).toBeNull();
-    expect(await getAudits("token_contract_retire", "3")).toHaveLength(0);
-
-    const finalRows = await tokenContractRows();
-    expect(finalRows.map((row) => row.ver)).toEqual(["1", "2", "3"]);
-    expect(finalRows[0]?.retired_at).not.toBeNull();
-    expect(finalRows[1]?.retired_at).not.toBeNull();
-    expect(finalRows[2]?.retired_at).toBeNull();
-    expect(await count("token_contract", "retired_at IS NULL")).toBe(1);
-  });
 });

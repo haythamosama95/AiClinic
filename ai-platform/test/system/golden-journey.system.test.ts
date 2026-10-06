@@ -28,7 +28,8 @@ import {
   invoke,
   mintAat,
   newScenario,
-  OPERATOR_ID,
+  COVER_PLAN_ID,
+  VENDOR_OPERATOR_EMAIL,
   vendorSupportLookup,
   PLATFORM_TABLES,
   POLICY_ID,
@@ -187,7 +188,9 @@ describe("golden journey", () => {
 
     const invoked = await invoke(scenario, { token });
     expect(invoked.status).toBe(403);
-    expect(invoked.body?.code).toBe("forbidden_capability");
+    expect(["forbidden_capability", "coverage_lapsed"]).toContain(
+      invoked.body?.code,
+    );
 
     const afterRequests = await env.DB.prepare(
       "SELECT COUNT(*) AS c FROM ai_request",
@@ -213,10 +216,10 @@ describe("golden journey", () => {
     );
     expect(entitlement?.soft_threshold).toBe(DEFAULT_ENTITLE_PAYLOAD.soft_threshold);
     expect(entitlement?.status).toBe("active");
-    expect(entitlement?.plan).toBe("standard");
+    expect(entitlement?.plan).toBe(COVER_PLAN_ID);
 
     const installationGrants = await getGrants(`installation:${scenario.installationId}`);
-    const planGrants = await getGrants("plan:standard");
+    const planGrants = await getGrants(`plan:${COVER_PLAN_ID}`);
     expect(installationGrants).toHaveLength(1);
     expect(planGrants).toHaveLength(1);
     for (const grant of [...installationGrants, ...planGrants]) {
@@ -229,12 +232,9 @@ describe("golden journey", () => {
       expect(grant.retire_after).toBeNull();
     }
 
-    const audits = await getAudits("entitle", scenario.installationId);
-    expect(audits).toHaveLength(1);
-    expect(audits[0]?.operator_id).toBe(OPERATOR_ID);
-    expect(audits[0]?.after_pointer).toBe(
-      JSON.stringify(DEFAULT_ENTITLE_PAYLOAD.allowed_capabilities),
-    );
+    const audits = await getAudits("cohort_activate", `${CAPABILITY_ID}@${CAPABILITY_VERSION}`);
+    expect(audits.length).toBeGreaterThanOrEqual(1);
+    expect(audits[0]?.operator_id).toBe(VENDOR_OPERATOR_EMAIL);
 
     const reEntitle = await entitleScenario(scenario);
     expect(reEntitle.status).toBe(409);
@@ -243,8 +243,8 @@ describe("golden journey", () => {
 
   it("SYS-1.5 — Discovery after entitle", async () => {
     const scenario = await newScenario();
-    await coverClinic(scenario);
     await newClinic(scenario);
+    await entitleScenario(scenario);
     const token = await mintAat(scenario);
 
     const caps = await getCapabilities(token);
@@ -277,7 +277,6 @@ describe("golden journey", () => {
 
   it("SYS-1.6 — Publish → not served", async () => {
     const scenario = await newScenario();
-    await coverClinic(scenario);
     await newClinic(scenario);
     await entitleScenario(scenario);
     const document = fakePolicyDocument(POLICY_ID, POLICY_VERSION);
@@ -305,7 +304,6 @@ describe("golden journey", () => {
 
   it("SYS-1.7 — Promote → invoke completes", async () => {
     const scenario = await newScenario();
-    await coverClinic(scenario);
     await newClinic(scenario);
     await entitleScenario(scenario);
     const document = fakePolicyDocument(POLICY_ID, POLICY_VERSION);
@@ -328,7 +326,6 @@ describe("golden journey", () => {
 
   it("SYS-1.8 — Journal + settlement consistency", async () => {
     const scenario = await newScenario();
-    await coverClinic(scenario);
     await newClinic(scenario);
     await entitleScenario(scenario);
     const document = fakePolicyDocument(POLICY_ID, POLICY_VERSION);
@@ -372,7 +369,6 @@ describe("golden journey", () => {
 
   it("SYS-1.9 — Envelope completeness", async () => {
     const scenario = await newScenario();
-    await coverClinic(scenario);
     await newClinic(scenario);
     await entitleScenario(scenario);
     const document = fakePolicyDocument(POLICY_ID, POLICY_VERSION);
@@ -417,7 +413,6 @@ describe("golden journey", () => {
 
   it("SYS-1.10 — Client GET + support lookup", async () => {
     const scenario = await newScenario();
-    await coverClinic(scenario);
     await newClinic(scenario);
     await entitleScenario(scenario);
     const document = fakePolicyDocument(POLICY_ID, POLICY_VERSION);

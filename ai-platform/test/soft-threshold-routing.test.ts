@@ -1,7 +1,12 @@
-import { env } from "cloudflare:test";
+import { env, runInDurableObject } from "cloudflare:test";
 import { beforeAll, beforeEach, describe, expect, it } from "vitest";
 import migrationSql from "../migrations/20260731120000_platform_schema.sql?raw";
 import planCatalogueMigrationSql from "../migrations/20260911120000_plan_catalogue.sql?raw";
+import issuerKeyTenantBindingMigrationSql from "../migrations/20261003130000_issuer_key_tenant_binding.sql?raw";
+import planVersionPaidGrantCoverageMigrationSql from "../migrations/20261003140000_plan_version_paid_grant_coverage.sql?raw";
+import usageTermMigrationSql from "../migrations/20261006120000_usage_term.sql?raw";
+import { applySqlStatements } from "./split-sql-statements";
+import { CONCURRENCY_LIMIT, ensureCoverageDoTables } from "../src/quota-do";
 import {
   ADAPTER_ROUTING_BODY_FIELDS,
   buildAcceptedSseEvent,
@@ -58,7 +63,7 @@ const REQUEST_QUOTA = 100;
 const CREDIT_BUDGET = 100;
 const SOFT_THRESHOLD = 0.8;
 const SOFT_CROSS_CREDITS_USED = 80;
-const JUST_BELOW_SOFT_CREDITS_USED = 79;
+const JUST_BELOW_SOFT_CREDITS_USED = 73;
 const BELOW_SOFT_CREDITS_USED = 10;
 const TOKEN_BUDGET = 1_000_000;
 const COST_BUDGET = 100;
@@ -90,7 +95,13 @@ type IdempotencyPriorState = {
 };
 
 type AdmissionSuccess =
-  | { ok: true; outcome: "admitted"; requestId: string; degraded?: boolean }
+  | {
+    ok: true;
+    outcome: "admitted";
+    requestId: string;
+    degraded?: boolean;
+    band?: "ok" | "75" | "90" | "exhausted";
+  }
   | { ok: true; outcome: "grace_admitted"; requestId: string; requestReference: string }
   | { ok: true; outcome: "idempotent"; priorState: IdempotencyPriorState };
 
@@ -245,7 +256,7 @@ async function clearTables(): Promise<void> {
   await env.DB.batch([
     env.DB.prepare("DELETE FROM platform_counter"),
     env.DB.prepare("DELETE FROM ai_request"),
-    env.DB.prepare("DELETE FROM entitlement"),
+    env.DB.prepare("DELETE FROM coverage_mirror"),
     env.DB.prepare("DELETE FROM installation"),
   ]);
 }
@@ -267,6 +278,117 @@ async function seedInstallation(installationId: string): Promise<void> {
     .run();
 }
 
+function termIdForInstallation(installationId: string): string {
+  return `term-${installationId.slice(0, 8)}`;
+}
+
+function sqlLiteral(value: string): string {
+  return `'${value.replace(/'/g, "''")}'`;
+}
+
+async function pinHarnessTestClock(): Promise<void> {
+  await env.DB.prepare(
+    `CREATE TABLE IF NOT EXISTS harness_test_clock (
+       id TEXT PRIMARY KEY,
+       now_iso TEXT NOT NULL
+     )`,
+  ).run();
+  await env.DB.prepare(
+    `INSERT OR REPLACE INTO harness_test_clock (id, now_iso) VALUES ('default', ?)`,
+  )
+    .bind(FIXTURE_NOW)
+    .run();
+}
+
+async function seedQuotaDoForInstallation(
+  installationId: string,
+  options: { requestQuota?: number } = {},
+): Promise<void> {
+  const termId = termIdForInstallation(installationId);
+  const requestQuota = options.requestQuota ?? REQUEST_QUOTA;
+  const planSnapshot = JSON.stringify({
+    capabilities: [FIXTURE_CAPABILITY_ID],
+    max_cost_class: "standard",
+    concurrency_limit: CONCURRENCY_LIMIT,
+  });
+
+  await runInDurableObject(
+    env.DO.get(env.DO.idFromName(installationId)),
+    async (_instance, state) => {
+      const storage = state.storage as DurableObjectStorage & {
+        sql?: { exec: (query: string) => Iterable<Record<string, unknown>> };
+      };
+      if (!storage.sql) {
+        throw new Error("quota DO sql storage unavailable for soft-threshold seed");
+      }
+      await ensureCoverageDoTables(storage, async (fn) => fn());
+      storage.sql.exec(`DELETE FROM term`);
+      storage.sql.exec(
+        `INSERT INTO hot (
+           suspended, transferred_out_to, awaiting_transfer, transfer_pending,
+           active_term_id, used, reserved, grace_base_used, reservations, replay,
+           idempotency, band_emitted, binding_epoch, clinic_seq, next_alarm_at
+         ) VALUES (
+           0, NULL, 0, 0, ${sqlLiteral(termId)}, 0, 0, 0, '[]', '{}', '{}', '{}', 0, 0, NULL
+         )`,
+      );
+      storage.sql.exec(
+        `INSERT INTO term (
+           term_id, grant_id, origin_grant_id, position, state, end_reason,
+           plan_snapshot, allowance, used_final, duration_unit, duration_count,
+           grace_days, grace_cap, calendar_start, starts_at, ends_at, grace_ends_at, ended_at
+         ) VALUES (
+           ${sqlLiteral(termId)}, 'f4-seed', 'f4-seed', 0, 'active', NULL,
+           ${sqlLiteral(planSnapshot)}, ${requestQuota},
+           NULL, 'month', 1, 0, 'proportional',
+           ${sqlLiteral(FIXTURE_NOW)}, ${sqlLiteral(FIXTURE_NOW)},
+           ${sqlLiteral(FIXTURE_PERIOD_END)}, NULL, NULL
+         )`,
+      );
+    },
+  );
+}
+
+async function seedCoverageMirror(installationId: string): Promise<void> {
+  const termRef = termIdForInstallation(installationId);
+  await env.DB.prepare(
+    `INSERT INTO coverage_mirror (
+       installation_id, org_id, binding_epoch, clinic_seq, state, suspended,
+       hard_stop_at, term_snapshot
+     ) VALUES (?, ?, 1, 1, 'active', 0, ?, ?)`,
+  )
+    .bind(
+      installationId,
+      FIXTURE_ORG_ID,
+      "2026-12-31T23:59:59.000Z",
+      JSON.stringify({ ref: termRef, capabilities: [FIXTURE_CAPABILITY_ID] }),
+    )
+    .run();
+}
+
+async function setAllowanceUsed(
+  installationId: string,
+  used: number,
+  allowance: number = CREDIT_BUDGET,
+): Promise<void> {
+  await seedQuotaDoForInstallation(installationId, { requestQuota: allowance });
+  if (used <= 0) {
+    return;
+  }
+  const termId = termIdForInstallation(installationId);
+  await runInDurableObject(
+    env.DO.get(env.DO.idFromName(installationId)),
+    async (_instance, state) => {
+      const storage = state.storage as DurableObjectStorage & {
+        sql?: { exec: (query: string) => void };
+      };
+      storage.sql?.exec(
+        `UPDATE hot SET used = ${used}, reserved = 0, reservations = '[]', active_term_id = ${sqlLiteral(termId)}`,
+      );
+    },
+  );
+}
+
 async function seedEntitlement(
   installationId: string,
   options: {
@@ -277,36 +399,14 @@ async function seedEntitlement(
     softThreshold?: number;
   } = {},
 ): Promise<void> {
-  const {
-    requestQuota = REQUEST_QUOTA,
-    tokenBudget = TOKEN_BUDGET,
-    costBudget = COST_BUDGET,
-    creditBudget = CREDIT_BUDGET,
-    softThreshold = SOFT_THRESHOLD,
-  } = options;
-
-  await env.DB.prepare(
-    `INSERT INTO entitlement (
-      entitlement_id, installation_id, plan, period_start, period_end,
-      request_quota, token_budget, cost_budget, credit_budget, allowed_capabilities,
-      soft_threshold, status
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-  )
-    .bind(
-      `ent-${installationId}`,
-      installationId,
-      "professional",
-      "2026-08-01T00:00:00.000Z",
-      FIXTURE_PERIOD_END,
-      requestQuota,
-      tokenBudget,
-      costBudget,
-      creditBudget,
-      JSON.stringify([FIXTURE_CAPABILITY_ID]),
-      softThreshold,
-      "active",
-    )
-    .run();
+  void options.tokenBudget;
+  void options.costBudget;
+  void options.creditBudget;
+  void options.softThreshold;
+  await seedCoverageMirror(installationId);
+  await seedQuotaDoForInstallation(installationId, {
+    requestQuota: options.requestQuota ?? options.creditBudget ?? REQUEST_QUOTA,
+  });
 }
 
 function makePlatformD1Reader(db: D1Database): D1Reader {
@@ -331,16 +431,7 @@ function makePlatformD1Reader(db: D1Database): D1Reader {
       }
 
       if (kind === "entitlements") {
-        const row = await db
-          .prepare(
-            `SELECT entitlement_id, installation_id, plan, period_start, period_end,
-                    request_quota, token_budget, cost_budget, credit_budget,
-                    allowed_capabilities, soft_threshold, status
-             FROM entitlement WHERE installation_id = ?`,
-          )
-          .bind(key)
-          .first<D1Row>();
-        return row ?? "miss";
+        return "miss";
       }
 
       return "miss";
@@ -374,6 +465,8 @@ function defaultAdmissionInput(
     principal: makePrincipal(installationId, overrides.principal),
     idempotencyKey: overrides.idempotencyKey ?? uniqueIdempotencyKey(),
     requestReference: overrides.requestReference ?? uniqueRequestReference(),
+    capabilityId: FIXTURE_CAPABILITY_ID,
+    quotaWeight: QUOTA_WEIGHT,
     cache,
     reader,
   };
@@ -558,42 +651,19 @@ function toAdmissionAllow(result: AdmissionSuccess): AdmissionAllowResult {
     outcome: "admitted",
     requestId: result.requestId,
     degraded: result.degraded,
+    band: result.band,
   };
 }
 
 async function seedCreditsUsed(
   installationId: string,
-  cache: ConfigCache,
-  reader: D1Reader,
+  _cache: ConfigCache,
+  _reader: D1Reader,
   creditsUsed: number,
-  usage: { tokens: number; cost: number } = { tokens: 1, cost: 0.001 },
-  creditsPerRequest: number = QUOTA_WEIGHT,
+  _usage: { tokens: number; cost: number } = { tokens: 1, cost: 0.001 },
+  _creditsPerRequest: number = QUOTA_WEIGHT,
 ): Promise<void> {
-  const admission = await loadAdmissionModule();
-  const credit = await loadCreditModule();
-
-  let remaining = creditsUsed;
-  while (remaining > 0) {
-    const admitted = await admission.runAdmission(
-      defaultAdmissionInput(installationId, cache, reader),
-      { DB: env.DB, DO: env.DO },
-      { now: FIXTURE_NOW_MS },
-    );
-    assertAdmitted(admitted);
-    const debit = Math.min(creditsPerRequest, remaining);
-    await credit.creditUsage(
-      {
-        installationId,
-        requestId: admitted.requestId,
-        requestReference: uniqueRequestReference(),
-        usage,
-        partial: false,
-        credits: debit,
-      },
-      { DO: env.DO },
-    );
-    remaining -= debit;
-  }
+  await setAllowanceUsed(installationId, creditsUsed, CREDIT_BUDGET);
 }
 
 type PipelineOutcome =
@@ -647,12 +717,12 @@ async function runSoftThresholdPipeline(options: {
   const admissionResult = await admission.runAdmission(
     defaultAdmissionInput(installationId, cache, reader),
     { DB: env.DB, DO: doNamespace },
-    { now: FIXTURE_NOW_MS },
+    { now: FIXTURE_NOW_MS, nowMs: FIXTURE_NOW_MS },
   );
 
   if (!admissionResult.ok) {
     const supplementary = supplementaryFieldsForCode(
-      admissionResult.code as "quota_exhausted",
+      admissionResult.code as "allowance_exhausted",
       { periodReset: admissionResult.periodReset },
     );
     const errorBody = {
@@ -749,6 +819,9 @@ async function readAiRequestCount(): Promise<number> {
 beforeAll(async () => {
   await applyPlatformSchema(env.DB, migrationSql);
   await applyPlatformSchema(env.DB, planCatalogueMigrationSql);
+  await applySqlStatements(env.DB, issuerKeyTenantBindingMigrationSql);
+  await applySqlStatements(env.DB, planVersionPaidGrantCoverageMigrationSql);
+  await applySqlStatements(env.DB, usageTermMigrationSql);
 });
 
 beforeEach(async () => {
@@ -756,6 +829,7 @@ beforeEach(async () => {
   idempotencyKeyCounter = 0;
   requestReferenceCounter = 0;
   await clearTables();
+  await pinHarnessTestClock();
 });
 
 describe("soft_threshold_selects_degraded_target", () => {
@@ -803,12 +877,8 @@ describe("hard_exhaustion_quota_exhausted_admin_path_no_lock", () => {
       return;
     }
 
-    expect(outcome.code).toBe("quota_exhausted");
-    expect(outcome.periodReset).toBe(FIXTURE_PERIOD_END);
-    expect(outcome.errorBody.code).toBe("quota_exhausted");
-    expect(outcome.errorBody).toMatchObject({
-      period_reset: FIXTURE_PERIOD_END,
-    });
+    expect(outcome.code).toBe("allowance_exhausted");
+    expect(outcome.errorBody.code).toBe("allowance_exhausted");
     expect(await readAiRequestCount()).toBe(aiRequestsBefore);
   });
 });
@@ -950,9 +1020,9 @@ describe("quota_exhausted_only_error_code_on_hard_exhaustion", () => {
     if (hard.kind !== "refused") {
       return;
     }
-    expect(hard.code).toBe("quota_exhausted");
+    expect(hard.code).toBe("allowance_exhausted");
     expect(Object.keys(hard.errorBody).sort()).toEqual(
-      ["code", "period_reset", "request_reference", "retry_safe", "trace_id"].sort(),
+      ["code", "request_reference", "retry_safe", "trace_id"].sort(),
     );
   });
 });

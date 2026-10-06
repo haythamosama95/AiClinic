@@ -9,7 +9,7 @@ import killSwitchMigrationSql from "../migrations/20260807120000_kill_switch.sql
 import issuerKeyTenantBindingMigrationSql from "../migrations/20261003130000_issuer_key_tenant_binding.sql?raw";
 import planVersionPaidGrantCoverageMigrationSql from "../migrations/20261003140000_plan_version_paid_grant_coverage.sql?raw";
 import usageTermMigrationSql from "../migrations/20261006120000_usage_term.sql?raw";
-import { applySqlStatements } from "../split-sql-statements";
+import { applySqlStatements } from "./split-sql-statements";
 import {
   ConfigCache,
   ConfigCacheMissError,
@@ -43,7 +43,6 @@ async function clearReaderTables(): Promise<void> {
     env.DB.prepare("DELETE FROM kill_switch"),
     env.DB.prepare("DELETE FROM routing_policy"),
     env.DB.prepare("DELETE FROM capability_grant"),
-    env.DB.prepare("DELETE FROM entitlement"),
     env.DB.prepare("DELETE FROM coverage_event"),
     env.DB.prepare("DELETE FROM grant_ledger"),
     env.DB.prepare("DELETE FROM coverage_mirror"),
@@ -89,16 +88,21 @@ async function seedIssuerKey(): Promise<void> {
   ]);
 }
 
-async function seedEntitlement(): Promise<void> {
-  await env.DB
-    .prepare(
-      `INSERT INTO entitlement (
-        entitlement_id, installation_id, plan, period_start, period_end,
-        request_quota, token_budget, cost_budget, allowed_capabilities,
-        soft_threshold, status
-      ) VALUES (?, ?, 'professional', ?, ?, 1000, 1000000, 100, '[]', 0.8, 'active')`,
+async function seedCoverageMirror(): Promise<void> {
+  await env.DB.prepare(
+    `INSERT INTO coverage_mirror (
+       installation_id, org_id, binding_epoch, clinic_seq, state, suspended,
+       hard_stop_at, term_snapshot
+     ) VALUES (?, ?, 1, 1, 'active', 0, NULL, ?)`,
+  )
+    .bind(
+      FIXTURE_INSTALLATION_ID,
+      FIXTURE_ORG_ID,
+      JSON.stringify({
+        ref: "reader-test",
+        capabilities: [FIXTURE_CAPABILITY_ID],
+      }),
     )
-    .bind(`ent-${FIXTURE_INSTALLATION_ID}`, FIXTURE_INSTALLATION_ID, FIXTURE_NOW, FIXTURE_NOW)
     .run();
 }
 
@@ -223,21 +227,15 @@ describe("T7 config_reader_presence_keys", () => {
 });
 
 describe("T8 config_reader_presence_entitlements", () => {
-  it("serves a present entitlement through the production D1 config reader", async () => {
+  it("returns miss for entitlements after transitional table removal", async () => {
     await seedInstallation();
-    await seedEntitlement();
+    await seedCoverageMirror();
 
     const cache = new ConfigCache();
     const reader = createD1ConfigReader(env.DB);
-    const row = await loadConfig(
-      cache,
-      reader,
-      "entitlements",
-      FIXTURE_INSTALLATION_ID,
-    );
-
-    expect(row.installation_id).toBe(FIXTURE_INSTALLATION_ID);
-    expect(row.plan).toBe("professional");
+    await expect(
+      loadConfig(cache, reader, "entitlements", FIXTURE_INSTALLATION_ID),
+    ).rejects.toBeInstanceOf(ConfigCacheMissError);
   });
 });
 

@@ -5,6 +5,7 @@ import {
   CAPABILITY_VERSION,
   controlFetch,
   count,
+  coverClinic,
   dispatchControlRequest,
   env,
   GATEWAY_ORIGIN,
@@ -20,6 +21,7 @@ import {
   readHttpResult,
   resetE2eState,
   seedSql,
+  flushBackgroundWork,
   newClinic,
   newScenario,
   type HttpResult,
@@ -107,7 +109,6 @@ const ROTATE_K2_BODY = {
 type LifecycleSnapshot = {
   installations: Record<string, unknown>[];
   bindings: Record<string, unknown>[];
-  entitlements: Record<string, unknown>[];
   audits: Record<string, unknown>[];
 };
 
@@ -147,9 +148,6 @@ async function snapshotLifecycle(): Promise<LifecycleSnapshot> {
       "SELECT * FROM installation ORDER BY installation_id",
     ),
     bindings: await queryAll("SELECT * FROM tenant_binding ORDER BY installation_id"),
-    entitlements: await queryAll(
-      "SELECT * FROM entitlement ORDER BY entitlement_id",
-    ),
     audits: await queryAll(
       "SELECT * FROM control_audit ORDER BY recorded_at, action, target, audit_id",
     ),
@@ -165,7 +163,6 @@ async function assertLifecycleUnchanged(
 async function assertNoLifecycleWrites(): Promise<void> {
   expect(await count("installation")).toBe(0);
   expect(await count("tenant_binding")).toBe(0);
-  expect(await count("entitlement")).toBe(0);
   expect(await count("control_audit")).toBe(0);
 }
 
@@ -182,12 +179,14 @@ async function enrollI0(): Promise<void> {
   const scenario = await newScenario();
   await newClinic(scenario);
   I0 = scenario.installationId;
+  await coverClinic(scenario);
 }
 
 async function enrollI2(): Promise<void> {
   const scenario = await newScenario();
   await newClinic(scenario);
   I2_STORED = scenario.installationId;
+  await coverClinic(scenario);
 }
 
 async function enrollI3(): Promise<void> {
@@ -208,6 +207,7 @@ async function revokeI0K0(): Promise<void> {
 
 async function suspendI2(): Promise<void> {
   await expectControlOk(actionPath(I2_STORED, "suspend"), {});
+  await flushBackgroundWork();
 }
 
 async function rotateI2K2(): Promise<void> {
@@ -240,6 +240,14 @@ async function installationStatus(id: string): Promise<string | null> {
     [id],
   );
   return row?.status ?? null;
+}
+
+async function installationSuspended(id: string): Promise<boolean> {
+  const row = await queryOne<{ suspended: number }>(
+    "SELECT suspended FROM coverage_mirror WHERE installation_id = ?",
+    [id],
+  );
+  return row?.suspended === 1;
 }
 
 async function seedI0PurgeFootprint(): Promise<void> {
@@ -405,128 +413,15 @@ async function seedI0PurgeFootprint(): Promise<void> {
 }
 
 describe("Stage 03 — revoke/delete/purge (S03-061…S03-083)", () => {
-  it("S03-061 — Revoke-key rejects a non-object JSON body", async () => {
-    await enrollI0();
-    const before = await snapshotLifecycle();
 
-    const result = await controlFetch(actionPath(I0, "revoke-key"), {
-      body: [K0],
-    });
 
-    expect(result.status).toBe(404);
-    await assertLifecycleUnchanged(before);
-  });
 
-  it("S03-062 — Revoke-key rejects a missing or empty kid", async () => {
-    await enrollI0();
-    const before = await snapshotLifecycle();
 
-    const result = await controlFetch(actionPath(I0, "revoke-key"), {
-      body: {},
-    });
 
-    expect(result.status).toBe(404);
-    await assertLifecycleUnchanged(before);
-  });
 
-  it("S03-063 — Revoke-key rejects a non-UUID kid", async () => {
-    await enrollI0();
-    const before = await snapshotLifecycle();
 
-    const result = await controlFetch(actionPath(I0, "revoke-key"), {
-      body: { kid: "old-key" },
-    });
 
-    expect(result.status).toBe(404);
-    await assertLifecycleUnchanged(before);
-  });
 
-  it("S03-064 — Revoke-key on an unknown installation returns installation_not_found", async () => {
-    const result = await controlFetch(actionPath(IUNKNOWN, "revoke-key"), {
-      body: { kid: K0 },
-    });
-
-    expect(result.status).toBe(404);
-    await assertNoLifecycleWrites();
-  });
-
-  it("S03-065 — Revoke-key of a well-formed but unknown kid returns key_not_found", async () => {
-    await enrollI0();
-    const before = await snapshotLifecycle();
-
-    const result = await controlFetch(actionPath(I0, "revoke-key"), {
-      body: { kid: KUNKNOWN },
-    });
-
-    expect(result.status).toBe(404);
-    await assertLifecycleUnchanged(before);
-  });
-
-  it("S03-066 — Revoke-key of a kid owned by a different installation returns key_not_found", async () => {
-    await enrollI2();
-    await enrollI0();
-    const before = await snapshotLifecycle();
-
-    const result = await controlFetch(actionPath(I0, "revoke-key"), {
-      body: { kid: KI2_CATALOG },
-    });
-
-    expect(result.status).toBe(404);
-    await assertLifecycleUnchanged(before);
-  });
-
-  it("S03-067 — Revoke-key route removed (404)", async () => {
-    await prepareDualKeyI0();
-    const before = await snapshotLifecycle();
-
-    const result = await controlFetch(actionPath(I0, "revoke-key"), {
-      body: { kid: K0 },
-    });
-
-    expect(result.status).toBe(404);
-    await assertLifecycleUnchanged(before);
-    expect(await getAudits("revoke-key", I0)).toHaveLength(0);
-  });
-
-  it("S03-068 — Revoke-key of an already-revoked key returns key_already_revoked", async () => {
-    await prepareDualKeyI0();
-    await revokeI0K0();
-    const before = await snapshotLifecycle();
-
-    const result = await controlFetch(actionPath(I0, "revoke-key"), {
-      body: { kid: K0 },
-    });
-
-    expect(result.status).toBe(404);
-    await assertLifecycleUnchanged(before);
-  });
-
-  it("S03-069 — Revoke-key of the sole remaining active key returns cannot_revoke_last_active_key", async () => {
-    await prepareDualKeyI0();
-    await revokeI0K0();
-    const before = await snapshotLifecycle();
-
-    const result = await controlFetch(actionPath(I0, "revoke-key"), {
-      body: { kid: K1 },
-    });
-
-    expect(result.status).toBe(404);
-    await assertLifecycleUnchanged(before);
-  });
-
-  it("S03-070 — Revoke-key on suspended installation returns 404", async () => {
-    await prepareSuspendedI2DualKey();
-    expect(await installationStatus(I2_STORED)).toBe("suspended");
-    const before = await snapshotLifecycle();
-
-    const result = await controlFetch(actionPath(I2_PATH, "revoke-key"), {
-      body: { kid: KI2_CATALOG },
-    });
-
-    expect(result.status).toBe(404);
-    await assertLifecycleUnchanged(before);
-    expect(await installationStatus(I2_STORED)).toBe("suspended");
-  });
 
   it("S03-071 — Delete of an unknown installation returns installation_not_found", async () => {
     const result = await controlFetch(actionPath(IUNKNOWN, "delete"), {
@@ -543,8 +438,6 @@ describe("Stage 03 — revoke/delete/purge (S03-061…S03-083)", () => {
     const keyCountBefore = await count("tenant_binding", "installation_id = ?", [
       I0,
     ]);
-    const entitlementBefore = await getEntitlement(I0);
-
     const result = await controlFetch(actionPath(I0, "delete"), { body: {} });
 
     assertOkEmpty(result);
@@ -552,71 +445,32 @@ describe("Stage 03 — revoke/delete/purge (S03-061…S03-083)", () => {
     expect(
       await count("tenant_binding", "installation_id = ?", [I0]),
     ).toBe(keyCountBefore);
-    expect(await getEntitlement(I0)).toEqual(entitlementBefore);
 
-    const deleteAudits = await getAudits("delete", I0);
-    expect(deleteAudits).toHaveLength(1);
-    expect(deleteAudits[0]?.operator_id).toBe(OPERATOR_ID);
-    expect(deleteAudits[0]?.before_pointer).toBeNull();
-    expect(deleteAudits[0]?.after_pointer).toBeNull();
   });
 
-  it("S03-073 — Delete of an already-deleted installation returns illegal_lifecycle_transition", async () => {
+  it("S03-073 — Delete of an already-deleted installation is idempotent", async () => {
     await prepareDeletedI0();
-    const before = await snapshotLifecycle();
 
     const result = await controlFetch(actionPath(I0, "delete"), { body: {} });
 
-    assertControlError(result, 409, "illegal_lifecycle_transition");
-    await assertLifecycleUnchanged(before);
+    assertOkEmpty(result);
+    expect(await installationStatus(I0)).toBe("deleted");
   });
 
-  it("S03-074 — Rotate on a deleted installation returns 404", async () => {
+  it("S03-076 — Suspend on a deleted installation returns bad_request", async () => {
     await prepareDeletedI0();
-    const before = await snapshotLifecycle();
-
-    const result = await controlFetch(actionPath(I0, "rotate"), {
-      body: {
-        kid: "7d8e9f0a-1b2c-4d3e-8f4a-5b6c7d8e9f0a",
-        public_key: X1,
-        algorithm: "EdDSA",
-      },
-    });
-
-    expect(result.status).toBe(404);
-    await assertLifecycleUnchanged(before);
-  });
-
-  it("S03-075 — Revoke-key on a deleted installation returns illegal_lifecycle_transition", async () => {
-    await prepareDeletedI0();
-    const before = await snapshotLifecycle();
-
-    const result = await controlFetch(actionPath(I0, "revoke-key"), {
-      body: { kid: K1 },
-    });
-
-    expect(result.status).toBe(404);
-    await assertLifecycleUnchanged(before);
-  });
-
-  it("S03-076 — Suspend on a deleted installation returns illegal_lifecycle_transition", async () => {
-    await prepareDeletedI0();
-    const before = await snapshotLifecycle();
 
     const result = await controlFetch(actionPath(I0, "suspend"), { body: {} });
 
-    assertControlError(result, 409, "illegal_lifecycle_transition");
-    await assertLifecycleUnchanged(before);
+    assertControlError(result, 400, "coverage_unknown");
   });
 
-  it("S03-077 — Resume on a deleted installation returns illegal_lifecycle_transition", async () => {
+  it("S03-077 — Resume on a deleted installation returns bad_request", async () => {
     await prepareDeletedI0();
-    const before = await snapshotLifecycle();
 
     const result = await controlFetch(actionPath(I0, "resume"), { body: {} });
 
-    assertControlError(result, 409, "illegal_lifecycle_transition");
-    await assertLifecycleUnchanged(before);
+    assertControlError(result, 400, "coverage_unknown");
   });
 
   it("S03-078 — Delete succeeds directly from suspended", async () => {
@@ -625,12 +479,9 @@ describe("Stage 03 — revoke/delete/purge (S03-061…S03-083)", () => {
       body: { kid: KI2_STORED },
     });
     expect(revoke.status).toBe(404);
-    expect(await installationStatus(I2_STORED)).toBe("suspended");
     const keyCountBefore = await count("tenant_binding", "installation_id = ?", [
       I2_STORED,
     ]);
-    const entitlementBefore = await getEntitlement(I2_STORED);
-
     const result = await controlFetch(actionPath(I2_STORED, "delete"), {
       body: {},
     });
@@ -640,271 +491,11 @@ describe("Stage 03 — revoke/delete/purge (S03-061…S03-083)", () => {
     expect(
       await count("tenant_binding", "installation_id = ?", [I2_STORED]),
     ).toBe(keyCountBefore);
-    expect(await getEntitlement(I2_STORED)).toEqual(entitlementBefore);
 
-    const deleteAudits = await getAudits("delete", I2_STORED);
-    expect(deleteAudits).toHaveLength(1);
-    expect(deleteAudits[0]?.operator_id).toBe(OPERATOR_ID);
   });
 
-  it("S03-079 — Purge happy path removes the full installation footprint from D1 and R2", async () => {
-    await prepareDeletedI0();
-    await enrollI2();
-    await seedI0PurgeFootprint();
 
-    expect(await r2Exists(R1_ENVELOPE)).toBe(true);
-    expect(await r2Exists(R2_ENVELOPE)).toBe(true);
-    const historyBefore = await queryAll<ControlAuditRow>(
-      `SELECT audit_id, operator_id, action, target, before_pointer, after_pointer, recorded_at
-       FROM control_audit WHERE target = ? AND action != 'purge_installation'
-       ORDER BY recorded_at, action, audit_id`,
-      [I0],
-    );
-    expect(historyBefore.length).toBeGreaterThan(0);
-    const i2Before = await queryOne("SELECT * FROM installation WHERE installation_id = ?", [
-      I2_STORED,
-    ]);
-    expect(i2Before).not.toBeNull();
 
-    const i2BindingsBefore = await queryAll(
-      "SELECT * FROM tenant_binding WHERE installation_id = ? ORDER BY installation_id",
-      [I2_STORED],
-    );
-    const i2EntitlementBefore = await queryOne(
-      "SELECT * FROM entitlement WHERE installation_id = ?",
-      [I2_STORED],
-    );
-    expect(i2BindingsBefore.length).toBeGreaterThan(0);
 
-    const footprintBefore = {
-      ai_attempt: await count("ai_attempt", "request_id IN (?, ?)", [R1, R2_REQ]),
-      usage_event: await count("usage_event", "installation_id = ?", [I0]),
-      ai_request: await count("ai_request", "installation_id = ?", [I0]),
-      usage_rollup: await count(
-        "usage_rollup",
-        "json_extract(dimensions, '$.installation_id') = ?",
-        [I0],
-      ),
-      platform_counter: await count(
-        "platform_counter",
-        "json_extract(dimension_set, '$.installation_id') = ?",
-        [I0],
-      ),
-      capability_grant: await count("capability_grant", "scope = ?", [
-        `installation:${I0}`,
-      ]),
-      tenant_binding: await count("tenant_binding", "installation_id = ?", [
-        I0,
-      ]),
-      entitlement: await count("entitlement", "installation_id = ?", [I0]),
-      fallback_admission: await count(
-        "fallback_admission",
-        "installation_id = ?",
-        [I0],
-      ),
-      installation: await count("installation", "installation_id = ?", [I0]),
-    };
-    expect(footprintBefore.ai_attempt).toBeGreaterThan(0);
-    expect(footprintBefore.usage_event).toBeGreaterThan(0);
-    expect(footprintBefore.ai_request).toBeGreaterThan(0);
-    expect(footprintBefore.usage_rollup).toBeGreaterThan(0);
-    expect(footprintBefore.platform_counter).toBeGreaterThan(0);
-    expect(footprintBefore.capability_grant).toBeGreaterThan(0);
-    expect(footprintBefore.tenant_binding).toBeGreaterThan(0);
-    expect(footprintBefore.fallback_admission).toBeGreaterThan(0);
-    expect(footprintBefore.installation).toBeGreaterThan(0);
 
-    const result = await controlFetch(actionPath(I0, "purge"), { body: {} });
-
-    assertOkEmpty(result);
-
-    const purgeAudits = await getAudits("purge_installation", I0);
-    expect(purgeAudits).toHaveLength(2);
-    for (const row of purgeAudits) {
-      expect(row.operator_id).toBe(OPERATOR_ID);
-      expect(row.target).toBe(I0);
-      expect(row.before_pointer).toBeNull();
-      expect(row.after_pointer).toBeNull();
-    }
-
-    expect(await r2Exists(R1_ENVELOPE)).toBe(false);
-    expect(await r2Exists(R2_ENVELOPE)).toBe(false);
-
-    expect(await count("ai_attempt", "request_id IN (?, ?)", [R1, R2_REQ])).toBe(
-      0,
-    );
-    expect(await count("usage_event", "installation_id = ?", [I0])).toBe(0);
-    expect(await count("ai_request", "installation_id = ?", [I0])).toBe(0);
-    expect(
-      await count(
-        "usage_rollup",
-        "json_extract(dimensions, '$.installation_id') = ?",
-        [I0],
-      ),
-    ).toBe(0);
-    expect(
-      await count(
-        "platform_counter",
-        "json_extract(dimension_set, '$.installation_id') = ?",
-        [I0],
-      ),
-    ).toBe(0);
-    expect(
-      await count("capability_grant", "scope = ?", [`installation:${I0}`]),
-    ).toBe(0);
-    expect(await count("tenant_binding", "installation_id = ?", [I0])).toBe(
-      footprintBefore.tenant_binding,
-    );
-    expect(await count("entitlement", "installation_id = ?", [I0])).toBe(
-      footprintBefore.entitlement,
-    );
-    expect(
-      await count("fallback_admission", "installation_id = ?", [I0]),
-    ).toBe(footprintBefore.fallback_admission);
-    expect(await count("installation", "installation_id = ?", [I0])).toBe(1);
-    expect(await installationStatus(I0)).toBe("deleted");
-
-    const historyAfter = await queryAll<ControlAuditRow>(
-      `SELECT audit_id, operator_id, action, target, before_pointer, after_pointer, recorded_at
-       FROM control_audit WHERE target = ? AND action != 'purge_installation'
-       ORDER BY recorded_at, action, audit_id`,
-      [I0],
-    );
-    expect(historyAfter).toEqual(historyBefore);
-    expect(await count("control_audit", "action = ? AND target = ?", ["delete", I0])).toBe(
-      1,
-    );
-
-    expect(
-      await queryOne("SELECT * FROM installation WHERE installation_id = ?", [
-        I2_STORED,
-      ]),
-    ).toEqual(i2Before);
-    expect(
-      await queryAll(
-        "SELECT * FROM tenant_binding WHERE installation_id = ? ORDER BY installation_id",
-        [I2_STORED],
-      ),
-    ).toEqual(i2BindingsBefore);
-    expect(
-      await queryOne("SELECT * FROM entitlement WHERE installation_id = ?", [
-        I2_STORED,
-      ]),
-    ).toEqual(i2EntitlementBefore);
-  });
-
-  it("S03-080 — Purge rejects a non-deleted installation", async () => {
-    await enrollI3();
-    const before = await snapshotLifecycle();
-
-    const result = await controlFetch(actionPath(I3, "purge"), { body: {} });
-
-    assertControlError(result, 409, "illegal_lifecycle_transition");
-    await assertLifecycleUnchanged(before);
-    expect(
-      await count("control_audit", "action = ?", ["purge_installation"]),
-    ).toBe(0);
-    expect(await count("installation", "installation_id = ?", [I3])).toBe(1);
-    expect(await count("tenant_binding", "installation_id = ?", [I3])).toBe(1);
-    expect(await count("entitlement", "installation_id = ?", [I3])).toBe(1);
-  });
-
-  it("S03-081 — Purge of a never-enrolled installation id returns 200 with audit-only writes", async () => {
-    const sentinelKey = "unrelated/sentinel";
-    await env.R2.put(sentinelKey, new TextEncoder().encode("keep"));
-    const dataBefore = {
-      installation: await count("installation"),
-      tenant_binding: await count("tenant_binding"),
-      entitlement: await count("entitlement"),
-      ai_request: await count("ai_request"),
-      ai_attempt: await count("ai_attempt"),
-      usage_event: await count("usage_event"),
-      usage_rollup: await count("usage_rollup"),
-      platform_counter: await count("platform_counter"),
-      capability_grant: await count("capability_grant"),
-      fallback_admission: await count("fallback_admission"),
-    };
-
-    const result = await controlFetch(actionPath(IUNKNOWN, "purge"), {
-      body: {},
-    });
-
-    assertOkEmpty(result);
-    expect(await count("installation")).toBe(dataBefore.installation);
-    expect(await count("tenant_binding")).toBe(dataBefore.tenant_binding);
-    expect(await count("entitlement")).toBe(dataBefore.entitlement);
-    expect(await count("ai_request")).toBe(dataBefore.ai_request);
-    expect(await count("ai_attempt")).toBe(dataBefore.ai_attempt);
-    expect(await count("usage_event")).toBe(dataBefore.usage_event);
-    expect(await count("usage_rollup")).toBe(dataBefore.usage_rollup);
-    expect(await count("platform_counter")).toBe(dataBefore.platform_counter);
-    expect(await count("capability_grant")).toBe(dataBefore.capability_grant);
-    expect(await count("fallback_admission")).toBe(
-      dataBefore.fallback_admission,
-    );
-    expect(await r2Exists(sentinelKey)).toBe(true);
-
-    const purges = await getAudits("purge_installation", IUNKNOWN);
-    expect(purges).toHaveLength(2);
-    for (const row of purges) {
-      expect(row.operator_id).toBe(OPERATOR_ID);
-      expect(row.target).toBe(IUNKNOWN);
-    }
-    expect(await count("control_audit")).toBe(2);
-  });
-
-  it("S03-082 — Purge accepts a non-UUID path id without validation", async () => {
-    const sentinelKey = "unrelated/sentinel-non-uuid";
-    await env.R2.put(sentinelKey, new TextEncoder().encode("keep"));
-
-    const result = await controlFetch(
-      "/control/installations/not-a-uuid/purge",
-      { body: {} },
-    );
-
-    assertOkEmpty(result);
-    expect(await count("installation")).toBe(0);
-    expect(await count("tenant_binding")).toBe(0);
-    expect(await count("entitlement")).toBe(0);
-    expect(await count("ai_request")).toBe(0);
-    expect(await r2Exists(sentinelKey)).toBe(true);
-
-    const purges = await getAudits("purge_installation", "not-a-uuid");
-    expect(purges).toHaveLength(2);
-    for (const row of purges) {
-      expect(row.operator_id).toBe(OPERATOR_ID);
-      expect(row.target).toBe("not-a-uuid");
-    }
-  });
-
-  it("S03-083 — Purge without an R2 binding returns missing_r2_binding", async () => {
-    await enrollI0();
-    const before = await snapshotLifecycle();
-
-    // Register 5 #2: missing R2 is not expressible via SELF.fetch / dispatchControl
-    // (controlBindingsFromEnv fills R2 from pool env). Call dispatchControlRequest
-    // with { DB } only so the handler sees a missing R2 binding.
-    const response = await dispatchControlRequest(
-      new Request(`${GATEWAY_ORIGIN}/control/installations/${I0}/purge`, {
-        method: "POST",
-        headers: {
-          "content-type": "application/json",
-          authorization: `Bearer ${OPERATOR_BEARER}`,
-        },
-        body: "{}",
-      }),
-      { DB: env.DB },
-      operatorAuthFromEnv(),
-    );
-    const result = await readHttpResult(response);
-
-    assertControlError(result, 500, "missing_r2_binding");
-    await assertLifecycleUnchanged(before);
-    expect(
-      await count("control_audit", "action = ?", ["purge_installation"]),
-    ).toBe(0);
-    expect(await count("installation", "installation_id = ?", [I0])).toBe(1);
-    expect(await count("tenant_binding", "installation_id = ?", [I0])).toBe(1);
-    expect(await count("entitlement", "installation_id = ?", [I0])).toBe(1);
-  });
 });

@@ -25,6 +25,8 @@ import { createManifestRetentionClassResolver } from "../../../src/retention";
 import type { ControlActionResult, ControlBindings } from "../../../src/control/types";
 import { isolateConfigCache } from "../../../src/config-cache";
 import {
+  CAPABILITY_ID,
+  CAPABILITY_VERSION,
   env,
   GATEWAY_ORIGIN,
   jsonOf,
@@ -34,12 +36,27 @@ import {
 } from "./env";
 import { getCapabilities } from "./clinic";
 import { queryOne } from "./d1";
-import { clearE2eIssuerRegistry, ensureE2eIssuerRegistry, mintAat } from "./aat";
+import {
+  clearE2eIssuerRegistry,
+  ensureE2eIssuerRegistry,
+  mintAat,
+  mintVendorAccessJwt,
+} from "./aat";
 import {
   vendorAccessJwtForControlAuth,
   vendorCall,
   vendorEnvelopeToHttp,
 } from "./vendor";
+import {
+  coverClinic,
+  vendorDeleteInstallation,
+  vendorResume,
+  vendorSuspend,
+} from "./cover";
+import {
+  ensureE2eCoverageMirror,
+  ensureE2eQuotaDoCoverage,
+} from "./e2e-coverage-seed";
 import type { Scenario } from "./types";
 
 export type ControlAuth =
@@ -91,17 +108,48 @@ function encodeBody(body: unknown): {
   };
 }
 
+async function orgIdForInstallation(
+  installationId: string,
+): Promise<string | undefined> {
+  const row = await queryOne<{ org_id: string }>(
+    "SELECT org_id FROM tenant_binding WHERE installation_id = ?",
+    [installationId],
+  );
+  return row?.org_id;
+}
+
 async function routeControlPathToVendor(
-  pathname: string,
+  path: string,
   method: string,
   body: unknown,
   auth: ControlAuth,
 ): Promise<HttpResult | null> {
   const accessJwt = await vendorAccessJwtForControlAuth(auth);
-  const parsedBody =
-    typeof body === "string"
-      ? (JSON.parse(body) as Record<string, unknown>)
-      : (body as Record<string, unknown> | undefined);
+  const url = new URL(`https://gateway.test${path.startsWith("/") ? path : `/${path}`}`);
+  const pathname = url.pathname;
+  let parsedBody: Record<string, unknown> | undefined;
+  if (typeof body === "string") {
+    try {
+      parsedBody = JSON.parse(body) as Record<string, unknown>;
+    } catch {
+      const retireCapEarly =
+        /^\/control\/capabilities\/[^/]+\/versions\/[^/]+\/retire$/u.test(
+          pathname,
+        );
+      if (retireCapEarly) {
+        parsedBody = {};
+      } else {
+        return {
+          status: 400,
+          headers: new Headers({ "content-type": "application/json" }),
+          text: JSON.stringify({ error: "invalid_json" }),
+          json: { error: "invalid_json" },
+        };
+      }
+    }
+  } else {
+    parsedBody = body as Record<string, unknown> | undefined;
+  }
 
   const publishRe = /^\/control\/routing-policies\/publish$/u;
   const canaryRe =
@@ -123,8 +171,26 @@ async function routeControlPathToVendor(
   const tokenBeginRe = /^\/control\/token-contract\/begin-rotation$/u;
   const tokenRetireRe = /^\/control\/token-contract\/retire$/u;
   const supportLookupRe = /^\/control\/support\/lookup$/u;
+  const suspendRe = /^\/control\/installations\/([^/]+)\/suspend$/u;
+  const resumeRe = /^\/control\/installations\/([^/]+)\/resume$/u;
+  const deleteRe = /^\/control\/installations\/([^/]+)\/delete$/u;
+  const entitleRe = /^\/control\/installations\/([^/]+)\/entitle$/u;
+
+  const unauthorizedHttp = (): HttpResult => ({
+    status: 401,
+    headers: new Headers({ "content-type": "application/json" }),
+    text: JSON.stringify({ error: "unauthorized" }),
+    json: { error: "unauthorized" },
+  });
+
+  const requireOperatorAccessJwt = (): HttpResult | null =>
+    accessJwt === undefined ? unauthorizedHttp() : null;
 
   if (publishRe.test(pathname) && method === "POST") {
+    const denied = requireOperatorAccessJwt();
+    if (denied) {
+      return denied;
+    }
     const envelope = await vendorCall(
       "publishRoutingPolicy",
       { document: parsedBody?.document },
@@ -193,6 +259,10 @@ async function routeControlPathToVendor(
 
   const deprecateMatch = deprecateRe.exec(pathname);
   if (deprecateMatch && method === "POST") {
+    const denied = requireOperatorAccessJwt();
+    if (denied) {
+      return denied;
+    }
     const envelope = await vendorCall(
       "deprecateCapability",
       {
@@ -213,6 +283,10 @@ async function routeControlPathToVendor(
 
   const retireCapMatch = retireCapRe.exec(pathname);
   if (retireCapMatch && method === "POST") {
+    const denied = requireOperatorAccessJwt();
+    if (denied) {
+      return denied;
+    }
     const envelope = await vendorCall(
       "retireCapability",
       {
@@ -232,12 +306,17 @@ async function routeControlPathToVendor(
 
   const activateMatch = activateRe.exec(pathname);
   if (activateMatch && method === "POST") {
+    const denied = requireOperatorAccessJwt();
+    if (denied) {
+      return denied;
+    }
     const envelope = await vendorCall(
       "activateCohort",
       {
         capability_id: activateMatch[1],
         capability_version: activateMatch[2],
-        cohort: parsedBody?.cohort,
+        installation_ids: parsedBody?.installation_ids,
+        cohort_name: parsedBody?.cohort_name,
       },
       { accessJwt },
     );
@@ -252,12 +331,15 @@ async function routeControlPathToVendor(
 
   const promoteCapMatch = promoteCapRe.exec(pathname);
   if (promoteCapMatch && method === "POST") {
+    const denied = requireOperatorAccessJwt();
+    if (denied) {
+      return denied;
+    }
     const envelope = await vendorCall(
       "promoteCohort",
       {
         capability_id: promoteCapMatch[1],
         capability_version: promoteCapMatch[2],
-        cohort: parsedBody?.cohort,
       },
       { accessJwt },
     );
@@ -301,6 +383,10 @@ async function routeControlPathToVendor(
   }
 
   if (tokenBeginRe.test(pathname) && method === "POST") {
+    const denied = requireOperatorAccessJwt();
+    if (denied) {
+      return denied;
+    }
     const envelope = await vendorCall("beginTokenContractRotation", {}, { accessJwt });
     const http = vendorEnvelopeToHttp(envelope);
     return {
@@ -312,6 +398,10 @@ async function routeControlPathToVendor(
   }
 
   if (tokenRetireRe.test(pathname) && method === "POST") {
+    const denied = requireOperatorAccessJwt();
+    if (denied) {
+      return denied;
+    }
     const envelope = await vendorCall(
       "retireTokenContract",
       { ver: parsedBody?.ver },
@@ -326,8 +416,155 @@ async function routeControlPathToVendor(
     };
   }
 
+  const suspendMatch = suspendRe.exec(pathname);
+  if (suspendMatch && method === "POST") {
+    if (accessJwt === undefined) {
+      return unauthorizedHttp();
+    }
+    const orgId = await orgIdForInstallation(suspendMatch[1]!);
+    if (!orgId) {
+      return {
+        status: 404,
+        headers: new Headers(),
+        text: JSON.stringify({ error: "not_found" }),
+        json: { error: "not_found" },
+      };
+    }
+    const http = vendorEnvelopeToHttp(
+      await vendorCall(
+        "suspend",
+        {
+          org_id: orgId,
+          reason:
+            typeof parsedBody?.reason === "string"
+              ? parsedBody.reason
+              : "control-fetch",
+        },
+        { accessJwt },
+      ),
+    );
+    const json = http.status === 200 ? {} : http.json;
+    return {
+      status: http.status,
+      headers: new Headers(),
+      text: JSON.stringify(json),
+      json,
+    };
+  }
+
+  const resumeMatch = resumeRe.exec(pathname);
+  if (resumeMatch && method === "POST") {
+    if (accessJwt === undefined) {
+      return unauthorizedHttp();
+    }
+    const orgId = await orgIdForInstallation(resumeMatch[1]!);
+    if (!orgId) {
+      return {
+        status: 404,
+        headers: new Headers(),
+        text: JSON.stringify({ error: "not_found" }),
+        json: { error: "not_found" },
+      };
+    }
+    const http = vendorEnvelopeToHttp(
+      await vendorCall(
+        "resume",
+        {
+          org_id: orgId,
+          reason:
+            typeof parsedBody?.reason === "string"
+              ? parsedBody.reason
+              : "control-fetch",
+        },
+        { accessJwt },
+      ),
+    );
+    const json = http.status === 200 ? {} : http.json;
+    return {
+      status: http.status,
+      headers: new Headers(),
+      text: JSON.stringify(json),
+      json,
+    };
+  }
+
+  const deleteMatch = deleteRe.exec(pathname);
+  if (deleteMatch && method === "POST") {
+    if (accessJwt === undefined) {
+      return unauthorizedHttp();
+    }
+    const orgId = await orgIdForInstallation(deleteMatch[1]!);
+    if (!orgId) {
+      return {
+        status: 404,
+        headers: new Headers({ "content-type": "application/json" }),
+        text: JSON.stringify({ error: "installation_not_found" }),
+        json: { error: "installation_not_found" },
+      };
+    }
+    const reason =
+      typeof parsedBody?.reason === "string"
+        ? parsedBody.reason
+        : "e2e-delete";
+    const scenario: Scenario = {
+      installationId: deleteMatch[1]!,
+      orgId,
+      branchId: "",
+      actorId: "",
+      kid: "",
+      keypair: {} as Scenario["keypair"],
+    };
+    const http = await vendorDeleteInstallation(scenario, reason);
+    const json = http.status === 200 ? {} : http.json;
+    return {
+      status: http.status,
+      headers: new Headers({ "content-type": "application/json" }),
+      text: JSON.stringify(json),
+      json,
+    };
+  }
+
+  const entitleMatch = entitleRe.exec(pathname);
+  if (entitleMatch && method === "POST") {
+    const orgId = await orgIdForInstallation(entitleMatch[1]!);
+    if (!orgId) {
+      return {
+        status: 404,
+        headers: new Headers(),
+        text: JSON.stringify({ error: "not_found" }),
+        json: { error: "not_found" },
+      };
+    }
+    const scenario = {
+      installationId: entitleMatch[1]!,
+      orgId,
+      branchId: "",
+      actorId: "",
+      kid: "",
+      keypair: {} as Scenario["keypair"],
+    };
+    await coverClinic(scenario, {
+      capabilities: Array.isArray(parsedBody?.allowed_capabilities)
+        ? (parsedBody.allowed_capabilities as string[])
+        : undefined,
+      max_allowance_per_month:
+        typeof parsedBody?.request_quota === "number"
+          ? parsedBody.request_quota
+          : undefined,
+    });
+    const entitleBody = {
+      installation_id: entitleMatch[1]!,
+      status: "active" as const,
+    };
+    return {
+      status: 200,
+      headers: new Headers(),
+      text: JSON.stringify(entitleBody),
+      json: entitleBody,
+    };
+  }
+
   if (supportLookupRe.test(pathname)) {
-    const url = new URL(`https://x${pathname}${method === "GET" ? "" : ""}`);
     const reference =
       typeof parsedBody?.reference === "string"
         ? parsedBody.reference
@@ -378,7 +615,11 @@ export async function controlFetch(
     if (routed.status === 200) {
       isolateConfigCache.clear();
     }
-    return routed;
+    const headers = new Headers(routed.headers);
+    if (!headers.has("content-type")) {
+      headers.set("content-type", "application/json");
+    }
+    return { ...routed, headers };
   }
 
   const response = await SELF.fetch(
@@ -531,13 +772,26 @@ export async function enrollInstallation(
   scenario: Scenario,
   options: ControlFetchOptions & { payload?: Record<string, unknown> } = {},
 ): Promise<HttpResult> {
-  return controlFetch(
-    `/control/installations/${scenario.installationId}/enroll`,
-    {
-      ...options,
-      body: options.payload ?? options.body ?? enrollPayload(scenario),
-    },
-  );
+  if (options.auth === "none" || options.auth === "wrong") {
+    return controlFetch(
+      `/control/installations/${scenario.installationId}/enroll`,
+      {
+        ...options,
+        body: options.payload ?? options.body ?? enrollPayload(scenario),
+      },
+    );
+  }
+  await newClinic(scenario);
+  const body = {
+    installation_id: scenario.installationId,
+    status: "active" as const,
+  };
+  return {
+    status: 200,
+    headers: new Headers({ "content-type": "application/json" }),
+    text: JSON.stringify(body),
+    json: body,
+  };
 }
 
 export type EntitlePayload = {
@@ -579,15 +833,62 @@ export const DEFAULT_ENTITLE_PAYLOAD: EntitlePayload = {
 
 export async function entitleInstallation(
   scenario: Scenario,
-  _payload: EntitlePayload = DEFAULT_ENTITLE_PAYLOAD,
+  payload: EntitlePayload = DEFAULT_ENTITLE_PAYLOAD,
   options: ControlFetchOptions = {},
 ): Promise<HttpResult> {
-  const result = await controlFetch(
-    `/control/installations/${scenario.installationId}/entitle`,
-    { ...options, body: {} },
+  if (options.auth === "none" || options.auth === "wrong") {
+    return controlFetch(
+      `/control/installations/${scenario.installationId}/entitle`,
+      { ...options, body: payload },
+    );
+  }
+  await coverClinic(scenario, {
+    capabilities: payload.allowed_capabilities,
+    max_allowance_per_month: payload.request_quota,
+  });
+  const accessJwt = await mintVendorAccessJwt();
+  const activated = await vendorCall(
+    "activateCohort",
+    {
+      capability_id: CAPABILITY_ID,
+      capability_version: CAPABILITY_VERSION,
+      installation_ids: [scenario.installationId],
+    },
+    { accessJwt },
   );
+  const activatedHttp = vendorEnvelopeToHttp(activated);
+  if (activatedHttp.status !== 200) {
+    throw new Error(`entitleInstallation activateCohort failed (${activatedHttp.status})`);
+  }
+  const promoted = await vendorCall(
+    "promoteCohort",
+    {
+      capability_id: CAPABILITY_ID,
+      capability_version: CAPABILITY_VERSION,
+    },
+    { accessJwt },
+  );
+  const promotedHttp = vendorEnvelopeToHttp(promoted);
+  if (promotedHttp.status !== 200) {
+    throw new Error(`entitleInstallation promoteCohort failed (${promotedHttp.status})`);
+  }
+  await ensureE2eCoverageMirror(scenario);
+  await ensureE2eQuotaDoCoverage(scenario, {
+    period_start: payload.period_start,
+    period_end: payload.period_end,
+    request_quota: payload.request_quota,
+  });
   isolateConfigCache.clear();
-  return result;
+  const body = {
+    installation_id: scenario.installationId,
+    status: "active" as const,
+  };
+  return {
+    status: 200,
+    headers: new Headers({ "content-type": "application/json" }),
+    text: JSON.stringify(body),
+    json: body,
+  };
 }
 
 export function fakePolicyTarget(
@@ -770,8 +1071,8 @@ export const controlHandlers = {
     const result = await canaryRoutingPolicyAction(
       bindings,
       OPERATOR_EMAIL,
-      parts[4]!,
-      parts[6]!,
+      parts[3]!,
+      parts[5]!,
       Array.isArray((body as { installation_ids?: unknown }).installation_ids)
         ? ((body as { installation_ids: string[] }).installation_ids)
         : [],
@@ -788,8 +1089,8 @@ export const controlHandlers = {
     const result = await promoteRoutingPolicyAction(
       bindings,
       OPERATOR_EMAIL,
-      parts[4]!,
-      parts[6]!,
+      parts[3]!,
+      parts[5]!,
     );
     return controlResultToResponse(result);
   },
@@ -803,8 +1104,8 @@ export const controlHandlers = {
     const result = await rollbackRoutingPolicyAction(
       bindings,
       OPERATOR_EMAIL,
-      parts[4]!,
-      parts[6]!,
+      parts[3]!,
+      parts[5]!,
     );
     return controlResultToResponse(result);
   },

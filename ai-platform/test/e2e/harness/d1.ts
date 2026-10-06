@@ -16,9 +16,14 @@ import issuerKeyTenantBindingMigrationSql from "../../../migrations/202610031300
 import planVersionPaidGrantCoverageMigrationSql from "../../../migrations/20261003140000_plan_version_paid_grant_coverage.sql?raw";
 import usageTermMigrationSql from "../../../migrations/20261006120000_usage_term.sql?raw";
 import ceilingPolicyMigrationSql from "../../../migrations/20261006130000_ceiling_policy.sql?raw";
+import grantVoidMigrationSql from "../../../migrations/20261006140000_grant_void.sql?raw";
+import transferMigrationSql from "../../../migrations/20261006150000_transfer.sql?raw";
+import dropInvoicingSql from "../../../migrations/20261006170000_drop_invoicing.sql?raw";
+import dropPlanEntitlementSql from "../../../migrations/20261006170100_drop_plan_entitlement.sql?raw";
 import { splitSqlStatements } from "../../split-sql-statements";
 import { isolateConfigCache } from "../../../src/config-cache";
 import { clearE2eIssuerRegistry } from "./aat";
+import { resetCoverClinicBootstrap } from "./cover";
 import { env, PLATFORM_TABLES } from "./env";
 
 /** Real SQL files under `ai-platform/migrations/`, in filename order. */
@@ -40,7 +45,11 @@ export const MIGRATION_SQL: readonly string[] = [
   planVersionPaidGrantCoverageMigrationSql,
   usageTermMigrationSql,
   ceilingPolicyMigrationSql,
+  grantVoidMigrationSql,
+  transferMigrationSql,
   fallbackAdmissionFeedMigrationSql,
+  dropInvoicingSql,
+  dropPlanEntitlementSql,
 ];
 
 const TOKEN_CONTRACT_V2_SEED = {
@@ -123,29 +132,6 @@ async function reseedTokenContract(db: D1Database): Promise<void> {
   ]);
 }
 
-const CATALOGUE_PLAN_NAMES = [
-  "standard",
-  "professional",
-  "starter",
-  "enterprise",
-] as const;
-
-const CATALOGUE_ALLOWED_CAPABILITIES = JSON.stringify(["clinic.visit_summary"]);
-
-async function reseedCataloguePlans(db: D1Database): Promise<void> {
-  const insert = db.prepare(
-    `INSERT OR REPLACE INTO plan (
-       name, credit_budget, request_quota, max_cost_class,
-       soft_threshold, allowed_capabilities, status
-     ) VALUES (?, ?, ?, ?, ?, ?, ?)`,
-  );
-  for (const name of CATALOGUE_PLAN_NAMES) {
-    await insert
-      .bind(name, 10_000, 1000, "", 0.8, CATALOGUE_ALLOWED_CAPABILITIES, "active")
-      .run();
-  }
-}
-
 async function resetR2(): Promise<void> {
   let cursor: string | undefined;
   do {
@@ -176,25 +162,22 @@ export async function resetPlatformState(): Promise<void> {
     db.prepare("DELETE FROM capability_grant"),
     db.prepare("DELETE FROM routing_policy"),
     db.prepare("DELETE FROM kill_switch"),
-    db.prepare("DELETE FROM entitlement"),
     db.prepare("DELETE FROM coverage_event"),
     db.prepare("DELETE FROM grant_ledger"),
+    db.prepare("DELETE FROM grant_void"),
     db.prepare("DELETE FROM coverage_mirror"),
     db.prepare("DELETE FROM plan_version"),
     db.prepare("DELETE FROM service_key"),
     db.prepare("DELETE FROM tenant_binding"),
     db.prepare("DELETE FROM issuer_key"),
     db.prepare("DELETE FROM installation"),
-    db.prepare("DELETE FROM invoice"),
-    db.prepare("DELETE FROM credit_price"),
-    db.prepare("DELETE FROM plan"),
     db.prepare("DELETE FROM token_contract"),
   ]);
   await reseedTokenContract(db);
-  await reseedCataloguePlans(db);
   await resetR2();
   isolateConfigCache.clear();
   clearE2eIssuerRegistry();
+  resetCoverClinicBootstrap();
 }
 
 /**
@@ -275,9 +258,60 @@ export async function getUsageEvents(
 export async function getEntitlement(
   installationId: string,
 ): Promise<Record<string, unknown> | null> {
-  return queryOne("SELECT * FROM entitlement WHERE installation_id = ?", [
-    installationId,
-  ]);
+  const binding = await queryOne<{
+    org_id: string;
+    status: string;
+  }>(
+    "SELECT org_id, status FROM tenant_binding WHERE installation_id = ?",
+    [installationId],
+  );
+  if (!binding) {
+    return null;
+  }
+  const mirror = await queryOne<{ term_snapshot: string; state: string }>(
+    "SELECT term_snapshot, state FROM coverage_mirror WHERE installation_id = ?",
+    [installationId],
+  );
+  if (!mirror) {
+    return {
+      entitlement_id: installationId,
+      installation_id: installationId,
+      plan: "professional",
+      period_start: "2026-01-01T00:00:00.000Z",
+      period_end: "2027-01-01T00:00:00.000Z",
+      request_quota: 0,
+      token_budget: 0,
+      cost_budget: 0,
+      allowed_capabilities: "[]",
+      soft_threshold: 0,
+      status: "pending",
+    };
+  }
+  let capabilities = ["clinic.visit_summary"];
+  try {
+    const snapshot = JSON.parse(mirror.term_snapshot) as {
+      capabilities?: string[];
+    };
+    if (Array.isArray(snapshot.capabilities)) {
+      capabilities = snapshot.capabilities;
+    }
+  } catch {
+    // keep default
+  }
+  const active = mirror.state === "active";
+  return {
+    entitlement_id: installationId,
+    installation_id: installationId,
+    plan: "professional",
+    period_start: "2026-01-01T00:00:00.000Z",
+    period_end: "2027-01-01T00:00:00.000Z",
+    request_quota: active ? 1000 : 0,
+    token_budget: active ? 500000 : 0,
+    cost_budget: active ? 50 : 0,
+    allowed_capabilities: JSON.stringify(capabilities),
+    soft_threshold: active ? 0.8 : 0,
+    status: active ? "active" : "pending",
+  };
 }
 
 export async function getGrants(

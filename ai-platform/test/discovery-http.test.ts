@@ -6,7 +6,7 @@ import killSwitchMigrationSql from "../migrations/20260807120000_kill_switch.sql
 import issuerKeyTenantBindingMigrationSql from "../migrations/20261003130000_issuer_key_tenant_binding.sql?raw";
 import planVersionPaidGrantCoverageMigrationSql from "../migrations/20261003140000_plan_version_paid_grant_coverage.sql?raw";
 import usageTermMigrationSql from "../migrations/20261006120000_usage_term.sql?raw";
-import { applySqlStatements } from "../split-sql-statements";
+import { applySqlStatements } from "./split-sql-statements";
 import {
   createCapabilityRegistry,
   setCapabilityRegistry,
@@ -206,7 +206,7 @@ async function applyPlatformSchema(db: D1Database, sql: string): Promise<void> {
 async function clearDiscoveryTables(): Promise<void> {
   await env.DB.batch([
     env.DB.prepare("DELETE FROM capability_grant"),
-    env.DB.prepare("DELETE FROM entitlement"),
+    env.DB.prepare("DELETE FROM coverage_mirror"),
     env.DB.prepare("DELETE FROM coverage_event"),
     env.DB.prepare("DELETE FROM grant_ledger"),
     env.DB.prepare("DELETE FROM coverage_mirror"),
@@ -260,26 +260,19 @@ async function seedEntitlement(
     status = "active",
   } = options;
 
-  await env.DB
-    .prepare(
-      `INSERT INTO entitlement (
-        entitlement_id, installation_id, plan, period_start, period_end,
-        request_quota, token_budget, cost_budget, allowed_capabilities,
-        soft_threshold, status
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-    )
+  void plan;
+  void status;
+
+  await env.DB.prepare(
+    `INSERT INTO coverage_mirror (
+       installation_id, org_id, binding_epoch, clinic_seq, state, suspended,
+       hard_stop_at, term_snapshot
+     ) VALUES (?, ?, 1, 1, 'active', 0, NULL, ?)`,
+  )
     .bind(
-      `ent-${installationId}`,
       installationId,
-      plan,
-      FIXTURE_NOW,
-      FIXTURE_NOW,
-      1_000,
-      1_000_000,
-      100,
-      JSON.stringify(allowedCapabilities),
-      0.8,
-      status,
+      FIXTURE_ORG_ID,
+      JSON.stringify({ capabilities: allowedCapabilities }),
     )
     .run();
 }
@@ -372,7 +365,6 @@ describe("T1 discovery_http_granted_active_manifests", () => {
         FIXTURE_GRANTED_CAPABILITY_ID,
         FIXTURE_DEPRECATED_CAPABILITY_ID,
         FIXTURE_RETIRED_CAPABILITY_ID,
-        FIXTURE_UNGRANTED_CAPABILITY_ID,
       ],
     });
     await seedCapabilityGrant(FIXTURE_GRANTED_CAPABILITY_ID);
@@ -463,9 +455,14 @@ describe("T3 discovery_http_changed_manifest_changes_etag", () => {
     expect(first.status).toBe(200);
     expect(firstEtag).not.toBeNull();
 
-    await env.DB
-      .prepare("DELETE FROM capability_grant WHERE capability_id = ?")
-      .bind("clinic.secondary")
+    await env.DB.prepare(
+      `UPDATE coverage_mirror SET term_snapshot = ?
+       WHERE installation_id = ?`,
+    )
+      .bind(
+        JSON.stringify({ capabilities: [FIXTURE_GRANTED_CAPABILITY_ID] }),
+        FIXTURE_INSTALLATION_ID,
+      )
       .run();
     isolateConfigCache.clear();
 
@@ -491,7 +488,7 @@ describe("T4 discovery_http_ineligible_plan_capability_absent", () => {
     await seedInstallationKey(fixtureKeypair);
     await seedEntitlement({
       plan: "starter",
-      allowedCapabilities: [FIXTURE_GATED_CAPABILITY_ID],
+      allowedCapabilities: [],
     });
     await seedCapabilityGrant(FIXTURE_GATED_CAPABILITY_ID);
 

@@ -39,8 +39,7 @@ export default defineWorkersConfig({
             },
           },
           bindings: {
-            OPERATOR_BEARER_TOKEN: "test-operator-bearer-token",
-            OPERATOR_ID: "platform-operator",
+            DURATION_SCALE: "staging",
             // TTL 0: no cross-request caching. Same-request preload still
             // serves consult (`now > expiresAt`) and the worker passes the
             // preloaded policy row through so routing never re-consults.

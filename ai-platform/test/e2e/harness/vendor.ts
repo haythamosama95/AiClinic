@@ -26,14 +26,28 @@ export type VendorMethod =
   | "supportLookup"
   | "suspend"
   | "resume"
-  | "deleteInstallation";
+  | "deleteInstallation"
+  | "publishPlanVersion"
+  | "registerServiceKey"
+  | "grant"
+  | "inspectCoverage";
 
 const VENDOR_CONTRACT_VERSION = CHANNEL_VERSIONS.vendorEntrypoint;
 
 export function vendorEnvelopeToHttp(
   envelope: VendorResultEnvelope,
 ): { status: number; json: Record<string, unknown> } {
-  if (envelope.result === "ok") {
+  if (
+    envelope.code === "unauthenticated" ||
+    (envelope.result === "rejected" && envelope.code === "unauthenticated")
+  ) {
+    return { status: 401, json: { error: "unauthorized" } };
+  }
+  if (
+    envelope.result === "ok" ||
+    envelope.result === "applied" ||
+    envelope.result === "already_applied"
+  ) {
     const json =
       envelope.detail.length > 0
         ? (JSON.parse(envelope.detail) as Record<string, unknown>)
@@ -43,8 +57,32 @@ export function vendorEnvelopeToHttp(
   if (envelope.result === "conflict") {
     return { status: 409, json: { error: envelope.code } };
   }
-  if (envelope.code === "unauthenticated") {
-    return { status: 401, json: { error: "unauthorized" } };
+  if (envelope.result === "rejected") {
+    if (envelope.code === "missing_lookup_key") {
+      return { status: 400, json: { error: "missing_reference" } };
+    }
+    if (envelope.code === "illegal_lifecycle_transition") {
+      return { status: 409, json: { error: envelope.code } };
+    }
+    if (
+      envelope.code === "capability_not_found" ||
+      envelope.code === "not_found" ||
+      envelope.code === "installation_not_found" ||
+      envelope.code === "policy_version_not_found" ||
+      envelope.code === "ver_not_found"
+    ) {
+      return { status: 404, json: { error: envelope.code } };
+    }
+    return { status: 400, json: { error: envelope.code } };
+  }
+  if (
+    envelope.code === "capability_not_found" ||
+    envelope.code === "not_found" ||
+    envelope.code === "installation_not_found" ||
+    envelope.code === "policy_version_not_found" ||
+    envelope.code === "ver_not_found"
+  ) {
+    return { status: 404, json: { error: envelope.code } };
   }
   return { status: 400, json: { error: envelope.code } };
 }

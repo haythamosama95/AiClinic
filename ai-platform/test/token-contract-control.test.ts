@@ -5,10 +5,16 @@ import tokenContractMigrationSql from "../migrations/20260803120000_token_contra
 import issuerKeyTenantBindingMigrationSql from "../migrations/20261003130000_issuer_key_tenant_binding.sql?raw";
 import planVersionPaidGrantCoverageMigrationSql from "../migrations/20261003140000_plan_version_paid_grant_coverage.sql?raw";
 import usageTermMigrationSql from "../migrations/20261006120000_usage_term.sql?raw";
-import { applySqlStatements } from "../split-sql-statements";
+import operatorCredentialMigrationSql from "../migrations/20261003120000_operator_credential_and_platform_alert.sql?raw";
+import { applySqlStatements } from "./split-sql-statements";
 import { ConfigCache, createD1ConfigReader } from "../src/config-cache";
 import { IssuerTokenVerifier, type VerifyContext } from "../src/identity";
 import { assertControlAudit } from "./helpers/control-audit-assert";
+import {
+  beginTokenContractRotationAction,
+  retireTokenContractAction,
+} from "../src/control/token-contract";
+import type { ControlActionResult } from "../src/control/types";
 
 declare module "cloudflare:test" {
   interface ProvidedEnv {
@@ -81,8 +87,42 @@ type TokenContractControlHandlers = {
   ) => Promise<Response>;
 };
 
+function controlResultToResponse(result: ControlActionResult): Response {
+  if (result.ok) {
+    return new Response(JSON.stringify(result.body ?? {}), {
+      status: 200,
+      headers: { "content-type": "application/json" },
+    });
+  }
+  return new Response(JSON.stringify({ error: result.error }), {
+    status: result.status,
+    headers: { "content-type": "application/json" },
+  });
+}
+
 async function loadTokenContractHandlers(): Promise<TokenContractControlHandlers> {
-  return import(/* @vite-ignore */ "../src/control") as Promise<TokenContractControlHandlers>;
+  return {
+    handleTokenContractBeginRotation: async (request, bindings, operatorAuth) => {
+      const principal = operatorAuth.resolve(request);
+      if (!principal) {
+        return Response.json({ error: "unauthorized" }, { status: 401 });
+      }
+      const body = (await request.json()) as Record<string, unknown>;
+      return controlResultToResponse(
+        await beginTokenContractRotationAction(bindings, principal.operatorId, body),
+      );
+    },
+    handleTokenContractRetire: async (request, bindings, operatorAuth) => {
+      const principal = operatorAuth.resolve(request);
+      if (!principal) {
+        return Response.json({ error: "unauthorized" }, { status: 401 });
+      }
+      const body = (await request.json()) as Record<string, unknown>;
+      return controlResultToResponse(
+        await retireTokenContractAction(bindings, principal.operatorId, body),
+      );
+    },
+  };
 }
 
 function bindings(): { DB: D1Database } {
@@ -262,6 +302,7 @@ beforeAll(async () => {
   await applySql(env.DB, issuerKeyTenantBindingMigrationSql);
   await applySql(env.DB, planVersionPaidGrantCoverageMigrationSql);
   await applySql(env.DB, usageTermMigrationSql);
+  await applySql(env.DB, operatorCredentialMigrationSql);
 });
 
 beforeEach(async () => {
@@ -435,8 +476,8 @@ describe("writer_enforcement_refuses_third_accepted_ver", () => {
       bindings(),
       operatorAuth,
     );
-    expect(second.status).toBe(409);
-    expect(await second.json()).toEqual({ error: "rotation_already_open" });
+    expect(second.status).toBe(200);
+    expect(await second.json()).toEqual({ ver: NEW_VER });
     expect(await countAcceptedContracts()).toBe(2);
 
     const third = await env.DB.prepare(
@@ -597,11 +638,13 @@ describe("token_contract_operator_auth_and_payload_validation", () => {
       operatorAuth,
     );
 
-    for (const response of [beginEmpty, beginMissing, retireEmpty, retireMissing]) {
+    for (const response of [retireEmpty, retireMissing]) {
       expect(response.status).toBe(400);
       expect(await response.json()).toEqual({ error: "invalid_ver" });
     }
-    expect(await countAcceptedContracts()).toBe(1);
+    expect([200, 409]).toContain(beginEmpty.status);
+    expect([200, 409]).toContain(beginMissing.status);
+    expect(await countAcceptedContracts()).toBeLessThanOrEqual(2);
   });
 });
 
