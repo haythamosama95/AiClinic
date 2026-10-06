@@ -898,15 +898,18 @@ function grantExceedsCeiling(input: {
   planMaxAllowancePerMonth: number;
   grantDays: number;
   grantCredits: number;
+  applyPerGrantCaps: boolean;
 }): boolean {
-  if (input.grantDays > input.policy.per_grant_max_days) {
-    return true;
-  }
-  if (
-    input.grantCredits >
-    input.policy.per_grant_max_allowance_months * input.planMaxAllowancePerMonth
-  ) {
-    return true;
+  if (input.applyPerGrantCaps) {
+    if (input.grantDays > input.policy.per_grant_max_days) {
+      return true;
+    }
+    if (
+      input.grantCredits >
+      input.policy.per_grant_max_allowance_months * input.planMaxAllowancePerMonth
+    ) {
+      return true;
+    }
   }
   let windowDays = 0;
   let windowCredits = 0;
@@ -1106,6 +1109,7 @@ async function applyComplimentaryTermGrant(
       planMaxAllowancePerMonth: planMax,
       grantDays,
       grantCredits,
+      applyPerGrantCaps: true,
     })
   ) {
     return { kind: "apply_grant", result: "exceeds_ceiling" };
@@ -1263,12 +1267,12 @@ async function applyTermAdjustmentGrant(
       planMaxAllowancePerMonth: planMax,
       grantDays,
       grantCredits,
+      applyPerGrantCaps: false,
     })
   ) {
     return { kind: "apply_grant", result: "exceeds_ceiling" };
   }
 
-  const planSnapshotJson = JSON.stringify(request.planSnapshot);
   let allowance = activeTerm.allowance ?? 0;
   let endsAt = activeTerm.ends_at;
   if (Number.isInteger(extendDays) && (extendDays as number) > 0) {
@@ -1283,10 +1287,20 @@ async function applyTermAdjustmentGrant(
     allowance += addAllowance as number;
   }
 
+  const adjustmentPlan = adjustment.plan;
+  const termSets = [
+    `allowance = ${allowance}`,
+    `ends_at = ${sqlString(endsAt)}`,
+  ];
+  if (isEnvelopeRecord(adjustmentPlan)) {
+    termSets.unshift(
+      `plan_snapshot = ${sqlString(JSON.stringify(request.planSnapshot))}`,
+    );
+  }
+
   sqlExec(
     storage,
-    `UPDATE term SET plan_snapshot = ${sqlString(planSnapshotJson)},
-     allowance = ${allowance}, ends_at = ${sqlString(endsAt)}
+    `UPDATE term SET ${termSets.join(", ")}
      WHERE term_id = ${sqlString(activeTerm.term_id)}`,
   );
 

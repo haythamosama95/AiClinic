@@ -1124,7 +1124,6 @@ async function verifyCeilingOverrideAssertion(
   accessJwt: string,
   version: number,
   envelope: Record<string, unknown>,
-  grantAssertionSha256: string,
   signer: OperatorCredentialRow,
 ): Promise<
   { ok: true; assertionSha256: string } | { ok: false; code: string }
@@ -1139,6 +1138,18 @@ async function verifyCeilingOverrideAssertion(
   const grantOperation = args.operation;
   if (!isRecord(grantOperation)) {
     return { ok: false, code: "assertion_invalid" };
+  }
+
+  const overrideClientData = JSON.parse(
+    new TextDecoder().decode(assertion.clientDataJSON),
+  ) as { challenge?: string };
+  const overrideChallenge =
+    typeof overrideClientData.challenge === "string"
+      ? overrideClientData.challenge
+      : "";
+  const grantChallenge = await operationChallenge(grantOperation);
+  if (overrideChallenge.length > 0 && overrideChallenge === grantChallenge) {
+    return { ok: false, code: "assertion_used" };
   }
 
   const envelopeForOverride = envelopeWithoutCeilingOverride(envelope);
@@ -1156,9 +1167,6 @@ async function verifyCeilingOverrideAssertion(
   }
 
   const assertionSha256 = await operationAssertionSha256(operation);
-  if (assertionSha256 === grantAssertionSha256) {
-    return { ok: false, code: "assertion_used" };
-  }
   if (await assertionChallengeUsed(env.DB, assertionSha256)) {
     return { ok: false, code: "assertion_used" };
   }
@@ -1213,7 +1221,8 @@ async function verifyCeilingOverrideAssertion(
         publicKey,
       });
       if (retry.ok) {
-        return { ok: true, assertionSha256 };
+        const verifiedSha = await operationAssertionSha256(candidate);
+        return { ok: true, assertionSha256: verifiedSha };
       }
     }
     return { ok: false, code: "assertion_invalid" };
@@ -1224,6 +1233,73 @@ async function verifyCeilingOverrideAssertion(
   }
 
   return { ok: true, assertionSha256 };
+}
+
+async function tryComplimentaryGrantIdempotency(
+  env: VendorEnv,
+  version: number,
+  orgId: string,
+  envelope: Record<string, unknown>,
+): Promise<GrantResultEnvelope | null> {
+  const grantId = envelope.grant_id;
+  if (typeof grantId !== "string" || grantId.length === 0) {
+    return null;
+  }
+
+  const installationId = await resolveOrInsertGrantBinding(env, orgId);
+  const envelopeSha256 = await grantEnvelopeHash(envelope);
+  const inspect = await callCoverageDo(env, installationId, {
+    kind: "inspect_coverage",
+    orgId,
+    vendorContractVersion: version,
+  });
+  if (inspect === null || !Array.isArray(inspect.grants)) {
+    return null;
+  }
+
+  for (const row of inspect.grants) {
+    if (!isRecord(row)) {
+      continue;
+    }
+    if (row.grant_id !== grantId) {
+      continue;
+    }
+    const storedHash = row.envelope_sha256;
+    if (typeof storedHash !== "string") {
+      return null;
+    }
+    if (storedHash !== envelopeSha256) {
+      return {
+        contract_version: version,
+        result: "conflict",
+        code: "",
+        detail: "",
+      };
+    }
+    const receiptRaw = row.receipt;
+    let receipt: Record<string, unknown> | null = null;
+    if (typeof receiptRaw === "string") {
+      try {
+        receipt = JSON.parse(receiptRaw) as Record<string, unknown>;
+      } catch {
+        receipt = null;
+      }
+    } else if (isRecord(receiptRaw)) {
+      receipt = receiptRaw;
+    }
+    if (receipt === null) {
+      return null;
+    }
+    return {
+      contract_version: version,
+      result: "already_applied",
+      code: "",
+      detail: "",
+      receipt,
+    };
+  }
+
+  return null;
 }
 
 function mapApplyGrantDoResponse(
@@ -2627,6 +2703,16 @@ export class VendorEntrypoint extends WorkerEntrypoint<VendorEnv> {
       const accessJwt =
         typeof args.access_jwt === "string" ? args.access_jwt : "";
 
+      const idempotent = await tryComplimentaryGrantIdempotency(
+        this.env,
+        version,
+        orgId,
+        envelope,
+      );
+      if (idempotent !== null) {
+        return idempotent;
+      }
+
       const check = await runHpAssertionChecks(
         this.env,
         "grant",
@@ -2659,7 +2745,6 @@ export class VendorEntrypoint extends WorkerEntrypoint<VendorEnv> {
           accessJwt,
           version,
           envelope,
-          check.assertionSha256,
           check.signer,
         );
         if (!overrideCheck.ok) {
