@@ -67,7 +67,7 @@ Each fact has one authoritative store. Copies exist for evidence, rebuild and di
 
 - Ids are ULIDs with 80 random bits, so they are unguessable. Money is an integer in minor units plus an ISO 4217 currency. Times are UTC ISO-8601.
 - Tables marked **append-only** carry D1 `BEFORE UPDATE` and `BEFORE DELETE` triggers that abort (RC-01). Current state lives in separate, small, mutable status tables that can be recomputed from the facts.
-- Every insert into an append-only table also inserts a `fact_log` row (`fact_seq`, table, key, SHA-256 of the canonical row). A separate `fact_export` table records which facts have been exported, and the exporter writes one NDJSON object per fact under the locked R2 prefix `ledger/` (RC-03). No append-only table or export holds payer contact values; they refer to a `billing_contact` version and hash (§2.3).
+- Every insert into an append-only table also inserts a `fact_log` row (`fact_seq`, table, key, SHA-256 of the canonical row). A separate `fact_export` table records which facts have been exported, and the exporter writes one NDJSON object per fact under the locked R2 prefix `ledger/` (RC-03), in `fact_seq` order. The object key is `ledger/<fact_seq>.ndjson`, where `<fact_seq>` is that fact's `fact_seq` in decimal with no padding, and the object is one JSON line. No append-only table or export holds payer contact values; they refer to a `billing_contact` version and hash (§2.3).
 - `contract_version` on a record is the version of the message that created it (04 §7). Stored payloads are read with the version they were written in and are never rewritten.
 - Every query is keyed by `org_id` wherever a tenant is involved, and backed by an index (01 §3.3, query cost).
 

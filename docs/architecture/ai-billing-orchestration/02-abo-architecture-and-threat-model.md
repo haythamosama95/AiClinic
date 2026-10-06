@@ -88,7 +88,7 @@ One deployable (C-07), new top-level directory `abo/`. Only the adapter module m
 | existing platform hostname   | AI Platform | §1.3                                          | Public; token-authenticated                                        |
 
 
-Both Workers set `workers_dev = false` and `preview_urls = false`, so the Access-protected console has no bypass hostname. The ABO rejects `/ops/*` on the billing hostname and `/v1/*` on the console hostname. Staging runs in a separate Cloudflare account and Supabase project with the Paymob test integration (01 R-6).
+Both Workers set `workers_dev = false` and `preview_urls = false`, so the Access-protected console has no bypass hostname. The ABO rejects `/ops/*` on the billing hostname and `/v1/*` on the console hostname. Both crossings answer HTTP 404 with an empty body, before the contract-version check and before authentication. That body is not an 04 §2.3 error. Staging runs in a separate Cloudflare account and Supabase project with the Paymob test integration (01 R-6).
 
 ### 1.5 Key flows
 

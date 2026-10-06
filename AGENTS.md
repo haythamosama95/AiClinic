@@ -5,9 +5,9 @@ This file orients AI coding agents working in this repository. Keep the
 **current active feature's** plan reference when running Spec Kit phases.
 
 <!-- SPECKIT START -->
-Active feature plan: `specs/075-abo-p3-11-platform-rebuild-procedures-write-budget/plan.md`
-Feature spec: `specs/075-abo-p3-11-platform-rebuild-procedures-write-budget/spec.md`
-Branch: `ai/075-abo-p3-11-platform-rebuild-procedures-write-budget`
+Active feature plan: `specs/076-abo-p4-1-abo-skeleton-records-layer-billing-token/plan.md`
+Feature spec: `specs/076-abo-p4-1-abo-skeleton-records-layer-billing-token/spec.md`
+Branch: `ai/076-abo-p4-1-abo-skeleton-records-layer-billing-token`
 <!-- SPECKIT END -->
 
 ## Repo layout quick reference

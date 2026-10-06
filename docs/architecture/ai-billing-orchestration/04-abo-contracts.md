@@ -238,7 +238,7 @@ Rules:
 
 ### 2.3 ABO errors
 
-Body `{code, message, contract_version}`.
+Body `{code, message, contract_version}`. `contract_version_unsupported` also includes `accepted_versions`.
 
 
 | Code                           | HTTP | When                                                                  |
@@ -252,7 +252,7 @@ Body `{code, message, contract_version}`.
 | `invalid_request`              | 422  | Field validation failed                                               |
 | `rate_limited`                 | 429  | Limits in §2.2                                                        |
 | `provider_unavailable`         | 503  | The provider refused or timed out when creating the checkout          |
-| `contract_version_unsupported` | 400  | `Abo-Contract-Version` missing or outside N and N−1; the body lists the accepted versions. Checked before authentication, so an outdated desktop gets this and not `unauthenticated` |
+| `contract_version_unsupported` | 400  | `Abo-Contract-Version` missing or outside N and N−1. The list of accepted versions is `accepted_versions`: `[N−1, N]`, N−1 then N. `contract_version` is N, the version this refusal answers in, both when the header is missing and when it is outside N and N−1. The response header `Abo-Contract-Version` is that same N. Checked before authentication, so an outdated desktop gets this and not `unauthenticated` |
 
 
 The operator console's `/ops/*` calls follow the same header and error rules.
