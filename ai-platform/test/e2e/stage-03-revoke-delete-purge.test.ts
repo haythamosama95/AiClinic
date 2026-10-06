@@ -755,12 +755,17 @@ describe("Stage 03 — revoke/delete/purge (S03-061…S03-083)", () => {
     expect(
       await count("capability_grant", "scope = ?", [`installation:${I0}`]),
     ).toBe(0);
-    expect(await count("tenant_binding", "installation_id = ?", [I0])).toBe(0);
-    expect(await count("entitlement", "installation_id = ?", [I0])).toBe(0);
+    expect(await count("tenant_binding", "installation_id = ?", [I0])).toBe(
+      footprintBefore.tenant_binding,
+    );
+    expect(await count("entitlement", "installation_id = ?", [I0])).toBe(
+      footprintBefore.entitlement,
+    );
     expect(
       await count("grace_admission_queue", "installation_id = ?", [I0]),
     ).toBe(0);
-    expect(await count("installation", "installation_id = ?", [I0])).toBe(0);
+    expect(await count("installation", "installation_id = ?", [I0])).toBe(1);
+    expect(await installationStatus(I0)).toBe("deleted");
 
     const historyAfter = await queryAll<ControlAuditRow>(
       `SELECT audit_id, operator_id, action, target, before_pointer, after_pointer, recorded_at

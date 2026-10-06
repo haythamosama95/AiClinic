@@ -819,6 +819,18 @@ describe("retention_purge_by_installation_id", () => {
         "active",
       )
       .run();
+    await env.DB.prepare(
+      `INSERT INTO tenant_binding (org_id, installation_id, epoch, status, created_at)
+       VALUES (?, ?, ?, ?, ?)`,
+    )
+      .bind(
+        FIXTURE_ORG,
+        FIXTURE_INSTALLATION_A,
+        1,
+        "active",
+        FIXTURE_NOW.toISOString(),
+      )
+      .run();
 
     await purgeByInstallationId(FIXTURE_INSTALLATION_A, "operator-001", {
       db: env.DB,
@@ -884,10 +896,10 @@ describe("retention_purge_by_installation_id", () => {
     expect(grantB?.c).toBe(1);
 
     const instA = await env.DB.prepare(
-      "SELECT COUNT(*) AS c FROM installation WHERE installation_id = ?",
+      "SELECT status FROM installation WHERE installation_id = ?",
     )
       .bind(FIXTURE_INSTALLATION_A)
-      .first<{ c: number }>();
+      .first<{ status: string }>();
     const instB = await env.DB.prepare(
       "SELECT COUNT(*) AS c FROM installation WHERE installation_id = ?",
     )
@@ -898,10 +910,16 @@ describe("retention_purge_by_installation_id", () => {
     )
       .bind(FIXTURE_INSTALLATION_A)
       .first<{ c: number }>();
+    const bindingA = await env.DB.prepare(
+      "SELECT COUNT(*) AS c FROM tenant_binding WHERE installation_id = ?",
+    )
+      .bind(FIXTURE_INSTALLATION_A)
+      .first<{ c: number }>();
 
-    expect(instA?.c).toBe(0);
+    expect(instA?.status).toBe("deleted");
     expect(instB?.c).toBe(1);
-    expect(entA?.c).toBe(0);
+    expect(entA?.c).toBe(1);
+    expect(bindingA?.c).toBe(1);
 
     const audit = await env.DB.prepare(
       "SELECT action FROM control_audit WHERE target = ?",

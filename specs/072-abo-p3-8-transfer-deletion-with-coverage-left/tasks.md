@@ -151,19 +151,19 @@ The run fails because `beginTransfer` is not a method.
 
 **Independent Test**: E2E-P3.8-08 in harness H-AP. Earlier H-AP suites stay green (rule S2).
 
-- [ ] T023 [US4] Update purge assertions in `ai-platform/test/retention.test.ts` — produces kept-row expectations, FR-008, E2E-P3.8-08. Depends on T021. Expect the installation row kept with `status` `deleted`, and expect `entitlement` and `tenant_binding` kept. This is the same purge change as T024 and T025.
+- [X] T023 [US4] Update purge assertions in `ai-platform/test/retention.test.ts` — produces kept-row expectations, FR-008, E2E-P3.8-08. Depends on T021. Expect the installation row kept with `status` `deleted`, and expect `entitlement` and `tenant_binding` kept. This is the same purge change as T024 and T025.
 
 ### 4.8 User Story 4 - Keep ledgers when a deleted installation is purged (Priority: P4) — lifecycle assertions
 
 **Independent Test**: E2E-P3.8-08 in harness H-AP. Earlier H-AP suites stay green (rule S2).
 
-- [ ] T024 [US4] Update `SYS-2.4` in `ai-platform/test/system/lifecycle-interplay.system.test.ts` — produces kept-row expectations, FR-008, E2E-P3.8-08. Depends on T021. Expect the installation row kept with `status` `deleted`, and expect `entitlement` and `tenant_binding` kept. Leave the `unauthenticated` assertion after purge.
+- [X] T024 [US4] Update `SYS-2.4` in `ai-platform/test/system/lifecycle-interplay.system.test.ts` — produces kept-row expectations, FR-008, E2E-P3.8-08. Depends on T021. Expect the installation row kept with `status` `deleted`, and expect `entitlement` and `tenant_binding` kept. Leave the `unauthenticated` assertion after purge.
 
 ### 4.9 User Story 4 - Keep ledgers when a deleted installation is purged (Priority: P4) — stage-03 assertions
 
 **Independent Test**: E2E-P3.8-08 in harness H-AP. Earlier H-AP suites stay green (rule S2).
 
-- [ ] T025 [US4] Update purge assertions in `ai-platform/test/e2e/stage-03-revoke-delete-purge.test.ts` — produces kept-row expectations, FR-008, E2E-P3.8-08. Depends on T021. Expect the installation row kept with `status` `deleted`, and expect `entitlement` and `tenant_binding` kept.
+- [X] T025 [US4] Update purge assertions in `ai-platform/test/e2e/stage-03-revoke-delete-purge.test.ts` — produces kept-row expectations, FR-008, E2E-P3.8-08. Depends on T021. Expect the installation row kept with `status` `deleted`, and expect `entitlement` and `tenant_binding` kept.
 
 **Checkpoint**: Earlier purge assertions match the retained rows. The unit file is ready for the harness command.
 

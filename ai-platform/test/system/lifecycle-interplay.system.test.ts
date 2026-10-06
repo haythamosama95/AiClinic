@@ -313,10 +313,19 @@ describe("lifecycle interplay", () => {
 
     expect(
       await count("installation", "installation_id = ?", [scenario.installationId]),
-    ).toBe(0);
+    ).toBe(1);
+    const purgedInstallation = await env.DB.prepare(
+      "SELECT status FROM installation WHERE installation_id = ?",
+    )
+      .bind(scenario.installationId)
+      .first<{ status: string }>();
+    expect(purgedInstallation?.status).toBe("deleted");
     expect(
       await count("entitlement", "installation_id = ?", [scenario.installationId]),
-    ).toBe(0);
+    ).toBeGreaterThan(0);
+    expect(
+      await count("tenant_binding", "installation_id = ?", [scenario.installationId]),
+    ).toBeGreaterThan(0);
     expect(
       await count(
         "capability_grant",
