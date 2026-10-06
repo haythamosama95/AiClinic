@@ -333,6 +333,7 @@ export function buildCoverageSnapshot(input: {
   const active = input.terms.find((term) => term.state === "active");
   const grace = input.terms.find((term) => term.state === "grace");
   const queued = input.terms.filter((term) => term.state === "queued");
+  const held = input.terms.filter((term) => term.state === "held");
   let termObject: Record<string, unknown> | null = null;
   let coverageState: string;
   let reason = "none";
@@ -347,6 +348,9 @@ export function buildCoverageSnapshot(input: {
     const lastEnded = lastEndedTermForSnapshot(input.terms);
     if (lastEnded?.state === "exhausted") {
       coverageState = "exhausted";
+    } else if (lastEnded?.end_reason === "reversed") {
+      coverageState = "reversed";
+      reason = "reversed";
     } else {
       coverageState = "lapsed";
       reason = lapsedSnapshotReason(input.terms);
@@ -360,7 +364,7 @@ export function buildCoverageSnapshot(input: {
     suspended: input.hot.suspended !== 0,
     term: termObject,
     queued_count: queued.length,
-    held_count: 0,
+    held_count: held.length,
     coverage_through: computeCoverageThrough(
       input.terms,
       input.hot,
@@ -450,6 +454,156 @@ async function signReceipt(input: {
     kid: input.signingKey.kid,
   });
   return { ...unsigned, signature };
+}
+
+async function signReversalVoidReceipt(input: {
+  signingKey: PlatformSigningMaterial;
+  vendorContractVersion: number;
+  reversalId: string;
+  installationId: string;
+  orgId: string;
+  termIds: string[];
+  appliedAt: string;
+  ledgerSeq: number;
+  envelopeSha256: string;
+}): Promise<Record<string, unknown>> {
+  const unsigned = {
+    contract_version: input.vendorContractVersion,
+    reversal_id: input.reversalId,
+    installation_id: input.installationId,
+    org_id: input.orgId,
+    result: "applied",
+    term_ids: input.termIds,
+    applied_at: input.appliedAt,
+    ledger_seq: input.ledgerSeq,
+    envelope_sha256: input.envelopeSha256,
+    kid: input.signingKey.kid,
+  };
+  const signature = await signCompactJws({
+    payload: receiptSigningBytes(unsigned),
+    privateKey: input.signingKey.privateKey,
+    kid: input.signingKey.kid,
+  });
+  return { ...unsigned, signature };
+}
+
+type StoredVoidReplay = {
+  grant_id: string;
+  reason: string;
+  evidence_sha256: string;
+  receipt: Record<string, unknown>;
+};
+
+function readVoidReplay(storage: DurableObjectStorage): Record<string, StoredVoidReplay> {
+  const hot = loadHot(storage);
+  try {
+    const parsed = JSON.parse(hot.replay) as Record<string, StoredVoidReplay>;
+    return parsed ?? {};
+  } catch {
+    return {};
+  }
+}
+
+function writeVoidReplay(
+  storage: DurableObjectStorage,
+  reversalId: string,
+  entry: StoredVoidReplay,
+): void {
+  const replay = readVoidReplay(storage);
+  replay[reversalId] = entry;
+  updateHot(storage, { replay: JSON.stringify(replay) });
+}
+
+function readHpReplayReceipt(
+  storage: DurableObjectStorage,
+  key: string,
+): Record<string, unknown> | null {
+  const hot = loadHot(storage);
+  try {
+    const parsed = JSON.parse(hot.replay) as Record<string, Record<string, unknown>>;
+    const entry = parsed[key];
+    if (entry === undefined || typeof entry.receipt !== "object" || entry.receipt === null) {
+      return null;
+    }
+    return entry.receipt as Record<string, unknown>;
+  } catch {
+    return null;
+  }
+}
+
+function writeHpReplayReceipt(
+  storage: DurableObjectStorage,
+  key: string,
+  receipt: Record<string, unknown>,
+): void {
+  const hot = loadHot(storage);
+  let parsed: Record<string, Record<string, unknown>> = {};
+  try {
+    parsed = JSON.parse(hot.replay) as Record<string, Record<string, unknown>>;
+  } catch {
+    parsed = {};
+  }
+  parsed[key] = { receipt };
+  updateHot(storage, { replay: JSON.stringify(parsed) });
+}
+
+function findTermForGrant(terms: TermRow[], grantId: string): TermRow | undefined {
+  return terms.find(
+    (term) => term.grant_id === grantId || term.origin_grant_id === grantId,
+  );
+}
+
+function emitCoverageEvent(
+  storage: DurableObjectStorage,
+  input: {
+    installationId: string;
+    orgId: string;
+    vendorContractVersion: number;
+    kind: string;
+    at: string;
+    durationScale?: DurationScale;
+  },
+): number {
+  let hot = loadHot(storage);
+  hot = { ...hot, clinic_seq: hot.clinic_seq + 1 };
+  updateHot(storage, { clinic_seq: hot.clinic_seq });
+  const terms = loadTerms(storage);
+  const snapshot = buildCoverageSnapshot({
+    vendorContractVersion: input.vendorContractVersion,
+    orgId: input.orgId,
+    hot,
+    terms,
+    durationScale: input.durationScale,
+  });
+  snapshot.clinic_seq = hot.clinic_seq;
+  insertOutbox(storage, "coverage_event", {
+    event_id: coverageEventId(input.installationId, hot.clinic_seq),
+    org_id: input.orgId,
+    installation_id: input.installationId,
+    binding_epoch: hot.binding_epoch,
+    clinic_seq: hot.clinic_seq,
+    kind: input.kind,
+    at: input.at,
+    snapshot,
+  });
+  return hot.clinic_seq;
+}
+
+async function scheduleCoverageAlarm(
+  state: DurableObjectState,
+  storage: DurableObjectStorage,
+  nowIso: string,
+): Promise<void> {
+  const terms = loadTerms(storage);
+  const hot = loadHot(storage);
+  const outboxCount =
+    sqlSelect<{ count: number }>(
+      storage,
+      "SELECT COUNT(*) AS count FROM outbox",
+    )[0]?.count ?? 0;
+  const nextAlarm = computeNextAlarmAt(terms, outboxCount > 0, nowIso);
+  updateHot(storage, { next_alarm_at: nextAlarm });
+  await syncAlarm(state, storage, nextAlarm, hot.next_alarm_at);
 }
 
 export function insertOutbox(
@@ -1814,6 +1968,470 @@ export async function readCoverageRPC(
   });
 }
 
+export interface VoidForReversalRequest {
+  kind: "void_for_reversal";
+  installationId: string;
+  orgId: string;
+  vendorContractVersion: number;
+  bindingEpoch: number;
+  grantId: string;
+  reversalId: string;
+  reason: string;
+  evidenceSha256: string;
+  envelopeSha256: string;
+  nowIso: string;
+  platformSigningKeyJson: string;
+  durationScale?: DurationScale;
+}
+
+export interface VoidForReversalResponse {
+  kind: "void_for_reversal";
+  result: "applied" | "already_applied" | "conflict" | "bad_request";
+  receipt?: Record<string, unknown>;
+}
+
+export async function voidForReversalRPC(
+  state: DurableObjectState,
+  storage: DurableObjectStorage,
+  blockConcurrencyWhile: <T>(fn: () => Promise<T>) => Promise<T>,
+  request: VoidForReversalRequest,
+  logger: Logger = noopLogger,
+): Promise<VoidForReversalResponse> {
+  return blockConcurrencyWhile(async () => {
+    ensureHotRow(storage, request.bindingEpoch);
+    const replay = readVoidReplay(storage);
+    const stored = replay[request.reversalId];
+    if (stored !== undefined) {
+      if (
+        stored.grant_id === request.grantId &&
+        stored.reason === request.reason &&
+        stored.evidence_sha256 === request.evidenceSha256
+      ) {
+        return {
+          kind: "void_for_reversal",
+          result: "already_applied",
+          receipt: stored.receipt,
+        };
+      }
+      return { kind: "void_for_reversal", result: "conflict" };
+    }
+
+    const signingKey = await loadPlatformSigningKey(request.platformSigningKeyJson);
+    if (signingKey === null) {
+      return { kind: "void_for_reversal", result: "bad_request" };
+    }
+
+    const terms = loadTerms(storage);
+    const term = findTermForGrant(terms, request.grantId);
+    if (term === undefined) {
+      return { kind: "void_for_reversal", result: "bad_request" };
+    }
+
+    let effect: "end_current" | "remove_queued" | "none";
+    if (term.state === "active" || term.state === "grace") {
+      effect = "end_current";
+    } else if (term.state === "queued" || term.state === "held") {
+      effect = "remove_queued";
+    } else if (term.state === "ended" || term.state === "exhausted") {
+      effect = "none";
+    } else {
+      return { kind: "void_for_reversal", result: "bad_request" };
+    }
+
+    const endedTermIds: string[] = [];
+    const heldTermIds: string[] = [];
+
+    if (effect === "end_current") {
+      sqlExec(
+        storage,
+        `UPDATE term SET state = 'ended', end_reason = 'reversed', ended_at = ${sqlString(request.nowIso)}, grace_ends_at = NULL
+         WHERE term_id = ${sqlString(term.term_id)}`,
+      );
+      endedTermIds.push(term.term_id);
+      const hot = loadHot(storage);
+      if (hot.active_term_id === term.term_id) {
+        updateHot(storage, { active_term_id: null });
+      }
+      const queuedBeforeHold = loadTerms(storage).filter(
+        (row) => row.state === "queued",
+      );
+      for (const queued of queuedBeforeHold) {
+        sqlExec(
+          storage,
+          `UPDATE term SET state = 'held' WHERE term_id = ${sqlString(queued.term_id)}`,
+        );
+        heldTermIds.push(queued.term_id);
+      }
+      emitCoverageEvent(storage, {
+        installationId: request.installationId,
+        orgId: request.orgId,
+        vendorContractVersion: request.vendorContractVersion,
+        kind: "term_ended",
+        at: request.nowIso,
+        durationScale: request.durationScale,
+      });
+      for (const heldId of heldTermIds) {
+        emitCoverageEvent(storage, {
+          installationId: request.installationId,
+          orgId: request.orgId,
+          vendorContractVersion: request.vendorContractVersion,
+          kind: "term_held",
+          at: request.nowIso,
+          durationScale: request.durationScale,
+        });
+      }
+    } else if (effect === "remove_queued") {
+      sqlExec(
+        storage,
+        `UPDATE term SET state = 'ended', end_reason = 'reversed', ended_at = ${sqlString(request.nowIso)}
+         WHERE term_id = ${sqlString(term.term_id)}`,
+      );
+      endedTermIds.push(term.term_id);
+      emitCoverageEvent(storage, {
+        installationId: request.installationId,
+        orgId: request.orgId,
+        vendorContractVersion: request.vendorContractVersion,
+        kind: "term_ended",
+        at: request.nowIso,
+        durationScale: request.durationScale,
+      });
+    }
+
+    const grantVoidedSeq = emitCoverageEvent(storage, {
+      installationId: request.installationId,
+      orgId: request.orgId,
+      vendorContractVersion: request.vendorContractVersion,
+      kind: "grant_voided",
+      at: request.nowIso,
+      durationScale: request.durationScale,
+    });
+
+    const termIdsForReceipt =
+      effect === "none" ? [] : endedTermIds.length > 0 ? [endedTermIds[0]!] : [];
+
+    const receipt = await signReversalVoidReceipt({
+      signingKey,
+      vendorContractVersion: request.vendorContractVersion,
+      reversalId: request.reversalId,
+      installationId: request.installationId,
+      orgId: request.orgId,
+      termIds: termIdsForReceipt,
+      appliedAt: request.nowIso,
+      ledgerSeq: grantVoidedSeq,
+      envelopeSha256: request.envelopeSha256,
+    });
+
+    insertOutbox(storage, "grant_void", {
+      grant_id: request.grantId,
+      reason: request.reason,
+      source: "reversal",
+      evidence_sha256: request.evidenceSha256,
+      at: request.nowIso,
+      receipt,
+    });
+
+    writeVoidReplay(storage, request.reversalId, {
+      grant_id: request.grantId,
+      reason: request.reason,
+      evidence_sha256: request.evidenceSha256,
+      receipt,
+    });
+
+    await scheduleCoverageAlarm(state, storage, request.nowIso);
+
+    logger.info("void_for_reversal completed", {
+      installation_id: request.installationId,
+      grant_id: request.grantId,
+      effect,
+    });
+
+    return { kind: "void_for_reversal", result: "applied", receipt };
+  });
+}
+
+export interface ReleaseHeldRequest {
+  kind: "release_held";
+  installationId: string;
+  orgId: string;
+  vendorContractVersion: number;
+  bindingEpoch: number;
+  grantId: string;
+  reason: string;
+  assertionSha256: string;
+  nowIso: string;
+  platformSigningKeyJson: string;
+  durationScale?: DurationScale;
+  replayOnly?: boolean;
+}
+
+export interface ReleaseHeldResponse {
+  kind: "release_held";
+  result: "applied" | "already_applied" | "bad_request";
+  receipt?: Record<string, unknown>;
+}
+
+export interface VoidGrantRequest {
+  kind: "void_grant";
+  installationId: string;
+  orgId: string;
+  vendorContractVersion: number;
+  bindingEpoch: number;
+  grantId: string;
+  reason: string;
+  assertionSha256: string;
+  evidenceSha256: string;
+  nowIso: string;
+  platformSigningKeyJson: string;
+  durationScale?: DurationScale;
+  replayOnly?: boolean;
+}
+
+export interface VoidGrantResponse {
+  kind: "void_grant";
+  result: "applied" | "already_applied" | "bad_request";
+  receipt?: Record<string, unknown>;
+}
+
+export async function releaseHeldRPC(
+  state: DurableObjectState,
+  storage: DurableObjectStorage,
+  blockConcurrencyWhile: <T>(fn: () => Promise<T>) => Promise<T>,
+  request: ReleaseHeldRequest,
+  logger: Logger = noopLogger,
+): Promise<ReleaseHeldResponse> {
+  return blockConcurrencyWhile(async () => {
+    ensureHotRow(storage, request.bindingEpoch);
+    const replayKey = `release_held:${request.assertionSha256}`;
+    const existingReceipt = readHpReplayReceipt(storage, replayKey);
+    if (existingReceipt !== null) {
+      return {
+        kind: "release_held",
+        result: "already_applied",
+        receipt: existingReceipt,
+      };
+    }
+    if (request.replayOnly === true) {
+      return { kind: "release_held", result: "bad_request" };
+    }
+
+    const signingKey = await loadPlatformSigningKey(request.platformSigningKeyJson);
+    if (signingKey === null) {
+      return { kind: "release_held", result: "bad_request" };
+    }
+
+    const terms = loadTerms(storage);
+    const held = terms.find(
+      (term) => term.state === "held" && term.grant_id === request.grantId,
+    );
+    if (held === undefined) {
+      return { kind: "release_held", result: "bad_request" };
+    }
+
+    const position = nextTermPosition(terms);
+    const hasActive = terms.some(
+      (term) => term.state === "active" || term.state === "grace",
+    );
+
+    if (!hasActive) {
+      const endsAt =
+        held.duration_unit !== null &&
+        held.duration_count !== null &&
+        held.calendar_start !== null
+          ? addDuration(
+              request.nowIso,
+              held.duration_unit as "month" | "day",
+              held.duration_count,
+              request.durationScale,
+            )
+          : addDuration(request.nowIso, "month", 1, request.durationScale);
+      sqlExec(
+        storage,
+        `UPDATE term SET state = 'active', position = ${position},
+         starts_at = ${sqlString(request.nowIso)}, calendar_start = ${sqlString(request.nowIso)},
+         ends_at = ${sqlString(endsAt)}
+         WHERE term_id = ${sqlString(held.term_id)}`,
+      );
+      updateHot(storage, { active_term_id: held.term_id, used: 0 });
+    } else {
+      sqlExec(
+        storage,
+        `UPDATE term SET state = 'queued', position = ${position}
+         WHERE term_id = ${sqlString(held.term_id)}`,
+      );
+    }
+
+    const releasedSeq = emitCoverageEvent(storage, {
+      installationId: request.installationId,
+      orgId: request.orgId,
+      vendorContractVersion: request.vendorContractVersion,
+      kind: "term_released",
+      at: request.nowIso,
+      durationScale: request.durationScale,
+    });
+
+    if (!hasActive) {
+      emitCoverageEvent(storage, {
+        installationId: request.installationId,
+        orgId: request.orgId,
+        vendorContractVersion: request.vendorContractVersion,
+        kind: "term_activated",
+        at: request.nowIso,
+        durationScale: request.durationScale,
+      });
+    }
+
+    const receipt = await signReceipt({
+      signingKey,
+      vendorContractVersion: request.vendorContractVersion,
+      grantId: request.grantId,
+      installationId: request.installationId,
+      orgId: request.orgId,
+      termIds: [held.term_id],
+      appliedAt: request.nowIso,
+      ledgerSeq: releasedSeq,
+      envelopeSha256: "",
+    });
+
+    writeHpReplayReceipt(storage, replayKey, receipt);
+    await scheduleCoverageAlarm(state, storage, request.nowIso);
+
+    logger.info("release_held completed", {
+      installation_id: request.installationId,
+      grant_id: request.grantId,
+    });
+
+    return { kind: "release_held", result: "applied", receipt };
+  });
+}
+
+export async function voidGrantRPC(
+  state: DurableObjectState,
+  storage: DurableObjectStorage,
+  blockConcurrencyWhile: <T>(fn: () => Promise<T>) => Promise<T>,
+  request: VoidGrantRequest,
+  logger: Logger = noopLogger,
+): Promise<VoidGrantResponse> {
+  return blockConcurrencyWhile(async () => {
+    ensureHotRow(storage, request.bindingEpoch);
+    const replayKey = `void_grant:${request.evidenceSha256}`;
+    const existingReceipt = readHpReplayReceipt(storage, replayKey);
+    if (existingReceipt !== null) {
+      return {
+        kind: "void_grant",
+        result: "already_applied",
+        receipt: existingReceipt,
+      };
+    }
+    if (request.replayOnly === true) {
+      return { kind: "void_grant", result: "bad_request" };
+    }
+
+    const signingKey = await loadPlatformSigningKey(request.platformSigningKeyJson);
+    if (signingKey === null) {
+      return { kind: "void_grant", result: "bad_request" };
+    }
+
+    const terms = loadTerms(storage);
+    const term = findTermForGrant(terms, request.grantId);
+    if (term === undefined || term.state === "ended" || term.state === "exhausted") {
+      return { kind: "void_grant", result: "bad_request" };
+    }
+
+    const wasActive = term.state === "active" || term.state === "grace";
+    sqlExec(
+      storage,
+      `UPDATE term SET state = 'ended', end_reason = 'voided', ended_at = ${sqlString(request.nowIso)}, grace_ends_at = NULL
+       WHERE term_id = ${sqlString(term.term_id)}`,
+    );
+    const hot = loadHot(storage);
+    if (hot.active_term_id === term.term_id) {
+      updateHot(storage, { active_term_id: null });
+    }
+
+    emitCoverageEvent(storage, {
+      installationId: request.installationId,
+      orgId: request.orgId,
+      vendorContractVersion: request.vendorContractVersion,
+      kind: "term_ended",
+      at: request.nowIso,
+      durationScale: request.durationScale,
+    });
+
+    if (wasActive) {
+      const successor = loadTerms(storage)
+        .filter((row) => row.state === "queued")
+        .sort((left, right) => left.position - right.position)[0];
+      if (successor !== undefined) {
+        const endsAt =
+          successor.duration_unit !== null &&
+          successor.duration_count !== null
+            ? addDuration(
+                request.nowIso,
+                successor.duration_unit as "month" | "day",
+                successor.duration_count,
+                request.durationScale,
+              )
+            : addDuration(request.nowIso, "month", 1, request.durationScale);
+        sqlExec(
+          storage,
+          `UPDATE term SET state = 'active', starts_at = ${sqlString(request.nowIso)},
+           calendar_start = ${sqlString(request.nowIso)}, ends_at = ${sqlString(endsAt)}
+           WHERE term_id = ${sqlString(successor.term_id)}`,
+        );
+        updateHot(storage, { active_term_id: successor.term_id, used: 0 });
+        emitCoverageEvent(storage, {
+          installationId: request.installationId,
+          orgId: request.orgId,
+          vendorContractVersion: request.vendorContractVersion,
+          kind: "term_activated",
+          at: request.nowIso,
+          durationScale: request.durationScale,
+        });
+      }
+    }
+
+    const grantVoidedSeq = emitCoverageEvent(storage, {
+      installationId: request.installationId,
+      orgId: request.orgId,
+      vendorContractVersion: request.vendorContractVersion,
+      kind: "grant_voided",
+      at: request.nowIso,
+      durationScale: request.durationScale,
+    });
+
+    const receipt = await signReceipt({
+      signingKey,
+      vendorContractVersion: request.vendorContractVersion,
+      grantId: request.grantId,
+      installationId: request.installationId,
+      orgId: request.orgId,
+      termIds: [term.term_id],
+      appliedAt: request.nowIso,
+      ledgerSeq: grantVoidedSeq,
+      envelopeSha256: "",
+    });
+
+    insertOutbox(storage, "grant_void", {
+      grant_id: request.grantId,
+      reason: request.reason,
+      source: "operator",
+      evidence_sha256: request.evidenceSha256,
+      at: request.nowIso,
+      receipt,
+    });
+
+    writeHpReplayReceipt(storage, replayKey, receipt);
+    await scheduleCoverageAlarm(state, storage, request.nowIso);
+
+    logger.info("void_grant completed", {
+      installation_id: request.installationId,
+      grant_id: request.grantId,
+    });
+
+    return { kind: "void_grant", result: "applied", receipt };
+  });
+}
+
 async function mirrorFromSnapshot(
   db: D1Database,
   installationId: string,
@@ -1839,6 +2457,7 @@ async function mirrorFromSnapshot(
 
   const term = snapshot.term as Record<string, unknown> | null;
   const snapshotState = String(snapshot.state);
+  const mirrorState = snapshotState === "reversed" ? "lapsed" : snapshotState;
   let hardStopAt: string | null = null;
   if (term !== null) {
     if (snapshotState === "active") {
@@ -1874,7 +2493,7 @@ async function mirrorFromSnapshot(
       orgId,
       bindingEpoch,
       clinicSeq,
-      snapshotState,
+      mirrorState,
       snapshot.suspended ? 1 : 0,
       hardStopAt,
       JSON.stringify(term),
@@ -1979,6 +2598,34 @@ export async function shipCoverageOutboxAlarm(
             receipt: payload.receipt,
           });
           await env.R2.put(key, `${line}\n`);
+        }
+      } else if (row.kind === "grant_void") {
+        await env.DB.prepare(
+          `INSERT OR IGNORE INTO grant_void (grant_id, reason, source, evidence_sha256, at)
+           VALUES (?, ?, ?, ?, ?)`,
+        )
+          .bind(
+            payload.grant_id,
+            payload.reason,
+            payload.source,
+            payload.evidence_sha256,
+            payload.at,
+          )
+          .run();
+
+        const voidGrantId = String(payload.grant_id);
+        const voidKey = `grant-ledger/${voidGrantId}.void.ndjson`;
+        const existingVoid = await env.R2.head(voidKey);
+        if (existingVoid === null) {
+          const voidLine = JSON.stringify({
+            grant_id: payload.grant_id,
+            reason: payload.reason,
+            source: payload.source,
+            evidence_sha256: payload.evidence_sha256,
+            at: payload.at,
+            receipt: payload.receipt,
+          });
+          await env.R2.put(voidKey, `${voidLine}\n`);
         }
       } else if (row.kind === "usage_adjustment") {
         const usageEventId = crypto.randomUUID();

@@ -1603,7 +1603,10 @@ export type VendorMethod =
   | "suspend"
   | "resume"
   | "inspectCoverage"
-  | "voidForReversal";
+  | "voidForReversal"
+  | "releaseHeld"
+  | "voidGrant"
+  | "listGrantsForVoid";
 
 export const VENDOR_OPERATOR_EMAIL = "operator@clinic.test";
 

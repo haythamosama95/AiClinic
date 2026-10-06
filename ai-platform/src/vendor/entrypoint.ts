@@ -55,6 +55,9 @@ const METHOD_CLASS = {
   listGrants: "M",
   readCoverageEvents: "M",
   voidForReversal: "M",
+  releaseHeld: "HP",
+  voidGrant: "HP",
+  listGrantsForVoid: "M",
 } as const;
 
 type VendorMethod = keyof typeof METHOD_CLASS;
@@ -800,6 +803,9 @@ function operationParamsMatch(
     expected.window_max_allowance_months = rpcArgs.window_max_allowance_months;
     expected.max_paid_grace_days = rpcArgs.max_paid_grace_days;
     expected.paid_cap_rule = rpcArgs.paid_cap_rule;
+  } else if (method === "releaseHeld" || method === "voidGrant") {
+    expected.grant_id = rpcArgs.grant_id;
+    expected.reason = rpcArgs.reason;
   } else {
     return false;
   }
@@ -834,6 +840,9 @@ function hpAuditTarget(
   }
   if (method === "setCeilingPolicy") {
     return "ceiling_policy";
+  }
+  if (method === "releaseHeld" || method === "voidGrant") {
+    return typeof rpcArgs.grant_id === "string" ? rpcArgs.grant_id : "";
   }
   return typeof rpcArgs.credential_id === "string" ? rpcArgs.credential_id : "";
 }
@@ -1307,6 +1316,81 @@ async function tryComplimentaryGrantIdempotency(
   }
 
   return null;
+}
+
+function mapVoidForReversalDoResponse(
+  version: number,
+  doResponse: Record<string, unknown>,
+): GrantResultEnvelope {
+  const doResult = doResponse.result;
+  if (doResult === "conflict") {
+    return {
+      contract_version: version,
+      result: "conflict",
+      code: "",
+      detail: "",
+    };
+  }
+  if (doResult === "already_applied" || doResult === "applied") {
+    const receipt = doResponse.receipt;
+    if (!isRecord(receipt)) {
+      return grantRejected(version, "coverage_unknown");
+    }
+    return {
+      contract_version: version,
+      result: doResult,
+      code: "",
+      detail: "",
+      receipt,
+    };
+  }
+  return grantRejected(version, "coverage_unknown");
+}
+
+function mapHpVoidDoResponse(
+  version: number,
+  doResponse: Record<string, unknown>,
+): GrantResultEnvelope {
+  const doResult = doResponse.result;
+  if (doResult === "already_applied" || doResult === "applied") {
+    const receipt = doResponse.receipt;
+    if (!isRecord(receipt)) {
+      return grantRejected(version, "coverage_unknown");
+    }
+    return {
+      contract_version: version,
+      result: doResult,
+      code: "",
+      detail: "",
+      receipt,
+    };
+  }
+  return grantRejected(version, "coverage_unknown");
+}
+
+function parseListGrantsForVoidWindow(
+  windowRaw: unknown,
+): { applied_from: string; applied_to: string } | null {
+  if (!isRecord(windowRaw)) {
+    return null;
+  }
+  const appliedFrom = windowRaw.applied_from;
+  const appliedTo = windowRaw.applied_to;
+  if (typeof appliedFrom !== "string" || typeof appliedTo !== "string") {
+    return null;
+  }
+  if (!appliedFrom.endsWith("Z") || !appliedTo.endsWith("Z")) {
+    return null;
+  }
+  const fromMs = Date.parse(appliedFrom);
+  const toMs = Date.parse(appliedTo);
+  if (Number.isNaN(fromMs) || Number.isNaN(toMs)) {
+    return null;
+  }
+  if (fromMs > toMs) {
+    return null;
+  }
+  return { applied_from: appliedFrom, applied_to: appliedTo };
 }
 
 function mapApplyGrantDoResponse(
@@ -3287,17 +3371,39 @@ export class VendorEntrypoint extends WorkerEntrypoint<VendorEnv> {
       return grantRejected(version, "partial_void", "");
     }
 
+    const envelopeSha256 = await sha256Hex(canonicalize(signedBody));
+
     const ledgerRow = await this.env.DB.prepare(
-      "SELECT grant_id FROM grant_ledger WHERE grant_id = ?",
+      "SELECT grant_id, org_id, installation_id FROM grant_ledger WHERE grant_id = ?",
     )
       .bind(grantId)
-      .first<{ grant_id: string }>();
+      .first<{ grant_id: string; org_id: string; installation_id: string }>();
 
     if (ledgerRow !== null) {
-      return grantRejected(version, "coverage_unknown");
+      const binding = await readActiveTenantBinding(this.env.DB, ledgerRow.org_id);
+      if (binding === null) {
+        return grantRejected(version, "coverage_unknown");
+      }
+      const doResponse = await callCoverageDo(this.env, ledgerRow.installation_id, {
+        kind: "void_for_reversal",
+        installationId: ledgerRow.installation_id,
+        orgId: ledgerRow.org_id,
+        vendorContractVersion: version,
+        bindingEpoch: binding.epoch,
+        grantId,
+        reversalId,
+        reason,
+        evidenceSha256,
+        envelopeSha256,
+        nowIso,
+        platformSigningKeyJson: this.env.PLATFORM_SIGNING_KEY,
+        durationScale: durationScaleFromEnv(this.env),
+      });
+      if (doResponse === null) {
+        return grantRejected(version, "coverage_unknown");
+      }
+      return mapVoidForReversalDoResponse(version, doResponse);
     }
-
-    const envelopeSha256 = await sha256Hex(canonicalize(signedBody));
     const signingKey = await loadPlatformSigningKey(this.env.PLATFORM_SIGNING_KEY);
     if (signingKey === null) {
       return grantRejected(version, "coverage_unknown");
@@ -3340,6 +3446,294 @@ export class VendorEntrypoint extends WorkerEntrypoint<VendorEnv> {
       detail: "",
       receipt,
     };
+  }
+
+  async releaseHeld(args: Record<string, unknown>): Promise<GrantResultEnvelope> {
+    const requested = parseRequestedVersion(args);
+    const negotiated = negotiate(VENDOR_CHANNEL, requested);
+    if (!negotiated.ok) {
+      return grantRejected(VENDOR_CHANNEL, negotiated.code);
+    }
+    const version = negotiated.version;
+
+    const access = await verifyHpAccess(this.env, args.access_jwt);
+    if (!access.ok) {
+      return grantRejected(version, "unauthenticated");
+    }
+
+    const grantId = args.grant_id;
+    const reason = args.reason;
+    if (typeof grantId !== "string" || typeof reason !== "string") {
+      return grantRejected(version, "bad_request");
+    }
+
+    const ledgerRow = await this.env.DB.prepare(
+      "SELECT org_id, installation_id FROM grant_ledger WHERE grant_id = ?",
+    )
+      .bind(grantId)
+      .first<{ org_id: string; installation_id: string }>();
+    if (ledgerRow === null) {
+      return grantRejected(version, "coverage_unknown");
+    }
+    const binding = await readActiveTenantBinding(this.env.DB, ledgerRow.org_id);
+    if (binding === null) {
+      return grantRejected(version, "coverage_unknown");
+    }
+
+    const operationRaw = args.operation;
+    if (!validateOperation(operationRaw).ok) {
+      return grantRejected(version, "assertion_invalid");
+    }
+    const operation = operationRaw as Record<string, unknown>;
+    const assertionSha256 = await operationAssertionSha256(operation);
+    const nowIso = await clockNowIso(this.env);
+
+    const replayPeek = await callCoverageDo(this.env, ledgerRow.installation_id, {
+      kind: "release_held",
+      installationId: ledgerRow.installation_id,
+      orgId: ledgerRow.org_id,
+      vendorContractVersion: version,
+      bindingEpoch: binding.epoch,
+      grantId,
+      reason,
+      assertionSha256,
+      nowIso,
+      platformSigningKeyJson: this.env.PLATFORM_SIGNING_KEY,
+      durationScale: durationScaleFromEnv(this.env),
+      replayOnly: true,
+    });
+    if (
+      replayPeek !== null &&
+      replayPeek.result === "already_applied" &&
+      isRecord(replayPeek.receipt)
+    ) {
+      return {
+        contract_version: version,
+        result: "already_applied",
+        code: "",
+        detail: "",
+        receipt: replayPeek.receipt,
+      };
+    }
+
+    const check = await runHpAssertionChecks(
+      this.env,
+      "releaseHeld",
+      args,
+      access.email,
+      version,
+    );
+    if (!check.ok) {
+      const rejectedEnvelope = await rejectHpAssertion(
+        this.env,
+        access.email,
+        "releaseHeld",
+        check,
+      );
+      return {
+        contract_version: rejectedEnvelope.contract_version,
+        result: "rejected",
+        code: rejectedEnvelope.code,
+        detail: rejectedEnvelope.detail,
+      };
+    }
+
+    const doResponse = await callCoverageDo(this.env, ledgerRow.installation_id, {
+      kind: "release_held",
+      installationId: ledgerRow.installation_id,
+      orgId: ledgerRow.org_id,
+      vendorContractVersion: version,
+      bindingEpoch: binding.epoch,
+      grantId,
+      reason,
+      assertionSha256: check.assertionSha256,
+      nowIso,
+      platformSigningKeyJson: this.env.PLATFORM_SIGNING_KEY,
+      durationScale: durationScaleFromEnv(this.env),
+    });
+    if (doResponse === null) {
+      return grantRejected(version, "coverage_unknown");
+    }
+
+    await finishHpAssertion(this.env, access.email, "releaseHeld", check);
+    return mapHpVoidDoResponse(version, doResponse);
+  }
+
+  async voidGrant(args: Record<string, unknown>): Promise<GrantResultEnvelope> {
+    const requested = parseRequestedVersion(args);
+    const negotiated = negotiate(VENDOR_CHANNEL, requested);
+    if (!negotiated.ok) {
+      return grantRejected(VENDOR_CHANNEL, negotiated.code);
+    }
+    const version = negotiated.version;
+
+    const access = await verifyHpAccess(this.env, args.access_jwt);
+    if (!access.ok) {
+      return grantRejected(version, "unauthenticated");
+    }
+
+    const grantId = args.grant_id;
+    const reason = args.reason;
+    if (typeof grantId !== "string" || typeof reason !== "string") {
+      return grantRejected(version, "bad_request");
+    }
+
+    const ledgerRow = await this.env.DB.prepare(
+      "SELECT org_id, installation_id FROM grant_ledger WHERE grant_id = ?",
+    )
+      .bind(grantId)
+      .first<{ org_id: string; installation_id: string }>();
+    if (ledgerRow === null) {
+      return grantRejected(version, "coverage_unknown");
+    }
+    const binding = await readActiveTenantBinding(this.env.DB, ledgerRow.org_id);
+    if (binding === null) {
+      return grantRejected(version, "coverage_unknown");
+    }
+
+    const operationRaw = args.operation;
+    if (!validateOperation(operationRaw).ok) {
+      return grantRejected(version, "assertion_invalid");
+    }
+    const operation = operationRaw as Record<string, unknown>;
+    const challenge = await operationChallenge(operation);
+    const nowIso = await clockNowIso(this.env);
+
+    const replayPeek = await callCoverageDo(this.env, ledgerRow.installation_id, {
+      kind: "void_grant",
+      installationId: ledgerRow.installation_id,
+      orgId: ledgerRow.org_id,
+      vendorContractVersion: version,
+      bindingEpoch: binding.epoch,
+      grantId,
+      reason,
+      assertionSha256: challenge,
+      evidenceSha256: challenge,
+      nowIso,
+      platformSigningKeyJson: this.env.PLATFORM_SIGNING_KEY,
+      durationScale: durationScaleFromEnv(this.env),
+      replayOnly: true,
+    });
+    if (
+      replayPeek !== null &&
+      replayPeek.result === "already_applied" &&
+      isRecord(replayPeek.receipt)
+    ) {
+      return {
+        contract_version: version,
+        result: "already_applied",
+        code: "",
+        detail: "",
+        receipt: replayPeek.receipt,
+      };
+    }
+
+    const check = await runHpAssertionChecks(
+      this.env,
+      "voidGrant",
+      args,
+      access.email,
+      version,
+    );
+    if (!check.ok) {
+      const rejectedEnvelope = await rejectHpAssertion(
+        this.env,
+        access.email,
+        "voidGrant",
+        check,
+      );
+      return {
+        contract_version: rejectedEnvelope.contract_version,
+        result: "rejected",
+        code: rejectedEnvelope.code,
+        detail: rejectedEnvelope.detail,
+      };
+    }
+
+    const doResponse = await callCoverageDo(this.env, ledgerRow.installation_id, {
+      kind: "void_grant",
+      installationId: ledgerRow.installation_id,
+      orgId: ledgerRow.org_id,
+      vendorContractVersion: version,
+      bindingEpoch: binding.epoch,
+      grantId,
+      reason,
+      assertionSha256: challenge,
+      evidenceSha256: challenge,
+      nowIso,
+      platformSigningKeyJson: this.env.PLATFORM_SIGNING_KEY,
+      durationScale: durationScaleFromEnv(this.env),
+    });
+    if (doResponse === null) {
+      return grantRejected(version, "coverage_unknown");
+    }
+
+    await finishHpAssertion(this.env, access.email, "voidGrant", check);
+    return mapHpVoidDoResponse(version, doResponse);
+  }
+
+  async listGrantsForVoid(
+    args: Record<string, unknown>,
+  ): Promise<VendorResultEnvelope> {
+    const requested = parseRequestedVersion(args);
+    const negotiated = negotiate(VENDOR_CHANNEL, requested);
+    if (!negotiated.ok) {
+      return rejected(VENDOR_CHANNEL, negotiated.code);
+    }
+    const version = negotiated.version;
+
+    const access = await verifyHpAccess(this.env, args.access_jwt);
+    if (!access.ok) {
+      return rejected(version, "unauthenticated");
+    }
+
+    const credentialId = args.credential_id;
+    if (typeof credentialId !== "string" || credentialId.length === 0) {
+      return rejected(version, "window_invalid", "");
+    }
+
+    const window = parseListGrantsForVoidWindow(args.window);
+    if (window === null) {
+      return rejected(version, "window_invalid", "");
+    }
+
+    const rows = await this.env.DB.prepare(
+      `SELECT grant_id, origin_grant_id, org_id, installation_id, kind, source_kind,
+              operator_credential_id, envelope_sha256, receipt, applied_at
+       FROM grant_ledger
+       WHERE operator_credential_id = ?
+         AND applied_at >= ?
+         AND applied_at <= ?
+       ORDER BY applied_at ASC, grant_id ASC`,
+    )
+      .bind(credentialId, window.applied_from, window.applied_to)
+      .all<{
+        grant_id: string;
+        origin_grant_id: string;
+        org_id: string;
+        installation_id: string;
+        kind: string;
+        source_kind: string;
+        operator_credential_id: string;
+        envelope_sha256: string;
+        receipt: string;
+        applied_at: string;
+      }>();
+
+    const mapped = (rows.results ?? []).map((row) => ({
+      grant_id: row.grant_id,
+      origin_grant_id: row.origin_grant_id,
+      org_id: row.org_id,
+      installation_id: row.installation_id,
+      kind: row.kind,
+      source_kind: row.source_kind,
+      operator_credential_id: row.operator_credential_id,
+      envelope_sha256: row.envelope_sha256,
+      receipt: JSON.parse(row.receipt) as Record<string, unknown>,
+      applied_at: row.applied_at,
+    }));
+
+    return ok(version, JSON.stringify(mapped));
   }
 
   async suspend(args: Record<string, unknown>): Promise<VendorResultEnvelope> {

@@ -100,7 +100,10 @@ import {
   inspectCoverageRPC,
   inspectRPC,
   readCoverageRPC,
+  releaseHeldRPC,
   suspendResumeRPC,
+  voidForReversalRPC,
+  voidGrantRPC,
   releaseRPC,
   shipCoverageOutboxAlarm,
   scheduleOutboxAlarmIfPending,
@@ -1790,6 +1793,36 @@ export class GatewayObject extends DurableObject {
           this.ctx.storage,
           (fn) => this.ctx.blockConcurrencyWhile(fn),
           body as Parameters<typeof inspectCoverageRPC>[2],
+        );
+        return Response.json({ ...result, contract_version: contractVersion });
+      }
+      if (kind === "void_for_reversal") {
+        const result = await voidForReversalRPC(
+          this.ctx,
+          this.ctx.storage,
+          (fn) => this.ctx.blockConcurrencyWhile(fn),
+          body as Parameters<typeof voidForReversalRPC>[3],
+          quotaLog,
+        );
+        return Response.json({ ...result, contract_version: contractVersion });
+      }
+      if (kind === "release_held") {
+        const result = await releaseHeldRPC(
+          this.ctx,
+          this.ctx.storage,
+          (fn) => this.ctx.blockConcurrencyWhile(fn),
+          body as Parameters<typeof releaseHeldRPC>[3],
+          quotaLog,
+        );
+        return Response.json({ ...result, contract_version: contractVersion });
+      }
+      if (kind === "void_grant") {
+        const result = await voidGrantRPC(
+          this.ctx,
+          this.ctx.storage,
+          (fn) => this.ctx.blockConcurrencyWhile(fn),
+          body as Parameters<typeof voidGrantRPC>[3],
+          quotaLog,
         );
         return Response.json({ ...result, contract_version: contractVersion });
       }
