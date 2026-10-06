@@ -42,6 +42,7 @@ const METHOD_CLASS = {
   revokeServiceKey: "HP",
   publishPlanVersion: "HP",
   retirePlanVersion: "HP",
+  setCeilingPolicy: "HP",
   listOperatorCredentials: "M",
   listIssuerKeys: "M",
   listServiceKeys: "M",
@@ -56,6 +57,21 @@ type VendorMethod = keyof typeof METHOD_CLASS;
 type HpVendorMethod = {
   [K in VendorMethod]: (typeof METHOD_CLASS)[K] extends "HP" ? K : never;
 }[VendorMethod];
+
+type HpAssertionMethod = HpVendorMethod | "grant";
+
+type CeilingPolicyRow = {
+  version: number;
+  per_grant_max_days: number;
+  per_grant_max_allowance_months: number;
+  window_days: number;
+  window_max_days: number;
+  window_max_allowance_months: number;
+  max_paid_grace_days: number;
+  paid_cap_rule: string;
+  set_by: string;
+  assertion_sha256: string;
+};
 
 type VendorResultEnvelope = {
   contract_version: number;
@@ -708,7 +724,7 @@ function stableJson(value: unknown): string {
 }
 
 function operationParamsMatch(
-  method: HpVendorMethod,
+  method: HpAssertionMethod,
   operation: Record<string, unknown>,
   rpcArgs: Record<string, unknown>,
   accessJwt: string,
@@ -764,6 +780,17 @@ function operationParamsMatch(
   } else if (method === "retirePlanVersion") {
     expected.plan_id = rpcArgs.plan_id;
     expected.version = rpcArgs.version;
+  } else if (method === "grant") {
+    expected.envelope = rpcArgs.envelope;
+  } else if (method === "setCeilingPolicy") {
+    expected.per_grant_max_days = rpcArgs.per_grant_max_days;
+    expected.per_grant_max_allowance_months =
+      rpcArgs.per_grant_max_allowance_months;
+    expected.window_days = rpcArgs.window_days;
+    expected.window_max_days = rpcArgs.window_max_days;
+    expected.window_max_allowance_months = rpcArgs.window_max_allowance_months;
+    expected.max_paid_grace_days = rpcArgs.max_paid_grace_days;
+    expected.paid_cap_rule = rpcArgs.paid_cap_rule;
   } else {
     return false;
   }
@@ -771,7 +798,7 @@ function operationParamsMatch(
 }
 
 function hpAuditTarget(
-  method: HpVendorMethod,
+  method: HpAssertionMethod,
   rpcArgs: Record<string, unknown>,
 ): string {
   if (
@@ -789,7 +816,64 @@ function hpAuditTarget(
       typeof rpcArgs.version === "number" ? String(rpcArgs.version) : "";
     return `${planId}:${version}`;
   }
+  if (method === "grant") {
+    const envelope = rpcArgs.envelope;
+    if (isRecord(envelope) && typeof envelope.grant_id === "string") {
+      return envelope.grant_id;
+    }
+    return "";
+  }
+  if (method === "setCeilingPolicy") {
+    return "ceiling_policy";
+  }
   return typeof rpcArgs.credential_id === "string" ? rpcArgs.credential_id : "";
+}
+
+function ceilingPolicyRowToDetail(row: CeilingPolicyRow): string {
+  const ordered = {
+    version: row.version,
+    per_grant_max_days: row.per_grant_max_days,
+    per_grant_max_allowance_months: row.per_grant_max_allowance_months,
+    window_days: row.window_days,
+    window_max_days: row.window_max_days,
+    window_max_allowance_months: row.window_max_allowance_months,
+    max_paid_grace_days: row.max_paid_grace_days,
+    paid_cap_rule: row.paid_cap_rule,
+    set_by: row.set_by,
+    assertion_sha256: row.assertion_sha256,
+  };
+  return JSON.stringify(ordered);
+}
+
+async function readCurrentCeilingPolicy(
+  db: D1Database,
+): Promise<CeilingPolicyRow | null> {
+  return db
+    .prepare(
+      `SELECT version, per_grant_max_days, per_grant_max_allowance_months,
+              window_days, window_max_days, window_max_allowance_months,
+              max_paid_grace_days, paid_cap_rule, set_by, assertion_sha256
+       FROM ceiling_policy ORDER BY version DESC LIMIT 1`,
+    )
+    .first<CeilingPolicyRow>();
+}
+
+async function readCeilingPolicyByAssertionSha256(
+  db: D1Database,
+  assertionSha256: string,
+): Promise<CeilingPolicyRow | null> {
+  if (assertionSha256.length === 0) {
+    return null;
+  }
+  return db
+    .prepare(
+      `SELECT version, per_grant_max_days, per_grant_max_allowance_months,
+              window_days, window_max_days, window_max_allowance_months,
+              max_paid_grace_days, paid_cap_rule, set_by, assertion_sha256
+       FROM ceiling_policy WHERE assertion_sha256 = ?`,
+    )
+    .bind(assertionSha256)
+    .first<CeilingPolicyRow>();
 }
 
 async function assertionIssuedAtFresh(
@@ -823,7 +907,7 @@ type HpAssertionResult = HpAssertionReject | HpAssertionOk;
 
 async function runHpAssertionChecks(
   env: VendorEnv,
-  method: HpVendorMethod,
+  method: HpAssertionMethod,
   rpcArgs: Record<string, unknown>,
   accessEmail: string,
   negotiatedVersion: number,
@@ -990,7 +1074,7 @@ async function runHpAssertionChecks(
 async function finishHpAssertion(
   env: VendorEnv,
   accessEmail: string,
-  method: HpVendorMethod,
+  method: HpAssertionMethod,
   check: HpAssertionOk,
 ): Promise<void> {
   await insertAssertionUsed(env, check.assertionSha256, check.signer.credential_id);
@@ -1006,7 +1090,7 @@ async function finishHpAssertion(
 async function rejectHpAssertion(
   env: VendorEnv,
   accessEmail: string,
-  method: HpVendorMethod,
+  method: HpAssertionMethod,
   check: HpAssertionReject,
 ): Promise<VendorResultEnvelope> {
   await writeEntrypointAudit(
@@ -2144,6 +2228,120 @@ export class VendorEntrypoint extends WorkerEntrypoint<VendorEnv> {
     return ok(version, planVersionRowToDetail(row));
   }
 
+  async setCeilingPolicy(
+    args: Record<string, unknown>,
+  ): Promise<VendorResultEnvelope> {
+    const requested = parseRequestedVersion(args);
+    const negotiated = negotiate(VENDOR_CHANNEL, requested);
+    if (!negotiated.ok) {
+      return rejected(VENDOR_CHANNEL, negotiated.code);
+    }
+    const version = negotiated.version;
+
+    const access = await verifyHpAccess(this.env, args.access_jwt);
+    if (!access.ok) {
+      return rejected(version, "unauthenticated");
+    }
+
+    const operationRaw = args.operation;
+    if (!validateOperation(operationRaw).ok) {
+      return rejected(version, "assertion_invalid");
+    }
+    const operation = operationRaw as Record<string, unknown>;
+    const assertionSha256 = await operationAssertionSha256(operation);
+    const existingByAssertion = await readCeilingPolicyByAssertionSha256(
+      this.env.DB,
+      assertionSha256,
+    );
+    if (existingByAssertion !== null) {
+      return ok(version, ceilingPolicyRowToDetail(existingByAssertion));
+    }
+
+    const check = await runHpAssertionChecks(
+      this.env,
+      "setCeilingPolicy",
+      args,
+      access.email,
+      version,
+    );
+    if (!check.ok) {
+      return rejectHpAssertion(
+        this.env,
+        access.email,
+        "setCeilingPolicy",
+        check,
+      );
+    }
+
+    const perGrantMaxDays = args.per_grant_max_days;
+    const perGrantMaxAllowanceMonths = args.per_grant_max_allowance_months;
+    const windowDays = args.window_days;
+    const windowMaxDays = args.window_max_days;
+    const windowMaxAllowanceMonths = args.window_max_allowance_months;
+    const maxPaidGraceDays = args.max_paid_grace_days;
+    const paidCapRule = args.paid_cap_rule;
+    if (
+      !Number.isInteger(perGrantMaxDays) ||
+      !Number.isInteger(perGrantMaxAllowanceMonths) ||
+      !Number.isInteger(windowDays) ||
+      !Number.isInteger(windowMaxDays) ||
+      !Number.isInteger(windowMaxAllowanceMonths) ||
+      !Number.isInteger(maxPaidGraceDays) ||
+      typeof paidCapRule !== "string" ||
+      paidCapRule.length === 0
+    ) {
+      await writeEntrypointAudit(
+        this.env.DB,
+        access.email,
+        "setCeilingPolicy",
+        check.auditTarget,
+        check.assertionSha256,
+      );
+      return rejected(version, "bad_request");
+    }
+
+    const current = await readCurrentCeilingPolicy(this.env.DB);
+    const nextVersion = (current?.version ?? 0) + 1;
+
+    await finishHpAssertion(
+      this.env,
+      access.email,
+      "setCeilingPolicy",
+      check,
+    );
+
+    await this.env.DB.prepare(
+      `INSERT INTO ceiling_policy (
+         version, per_grant_max_days, per_grant_max_allowance_months,
+         window_days, window_max_days, window_max_allowance_months,
+         max_paid_grace_days, paid_cap_rule, set_by, assertion_sha256
+       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    )
+      .bind(
+        nextVersion,
+        perGrantMaxDays,
+        perGrantMaxAllowanceMonths,
+        windowDays,
+        windowMaxDays,
+        windowMaxAllowanceMonths,
+        maxPaidGraceDays,
+        paidCapRule,
+        access.email,
+        check.assertionSha256,
+      )
+      .run();
+
+    const row = await readCeilingPolicyByAssertionSha256(
+      this.env.DB,
+      check.assertionSha256,
+    );
+    if (row === null) {
+      return rejected(version, "bad_request");
+    }
+
+    return ok(version, ceilingPolicyRowToDetail(row));
+  }
+
   async grant(args: Record<string, unknown>): Promise<GrantResultEnvelope> {
     const requested = parseRequestedVersion(args);
     const negotiated = negotiate(VENDOR_CHANNEL, requested);
@@ -2153,10 +2351,72 @@ export class VendorEntrypoint extends WorkerEntrypoint<VendorEnv> {
     const version = negotiated.version;
 
     const envelope = args.envelope;
+    if (!isRecord(envelope)) {
+      return grantRejected(version, "bad_signature");
+    }
+
+    const source = envelope.source;
+    const sourceKind =
+      isRecord(source) && typeof source.kind === "string" ? source.kind : null;
+    const envelopeKind =
+      typeof envelope.kind === "string" ? envelope.kind : null;
+
+    if (sourceKind === "complimentary" || envelopeKind === "term_adjustment") {
+      if (envelopeKind === "term_adjustment" && sourceKind === "paid") {
+        return grantRejected(version, "bad_request");
+      }
+
+      if (sourceKind === "complimentary") {
+        const operatorEmail =
+          isRecord(source) && typeof source.operator_email === "string"
+            ? source.operator_email
+            : "";
+        const reason =
+          isRecord(source) && typeof source.reason === "string"
+            ? source.reason
+            : "";
+        if (operatorEmail.length === 0 || reason.length === 0) {
+          return grantRejected(version, "bad_request");
+        }
+      }
+
+      if (envelope.placement === "immediate") {
+        return grantRejected(version, "placement_not_supported");
+      }
+
+      const access = await verifyHpAccess(this.env, args.access_jwt);
+      if (!access.ok) {
+        return grantRejected(version, "unauthenticated");
+      }
+
+      const check = await runHpAssertionChecks(
+        this.env,
+        "grant",
+        args,
+        access.email,
+        version,
+      );
+      if (!check.ok) {
+        const rejectedEnvelope = await rejectHpAssertion(
+          this.env,
+          access.email,
+          "grant",
+          check,
+        );
+        return {
+          contract_version: rejectedEnvelope.contract_version,
+          result: "rejected",
+          code: rejectedEnvelope.code,
+          detail: rejectedEnvelope.detail,
+        };
+      }
+
+      return grantRejected(version, "unit_not_allowed");
+    }
+
     const aboKid = args.abo_kid;
     const aboSignature = args.abo_signature;
     if (
-      !isRecord(envelope) ||
       typeof aboKid !== "string" ||
       aboKid.length === 0 ||
       typeof aboSignature !== "string" ||
@@ -2165,9 +2425,6 @@ export class VendorEntrypoint extends WorkerEntrypoint<VendorEnv> {
       return grantRejected(version, "bad_signature");
     }
 
-    const source = envelope.source;
-    const sourceKind =
-      isRecord(source) && typeof source.kind === "string" ? source.kind : null;
     if (sourceKind !== "paid") {
       return grantRejected(version, "unit_not_allowed");
     }
@@ -2258,12 +2515,17 @@ export class VendorEntrypoint extends WorkerEntrypoint<VendorEnv> {
       return grantRejected(version, "exceeds_plan_bound");
     }
 
+    const ceilingPolicy = await readCurrentCeilingPolicy(this.env.DB);
+    if (ceilingPolicy === null) {
+      return grantRejected(version, "coverage_unknown");
+    }
+
     const grace = envelope.grace;
     if (
       !isRecord(grace) ||
       !Number.isInteger(grace.days) ||
-      (grace.days as number) > 7 ||
-      grace.cap_rule !== "proportional"
+      (grace.days as number) > ceilingPolicy.max_paid_grace_days ||
+      grace.cap_rule !== ceilingPolicy.paid_cap_rule
     ) {
       return grantRejected(version, "exceeds_plan_bound");
     }

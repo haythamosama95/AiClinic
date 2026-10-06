@@ -80,6 +80,7 @@ import operatorCredentialMigrationSql from "../../migrations/20261003120000_oper
 import issuerKeyTenantBindingMigrationSql from "../../migrations/20261003130000_issuer_key_tenant_binding.sql?raw";
 import planVersionPaidGrantCoverageMigrationSql from "../../migrations/20261003140000_plan_version_paid_grant_coverage.sql?raw";
 import usageTermMigrationSql from "../../migrations/20261006120000_usage_term.sql?raw";
+import ceilingPolicyMigrationSql from "../../migrations/20261006130000_ceiling_policy.sql?raw";
 import { applySqlStatements } from "../split-sql-statements";
 import {
   createCapabilityRegistry,
@@ -259,6 +260,7 @@ const MIGRATION_SQL = [
   issuerKeyTenantBindingMigrationSql,
   planVersionPaidGrantCoverageMigrationSql,
   usageTermMigrationSql,
+  ceilingPolicyMigrationSql,
 ];
 
 const CATALOGUE_PLAN_NAME = "standard";
