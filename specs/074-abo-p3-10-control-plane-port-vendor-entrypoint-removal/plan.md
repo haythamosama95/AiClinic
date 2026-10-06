@@ -216,7 +216,7 @@ ai-platform/
 
 `handleFeedCoverageRequest`, `handleCoverageReadRequest`, and `feedConsumerHealth` stay as they are. `packages/vendor-contracts/**` stays. `ai-platform-viewer/` and `docs/testing/catalog/` stay until P7.1.
 
-The SYS and e2e files that still call `operatorFetch` or `/control/*`, and the workers-pool tests that still read `entitlement`, `plan`, `invoice`, or `credit_price`, are rewritten in the Sequencing steps for FR-012 and FR-009. They are not new modules.
+The SYS and e2e files that still call `operatorFetch` or `/control/*`, and the workers-pool tests that still read `entitlement`, `plan`, `invoice`, or `credit_price`, are rewritten in the Sequencing steps for FR-012 and FR-009. They are not new modules. `ai-platform/test/plan-catalogue.test.ts` follows the mapping in Test Layout: one existing `publishPlanVersion` call and a `plan_version` read. The old plan CRUD, entitle, override, and config-cache plan and entitlement cases leave that file.
 
 ## Test Layout
 
@@ -236,6 +236,14 @@ A class-H success is the existing `VendorResultEnvelope`: `result` `ok`, `code` 
 | E2E-P3.10-06 | H-AP | Title `E2E-P3.10-06 supportLookup by subscription ref and by reference`. `supportLookup` with the clinic's `subscriptionRef` returns that clinic's requests. `supportLookup` with the request reference returns the envelope within retention. |
 | E2E-P3.10-07 | H-AP | Title `E2E-P3.10-07 monthly period close is gone and 0 3 and 0 4 run retention and rollup`. `[triggers].crons` has `0 3 * * *`, `0 4 * * *`, and `*/5 * * * *`, and does not have `0 5 1 * *`. `runScheduled("0 3 * * *")` runs retention. `runScheduled("0 4 * * *")` runs rollup whose dimensions include `term_id`. |
 | E2E-P3.10-08 | H-AP + e2e catalog | Title `E2E-P3.10-08 rewritten SYS and e2e catalogues are green without a bearer`. After the Delete and Rewrite rows, `test/system` under `vitest.workers.config.ts` and `test/e2e` under `vitest.e2e.config.ts` pass. Neither config contains `OPERATOR_BEARER_TOKEN`. `operatorFetch` and `operatorFetchRaw` are absent from `test/system/harness.ts`. |
+
+**`plan-catalogue.test.ts`.** 04 §6.5 rewrites this file. It stays in the `vitest.workers.config.ts` `include` list. `publishPlanVersion` and `retirePlanVersion` result rules stay as they are. The mapping for this file is:
+
+- Creating a catalogue row is one call to the existing `publishPlanVersion` on `env.VENDOR`, with the HP access JWT, passkey assertion, and arguments that method already accepts (the same publish `coverClinic` performs). The case reads that `plan_version` row and expects `status` `published` and the method's existing `ok` detail. The case does not call `coverClinic`.
+- Updating a plan row, deleting a plan row, rejecting those HTTP handlers when the operator is missing, copying catalogue economics onto an entitlement, and recording a per-installation override are removed from this file. They are not calls to `publishPlanVersion`, `retirePlanVersion`, or any other `VendorEntrypoint` method. Former `/control/plans/create`, `/control/plans/{id}/update`, `/control/plans/{id}/delete`, entitle, and override responses stay the 404s in E2E-P3.10-01.
+- Config-cache reads of `plans` and `entitlements` (cold one D1 read and warm zero I/O, including `credit_budget`) are removed from this file. They are not calls on `VendorEntrypoint`. Those reader cases return `"miss"` and do not query the dropped tables (Sequencing step 19).
+
+The file no longer imports `src/control` HTTP handlers and no longer inserts or selects `plan`, `entitlement`, `invoice`, or `credit_price`. The other workers-pool files in Sequencing step 28 stay on that step: change a file only when it still inserts or selects those tables, and put its setup on `coverClinic` and `plan_version`.
 
 ## Sequencing
 
@@ -268,7 +276,7 @@ Tests are written and observed failing before the class-H methods, the route rem
 25. Rewrite the `test/system/*.system.test.ts` files that still call `operatorFetch` or `/control/*` so they use `vendorCall`, `coverClinic`, and `newClinic`. Leave `handleFeedCoverageRequest` and `GET /v1/coverage` assertions as they are.
 26. Rewrite the `test/e2e/stage-*.test.ts` files that still enroll or entitle through `/control/*` the same way.
 27. In `vitest.workers.config.ts` and `vitest.e2e.config.ts`, remove `OPERATOR_BEARER_TOKEN` and `OPERATOR_ID`. Keep `ISSUER_ID` and the Access bindings. Add `DURATION_SCALE` = `"staging"`.
-28. Update the remaining workers-pool tests that still `INSERT` or `SELECT` `entitlement`, `plan`, `invoice`, or `credit_price` so they do not touch those tables. Setup goes through `coverClinic` and `plan_version`.
+28. Update the remaining workers-pool tests that still `INSERT` or `SELECT` `entitlement`, `plan`, `invoice`, or `credit_price` so they do not touch those tables. Setup goes through `coverClinic` and `plan_version`. `test/plan-catalogue.test.ts` follows the Test Layout mapping for that file: one existing `publishPlanVersion` call and a `plan_version` read; plan update, plan delete, entitle economics, override, and config-cache plan and entitlement reads leave the file.
 29. Run the unit command and confirm E2E-P3.10-01 through E2E-P3.10-07 pass.
 30. Run the two catalogue commands in the quickstart outline (E2E-P3.10-08). Confirm both configs contain no `OPERATOR_BEARER_TOKEN`, and that `src/support/index.ts`, the kept `src/control/*` modules, and the new methods are reached from the entry points in Test Layout.
 
