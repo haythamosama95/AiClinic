@@ -1,5 +1,6 @@
 /**
  * PLATFORM throw stub for E2E-P4.2-03 (vitest.platform-throw.config).
+ * Plain JS syntax — Miniflare auxiliary workers are not TS-transpiled.
  */
 
 import { WorkerEntrypoint } from "cloudflare:workers";
@@ -11,10 +12,7 @@ const TRANSIENT_UNAVAILABLE = {
   detail: "unavailable",
 };
 
-function throwUnlessTransient(
-  method: string,
-  args: Record<string, unknown>,
-): void {
+function throwUnlessTransient(method, args) {
   if (method === "getCoverage") {
     const orgId = args.org_id;
     if (typeof orgId === "string" && orgId.endsWith("aa")) {
@@ -25,9 +23,7 @@ function throwUnlessTransient(
 }
 
 export class VendorEntrypoint extends WorkerEntrypoint {
-  async getCoverage(
-    args: Record<string, unknown>,
-  ): Promise<Record<string, unknown>> {
+  async getCoverage(args) {
     throwUnlessTransient("getCoverage", args);
     const orgId = args.org_id;
     if (typeof orgId === "string" && orgId.endsWith("aa")) {
@@ -36,23 +32,23 @@ export class VendorEntrypoint extends WorkerEntrypoint {
     throw new Error("getCoverage forced failure in platform-throw stub");
   }
 
-  async publishPlanVersion(): Promise<never> {
+  async publishPlanVersion() {
     throw new Error("publishPlanVersion forced failure in platform-throw stub");
   }
 
-  async registerServiceKey(): Promise<never> {
+  async registerServiceKey() {
     throw new Error("registerServiceKey forced failure in platform-throw stub");
   }
 
-  async grant(): Promise<never> {
+  async grant() {
     throw new Error("grant forced failure in platform-throw stub");
   }
 
-  async readCoverageEvents(): Promise<never> {
+  async readCoverageEvents() {
     throw new Error("readCoverageEvents forced failure in platform-throw stub");
   }
 
-  async listGrants(): Promise<never> {
+  async listGrants() {
     throw new Error("listGrants forced failure in platform-throw stub");
   }
 }

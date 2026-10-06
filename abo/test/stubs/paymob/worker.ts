@@ -2,12 +2,10 @@
  * H-PAY stub (P4.2 cross-worker harness).
  */
 
-type PaymobMode = "ok" | "refuse" | "timeout";
+let mode = "ok";
+let lastIntentionBody = null;
 
-let mode: PaymobMode = "ok";
-let lastIntentionBody: Record<string, unknown> | null = null;
-
-function jsonResponse(body: unknown, status = 200): Response {
+function jsonResponse(body, status = 200) {
   return new Response(JSON.stringify(body), {
     status,
     headers: { "Content-Type": "application/json" },
@@ -15,11 +13,11 @@ function jsonResponse(body: unknown, status = 200): Response {
 }
 
 export default {
-  async fetch(request: Request): Promise<Response> {
+  async fetch(request) {
     const url = new URL(request.url);
 
     if (url.pathname === "/__script" && request.method === "POST") {
-      const body = (await request.json()) as { mode?: PaymobMode };
+      const body = await request.json();
       if (body.mode === "ok" || body.mode === "refuse" || body.mode === "timeout") {
         mode = body.mode;
       }
@@ -38,7 +36,7 @@ export default {
       (url.pathname === "/v1/intention/" || url.pathname === "/v1/intention") &&
       request.method === "POST"
     ) {
-      const body = (await request.json()) as Record<string, unknown>;
+      const body = await request.json();
       lastIntentionBody = body;
 
       if (mode === "refuse") {
@@ -46,7 +44,7 @@ export default {
       }
 
       if (mode === "timeout") {
-        return new Promise<Response>(() => {
+        return new Promise(() => {
           // Intentionally never settles so the client abort fires.
         });
       }

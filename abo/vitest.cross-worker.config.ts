@@ -5,11 +5,10 @@ import { pinWorkerdCompatibilityDate } from "../ai-platform/test/pin-workerd-com
 
 const rootDir = path.dirname(fileURLToPath(import.meta.url));
 const compatibilityDate = pinWorkerdCompatibilityDate();
-const platformBundle = path.resolve(
-  rootDir,
-  "../ai-platform/dist/hxw/worker.js",
-);
+const platformBundleDir = path.resolve(rootDir, ".hxw-platform");
+const platformBundle = path.join(platformBundleDir, "worker.js");
 const paymobStub = path.resolve(rootDir, "test/stubs/paymob/worker.ts");
+const paymobModulesRoot = path.dirname(paymobStub);
 
 const PLATFORM_DB_ID = "22222222-2222-2222-2222-222222222222";
 
@@ -73,6 +72,14 @@ export default defineWorkersConfig({
               compatibilityDate,
               modules: true,
               scriptPath: platformBundle,
+              modulesRoot: platformBundleDir,
+              modulesRules: [
+                {
+                  type: "Text",
+                  include: ["**/*.md"],
+                  fallthrough: true,
+                },
+              ],
               d1Databases: {
                 DB: PLATFORM_DB_ID,
               },
@@ -98,6 +105,10 @@ export default defineWorkersConfig({
               compatibilityDate,
               modules: true,
               scriptPath: paymobStub,
+              modulesRoot: paymobModulesRoot,
+              modulesRules: [
+                { type: "ESModule", include: ["**/*.ts", "**/*.mts"] },
+              ],
             },
           ],
         },
