@@ -347,9 +347,6 @@ export async function purgeByInstallationId(
       .prepare(`DELETE FROM capability_grant WHERE scope = ?`)
       .bind(installationScope),
     db
-      .prepare(`DELETE FROM grace_admission_queue WHERE installation_id = ?`)
-      .bind(installationId),
-    db
       .prepare(`UPDATE installation SET status = 'deleted' WHERE installation_id = ?`)
       .bind(installationId),
   ];

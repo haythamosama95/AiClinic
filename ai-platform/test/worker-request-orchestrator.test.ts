@@ -68,7 +68,7 @@ import tokenContractMigrationSql from "../migrations/20260803120000_token_contra
 import canaryMigrationSql from "../migrations/20260803100000_routing_policy_canary.sql?raw";
 import statusMigrationSql from "../migrations/20260805190000_routing_policy_status.sql?raw";
 import killSwitchMigrationSql from "../migrations/20260807120000_kill_switch.sql?raw";
-import graceQueueMigrationSql from "../migrations/20260821120000_grace_admission_queue.sql?raw";
+import fallbackAdmissionFeedMigrationSql from "../migrations/20261006160000_fallback_admission_feed.sql?raw";
 import planCatalogueMigrationSql from "../migrations/20260911120000_plan_catalogue.sql?raw";
 import issuerKeyTenantBindingMigrationSql from "../migrations/20261003130000_issuer_key_tenant_binding.sql?raw";
 import planVersionPaidGrantCoverageMigrationSql from "../migrations/20261003140000_plan_version_paid_grant_coverage.sql?raw";
@@ -648,7 +648,7 @@ beforeAll(async () => {
     await applySql(env.DB, statusMigrationSql);
     // I2 production config readers query kill_switch; apply so live guard can warm/miss.
     await applySql(env.DB, killSwitchMigrationSql);
-    await applySql(env.DB, graceQueueMigrationSql);
+    await applySql(env.DB, fallbackAdmissionFeedMigrationSql);
     // G1 plan catalogue: adds entitlement.credit_budget consumed by G2 admission.
     await applySql(env.DB, planCatalogueMigrationSql);
     await applySql(env.DB, issuerKeyTenantBindingMigrationSql);

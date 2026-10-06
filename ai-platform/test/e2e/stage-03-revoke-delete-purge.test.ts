@@ -386,18 +386,15 @@ async function seedI0PurgeFootprint(): Promise<void> {
       ],
     },
     {
-      sql: `INSERT INTO grace_admission_queue (
-              grace_request_id, installation_id, idempotency_key, jti, request_reference,
-              entitlement_json, usage_tokens, usage_cost, partial, queued_at,
-              reconcile_attempts, reconcile_first_seen_at_ms, status
-            ) VALUES (?, ?, ?, ?, ?, ?, NULL, NULL, NULL, ?, 0, NULL, 'pending')`,
+      sql: `INSERT INTO fallback_admission (
+              installation_id, idempotency_key, term_id, request_id, weight, admitted_at, state
+            ) VALUES (?, ?, ?, ?, ?, ?, 'pending')`,
       params: [
-        "88888888-8888-4888-8888-888888888888",
         I0,
-        `grace-idem-${I0}`,
-        "jti-grace-i0",
-        "GRCE-0001",
-        "{}",
+        `fallback-idem-${I0}`,
+        "term-footprint-i0",
+        "88888888-8888-4888-8888-888888888888",
+        1,
         now,
       ],
     },
@@ -700,8 +697,8 @@ describe("Stage 03 — revoke/delete/purge (S03-061…S03-083)", () => {
         I0,
       ]),
       entitlement: await count("entitlement", "installation_id = ?", [I0]),
-      grace_admission_queue: await count(
-        "grace_admission_queue",
+      fallback_admission: await count(
+        "fallback_admission",
         "installation_id = ?",
         [I0],
       ),
@@ -714,7 +711,7 @@ describe("Stage 03 — revoke/delete/purge (S03-061…S03-083)", () => {
     expect(footprintBefore.platform_counter).toBeGreaterThan(0);
     expect(footprintBefore.capability_grant).toBeGreaterThan(0);
     expect(footprintBefore.tenant_binding).toBeGreaterThan(0);
-    expect(footprintBefore.grace_admission_queue).toBeGreaterThan(0);
+    expect(footprintBefore.fallback_admission).toBeGreaterThan(0);
     expect(footprintBefore.installation).toBeGreaterThan(0);
 
     const result = await controlFetch(actionPath(I0, "purge"), { body: {} });
@@ -762,8 +759,8 @@ describe("Stage 03 — revoke/delete/purge (S03-061…S03-083)", () => {
       footprintBefore.entitlement,
     );
     expect(
-      await count("grace_admission_queue", "installation_id = ?", [I0]),
-    ).toBe(0);
+      await count("fallback_admission", "installation_id = ?", [I0]),
+    ).toBe(footprintBefore.fallback_admission);
     expect(await count("installation", "installation_id = ?", [I0])).toBe(1);
     expect(await installationStatus(I0)).toBe("deleted");
 
@@ -825,7 +822,7 @@ describe("Stage 03 — revoke/delete/purge (S03-061…S03-083)", () => {
       usage_rollup: await count("usage_rollup"),
       platform_counter: await count("platform_counter"),
       capability_grant: await count("capability_grant"),
-      grace_admission_queue: await count("grace_admission_queue"),
+      fallback_admission: await count("fallback_admission"),
     };
 
     const result = await controlFetch(actionPath(IUNKNOWN, "purge"), {
@@ -842,8 +839,8 @@ describe("Stage 03 — revoke/delete/purge (S03-061…S03-083)", () => {
     expect(await count("usage_rollup")).toBe(dataBefore.usage_rollup);
     expect(await count("platform_counter")).toBe(dataBefore.platform_counter);
     expect(await count("capability_grant")).toBe(dataBefore.capability_grant);
-    expect(await count("grace_admission_queue")).toBe(
-      dataBefore.grace_admission_queue,
+    expect(await count("fallback_admission")).toBe(
+      dataBefore.fallback_admission,
     );
     expect(await r2Exists(sentinelKey)).toBe(true);
 

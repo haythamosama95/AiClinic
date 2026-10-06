@@ -798,28 +798,25 @@ describe("Stage X — credit, inspect, retention joinability, GatewayObject RPC 
       installation_id: scenario.installationId,
     });
 
-    const snapshot = await entitlementSnapshot(scenario.installationId);
-    // Register 5 #28: SELF.fetch cannot take a throwing DO. Catalog SX-001
-    // inserts via admitUnderGrace against a stub — not on the barrel.
-    // Catalog usage 7 / 0.007 is not the fake-adapter 30 / 0.005.
+    const mirror = await queryOne<{ term_snapshot: string }>(
+      `SELECT term_snapshot FROM coverage_mirror WHERE installation_id = ?`,
+      [scenario.installationId],
+    );
+    const termRef =
+      typeof mirror?.term_snapshot === "string"
+        ? (JSON.parse(mirror.term_snapshot) as { ref?: string }).ref ?? "term-sx056"
+        : "term-sx056";
     await seedSql([
       {
-        sql: `INSERT INTO grace_admission_queue (
-                grace_request_id, installation_id, idempotency_key, jti,
-                request_reference, entitlement_json, usage_tokens, usage_cost,
-                partial, queued_at, reconcile_attempts, reconcile_first_seen_at_ms,
-                status
-              ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, NULL, 'pending')`,
+        sql: `INSERT INTO fallback_admission (
+                installation_id, idempotency_key, term_id, request_id, weight, admitted_at, state
+              ) VALUES (?, ?, ?, ?, ?, ?, 'pending')`,
         params: [
-          "grace-sx056",
           scenario.installationId,
-          "idem-sx056-grace",
-          "jti-sx056-grace",
-          "SX56-GRCE",
-          JSON.stringify(snapshot),
-          7,
-          0.007,
-          0,
+          "idem-sx056-fallback",
+          termRef,
+          "grace-sx056",
+          1,
           new Date().toISOString(),
         ],
       },
@@ -865,23 +862,30 @@ describe("Stage X — credit, inspect, retention joinability, GatewayObject RPC 
     });
     expect(Number(counters[0]!.count)).toBe(2);
 
-    const grace = await queryOne<{ status: string }>(
-      `SELECT status FROM grace_admission_queue WHERE grace_request_id = ?`,
+    let fallback = await queryOne<{ state: string }>(
+      `SELECT state FROM fallback_admission WHERE request_id = ?`,
       ["grace-sx056"],
     );
-    expect(grace?.status).toBe("reconciled");
+    expect(fallback?.state).toBe("pending");
+
+    await invokeCron("*/5 * * * *");
+
+    fallback = await queryOne<{ state: string }>(
+      `SELECT state FROM fallback_admission WHERE request_id = ?`,
+      ["grace-sx056"],
+    );
+    expect(fallback?.state).toBe("settled");
 
     const doState = await inspectDo(scenario.installationId);
-    // Catalog {1, 7, 0.007}: grace only. Code also credits the three
-    // settlements (fake adapter 30 / 0.005 each) on the same Quota DO.
+    // Three settlements plus one fallback weight settled on */5.
     expect(doState.periodCounters).toMatchObject({
       requestsUsed: 4,
-      tokensUsed: 97,
+      tokensUsed: 90,
       inFlight: 0,
     });
     expect(
       costOf(doState.periodCounters as Record<string, unknown>, "costUsed"),
-    ).toBeCloseTo(0.022, 5);
+    ).toBeCloseTo(0.015, 5);
 
     expect(await getAiRequest(oldSettled.requestReference)).toBeNull();
     expect(await r2Exists(envelopeKey(oldSettled.requestId))).toBe(false);

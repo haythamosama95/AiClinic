@@ -822,7 +822,7 @@ describe("Stage 11 â€” terminal settlement completed/failed/cancelled (S11-001â€
     expect(idem?.state).toBe("completed");
     assertHorizonExpiry(idem?.expiresAt);
 
-    expect(await count("grace_admission_queue")).toBe(0);
+    expect(await count("fallback_admission")).toBe(0);
 
     const got = await getRequestByRef(await mintAat(scenario), ref);
     expect(got.status).toBe(200);

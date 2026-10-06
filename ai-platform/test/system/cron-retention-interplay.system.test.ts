@@ -8,6 +8,7 @@ import {
   applyAllMigrations,
   clearConfigCache,
   count,
+  coverClinic,
   DEFAULT_ENTITLE_PAYLOAD,
   flushBackgroundWork,
   getAiRequest,
@@ -161,72 +162,79 @@ describe("cron retention interplay", () => {
     expect(rollupAfter?.c).toBe(rollupCountBefore);
   });
 
-  it("SYS-8.3 — Grace queue reconciliation and uniqueness", async () => {
+  it("SYS-8.3 — Fallback admission uniqueness and */5 drain", async () => {
     const scenario = await newScenario();
     await setupPromotedFakePolicy(scenario);
-    const token = await mintAat(scenario);
-    const jti = JSON.parse(
-      atob(token.split(".")[1]!.replace(/-/g, "+").replace(/_/g, "/")),
-    ) as { jti: string };
+    await coverClinic(scenario);
 
-    const graceRequestId = crypto.randomUUID();
-    const idempotencyKey = "verify-grace-1";
-    const queuedAt = new Date().toISOString();
+    const mirror = await env.DB.prepare(
+      `SELECT term_snapshot FROM coverage_mirror WHERE installation_id = ?`,
+    )
+      .bind(scenario.installationId)
+      .first<{ term_snapshot: string }>();
+    const termRef =
+      typeof mirror?.term_snapshot === "string"
+        ? (JSON.parse(mirror.term_snapshot) as { ref?: string }).ref ?? "term-sys83"
+        : "term-sys83";
 
-    const entitlement = await getEntitlement(scenario.installationId);
-    const entitlementJson = JSON.stringify({
-      plan: entitlement?.plan,
-      period_bounds: {
-        period_start: entitlement?.period_start,
-        period_end: entitlement?.period_end,
-      },
-      request_quota: entitlement?.request_quota,
-      token_cost_budget: {
-        token_budget: entitlement?.token_budget,
-        cost_budget: entitlement?.cost_budget,
-      },
-      allowed_capabilities: JSON.parse(
-        String(entitlement?.allowed_capabilities ?? "[]"),
-      ),
-      soft_threshold: entitlement?.soft_threshold,
-      status: entitlement?.status,
-    });
+    const requestId = crypto.randomUUID();
+    const idempotencyKey = "verify-fallback-1";
+    const admittedAt = new Date().toISOString();
 
     await env.DB.prepare(
-      `INSERT INTO grace_admission_queue (
-        grace_request_id, installation_id, idempotency_key, jti, request_reference,
-        entitlement_json, usage_tokens, usage_cost, partial, queued_at,
-        reconcile_attempts, reconcile_first_seen_at_ms, status
-      ) VALUES (?, ?, ?, ?, ?, ?, NULL, NULL, NULL, ?, 0, NULL, 'pending')`,
+      `INSERT INTO fallback_admission (
+         installation_id, idempotency_key, term_id, request_id, weight, admitted_at, state
+       ) VALUES (?, ?, ?, ?, ?, ?, 'pending')`,
     )
       .bind(
-        graceRequestId,
         scenario.installationId,
         idempotencyKey,
-        jti.jti,
-        "GRCE-0001",
-        entitlementJson,
-        queuedAt,
+        termRef,
+        requestId,
+        1,
+        admittedAt,
+      )
+      .run();
+
+    await env.DB.prepare(
+      `INSERT INTO ai_request (
+         request_id, request_reference, installation_id, actor_id, branch_id,
+         capability_id, capability_version, prompt_artifact_hash, idempotency_key,
+         trace_id, state, created_at, updated_at, completed_at, terminal_error_code,
+         payload_pointer, conversation_id, turn_ordinal
+       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, NULL, NULL, NULL, NULL)`,
+    )
+      .bind(
+        requestId,
+        "FB83-0001",
+        scenario.installationId,
+        scenario.actorId,
+        scenario.branchId,
+        "clinic.visit_summary",
+        "1.0.0",
+        "prompt/fb83@v1",
+        idempotencyKey,
+        "01FB83000000000000000001",
+        "Accepted",
+        admittedAt,
+        admittedAt,
       )
       .run();
 
     let duplicateRejected = false;
     try {
       await env.DB.prepare(
-        `INSERT INTO grace_admission_queue (
-          grace_request_id, installation_id, idempotency_key, jti, request_reference,
-          entitlement_json, usage_tokens, usage_cost, partial, queued_at,
-          reconcile_attempts, reconcile_first_seen_at_ms, status
-        ) VALUES (?, ?, ?, ?, ?, ?, NULL, NULL, NULL, ?, 0, NULL, 'pending')`,
+        `INSERT INTO fallback_admission (
+           installation_id, idempotency_key, term_id, request_id, weight, admitted_at, state
+         ) VALUES (?, ?, ?, ?, ?, ?, 'pending')`,
       )
         .bind(
-          crypto.randomUUID(),
           scenario.installationId,
           idempotencyKey,
-          jti.jti,
-          "GRCE-0002",
-          entitlementJson,
-          queuedAt,
+          termRef,
+          crypto.randomUUID(),
+          1,
+          admittedAt,
         )
         .run();
     } catch {
@@ -234,47 +242,28 @@ describe("cron retention interplay", () => {
     }
     expect(duplicateRejected).toBe(true);
 
-    await runScheduled("0 3 * * *");
+    await runScheduled("*/5 * * * *");
 
     const row = await env.DB.prepare(
-      `SELECT status, reconcile_attempts, reconcile_first_seen_at_ms,
-              usage_tokens, usage_cost, partial
-       FROM grace_admission_queue WHERE grace_request_id = ?`,
+      `SELECT state FROM fallback_admission WHERE request_id = ?`,
     )
-      .bind(graceRequestId)
-      .first<{
-        status: string;
-        reconcile_attempts: number;
-        reconcile_first_seen_at_ms: number | null;
-        usage_tokens: number | null;
-        usage_cost: number | null;
-        partial: number | null;
-      }>();
+      .bind(requestId)
+      .first<{ state: string }>();
 
-    expect(row).toBeTruthy();
-    const reconciled =
-      row?.status === "reconciled" ||
-      row?.status === "dropped" ||
-      (row?.status === "pending" &&
-        Number(row.reconcile_attempts) >= 1 &&
-        row.reconcile_first_seen_at_ms != null);
-    expect(reconciled).toBe(true);
-    expect(row?.usage_tokens).toBeNull();
-    expect(row?.usage_cost).toBeNull();
-    expect(row?.partial).toBeNull();
+    expect(row?.state).toBe("settled");
 
-    const healthyGrace = await count(
-      "grace_admission_queue",
-      "installation_id = ? AND status = 'pending'",
+    const pendingBefore = await count(
+      "fallback_admission",
+      "installation_id = ? AND state = 'pending'",
       [scenario.installationId],
     );
     await invoke(scenario);
-    const healthyGraceAfter = await count(
-      "grace_admission_queue",
-      "installation_id = ? AND status = 'pending'",
+    const pendingAfter = await count(
+      "fallback_admission",
+      "installation_id = ? AND state = 'pending'",
       [scenario.installationId],
     );
-    expect(healthyGraceAfter).toBe(healthyGrace);
+    expect(pendingAfter).toBe(pendingBefore);
   });
 
   it("SYS-8.4 — Rejection counters lower bound", async () => {

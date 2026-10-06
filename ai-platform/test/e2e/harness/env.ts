@@ -81,7 +81,8 @@ export const PLATFORM_TABLES = [
   "platform_counter",
   "control_audit",
   "credit_price",
-  "grace_admission_queue",
+  "fallback_admission",
+  "feed_consumer",
   "invoice",
   "plan",
 ] as const;

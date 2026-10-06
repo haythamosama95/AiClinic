@@ -56,6 +56,19 @@ CREATE TABLE capability_grant (
   changed_by TEXT NOT NULL
 , lifecycle_state TEXT, successor_id TEXT, deprecated_at TEXT, retire_after TEXT);
 
+CREATE TABLE ceiling_policy (
+  version INTEGER PRIMARY KEY NOT NULL,
+  per_grant_max_days INTEGER NOT NULL,
+  per_grant_max_allowance_months INTEGER NOT NULL,
+  window_days INTEGER NOT NULL,
+  window_max_days INTEGER NOT NULL,
+  window_max_allowance_months INTEGER NOT NULL,
+  max_paid_grace_days INTEGER NOT NULL,
+  paid_cap_rule TEXT NOT NULL,
+  set_by TEXT NOT NULL,
+  assertion_sha256 TEXT NOT NULL
+);
+
 CREATE TABLE control_audit (
   audit_id TEXT PRIMARY KEY NOT NULL,
   operator_id TEXT NOT NULL,
@@ -112,22 +125,22 @@ CREATE TABLE entitlement (
   FOREIGN KEY (installation_id) REFERENCES installation (installation_id)
 );
 
-CREATE TABLE grace_admission_queue (
-  grace_request_id TEXT PRIMARY KEY NOT NULL,
+CREATE TABLE fallback_admission (
   installation_id TEXT NOT NULL,
   idempotency_key TEXT NOT NULL,
-  jti TEXT NOT NULL,
-  request_reference TEXT NOT NULL,
-  entitlement_json TEXT NOT NULL,
-  usage_tokens INTEGER,
-  usage_cost REAL,
-  partial INTEGER,
-  queued_at TEXT NOT NULL,
-  reconcile_attempts INTEGER NOT NULL DEFAULT 0,
-  reconcile_first_seen_at_ms INTEGER,
-  status TEXT NOT NULL,
-  UNIQUE (installation_id, idempotency_key),
+  term_id TEXT NOT NULL,
+  request_id TEXT NOT NULL,
+  weight INTEGER NOT NULL,
+  admitted_at TEXT NOT NULL,
+  state TEXT NOT NULL,
+  PRIMARY KEY (installation_id, idempotency_key),
   FOREIGN KEY (installation_id) REFERENCES installation (installation_id)
+);
+
+CREATE TABLE feed_consumer (
+  consumer TEXT PRIMARY KEY NOT NULL,
+  last_pull_at TEXT,
+  last_cursor INTEGER
 );
 
 CREATE TABLE grant_ledger (
@@ -141,6 +154,14 @@ CREATE TABLE grant_ledger (
   envelope_sha256 TEXT NOT NULL,
   receipt TEXT NOT NULL,
   applied_at TEXT NOT NULL
+);
+
+CREATE TABLE grant_void (
+  grant_id TEXT PRIMARY KEY NOT NULL,
+  reason TEXT NOT NULL,
+  source TEXT NOT NULL,
+  evidence_sha256 TEXT NOT NULL,
+  at TEXT NOT NULL
 );
 
 CREATE TABLE installation (
@@ -204,6 +225,20 @@ CREATE TABLE plan (
   status TEXT NOT NULL
 );
 
+CREATE TABLE plan_version (
+  plan_id TEXT NOT NULL,
+  version INTEGER NOT NULL,
+  display_name TEXT NOT NULL,
+  capabilities TEXT NOT NULL,
+  max_cost_class TEXT NOT NULL,
+  concurrency_limit INTEGER NOT NULL,
+  max_allowance_per_month INTEGER NOT NULL,
+  status TEXT NOT NULL,
+  published_by TEXT NOT NULL,
+  assertion_sha256 TEXT NOT NULL,
+  PRIMARY KEY (plan_id, version)
+);
+
 CREATE TABLE platform_alert (
   alert_key TEXT PRIMARY KEY NOT NULL,
   code TEXT NOT NULL,
@@ -221,20 +256,6 @@ CREATE TABLE platform_counter (
   dimension_set TEXT NOT NULL,
   time_bucket TEXT NOT NULL,
   count INTEGER NOT NULL
-);
-
-CREATE TABLE plan_version (
-  plan_id TEXT NOT NULL,
-  version INTEGER NOT NULL,
-  display_name TEXT NOT NULL,
-  capabilities TEXT NOT NULL,
-  max_cost_class TEXT NOT NULL,
-  concurrency_limit INTEGER NOT NULL,
-  max_allowance_per_month INTEGER NOT NULL,
-  status TEXT NOT NULL,
-  published_by TEXT NOT NULL,
-  assertion_sha256 TEXT NOT NULL,
-  PRIMARY KEY (plan_id, version)
 );
 
 CREATE TABLE routing_policy (
@@ -274,6 +295,26 @@ CREATE TABLE token_contract (
   added_at TEXT NOT NULL,
   retired_at TEXT,
   changed_by TEXT NOT NULL
+);
+
+CREATE TABLE transfer (
+  transfer_id TEXT PRIMARY KEY NOT NULL,
+  org_id TEXT NOT NULL,
+  from_installation_id TEXT NOT NULL,
+  to_installation_id TEXT NOT NULL,
+  reason TEXT NOT NULL,
+  assertion_sha256 TEXT NOT NULL,
+  package TEXT,
+  created_at TEXT NOT NULL
+);
+
+CREATE TABLE transfer_step (
+  transfer_id TEXT NOT NULL,
+  step TEXT NOT NULL,
+  receipt TEXT NOT NULL,
+  applied_at TEXT NOT NULL,
+  PRIMARY KEY (transfer_id, step),
+  FOREIGN KEY (transfer_id) REFERENCES transfer (transfer_id)
 );
 
 CREATE TABLE "usage_event" (

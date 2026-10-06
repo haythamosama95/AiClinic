@@ -25,6 +25,7 @@ import {
   getRoutingPolicy,
   getUsageEvents,
   isolateConfigCache,
+  invokeCron,
   loadManifest,
   mintAat,
   newScenario,
@@ -1377,196 +1378,42 @@ describe("Stage 11 — replay, envelope, grace (S11-012…S11-021)", () => {
     }
   });
 
-  it("S11-021 — grace-admitted settlement attaches usage despite DO outage", async () => {
+  it("S11-021 — pending fallback admission settles on */5 drain", async () => {
     const scenario = await setupFresh();
-    const grid = crypto.randomUUID();
-    const ref = "7K2M-9XQD";
-    const snapshot = entitlementSnapshot(PERIOD_START_JULY, PERIOD_END_COVERING_NOW);
+    const requestId = crypto.randomUUID();
+    const mirror = await queryOne<{ term_snapshot: string }>(
+      `SELECT term_snapshot FROM coverage_mirror WHERE installation_id = ?`,
+      [scenario.installationId],
+    );
+    const termRef =
+      typeof mirror?.term_snapshot === "string"
+        ? (JSON.parse(mirror.term_snapshot) as { ref?: string }).ref ?? "term-s11"
+        : "term-s11";
 
     await seedSql([
       {
-        sql: `INSERT INTO grace_admission_queue (
-                grace_request_id, installation_id, idempotency_key, jti,
-                request_reference, entitlement_json, usage_tokens, usage_cost,
-                partial, queued_at, reconcile_attempts, reconcile_first_seen_at_ms,
-                status
-              ) VALUES (?, ?, ?, ?, ?, ?, NULL, NULL, NULL, ?, 0, NULL, 'pending')`,
+        sql: `INSERT INTO fallback_admission (
+                installation_id, idempotency_key, term_id, request_id, weight, admitted_at, state
+              ) VALUES (?, ?, ?, ?, ?, ?, 'pending')`,
         params: [
-          grid,
           scenario.installationId,
           `s11-021-${crypto.randomUUID()}`,
-          crypto.randomUUID(),
-          ref,
-          JSON.stringify(snapshot),
+          termRef,
+          requestId,
+          1,
           new Date().toISOString(),
         ],
       },
     ]);
 
-    const doBefore = await inspectState(scenario.installationId);
-    // Catalog writes `{ fetchThrow: true }`; barrel types Error | (() => Error).
-    const stubDown = wrapDurableObjectNamespace(env.DO, {
-      fetchThrow: new Error("quota DO unavailable"),
-    });
-    const creditMod = await loadCreditModule();
-    const usage = { tokens: 30, cost: 0.005 };
+    await invokeCron("*/5 * * * *");
 
-    const first = await creditMod.creditUsage(
-      {
-        installationId: scenario.installationId,
-        requestId: grid,
-        requestReference: ref,
-        usage,
-        partial: false,
-        entitlement: snapshot as never,
-      },
-      { DO: stubDown, DB: env.DB },
+    const row = await queryOne<{ state: string }>(
+      `SELECT state FROM fallback_admission WHERE request_id = ?`,
+      [requestId],
     );
-    expect(first).toEqual({ ok: false, code: "unavailable" });
-
-    const attached = await queryOne<{
-      usage_tokens: number;
-      usage_cost: number;
-      partial: number;
-    }>(
-      `SELECT usage_tokens, usage_cost, partial FROM grace_admission_queue
-       WHERE grace_request_id = ?`,
-      [grid],
-    );
-    expect(attached?.usage_tokens).toBe(30);
-    expect(Number(attached?.usage_cost)).toBeCloseTo(0.005, 5);
-    expect(attached?.partial).toBe(0);
-
-    // Distinct payload so a silent request_reference miss cannot reuse the
-    // first-call attach values.
-    const fallbackUsage = { tokens: 8, cost: 0.0016 };
-    const second = await creditMod.creditUsage(
-      {
-        installationId: scenario.installationId,
-        requestId: crypto.randomUUID(),
-        requestReference: ref,
-        usage: fallbackUsage,
-        partial: false,
-        entitlement: snapshot as never,
-      },
-      { DO: stubDown, DB: env.DB },
-    );
-    expect(second).toEqual({ ok: false, code: "unavailable" });
-
-    const attachedByRef = await queryOne<{
-      usage_tokens: number;
-      usage_cost: number;
-      partial: number;
-    }>(
-      `SELECT usage_tokens, usage_cost, partial FROM grace_admission_queue
-       WHERE request_reference = ?`,
-      [ref],
-    );
-    expect(attachedByRef?.usage_tokens).toBe(8);
-    expect(Number(attachedByRef?.usage_cost)).toBeCloseTo(0.0016, 5);
-    expect(attachedByRef?.partial).toBe(0);
-
-    const doAfterCredit = await inspectState(scenario.installationId);
-    expect(doAfterCredit.periodCounters).toEqual(doBefore.periodCounters);
-
-    const journal = await loadJournalModule();
-    const created = await journal.createRequestRow(
-      {
-        requestId: grid,
-        requestReference: ref,
-        principal: {
-          installationId: scenario.installationId,
-          organizationId: scenario.orgId,
-          branchId: scenario.branchId,
-          actorId: scenario.actorId,
-          role: "clinician",
-          scopes: ["ai.visit_summary", "ai.access"],
-          jti: crypto.randomUUID(),
-          iat: 0,
-          exp: 0,
-          ver: "1",
-        },
-        manifest: loadManifest(
-          publishedVisitSummary as unknown as Record<string, unknown>,
-        ),
-        idempotencyKey: `s11-021-journal-${crypto.randomUUID()}`,
-        traceId: "s11-021-trace",
-      },
-      env.DB,
-    );
-    expect(created.ok).toBe(true);
-
-    const pending: Promise<unknown>[] = [];
-    // HARNESS-GAP: emptyExecutionContext.waitUntil is a no-op; drain locally.
-    const ctx = {
-      waitUntil(promise: Promise<unknown>) {
-        pending.push(promise);
-      },
-      passThroughOnException() {},
-      props: {},
-    } as ExecutionContext;
-    journal.writePostResponseDetail(
-      {
-        requestId: grid,
-        installationId: scenario.installationId,
-        period: "2026-07",
-        quotaWeight: 1,
-        totalTokens: 30,
-        totalCost: 0.005,
-        filteredContext: {
-          "visit.chief_complaint@v1": { complaint: "Headache for three days." },
-        },
-        composedPrompt: {
-          parts: [{ role: "user", content: "" }],
-          formatDirective: {},
-          samplingConstraints: {},
-          maxOutputTokens: 1,
-          stopConditions: [],
-          toolDeclarations: [],
-          stream: true,
-          deadline: null,
-          correlationIds: { request_reference: ref, trace_id: "s11-021-trace" },
-        },
-        attempts: [
-          {
-            attemptNo: 1,
-            provider: "fake",
-            model: "fake-v1",
-            outcome: "success",
-            latencyMs: 6,
-            tokensIn: 10,
-            tokensOut: 20,
-            cost: 0.005,
-            providerRequestId: "fake-req-001",
-            rawBody: { payload: { fake: true, outcome: "success" }, truncated: false },
-          },
-        ],
-        validatedResult: fakeSuccessResult(),
-        recordedAt: new Date().toISOString(),
-      },
-      { db: env.DB, r2: env.R2, ctx },
-    );
-    await Promise.all(pending);
-    await flushBackgroundWork(200);
-
-    const attempts = await getAttempts(grid);
-    expect(attempts).toHaveLength(1);
-    expect(attempts[0]).toMatchObject({
-      attempt_no: 1,
-      provider: "fake",
-      model: "fake-v1",
-      outcome: "success",
-    });
-    const usageEvents = await getUsageEvents(grid);
-    expect(usageEvents).toHaveLength(1);
-    expect(usageEvents[0]?.tokens).toBe(30);
-    expect(costOf(usageEvents[0], "cost")).toBeCloseTo(0.005, 5);
-    expect(await r2Exists(envelopeKey(grid))).toBe(true);
-    const row = await queryOne<Record<string, unknown>>(
-      "SELECT payload_pointer FROM ai_request WHERE request_id = ?",
-      [grid],
-    );
-    expect(row?.payload_pointer).toBe(envelopeKey(grid));
-    expect(await count("usage_event", "request_id = ?", [grid])).toBe(1);
+    expect(row?.state).toBe("settled");
+    expect(await count("usage_event", "request_id = ?", [requestId])).toBe(1);
   });
+
 });

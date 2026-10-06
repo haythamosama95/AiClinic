@@ -54,9 +54,13 @@ const EXPECTED_PLATFORM_TABLES = [
   "assertion_used",
   "capability_grant",
   "control_audit",
+  "coverage_event",
+  "coverage_mirror",
   "credit_price",
   "entitlement",
-  "grace_admission_queue",
+  "fallback_admission",
+  "feed_consumer",
+  "grant_ledger",
   "installation",
   "invoice",
   "issuer_key",
@@ -65,9 +69,13 @@ const EXPECTED_PLATFORM_TABLES = [
   "plan",
   "platform_alert",
   "platform_counter",
+  "plan_version",
   "routing_policy",
+  "service_key",
   "tenant_binding",
   "token_contract",
+  "transfer",
+  "transfer_step",
   "usage_event",
   "usage_rollup",
 ] as const;
@@ -245,7 +253,8 @@ describe("Stage 00 — auth, schema, cron, happy path (S00-019…S00-037)", () =
     const dropOrder = [
       "usage_event",
       "ai_attempt",
-      "grace_admission_queue",
+      "fallback_admission",
+  "feed_consumer",
       "control_audit",
       "platform_counter",
       "usage_rollup",
@@ -303,7 +312,7 @@ describe("Stage 00 — auth, schema, cron, happy path (S00-019…S00-037)", () =
     await expect(invokeCron("* * * * *")).resolves.toBeUndefined();
 
     expect(await count("platform_counter")).toBe(0);
-    expect(await count("grace_admission_queue")).toBe(0);
+    expect(await count("fallback_admission")).toBe(0);
     await assertEmptyAirport();
   });
 
@@ -378,7 +387,8 @@ describe("Stage 00 — auth, schema, cron, happy path (S00-019…S00-037)", () =
       "usage_rollup",
       "platform_counter",
       "control_audit",
-      "grace_admission_queue",
+      "fallback_admission",
+  "feed_consumer",
     ] as const) {
       expect(await count(table), `${table} must stay empty`).toBe(0);
     }

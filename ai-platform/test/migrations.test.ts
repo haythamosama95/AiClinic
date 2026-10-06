@@ -34,12 +34,15 @@ export const PLATFORM_ENTITIES = [
   "usage_rollup",
   "platform_counter",
   "control_audit",
-  "grace_admission_queue",
+  "fallback_admission",
+  "feed_consumer",
+  "grant_ledger",
   "service_key",
   "plan_version",
   "coverage_event",
-  "grant_ledger",
   "coverage_mirror",
+  "transfer",
+  "transfer_step",
 ] as const;
 
 export type PlatformEntity = (typeof PLATFORM_ENTITIES)[number];

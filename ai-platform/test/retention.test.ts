@@ -3,11 +3,12 @@ import { beforeAll, beforeEach, describe, expect, it } from "vitest";
 import migrationSql from "../migrations/20260731120000_platform_schema.sql?raw";
 import tokenContractMigrationSql from "../migrations/20260803120000_token_contract.sql?raw";
 import graceQueueMigrationSql from "../migrations/20260821120000_grace_admission_queue.sql?raw";
+import fallbackAdmissionFeedMigrationSql from "../migrations/20261006160000_fallback_admission_feed.sql?raw";
 import retentionIndexesSql from "../migrations/20260805120000_f3_retention_indexes.sql?raw";
 import issuerKeyTenantBindingMigrationSql from "../migrations/20261003130000_issuer_key_tenant_binding.sql?raw";
 import planVersionPaidGrantCoverageMigrationSql from "../migrations/20261003140000_plan_version_paid_grant_coverage.sql?raw";
 import usageTermMigrationSql from "../migrations/20261006120000_usage_term.sql?raw";
-import { applySqlStatements } from "../split-sql-statements";
+import { applySqlStatements } from "./split-sql-statements";
 import {
   EPHEMERAL_HORIZON_MS,
   admissionRPC,
@@ -112,6 +113,7 @@ beforeAll(async () => {
   await applyPlatformSchema(env.DB, migrationSql);
   await applyPlatformSchema(env.DB, tokenContractMigrationSql);
   await applyPlatformSchema(env.DB, graceQueueMigrationSql);
+  await applyPlatformSchema(env.DB, fallbackAdmissionFeedMigrationSql);
   await applyPlatformSchema(env.DB, retentionIndexesSql);
   await applyPlatformSchema(env.DB, issuerKeyTenantBindingMigrationSql);
   await applyPlatformSchema(env.DB, planVersionPaidGrantCoverageMigrationSql);

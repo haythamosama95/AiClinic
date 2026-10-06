@@ -6,7 +6,7 @@ import retentionIndexesSql from "../../../migrations/20260805120000_f3_retention
 import conversationIndexSql from "../../../migrations/20260805180000_h3_conversation_index.sql?raw";
 import statusMigrationSql from "../../../migrations/20260805190000_routing_policy_status.sql?raw";
 import killSwitchMigrationSql from "../../../migrations/20260807120000_kill_switch.sql?raw";
-import graceQueueMigrationSql from "../../../migrations/20260821120000_grace_admission_queue.sql?raw";
+import fallbackAdmissionFeedMigrationSql from "../../../migrations/20261006160000_fallback_admission_feed.sql?raw";
 import entitlementUniqueSql from "../../../migrations/20260821130000_entitlement_installation_unique.sql?raw";
 import planCatalogueSql from "../../../migrations/20260911120000_plan_catalogue.sql?raw";
 import quotaWeightMigrationSql from "../../../migrations/20260911180000_usage_rollup_quota_weight.sql?raw";
@@ -31,7 +31,7 @@ export const MIGRATION_SQL: readonly string[] = [
   conversationIndexSql,
   statusMigrationSql,
   killSwitchMigrationSql,
-  graceQueueMigrationSql,
+  fallbackAdmissionFeedMigrationSql,
   entitlementUniqueSql,
   planCatalogueSql,
   quotaWeightMigrationSql,
@@ -166,7 +166,8 @@ export async function resetPlatformState(): Promise<void> {
     db.prepare("DELETE FROM platform_alert"),
     db.prepare("DELETE FROM operator_credential"),
     db.prepare("DELETE FROM control_audit"),
-    db.prepare("DELETE FROM grace_admission_queue"),
+    db.prepare("DELETE FROM fallback_admission"),
+    db.prepare("DELETE FROM feed_consumer"),
     db.prepare("DELETE FROM platform_counter"),
     db.prepare("DELETE FROM usage_rollup"),
     db.prepare("DELETE FROM usage_event"),

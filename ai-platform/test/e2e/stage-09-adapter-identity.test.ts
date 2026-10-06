@@ -99,7 +99,7 @@ function assertAcceptedSse(result: InvokeResult): void {
 async function assertNoRequestWrites(): Promise<void> {
   expect(await count("ai_request")).toBe(0);
   expect(await count("usage_event")).toBe(0);
-  expect(await count("grace_admission_queue")).toBe(0);
+  expect(await count("fallback_admission")).toBe(0);
 }
 
 async function postInvoke(

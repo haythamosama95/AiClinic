@@ -939,6 +939,8 @@ describe("Stage 09 — admission, journal, compose (S09-066…S09-085)", () => {
         principal: admissionPrincipal(control),
         idempotencyKey: "grace-control",
         requestReference: "7K2Q-CTRL",
+        capabilityId: CAPABILITY_ID,
+        quotaWeight: 1,
         cache: isolateConfigCache,
         reader,
       },
@@ -948,11 +950,11 @@ describe("Stage 09 — admission, journal, compose (S09-066…S09-085)", () => {
     if (admitted.ok) {
       expect(admitted.outcome).toBe("grace_admitted");
     }
-    expect(await count("grace_admission_queue")).toBe(1);
+    expect(await count("fallback_admission")).toBe(1);
 
     const scenario = await newScenario();
     await newClinic(scenario);
-const entitled = await entitleInstallation(scenario, {
+    const entitled = await entitleInstallation(scenario, {
       ...DEFAULT_ENTITLE_PAYLOAD,
       request_quota: 0,
     });
@@ -962,23 +964,23 @@ const entitled = await entitleInstallation(scenario, {
         principal: admissionPrincipal(scenario),
         idempotencyKey: "grace-exhausted",
         requestReference: "7K2Q-EXH0",
+        capabilityId: CAPABILITY_ID,
+        quotaWeight: 1,
         cache: isolateConfigCache,
         reader,
       },
       { DB: env.DB, DO: throwingDo },
     );
 
-    expect(exhausted).toEqual({
-      ok: false,
-      code: "quota_exhausted",
-      periodReset: PERIOD_RESET,
-    });
-    const exhaustedGrace = await queryOne(
-      `SELECT grace_request_id FROM grace_admission_queue
-       WHERE installation_id = ?`,
-      [scenario.installationId],
-    );
-    expect(exhaustedGrace).toBeNull();
+    expect(exhausted.ok).toBe(true);
+    if (exhausted.ok) {
+      expect(exhausted.outcome).toBe("grace_admitted");
+    }
+    expect(
+      await count("fallback_admission", "installation_id = ?", [
+        scenario.installationId,
+      ]),
+    ).toBe(1);
     expect(await count("ai_request")).toBe(0);
   });
 
@@ -1237,7 +1239,7 @@ const entitled = await entitleInstallation(scenario, {
       expect(row.payload_pointer).toBeNull();
       expect(row.routing_decision).toBeNull();
     }
-    expect(await count("grace_admission_queue")).toBe(0);
+    expect(await count("fallback_admission")).toBe(0);
     // Guard itself writes no usage_event; FakeAdapter settle (Stage 11) may.
     if (row?.state === "Accepted") {
       expect(await getUsageEvents(String(row.request_id))).toEqual([]);

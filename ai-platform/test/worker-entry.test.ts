@@ -17,9 +17,12 @@ const mockRunRollupAndReconciliation = vi.fn();
 const mockAdmissionRPC = vi.fn();
 const mockCreditRPC = vi.fn();
 const mockDispatchControlRequest = vi.fn();
+const mockRunFiveMinuteCron = vi.fn();
 const mockLiveHttpStatusForCode = vi.fn(
   (code: string) => (code === "unauthenticated" ? 401 : 403),
 );
+
+const PLATFORM_DO_CONTRACT_VERSION = 1;
 
 const runtimeEnv = {
   DB: { kind: "d1" },
@@ -99,10 +102,23 @@ vi.mock("../src/rollup", () => ({
     mockRunRollupAndReconciliation(...args),
 }));
 
-vi.mock("../src/quota-do/index", () => ({
-  admissionRPC: (...args: unknown[]) => mockAdmissionRPC(...args),
-  creditRPC: (...args: unknown[]) => mockCreditRPC(...args),
-  inspectRPC: vi.fn(),
+vi.mock("../src/quota-do/index", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("../src/quota-do/index")>();
+  return {
+    ...actual,
+    admissionRPC: (...args: unknown[]) => mockAdmissionRPC(...args),
+    creditRPC: (...args: unknown[]) => mockCreditRPC(...args),
+    inspectRPC: vi.fn(),
+  };
+});
+
+vi.mock("../src/alert/index", () => ({
+  runFiveMinuteCron: (...args: unknown[]) => mockRunFiveMinuteCron(...args),
+  raiseAl11GrantFromOutbox: vi.fn(),
+  raiseAl12GrantFromOutbox: vi.fn(),
+  raiseAl17FromOutbox: vi.fn(),
+  raiseAl19FromOutbox: vi.fn(),
+  sendDailyAl18ForHeldBindings: vi.fn(),
 }));
 
 type WorkerModule = typeof import("../src/worker");
@@ -152,6 +168,7 @@ beforeEach(async () => {
   mockAdmissionRPC.mockReset();
   mockCreditRPC.mockReset();
   mockDispatchControlRequest.mockReset();
+  mockRunFiveMinuteCron.mockReset();
   mockLiveHttpStatusForCode.mockClear();
 
   mockDispatchControlRequest.mockResolvedValue(
@@ -169,6 +186,7 @@ beforeEach(async () => {
       window: { start: "2026-01-01", end: "2026-01-02" },
     },
   });
+  mockRunFiveMinuteCron.mockResolvedValue(undefined);
   mockHandleAdapterRequest.mockResolvedValue(
     new Response("event source required", { status: 503 }),
   );
@@ -392,7 +410,7 @@ describe("scheduled() cron dispatch", () => {
     return calls;
   }
 
-  it("runs flush then reconcile before retention on 0 3 * * *", async () => {
+  it("runs flush then retention on 0 3 * * * without reconcile", async () => {
     const calls = callOrder();
     await workerModule.default.scheduled(
       { cron: "0 3 * * *", scheduledTime: Date.now(), noRetry() {} },
@@ -400,7 +418,8 @@ describe("scheduled() cron dispatch", () => {
       {} as ExecutionContext,
     );
 
-    expect(calls).toEqual(["flush", "reconcile", "retention"]);
+    expect(calls).toEqual(["flush", "retention"]);
+    expect(mockReconcileGraceUsage).not.toHaveBeenCalled();
     expect(mockRunRollupAndReconciliation).not.toHaveBeenCalled();
     expect(mockRunRetentionPurge).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -410,7 +429,7 @@ describe("scheduled() cron dispatch", () => {
     );
   });
 
-  it("runs flush then reconcile before rollup on 0 4 * * *", async () => {
+  it("runs flush then rollup on 0 4 * * * without reconcile", async () => {
     const calls = callOrder();
     await workerModule.default.scheduled(
       { cron: "0 4 * * *", scheduledTime: Date.now(), noRetry() {} },
@@ -418,12 +437,13 @@ describe("scheduled() cron dispatch", () => {
       {} as ExecutionContext,
     );
 
-    expect(calls).toEqual(["flush", "reconcile", "rollup"]);
+    expect(calls).toEqual(["flush", "rollup"]);
+    expect(mockReconcileGraceUsage).not.toHaveBeenCalled();
     expect(mockRunRetentionPurge).not.toHaveBeenCalled();
     expect(mockRunRollupAndReconciliation).toHaveBeenCalled();
   });
 
-  it("always flushes and reconciles even for unrecognized crons", async () => {
+  it("runs only flush for unrecognized crons", async () => {
     const calls = callOrder();
     await workerModule.default.scheduled(
       { cron: "0 5 * * *", scheduledTime: Date.now(), noRetry() {} },
@@ -431,14 +451,52 @@ describe("scheduled() cron dispatch", () => {
       {} as ExecutionContext,
     );
 
+    expect(calls).toEqual(["flush"]);
+    expect(mockReconcileGraceUsage).not.toHaveBeenCalled();
+    expect(mockRunRetentionPurge).not.toHaveBeenCalled();
+    expect(mockRunRollupAndReconciliation).not.toHaveBeenCalled();
+    expect(mockRunFiveMinuteCron).not.toHaveBeenCalled();
+  });
+
+  it("runs flush then reconcile and five-minute jobs on */5 * * * *", async () => {
+    const calls = callOrder();
+    await workerModule.default.scheduled(
+      { cron: "*/5 * * * *", scheduledTime: Date.now(), noRetry() {} },
+      runtimeEnv as never,
+      {} as ExecutionContext,
+    );
+
     expect(calls).toEqual(["flush", "reconcile"]);
+    expect(mockReconcileGraceUsage).toHaveBeenCalledWith(
+      expect.objectContaining({
+        DO: runtimeEnv.DO,
+        DB: runtimeEnv.DB,
+      }),
+      undefined,
+      expect.anything(),
+    );
+    expect(mockRunFiveMinuteCron).toHaveBeenCalledWith(runtimeEnv);
     expect(mockRunRetentionPurge).not.toHaveBeenCalled();
     expect(mockRunRollupAndReconciliation).not.toHaveBeenCalled();
   });
 });
 
+describe("GET /v1/usage route removal (E2E-P3.9-08)", () => {
+  it("returns 404 for GET /v1/usage", async () => {
+    const response = await workerModule.default.fetch(
+      new Request("https://ai-gateway.test/v1/usage", { method: "GET" }),
+      runtimeEnv as never,
+      { waitUntil: vi.fn() } as never,
+    );
+
+    expect(response.status).toBe(404);
+    expect(await response.text()).toBe("Not Found");
+  });
+});
+
 describe("GatewayObject.fetch negatives and §3.1.7", () => {
   const validAdmission = {
+    contract_version: PLATFORM_DO_CONTRACT_VERSION,
     kind: "admission",
     jti: "jti-1",
     installationId: "inst-1",
@@ -477,7 +535,10 @@ describe("GatewayObject.fetch negatives and §3.1.7", () => {
     const response = await rpc(instance, {
       method: "POST",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({ kind: "not-a-real-kind" }),
+      body: JSON.stringify({
+        contract_version: PLATFORM_DO_CONTRACT_VERSION,
+        kind: "not-a-real-kind",
+      }),
     });
     expect(response.status).toBe(400);
     expect(await response.json()).toEqual({ error: "unknown_kind" });
@@ -488,7 +549,11 @@ describe("GatewayObject.fetch negatives and §3.1.7", () => {
     const response = await rpc(instance, {
       method: "POST",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({ kind: "admission", jti: "only-jti" }),
+      body: JSON.stringify({
+        contract_version: PLATFORM_DO_CONTRACT_VERSION,
+        kind: "admission",
+        jti: "only-jti",
+      }),
     });
     expect(response.status).toBe(400);
     expect(await response.json()).toEqual({ error: "bad_request" });

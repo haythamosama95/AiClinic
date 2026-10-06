@@ -2,6 +2,7 @@ import { env } from "cloudflare:test";
 import { beforeAll, beforeEach, describe, expect, it } from "vitest";
 import migrationSql from "../migrations/20260731120000_platform_schema.sql?raw";
 import graceQueueMigrationSql from "../migrations/20260821120000_grace_admission_queue.sql?raw";
+import fallbackAdmissionFeedMigrationSql from "../migrations/20261006160000_fallback_admission_feed.sql?raw";
 import { assertControlAudit } from "./helpers/control-audit-assert";
 
 declare module "cloudflare:test" {
@@ -158,7 +159,7 @@ async function clearTables(): Promise<void> {
     env.DB.prepare("DELETE FROM ai_request"),
     env.DB.prepare("DELETE FROM usage_rollup"),
     env.DB.prepare("DELETE FROM platform_counter"),
-    env.DB.prepare("DELETE FROM grace_admission_queue"),
+    env.DB.prepare("DELETE FROM fallback_admission"),
     env.DB.prepare("DELETE FROM installation"),
   ]);
 }
@@ -166,6 +167,7 @@ async function clearTables(): Promise<void> {
 beforeAll(async () => {
   await applySql(env.DB, migrationSql);
   await applySql(env.DB, graceQueueMigrationSql);
+  await applySql(env.DB, fallbackAdmissionFeedMigrationSql);
 });
 
 beforeEach(async () => {
