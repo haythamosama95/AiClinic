@@ -10,11 +10,13 @@ import refundChildFixture from "../fixtures/paymob/refund-child.json";
 import refundParentFixture from "../fixtures/paymob/refund-parent.json";
 import successFixture from "../fixtures/paymob/success.json";
 import checkoutMigrationSql from "../../migrations/0002_checkout.sql?raw";
+import notifyWorkMigrationSql from "../../migrations/0003_notify_work.sql?raw";
 import {
   applySql,
   billingFetch,
   resetHarnessState,
   r2GetText,
+  runScheduled,
   scriptPaymobInquiry,
   setClock,
   setD1BatchThrows,
@@ -155,6 +157,83 @@ async function ensureCheckoutMigration(): Promise<void> {
   } catch {
     // Migration not present yet.
   }
+}
+
+async function ensureNotifyWorkMigration(): Promise<void> {
+  try {
+    await applySql(notifyWorkMigrationSql);
+  } catch {
+    // Migration not present yet.
+  }
+}
+
+type ConfirmWorkRow = {
+  state: string;
+  attempts: number;
+  next_attempt_at: string | null;
+  lease_until: string | null;
+  opened_at: string;
+  last_error: string | null;
+  dedupe_key: string;
+};
+
+async function confirmWorkForCheckout(
+  checkoutId: string,
+): Promise<ConfirmWorkRow | null> {
+  try {
+    return await env.DB.prepare(
+      `SELECT state, attempts, next_attempt_at, lease_until, opened_at, last_error, dedupe_key
+       FROM work
+       WHERE kind = 'confirm'
+         AND (subject_id = ? OR dedupe_key = ?)
+       ORDER BY opened_at
+       LIMIT 1`,
+    )
+      .bind(checkoutId, `confirm-schedule:${checkoutId}`)
+      .first<ConfirmWorkRow>();
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    if (/no such table/i.test(message)) {
+      return null;
+    }
+    throw error;
+  }
+}
+
+async function scheduledConfirmCount(checkoutId: string): Promise<number> {
+  try {
+    const row = await env.DB.prepare(
+      `SELECT COUNT(*) AS n
+       FROM work
+       WHERE kind = 'confirm' AND dedupe_key = ?`,
+    )
+      .bind(`confirm-schedule:${checkoutId}`)
+      .first<{ n: number }>();
+    return row?.n ?? 0;
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    if (/no such table/i.test(message)) {
+      return 0;
+    }
+    throw error;
+  }
+}
+
+function responseCallbackQuery(obj: PaymobCallbackObj): URLSearchParams {
+  const params = new URLSearchParams();
+  for (const field of PAYMOB_HMAC_FIELDS) {
+    params.set(field, hmacFieldValue(obj, field));
+  }
+  return params;
+}
+
+async function getPaymobResponseCallback(
+  fixture: PaymobCallbackFixture,
+): Promise<Response> {
+  const params = responseCallbackQuery(fixture.obj);
+  const hmac = await signPaymobObj(env.PAYMOB_HMAC_SECRET, fixture.obj);
+  params.set("hmac", hmac);
+  return billingFetch(`/notify/paymob?${params.toString()}`);
 }
 
 async function seedOpenCheckout(
@@ -378,6 +457,7 @@ async function postBadHmacFixture(): Promise<Response> {
 beforeEach(async () => {
   await resetHarnessState();
   await ensureCheckoutMigration();
+  await ensureNotifyWorkMigration();
   await setClock("2026-01-15T09:30:00.000Z");
   await scriptPaymobInquiry("bound_success");
 });
@@ -626,5 +706,112 @@ describe("P4.3 notify intake", () => {
     expect(secondPayment?.disposition).toBe("grant");
     expect(await alertCountByCode("AL-09")).toBe(1);
     expect(await openGrantWorkCount()).toBe(2);
+  });
+
+  it("E2E-P4.3-08 inquiry timeout backs off and an old open row raises AL-01", async () => {
+    const checkoutId = "01JNOTIFYCHECKOUT000008A";
+    await seedOpenCheckout(checkoutId);
+    await setClock("2026-01-15T13:00:00.000Z");
+    await scriptPaymobInquiry("timeout");
+
+    const intake = await postPaymobProcessedCallback(
+      successFixture as PaymobCallbackFixture,
+    );
+    expect(intake.status).toBe(200);
+
+    const afterTimeout = await confirmWorkForCheckout(checkoutId);
+    expect(afterTimeout?.state).toBe("open");
+    expect(afterTimeout?.attempts).toBeGreaterThanOrEqual(1);
+    expect(await tableCount("payment")).toBe(0);
+
+    await setClock("2026-01-15T13:01:00.000Z");
+    await scriptPaymobInquiry("bound_success");
+    await runScheduled("* * * * *");
+    expect(await paymentReference()).toMatch(/^PAY-/u);
+    expect((await confirmWorkForCheckout(checkoutId))?.state).toBe("done");
+
+    const staleCheckout = "01JNOTIFYCHECKOUT000008B";
+    await seedOpenCheckout(staleCheckout);
+    await setClock("2026-01-15T14:00:00.000Z");
+    await scriptPaymobInquiry("rate_limit");
+    const staleIntake = await postPaymobProcessedCallback(
+      successFixtureWithTxnId(99008),
+      { connectingIp: "203.0.113.16" },
+    );
+    expect(staleIntake.status).toBe(200);
+    expect((await confirmWorkForCheckout(staleCheckout))?.state).toBe("open");
+
+    await setClock("2026-01-15T14:06:00.000Z");
+    await runScheduled("* * * * *");
+    expect(await alertCountByCode("AL-01")).toBeGreaterThanOrEqual(1);
+  });
+
+  it("E2E-P4.3-10 failed confirm batch retries and one lease wins", async () => {
+    const checkoutId = "01JNOTIFYCHECKOUT000010A";
+    await seedOpenCheckout(checkoutId);
+    await scriptPaymobInquiry("pending");
+    const intake = await postPaymobProcessedCallback(
+      successFixture as PaymobCallbackFixture,
+    );
+    expect(intake.status).toBe(200);
+    expect(await tableCount("payment")).toBe(0);
+    expect((await confirmWorkForCheckout(checkoutId))?.state).toBe("open");
+
+    await scriptPaymobInquiry("bound_success");
+    setD1BatchThrows(true);
+    await runScheduled("* * * * *");
+    expect(await tableCount("payment")).toBe(0);
+    const afterBatchFailure = await confirmWorkForCheckout(checkoutId);
+    expect(afterBatchFailure?.state).toBe("open");
+    expect(afterBatchFailure?.last_error).toBe("batch_failed");
+
+    await setClock("2026-01-15T09:32:00.000Z");
+    await runScheduled("* * * * *");
+    expect(await tableCount("payment")).toBe(1);
+
+    const leaseCheckout = "01JNOTIFYCHECKOUT000010B";
+    await seedOpenCheckout(leaseCheckout);
+    await scriptPaymobInquiry("pending");
+    await postPaymobProcessedCallback(successFixtureWithTxnId(99010), {
+      connectingIp: "203.0.113.17",
+    });
+    await setClock("2026-01-15T09:33:00.000Z");
+    await scriptPaymobInquiry("bound_success");
+    await Promise.all([
+      runScheduled("* * * * *"),
+      runScheduled("* * * * *"),
+    ]);
+    const leasePaymentCount = await env.DB.prepare(
+      `SELECT COUNT(*) AS n FROM payment WHERE checkout_id = ?`,
+    )
+      .bind(leaseCheckout)
+      .first<{ n: number }>();
+    expect(leasePaymentCount?.n).toBe(1);
+  });
+
+  it("E2E-P4.3-11 return v=99 is a neutral page and schedules inquiry", async () => {
+    const checkoutId = "01JNOTIFYCHECKOUT000011";
+    await seedOpenCheckout(checkoutId);
+
+    const response = await billingFetch("/return/paymob?v=99");
+    expect(response.status).toBe(200);
+    const html = (await response.text()).toLowerCase();
+    expect(html).not.toContain("payment successful");
+    expect(html).not.toContain("payment failed");
+    expect(html).not.toContain("checkout paid");
+    expect(await tableCount("payment")).toBe(0);
+    expect(await scheduledConfirmCount(checkoutId)).toBe(1);
+  });
+
+  it("E2E-P4.3-12 authentic GET notify schedules inquiry only", async () => {
+    const checkoutId = "01JNOTIFYCHECKOUT000012";
+    await seedOpenCheckout(checkoutId);
+
+    const response = await getPaymobResponseCallback(
+      successFixture as PaymobCallbackFixture,
+    );
+    expect(response.status).toBe(200);
+    expect(await tableCount("payment")).toBe(0);
+    expect(await scheduledConfirmCount(checkoutId)).toBe(1);
   });
 });
