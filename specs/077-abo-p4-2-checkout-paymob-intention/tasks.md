@@ -130,13 +130,13 @@ cd abo && npx vitest run --config vitest.platform-throw.config.ts
 
 **Independent Test**: E2E-P4.2-01, E2E-P4.2-02, E2E-P4.2-03, E2E-P4.2-04, E2E-P4.2-05, and E2E-P4.2-06 in harnesses H-XW and H-PAY.
 
-- [ ] T019 [US1] Add `abo/src/provider/port.ts` — produces the provider port, FR-005, E2E-P4.2-05. Depends on T018. Declares `capabilities`, `createCheckout`, and `cancelCheckout`. Method shapes are those in `contracts/provider-port.md`. This file imports neither `client.ts` nor `adapter.ts`.
+- [X] T019 [US1] Add `abo/src/provider/port.ts` — produces the provider port, FR-005, E2E-P4.2-05. Depends on T018. Declares `capabilities`, `createCheckout`, and `cancelCheckout`. Method shapes are those in `contracts/provider-port.md`. This file imports neither `client.ts` nor `adapter.ts`.
 
 ### 4.3 User Story 1 - Open a checkout and a Paymob intention (Priority: P1) — Paymob HTTP client
 
 **Independent Test**: E2E-P4.2-01, E2E-P4.2-02, E2E-P4.2-03, E2E-P4.2-04, E2E-P4.2-05, and E2E-P4.2-06 in harnesses H-XW and H-PAY.
 
-- [ ] T020 [US1] Add `abo/src/provider/paymob/client.ts` — produces the only provider HTTP module, FR-001, FR-009, E2E-P4.2-01. Depends on T018. `POST /v1/intention/` to `PAYMOB_BASE_URL` with `Authorization: Token <PAYMOB_SECRET_KEY>`. Body fields are those in `contracts/provider-port.md`, including amount in piastres, currency EGP, the card integration id, one item, `billing_data` from the payer, `special_reference`, `expiration` 1800, the notification URL, and `return_url`. When `TEST_CLOCK` is `"1"`, abort that call after 500 ms. This file is the only module that performs provider HTTP.
+- [X] T020 [US1] Add `abo/src/provider/paymob/client.ts` — produces the only provider HTTP module, FR-001, FR-009, E2E-P4.2-01. Depends on T018. `POST /v1/intention/` to `PAYMOB_BASE_URL` with `Authorization: Token <PAYMOB_SECRET_KEY>`. Body fields are those in `contracts/provider-port.md`, including amount in piastres, currency EGP, the card integration id, one item, `billing_data` from the payer, `special_reference`, `expiration` 1800, the notification URL, and `return_url`. When `TEST_CLOCK` is `"1"`, abort that call after 500 ms. This file is the only module that performs provider HTTP.
 
 ### 4.4 User Story 1 - Open a checkout and a Paymob intention (Priority: P1) — Paymob adapter
 
