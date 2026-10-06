@@ -51,3 +51,13 @@ Assumptions chosen by the resolver. Each one is written into the design docs nam
 **Why:** Entry 2 already takes the snapshot from live `getCoverage` and then from this tenant's `coverage_view.snapshot`. A missing view row is not an unknown id, so `not_found` does not apply, and `provider_unavailable` applies only when the provider refuses or times out while creating a checkout. The row already returns a success object whose `snapshot` member can be null, and `subscription_ref` is still computed with no lookup. A null snapshot does not satisfy `snapshot.held_count` > 0, so `terms_held` stays out. No new error code.
 
 **Amended:** `docs/architecture/ai-billing-orchestration/04-abo-contracts.md` (§2.2 row `GET /v1/subscription`).
+
+## 6. Paid operation-object approval validation
+
+**Question:** Paid grant envelopes use escalation-1 operation-object `evidence.approvals` (`{op, params, actor_email, issued_at, nonce, contract_version}`) in `abo/src/work/grant.ts`, but frozen platform `grant` calls `validateGrantEnvelope` from `vendor-contracts`, which only accepts `{credential_id, assertion}` (`validateApproval` in `packages/vendor-contracts/src/grant-envelope.ts`; vector in `packages/vendor-contracts/vectors/grant-envelope.json`). Platform returns `rejected` / `unit_not_allowed`. Should `vendor-contracts` `validateApproval` accept paid operation objects per escalation 1, or should `grant.ts` emit `credential_id`/`assertion` approvals like the vector?
+
+**Assumption:** `validateApproval` accepts the paid operation-object element from entry 1 and counts it toward the minimum of one, and does not require WebAuthn `credential_id`/`assertion` for that paid element. Complimentary assertions keep their existing checks. The frozen grant-envelope vector keeps its `{credential_id, assertion}` element.
+
+**Why:** Entry 1 already binds the paid element to the §1.5 operation object `{op, params, actor_email, issued_at, nonce, contract_version}` with `op` `grant`, and the amended 04 §1.4 evidence row says the platform counts that element toward the minimum of one and does not apply the §1.5 WebAuthn checks. On the paid path the platform maps a failed `validateGrantEnvelope` to `rejected` / `unit_not_allowed`, so accepting that element in `validateApproval` is what lets the entry-1 envelope through. `grant.ts` stays on that object. Complimentary and transfer approvals still require `credential_id` and `assertion`. The vector's paid envelope still uses that assertion shape, which remains valid, so its `hash_hex` and the receipt and result-envelope `envelope_sha256` values stay the same.
+
+**Amended:** `packages/vendor-contracts/src/grant-envelope.ts` (`validateApproval`).
