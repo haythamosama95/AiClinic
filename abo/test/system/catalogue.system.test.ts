@@ -5,13 +5,23 @@
 import { env } from "cloudflare:test";
 import { beforeEach, describe, expect, it } from "vitest";
 import {
+  applySql,
   billingFetch,
+  clearCapturedEmails,
+  clearCapturedHeartbeatFetches,
+  getCapturedEmails,
+  getCapturedHeartbeatFetches,
   mintAi,
   mintBilling,
   newIssuer,
   opsFetch,
   pinIssuer,
   resetHarnessState,
+  r2GetText,
+  runScheduled,
+  setClock,
+  setLockRulesBody,
+  setSendEmailThrows,
   tableCount,
 } from "./harness";
 
@@ -110,6 +120,91 @@ async function maxBillingContactVersion(orgId: string): Promise<number | null> {
     }
     throw error;
   }
+}
+
+type AppendModule = {
+  appendOffer?: (row: {
+    offer_id: string;
+    code: string;
+    contract_version: number;
+  }) => Promise<void>;
+};
+
+function addHours(isoUtc: string, hours: number): string {
+  return new Date(Date.parse(isoUtc) + hours * 3_600_000).toISOString();
+}
+
+async function ensureRecordsMigration(): Promise<void> {
+  try {
+    const migrationModule = await dynamicImport(
+      "../../migrations/0001_records.sql?raw",
+    );
+    await applySql(String((migrationModule as { default: string }).default));
+  } catch {
+    // Migration not present yet.
+  }
+}
+
+async function appendMinimalOffer(): Promise<string> {
+  let appendModule: AppendModule | null = null;
+  try {
+    appendModule = (await dynamicImport(
+      "../../src/records/append",
+    )) as AppendModule;
+  } catch {
+    appendModule = null;
+  }
+  expect(appendModule?.appendOffer).toBeTypeOf("function");
+  const offerId = "01JTEST00000000000000000001";
+  await appendModule.appendOffer!({
+    offer_id: offerId,
+    code: "harness-minimal-offer",
+    contract_version: 1,
+  });
+  return offerId;
+}
+
+async function expectD1Abort(statement: string, ...binds: unknown[]): Promise<void> {
+  await expect(
+    env.DB.prepare(statement).bind(...binds).run(),
+  ).rejects.toThrow(/append_only/i);
+}
+
+async function latestFactSeq(): Promise<number> {
+  const row = await env.DB.prepare(
+    `SELECT fact_seq FROM fact_log ORDER BY fact_seq DESC LIMIT 1`,
+  ).first<{ fact_seq: number }>();
+  expect(row?.fact_seq).toBeTypeOf("number");
+  return row!.fact_seq;
+}
+
+async function listLedgerExports(): Promise<
+  Array<{ factSeq: number; text: string }>
+> {
+  const listed = await env.R2.list({ prefix: "ledger/" });
+  const exports: Array<{ factSeq: number; text: string }> = [];
+  for (const object of listed.objects) {
+    const match = /^ledger\/(\d+)\.ndjson$/u.exec(object.key);
+    if (!match) {
+      continue;
+    }
+    const text = await r2GetText(object.key);
+    exports.push({
+      factSeq: Number.parseInt(match[1]!, 10),
+      text: text ?? "",
+    });
+  }
+  exports.sort((a, b) => a.factSeq - b.factSeq);
+  return exports;
+}
+
+function emailsWithAl16(): Array<{
+  from: string;
+  to: string;
+  subject: string;
+  text: string;
+}> {
+  return getCapturedEmails().filter((message) => message.text.includes("AL-16"));
 }
 
 async function billingContactCount(orgId: string): Promise<number> {
@@ -445,5 +540,95 @@ describe("catalogue", () => {
     expect(getAJson.phone).toBe("+201001111111");
     expect(await billingContactCount(orgA)).toBe(1);
     expect(await billingContactCount(orgB)).toBe(1);
+  });
+
+  it("E2E-P4.1-07 append-only rejects update and delete and the minute cron exports facts", async () => {
+    await ensureRecordsMigration();
+    const offerId = await appendMinimalOffer();
+
+    await expectD1Abort(
+      `UPDATE offer SET code = ? WHERE offer_id = ?`,
+      "mutated",
+      offerId,
+    );
+    await expectD1Abort(`DELETE FROM offer WHERE offer_id = ?`, offerId);
+
+    expect(await tableCount("fact_log")).toBe(1);
+
+    await runScheduled("* * * * *");
+
+    const ledgerExports = await listLedgerExports();
+    expect(ledgerExports.length).toBeGreaterThan(0);
+    for (const exportRow of ledgerExports) {
+      expect(exportRow.text.split("\n").filter((line) => line.length > 0)).toHaveLength(
+        1,
+      );
+      expect(exportRow.text).not.toMatch(/"name"/u);
+      expect(exportRow.text).not.toMatch(/"email"/u);
+      expect(exportRow.text).not.toMatch(/"phone"/u);
+    }
+    for (let index = 1; index < ledgerExports.length; index += 1) {
+      expect(ledgerExports[index]!.factSeq).toBeGreaterThan(
+        ledgerExports[index - 1]!.factSeq,
+      );
+    }
+  });
+
+  it("E2E-P4.1-08 export lag raises AL-16 once then daily and a failed send is retried", async () => {
+    await ensureRecordsMigration();
+    const factCreatedAt = "2026-06-01T10:00:00.000Z";
+    await setClock(factCreatedAt);
+    await appendMinimalOffer();
+    const factSeq = await latestFactSeq();
+
+    clearCapturedEmails();
+    await setClock(addHours(factCreatedAt, 2));
+    await runScheduled("* * * * *");
+    expect(emailsWithAl16()).toHaveLength(1);
+    expect(emailsWithAl16()[0]!.text).toContain("AL-16");
+    expect(emailsWithAl16()[0]!.text).toContain(String(factSeq));
+
+    const afterFirst = emailsWithAl16().length;
+    await setClock(addHours(addHours(factCreatedAt, 2), 24));
+    await runScheduled("* * * * *");
+    expect(emailsWithAl16().length).toBe(afterFirst + 1);
+
+    clearCapturedEmails();
+    const retryCreatedAt = "2026-07-01T08:00:00.000Z";
+    await setClock(retryCreatedAt);
+    await appendMinimalOffer();
+    const retryFactSeq = await latestFactSeq();
+    await setClock(addHours(retryCreatedAt, 2));
+    setSendEmailThrows(true);
+    await runScheduled("* * * * *");
+    expect(emailsWithAl16()).toHaveLength(0);
+    setSendEmailThrows(false);
+    await runScheduled("* * * * *");
+    expect(emailsWithAl16()).toHaveLength(1);
+    expect(emailsWithAl16()[0]!.text).toContain(String(retryFactSeq));
+
+    clearCapturedEmails();
+    await runScheduled("0 6 * * *");
+    expect(emailsWithAl16().some((message) => message.text.includes("r2-lock"))).toBe(
+      false,
+    );
+
+    clearCapturedEmails();
+    setLockRulesBody({ success: true, result: { rules: [] } });
+    await runScheduled("0 6 * * *");
+    expect(emailsWithAl16()).toHaveLength(1);
+    expect(emailsWithAl16()[0]!.text).toContain("AL-16");
+    expect(emailsWithAl16()[0]!.text).toContain("r2-lock");
+
+    clearCapturedEmails();
+    setLockRulesBody({ success: false, result: { rules: [] } });
+    await runScheduled("0 6 * * *");
+    expect(emailsWithAl16()).toHaveLength(0);
+  });
+
+  it("E2E-P4.1-10 minute cron pings the heartbeat URL", async () => {
+    clearCapturedHeartbeatFetches();
+    await runScheduled("* * * * *");
+    expect(getCapturedHeartbeatFetches()).toContain(env.HEARTBEAT_URL);
   });
 });
