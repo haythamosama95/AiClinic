@@ -294,26 +294,30 @@ async function resolveInstallationId(
   ctx: VerifyContext,
   orgId: string,
 ): Promise<string | VerifyResult> {
-  try {
-    const binding = await loadConfigAt(ctx, "tenant_bindings", orgId);
-    if (!isString(binding.installation_id)) {
-      return rejectUnauthenticated();
+  if (ctx.db !== undefined) {
+    const liveBinding = await readLiveBindingFromD1(ctx.db, orgId);
+    if (liveBinding !== null && isString(liveBinding.installation_id)) {
+      ctx.cache.remember(
+        "tenant_bindings",
+        orgId,
+        liveBinding,
+        ctx.nowMs ?? ctx.now * 1000,
+      );
+      return liveBinding.installation_id;
     }
-    return binding.installation_id;
-  } catch (error) {
-    if (!(error instanceof ConfigCacheMissError)) {
-      throw error;
+  } else {
+    try {
+      const binding = await loadConfigAt(ctx, "tenant_bindings", orgId);
+      if (!isString(binding.installation_id)) {
+        return rejectUnauthenticated();
+      }
+      return binding.installation_id;
+    } catch (error) {
+      if (!(error instanceof ConfigCacheMissError)) {
+        throw error;
+      }
     }
-  }
-
-  if (ctx.db === undefined) {
     return rejectUnauthenticated();
-  }
-
-  const liveBinding = await readLiveBindingFromD1(ctx.db, orgId);
-  if (liveBinding !== null && isString(liveBinding.installation_id)) {
-    ctx.cache.remember("tenant_bindings", orgId, liveBinding, ctx.now * 1000);
-    return liveBinding.installation_id;
   }
 
   const recentCreations = await countEpochOneBindingsLast24Hours(ctx.db, ctx.now);

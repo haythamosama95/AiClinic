@@ -2773,6 +2773,8 @@ type TransferPackageTerm = {
   state: string;
   plan_snapshot: unknown;
   allowance: number | null;
+  /** Full plan allowance before transfer adjustments (active/grace). */
+  plan_allowance?: number | null;
   duration_unit: string | null;
   duration_count: number | null;
   grace_days: number | null;
@@ -2781,6 +2783,8 @@ type TransferPackageTerm = {
   starts_at: string | null;
   ends_at: string | null;
   grace_ends_at: string | null;
+  hot_grace_base_used?: number;
+  hot_used?: number;
 };
 
 function graceAllowanceForPackage(
@@ -2790,13 +2794,9 @@ function graceAllowanceForPackage(
   if (term.allowance === null) {
     return null;
   }
-  const graceCap =
-    term.grace_cap !== null ? Number.parseInt(term.grace_cap, 10) : term.allowance;
-  const capped = Math.min(
-    term.allowance - hot.grace_base_used,
-    Number.isNaN(graceCap) ? term.allowance : graceCap,
-  );
-  return capped - (hot.used - hot.grace_base_used);
+  const graceBudget = computeGraceAllowance(term, hot.grace_base_used);
+  const graceUsed = hot.used - hot.grace_base_used;
+  return Math.max(0, graceBudget - graceUsed);
 }
 
 function buildTransferPackageTerm(
@@ -2804,6 +2804,7 @@ function buildTransferPackageTerm(
   hot: HotRow,
 ): TransferPackageTerm {
   const planSnapshot = JSON.parse(term.plan_snapshot) as unknown;
+  const planAllowance = term.allowance;
   let allowance = term.allowance;
   if (term.state === "active" && allowance !== null) {
     allowance = allowance - hot.used;
@@ -2816,6 +2817,12 @@ function buildTransferPackageTerm(
     state: term.state,
     plan_snapshot: planSnapshot,
     allowance,
+    ...(term.state === "active" || term.state === "grace"
+      ? { plan_allowance: planAllowance }
+      : {}),
+    ...(term.state === "grace"
+      ? { hot_grace_base_used: hot.grace_base_used, hot_used: hot.used }
+      : {}),
     duration_unit: term.duration_unit,
     duration_count: term.duration_count,
     grace_days: term.grace_days,
@@ -3038,6 +3045,8 @@ export async function transferInRPC(
 
     const createdTermIds: string[] = [];
     let activeTermId: string | null = null;
+    let hotUsed = 0;
+    let hotGraceBaseUsed = 0;
 
     for (let index = 0; index < request.package.length; index += 1) {
       const pkg = request.package[index]!;
@@ -3048,6 +3057,10 @@ export async function transferInRPC(
         pkg.grace_cap === null || pkg.grace_cap === undefined
           ? "proportional"
           : String(pkg.grace_cap);
+      const storedAllowance =
+        pkg.plan_allowance !== undefined && pkg.plan_allowance !== null
+          ? pkg.plan_allowance
+          : pkg.allowance;
 
       sqlExec(
         storage,
@@ -3058,7 +3071,7 @@ export async function transferInRPC(
         ) VALUES (
           ${sqlString(termId)}, ${sqlString(grantId)}, ${sqlString(pkg.origin_grant_id)},
           ${pkg.position}, ${sqlString(pkg.state)}, NULL,
-          ${sqlString(planSnapshotJson)}, ${sqlNullableNumber(pkg.allowance)}, NULL,
+          ${sqlString(planSnapshotJson)}, ${sqlNullableNumber(storedAllowance)}, NULL,
           ${sqlNullableString(pkg.duration_unit)}, ${sqlNullableNumber(pkg.duration_count)},
           ${sqlNullableNumber(pkg.grace_days)}, ${sqlString(graceCap)},
           ${sqlNullableString(pkg.calendar_start)}, ${sqlNullableString(pkg.starts_at)},
@@ -3068,6 +3081,12 @@ export async function transferInRPC(
       createdTermIds.push(termId);
       if (pkg.state === "active") {
         activeTermId = termId;
+        hotUsed = 0;
+        hotGraceBaseUsed = 0;
+      } else if (pkg.state === "grace") {
+        activeTermId = termId;
+        hotUsed = pkg.hot_used ?? 0;
+        hotGraceBaseUsed = pkg.hot_grace_base_used ?? 0;
       }
 
       const envelopeSha256 = await sha256Hex(
@@ -3129,7 +3148,8 @@ export async function transferInRPC(
     updateHot(storage, {
       awaiting_transfer: 0,
       active_term_id: activeTermId,
-      used: 0,
+      used: hotUsed,
+      grace_base_used: hotGraceBaseUsed,
     });
 
     const ledgerSeq = emitCoverageEvent(storage, {

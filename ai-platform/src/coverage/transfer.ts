@@ -568,11 +568,20 @@ async function readLiveOrgBinding(
     .first<TenantBindingRow>();
 }
 
-async function installationHasOpenCoverage(
+function termIsNotEnded(state: string | undefined): boolean {
+  return (
+    state === "active" ||
+    state === "grace" ||
+    state === "queued" ||
+    state === "held"
+  );
+}
+
+async function inspectInstallationTerms(
   env: TransferEnv,
   installationId: string,
   orgId: string,
-): Promise<boolean> {
+): Promise<Array<{ term_id?: string; state?: string }>> {
   const inspected = await callCoverageDo(env, installationId, {
     kind: "inspect_coverage",
     installationId,
@@ -580,15 +589,29 @@ async function installationHasOpenCoverage(
     vendorContractVersion: CHANNEL_VERSIONS.platformDo,
   });
   if (inspected === null || !Array.isArray(inspected.terms)) {
-    return false;
+    return [];
   }
-  return (inspected.terms as Array<{ state?: string }>).some(
-    (row) =>
-      row.state === "active" ||
-      row.state === "grace" ||
-      row.state === "queued" ||
-      row.state === "held",
-  );
+  return inspected.terms as Array<{ term_id?: string; state?: string }>;
+}
+
+async function installationHasOpenCoverage(
+  env: TransferEnv,
+  installationId: string,
+  orgId: string,
+): Promise<boolean> {
+  const terms = await inspectInstallationTerms(env, installationId, orgId);
+  return terms.some((row) => termIsNotEnded(row.state));
+}
+
+async function installationOpenTermIds(
+  env: TransferEnv,
+  installationId: string,
+  orgId: string,
+): Promise<string[]> {
+  const terms = await inspectInstallationTerms(env, installationId, orgId);
+  return terms
+    .filter((row) => termIsNotEnded(row.state) && typeof row.term_id === "string")
+    .map((row) => row.term_id as string);
 }
 
 export async function executeDeleteInstallation(
@@ -679,9 +702,16 @@ export async function executeDeleteInstallation(
 
   const detail = installationDeleteDetail(installationAfter, bindingAfter);
 
+  const preserveUsageTermIds = await installationOpenTermIds(
+    env,
+    binding.installation_id,
+    input.orgId,
+  );
+
   await purgeByInstallationId(binding.installation_id, input.operatorId, {
     db: env.DB,
     r2: env.R2,
+    preserveUsageTermIds,
   });
 
   return {

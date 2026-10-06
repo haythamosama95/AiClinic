@@ -287,7 +287,12 @@ export async function runRetentionPurge(
 export async function purgeByInstallationId(
   installationId: string,
   operatorId: string,
-  bindings: { db: D1Database; r2: R2Bucket },
+  bindings: {
+    db: D1Database;
+    r2: R2Bucket;
+    /** DO term_ids that have not ended; their usage_event rows are kept. */
+    preserveUsageTermIds?: readonly string[];
+  },
 ): Promise<void> {
   const { db, r2 } = bindings;
 
@@ -306,14 +311,7 @@ export async function purgeByInstallationId(
 
   const installationScope = `installation:${installationId}`;
 
-  const bindingRow = await db
-    .prepare(
-      `SELECT status FROM tenant_binding WHERE installation_id = ? LIMIT 1`,
-    )
-    .bind(installationId)
-    .first<{ status: string }>();
-  const preserveUsageForOpenCoverage =
-    bindingRow?.status === "held_for_transfer";
+  const preserveUsageTermIds = bindings.preserveUsageTermIds ?? [];
 
   // Decision: purge-by-installation-id is the store half of installation
   // deletion recovery (§7.7). P3.8 keeps the installation row (marked deleted),
@@ -356,13 +354,26 @@ export async function purgeByInstallationId(
       .bind(installationId),
   ];
 
-  if (!preserveUsageForOpenCoverage) {
+  if (preserveUsageTermIds.length === 0) {
     batch.splice(
       1,
       0,
       db.prepare(`DELETE FROM usage_event WHERE installation_id = ?`).bind(
         installationId,
       ),
+    );
+  } else {
+    const placeholders = preserveUsageTermIds.map(() => "?").join(", ");
+    batch.splice(
+      1,
+      0,
+      db
+        .prepare(
+          `DELETE FROM usage_event
+           WHERE installation_id = ?
+             AND (term_id IS NULL OR term_id NOT IN (${placeholders}))`,
+        )
+        .bind(installationId, ...preserveUsageTermIds),
     );
   }
 
