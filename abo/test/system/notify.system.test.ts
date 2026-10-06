@@ -4,15 +4,21 @@
 
 import { env } from "cloudflare:test";
 import { beforeEach, describe, expect, it } from "vitest";
+import badHmacFixture from "../fixtures/paymob/bad-hmac.json";
 import declineFixture from "../fixtures/paymob/decline.json";
+import refundChildFixture from "../fixtures/paymob/refund-child.json";
+import refundParentFixture from "../fixtures/paymob/refund-parent.json";
 import successFixture from "../fixtures/paymob/success.json";
 import checkoutMigrationSql from "../../migrations/0002_checkout.sql?raw";
 import {
   applySql,
   billingFetch,
   resetHarnessState,
+  r2GetText,
   scriptPaymobInquiry,
   setClock,
+  setD1BatchThrows,
+  setIntakeR2PutThrows,
   tableCount,
 } from "./harness";
 
@@ -120,17 +126,24 @@ async function signPaymobObj(
 
 async function postPaymobProcessedCallback(
   fixture: PaymobCallbackFixture,
-  options?: { hmac?: string },
+  options?: {
+    hmac?: string;
+    connectingIp?: string;
+    bodyOverride?: string;
+  },
 ): Promise<Response> {
-  const body = JSON.stringify({ type: fixture.type, obj: fixture.obj });
+  const body =
+    options?.bodyOverride ??
+    JSON.stringify({ type: fixture.type, obj: fixture.obj });
   const hmac =
     options?.hmac ??
     (await signPaymobObj(env.PAYMOB_HMAC_SECRET, fixture.obj));
+  const connectingIp = options?.connectingIp ?? "203.0.113.10";
   return billingFetch(`/notify/paymob?hmac=${encodeURIComponent(hmac)}`, {
     method: "POST",
     headers: {
       "content-type": "application/json",
-      "cf-connecting-ip": "203.0.113.10",
+      "cf-connecting-ip": connectingIp,
     },
     body,
   });
@@ -144,9 +157,13 @@ async function ensureCheckoutMigration(): Promise<void> {
   }
 }
 
-async function seedOpenCheckout(checkoutId: string): Promise<void> {
+async function seedOpenCheckout(
+  checkoutId: string,
+  options?: { openedWithCoverageThrough?: string | null },
+): Promise<void> {
   const now = "2026-01-15T09:00:00.000Z";
   const expires = "2026-01-15T10:30:00.000Z";
+  const coverageThrough = options?.openedWithCoverageThrough ?? null;
   await env.DB.prepare(
     `INSERT INTO checkout (
        checkout_id, reference, org_id, created_by_sub, billing_token_jti,
@@ -179,8 +196,8 @@ async function seedOpenCheckout(checkoutId: string): Promise<void> {
       1,
       1,
       "sha256-billing-contact",
-      null,
-      "none",
+      coverageThrough,
+      coverageThrough === null ? "none" : "platform",
       "paymob",
       "administrator",
       expires,
@@ -273,6 +290,91 @@ async function openGrantWorkCount(): Promise<number> {
   }
 }
 
+async function notificationDispositions(): Promise<string[]> {
+  try {
+    const rows = await env.DB.prepare(
+      `SELECT disposition FROM notification ORDER BY notification_id`,
+    ).all<{ disposition: string }>();
+    return rows.results?.map((row) => row.disposition) ?? [];
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    if (/no such table/i.test(message)) {
+      return [];
+    }
+    throw error;
+  }
+}
+
+async function alertCountByCode(code: string): Promise<number> {
+  try {
+    const row = await env.DB.prepare(
+      `SELECT COUNT(*) AS n FROM alert WHERE code = ? AND active = 1`,
+    )
+      .bind(code)
+      .first<{ n: number }>();
+    return row?.n ?? 0;
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    if (/no such table/i.test(message)) {
+      return 0;
+    }
+    throw error;
+  }
+}
+
+async function r2KeyCount(prefix: string): Promise<number> {
+  const listed = await env.R2.list({ prefix });
+  return listed.objects.length;
+}
+
+async function hmacInvalidBodiesWithRawPayload(): Promise<number> {
+  const listed = await env.R2.list({ prefix: "hmac-invalid/" });
+  let withBody = 0;
+  for (const object of listed.objects) {
+    const text = await r2GetText(object.key);
+    if (text !== null && text.length > 0) {
+      withBody += 1;
+    }
+  }
+  return withBody;
+}
+
+async function paymentRow(
+  checkoutId: string,
+): Promise<{ classification: string; disposition: string } | null> {
+  try {
+    return await env.DB.prepare(
+      `SELECT classification, disposition FROM payment WHERE checkout_id = ?`,
+    )
+      .bind(checkoutId)
+      .first<{ classification: string; disposition: string }>();
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    if (/no such table/i.test(message)) {
+      return null;
+    }
+    throw error;
+  }
+}
+
+function successFixtureWithTxnId(txnId: number): PaymobCallbackFixture {
+  const base = successFixture as PaymobCallbackFixture;
+  return {
+    type: base.type,
+    obj: { ...base.obj, id: txnId },
+  };
+}
+
+async function postBadHmacFixture(): Promise<Response> {
+  const fixture = badHmacFixture as PaymobCallbackFixture & {
+    _fixture_hmac?: string;
+  };
+  const hmac =
+    fixture._fixture_hmac ??
+    "0000000000000000000000000000000000000000000000000000000000000000";
+  return postPaymobProcessedCallback(fixture, { hmac });
+}
+
 beforeEach(async () => {
   await resetHarnessState();
   await ensureCheckoutMigration();
@@ -329,5 +431,200 @@ describe("P4.3 notify intake", () => {
     expect(success.status).toBe(200);
     expect(await tableCount("payment")).toBe(1);
     expect(await paymentReference()).toMatch(/^PAY-/u);
+  });
+
+  it("E2E-P4.3-02 same body is duplicate and the 61st request is 429", async () => {
+    const checkoutId = "01JNOTIFYCHECKOUT000003";
+    await seedOpenCheckout(checkoutId);
+
+    const body = JSON.stringify({
+      type: (successFixture as PaymobCallbackFixture).type,
+      obj: (successFixture as PaymobCallbackFixture).obj,
+    });
+    const hmac = await signPaymobObj(
+      env.PAYMOB_HMAC_SECRET,
+      (successFixture as PaymobCallbackFixture).obj,
+    );
+
+    const first = await billingFetch(
+      `/notify/paymob?hmac=${encodeURIComponent(hmac)}`,
+      {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          "cf-connecting-ip": "203.0.113.10",
+        },
+        body,
+      },
+    );
+    expect(first.status).toBe(200);
+
+    const duplicate = await billingFetch(
+      `/notify/paymob?hmac=${encodeURIComponent(hmac)}`,
+      {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          "cf-connecting-ip": "203.0.113.10",
+        },
+        body,
+      },
+    );
+    expect(duplicate.status).toBe(200);
+    expect(await notificationDispositions()).toEqual(["enqueued", "duplicate"]);
+    expect(await tableCount("payment")).toBe(1);
+
+    await setClock("2026-01-15T11:00:00.000Z");
+    const rateIp = "203.0.113.99";
+    const notificationsBefore = await tableCount("notification");
+    const workBefore = await tableCount("work");
+
+    for (let index = 0; index < 60; index += 1) {
+      const response = await postPaymobProcessedCallback(
+        successFixtureWithTxnId(88000 + index),
+        { connectingIp: rateIp },
+      );
+      expect(response.status).toBe(200);
+    }
+
+    const limited = await postPaymobProcessedCallback(
+      successFixtureWithTxnId(88999),
+      { connectingIp: rateIp },
+    );
+    expect(limited.status).toBe(429);
+    expect(await limited.text()).toBe("");
+    expect(await tableCount("notification")).toBe(notificationsBefore + 60);
+    expect(await tableCount("work")).toBe(workBefore + 60);
+  });
+
+  it("E2E-P4.3-03 bad HMAC stores no evidence and raises AL-02", async () => {
+    await setClock("2026-01-15T12:00:00.000Z");
+
+    const first = await postBadHmacFixture();
+    expect(first.status).toBe(401);
+    expect(await r2KeyCount("evidence/")).toBe(0);
+    expect(await r2KeyCount("hmac-invalid/")).toBe(1);
+
+    await setClock("2026-01-15T12:05:00.000Z");
+    await postBadHmacFixture();
+    await setClock("2026-01-15T12:10:00.000Z");
+    const third = await postBadHmacFixture();
+    expect(third.status).toBe(401);
+    expect(await alertCountByCode("AL-02")).toBe(1);
+    expect(await r2KeyCount("hmac-invalid/")).toBe(3);
+
+    for (let index = 3; index < 11; index += 1) {
+      await setClock(
+        `2026-01-15T12:${String(11 + index).padStart(2, "0")}:00.000Z`,
+      );
+      await postBadHmacFixture();
+    }
+    expect(await r2KeyCount("hmac-invalid/")).toBe(11);
+    expect(await hmacInvalidBodiesWithRawPayload()).toBe(10);
+    expect(await r2KeyCount("evidence/")).toBe(0);
+  });
+
+  it("E2E-P4.3-09 R2 and D1 intake failures enqueue nothing", async () => {
+    const checkoutR2 = "01JNOTIFYCHECKOUT000009A";
+    const checkoutD1 = "01JNOTIFYCHECKOUT000009B";
+    await seedOpenCheckout(checkoutR2);
+    await seedOpenCheckout(checkoutD1);
+
+    setIntakeR2PutThrows(true);
+    const r2Failure = await postPaymobProcessedCallback(
+      successFixture as PaymobCallbackFixture,
+    );
+    expect(r2Failure.status).toBe(500);
+    expect(await tableCount("notification")).toBe(0);
+    expect(await tableCount("work")).toBe(0);
+
+    setD1BatchThrows(true);
+    const d1Failure = await postPaymobProcessedCallback(
+      successFixtureWithTxnId(99050),
+      { connectingIp: "203.0.113.12" },
+    );
+    expect(d1Failure.status).toBe(500);
+    expect(await tableCount("notification")).toBe(0);
+    expect(await tableCount("work")).toBe(0);
+  });
+
+  it("E2E-P4.3-05 unbound order and amount mismatch withhold the grant", async () => {
+    const unboundCheckout = "01JNOTIFYCHECKOUT000005A";
+    await seedOpenCheckout(unboundCheckout);
+    await scriptPaymobInquiry("unbound");
+    const unboundIntake = await postPaymobProcessedCallback(
+      successFixture as PaymobCallbackFixture,
+    );
+    expect(unboundIntake.status).toBe(200);
+    expect(await tableCount("payment")).toBe(0);
+    expect(await alertCountByCode("AL-05")).toBe(1);
+
+    const mismatchCheckout = "01JNOTIFYCHECKOUT000005B";
+    await seedOpenCheckout(mismatchCheckout);
+    await scriptPaymobInquiry("amount_mismatch");
+    const mismatchIntake = await postPaymobProcessedCallback(
+      successFixtureWithTxnId(99005),
+      { connectingIp: "203.0.113.13" },
+    );
+    expect(mismatchIntake.status).toBe(200);
+    const mismatchPayment = await paymentRow(mismatchCheckout);
+    expect(mismatchPayment?.disposition).toBe("withheld_mismatch");
+    expect(await openGrantWorkCount()).toBe(0);
+    expect(await alertCountByCode("AL-05")).toBe(2);
+  });
+
+  it("E2E-P4.3-06 first inquiry already refunded grants nothing", async () => {
+    await scriptPaymobInquiry("reversed");
+
+    const parentCheckout = "01JNOTIFYCHECKOUT000006A";
+    await seedOpenCheckout(parentCheckout);
+    const parentIntake = await postPaymobProcessedCallback(
+      refundParentFixture as PaymobCallbackFixture,
+    );
+    expect(parentIntake.status).toBe(200);
+    const parentPayment = await paymentRow(parentCheckout);
+    expect(parentPayment?.disposition).toBe("reversed_before_grant");
+    expect(await openGrantWorkCount()).toBe(0);
+
+    const childCheckout = "01JNOTIFYCHECKOUT000006B";
+    await seedOpenCheckout(childCheckout);
+    const childIntake = await postPaymobProcessedCallback(
+      refundChildFixture as PaymobCallbackFixture,
+      { connectingIp: "203.0.113.14" },
+    );
+    expect(childIntake.status).toBe(200);
+    const childPayment = await paymentRow(childCheckout);
+    expect(childPayment?.disposition).toBe("reversed_before_grant");
+    expect(await openGrantWorkCount()).toBe(0);
+  });
+
+  it("E2E-P4.3-07 second payment at the same coverage through is likely_duplicate", async () => {
+    const coverageThrough = "2026-06-30";
+    const firstCheckout = "01JNOTIFYCHECKOUT000007A";
+    const secondCheckout = "01JNOTIFYCHECKOUT000007B";
+    await seedOpenCheckout(firstCheckout, {
+      openedWithCoverageThrough: coverageThrough,
+    });
+    await seedOpenCheckout(secondCheckout, {
+      openedWithCoverageThrough: coverageThrough,
+    });
+
+    await scriptPaymobInquiry("bound_success");
+    const firstIntake = await postPaymobProcessedCallback(
+      successFixture as PaymobCallbackFixture,
+    );
+    expect(firstIntake.status).toBe(200);
+    expect(await tableCount("payment")).toBe(1);
+
+    const secondIntake = await postPaymobProcessedCallback(
+      successFixtureWithTxnId(99007),
+      { connectingIp: "203.0.113.15" },
+    );
+    expect(secondIntake.status).toBe(200);
+    const secondPayment = await paymentRow(secondCheckout);
+    expect(secondPayment?.classification).toBe("likely_duplicate");
+    expect(secondPayment?.disposition).toBe("grant");
+    expect(await alertCountByCode("AL-09")).toBe(1);
+    expect(await openGrantWorkCount()).toBe(2);
   });
 });
