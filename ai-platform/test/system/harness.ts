@@ -1833,7 +1833,10 @@ export type VendorMethod =
   | "promoteCohort"
   | "beginTokenContractRotation"
   | "retireTokenContract"
-  | "supportLookup";
+  | "supportLookup"
+  | "rebuildClinicDo"
+  | "rebuildGrantLedger"
+  | "refreshCoverageSnapshot";
 
 export const VENDOR_OPERATOR_EMAIL = "operator@clinic.test";
 

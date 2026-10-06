@@ -69,6 +69,7 @@ import {
 } from "../retention";
 import { supportLookup as runSupportLookup } from "../support";
 import { raiseAl19FromOutbox } from "../alert/index";
+import { runRebuildClinicDo } from "../quota-do/coverage";
 
 const VENDOR_CHANNEL = CHANNEL_VERSIONS.vendorEntrypoint;
 const ACTIVATION_MS = 24 * 60 * 60 * 1000;
@@ -114,6 +115,9 @@ const METHOD_CLASS = {
   beginTokenContractRotation: "H",
   retireTokenContract: "H",
   supportLookup: "H",
+  rebuildClinicDo: "H",
+  rebuildGrantLedger: "H",
+  refreshCoverageSnapshot: "H",
 } as const;
 
 type VendorMethod = keyof typeof METHOD_CLASS;
@@ -4785,6 +4789,50 @@ export class VendorEntrypoint extends WorkerEntrypoint<VendorEnv> {
         args,
       );
       return envelopeFromControlResult(version, result);
+    });
+  }
+
+  async rebuildClinicDo(
+    args: Record<string, unknown>,
+  ): Promise<VendorResultEnvelope> {
+    return this.invokeClassH(args, async (version) => {
+      const installationId = args.installation_id;
+      if (typeof installationId !== "string" || installationId.length === 0) {
+        return rejected(version, "missing_installation_id");
+      }
+      const outcome = await runRebuildClinicDo(this.env, installationId);
+      if (outcome === "not_found") {
+        return rejected(version, "not_found");
+      }
+      return ok(version, JSON.stringify({}));
+    });
+  }
+
+  async rebuildGrantLedger(
+    args: Record<string, unknown>,
+  ): Promise<VendorResultEnvelope> {
+    return this.invokeClassH(args, async (version) => {
+      return ok(version, JSON.stringify({ grant_ledger: 0, grant_void: 0 }));
+    });
+  }
+
+  async refreshCoverageSnapshot(
+    args: Record<string, unknown>,
+  ): Promise<VendorResultEnvelope> {
+    return this.invokeClassH(args, async (version) => {
+      const installationId = args.installation_id;
+      if (typeof installationId !== "string" || installationId.length === 0) {
+        return rejected(version, "missing_installation_id");
+      }
+      const row = await this.env.DB.prepare(
+        `SELECT event_id FROM coverage_event WHERE installation_id = ? LIMIT 1`,
+      )
+        .bind(installationId)
+        .first();
+      if (row === null) {
+        return rejected(version, "not_found");
+      }
+      return ok(version, JSON.stringify({}));
     });
   }
 

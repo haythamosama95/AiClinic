@@ -108,6 +108,7 @@ import {
   suspendResumeRPC,
   voidForReversalRPC,
   voidGrantRPC,
+  rebuildClinicDoRPC,
   releaseRPC,
   settleFallbackRPC,
   shipCoverageOutboxAlarm,
@@ -1921,6 +1922,27 @@ export class GatewayObject extends DurableObject {
           this.ctx.storage,
           (fn) => this.ctx.blockConcurrencyWhile(fn),
           body as Parameters<typeof setTransferPendingRPC>[2],
+        );
+        return Response.json({ ...result, contract_version: contractVersion });
+      }
+      if (kind === "rebuild_clinic_do") {
+        const rebuildBody = body as Omit<
+          Parameters<typeof rebuildClinicDoRPC>[3],
+          "db" | "r2"
+        >;
+        const runtimeEnv = this.env as Env;
+        const result = await rebuildClinicDoRPC(
+          this.ctx,
+          this.ctx.storage,
+          (fn) => this.ctx.blockConcurrencyWhile(fn),
+          {
+            ...rebuildBody,
+            db: runtimeEnv.DB,
+            r2: runtimeEnv.R2,
+            platformSigningKeyJson:
+              rebuildBody.platformSigningKeyJson ??
+              runtimeEnv.PLATFORM_SIGNING_KEY,
+          },
         );
         return Response.json({ ...result, contract_version: contractVersion });
       }

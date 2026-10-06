@@ -333,6 +333,35 @@ function lapsedSnapshotReason(terms: TermRow[]): string {
   return "none";
 }
 
+function buildSnapshotTermsArray(
+  terms: TermRow[],
+  hot: HotRow,
+): Record<string, unknown>[] {
+  return terms.map((term) => ({
+    term_id: term.term_id,
+    grant_id: term.grant_id,
+    origin_grant_id: term.origin_grant_id,
+    position: term.position,
+    state: term.state,
+    end_reason: term.end_reason,
+    plan_snapshot: term.plan_snapshot,
+    allowance: term.allowance,
+    used:
+      term.term_id === hot.active_term_id ? hot.used : (term.used_final ?? 0),
+    used_final: term.used_final,
+    duration_unit: term.duration_unit,
+    duration_count: term.duration_count,
+    grace_days: term.grace_days,
+    grace_cap: term.grace_cap,
+    calendar_start: term.calendar_start,
+    starts_at: term.starts_at,
+    ends_at: term.ends_at,
+    grace_ends_at: term.grace_ends_at,
+    ended_at: term.ended_at,
+    held: term.state === "held",
+  }));
+}
+
 export function buildCoverageSnapshot(input: {
   vendorContractVersion: number;
   orgId: string;
@@ -362,6 +391,7 @@ export function buildCoverageSnapshot(input: {
       ),
       binding_epoch: input.hot.binding_epoch,
       clinic_seq: input.hot.clinic_seq,
+      terms: buildSnapshotTermsArray(input.terms, input.hot),
     };
   }
 
@@ -407,6 +437,7 @@ export function buildCoverageSnapshot(input: {
     ),
     binding_epoch: input.hot.binding_epoch,
     clinic_seq: input.hot.clinic_seq,
+    terms: buildSnapshotTermsArray(input.terms, input.hot),
   };
 }
 
@@ -3187,4 +3218,451 @@ export async function transferInRPC(
       receipt,
     };
   });
+}
+
+export function wipeCoverageDoTables(storage: DurableObjectStorage): void {
+  sqlExec(storage, "DELETE FROM hot");
+  sqlExec(storage, "DELETE FROM term");
+  sqlExec(storage, "DELETE FROM grant");
+  sqlExec(storage, "DELETE FROM outbox");
+}
+
+type SnapshotTermEntry = Record<string, unknown>;
+
+function snapshotTermPlanSnapshot(term: SnapshotTermEntry): string {
+  const raw = term.plan_snapshot;
+  if (typeof raw === "string") {
+    return raw;
+  }
+  return JSON.stringify(raw ?? {});
+}
+
+function hydrateDoFromCoverageSnapshot(
+  storage: DurableObjectStorage,
+  snapshot: Record<string, unknown>,
+  bindingEpoch: number,
+): void {
+  const termsRaw = snapshot.terms;
+  const termEntries: SnapshotTermEntry[] = Array.isArray(termsRaw)
+    ? (termsRaw as SnapshotTermEntry[])
+    : [];
+
+  let activeTermId: string | null = null;
+  let hotUsed = 0;
+  let graceBaseUsed = 0;
+
+  const termObject = snapshot.term as Record<string, unknown> | null;
+  if (termObject !== null && typeof termObject.ref === "string") {
+    activeTermId = termObject.ref;
+    hotUsed =
+      typeof termObject.used === "number" ? termObject.used : hotUsed;
+  }
+
+  for (const entry of termEntries) {
+    const state = String(entry.state ?? "");
+    const termId = String(entry.term_id ?? "");
+    if (state === "active" || state === "grace") {
+      activeTermId = termId;
+      hotUsed =
+        typeof entry.used === "number" ? entry.used : hotUsed;
+    }
+  }
+
+  const suspended = snapshot.suspended === true ? 1 : 0;
+  const clinicSeq =
+    typeof snapshot.clinic_seq === "number" ? snapshot.clinic_seq : 0;
+  const snapshotBindingEpoch =
+    typeof snapshot.binding_epoch === "number"
+      ? snapshot.binding_epoch
+      : bindingEpoch;
+
+  sqlExec(
+    storage,
+    `INSERT INTO hot (
+      suspended, transferred_out_to, awaiting_transfer, transfer_pending,
+      active_term_id, used, reserved, grace_base_used, reservations, replay,
+      idempotency, band_emitted, binding_epoch, clinic_seq, next_alarm_at
+    ) VALUES (
+      ${suspended}, NULL, 0, 0,
+      ${activeTermId === null ? "NULL" : sqlString(activeTermId)},
+      ${hotUsed}, 0, ${graceBaseUsed}, '[]', '{}', '{}', '{}',
+      ${snapshotBindingEpoch}, ${clinicSeq}, NULL
+    )`,
+  );
+
+  for (const entry of termEntries) {
+    const usedFinal =
+      entry.used_final === null || entry.used_final === undefined
+        ? entry.state === "active" || entry.state === "grace"
+          ? null
+          : typeof entry.used === "number"
+            ? entry.used
+            : null
+        : entry.used_final;
+    sqlExec(
+      storage,
+      `INSERT INTO term (
+        term_id, grant_id, origin_grant_id, position, state, end_reason,
+        plan_snapshot, allowance, used_final, duration_unit, duration_count,
+        grace_days, grace_cap, calendar_start, starts_at, ends_at, grace_ends_at, ended_at
+      ) VALUES (
+        ${sqlString(String(entry.term_id))},
+        ${sqlString(String(entry.grant_id ?? ""))},
+        ${sqlString(String(entry.origin_grant_id ?? entry.grant_id ?? ""))},
+        ${Number(entry.position ?? 0)},
+        ${sqlString(String(entry.state ?? "ended"))},
+        ${entry.end_reason === null || entry.end_reason === undefined ? "NULL" : sqlString(String(entry.end_reason))},
+        ${sqlString(snapshotTermPlanSnapshot(entry))},
+        ${entry.allowance === null || entry.allowance === undefined ? "NULL" : String(entry.allowance)},
+        ${usedFinal === null || usedFinal === undefined ? "NULL" : String(usedFinal)},
+        ${entry.duration_unit === null || entry.duration_unit === undefined ? "NULL" : sqlString(String(entry.duration_unit))},
+        ${entry.duration_count === null || entry.duration_count === undefined ? "NULL" : String(entry.duration_count)},
+        ${entry.grace_days === null || entry.grace_days === undefined ? "NULL" : String(entry.grace_days)},
+        ${entry.grace_cap === null || entry.grace_cap === undefined ? "NULL" : sqlString(String(entry.grace_cap))},
+        ${entry.calendar_start === null || entry.calendar_start === undefined ? "NULL" : sqlString(String(entry.calendar_start))},
+        ${entry.starts_at === null || entry.starts_at === undefined ? "NULL" : sqlString(String(entry.starts_at))},
+        ${entry.ends_at === null || entry.ends_at === undefined ? "NULL" : sqlString(String(entry.ends_at))},
+        ${entry.grace_ends_at === null || entry.grace_ends_at === undefined ? "NULL" : sqlString(String(entry.grace_ends_at))},
+        ${entry.ended_at === null || entry.ended_at === undefined ? "NULL" : sqlString(String(entry.ended_at))}
+      )`,
+    );
+  }
+}
+
+function applyUsageToDoTerm(
+  storage: DurableObjectStorage,
+  termId: string,
+  quotaWeight: number,
+): void {
+  const hot = loadHot(storage);
+  if (hot.active_term_id === termId) {
+    updateHot(storage, { used: hot.used + quotaWeight });
+    return;
+  }
+  const terms = loadTerms(storage);
+  const term = terms.find((row) => row.term_id === termId);
+  if (term === undefined) {
+    return;
+  }
+  const nextUsed = (term.used_final ?? 0) + quotaWeight;
+  sqlExec(
+    storage,
+    `UPDATE term SET used_final = ${nextUsed} WHERE term_id = ${sqlString(termId)}`,
+  );
+}
+
+async function reapplyUsageEventsAfterSnapshot(
+  db: D1Database,
+  storage: DurableObjectStorage,
+  installationId: string,
+  snapshotAt: string,
+  termIds: string[],
+): Promise<void> {
+  if (termIds.length === 0) {
+    return;
+  }
+  const placeholders = termIds.map(() => "?").join(", ");
+  const rows = await db
+    .prepare(
+      `SELECT request_id, term_id, quota_weight FROM usage_event
+       WHERE installation_id = ? AND recorded_at > ?
+         AND term_id IN (${placeholders})
+       ORDER BY recorded_at ASC`,
+    )
+    .bind(installationId, snapshotAt, ...termIds)
+    .all<{ request_id: string; term_id: string; quota_weight: number }>();
+
+  const appliedRequestIds = new Set<string>();
+  for (const row of rows.results ?? []) {
+    if (appliedRequestIds.has(row.request_id)) {
+      continue;
+    }
+    appliedRequestIds.add(row.request_id);
+    applyUsageToDoTerm(storage, row.term_id, row.quota_weight);
+  }
+}
+
+async function applyGrantLedgerRowToDo(
+  storage: DurableObjectStorage,
+  row: {
+    grant_id: string;
+    origin_grant_id: string;
+    org_id: string;
+    installation_id: string;
+    kind: string;
+    source_kind: string;
+    envelope_sha256: string;
+    receipt: string;
+    applied_at: string;
+  },
+  r2: R2Bucket,
+): Promise<void> {
+  const key = `grant-ledger/${row.grant_id}.ndjson`;
+  const object = await r2.get(key);
+  if (object === null) {
+    return;
+  }
+  const text = await object.text();
+  const line = text.trim().split("\n")[0] ?? "";
+  if (line.length === 0) {
+    return;
+  }
+  const parsed = JSON.parse(line) as Record<string, unknown>;
+  const receipt =
+    typeof parsed.receipt === "object" && parsed.receipt !== null
+      ? (parsed.receipt as Record<string, unknown>)
+      : (JSON.parse(row.receipt) as Record<string, unknown>);
+  const existing = sqlSelect<{ grant_id: string }>(
+    storage,
+    `SELECT grant_id FROM grant WHERE grant_id = ${sqlString(row.grant_id)} LIMIT 1`,
+  )[0];
+  if (existing !== undefined) {
+    return;
+  }
+  sqlExec(
+    storage,
+    `INSERT INTO grant (
+      grant_id, kind, source_kind, envelope_sha256, envelope, evidence, receipt, applied_at, voided_at, void_reason
+    ) VALUES (
+      ${sqlString(row.grant_id)}, ${sqlString(row.kind)}, ${sqlString(row.source_kind)},
+      ${sqlString(row.envelope_sha256)}, ${sqlString(JSON.stringify(parsed))},
+      ${sqlString("{}")}, ${sqlString(JSON.stringify(receipt))},
+      ${sqlString(row.applied_at)}, NULL, NULL
+    )`,
+  );
+}
+
+function applyGrantVoidRowToDo(
+  storage: DurableObjectStorage,
+  row: { grant_id: string; reason: string; at: string },
+): void {
+  const terms = loadTerms(storage);
+  const term = findTermForGrant(terms, row.grant_id);
+  if (term === undefined) {
+    return;
+  }
+
+  if (term.state === "active" || term.state === "grace") {
+    sqlExec(
+      storage,
+      `UPDATE term SET state = 'ended', end_reason = 'reversed', ended_at = ${sqlString(row.at)}, grace_ends_at = NULL
+       WHERE term_id = ${sqlString(term.term_id)}`,
+    );
+    const hot = loadHot(storage);
+    if (hot.active_term_id === term.term_id) {
+      updateHot(storage, { active_term_id: null });
+    }
+    const queuedBeforeHold = loadTerms(storage).filter(
+      (entry) => entry.state === "queued",
+    );
+    for (const queued of queuedBeforeHold) {
+      sqlExec(
+        storage,
+        `UPDATE term SET state = 'held' WHERE term_id = ${sqlString(queued.term_id)}`,
+      );
+    }
+    return;
+  }
+
+  if (term.state === "queued" || term.state === "held") {
+    sqlExec(
+      storage,
+      `UPDATE term SET state = 'ended', end_reason = 'reversed', ended_at = ${sqlString(row.at)}
+       WHERE term_id = ${sqlString(term.term_id)}`,
+    );
+  }
+}
+
+const REBUILD_COVERAGE_EVENT_KINDS = new Set([
+  "term_held",
+  "term_released",
+  "suspension_changed",
+  "suspend",
+  "resume",
+  "transfer",
+]);
+
+export type RebuildClinicDoRequest = {
+  kind: "rebuild_clinic_do";
+  installationId: string;
+  orgId: string;
+  vendorContractVersion: number;
+  bindingEpoch: number;
+  platformSigningKeyJson: string;
+  durationScale?: DurationScale;
+  db: D1Database;
+  r2: R2Bucket;
+};
+
+export type RebuildClinicDoResponse = {
+  kind: "rebuild_clinic_do";
+  result: "ok" | "not_found";
+};
+
+export async function rebuildClinicDoRPC(
+  state: DurableObjectState,
+  storage: DurableObjectStorage,
+  blockConcurrencyWhile: <T>(fn: () => Promise<T>) => Promise<T>,
+  request: RebuildClinicDoRequest,
+): Promise<RebuildClinicDoResponse> {
+  return blockConcurrencyWhile(async () => {
+    const anchor = await request.db
+      .prepare(
+        `SELECT event_id, org_id, installation_id, binding_epoch, clinic_seq, kind, snapshot, at
+         FROM coverage_event
+         WHERE installation_id = ?
+         ORDER BY clinic_seq DESC
+         LIMIT 1`,
+      )
+      .bind(request.installationId)
+      .first<{
+        event_id: string;
+        org_id: string;
+        installation_id: string;
+        binding_epoch: number;
+        clinic_seq: number;
+        kind: string;
+        snapshot: string;
+        at: string;
+      }>();
+
+    if (anchor === null) {
+      return { kind: "rebuild_clinic_do", result: "not_found" };
+    }
+
+    const snapshot = JSON.parse(anchor.snapshot) as Record<string, unknown>;
+
+    wipeCoverageDoTables(storage);
+    hydrateDoFromCoverageSnapshot(
+      storage,
+      snapshot,
+      request.bindingEpoch,
+    );
+    updateHot(storage, { reservations: "[]", reserved: 0 });
+
+    const ledgerRows = await request.db
+      .prepare(
+        `SELECT grant_id, origin_grant_id, org_id, installation_id, kind, source_kind,
+                operator_credential_id, envelope_sha256, receipt, applied_at
+         FROM grant_ledger
+         WHERE installation_id = ? AND applied_at > ?
+         ORDER BY applied_at ASC, grant_id ASC`,
+      )
+      .bind(request.installationId, anchor.at)
+      .all<{
+        grant_id: string;
+        origin_grant_id: string;
+        org_id: string;
+        installation_id: string;
+        kind: string;
+        source_kind: string;
+        operator_credential_id: string;
+        envelope_sha256: string;
+        receipt: string;
+        applied_at: string;
+      }>();
+
+    for (const row of ledgerRows.results ?? []) {
+      await applyGrantLedgerRowToDo(storage, row, request.r2);
+    }
+
+    const voidRows = await request.db
+      .prepare(
+        `SELECT grant_id, reason, source, evidence_sha256, at
+         FROM grant_void
+         WHERE grant_id IN (
+           SELECT grant_id FROM grant_ledger WHERE installation_id = ?
+         ) AND at > ?
+         ORDER BY at ASC, grant_id ASC`,
+      )
+      .bind(request.installationId, anchor.at)
+      .all<{ grant_id: string; reason: string; at: string }>();
+
+    for (const row of voidRows.results ?? []) {
+      applyGrantVoidRowToDo(storage, row);
+    }
+
+    const coverageRows = await request.db
+      .prepare(
+        `SELECT kind, snapshot, clinic_seq, at
+         FROM coverage_event
+         WHERE installation_id = ? AND clinic_seq > ?
+         ORDER BY clinic_seq ASC`,
+      )
+      .bind(request.installationId, anchor.clinic_seq)
+      .all<{ kind: string; snapshot: string; clinic_seq: number; at: string }>();
+
+    for (const row of coverageRows.results ?? []) {
+      if (!REBUILD_COVERAGE_EVENT_KINDS.has(row.kind)) {
+        continue;
+      }
+      const eventSnapshot = JSON.parse(row.snapshot) as Record<string, unknown>;
+      wipeCoverageDoTables(storage);
+      hydrateDoFromCoverageSnapshot(
+        storage,
+        eventSnapshot,
+        request.bindingEpoch,
+      );
+      updateHot(storage, { reservations: "[]", reserved: 0 });
+    }
+
+    const terms = loadTerms(storage);
+    const termIds = terms.map((term) => term.term_id);
+    await reapplyUsageEventsAfterSnapshot(
+      request.db,
+      storage,
+      request.installationId,
+      anchor.at,
+      termIds,
+    );
+
+    return { kind: "rebuild_clinic_do", result: "ok" };
+  });
+}
+
+export async function runRebuildClinicDo(
+  env: {
+    DB: D1Database;
+    DO: DurableObjectNamespace;
+    R2: R2Bucket;
+    PLATFORM_SIGNING_KEY: string;
+    DURATION_SCALE?: string;
+  },
+  installationId: string,
+): Promise<"ok" | "not_found"> {
+  const binding = await env.DB.prepare(
+    `SELECT org_id, binding_epoch FROM coverage_event
+     WHERE installation_id = ?
+     ORDER BY clinic_seq DESC
+     LIMIT 1`,
+  )
+    .bind(installationId)
+    .first<{ org_id: string; binding_epoch: number }>();
+  if (binding === null) {
+    return "not_found";
+  }
+
+  const durationScale =
+    env.DURATION_SCALE === "staging" ? ("staging" as DurationScale) : undefined;
+  const id = env.DO.idFromName(installationId);
+  const stub = env.DO.get(id);
+  const response = await stub.fetch("https://quota-do.internal/rpc", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      contract_version: CHANNEL_VERSIONS.platformDo,
+      kind: "rebuild_clinic_do",
+      installationId,
+      orgId: binding.org_id,
+      bindingEpoch: binding.binding_epoch,
+      vendorContractVersion: CHANNEL_VERSIONS.platformDo,
+      platformSigningKeyJson: env.PLATFORM_SIGNING_KEY,
+      durationScale,
+    }),
+  });
+  if (!response.ok) {
+    return "not_found";
+  }
+  const body = (await response.json()) as RebuildClinicDoResponse;
+  return body.result === "ok" ? "ok" : "not_found";
 }
