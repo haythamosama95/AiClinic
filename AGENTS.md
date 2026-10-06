@@ -5,9 +5,9 @@ This file orients AI coding agents working in this repository. Keep the
 **current active feature's** plan reference when running Spec Kit phases.
 
 <!-- SPECKIT START -->
-Active feature plan: `specs/074-abo-p3-10-control-plane-port-vendor-entrypoint-removal/plan.md`
-Feature spec: `specs/074-abo-p3-10-control-plane-port-vendor-entrypoint-removal/spec.md`
-Branch: `ai/074-abo-p3-10-control-plane-port-vendor-entrypoint-removal`
+Active feature plan: `specs/075-abo-p3-11-platform-rebuild-procedures-write-budget/plan.md`
+Feature spec: `specs/075-abo-p3-11-platform-rebuild-procedures-write-budget/spec.md`
+Branch: `ai/075-abo-p3-11-platform-rebuild-procedures-write-budget`
 <!-- SPECKIT END -->
 
 ## Repo layout quick reference

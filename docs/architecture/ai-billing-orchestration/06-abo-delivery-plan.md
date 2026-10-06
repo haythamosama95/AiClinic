@@ -669,7 +669,7 @@ adversaries (AD-#), credentials (K-#) and seed requirement IDs.
 - **Spec** 075 · **Codebase** ai-platform · **Size** M · **Depends** P3.10 · **Parallel** P4.x
 - **Read:** 05 §5.2; 05 §5.3; 01 §7 row R-7; 03 §6.6; 03 §6.7 (write-budget bullet); 04 §6.5 ("Add" row, concurrency test).
 - **Implements:** an H method that emits a fresh snapshot event per installation (rebuilds `coverage_mirror`); a DO rebuild (H) from the last `coverage_event` plus
-  later ledger, void and hold/suspension/transfer events, plus `usage_event` by `term_id`, compared with the mirror; a D1 rebuild of `grant_ledger`/`grant_void`
+  later ledger, void and hold/suspension/transfer events, plus `usage_event` by `term_id`, compared with the mirror; a D1 rebuild (H) of `grant_ledger`/`grant_void`
   from R2 `grant-ledger/`; a load scenario for A34 measuring DO rows written per AI request against about 2 (R-7).
 - **E2E (H-AP + load suite):**
   - E2E-P3.11-01 FM-20: wipe a clinic's DO storage → rebuild → terms, positions, holds and usage equal the pre-loss state (in-flight reservations forfeited); compare clean.
