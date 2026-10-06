@@ -146,7 +146,7 @@ cd ai-platform && npx vitest run --config vitest.workers.config.ts \
 
 ### 6.1 Quickstart
 
-- [ ] T018 Create `specs/075-abo-p3-11-platform-rebuild-procedures-write-budget/quickstart.md` from the plan's quickstart outline — produces this unit's quickstart, FR-001 through FR-006, E2E-P3.11-01 through E2E-P3.11-05. Depends on T016 and T017. Sections: (1) what was implemented — `rebuildClinicDo`, `rebuildGrantLedger`, and `refreshCoverageSnapshot` on `VendorEntrypoint`, and the write-budget measurement on `POST /v1/requests`; (2) files this unit adds or modifies — the Files section of `plan.md`; (3) the two harness commands below; (4) the entry point → module chain per E2E id below. `npm test`, `npm run test:load`, and other packages stay out of these commands (rule S8).
+- [X] T018 Create `specs/075-abo-p3-11-platform-rebuild-procedures-write-budget/quickstart.md` from the plan's quickstart outline — produces this unit's quickstart, FR-001 through FR-006, E2E-P3.11-01 through E2E-P3.11-05. Depends on T016 and T017. Sections: (1) what was implemented — `rebuildClinicDo`, `rebuildGrantLedger`, and `refreshCoverageSnapshot` on `VendorEntrypoint`, and the write-budget measurement on `POST /v1/requests`; (2) files this unit adds or modifies — the Files section of `plan.md`; (3) the two harness commands below; (4) the entry point → module chain per E2E id below. `npm test`, `npm run test:load`, and other packages stay out of these commands (rule S8).
 
 ```bash
 cd ai-platform && npx vitest run --config vitest.workers.config.ts \
