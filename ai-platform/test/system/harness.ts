@@ -708,44 +708,117 @@ export function enrollPayload(scenario: Scenario): Record<string, unknown> {
   };
 }
 
-export async function operatorFetchRaw(
-  path: string,
-  body?: Record<string, unknown>,
-  headers: Record<string, string> = {},
-): Promise<Response> {
-  const requestHeaders: Record<string, string> = {
-    ...headers,
-  };
-  if (body !== undefined) {
-    requestHeaders["content-type"] = "application/json";
+export function vendorEnvelopeToHttp(
+  envelope: VendorResultEnvelope,
+): { status: number; json: Record<string, unknown> } {
+  if (envelope.result === "ok") {
+    const json =
+      envelope.detail.length > 0
+        ? (JSON.parse(envelope.detail) as Record<string, unknown>)
+        : {};
+    return { status: 200, json };
   }
-  if (!requestHeaders.authorization) {
-    requestHeaders.authorization = `Bearer ${OPERATOR_BEARER}`;
+  if (envelope.result === "conflict") {
+    return { status: 409, json: { error: envelope.code } };
   }
-  return SELF.fetch(
-    new Request(`${GATEWAY_ORIGIN}${path}`, {
-      method: "POST",
-      headers: requestHeaders,
-      body: body !== undefined ? JSON.stringify(body) : undefined,
-    }),
+  if (envelope.code === "unauthenticated") {
+    return { status: 401, json: { error: "unauthorized" } };
+  }
+  return { status: 400, json: { error: envelope.code } };
+}
+
+const VENDOR_LIFECYCLE_REASON = "system-test";
+
+export async function vendorSuspend(
+  scenario: Scenario,
+): Promise<{ status: number; json: Record<string, unknown> }> {
+  const accessJwt = await mintVendorAccessJwt();
+  return vendorEnvelopeToHttp(
+    await vendorCall(
+      "suspend",
+      {
+        contract_version: VENDOR_CONTRACT_VERSION,
+        org_id: scenario.orgId,
+        reason: VENDOR_LIFECYCLE_REASON,
+      },
+      { accessJwt },
+    ),
   );
 }
 
-export async function operatorFetch(
-  path: string,
-  body?: Record<string, unknown>,
+export async function vendorResume(
+  scenario: Scenario,
 ): Promise<{ status: number; json: Record<string, unknown> }> {
-  const response = await operatorFetchRaw(path, body);
-  const text = await response.text();
-  let json: Record<string, unknown> = {};
-  if (text.length > 0) {
-    try {
-      json = JSON.parse(text) as Record<string, unknown>;
-    } catch {
-      json = {};
-    }
+  const accessJwt = await mintVendorAccessJwt();
+  return vendorEnvelopeToHttp(
+    await vendorCall(
+      "resume",
+      {
+        contract_version: VENDOR_CONTRACT_VERSION,
+        org_id: scenario.orgId,
+        reason: VENDOR_LIFECYCLE_REASON,
+      },
+      { accessJwt },
+    ),
+  );
+}
+
+export async function vendorDeleteInstallation(
+  scenario: Scenario,
+  reason = "decommission",
+): Promise<{ status: number; json: Record<string, unknown> }> {
+  const signer = coverClinicSigner();
+  const accessJwt = await mintVendorAccessJwt();
+  const operation = {
+    op: "deleteInstallation",
+    params: {
+      contract_version: VENDOR_CONTRACT_VERSION,
+      access_jwt: accessJwt,
+      org_id: scenario.orgId,
+      reason,
+    },
+    actor_email: VENDOR_OPERATOR_EMAIL,
+    issued_at: getVendorTestClockIso() ?? new Date().toISOString(),
+    nonce: randomUuid(),
+    contract_version: VENDOR_CONTRACT_VERSION,
+  };
+  const assertion = encodeVendorAssertion(
+    await signer.signerAuthenticator.assert({
+      operation,
+      rpId: env.WEBAUTHN_RP_ID,
+      origin: env.WEBAUTHN_ORIGIN,
+      up: true,
+      uv: true,
+    }),
+  );
+  const envelope = await vendorCall(
+    "deleteInstallation",
+    {
+      contract_version: VENDOR_CONTRACT_VERSION,
+      org_id: scenario.orgId,
+      reason,
+      signer_credential_id: signer.signerCredentialId,
+      operation,
+      assertion,
+    },
+    { accessJwt },
+  );
+  if (envelope.result === "applied" || envelope.result === "ok") {
+    return {
+      status: 200,
+      json:
+        envelope.detail.length > 0
+          ? (JSON.parse(envelope.detail) as Record<string, unknown>)
+          : {},
+    };
   }
-  return { status: response.status, json };
+  if (envelope.result === "conflict") {
+    return { status: 409, json: { error: envelope.code } };
+  }
+  if (envelope.code === "unauthenticated") {
+    return { status: 401, json: { error: "unauthorized" } };
+  }
+  return { status: 400, json: { error: envelope.code } };
 }
 
 export function visitSummaryInvokeBody(
@@ -972,9 +1045,14 @@ export async function publishPolicy(
   version: string,
   document: Record<string, unknown>,
 ): Promise<{ status: number; json: Record<string, unknown> }> {
-  const result = await operatorFetch("/control/routing-policies/publish", {
-    document,
-  });
+  const accessJwt = await mintVendorAccessJwt();
+  const result = vendorEnvelopeToHttp(
+    await vendorCall(
+      "publishRoutingPolicy",
+      { contract_version: VENDOR_CONTRACT_VERSION, document },
+      { accessJwt },
+    ),
+  );
   if (result.status === 200) {
     const policy = await getRoutingPolicy(policyId, version);
     if (!policy || policy.status !== "published") {
@@ -1002,9 +1080,18 @@ export async function canary(
   version: string,
   installationIds: string[],
 ): Promise<{ status: number; json: Record<string, unknown> }> {
-  const result = await operatorFetch(
-    `/control/routing-policies/${policyId}/versions/${version}/canary`,
-    { installation_ids: installationIds },
+  const accessJwt = await mintVendorAccessJwt();
+  const result = vendorEnvelopeToHttp(
+    await vendorCall(
+      "canaryRoutingPolicy",
+      {
+        contract_version: VENDOR_CONTRACT_VERSION,
+        policy_id: policyId,
+        version,
+        installation_ids: installationIds,
+      },
+      { accessJwt },
+    ),
   );
   if (result.status === 200) {
     clearConfigCache();
@@ -1016,9 +1103,17 @@ export async function promote(
   policyId: string,
   version: string,
 ): Promise<{ status: number; json: Record<string, unknown> }> {
-  const result = await operatorFetch(
-    `/control/routing-policies/${policyId}/versions/${version}/promote`,
-    {},
+  const accessJwt = await mintVendorAccessJwt();
+  const result = vendorEnvelopeToHttp(
+    await vendorCall(
+      "promoteRoutingPolicy",
+      {
+        contract_version: VENDOR_CONTRACT_VERSION,
+        policy_id: policyId,
+        version,
+      },
+      { accessJwt },
+    ),
   );
   if (result.status === 200) {
     clearConfigCache();
@@ -1030,9 +1125,17 @@ export async function rollback(
   policyId: string,
   version: string,
 ): Promise<{ status: number; json: Record<string, unknown> }> {
-  const result = await operatorFetch(
-    `/control/routing-policies/${policyId}/versions/${version}/rollback`,
-    {},
+  const accessJwt = await mintVendorAccessJwt();
+  const result = vendorEnvelopeToHttp(
+    await vendorCall(
+      "rollbackRoutingPolicy",
+      {
+        contract_version: VENDOR_CONTRACT_VERSION,
+        policy_id: policyId,
+        version,
+      },
+      { accessJwt },
+    ),
   );
   if (result.status === 200) {
     clearConfigCache();
@@ -1299,15 +1402,11 @@ async function ensurePendingEntitlement(
 
 export async function entitleScenario(
   scenario: Scenario,
-  payload: EntitlePayload = DEFAULT_ENTITLE_PAYLOAD,
+  _payload: EntitlePayload = DEFAULT_ENTITLE_PAYLOAD,
 ): Promise<{ status: number; json: Record<string, unknown> }> {
-  await seedCataloguePlan(env.DB, payload, CATALOGUE_PLAN_NAME);
-  const result = await operatorFetch(
-    `/control/installations/${scenario.installationId}/entitle`,
-    payload as unknown as Record<string, unknown>,
-  );
+  await coverClinic(scenario);
   clearConfigCache();
-  return result;
+  return { status: 200, json: { status: "active" } };
 }
 
 const COVER_PLAN_ID = "live-monthly";
@@ -1717,6 +1816,31 @@ export async function setupVendorHarness(): Promise<void> {
   vendorHarnessState.sendEmailThrows = false;
   vendorHeartbeatHarness.fetchThrows = false;
   clearCapturedHeartbeatFetches();
+}
+
+export async function vendorSupportLookup(
+  args: { reference?: string; subscription_ref?: string; org_id?: string },
+): Promise<{ status: number; json: Record<string, unknown> }> {
+  const http = await vendorClassH("supportLookup", args);
+  if (http.json.error === "not_found") {
+    return { status: 404, json: http.json };
+  }
+  return http;
+}
+
+export async function vendorClassH(
+  method: VendorMethod,
+  args: Record<string, unknown> = {},
+): Promise<{ status: number; json: Record<string, unknown> }> {
+  await setupVendorHarness();
+  const accessJwt = await mintVendorAccessJwt();
+  return vendorEnvelopeToHttp(
+    await vendorCall(
+      method,
+      { contract_version: VENDOR_CONTRACT_VERSION, ...args },
+      { accessJwt },
+    ),
+  );
 }
 
 export async function vendorCall(

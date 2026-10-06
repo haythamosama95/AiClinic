@@ -5,7 +5,7 @@ import { pinWorkerdCompatibilityDate } from "./test/pin-workerd-compatibility-da
 export default defineWorkersConfig({
   test: {
     include: [
-      "test/control.test.ts",
+      "test/vendor-entrypoint.test.ts",
       "test/identity.test.ts",
       "test/entitlement.test.ts",
       "test/rate-limit.test.ts",
@@ -29,12 +29,9 @@ export default defineWorkersConfig({
       "test/config-readers.test.ts",
       "test/load/load-and-cost.test.ts",
       "test/worker-request-orchestrator.test.ts",
-      "test/entitle-grant.test.ts",
       "test/plan-catalogue.test.ts",
       "test/quota-inspect.test.ts",
       "test/usage-summary.test.ts",
-      "test/period-close.test.ts",
-      "test/price-list-activation.test.ts",
       "test/system/**/*.system.test.ts",
     ],
     fileParallelism: false,

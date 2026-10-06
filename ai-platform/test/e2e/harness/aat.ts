@@ -104,7 +104,7 @@ async function ensureVendorAccessTeam(): Promise<AccessTeam> {
   return vendorAccessTeam;
 }
 
-async function mintVendorAccessJwt(): Promise<string> {
+export async function mintVendorAccessJwt(): Promise<string> {
   const team = await ensureVendorAccessTeam();
   const now = Math.floor(Date.now() / 1000);
   return team.mint({

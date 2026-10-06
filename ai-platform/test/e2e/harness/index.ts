@@ -8,8 +8,6 @@ export {
   CAPABILITY_ID,
   CAPABILITY_VERSION,
   GATEWAY_ORIGIN,
-  OPERATOR_BEARER,
-  OPERATOR_ID,
   PLATFORM_TABLES,
   POLICY_ID,
   POLICY_REF,
@@ -77,6 +75,7 @@ export {
   controlHandlers,
   DEFAULT_ENTITLE_PAYLOAD,
   dispatchControl,
+  dispatchControlRequest,
   newClinic,
   enrollInstallation,
   enrollPayload,
@@ -171,4 +170,3 @@ export {
   inspectRPC,
   releaseRPC,
 } from "../../../src/quota-do";
-export { createSecretOperatorAuth, dispatchControlRequest } from "../../../src/control";

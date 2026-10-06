@@ -23,7 +23,7 @@ import {
   invoke,
   mintAat,
   newScenario,
-  operatorFetchRaw,
+  vendorSupportLookup,
   POLICY_ID,
   POLICY_VERSION,
   publishPolicy,
@@ -503,11 +503,9 @@ describe("settlement integrity", () => {
     );
     expect(listRoot.status).toBe(404);
 
-    const lookup = await operatorFetchRaw(
-      `/control/support/lookup?reference=${encodeURIComponent(ref)}`,
-    );
+    const lookup = await vendorSupportLookup({ reference: ref });
     expect(lookup.status).toBe(200);
-    const lookupBody = (await lookup.json()) as Record<string, unknown>;
+    const lookupBody = lookup.json;
     expect(lookupBody.request).toBeTruthy();
     expect(lookupBody.attempts).toBeTruthy();
     expect(lookupBody.envelope).toBeTruthy();

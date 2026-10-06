@@ -5,8 +5,6 @@ declare module "cloudflare:test" {
     DB: D1Database;
     R2: R2Bucket;
     DO: DurableObjectNamespace;
-    OPERATOR_BEARER_TOKEN: string;
-    OPERATOR_ID: string;
     RATE_LIMITER_INSTALLATION: RateLimit;
     RATE_LIMITER_INSTALLATION_ACTOR: RateLimit;
     RATE_LIMITER_INSTALLATION_CAPABILITY: RateLimit;
@@ -43,12 +41,7 @@ export { env, SELF };
 /** Origin used by `SELF.fetch` in the workers pool. */
 export const GATEWAY_ORIGIN = "https://ai-gateway.test";
 
-/** Must match `vitest.e2e.config.ts` miniflare binding. */
-export const OPERATOR_BEARER = "test-operator-bearer-token";
-
-/** Must match wrangler `[env.development.vars]` / e2e miniflare override. */
-export const OPERATOR_ID = "platform-operator";
-
+/** @deprecated Former operator bearer; control routes use Access JWT via vendor. */
 export const WRONG_OPERATOR_BEARER = "op-token-WRONG";
 
 export const CAPABILITY_ID = "clinic.visit_summary";

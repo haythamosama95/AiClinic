@@ -24,7 +24,7 @@ import {
   getUsageEvents,
   mintAat,
   newScenario,
-  operatorFetch,
+  vendorSuspend,
   parseSseEvents,
   POLICY_ID,
   POLICY_VERSION,
@@ -381,10 +381,7 @@ describe("failure taxonomy matrix", () => {
     const scenario = await newScenario();
     await setupPromotedFakePolicy(scenario);
     const before = await count("ai_request");
-    const suspended = await operatorFetch(
-      `/control/installations/${scenario.installationId}/suspend`,
-      {},
-    );
+    const suspended = await vendorSuspend(scenario);
     expect(suspended.status).toBe(200);
     clearConfigCache();
 

@@ -17,7 +17,7 @@ import {
   invoke,
   mintAat,
   newScenario,
-  operatorFetchRaw,
+  vendorSupportLookup,
   queryAll,
   registerVisitSummaryCapability,
   resetPlatformState,
@@ -95,11 +95,9 @@ describe("cron retention interplay", () => {
     const clientGet = await getRequest(token, ref);
     expect(clientGet.status).toBe(404);
 
-    const lookup = await operatorFetchRaw(
-      `/control/support/lookup?reference=${encodeURIComponent(ref)}`,
-    );
+    const lookup = await vendorSupportLookup({ reference: ref });
     expect(lookup.status).toBe(404);
-    const lookupBody = (await lookup.json()) as { error?: string };
+    const lookupBody = lookup.json as { error?: string };
     expect(lookupBody.error).toBe("not_found");
   });
 

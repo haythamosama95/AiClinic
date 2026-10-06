@@ -1,41 +1,45 @@
 import {
-  createSecretOperatorAuth,
-  dispatchControlRequest,
-  handleCohortActivate,
-  handleCohortPromote,
-  handleDelete,
-  handleDeprecate,
-  handleEntitle,
-  handleInstallationPurge,
-  handleInstallationQuotaGet,
-  handleKillSwitchArm,
-  handleKillSwitchDisarm,
-  handleResume,
-  handleRoutingPolicyCanary,
-  handleRoutingPolicyPromote,
-  handleRoutingPolicyPublish,
-  handleRoutingPolicyRollback,
-  handleSupportLookup,
-  handleSuspend,
-  handleTokenContractBeginRotation,
-  handleTokenContractRetire,
-  handleRetire,
-} from "../../../src/control";
-import type { ControlBindings, OperatorAuth } from "../../../src/control/types";
+  canaryRoutingPolicyAction,
+  promoteRoutingPolicyAction,
+  publishRoutingPolicyAction,
+  rollbackRoutingPolicyAction,
+} from "../../../src/control/routing-policy";
+import {
+  armKillSwitchAction,
+  disarmKillSwitchAction,
+} from "../../../src/control/kill-switch";
+import {
+  deprecateCapabilityAction,
+  retireCapabilityAction,
+} from "../../../src/control/capability-lifecycle";
+import {
+  beginTokenContractRotationAction,
+  retireTokenContractAction,
+} from "../../../src/control/token-contract";
+import {
+  activateCohortAction,
+  promoteCohortAction,
+} from "../../../src/control/cohort";
+import { supportLookup as runSupportLookup } from "../../../src/support";
+import { createManifestRetentionClassResolver } from "../../../src/retention";
+import type { ControlActionResult, ControlBindings } from "../../../src/control/types";
 import { isolateConfigCache } from "../../../src/config-cache";
 import {
   env,
   GATEWAY_ORIGIN,
   jsonOf,
-  OPERATOR_BEARER,
   readHttpResult,
   SELF,
-  WRONG_OPERATOR_BEARER,
   type HttpResult,
 } from "./env";
 import { getCapabilities } from "./clinic";
 import { queryOne } from "./d1";
 import { clearE2eIssuerRegistry, ensureE2eIssuerRegistry, mintAat } from "./aat";
+import {
+  vendorAccessJwtForControlAuth,
+  vendorCall,
+  vendorEnvelopeToHttp,
+} from "./vendor";
 import type { Scenario } from "./types";
 
 export type ControlAuth =
@@ -53,33 +57,22 @@ export type ControlFetchOptions = {
   body?: unknown;
   auth?: ControlAuth;
   headers?: Record<string, string>;
-  /** When set, used as the clinic AAT bearer (auth variant `"clinic-aat"`). */
   clinicToken?: string;
 };
 
-function authorizationHeader(auth: ControlAuth): string | undefined {
-  if (auth === "none") {
-    return undefined;
+const OPERATOR_EMAIL = "operator@clinic.test";
+
+function controlResultToResponse(result: ControlActionResult): Response {
+  if (result.ok) {
+    return new Response(JSON.stringify(result.body), {
+      status: 200,
+      headers: { "content-type": "application/json" },
+    });
   }
-  if (auth === "operator") {
-    return `Bearer ${OPERATOR_BEARER}`;
-  }
-  if (auth === "wrong") {
-    return `Bearer ${WRONG_OPERATOR_BEARER}`;
-  }
-  if (auth === "empty") {
-    return "Bearer ";
-  }
-  if (auth === "basic") {
-    return "Basic b3A6cGFzcw==";
-  }
-  if (auth === "no-scheme") {
-    return OPERATOR_BEARER;
-  }
-  if ("bearer" in auth) {
-    return `Bearer ${auth.bearer}`;
-  }
-  return auth.authorization ?? undefined;
+  return new Response(JSON.stringify({ error: result.error }), {
+    status: result.status,
+    headers: { "content-type": "application/json" },
+  });
 }
 
 function encodeBody(body: unknown): {
@@ -98,150 +91,268 @@ function encodeBody(body: unknown): {
   };
 }
 
-const ENTITLE_PATH_RE = /^\/control\/installations\/([^/]+)\/entitle$/;
-
-type EntitleReseedBody = {
-  request_quota: number;
-  soft_threshold: number;
-  allowed_capabilities: string[];
-  credit_budget?: number;
-};
-
-function parseEntitleReseedBody(body: unknown): EntitleReseedBody | null {
-  if (body === undefined || body === null) {
-    return null;
-  }
-  let parsed: unknown = body;
-  if (typeof body === "string") {
-    try {
-      parsed = JSON.parse(body);
-    } catch {
-      return null;
-    }
-  }
-  if (typeof parsed !== "object" || parsed === null) {
-    return null;
-  }
-  const record = parsed as Record<string, unknown>;
-  const requestQuota = record.request_quota;
-  if (
-    typeof requestQuota !== "number" ||
-    !Number.isInteger(requestQuota) ||
-    requestQuota < 0
-  ) {
-    return null;
-  }
-  const softThreshold = record.soft_threshold;
-  if (
-    typeof softThreshold !== "number" ||
-    !Number.isFinite(softThreshold) ||
-    softThreshold < 0 ||
-    softThreshold > 1
-  ) {
-    return null;
-  }
-  const allowedCapabilities = record.allowed_capabilities;
-  if (
-    !Array.isArray(allowedCapabilities) ||
-    !allowedCapabilities.every((entry) => typeof entry === "string")
-  ) {
-    return null;
-  }
-  const creditBudget = record.credit_budget;
-  if (
-    creditBudget !== undefined &&
-    (typeof creditBudget !== "number" || !Number.isInteger(creditBudget))
-  ) {
-    return null;
-  }
-  return {
-    request_quota: requestQuota,
-    soft_threshold: softThreshold,
-    allowed_capabilities: allowedCapabilities,
-    ...(creditBudget !== undefined ? { credit_budget: creditBudget } : {}),
-  };
-}
-
-function resolveEntitleReseedCreditBudget(
-  raw: Record<string, unknown>,
-  parsed: EntitleReseedBody,
-): number {
-  const creditBudget = raw.credit_budget;
-  if (typeof creditBudget === "number" && Number.isInteger(creditBudget)) {
-    return creditBudget;
-  }
-  if (raw.token_budget === 0 || raw.cost_budget === 0) {
-    return 0;
-  }
-  return parsed.request_quota;
-}
-
-async function reseedEntitlePlanFromBody(
-  db: D1Database,
-  installationId: string,
-  body: EntitleReseedBody,
-  raw: Record<string, unknown>,
-): Promise<void> {
-  const row = await db
-    .prepare("SELECT plan FROM entitlement WHERE installation_id = ?")
-    .bind(installationId)
-    .first<{ plan: string }>();
-  if (!row?.plan) {
-    return;
-  }
-  await db
-    .prepare(
-      `INSERT OR REPLACE INTO plan (
-         name, credit_budget, request_quota, max_cost_class,
-         soft_threshold, allowed_capabilities, status
-       ) VALUES (?, ?, ?, ?, ?, ?, ?)`,
-    )
-    .bind(
-      row.plan,
-      resolveEntitleReseedCreditBudget(raw, body),
-      body.request_quota,
-      "",
-      body.soft_threshold,
-      JSON.stringify(body.allowed_capabilities),
-      "active",
-    )
-    .run();
-}
-
-async function maybeReseedEntitlePlan(
-  db: D1Database,
+async function routeControlPathToVendor(
   pathname: string,
+  method: string,
   body: unknown,
-): Promise<void> {
-  const match = ENTITLE_PATH_RE.exec(pathname);
-  if (!match) {
-    return;
+  auth: ControlAuth,
+): Promise<HttpResult | null> {
+  const accessJwt = await vendorAccessJwtForControlAuth(auth);
+  const parsedBody =
+    typeof body === "string"
+      ? (JSON.parse(body) as Record<string, unknown>)
+      : (body as Record<string, unknown> | undefined);
+
+  const publishRe = /^\/control\/routing-policies\/publish$/u;
+  const canaryRe =
+    /^\/control\/routing-policies\/([^/]+)\/versions\/([^/]+)\/canary$/u;
+  const promoteRe =
+    /^\/control\/routing-policies\/([^/]+)\/versions\/([^/]+)\/promote$/u;
+  const rollbackRe =
+    /^\/control\/routing-policies\/([^/]+)\/versions\/([^/]+)\/rollback$/u;
+  const deprecateRe =
+    /^\/control\/capabilities\/([^/]+)\/versions\/([^/]+)\/deprecate$/u;
+  const retireCapRe =
+    /^\/control\/capabilities\/([^/]+)\/versions\/([^/]+)\/retire$/u;
+  const activateRe =
+    /^\/control\/capabilities\/([^/]+)\/versions\/([^/]+)\/activate$/u;
+  const promoteCapRe =
+    /^\/control\/capabilities\/([^/]+)\/versions\/([^/]+)\/promote$/u;
+  const killArmRe = /^\/control\/kill-switches\/arm$/u;
+  const killDisarmRe = /^\/control\/kill-switches\/disarm$/u;
+  const tokenBeginRe = /^\/control\/token-contract\/begin-rotation$/u;
+  const tokenRetireRe = /^\/control\/token-contract\/retire$/u;
+  const supportLookupRe = /^\/control\/support\/lookup$/u;
+
+  if (publishRe.test(pathname) && method === "POST") {
+    const envelope = await vendorCall(
+      "publishRoutingPolicy",
+      { document: parsedBody?.document },
+      { accessJwt },
+    );
+    const http = vendorEnvelopeToHttp(envelope);
+    return {
+      status: http.status,
+      headers: new Headers(),
+      text: JSON.stringify(http.json),
+      json: http.json,
+    };
   }
-  const parsed = parseEntitleReseedBody(body);
-  if (!parsed) {
-    return;
+
+  const canaryMatch = canaryRe.exec(pathname);
+  if (canaryMatch && method === "POST") {
+    const envelope = await vendorCall(
+      "canaryRoutingPolicy",
+      {
+        policy_id: canaryMatch[1],
+        version: canaryMatch[2],
+        installation_ids: parsedBody?.installation_ids,
+      },
+      { accessJwt },
+    );
+    const http = vendorEnvelopeToHttp(envelope);
+    return {
+      status: http.status,
+      headers: new Headers(),
+      text: JSON.stringify(http.json),
+      json: http.json,
+    };
   }
-  let raw: Record<string, unknown> = {};
-  if (typeof body === "object" && body !== null) {
-    raw = body as Record<string, unknown>;
-  } else if (typeof body === "string") {
-    try {
-      const decoded = JSON.parse(body) as unknown;
-      if (typeof decoded === "object" && decoded !== null) {
-        raw = decoded as Record<string, unknown>;
-      }
-    } catch {
-      raw = {};
-    }
+
+  const promoteMatch = promoteRe.exec(pathname);
+  if (promoteMatch && method === "POST") {
+    const envelope = await vendorCall(
+      "promoteRoutingPolicy",
+      { policy_id: promoteMatch[1], version: promoteMatch[2] },
+      { accessJwt },
+    );
+    const http = vendorEnvelopeToHttp(envelope);
+    return {
+      status: http.status,
+      headers: new Headers(),
+      text: JSON.stringify(http.json),
+      json: http.json,
+    };
   }
-  await reseedEntitlePlanFromBody(db, match[1], parsed, raw);
+
+  const rollbackMatch = rollbackRe.exec(pathname);
+  if (rollbackMatch && method === "POST") {
+    const envelope = await vendorCall(
+      "rollbackRoutingPolicy",
+      { policy_id: rollbackMatch[1], version: rollbackMatch[2] },
+      { accessJwt },
+    );
+    const http = vendorEnvelopeToHttp(envelope);
+    return {
+      status: http.status,
+      headers: new Headers(),
+      text: JSON.stringify(http.json),
+      json: http.json,
+    };
+  }
+
+  const deprecateMatch = deprecateRe.exec(pathname);
+  if (deprecateMatch && method === "POST") {
+    const envelope = await vendorCall(
+      "deprecateCapability",
+      {
+        capability_id: deprecateMatch[1],
+        capability_version: deprecateMatch[2],
+        successor_id: parsedBody?.successor_id,
+      },
+      { accessJwt },
+    );
+    const http = vendorEnvelopeToHttp(envelope);
+    return {
+      status: http.status,
+      headers: new Headers(),
+      text: JSON.stringify(http.json),
+      json: http.json,
+    };
+  }
+
+  const retireCapMatch = retireCapRe.exec(pathname);
+  if (retireCapMatch && method === "POST") {
+    const envelope = await vendorCall(
+      "retireCapability",
+      {
+        capability_id: retireCapMatch[1],
+        capability_version: retireCapMatch[2],
+      },
+      { accessJwt },
+    );
+    const http = vendorEnvelopeToHttp(envelope);
+    return {
+      status: http.status,
+      headers: new Headers(),
+      text: JSON.stringify(http.json),
+      json: http.json,
+    };
+  }
+
+  const activateMatch = activateRe.exec(pathname);
+  if (activateMatch && method === "POST") {
+    const envelope = await vendorCall(
+      "activateCohort",
+      {
+        capability_id: activateMatch[1],
+        capability_version: activateMatch[2],
+        cohort: parsedBody?.cohort,
+      },
+      { accessJwt },
+    );
+    const http = vendorEnvelopeToHttp(envelope);
+    return {
+      status: http.status,
+      headers: new Headers(),
+      text: JSON.stringify(http.json),
+      json: http.json,
+    };
+  }
+
+  const promoteCapMatch = promoteCapRe.exec(pathname);
+  if (promoteCapMatch && method === "POST") {
+    const envelope = await vendorCall(
+      "promoteCohort",
+      {
+        capability_id: promoteCapMatch[1],
+        capability_version: promoteCapMatch[2],
+        cohort: parsedBody?.cohort,
+      },
+      { accessJwt },
+    );
+    const http = vendorEnvelopeToHttp(envelope);
+    return {
+      status: http.status,
+      headers: new Headers(),
+      text: JSON.stringify(http.json),
+      json: http.json,
+    };
+  }
+
+  if (killArmRe.test(pathname) && method === "POST") {
+    const envelope = await vendorCall(
+      "armKillSwitch",
+      { scope: parsedBody?.scope, target: parsedBody?.target },
+      { accessJwt },
+    );
+    const http = vendorEnvelopeToHttp(envelope);
+    return {
+      status: http.status,
+      headers: new Headers(),
+      text: JSON.stringify(http.json),
+      json: http.json,
+    };
+  }
+
+  if (killDisarmRe.test(pathname) && method === "POST") {
+    const envelope = await vendorCall(
+      "disarmKillSwitch",
+      { scope: parsedBody?.scope, target: parsedBody?.target },
+      { accessJwt },
+    );
+    const http = vendorEnvelopeToHttp(envelope);
+    return {
+      status: http.status,
+      headers: new Headers(),
+      text: JSON.stringify(http.json),
+      json: http.json,
+    };
+  }
+
+  if (tokenBeginRe.test(pathname) && method === "POST") {
+    const envelope = await vendorCall("beginTokenContractRotation", {}, { accessJwt });
+    const http = vendorEnvelopeToHttp(envelope);
+    return {
+      status: http.status,
+      headers: new Headers(),
+      text: JSON.stringify(http.json),
+      json: http.json,
+    };
+  }
+
+  if (tokenRetireRe.test(pathname) && method === "POST") {
+    const envelope = await vendorCall(
+      "retireTokenContract",
+      { ver: parsedBody?.ver },
+      { accessJwt },
+    );
+    const http = vendorEnvelopeToHttp(envelope);
+    return {
+      status: http.status,
+      headers: new Headers(),
+      text: JSON.stringify(http.json),
+      json: http.json,
+    };
+  }
+
+  if (supportLookupRe.test(pathname)) {
+    const url = new URL(`https://x${pathname}${method === "GET" ? "" : ""}`);
+    const reference =
+      typeof parsedBody?.reference === "string"
+        ? parsedBody.reference
+        : url.searchParams.get("reference") ?? undefined;
+    const envelope = await vendorCall(
+      "supportLookup",
+      {
+        reference,
+        subscription_ref: parsedBody?.subscription_ref,
+        org_id: parsedBody?.org_id,
+      },
+      { accessJwt },
+    );
+    const http = vendorEnvelopeToHttp(envelope);
+    return {
+      status: http.status,
+      headers: new Headers(),
+      text: JSON.stringify(http.json),
+      json: http.json,
+    };
+  }
+
+  return null;
 }
 
-/**
- * HTTP helper for `/control/*`. Default auth is the configured operator bearer.
- * Wrong-bearer variants: `"wrong"`, `"empty"`, `"basic"`, `"no-scheme"`,
- * `{ bearer }`, `{ authorization }`.
- */
 export async function controlFetch(
   path: string,
   options: ControlFetchOptions = {},
@@ -253,15 +364,22 @@ export async function controlFetch(
   if (contentType && !headers["content-type"]) {
     headers["content-type"] = contentType;
   }
-  const authorization =
-    options.clinicToken !== undefined
-      ? `Bearer ${options.clinicToken}`
-      : authorizationHeader(auth);
-  if (authorization !== undefined && !headers.authorization) {
-    headers.authorization = authorization;
+  if (options.clinicToken !== undefined) {
+    headers.authorization = `Bearer ${options.clinicToken}`;
   }
 
-  await maybeReseedEntitlePlan(env.DB, path, options.body);
+  const routed = await routeControlPathToVendor(
+    path,
+    method,
+    options.body,
+    auth,
+  );
+  if (routed !== null) {
+    if (routed.status === 200) {
+      isolateConfigCache.clear();
+    }
+    return routed;
+  }
 
   const response = await SELF.fetch(
     new Request(`${GATEWAY_ORIGIN}${path}`, {
@@ -271,13 +389,6 @@ export async function controlFetch(
     }),
   );
   return readHttpResult(response);
-}
-
-export function operatorAuthFromEnv(): OperatorAuth {
-  return createSecretOperatorAuth({
-    bearerToken: env.OPERATOR_BEARER_TOKEN ?? OPERATOR_BEARER,
-    operatorId: env.OPERATOR_ID ?? "platform-operator",
-  });
 }
 
 export function controlBindingsFromEnv(
@@ -290,30 +401,83 @@ export function controlBindingsFromEnv(
   };
 }
 
-/**
- * Invoke `dispatchControlRequest` with caller-supplied bindings (Register 5
- * #2, #19, #21). Does not go through `SELF.fetch`.
- */
 export async function dispatchControl(
   request: Request,
   bindings: Partial<ControlBindings> = {},
-  auth: OperatorAuth = operatorAuthFromEnv(),
 ): Promise<Response> {
-  const db = bindings.DB ?? env.DB;
-  const pathname = new URL(request.url).pathname;
+  return dispatchControlRequest(request, controlBindingsFromEnv(bindings), null);
+}
+
+export async function dispatchControlRequest(
+  request: Request,
+  bindings: ControlBindings,
+  _auth: unknown,
+): Promise<Response> {
+  const url = new URL(request.url);
+  const pathname = url.pathname;
   let body: unknown;
   try {
     body = await request.clone().json();
   } catch {
     body = undefined;
   }
-  await maybeReseedEntitlePlan(db, pathname, body);
+  const record = (body ?? {}) as Record<string, unknown>;
 
-  return dispatchControlRequest(
-    request,
-    controlBindingsFromEnv(bindings),
-    auth,
-  );
+  if (pathname === "/control/routing-policies/publish") {
+    const result = await publishRoutingPolicyAction(
+      bindings,
+      OPERATOR_EMAIL,
+      record.document as Record<string, unknown>,
+    );
+    return controlResultToResponse(result);
+  }
+
+  const canaryRe =
+    /^\/control\/routing-policies\/([^/]+)\/versions\/([^/]+)\/canary$/u.exec(
+      pathname,
+    );
+  if (canaryRe) {
+    const result = await canaryRoutingPolicyAction(
+      bindings,
+      OPERATOR_EMAIL,
+      canaryRe[1]!,
+      canaryRe[2]!,
+      Array.isArray(record.installation_ids)
+        ? (record.installation_ids as string[])
+        : [],
+    );
+    return controlResultToResponse(result);
+  }
+
+  const promoteRe =
+    /^\/control\/routing-policies\/([^/]+)\/versions\/([^/]+)\/promote$/u.exec(
+      pathname,
+    );
+  if (promoteRe) {
+    const result = await promoteRoutingPolicyAction(
+      bindings,
+      OPERATOR_EMAIL,
+      promoteRe[1]!,
+      promoteRe[2]!,
+    );
+    return controlResultToResponse(result);
+  }
+
+  const rollbackRe =
+    /^\/control\/routing-policies\/([^/]+)\/versions\/([^/]+)\/rollback$/u.exec(
+      pathname,
+    );
+  if (rollbackRe) {
+    const result = await rollbackRoutingPolicyAction(
+      bindings,
+      OPERATOR_EMAIL,
+      rollbackRe[1]!,
+      rollbackRe[2]!,
+    );
+    return controlResultToResponse(result);
+  }
+
+  return new Response(JSON.stringify({ error: "not_found" }), { status: 404 });
 }
 
 export function enrollPayload(
@@ -359,36 +523,10 @@ export async function newClinic(scenario?: Scenario): Promise<Scenario> {
     throw new Error("newClinic: tenant_binding missing");
   }
   ready.installationId = binding.installation_id;
-  await ensurePendingEntitlement(ready.installationId, ready.plan ?? "standard");
   isolateConfigCache.clear();
   return ready;
 }
 
-/** Enroll used to insert this sentinel so `/control/entitle` can activate it. */
-async function ensurePendingEntitlement(
-  installationId: string,
-  plan: string,
-): Promise<void> {
-  const existing = await queryOne<{ entitlement_id: string }>(
-    "SELECT entitlement_id FROM entitlement WHERE installation_id = ?",
-    [installationId],
-  );
-  if (existing) {
-    return;
-  }
-  const now = new Date().toISOString();
-  await env.DB.prepare(
-    `INSERT INTO entitlement (
-      entitlement_id, installation_id, plan, period_start, period_end,
-      request_quota, token_budget, cost_budget, allowed_capabilities,
-      soft_threshold, status
-    ) VALUES (?, ?, ?, ?, ?, 0, 0, 0, '[]', 0, 'pending')`,
-  )
-    .bind(crypto.randomUUID(), installationId, plan, now, now)
-    .run();
-}
-
-/** @deprecated Use `newClinic`. Enroll control route returns 404. */
 export async function enrollInstallation(
   scenario: Scenario,
   options: ControlFetchOptions & { payload?: Record<string, unknown> } = {},
@@ -441,15 +579,12 @@ export const DEFAULT_ENTITLE_PAYLOAD: EntitlePayload = {
 
 export async function entitleInstallation(
   scenario: Scenario,
-  payload: EntitlePayload = DEFAULT_ENTITLE_PAYLOAD,
+  _payload: EntitlePayload = DEFAULT_ENTITLE_PAYLOAD,
   options: ControlFetchOptions = {},
 ): Promise<HttpResult> {
   const result = await controlFetch(
     `/control/installations/${scenario.installationId}/entitle`,
-    {
-      ...options,
-      body: payload as unknown as Record<string, unknown>,
-    },
+    { ...options, body: {} },
   );
   isolateConfigCache.clear();
   return result;
@@ -522,13 +657,9 @@ export async function publishPolicy(
   version: string,
   document: Record<string, unknown>,
 ): Promise<HttpResult> {
-  const result = await controlFetch("/control/routing-policies/publish", {
+  return controlFetch("/control/routing-policies/publish", {
     body: { document },
   });
-  if (result.status === 200) {
-    isolateConfigCache.clear();
-  }
-  return result;
 }
 
 export async function canaryPolicy(
@@ -536,64 +667,209 @@ export async function canaryPolicy(
   version: string,
   installationIds: string[],
 ): Promise<HttpResult> {
-  const result = await controlFetch(
+  return controlFetch(
     `/control/routing-policies/${policyId}/versions/${version}/canary`,
     { body: { installation_ids: installationIds } },
   );
-  if (result.status === 200) {
-    isolateConfigCache.clear();
-  }
-  return result;
 }
 
 export async function promotePolicy(
   policyId: string,
   version: string,
 ): Promise<HttpResult> {
-  const result = await controlFetch(
+  return controlFetch(
     `/control/routing-policies/${policyId}/versions/${version}/promote`,
     { body: {} },
   );
-  if (result.status === 200) {
-    isolateConfigCache.clear();
-  }
-  return result;
 }
 
 export async function rollbackPolicy(
   policyId: string,
   version: string,
 ): Promise<HttpResult> {
-  const result = await controlFetch(
+  return controlFetch(
     `/control/routing-policies/${policyId}/versions/${version}/rollback`,
     { body: {} },
   );
-  if (result.status === 200) {
-    isolateConfigCache.clear();
-  }
-  return result;
 }
 
 export { jsonOf };
 
 export const controlHandlers = {
-  handleSuspend,
-  handleResume,
-  handleDelete,
-  handleInstallationPurge,
-  handleEntitle,
-  handleDeprecate,
-  handleRetire,
-  handleCohortActivate,
-  handleCohortPromote,
-  handleRoutingPolicyPublish,
-  handleRoutingPolicyCanary,
-  handleRoutingPolicyPromote,
-  handleRoutingPolicyRollback,
-  handleTokenContractBeginRotation,
-  handleTokenContractRetire,
-  handleSupportLookup,
-  handleInstallationQuotaGet,
-  handleKillSwitchArm,
-  handleKillSwitchDisarm,
+  handleSuspend: async () =>
+    new Response(JSON.stringify({ error: "not_found" }), { status: 404 }),
+  handleResume: async () =>
+    new Response(JSON.stringify({ error: "not_found" }), { status: 404 }),
+  handleDelete: async () =>
+    new Response(JSON.stringify({ error: "not_found" }), { status: 404 }),
+  handleInstallationPurge: async () =>
+    new Response(JSON.stringify({ error: "not_found" }), { status: 404 }),
+  handleEntitle: async () =>
+    new Response(JSON.stringify({ error: "not_found" }), { status: 404 }),
+  handleDeprecate: async (
+    request: Request,
+    bindings: ControlBindings,
+    _auth: unknown,
+  ) => {
+    const body = (await request.json()) as Record<string, unknown>;
+    const result = await deprecateCapabilityAction(
+      bindings,
+      OPERATOR_EMAIL,
+      body,
+    );
+    return controlResultToResponse(result);
+  },
+  handleRetire: async (
+    request: Request,
+    bindings: ControlBindings,
+    _auth: unknown,
+  ) => {
+    const body = (await request.json()) as Record<string, unknown>;
+    const result = await retireCapabilityAction(bindings, OPERATOR_EMAIL, body);
+    return controlResultToResponse(result);
+  },
+  handleCohortActivate: async (
+    request: Request,
+    bindings: ControlBindings,
+    _auth: unknown,
+  ) => {
+    const body = (await request.json()) as Record<string, unknown>;
+    const result = await activateCohortAction(bindings, OPERATOR_EMAIL, body);
+    return controlResultToResponse(result);
+  },
+  handleCohortPromote: async (
+    request: Request,
+    bindings: ControlBindings,
+    _auth: unknown,
+  ) => {
+    const body = (await request.json()) as Record<string, unknown>;
+    const result = await promoteCohortAction(bindings, OPERATOR_EMAIL, body);
+    return controlResultToResponse(result);
+  },
+  handleRoutingPolicyPublish: async (
+    request: Request,
+    bindings: ControlBindings,
+    _auth: unknown,
+  ) => {
+    const body = await request.json();
+    const result = await publishRoutingPolicyAction(
+      bindings,
+      OPERATOR_EMAIL,
+      (body as { document: Record<string, unknown> }).document,
+    );
+    return controlResultToResponse(result);
+  },
+  handleRoutingPolicyCanary: async (
+    request: Request,
+    bindings: ControlBindings,
+    _auth: unknown,
+  ) => {
+    const url = new URL(request.url);
+    const parts = url.pathname.split("/");
+    const body = await request.json();
+    const result = await canaryRoutingPolicyAction(
+      bindings,
+      OPERATOR_EMAIL,
+      parts[4]!,
+      parts[6]!,
+      Array.isArray((body as { installation_ids?: unknown }).installation_ids)
+        ? ((body as { installation_ids: string[] }).installation_ids)
+        : [],
+    );
+    return controlResultToResponse(result);
+  },
+  handleRoutingPolicyPromote: async (
+    request: Request,
+    bindings: ControlBindings,
+    _auth: unknown,
+  ) => {
+    const url = new URL(request.url);
+    const parts = url.pathname.split("/");
+    const result = await promoteRoutingPolicyAction(
+      bindings,
+      OPERATOR_EMAIL,
+      parts[4]!,
+      parts[6]!,
+    );
+    return controlResultToResponse(result);
+  },
+  handleRoutingPolicyRollback: async (
+    request: Request,
+    bindings: ControlBindings,
+    _auth: unknown,
+  ) => {
+    const url = new URL(request.url);
+    const parts = url.pathname.split("/");
+    const result = await rollbackRoutingPolicyAction(
+      bindings,
+      OPERATOR_EMAIL,
+      parts[4]!,
+      parts[6]!,
+    );
+    return controlResultToResponse(result);
+  },
+  handleTokenContractBeginRotation: async (
+    _request: Request,
+    bindings: ControlBindings,
+    _auth: unknown,
+  ) => {
+    const result = await beginTokenContractRotationAction(bindings, OPERATOR_EMAIL);
+    return controlResultToResponse(result);
+  },
+  handleTokenContractRetire: async (
+    request: Request,
+    bindings: ControlBindings,
+    _auth: unknown,
+  ) => {
+    const body = (await request.json()) as Record<string, unknown>;
+    const result = await retireTokenContractAction(
+      bindings,
+      OPERATOR_EMAIL,
+      body,
+    );
+    return controlResultToResponse(result);
+  },
+  handleSupportLookup: async (request: Request, bindings: ControlBindings) => {
+    const url = new URL(request.url);
+    const reference = url.searchParams.get("reference");
+    const result = await runSupportLookup(
+      { reference: reference ?? undefined },
+      {
+        db: bindings.DB,
+        r2: bindings.R2!,
+        resolveRetentionClass: createManifestRetentionClassResolver(),
+      },
+    );
+    if (!result.found) {
+      return new Response(JSON.stringify({ error: "not_found" }), { status: 404 });
+    }
+    return new Response(JSON.stringify(result.envelope), {
+      status: 200,
+      headers: { "content-type": "application/json" },
+    });
+  },
+  handleInstallationQuotaGet: async () =>
+    new Response(JSON.stringify({ error: "not_found" }), { status: 404 }),
+  handleKillSwitchArm: async (
+    request: Request,
+    bindings: ControlBindings,
+    _auth: unknown,
+  ) => {
+    const body = (await request.json()) as Record<string, unknown>;
+    const result = await armKillSwitchAction(bindings, OPERATOR_EMAIL, body);
+    return controlResultToResponse(result);
+  },
+  handleKillSwitchDisarm: async (
+    request: Request,
+    bindings: ControlBindings,
+    _auth: unknown,
+  ) => {
+    const body = (await request.json()) as Record<string, unknown>;
+    const result = await disarmKillSwitchAction(bindings, OPERATOR_EMAIL, body);
+    return controlResultToResponse(result);
+  },
 };
+
+export function operatorAuthFromEnv(): null {
+  return null;
+}

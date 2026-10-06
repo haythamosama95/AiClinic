@@ -10,6 +10,7 @@ import {
   CAPABILITY_VERSION,
   clearConfigCache,
   count,
+  GATEWAY_ORIGIN,
   DEFAULT_ENTITLE_PAYLOAD,
   newClinic,
   entitleScenario,
@@ -20,7 +21,6 @@ import {
   invoke,
   mintAat,
   newScenario,
-  operatorFetch,
   OPERATOR_BEARER,
   POLICY_ID,
   POLICY_VERSION,
@@ -330,12 +330,17 @@ describe("entitlement-grant interplay", () => {
 
     expect(await count("entitlement", "installation_id = ?", [scenario.installationId])).toBe(1);
 
-    const unknownInstall = await operatorFetch(
-      `/control/installations/${crypto.randomUUID()}/entitle`,
-      DEFAULT_ENTITLE_PAYLOAD as unknown as Record<string, unknown>,
+    const unknownInstall = await SELF.fetch(
+      new Request(
+        `${GATEWAY_ORIGIN}/control/installations/${crypto.randomUUID()}/entitle`,
+        {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify(DEFAULT_ENTITLE_PAYLOAD),
+        },
+      ),
     );
     expect(unknownInstall.status).toBe(404);
-    expect(unknownInstall.json.error).toBe("installation_not_found");
 
     const invalidCases: Array<{ label: string; payload: EntitlePayload }> = [
       {

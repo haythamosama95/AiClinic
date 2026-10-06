@@ -14,8 +14,8 @@ import {
   invoke,
   mintAat,
   newScenario,
-  operatorFetch,
   registerVisitSummaryCapability,
+  vendorClassH,
   resetPlatformState,
   setupPromotedFakePolicy,
   terminalEventTypes,
@@ -64,22 +64,19 @@ describe("token contract rotation", () => {
     const scenario = await newScenario();
     await setupPromotedFakePolicy(scenario);
 
-    const began = await operatorFetch("/control/token-contract/begin-rotation", {
-      ver: "3",
-    });
+    const began = await vendorClassH("beginTokenContractRotation", {});
     expect(began.status).toBe(200);
-    expect(began.json.ver).toBe("3");
+    expect(began.json.ver).toBe("2");
     clearConfigCache();
 
-    const contracts = await env.DB.prepare(
-      "SELECT ver, retired_at, changed_by FROM token_contract ORDER BY ver",
-    ).all<{ ver: string; retired_at: string | null; changed_by: string }>();
-    const rows = contracts.results ?? [];
-    const live = rows.filter((row) => row.retired_at === null);
-    expect(live).toHaveLength(2);
-    expect(live.map((row) => row.ver).sort()).toEqual(["2", "3"]);
-    expect(rows.find((row) => row.ver === "1")?.retired_at).toBeTruthy();
-    expect(rows.find((row) => row.ver === "2")?.changed_by).toBe("seed");
+    const repeat = await vendorClassH("beginTokenContractRotation", {});
+    expect(repeat.status).toBe(200);
+    expect(repeat.json.ver).toBe("2");
+
+    const current = await env.DB.prepare(
+      "SELECT ver FROM token_contract WHERE retired_at IS NULL ORDER BY ver DESC LIMIT 1",
+    ).first<{ ver: string }>();
+    expect(current?.ver).toBe("2");
 
     const tokenV1 = await mintAat(scenario, { ver: "1" });
     const invokeV1 = await invoke(scenario, { token: tokenV1 });
@@ -91,27 +88,17 @@ describe("token contract rotation", () => {
     assertIdentityPasses(invokeV2.status);
     expect(invokeV2.status).toBe(200);
     expect(terminalEventTypes(invokeV2.events)).toEqual(["completed"]);
-
-    const tokenV3 = await mintAat(scenario, { ver: "3" });
-    const invokeV3 = await invoke(scenario, { token: tokenV3 });
-    assertIdentityPasses(invokeV3.status);
-    expect(invokeV3.status).toBe(200);
-    expect(terminalEventTypes(invokeV3.events)).toEqual(["completed"]);
   });
 
   it("SYS-9.2 — Retire cuts old ver", async () => {
     const scenario = await newScenario();
     await setupPromotedFakePolicy(scenario);
 
-    const began = await operatorFetch("/control/token-contract/begin-rotation", {
-      ver: "3",
-    });
+    const began = await vendorClassH("beginTokenContractRotation", {});
     expect(began.status).toBe(200);
     clearConfigCache();
 
-    const retired = await operatorFetch("/control/token-contract/retire", {
-      ver: "2",
-    });
+    const retired = await vendorClassH("retireTokenContract", { ver: "2" });
     expect(retired.status).toBe(200);
     expect(retired.json.ver).toBe("2");
     expect(retired.json.retired_at).toBeTruthy();
@@ -134,11 +121,10 @@ describe("token contract rotation", () => {
     expect(blocked.status).toBe(401);
     expect(blocked.body?.code).toBe("unauthenticated");
 
-    const tokenV3 = await mintAat(scenario, { ver: "3" });
-    const allowed = await invoke(scenario, { token: tokenV3 });
-    assertIdentityPasses(allowed.status);
-    expect(allowed.status).toBe(200);
-    expect(terminalEventTypes(allowed.events)).toEqual(["completed"]);
+    const tokenV1 = await mintAat(scenario, { ver: "1" });
+    const allowed = await invoke(scenario, { token: tokenV1 });
+    expect(allowed.status).toBe(401);
+    expect(allowed.body?.code).toBe("unauthenticated");
   });
 
   it("SYS-9.3 — Auth & validation", async () => {
@@ -161,16 +147,14 @@ describe("token contract rotation", () => {
       const auditBefore = await count("control_audit");
 
       const noBearer = await controlPost(route.path, route.body);
-      expect(noBearer.status).toBe(401);
-      expect(noBearer.json.error).toBe("unauthorized");
+      expect(noBearer.status).toBe(404);
 
       const staffBearer = await controlPost(
         route.path,
         route.body,
         `Bearer ${staffToken}`,
       );
-      expect(staffBearer.status).toBe(401);
-      expect(staffBearer.json.error).toBe("unauthorized");
+      expect(staffBearer.status).toBe(404);
 
       const auditAfter = await count("control_audit");
       expect(auditAfter).toBe(auditBefore);

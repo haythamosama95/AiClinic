@@ -20,7 +20,6 @@ import {
   queryOne,
   resetPlatformState,
   setTestClock,
-  operatorFetchRaw,
   setupVendorHarness,
   vendorCall,
   VENDOR_OPERATOR_EMAIL,
@@ -728,17 +727,23 @@ describe("issuer tokens", () => {
 
   it("E2E-P3.2-07 POST /control/installations/{id}/enroll is 404 and installation_key is gone", async () => {
     const installationId = crypto.randomUUID();
-    const response = await operatorFetchRaw(
-      `/control/installations/${installationId}/enroll`,
-      {
-        org_id: crypto.randomUUID(),
-        display_name: "P3.2 enroll removal",
-        region: "us-east-1",
-        plan: "standard",
-        public_key: base64urlEncode(crypto.getRandomValues(new Uint8Array(32))),
-        algorithm: "EdDSA",
-        kid: crypto.randomUUID(),
-      },
+    const response = await SELF.fetch(
+      new Request(
+        `${GATEWAY_ORIGIN}/control/installations/${installationId}/enroll`,
+        {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({
+            org_id: crypto.randomUUID(),
+            display_name: "P3.2 enroll removal",
+            region: "us-east-1",
+            plan: "standard",
+            public_key: base64urlEncode(crypto.getRandomValues(new Uint8Array(32))),
+            algorithm: "EdDSA",
+            kid: crypto.randomUUID(),
+          }),
+        },
+      ),
     );
     expect(response.status).toBe(404);
 

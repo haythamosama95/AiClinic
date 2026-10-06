@@ -10,7 +10,6 @@ import {
   clearConfigCache,
   count,
   newClinic,
-  entitleScenario,
   coverClinic,
   fakePolicyDocument,
   fakePolicyTarget,
@@ -22,8 +21,8 @@ import {
   invoke,
   mintAat,
   newScenario,
-  operatorFetch,
   POLICY_ID,
+  vendorClassH,
   publishPolicy,
   promote,
   registerVisitSummaryCapability,
@@ -76,33 +75,28 @@ describe("routing policy traffic", () => {
     const invalidJson = await SELF.fetch(
       new Request(`${GATEWAY_ORIGIN}${publishUrl}`, {
         method: "POST",
-        headers: {
-          authorization: "Bearer test-operator-bearer-token",
-          "content-type": "application/json",
-        },
+        headers: { "content-type": "application/json" },
         body: "not-json",
       }),
     );
-    expect(invalidJson.status).toBe(400);
-    const invalidJsonBody = (await invalidJson.json()) as { error?: string };
-    expect(invalidJsonBody.error).toBe("invalid_json");
+    expect(invalidJson.status).toBe(404);
 
-    const missingDoc = await operatorFetch(publishUrl, {});
+    const missingDoc = await vendorClassH("publishRoutingPolicy", {});
     expect(missingDoc.status).toBe(400);
     expect(missingDoc.json.error).toBe("missing_document");
 
-    const nullDoc = await operatorFetch(publishUrl, { document: null });
+    const nullDoc = await vendorClassH("publishRoutingPolicy", { document: null });
     expect(nullDoc.status).toBe(400);
     expect(nullDoc.json.error).toBe("missing_document");
 
     const { policy_id: _policyId, ...missingPolicyIdDocument } = validDocument;
-    const missingPolicyId = await operatorFetch(publishUrl, {
+    const missingPolicyId = await vendorClassH("publishRoutingPolicy", {
       document: missingPolicyIdDocument,
     });
     expect(missingPolicyId.status).toBe(400);
     expect(missingPolicyId.json.error).toBe("invalid_policy_identity");
 
-    const stringVersion = await operatorFetch(publishUrl, {
+    const stringVersion = await vendorClassH("publishRoutingPolicy", {
       document: { ...validDocument, policy_version: "1" },
     });
     expect(stringVersion.status).toBe(400);

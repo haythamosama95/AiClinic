@@ -10,7 +10,6 @@ import {
   CAPABILITY_VERSION,
   clearConfigCache,
   newClinic,
-  entitleScenario,
   coverClinic,
   GATEWAY_ORIGIN,
   getAudits,
@@ -18,8 +17,10 @@ import {
   invoke,
   mintAat,
   newScenario,
-  operatorFetch,
   registerVisitSummaryCapability,
+  vendorCall,
+  vendorClassH,
+  vendorEnvelopeToHttp,
   resetPlatformState,
   setupPromotedFakePolicy,
   type Scenario,
@@ -49,28 +50,21 @@ async function activate(
   body: Record<string, unknown>,
   auth: "operator" | "none" = "operator",
 ): Promise<{ status: number; json: Record<string, unknown> }> {
+  const args = {
+    capability_id: CAPABILITY_ID,
+    capability_version: version,
+    installation_ids: body.installation_ids,
+    cohort_name: body.cohort_name,
+  };
   if (auth === "none") {
-    const response = await SELF.fetch(
-      new Request(
-        `${GATEWAY_ORIGIN}/control/capabilities/${CAPABILITY_ID}/versions/${version}/activate`,
-        {
-          method: "POST",
-          headers: { "content-type": "application/json" },
-          body: JSON.stringify(body),
-        },
-      ),
-    );
-    const text = await response.text();
+    const envelope = await vendorCall("activateCohort", {
+      contract_version: 1,
+      ...args,
+    });
     clearConfigCache();
-    return {
-      status: response.status,
-      json: text.length > 0 ? (JSON.parse(text) as Record<string, unknown>) : {},
-    };
+    return vendorEnvelopeToHttp(envelope);
   }
-  const response = await operatorFetch(
-    `/control/capabilities/${CAPABILITY_ID}/versions/${version}/activate`,
-    body,
-  );
+  const response = await vendorClassH("activateCohort", args);
   clearConfigCache();
   return response;
 }
@@ -78,10 +72,11 @@ async function activate(
 async function promoteCapability(
   version: string = CAPABILITY_VERSION,
 ): Promise<{ status: number; json: Record<string, unknown> }> {
-  const result = await operatorFetch(
-    `/control/capabilities/${CAPABILITY_ID}/versions/${version}/promote`,
-    {},
-  );
+  const result = await vendorClassH("promoteCohort", {
+    capability_id: CAPABILITY_ID,
+    capability_version: version,
+    cohort_name: COHORT_NAME,
+  });
   clearConfigCache();
   return result;
 }
@@ -90,10 +85,11 @@ async function deprecate(
   version: string,
   body: Record<string, unknown> = { successor_id: CAPABILITY_ID },
 ): Promise<{ status: number; json: Record<string, unknown> }> {
-  const result = await operatorFetch(
-    `/control/capabilities/${CAPABILITY_ID}/versions/${version}/deprecate`,
-    body,
-  );
+  const result = await vendorClassH("deprecateCapability", {
+    capability_id: CAPABILITY_ID,
+    capability_version: version,
+    successor_id: body.successor_id,
+  });
   clearConfigCache();
   return result;
 }
@@ -102,10 +98,10 @@ async function retire(version: string = CAPABILITY_VERSION): Promise<{
   status: number;
   json: Record<string, unknown>;
 }> {
-  const result = await operatorFetch(
-    `/control/capabilities/${CAPABILITY_ID}/versions/${version}/retire`,
-    {},
-  );
+  const result = await vendorClassH("retireCapability", {
+    capability_id: CAPABILITY_ID,
+    capability_version: version,
+  });
   clearConfigCache();
   return result;
 }

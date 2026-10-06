@@ -29,8 +29,7 @@ import {
   mintAat,
   newScenario,
   OPERATOR_ID,
-  operatorFetch,
-  operatorFetchRaw,
+  vendorSupportLookup,
   PLATFORM_TABLES,
   POLICY_ID,
   POLICY_REF,
@@ -153,17 +152,23 @@ describe("golden journey", () => {
     expect(entitlement?.allowed_capabilities).toBe("[]");
     expect(entitlement?.soft_threshold).toBe(0);
 
-    const enrollRemoved = await operatorFetchRaw(
-      `/control/installations/${scenario.installationId}/enroll`,
-      {
-        org_id: scenario.orgId,
-        display_name: "x",
-        region: "x",
-        plan: "standard",
-        public_key: scenario.keypair.publicKeyB64,
-        algorithm: "EdDSA",
-        kid: scenario.kid,
-      },
+    const enrollRemoved = await SELF.fetch(
+      new Request(
+        `${GATEWAY_ORIGIN}/control/installations/${scenario.installationId}/enroll`,
+        {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({
+            org_id: scenario.orgId,
+            display_name: "x",
+            region: "x",
+            plan: "standard",
+            public_key: scenario.keypair.publicKeyB64,
+            algorithm: "EdDSA",
+            kid: scenario.kid,
+          }),
+        },
+      ),
     );
     expect(enrollRemoved.status).toBe(404);
   });
@@ -435,12 +440,9 @@ describe("golden journey", () => {
     expect(clientGet.body).not.toHaveProperty("attempts");
     expect(clientGet.body).not.toHaveProperty("envelope");
 
-    const lookup = await operatorFetchRaw(
-      `/control/support/lookup?reference=${encodeURIComponent(ref)}`,
-      undefined,
-    );
+    const lookup = await vendorSupportLookup({ reference: ref });
     expect(lookup.status).toBe(200);
-    const lookupBody = (await lookup.json()) as {
+    const lookupBody = lookup.json as {
       request?: { requestId?: string };
       attempts?: unknown[];
       envelope?: Record<string, unknown>;

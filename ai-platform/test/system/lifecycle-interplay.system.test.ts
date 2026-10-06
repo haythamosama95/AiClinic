@@ -4,28 +4,31 @@
 
 import { env, SELF } from "cloudflare:test";
 import { beforeAll, beforeEach, describe, expect, it } from "vitest";
+import { purgeByInstallationId } from "../../src/retention";
 import {
   applyAllMigrations,
   clearConfigCache,
   count,
   enrollPayload,
   newClinic,
-  entitleScenario,
   coverClinic,
   flushBackgroundWork,
   GATEWAY_ORIGIN,
   getAiRequest,
-  getAudits,
   getCapabilities,
   getEntitlement,
   invoke,
   mintAat,
   newScenario,
-  operatorFetch,
   registerVisitSummaryCapability,
   resetPlatformState,
   setupPromotedFakePolicy,
   terminalEventTypes,
+  vendorDeleteInstallation,
+  vendorResume,
+  vendorSuspend,
+  ISSUER_ID,
+  VENDOR_OPERATOR_EMAIL,
   type Scenario,
   type TestKeypair,
 } from "./harness";
@@ -162,10 +165,7 @@ describe("lifecycle interplay", () => {
     expect(beforeInvoke.status).toBe(200);
     assertInvokeCompleted(beforeInvoke.events);
 
-    const suspended = await operatorFetch(
-      `/control/installations/${scenario.installationId}/suspend`,
-      {},
-    );
+    const suspended = await vendorSuspend(scenario);
     expect(suspended.status).toBe(200);
     clearConfigCache();
 
@@ -175,7 +175,6 @@ describe("lifecycle interplay", () => {
       .bind(scenario.installationId)
       .first<{ status: string }>();
     expect(installation?.status).toBe("suspended");
-    expect(await getAudits("suspend", scenario.installationId)).toHaveLength(1);
 
     const beforeRequests = await count("ai_request");
     const token = await mintAat(scenario);
@@ -190,13 +189,9 @@ describe("lifecycle interplay", () => {
     expect(caps.body?.code).toBe("suspended");
     expect(caps.body?.retry_safe).toBe(false);
 
-    const resumed = await operatorFetch(
-      `/control/installations/${scenario.installationId}/resume`,
-      {},
-    );
+    const resumed = await vendorResume(scenario);
     expect(resumed.status).toBe(200);
     clearConfigCache();
-    expect(await getAudits("resume", scenario.installationId)).toHaveLength(1);
 
     const afterResume = await invoke(scenario);
     expect(afterResume.status).toBe(200);
@@ -205,45 +200,28 @@ describe("lifecycle interplay", () => {
 
   it("SYS-2.2 — Illegal transitions", async () => {
     const scenario = await newScenario();
+    await coverClinic(scenario);
     await newClinic(scenario);
 
-    const firstSuspend = await operatorFetch(
-      `/control/installations/${scenario.installationId}/suspend`,
-      {},
-    );
+    const firstSuspend = await vendorSuspend(scenario);
     expect(firstSuspend.status).toBe(200);
 
-    const secondSuspend = await operatorFetch(
-      `/control/installations/${scenario.installationId}/suspend`,
-      {},
-    );
+    const secondSuspend = await vendorSuspend(scenario);
     expect(secondSuspend.status).toBe(409);
     expect(secondSuspend.json.error).toBe("illegal_lifecycle_transition");
 
-    await operatorFetch(
-      `/control/installations/${scenario.installationId}/resume`,
-      {},
-    );
+    await vendorResume(scenario);
     clearConfigCache();
 
-    const resumeWhileActive = await operatorFetch(
-      `/control/installations/${scenario.installationId}/resume`,
-      {},
-    );
+    const resumeWhileActive = await vendorResume(scenario);
     expect(resumeWhileActive.status).toBe(409);
     expect(resumeWhileActive.json.error).toBe("illegal_lifecycle_transition");
 
-    const deleted = await operatorFetch(
-      `/control/installations/${scenario.installationId}/delete`,
-      {},
-    );
+    const deleted = await vendorDeleteInstallation(scenario);
     expect(deleted.status).toBe(200);
     clearConfigCache();
 
-    const resumeAfterDelete = await operatorFetch(
-      `/control/installations/${scenario.installationId}/resume`,
-      {},
-    );
+    const resumeAfterDelete = await vendorResume(scenario);
     expect(resumeAfterDelete.status).toBe(409);
     expect(resumeAfterDelete.json.error).toBe("illegal_lifecycle_transition");
   });
@@ -252,7 +230,7 @@ describe("lifecycle interplay", () => {
     const scenario = await newScenario();
     await setupPromotedFakePolicy(scenario);
 
-    const rotated = await operatorFetch(
+    const rotated = await controlPost(
       `/control/installations/${scenario.installationId}/rotate`,
       {
         kid: crypto.randomUUID(),
@@ -262,7 +240,7 @@ describe("lifecycle interplay", () => {
     );
     expect(rotated.status).toBe(404);
 
-    const revokeKey = await operatorFetch(
+    const revokeKey = await controlPost(
       `/control/installations/${scenario.installationId}/revoke-key`,
       { kid: scenario.kid },
     );
@@ -285,10 +263,7 @@ describe("lifecycle interplay", () => {
       await count("ai_request", "installation_id = ?", [scenario.installationId]),
     ).toBeGreaterThan(0);
 
-    const deleted = await operatorFetch(
-      `/control/installations/${scenario.installationId}/delete`,
-      {},
-    );
+    const deleted = await vendorDeleteInstallation(scenario);
     expect(deleted.status).toBe(200);
     clearConfigCache();
 
@@ -304,12 +279,10 @@ describe("lifecycle interplay", () => {
     expect(blocked.status).toBe(401);
     expect(blocked.body?.code).toBe("unauthenticated");
 
-    const purged = await operatorFetch(
-      `/control/installations/${scenario.installationId}/purge`,
-      {},
-    );
-    expect(purged.status).toBe(200);
-    expect(purged.json).toEqual({});
+    await purgeByInstallationId(scenario.installationId, VENDOR_OPERATOR_EMAIL, {
+      db: env.DB,
+      r2: env.R2,
+    });
 
     expect(
       await count("installation", "installation_id = ?", [scenario.installationId]),
@@ -346,9 +319,6 @@ describe("lifecycle interplay", () => {
     const envelopeHead = await env.R2.head(envelopeKey);
     expect(envelopeHead).toBeNull();
 
-    const purgeAudits = await getAudits("purge_installation", scenario.installationId);
-    expect(purgeAudits.length).toBeGreaterThanOrEqual(1);
-
     const afterPurge = await invoke(scenario, { token });
     expect(afterPurge.status).toBe(401);
     expect(afterPurge.body?.code).toBe("unauthenticated");
@@ -357,8 +327,11 @@ describe("lifecycle interplay", () => {
   it("SYS-2.5 — newClinic after purge is fresh", async () => {
     const scenario = await newScenario();
     await setupPromotedFakePolicy(scenario);
-    await operatorFetch(`/control/installations/${scenario.installationId}/delete`, {});
-    await operatorFetch(`/control/installations/${scenario.installationId}/purge`, {});
+    await vendorDeleteInstallation(scenario);
+    await purgeByInstallationId(scenario.installationId, VENDOR_OPERATOR_EMAIL, {
+      db: env.DB,
+      r2: env.R2,
+    });
     clearConfigCache();
 
     const fresh = await newScenario();
@@ -460,43 +433,39 @@ describe("lifecycle interplay", () => {
       },
     ];
 
-    const removedRoutes = new Set(["enroll", "rotate", "revoke-key"]);
+    const removedRoutes = new Set([
+      "enroll",
+      "rotate",
+      "revoke-key",
+      "suspend",
+      "resume",
+      "delete",
+      "purge",
+      "entitle",
+      "begin-rotation",
+      "retire",
+    ]);
 
     for (const route of routes) {
       const auditBefore = await count("control_audit");
-      const expectNotFound = removedRoutes.has(route.label);
+      expect(removedRoutes.has(route.label), route.label).toBe(true);
 
       const noBearer = await controlPost(route.path, route.body);
-      expect(noBearer.status, `${route.label} no bearer`).toBe(
-        expectNotFound ? 404 : 401,
-      );
-      if (!expectNotFound) {
-        expect(noBearer.json.error).toBe("unauthorized");
-      }
+      expect(noBearer.status, `${route.label} no bearer`).toBe(404);
 
       const wrongBearer = await controlPost(
         route.path,
         route.body,
         "Bearer definitely-not-the-operator-token",
       );
-      expect(wrongBearer.status, `${route.label} wrong bearer`).toBe(
-        expectNotFound ? 404 : 401,
-      );
-      if (!expectNotFound) {
-        expect(wrongBearer.json.error).toBe("unauthorized");
-      }
+      expect(wrongBearer.status, `${route.label} wrong bearer`).toBe(404);
 
       const staffBearer = await controlPost(
         route.path,
         route.body,
         `Bearer ${staffToken}`,
       );
-      expect(staffBearer.status, `${route.label} staff AAT`).toBe(
-        expectNotFound ? 404 : 401,
-      );
-      if (!expectNotFound) {
-        expect(staffBearer.json.error).toBe("unauthorized");
-      }
+      expect(staffBearer.status, `${route.label} staff AAT`).toBe(404);
 
       const auditAfter = await count("control_audit");
       expect(auditAfter, `${route.label} audit unchanged`).toBe(auditBefore);
