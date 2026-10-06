@@ -413,6 +413,200 @@ export function insertOutbox(
 
 const ONE_DAY_MS = 24 * 60 * 60 * 1000;
 const ONE_HOUR_MS = 60 * 60 * 1000;
+const MS_PER_DAY = ONE_DAY_MS;
+
+export function unscaledTermLengthDays(term: TermRow): number {
+  if (
+    term.calendar_start === null ||
+    term.duration_unit === null ||
+    term.duration_count === null
+  ) {
+    return 31;
+  }
+  const unscaledEnd = addDuration(
+    term.calendar_start,
+    term.duration_unit as "month" | "day",
+    term.duration_count,
+  );
+  return (Date.parse(unscaledEnd) - Date.parse(term.calendar_start)) / MS_PER_DAY;
+}
+
+export function computeGraceAllowance(
+  term: TermRow,
+  graceBaseUsed: number,
+): number {
+  const allowance = term.allowance ?? 0;
+  const graceDays = term.grace_days ?? 0;
+  const termDays = unscaledTermLengthDays(term);
+  if (termDays <= 0) {
+    return 0;
+  }
+  const ceiling = Math.ceil((allowance * graceDays) / termDays);
+  return Math.min(allowance - graceBaseUsed, ceiling);
+}
+
+function resolveOrgIdFromStorage(storage: DurableObjectStorage): string {
+  const row = sqlSelect<{ envelope: string }>(
+    storage,
+    "SELECT envelope FROM grant ORDER BY applied_at DESC LIMIT 1",
+  )[0];
+  if (row === undefined) {
+    return "";
+  }
+  try {
+    const envelope = JSON.parse(row.envelope) as { org_id?: string };
+    return typeof envelope.org_id === "string" ? envelope.org_id : "";
+  } catch {
+    return "";
+  }
+}
+
+export type ApplyDueBoundariesInput = {
+  storage: DurableObjectStorage;
+  clockNowIso: string;
+  installationId: string;
+  orgId: string;
+  vendorContractVersion: number;
+  durationScale?: DurationScale;
+};
+
+function emitBoundaryCoverageEvent(
+  storage: DurableObjectStorage,
+  input: ApplyDueBoundariesInput & { kind: string; at: string },
+): void {
+  const hot = loadHot(storage);
+  const terms = loadTerms(storage);
+  const clinicSeq = hot.clinic_seq + 1;
+  updateHot(storage, { clinic_seq: clinicSeq });
+  const hotAfter = loadHot(storage);
+  const snapshot = buildCoverageSnapshot({
+    vendorContractVersion: input.vendorContractVersion,
+    orgId: input.orgId,
+    hot: hotAfter,
+    terms,
+    durationScale: input.durationScale,
+  });
+  snapshot.clinic_seq = clinicSeq;
+  insertOutbox(storage, "coverage_event", {
+    event_id: coverageEventId(input.installationId, clinicSeq),
+    org_id: input.orgId,
+    installation_id: input.installationId,
+    binding_epoch: hotAfter.binding_epoch,
+    clinic_seq: clinicSeq,
+    kind: input.kind,
+    at: input.at,
+    snapshot,
+  });
+}
+
+export function applyDueBoundaries(input: ApplyDueBoundariesInput): boolean {
+  const nowMs = Date.parse(input.clockNowIso);
+  let changed = false;
+
+  while (true) {
+    const terms = loadTerms(input.storage);
+    const active = terms.find((term) => term.state === "active");
+    if (
+      active !== undefined &&
+      active.ends_at !== null &&
+      Date.parse(active.ends_at) <= nowMs
+    ) {
+      changed = true;
+      const boundaryAt = active.ends_at;
+      const hot = loadHot(input.storage);
+      const usedFinal = hot.used;
+      const queued = terms
+        .filter((term) => term.state === "queued")
+        .sort((left, right) => left.position - right.position)[0];
+
+      if (queued !== undefined) {
+        sqlExec(
+          input.storage,
+          `UPDATE term SET state = 'ended', end_reason = 'expired', ended_at = ${sqlString(boundaryAt)}, used_final = ${usedFinal}
+           WHERE term_id = ${sqlString(active.term_id)}`,
+        );
+        emitBoundaryCoverageEvent(input.storage, {
+          ...input,
+          kind: "term_ended",
+          at: input.clockNowIso,
+        });
+
+        const durationUnit = (queued.duration_unit ?? "month") as "month" | "day";
+        const durationCount = queued.duration_count ?? 1;
+        const endsAt = addDuration(
+          boundaryAt,
+          durationUnit,
+          durationCount,
+          input.durationScale,
+        );
+        sqlExec(
+          input.storage,
+          `UPDATE term SET state = 'active', starts_at = ${sqlString(boundaryAt)}, calendar_start = ${sqlString(boundaryAt)}, ends_at = ${sqlString(endsAt)}
+           WHERE term_id = ${sqlString(queued.term_id)}`,
+        );
+        updateHot(input.storage, {
+          active_term_id: queued.term_id,
+          used: 0,
+        });
+        emitBoundaryCoverageEvent(input.storage, {
+          ...input,
+          kind: "term_activated",
+          at: input.clockNowIso,
+        });
+      } else {
+        const graceDays = active.grace_days ?? 0;
+        const graceEndsAt = addDuration(
+          boundaryAt,
+          "day",
+          graceDays,
+          input.durationScale,
+        );
+        sqlExec(
+          input.storage,
+          `UPDATE term SET state = 'grace', grace_ends_at = ${sqlString(graceEndsAt)}
+           WHERE term_id = ${sqlString(active.term_id)}`,
+        );
+        updateHot(input.storage, { grace_base_used: hot.used });
+        emitBoundaryCoverageEvent(input.storage, {
+          ...input,
+          kind: "grace_started",
+          at: input.clockNowIso,
+        });
+      }
+      continue;
+    }
+
+    const grace = terms.find((term) => term.state === "grace");
+    if (
+      grace !== undefined &&
+      grace.grace_ends_at !== null &&
+      Date.parse(grace.grace_ends_at) <= nowMs
+    ) {
+      changed = true;
+      const hot = loadHot(input.storage);
+      const usedFinal = hot.used;
+      sqlExec(
+        input.storage,
+        `UPDATE term SET state = 'ended', end_reason = 'expired', ended_at = ${sqlString(input.clockNowIso)}, used_final = ${usedFinal}
+         WHERE term_id = ${sqlString(grace.term_id)}`,
+      );
+      updateHot(input.storage, {
+        active_term_id: null,
+        grace_base_used: 0,
+      });
+      emitBoundaryCoverageEvent(input.storage, {
+        ...input,
+        kind: "term_ended",
+        at: input.clockNowIso,
+      });
+      continue;
+    }
+
+    break;
+  }
+
+  return changed;
+}
 
 function countDoPaidGrantsLast24Hours(
   storage: DurableObjectStorage,
@@ -937,8 +1131,18 @@ export async function shipCoverageOutboxAlarm(
   installationId: string,
   nowIso: string,
   logger: Logger = noopLogger,
+  durationScale?: DurationScale,
 ): Promise<ShippedCoverageAlert[]> {
   return blockConcurrencyWhile(async () => {
+    applyDueBoundaries({
+      storage,
+      clockNowIso: nowIso,
+      installationId,
+      orgId: resolveOrgIdFromStorage(storage),
+      vendorContractVersion: CHANNEL_VERSIONS.platformDo,
+      durationScale,
+    });
+
     const shippedAlerts: ShippedCoverageAlert[] = [];
     const rows = sqlSelect<{ seq: number; kind: string; payload: string }>(
       storage,

@@ -5,7 +5,9 @@ import type { Logger } from "../logger";
 import { noopLogger } from "../logger";
 import {
   allowanceBand,
+  applyDueBoundaries,
   buildCoverageSnapshot,
+  computeGraceAllowance,
   insertOutbox,
   loadHot,
   loadTerms,
@@ -742,7 +744,19 @@ function admitOnHotRow(
     }
   };
 
-  // Step 3 — boundary transitions are P3.5; no-op here.
+  applyDueBoundaries({
+    storage,
+    clockNowIso: nowIso,
+    installationId: request.installationId,
+    orgId: request.orgId ?? "",
+    vendorContractVersion: request.vendorContractVersion ?? 1,
+    durationScale: request.durationScale,
+  });
+  const hotReloaded = sqlSelect<HotRow>(storage, "SELECT * FROM hot LIMIT 1")[0];
+  if (hotReloaded !== undefined) {
+    hot = parseHotRow(hotReloaded);
+  }
+  terms = loadTerms(storage);
 
   const capabilityId = resolveCapabilityId(request);
   const quotaWeight = resolveQuotaWeight(request);
@@ -791,7 +805,11 @@ function admitOnHotRow(
   }
 
   const allowance = billableTerm.allowance ?? 0;
-  const creditsRemaining = allowance - hot.row.used - hot.row.reserved;
+  const creditsRemaining =
+    billableTerm.state === "grace"
+      ? computeGraceAllowance(billableTerm, hot.row.grace_base_used) -
+        (hot.row.used + hot.row.reserved - hot.row.grace_base_used)
+      : allowance - hot.row.used - hot.row.reserved;
   if (creditsRemaining < 1) {
     persistIfChanged();
     return returnStoredAdmission(storage, hot, request, {
@@ -881,6 +899,46 @@ function admitOnHotRow(
         kind: "term_activated",
         at: nowIso,
         snapshot: activatedSnapshot,
+      });
+    }
+  }
+
+  if (billableTerm.state === "grace") {
+    const graceUsed =
+      hot.row.used + hot.row.reserved - hot.row.grace_base_used;
+    const graceAllowance = computeGraceAllowance(
+      billableTerm,
+      hot.row.grace_base_used,
+    );
+    if (graceUsed >= graceAllowance) {
+      const usedFinal = hot.row.used + hot.row.reserved;
+      sqlExecLocal(
+        storage,
+        `UPDATE term SET state = 'ended', end_reason = 'grace_exhausted', used_final = ${usedFinal}, ended_at = ${sqlStringLocal(nowIso)}
+         WHERE term_id = ${sqlStringLocal(billableTerm.term_id)}`,
+      );
+      terms = loadTerms(storage);
+      const orgId = request.orgId ?? "";
+      const vendorVersion = request.vendorContractVersion ?? 1;
+      hot.row.active_term_id = null;
+      hot.row.grace_base_used = 0;
+      hot.row.clinic_seq += 1;
+      const endedSnapshot = buildCoverageSnapshot({
+        vendorContractVersion: vendorVersion,
+        orgId,
+        hot: hot.row,
+        terms,
+        durationScale: request.durationScale,
+      });
+      insertOutbox(storage, "coverage_event", {
+        event_id: coverageEventId(request.installationId, hot.row.clinic_seq),
+        org_id: orgId,
+        installation_id: request.installationId,
+        binding_epoch: hot.row.binding_epoch,
+        clinic_seq: hot.row.clinic_seq,
+        kind: "term_ended",
+        at: nowIso,
+        snapshot: endedSnapshot,
       });
     }
   }
