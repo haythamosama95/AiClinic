@@ -112,13 +112,13 @@ cd abo && npx vitest run --config vitest.workers.config.ts test/system/notify.sy
 
 **Independent Test**: E2E-P4.3-01 and E2E-P4.3-04 in harnesses H-ABO and H-PAY.
 
-- [ ] T018 [US1] Add `parseNotification` and `inquire` on `abo/src/provider/port.ts` — produces the port methods, FR-001, FR-005, FR-012, FR-013, E2E-P4.3-01, E2E-P4.3-05, E2E-P4.3-12. Depends on T017. `capabilities`, `createCheckout`, and `cancelCheckout` stay. `parseNotification` returns `{authentic, events[]}`. Events are `ProviderTxn` values. `inquire` accepts `{checkout_id}` or `{payment_id}` and returns `{bound, transactions[]}`. This file imports neither `client.ts` nor `adapter.ts`.
+- [X] T018 [US1] Add `parseNotification` and `inquire` on `abo/src/provider/port.ts` — produces the port methods, FR-001, FR-005, FR-012, FR-013, E2E-P4.3-01, E2E-P4.3-05, E2E-P4.3-12. Depends on T017. `capabilities`, `createCheckout`, and `cancelCheckout` stay. `parseNotification` returns `{authentic, events[]}`. Events are `ProviderTxn` values. `inquire` accepts `{checkout_id}` or `{payment_id}` and returns `{bound, transactions[]}`. This file imports neither `client.ts` nor `adapter.ts`.
 
 ### 4.3 User Story 3 - Classify the inquiry before any grant row (Priority: P3) — Paymob inquiry client
 
 **Independent Test**: E2E-P4.3-05, E2E-P4.3-06, and E2E-P4.3-07 in harnesses H-ABO and H-PAY.
 
-- [ ] T019 [US3] Add Paymob inquiry HTTP in `abo/src/provider/paymob/client.ts` — produces the inquiry calls, FR-005, FR-008, FR-013, E2E-P4.3-05, E2E-P4.3-08. Depends on T017. `createPaymobIntention` stays. This file remains the only provider HTTP module. Take an auth token from `POST /api/auth/tokens` with `PAYMOB_API_KEY`. `POST /api/ecommerce/orders/transaction_inquiry` by the stored `order_id`. `GET /api/acceptance/transactions/{id}` for a known transaction. Abort matches the existing intention abort: 500 ms when `TEST_CLOCK` is `"1"`, otherwise 10 seconds. Inquiry timeout and HTTP 429 are returned to the caller as the timeout and rate-limit outcomes. The domain does not import this file.
+- [X] T019 [US3] Add Paymob inquiry HTTP in `abo/src/provider/paymob/client.ts` — produces the inquiry calls, FR-005, FR-008, FR-013, E2E-P4.3-05, E2E-P4.3-08. Depends on T017. `createPaymobIntention` stays. This file remains the only provider HTTP module. Take an auth token from `POST /api/auth/tokens` with `PAYMOB_API_KEY`. `POST /api/ecommerce/orders/transaction_inquiry` by the stored `order_id`. `GET /api/acceptance/transactions/{id}` for a known transaction. Abort matches the existing intention abort: 500 ms when `TEST_CLOCK` is `"1"`, otherwise 10 seconds. Inquiry timeout and HTTP 429 are returned to the caller as the timeout and rate-limit outcomes. The domain does not import this file.
 
 ### 4.4 User Story 1 - Confirm a paid checkout from a processed callback (Priority: P1) — Paymob adapter
 

@@ -46,9 +46,68 @@ export type CancelCheckoutResult =
   | { result: "unsupported" }
   | { result: "cancelled" };
 
+export type ProviderTxnKind =
+  | "payment_succeeded"
+  | "payment_failed"
+  | "payment_pending"
+  | "reversal";
+
+export type ProviderReversalKind = "refund" | "void" | "chargeback" | "unknown";
+
+export type ProviderReversal = {
+  kind: ProviderReversalKind;
+  amount_minor: number;
+  cumulative_reversed_minor: number;
+  is_full: boolean;
+};
+
+/** Normalised provider transaction (04 §5.2). */
+export type ProviderTxn = {
+  kind: ProviderTxnKind;
+  checkout_id: string;
+  payment_id: string;
+  amount_minor: number;
+  currency: string;
+  occurred_at: string;
+  dedupe_key: string;
+  reversal?: ProviderReversal;
+};
+
+/** Raw notify request surface passed to the adapter (04 §5.1). */
+export type ProviderNotificationRequest = {
+  method: string;
+  query: string;
+  headers: Headers;
+  body: string;
+};
+
+export type ParseNotificationResult = {
+  authentic: boolean;
+  events: ProviderTxn[];
+};
+
+export type InquireByCheckout = {
+  checkout_id: string;
+};
+
+export type InquireByPayment = {
+  payment_id: string;
+};
+
+export type InquireInput = InquireByCheckout | InquireByPayment;
+
+export type InquireResult = {
+  bound: boolean;
+  transactions: ProviderTxn[];
+};
+
 /** Adapter surface for checkout creation in this unit. */
 export interface ProviderPort {
   capabilities(): ProviderCapabilities;
   createCheckout(input: CreateCheckoutInput): Promise<CreateCheckoutResult>;
   cancelCheckout(checkout_id: string): Promise<CancelCheckoutResult>;
+  parseNotification(
+    request: ProviderNotificationRequest,
+  ): Promise<ParseNotificationResult>;
+  inquire(input: InquireInput): Promise<InquireResult>;
 }
