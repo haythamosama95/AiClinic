@@ -88,13 +88,13 @@ cd abo && node scripts/build-platform-for-hxw.mjs && npx vitest run --config vit
 
 **Independent Test**: E2E-P4.4-01, E2E-P4.4-02, E2E-P4.4-03, and E2E-P4.4-04 in harnesses H-XW and H-PAY.
 
-- [ ] T011 [US1] Add `abo/migrations/0004_grant.sql` — produces `grant_request`, `grant_outcome`, `reversal`, and `signing_key_gate`, FR-005, FR-006, FR-009, FR-010, E2E-P4.4-01. Depends on T010. Tables, columns, and constraints are those already written in `data-model.md`. `grant_request` and `grant_outcome` are append-only (abort updates and deletes, same trigger form as `abo/migrations/0001_records.sql`). Spec columns for those two tables are the Key Entities in `spec.md`. One `grant_request` per payment whose disposition is `grant`. `reversal` is created for reads; this unit inserts none. `signing_key_gate` is the pause row FR-006 reads. Do not rewrite `data-model.md`. The harness applies this file before the grant tests.
+- [X] T011 [US1] Add `abo/migrations/0004_grant.sql` — produces `grant_request`, `grant_outcome`, `reversal`, and `signing_key_gate`, FR-005, FR-006, FR-009, FR-010, E2E-P4.4-01. Depends on T010. Tables, columns, and constraints are those already written in `data-model.md`. `grant_request` and `grant_outcome` are append-only (abort updates and deletes, same trigger form as `abo/migrations/0001_records.sql`). Spec columns for those two tables are the Key Entities in `spec.md`. One `grant_request` per payment whose disposition is `grant`. `reversal` is created for reads; this unit inserts none. `signing_key_gate` is the pause row FR-006 reads. Do not rewrite `data-model.md`. The harness applies this file before the grant tests.
 
 ### 4.2 User Story 1 - Turn a paid checkout into a live term (Priority: P1) — alerts
 
 **Independent Test**: E2E-P4.4-01, E2E-P4.4-02, E2E-P4.4-03, and E2E-P4.4-04 in harnesses H-XW and H-PAY.
 
-- [ ] T012 [US1] Extend alert codes in `abo/src/alert/index.ts` — produces AL-04, AL-07, and AL-23, FR-002, FR-003, FR-006, E2E-P4.4-02, E2E-P4.4-03, E2E-P4.4-06. Depends on T010. Extend `AlertCode` with `AL-04`, `AL-07`, and `AL-23`. `nextSendAtForCode` treats those three like `AL-01`: one hour ahead. The email text stays `{code} {detail_id}`. AL-05 and AL-09 stay send-once. Do not edit `abo/src/work/grant.ts` in this task.
+- [X] T012 [US1] Extend alert codes in `abo/src/alert/index.ts` — produces AL-04, AL-07, and AL-23, FR-002, FR-003, FR-006, E2E-P4.4-02, E2E-P4.4-03, E2E-P4.4-06. Depends on T010. Extend `AlertCode` with `AL-04`, `AL-07`, and `AL-23`. `nextSendAtForCode` treats those three like `AL-01`: one hour ahead. The email text stays `{code} {detail_id}`. AL-05 and AL-09 stay send-once. Do not edit `abo/src/work/grant.ts` in this task.
 
 ### 4.3 User Story 1 - Turn a paid checkout into a live term (Priority: P1) — grant step
 

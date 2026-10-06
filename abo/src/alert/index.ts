@@ -23,7 +23,15 @@ const EXPORT_LAG_ALERT_KEY = "AL-16:export-lag";
 const R2_LOCK_ALERT_KEY = "AL-16:r2-lock";
 const ALERT_CODE = "AL-16";
 
-export type AlertCode = "AL-01" | "AL-02" | "AL-05" | "AL-09" | "AL-16";
+export type AlertCode =
+  | "AL-01"
+  | "AL-02"
+  | "AL-04"
+  | "AL-05"
+  | "AL-07"
+  | "AL-09"
+  | "AL-16"
+  | "AL-23";
 
 type AlertRow = {
   alert_key: string;
@@ -46,7 +54,13 @@ function nextSendAtForCode(
   if (code === "AL-16") {
     return new Date(nowMs + ONE_DAY_MS).toISOString();
   }
-  if (code === "AL-01" || code === "AL-02") {
+  if (
+    code === "AL-01" ||
+    code === "AL-02" ||
+    code === "AL-04" ||
+    code === "AL-07" ||
+    code === "AL-23"
+  ) {
     return new Date(nowMs + ONE_HOUR_MS).toISOString();
   }
   return null;
