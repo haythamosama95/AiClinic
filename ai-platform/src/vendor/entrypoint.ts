@@ -19,6 +19,13 @@ import {
 } from "vendor-contracts";
 import type { DurationScale } from "../coverage/calendar";
 import {
+  executeBeginTransfer,
+  executeTransferIn,
+  executeTransferOut,
+  readTransferByAssertionSha256,
+  transferRowToDetail,
+} from "../coverage/transfer";
+import {
   raiseAl13,
   raiseAl13Bootstrap,
   raiseAl13IssuerKey,
@@ -58,6 +65,10 @@ const METHOD_CLASS = {
   releaseHeld: "HP",
   voidGrant: "HP",
   listGrantsForVoid: "M",
+  beginTransfer: "HP",
+  transferOut: "M",
+  transferIn: "M",
+  deleteInstallation: "HP",
 } as const;
 
 type VendorMethod = keyof typeof METHOD_CLASS;
@@ -806,6 +817,13 @@ function operationParamsMatch(
   } else if (method === "releaseHeld" || method === "voidGrant") {
     expected.grant_id = rpcArgs.grant_id;
     expected.reason = rpcArgs.reason;
+  } else if (method === "beginTransfer") {
+    expected.org_id = rpcArgs.org_id;
+    expected.from_installation_id = rpcArgs.from_installation_id;
+    expected.reason = rpcArgs.reason;
+  } else if (method === "deleteInstallation") {
+    expected.org_id = rpcArgs.org_id;
+    expected.reason = rpcArgs.reason;
   } else {
     return false;
   }
@@ -843,6 +861,17 @@ function hpAuditTarget(
   }
   if (method === "releaseHeld" || method === "voidGrant") {
     return typeof rpcArgs.grant_id === "string" ? rpcArgs.grant_id : "";
+  }
+  if (method === "beginTransfer") {
+    const fromId =
+      typeof rpcArgs.from_installation_id === "string"
+        ? rpcArgs.from_installation_id
+        : "";
+    const orgId = typeof rpcArgs.org_id === "string" ? rpcArgs.org_id : "";
+    return `${orgId}:${fromId}`;
+  }
+  if (method === "deleteInstallation") {
+    return typeof rpcArgs.org_id === "string" ? rpcArgs.org_id : "";
   }
   return typeof rpcArgs.credential_id === "string" ? rpcArgs.credential_id : "";
 }
@@ -1424,6 +1453,11 @@ function mapApplyGrantDoResponse(
       detail: "",
       receipt,
     };
+  }
+  if (doResult === "rejected") {
+    const code =
+      typeof doResponse.code === "string" ? doResponse.code : "bad_request";
+    return grantRejected(version, code);
   }
   return grantRejected(version, "coverage_unknown");
 }
@@ -3301,10 +3335,28 @@ export class VendorEntrypoint extends WorkerEntrypoint<VendorEnv> {
       return grantRejected(version, "bad_signature");
     }
 
-    const installationId = await resolveOrInsertGrantBinding(this.env, orgId);
-    const binding = await readActiveTenantBinding(this.env.DB, orgId);
-    if (binding === null) {
-      return grantRejected(version, "coverage_unknown");
+    const installationOverride =
+      typeof args.installation_id === "string" ? args.installation_id : null;
+    const installationId =
+      installationOverride ??
+      (await resolveOrInsertGrantBinding(this.env, orgId));
+    let bindingEpoch = 1;
+    if (installationOverride !== null) {
+      const bindingRow = await this.env.DB.prepare(
+        `SELECT epoch FROM tenant_binding WHERE org_id = ? AND installation_id = ?`,
+      )
+        .bind(orgId, installationOverride)
+        .first<{ epoch: number }>();
+      if (bindingRow === null) {
+        return grantRejected(version, "coverage_unknown");
+      }
+      bindingEpoch = bindingRow.epoch;
+    } else {
+      const binding = await readActiveTenantBinding(this.env.DB, orgId);
+      if (binding === null) {
+        return grantRejected(version, "coverage_unknown");
+      }
+      bindingEpoch = binding.epoch;
     }
 
     const paidGrantId = envelope.grant_id;
@@ -3330,7 +3382,7 @@ export class VendorEntrypoint extends WorkerEntrypoint<VendorEnv> {
 
     const doResponse = await callCoverageDo(this.env, installationId, {
       kind: "apply_grant",
-      bindingEpoch: binding.epoch,
+      bindingEpoch,
       vendorContractVersion: version,
       orgId,
       envelope,
@@ -3360,6 +3412,164 @@ export class VendorEntrypoint extends WorkerEntrypoint<VendorEnv> {
       };
     }
     return mapApplyGrantDoResponse(version, doResponse);
+  }
+
+  async beginTransfer(
+    args: Record<string, unknown>,
+  ): Promise<GrantResultEnvelope> {
+    const requested = parseRequestedVersion(args);
+    const negotiated = negotiate(VENDOR_CHANNEL, requested);
+    if (!negotiated.ok) {
+      return grantRejected(VENDOR_CHANNEL, negotiated.code);
+    }
+    const version = negotiated.version;
+
+    const access = await verifyHpAccess(this.env, args.access_jwt);
+    if (!access.ok) {
+      return grantRejected(version, "unauthenticated");
+    }
+
+    const orgId = args.org_id;
+    const fromInstallationId = args.from_installation_id;
+    const reason = args.reason;
+    if (
+      typeof orgId !== "string" ||
+      typeof fromInstallationId !== "string" ||
+      typeof reason !== "string"
+    ) {
+      return grantRejected(version, "bad_request");
+    }
+
+    const operationRaw = args.operation;
+    if (!validateOperation(operationRaw).ok) {
+      return grantRejected(version, "assertion_invalid");
+    }
+    const operation = operationRaw as Record<string, unknown>;
+    const assertionSha256 = await operationAssertionSha256(operation);
+    const existingByAssertion = await readTransferByAssertionSha256(
+      this.env.DB,
+      assertionSha256,
+    );
+    if (existingByAssertion !== null) {
+      return {
+        contract_version: version,
+        result: "ok",
+        code: "",
+        detail: transferRowToDetail(existingByAssertion),
+      };
+    }
+
+    const check = await runHpAssertionChecks(
+      this.env,
+      "beginTransfer",
+      args,
+      access.email,
+      version,
+    );
+    if (!check.ok) {
+      const rejectedEnvelope = await rejectHpAssertion(
+        this.env,
+        access.email,
+        "beginTransfer",
+        check,
+      );
+      return {
+        contract_version: rejectedEnvelope.contract_version,
+        result: "rejected",
+        code: rejectedEnvelope.code,
+        detail: rejectedEnvelope.detail,
+      };
+    }
+
+    const created = await executeBeginTransfer(this.env, {
+      orgId,
+      fromInstallationId,
+      reason,
+      assertionSha256: check.assertionSha256,
+    });
+    if (created === "bad_request") {
+      await writeEntrypointAudit(
+        this.env.DB,
+        access.email,
+        "beginTransfer",
+        check.auditTarget,
+        check.assertionSha256,
+      );
+      return grantRejected(version, "bad_request");
+    }
+
+    await finishHpAssertion(this.env, access.email, "beginTransfer", check);
+
+    return {
+      contract_version: version,
+      result: "ok",
+      code: "",
+      detail: transferRowToDetail(created),
+    };
+  }
+
+  async transferOut(args: Record<string, unknown>): Promise<GrantResultEnvelope> {
+    const requested = parseRequestedVersion(args);
+    const negotiated = negotiate(VENDOR_CHANNEL, requested);
+    if (!negotiated.ok) {
+      return grantRejected(VENDOR_CHANNEL, negotiated.code);
+    }
+    const version = negotiated.version;
+
+    const transferId = args.transfer_id;
+    if (typeof transferId !== "string" || transferId.length === 0) {
+      return grantRejected(version, "bad_request");
+    }
+
+    const step = await executeTransferOut(this.env, version, transferId);
+    if (step.result === "bad_request") {
+      return grantRejected(version, "bad_request");
+    }
+    if (step.result === "transient") {
+      return grantTransient(version, step.detail);
+    }
+    if (step.result === "rejected") {
+      return grantRejected(version, step.code);
+    }
+    return {
+      contract_version: version,
+      result: step.result,
+      code: "",
+      detail: step.detail,
+      receipt: step.receipt,
+    };
+  }
+
+  async transferIn(args: Record<string, unknown>): Promise<GrantResultEnvelope> {
+    const requested = parseRequestedVersion(args);
+    const negotiated = negotiate(VENDOR_CHANNEL, requested);
+    if (!negotiated.ok) {
+      return grantRejected(VENDOR_CHANNEL, negotiated.code);
+    }
+    const version = negotiated.version;
+
+    const transferId = args.transfer_id;
+    if (typeof transferId !== "string" || transferId.length === 0) {
+      return grantRejected(version, "bad_request");
+    }
+
+    const step = await executeTransferIn(this.env, version, transferId);
+    if (step.result === "bad_request") {
+      return grantRejected(version, "bad_request");
+    }
+    if (step.result === "transient") {
+      return grantTransient(version, step.detail);
+    }
+    if (step.result === "rejected") {
+      return grantRejected(version, step.code);
+    }
+    return {
+      contract_version: version,
+      result: step.result,
+      code: "",
+      detail: step.detail,
+      receipt: step.receipt,
+    };
   }
 
   async voidForReversal(
@@ -3964,12 +4174,17 @@ export class VendorEntrypoint extends WorkerEntrypoint<VendorEnv> {
       return rejected(version, "bad_request");
     }
 
-    const binding = await readActiveTenantBinding(this.env.DB, orgId);
-    if (binding === null) {
+    const installationOverride =
+      typeof args.installation_id === "string" ? args.installation_id : null;
+    const installationId =
+      installationOverride ??
+      (await readActiveTenantBinding(this.env.DB, orgId))?.installation_id ??
+      null;
+    if (installationId === null) {
       return rejected(version, "coverage_unknown");
     }
 
-    const doResponse = await callCoverageDo(this.env, binding.installation_id, {
+    const doResponse = await callCoverageDo(this.env, installationId, {
       kind: "read_coverage",
       orgId,
       vendorContractVersion: version,

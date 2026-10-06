@@ -82,6 +82,7 @@ import planVersionPaidGrantCoverageMigrationSql from "../../migrations/202610031
 import usageTermMigrationSql from "../../migrations/20261006120000_usage_term.sql?raw";
 import ceilingPolicyMigrationSql from "../../migrations/20261006130000_ceiling_policy.sql?raw";
 import grantVoidMigrationSql from "../../migrations/20261006140000_grant_void.sql?raw";
+import transferMigrationSql from "../../migrations/20261006150000_transfer.sql?raw";
 import { applySqlStatements } from "../split-sql-statements";
 import {
   createCapabilityRegistry,
@@ -263,6 +264,7 @@ const MIGRATION_SQL = [
   usageTermMigrationSql,
   ceilingPolicyMigrationSql,
   grantVoidMigrationSql,
+  transferMigrationSql,
 ];
 
 const CATALOGUE_PLAN_NAME = "standard";
@@ -364,6 +366,8 @@ export async function resetPlatformState(): Promise<void> {
     env.DB.prepare("DELETE FROM entitlement"),
     env.DB.prepare("DELETE FROM coverage_event"),
     env.DB.prepare("DELETE FROM grant_void"),
+    env.DB.prepare("DELETE FROM transfer_step"),
+    env.DB.prepare("DELETE FROM transfer"),
     env.DB.prepare("DELETE FROM grant_ledger"),
     env.DB.prepare("DELETE FROM coverage_mirror"),
     env.DB.prepare("DELETE FROM plan_version"),
@@ -1606,7 +1610,11 @@ export type VendorMethod =
   | "voidForReversal"
   | "releaseHeld"
   | "voidGrant"
-  | "listGrantsForVoid";
+  | "listGrantsForVoid"
+  | "beginTransfer"
+  | "transferOut"
+  | "transferIn"
+  | "deleteInstallation";
 
 export const VENDOR_OPERATOR_EMAIL = "operator@clinic.test";
 

@@ -99,8 +99,10 @@ import {
   ensureCoverageDoTables,
   inspectCoverageRPC,
   inspectRPC,
+  openAwaitingTransferRPC,
   readCoverageRPC,
   releaseHeldRPC,
+  transferOutRPC,
   suspendResumeRPC,
   voidForReversalRPC,
   voidGrantRPC,
@@ -1823,6 +1825,23 @@ export class GatewayObject extends DurableObject {
           (fn) => this.ctx.blockConcurrencyWhile(fn),
           body as Parameters<typeof voidGrantRPC>[3],
           quotaLog,
+        );
+        return Response.json({ ...result, contract_version: contractVersion });
+      }
+      if (kind === "open_awaiting_transfer") {
+        const result = await openAwaitingTransferRPC(
+          this.ctx.storage,
+          (fn) => this.ctx.blockConcurrencyWhile(fn),
+          body as Parameters<typeof openAwaitingTransferRPC>[2],
+        );
+        return Response.json({ ...result, contract_version: contractVersion });
+      }
+      if (kind === "transfer_out") {
+        const result = await transferOutRPC(
+          this.ctx,
+          this.ctx.storage,
+          (fn) => this.ctx.blockConcurrencyWhile(fn),
+          body as Parameters<typeof transferOutRPC>[3],
         );
         return Response.json({ ...result, contract_version: contractVersion });
       }

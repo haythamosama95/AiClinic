@@ -1,8 +1,10 @@
 import {
   CHANNEL_VERSIONS,
+  canonicalize,
   coverageEventId,
   grantEnvelopeHash,
   receiptSigningBytes,
+  sha256Hex,
   signCompactJws,
 } from "vendor-contracts";
 import { addDuration, type DurationScale } from "../coverage/calendar";
@@ -39,6 +41,9 @@ export function sqlString(value: string): string {
 
 export type HotRow = {
   suspended: number;
+  transferred_out_to?: string | null;
+  awaiting_transfer?: number;
+  transfer_pending?: number;
   active_term_id: string | null;
   used: number;
   reserved: number;
@@ -129,7 +134,9 @@ export interface ApplyGrantResponse {
     | "already_applied"
     | "conflict"
     | "exceeds_ceiling"
-    | "bad_request";
+    | "bad_request"
+    | "rejected";
+  code?: string;
   receipt?: Record<string, unknown>;
 }
 
@@ -330,6 +337,31 @@ export function buildCoverageSnapshot(input: {
   terms: TermRow[];
   durationScale?: DurationScale;
 }): Record<string, unknown> {
+  if (
+    input.hot.transferred_out_to !== undefined &&
+    input.hot.transferred_out_to !== null &&
+    input.hot.transferred_out_to.length > 0
+  ) {
+    const queued = input.terms.filter((term) => term.state === "queued");
+    const held = input.terms.filter((term) => term.state === "held");
+    return {
+      contract_version: input.vendorContractVersion,
+      state: "transferred",
+      reason: "none",
+      suspended: input.hot.suspended !== 0,
+      term: null,
+      queued_count: queued.length,
+      held_count: held.length,
+      coverage_through: computeCoverageThrough(
+        input.terms,
+        input.hot,
+        input.durationScale,
+      ),
+      binding_epoch: input.hot.binding_epoch,
+      clinic_seq: input.hot.clinic_seq,
+    };
+  }
+
   const active = input.terms.find((term) => term.state === "active");
   const grace = input.terms.find((term) => term.state === "grace");
   const queued = input.terms.filter((term) => term.state === "queued");
@@ -890,6 +922,20 @@ export function updateHot(
   }
   if (patch.suspended !== undefined) {
     sets.push(`suspended = ${patch.suspended}`);
+  }
+  if (patch.transferred_out_to !== undefined) {
+    sets.push(
+      `transferred_out_to = ${patch.transferred_out_to === null ? "NULL" : sqlString(patch.transferred_out_to)}`,
+    );
+  }
+  if (patch.awaiting_transfer !== undefined) {
+    sets.push(`awaiting_transfer = ${patch.awaiting_transfer}`);
+  }
+  if (patch.transfer_pending !== undefined) {
+    sets.push(`transfer_pending = ${patch.transfer_pending}`);
+  }
+  if (patch.binding_epoch !== undefined) {
+    sets.push(`binding_epoch = ${patch.binding_epoch}`);
   }
   if (patch.clinic_seq !== undefined) {
     sets.push(`clinic_seq = ${patch.clinic_seq}`);
@@ -1483,6 +1529,18 @@ export async function applyGrantRPC(
 ): Promise<ApplyGrantResponse> {
   return blockConcurrencyWhile(async () => {
     ensureHotRow(storage, request.bindingEpoch);
+    const hotForTransfer = loadHot(storage);
+    if (
+      hotForTransfer.transferred_out_to !== undefined &&
+      hotForTransfer.transferred_out_to !== null &&
+      hotForTransfer.transferred_out_to.length > 0
+    ) {
+      return {
+        kind: "apply_grant",
+        result: "rejected",
+        code: "transferred_out",
+      };
+    }
     const grantId = String(request.envelope.grant_id);
     const envelopeSha256 = await grantEnvelopeHash(request.envelope);
 
@@ -2672,4 +2730,222 @@ export async function shipCoverageOutboxAlarm(
     });
     return shippedAlerts;
   });
+}
+
+export interface OpenAwaitingTransferRequest {
+  kind: "open_awaiting_transfer";
+  bindingEpoch: number;
+}
+
+export interface OpenAwaitingTransferResponse {
+  kind: "open_awaiting_transfer";
+  result: "ok" | "bad_request";
+}
+
+export async function openAwaitingTransferRPC(
+  storage: DurableObjectStorage,
+  blockConcurrencyWhile: <T>(fn: () => Promise<T>) => Promise<T>,
+  request: OpenAwaitingTransferRequest,
+): Promise<OpenAwaitingTransferResponse> {
+  return blockConcurrencyWhile(async () => {
+    ensureHotRow(storage, request.bindingEpoch);
+    sqlExec(
+      storage,
+      `UPDATE hot SET awaiting_transfer = 1, binding_epoch = ${request.bindingEpoch}`,
+    );
+    return { kind: "open_awaiting_transfer", result: "ok" };
+  });
+}
+
+type TransferPackageTerm = {
+  origin_grant_id: string;
+  position: number;
+  state: string;
+  plan_snapshot: unknown;
+  allowance: number | null;
+  duration_unit: string | null;
+  duration_count: number | null;
+  grace_days: number | null;
+  grace_cap: string | null;
+  calendar_start: string | null;
+  starts_at: string | null;
+  ends_at: string | null;
+  grace_ends_at: string | null;
+};
+
+function graceAllowanceForPackage(
+  term: TermRow,
+  hot: HotRow,
+): number | null {
+  if (term.allowance === null) {
+    return null;
+  }
+  const graceCap =
+    term.grace_cap !== null ? Number.parseInt(term.grace_cap, 10) : term.allowance;
+  const capped = Math.min(
+    term.allowance - hot.grace_base_used,
+    Number.isNaN(graceCap) ? term.allowance : graceCap,
+  );
+  return capped - (hot.used - hot.grace_base_used);
+}
+
+function buildTransferPackageTerm(
+  term: TermRow,
+  hot: HotRow,
+): TransferPackageTerm {
+  const planSnapshot = JSON.parse(term.plan_snapshot) as unknown;
+  let allowance = term.allowance;
+  if (term.state === "active" && allowance !== null) {
+    allowance = allowance - hot.used;
+  } else if (term.state === "grace") {
+    allowance = graceAllowanceForPackage(term, hot);
+  }
+  return {
+    origin_grant_id: term.origin_grant_id,
+    position: term.position,
+    state: term.state,
+    plan_snapshot: planSnapshot,
+    allowance,
+    duration_unit: term.duration_unit,
+    duration_count: term.duration_count,
+    grace_days: term.grace_days,
+    grace_cap: term.grace_cap,
+    calendar_start: term.calendar_start,
+    starts_at: term.starts_at,
+    ends_at: term.ends_at,
+    grace_ends_at: term.grace_ends_at,
+  };
+}
+
+export interface TransferOutRequest {
+  kind: "transfer_out";
+  installationId: string;
+  orgId: string;
+  vendorContractVersion: number;
+  bindingEpoch: number;
+  transferId: string;
+  toInstallationId: string;
+  platformSigningKeyJson: string;
+  durationScale?: DurationScale;
+  nowIso: string;
+}
+
+export interface TransferOutResponse {
+  kind: "transfer_out";
+  result: "applied" | "bad_request";
+  package?: TransferPackageTerm[];
+  term_ids?: string[];
+  ledger_seq?: number;
+  receipt?: Record<string, unknown>;
+}
+
+export async function transferOutRPC(
+  state: DurableObjectState,
+  storage: DurableObjectStorage,
+  blockConcurrencyWhile: <T>(fn: () => Promise<T>) => Promise<T>,
+  request: TransferOutRequest,
+): Promise<TransferOutResponse> {
+  return blockConcurrencyWhile(async () => {
+    ensureHotRow(storage, request.bindingEpoch);
+    const signingKey = await loadPlatformSigningKey(request.platformSigningKeyJson);
+    if (signingKey === null) {
+      return { kind: "transfer_out", result: "bad_request" };
+    }
+
+    const hot = loadHot(storage);
+    const terms = loadTerms(storage);
+    const notEnded = terms.filter(
+      (term) =>
+        term.state === "active" ||
+        term.state === "grace" ||
+        term.state === "queued" ||
+        term.state === "held",
+    );
+    const packageTerms = notEnded.map((term) =>
+      buildTransferPackageTerm(term, hot),
+    );
+
+    const endedTermIds: string[] = [];
+    for (const term of notEnded) {
+      sqlExec(
+        storage,
+        `UPDATE term SET state = 'ended', end_reason = 'transferred', ended_at = ${sqlString(request.nowIso)}
+         WHERE term_id = ${sqlString(term.term_id)}`,
+      );
+      endedTermIds.push(term.term_id);
+    }
+
+    updateHot(storage, {
+      transferred_out_to: request.toInstallationId,
+      active_term_id: null,
+    });
+
+    const ledgerSeq = emitCoverageEvent(storage, {
+      installationId: request.installationId,
+      orgId: request.orgId,
+      vendorContractVersion: request.vendorContractVersion,
+      kind: "transfer",
+      at: request.nowIso,
+      durationScale: request.durationScale,
+    });
+
+    const packageJson = JSON.stringify(packageTerms);
+    const envelopeSha256 = await sha256Hex(
+      new TextEncoder().encode(canonicalize(packageTerms)),
+    );
+
+    const receipt = await signTransferReceiptInDo({
+      signingKey,
+      vendorContractVersion: request.vendorContractVersion,
+      transferId: request.transferId,
+      installationId: request.installationId,
+      orgId: request.orgId,
+      termIds: endedTermIds,
+      appliedAt: request.nowIso,
+      ledgerSeq,
+      envelopeSha256,
+    });
+
+    await scheduleCoverageAlarm(state, storage, request.nowIso);
+
+    return {
+      kind: "transfer_out",
+      result: "applied",
+      package: packageTerms,
+      term_ids: endedTermIds,
+      ledger_seq: ledgerSeq,
+      receipt,
+    };
+  });
+}
+
+async function signTransferReceiptInDo(input: {
+  signingKey: PlatformSigningMaterial;
+  vendorContractVersion: number;
+  transferId: string;
+  installationId: string;
+  orgId: string;
+  termIds: string[];
+  appliedAt: string;
+  ledgerSeq: number;
+  envelopeSha256: string;
+}): Promise<Record<string, unknown>> {
+  const unsigned = {
+    contract_version: input.vendorContractVersion,
+    transfer_id: input.transferId,
+    installation_id: input.installationId,
+    org_id: input.orgId,
+    result: "applied",
+    term_ids: input.termIds,
+    applied_at: input.appliedAt,
+    ledger_seq: input.ledgerSeq,
+    envelope_sha256: input.envelopeSha256,
+    kid: input.signingKey.kid,
+  };
+  const signature = await signCompactJws({
+    payload: receiptSigningBytes(unsigned),
+    privateKey: input.signingKey.privateKey,
+    kid: input.signingKey.kid,
+  });
+  return { ...unsigned, signature };
 }
