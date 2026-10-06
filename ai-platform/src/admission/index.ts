@@ -15,7 +15,6 @@ import { CHANNEL_VERSIONS } from "vendor-contracts";
 import { publishedQuotaWeightMax } from "../capability";
 import { clockNowIso, clockNowMs, type ClockEnv } from "../clock";
 import {
-  coerceSoftThreshold,
   type AdmissionResponse,
   type EntitlementSnapshot,
   type IdempotencyPriorState,
@@ -28,8 +27,6 @@ import {
 const ADMISSION_DEADLINE_MS = 2_000;
 /** Matches B3 identity default skew (seconds) for the defensive stage-8 recheck. */
 const ADMISSION_CLOCK_SKEW_SECONDS = 60;
-
-type D1Row = Record<string, unknown>;
 
 export type AdmissionInput = {
   principal: Principal;
@@ -133,41 +130,6 @@ type CoverageMirrorRow = {
   term_snapshot: string;
 };
 
-function parseAllowedCapabilities(entitlement: D1Row): string[] {
-  const raw = entitlement.allowed_capabilities;
-  if (Array.isArray(raw)) {
-    return raw as string[];
-  }
-  if (typeof raw === "string") {
-    try {
-      const parsed = JSON.parse(raw) as unknown;
-      return Array.isArray(parsed) ? (parsed as string[]) : [];
-    } catch {
-      return [];
-    }
-  }
-  return [];
-}
-
-function mapEntitlementSnapshot(row: D1Row): EntitlementSnapshot {
-  return {
-    plan: row.plan as string,
-    period_bounds: {
-      period_start: row.period_start as string,
-      period_end: row.period_end as string,
-    },
-    request_quota: row.request_quota as number,
-    token_cost_budget: {
-      token_budget: row.token_budget as number,
-      cost_budget: row.cost_budget as number,
-    },
-    credit_budget: row.credit_budget as number,
-    allowed_capabilities: parseAllowedCapabilities(row),
-    soft_threshold: coerceSoftThreshold(row.soft_threshold as number),
-    status: row.status as string,
-  };
-}
-
 function mapJournalState(state: string): IdempotencyPriorState["state"] {
   switch (state) {
     case "Completed":
@@ -229,15 +191,20 @@ async function selectAiRequestById(
   return row ?? null;
 }
 
-async function loadInstallationEntitlement(
-  db: D1Database,
-  installationId: string,
-): Promise<EntitlementSnapshot | undefined> {
-  const row = await db
-    .prepare(`SELECT * FROM entitlement WHERE installation_id = ? LIMIT 1`)
-    .bind(installationId)
-    .first<D1Row>();
-  return row ? mapEntitlementSnapshot(row) : undefined;
+function fallbackEntitlementSnapshot(
+  admittedAt: string,
+  capabilities: string[],
+): EntitlementSnapshot {
+  return {
+    plan: "standard",
+    period_bounds: { period_start: admittedAt, period_end: admittedAt },
+    request_quota: 0,
+    token_cost_budget: { token_budget: 0, cost_budget: 0 },
+    credit_budget: 0,
+    allowed_capabilities: capabilities,
+    soft_threshold: 0,
+    status: "active",
+  };
 }
 
 async function currentClockMs(ctx?: AdmissionContext): Promise<number> {
@@ -537,20 +504,7 @@ async function tryMirrorFallbackAdmission(input: {
       .bind(input.principal.installationId, input.idempotencyKey)
       .first<{ request_id: string }>();
     if (raced) {
-      const entitlement =
-        (await loadInstallationEntitlement(
-          input.db,
-          input.principal.installationId,
-        )) ?? {
-          plan: "standard",
-          period_bounds: { period_start: admittedAt, period_end: admittedAt },
-          request_quota: 0,
-          token_cost_budget: { token_budget: 0, cost_budget: 0 },
-          credit_budget: 0,
-          allowed_capabilities: capabilities,
-          soft_threshold: 0,
-          status: "active",
-        };
+      const entitlement = fallbackEntitlementSnapshot(admittedAt, capabilities);
       return {
         ok: true,
         outcome: "grace_admitted",
@@ -562,20 +516,7 @@ async function tryMirrorFallbackAdmission(input: {
     return null;
   }
 
-  const entitlement =
-    (await loadInstallationEntitlement(
-      input.db,
-      input.principal.installationId,
-    )) ?? {
-      plan: "standard",
-      period_bounds: { period_start: admittedAt, period_end: admittedAt },
-      request_quota: 0,
-      token_cost_budget: { token_budget: 0, cost_budget: 0 },
-      credit_budget: 0,
-      allowed_capabilities: capabilities,
-      soft_threshold: 0,
-      status: "active",
-    };
+  const entitlement = fallbackEntitlementSnapshot(admittedAt, capabilities);
 
   return {
     ok: true,

@@ -12,7 +12,7 @@ ip = "127.0.0.1"
 port = 8787
 
 [triggers]
-crons = ["0 3 * * *", "0 4 * * *", "0 5 1 * *", "*/5 * * * *"]
+crons = ["0 3 * * *", "0 4 * * *", "*/5 * * * *"]
 
 [[rules]]
 type = "Text"
@@ -31,7 +31,6 @@ BUILD_SHA = "local"
 ENVIRONMENT = "development"
 LOG_VERBOSITY = "2"
 CONFIG_CACHE_TTL_MS = "100"
-OPERATOR_ID = "platform-operator"
 ACCESS_TEAM_DOMAIN = "access.test"
 ACCESS_AUD = "vendor-access-aud"
 WEBAUTHN_RP_ID = "ops.vendor.test"
@@ -81,7 +80,6 @@ BUILD_SHA = "local"
 ENVIRONMENT = "staging"
 LOG_VERBOSITY = "1"
 CONFIG_CACHE_TTL_MS = "30000"
-OPERATOR_ID = "platform-operator"
 ACCESS_TEAM_DOMAIN = "access.test"
 ACCESS_AUD = "vendor-access-aud"
 WEBAUTHN_RP_ID = "ops.vendor.test"
@@ -132,7 +130,6 @@ BUILD_SHA = "local"
 ENVIRONMENT = "production"
 LOG_VERBOSITY = "0"
 CONFIG_CACHE_TTL_MS = "30000"
-OPERATOR_ID = "platform-operator"
 ACCESS_TEAM_DOMAIN = "access.test"
 ACCESS_AUD = "vendor-access-aud"
 WEBAUTHN_RP_ID = "ops.vendor.test"

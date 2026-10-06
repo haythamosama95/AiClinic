@@ -252,20 +252,10 @@ export function createD1ConfigReader(
             .first<D1Row>();
           return row ?? "miss";
         }
-        case "plans": {
-          const row = await db
-            .prepare("SELECT * FROM plan WHERE name = ?")
-            .bind(key)
-            .first<D1Row>();
-          return row ?? "miss";
-        }
-        case "entitlements": {
-          const row = await db
-            .prepare("SELECT * FROM entitlement WHERE installation_id = ?")
-            .bind(key)
-            .first<D1Row>();
-          return row ?? "miss";
-        }
+        case "plans":
+          return "miss";
+        case "entitlements":
+          return "miss";
         case "kill_switches": {
           let scope: string;
           let target: string;

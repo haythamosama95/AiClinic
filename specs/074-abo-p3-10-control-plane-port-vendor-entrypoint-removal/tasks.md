@@ -125,7 +125,7 @@ cd ai-platform && npx vitest run --config vitest.workers.config.ts \
 
 **Independent Test**: E2E-P3.10-01 in harness H-AP.
 
-- [ ] T020 [US2] Stop reading `plans` and `entitlements` from the config cache and admission — produces readers that survive the drop, FR-009, E2E-P3.10-08. Depends on T018 and T019. Files: `ai-platform/src/config-cache/index.ts`, `ai-platform/src/admission/index.ts`. In `src/config-cache/index.ts`, the `plans` and `entitlements` reader cases return `"miss"` and do not query those tables. In `src/admission/index.ts`, delete `loadInstallationEntitlement` and use the snapshot object already built in the `??` branch. Do not change the fallback conditions, `fallback_admission` insert, or `GET /v1/feed/coverage`.
+- [X] T020 [US2] Stop reading `plans` and `entitlements` from the config cache and admission — produces readers that survive the drop, FR-009, E2E-P3.10-08. Depends on T018 and T019. Files: `ai-platform/src/config-cache/index.ts`, `ai-platform/src/admission/index.ts`. In `src/config-cache/index.ts`, the `plans` and `entitlements` reader cases return `"miss"` and do not query those tables. In `src/admission/index.ts`, delete `loadInstallationEntitlement` and use the snapshot object already built in the `??` branch. Do not change the fallback conditions, `fallback_admission` insert, or `GET /v1/feed/coverage`.
 
 **Checkpoint**: Transitional `invoice`, `credit_price`, `plan`, and `entitlement` tables are dropped and unread.
 
@@ -133,7 +133,7 @@ cd ai-platform && npx vitest run --config vitest.workers.config.ts \
 
 **Independent Test**: E2E-P3.10-07 in harness H-AP.
 
-- [ ] T021 [US3] Remove `OPERATOR_ID` and `0 5 1 * *` from `ai-platform/wrangler.toml` — produces the final cron list and vars, FR-010, FR-011, E2E-P3.10-07. Depends on T020. Remove `OPERATOR_ID` from development, staging, and production vars, and remove `0 5 1 * *` from `[triggers].crons`. Leave `workers_dev`, `preview_urls`, the DO class, rate limits, Access vars, `ISSUER_ID`, `PLATFORM_SIGNING_KEY`, `HEARTBEAT_URL`, `send_email`, and staging-only `DURATION_SCALE` as they are.
+- [X] T021 [US3] Remove `OPERATOR_ID` and `0 5 1 * *` from `ai-platform/wrangler.toml` — produces the final cron list and vars, FR-010, FR-011, E2E-P3.10-07. Depends on T020. Remove `OPERATOR_ID` from development, staging, and production vars, and remove `0 5 1 * *` from `[triggers].crons`. Leave `workers_dev`, `preview_urls`, the DO class, rate limits, Access vars, `ISSUER_ID`, `PLATFORM_SIGNING_KEY`, `HEARTBEAT_URL`, `send_email`, and staging-only `DURATION_SCALE` as they are.
 
 **Checkpoint**: E2E-P3.10-07's cron list matches this file. The scheduled run is confirmed in verification.
 
