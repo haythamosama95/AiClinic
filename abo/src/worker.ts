@@ -1,12 +1,15 @@
 import { authenticateBilling } from "./clinic-api/auth.js";
-import { checkTokenRate } from "./clinic-api/rate.js";
 import {
-  checkContractVersion,
-  clinicJsonResponse,
-} from "./clinic-api/version.js";
+  handleGetBillingContact,
+  handlePutBillingContact,
+} from "./clinic-api/billing-contact.js";
+import { handleGetOffers } from "./clinic-api/offers.js";
+import { checkTokenRate } from "./clinic-api/rate.js";
+import { checkContractVersion } from "./clinic-api/version.js";
 
 export interface Env {
   DB: D1Database;
+  R2: R2Bucket;
   BILLING_HOST: string;
   OPS_HOST: string;
   ISSUER_ID: string;
@@ -67,11 +70,21 @@ async function handleBillingV1(
   }
 
   if (request.method === "GET" && path === "/v1/offers") {
-    return clinicJsonResponse(
-      { contract_version: versionGate.version, offers: [] },
-      200,
-      versionGate.version,
-    );
+    return handleGetOffers(env, versionGate.version);
+  }
+
+  if (path === "/v1/billing-contact") {
+    if (request.method === "GET") {
+      return handleGetBillingContact(env, auth.claims.org, versionGate.version);
+    }
+    if (request.method === "PUT") {
+      return handlePutBillingContact(
+        request,
+        env,
+        auth.claims,
+        versionGate.version,
+      );
+    }
   }
 
   return emptyNotFound();

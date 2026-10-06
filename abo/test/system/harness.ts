@@ -4,6 +4,7 @@
 
 import { env, SELF } from "cloudflare:test";
 import { createIssuer } from "vendor-contracts/testkit";
+import recordsMigrationSql from "../../migrations/0001_records.sql?raw";
 
 function base64UrlEncode(bytes: Uint8Array): string {
   let binary = "";
@@ -136,14 +137,20 @@ function splitSqlStatements(sql: string): string[] {
 
 export async function applySql(sql: string): Promise<void> {
   for (const statement of splitSqlStatements(sql)) {
-    await env.DB.prepare(statement).run();
+    try {
+      await env.DB.prepare(statement).run();
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      if (!/already exists/i.test(message)) {
+        throw error;
+      }
+    }
   }
 }
 
 export async function applyRecordsMigration(): Promise<void> {
   try {
-    const migration = await import("../../migrations/0001_records.sql?raw");
-    await applySql(migration.default);
+    await applySql(recordsMigrationSql);
   } catch {
     // Migration not added yet.
   }
@@ -357,6 +364,7 @@ export async function tableCount(table: string): Promise<number> {
 }
 
 export async function setupHarness(): Promise<void> {
+  await applyRecordsMigration();
   await ensureHarnessSchema();
   await ensureHeartbeatFetchMock();
   Object.assign(env.SEND_EMAIL, sendEmailBinding);

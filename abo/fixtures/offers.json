@@ -1,0 +1,147 @@
+{
+  "terms_versions": [
+    {
+      "terms_version": 1,
+      "locale": "en",
+      "text_r2_key": "terms/en/1.txt",
+      "text": "ABO fixture terms v1.\nBy subscribing you agree to clinic billing terms.",
+      "text_sha256": "dbb6d8870e5636c8da062789e912326c66eacd68838980a81bf6ad9484677753",
+      "published_by": "fixture",
+      "contract_version": 1
+    }
+  ],
+  "offers": [
+    {
+      "offer_id": "01JHARNESSOFFERPUBLISH001",
+      "code": "harness-pro-monthly",
+      "contract_version": 1
+    },
+    {
+      "offer_id": "01JHARNESSOFFERRETIRED0001",
+      "code": "harness-retired-plan",
+      "contract_version": 1
+    }
+  ],
+  "offer_versions": [
+    {
+      "offer_id": "01JHARNESSOFFERPUBLISH001",
+      "version": 1,
+      "plan_id": "plan-pro",
+      "plan_version": 1,
+      "term_unit": "month",
+      "term_count": 1,
+      "price_minor": 800,
+      "currency": "EGP",
+      "allowance_credits": 100,
+      "grace_days": 7,
+      "grace_cap_rule": "proportional",
+      "copy": {
+        "en": {
+          "name": "Clinic Pro Monthly (legacy price)",
+          "summary": "Earlier monthly price"
+        }
+      },
+      "terms_version": 1,
+      "published_by": "fixture",
+      "assertion_sha256": "fixture-assertion-v1",
+      "contract_version": 1
+    },
+    {
+      "offer_id": "01JHARNESSOFFERPUBLISH001",
+      "version": 2,
+      "plan_id": "plan-pro",
+      "plan_version": 1,
+      "term_unit": "month",
+      "term_count": 1,
+      "price_minor": 1000,
+      "currency": "EGP",
+      "allowance_credits": 100,
+      "grace_days": 7,
+      "grace_cap_rule": "proportional",
+      "copy": {
+        "en": {
+          "name": "Clinic Pro Monthly",
+          "summary": "Monthly clinic subscription"
+        }
+      },
+      "terms_version": 1,
+      "published_by": "fixture",
+      "assertion_sha256": "fixture-assertion-v2",
+      "contract_version": 1
+    },
+    {
+      "offer_id": "01JHARNESSOFFERRETIRED0001",
+      "version": 1,
+      "plan_id": "plan-basic",
+      "plan_version": 1,
+      "term_unit": "month",
+      "term_count": 1,
+      "price_minor": 500,
+      "currency": "EGP",
+      "allowance_credits": 50,
+      "grace_days": 7,
+      "grace_cap_rule": "proportional",
+      "copy": {
+        "en": {
+          "name": "Retired Basic",
+          "summary": "No longer sold"
+        }
+      },
+      "terms_version": 1,
+      "published_by": "fixture",
+      "assertion_sha256": "fixture-assertion-retired",
+      "contract_version": 1
+    }
+  ],
+  "offer_events": [
+    {
+      "offer_id": "01JHARNESSOFFERPUBLISH001",
+      "kind": "published",
+      "version": 1,
+      "actor": "fixture",
+      "at": "2026-01-01T00:00:00.000Z",
+      "contract_version": 1
+    },
+    {
+      "offer_id": "01JHARNESSOFFERPUBLISH001",
+      "kind": "published",
+      "version": 2,
+      "actor": "fixture",
+      "at": "2026-02-01T00:00:00.000Z",
+      "contract_version": 1
+    },
+    {
+      "offer_id": "01JHARNESSOFFERRETIRED0001",
+      "kind": "published",
+      "version": 1,
+      "actor": "fixture",
+      "at": "2026-01-01T00:00:00.000Z",
+      "contract_version": 1
+    },
+    {
+      "offer_id": "01JHARNESSOFFERRETIRED0001",
+      "kind": "retired",
+      "version": 1,
+      "actor": "fixture",
+      "at": "2026-06-01T00:00:00.000Z",
+      "contract_version": 1
+    }
+  ],
+  "expectations": {
+    "offer_id": "01JHARNESSOFFERPUBLISH001",
+    "version": 2,
+    "plan_display_name": "Clinic Pro Monthly",
+    "term_unit": "month",
+    "term_count": 1,
+    "price_minor": 1000,
+    "currency": "EGP",
+    "allowance_credits": 100,
+    "grace_days": 7,
+    "terms": {
+      "version": 1,
+      "text": "ABO fixture terms v1.\nBy subscribing you agree to clinic billing terms."
+    },
+    "retired_offer_id": "01JHARNESSOFFERRETIRED0001",
+    "older_version": 1
+  }
+}

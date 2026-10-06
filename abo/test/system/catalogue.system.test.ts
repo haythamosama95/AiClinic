@@ -4,6 +4,8 @@
 
 import { env } from "cloudflare:test";
 import { beforeEach, describe, expect, it } from "vitest";
+import offersFixture from "../../fixtures/offers.json";
+import { loadOffersFixture } from "../../src/records/append";
 import {
   applySql,
   billingFetch,
@@ -47,19 +49,10 @@ const dynamicImport = new Function(
 
 async function seedOffersCatalogueFixture(): Promise<OffersFixtureExpectations | null> {
   try {
-    const [fixtureModule, appendModule] = await Promise.all([
-      dynamicImport("../../fixtures/offers.json"),
-      dynamicImport("../../src/records/append"),
-    ]);
-    const fixture = fixtureModule.default as {
+    const fixture = offersFixture as {
       expectations?: OffersFixtureExpectations;
     };
-    const append = appendModule as {
-      loadOffersFixture?: (value: unknown) => Promise<void>;
-    };
-    if (typeof append.loadOffersFixture === "function") {
-      await append.loadOffersFixture(fixture);
-    }
+    await loadOffersFixture(fixture);
     return fixture.expectations ?? null;
   } catch {
     return null;
