@@ -175,7 +175,7 @@ The run fails because `beginTransfer` is not a method.
 
 ### 5.1 Unit harness
 
-- [ ] T026 Run harness H-AP for this unit and confirm E2E-P3.8-01 through E2E-P3.8-08 pass together — produces the green run, FR-001 through FR-008, E2E-P3.8-01 through E2E-P3.8-08. Depends on T009 through T025 (and therefore on T001–T008). This task may edit only `ai-platform/test/system/transfer-deletion.system.test.ts`. `packages/vendor-contracts/**` stays unchanged. `voidForReversalRPC`, `voidGrantRPC`, `releaseHeld`, `releaseHeldRPC`, `listGrantsForVoid`, and the tombstone write stay unchanged. SC-002 is the review's run of earlier suites, not this command.
+- [X] T026 Run harness H-AP for this unit and confirm E2E-P3.8-01 through E2E-P3.8-08 pass together — produces the green run, FR-001 through FR-008, E2E-P3.8-01 through E2E-P3.8-08. Depends on T009 through T025 (and therefore on T001–T008). This task may edit only `ai-platform/test/system/transfer-deletion.system.test.ts`. `packages/vendor-contracts/**` stays unchanged. `voidForReversalRPC`, `voidGrantRPC`, `releaseHeld`, `releaseHeldRPC`, `listGrantsForVoid`, and the tombstone write stay unchanged. SC-002 is the review's run of earlier suites, not this command.
 
 ```bash
 cd ai-platform && npx vitest run --config vitest.workers.config.ts \
@@ -190,7 +190,7 @@ cd ai-platform && npx vitest run --config vitest.workers.config.ts \
 
 ### 6.1 Quickstart
 
-- [ ] T027 Create `specs/072-abo-p3-8-transfer-deletion-with-coverage-left/quickstart.md` from the plan's quickstart outline — produces this unit's quickstart, FR-001 through FR-008, E2E-P3.8-01 through E2E-P3.8-08. Depends on T026. Sections: (1) what was implemented — `beginTransfer`, `transferOut`, `transferIn`, `deleteInstallation`, transfer lineage on the existing void call, and purge retention; (2) files this unit adds or modifies — the Files section of `plan.md`; (3) harness command for this unit's tests only — the command below; (4) the entry point → module chain per E2E id below. Every scenario is asserted by H-AP, so this file records harness commands only.
+- [X] T027 Create `specs/072-abo-p3-8-transfer-deletion-with-coverage-left/quickstart.md` from the plan's quickstart outline — produces this unit's quickstart, FR-001 through FR-008, E2E-P3.8-01 through E2E-P3.8-08. Depends on T026. Sections: (1) what was implemented — `beginTransfer`, `transferOut`, `transferIn`, `deleteInstallation`, transfer lineage on the existing void call, and purge retention; (2) files this unit adds or modifies — the Files section of `plan.md`; (3) harness command for this unit's tests only — the command below; (4) the entry point → module chain per E2E id below. Every scenario is asserted by H-AP, so this file records harness commands only.
 
 ```bash
 cd ai-platform && npx vitest run --config vitest.workers.config.ts \
