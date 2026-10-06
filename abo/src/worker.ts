@@ -155,10 +155,11 @@ export default {
       return;
     }
     if (cron === "* * * * *") {
-      await exportFacts(env);
       await markExportLagIfDue(env);
+      await exportFacts(env);
       await fetch(env.HEARTBEAT_URL);
       await sendDueAlerts(env);
+      await markExportLagIfDue(env);
       return;
     }
     if (cron === "0 6 * * *") {

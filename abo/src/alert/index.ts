@@ -50,28 +50,35 @@ async function readAlert(
     .first<AlertRow>();
 }
 
-async function upsertAlertDue(
+async function activateExportLagAlert(
   env: AlertEnv,
-  alertKey: string,
   detailId: string,
 ): Promise<void> {
-  const existing = await readAlert(env.DB, alertKey);
+  const existing = await readAlert(env.DB, EXPORT_LAG_ALERT_KEY);
   if (existing === null) {
     await env.DB.prepare(
       `INSERT INTO alert (
         alert_key, code, active, unsent, last_sent_at, next_send_at, detail_id
       ) VALUES (?, ?, 1, 1, NULL, NULL, ?)`,
     )
-      .bind(alertKey, ALERT_CODE, detailId)
+      .bind(EXPORT_LAG_ALERT_KEY, ALERT_CODE, detailId)
       .run();
     return;
   }
+
+  const unsent =
+    existing.active === 0 ||
+    existing.unsent === 1 ||
+    existing.last_sent_at === null
+      ? 1
+      : existing.unsent;
+
   await env.DB.prepare(
     `UPDATE alert
-     SET active = 1, unsent = 1, detail_id = ?
+     SET active = 1, unsent = ?, detail_id = ?
      WHERE alert_key = ?`,
   )
-    .bind(detailId, alertKey)
+    .bind(unsent, detailId, EXPORT_LAG_ALERT_KEY)
     .run();
 }
 
@@ -92,12 +99,6 @@ type OldestUnexported = {
   created_at: string;
 };
 
-type ExportedFact = {
-  fact_seq: number;
-  created_at: string;
-  exported_at: string;
-};
-
 async function oldestUnexportedFact(
   db: D1Database,
 ): Promise<OldestUnexported | null> {
@@ -113,23 +114,15 @@ async function oldestUnexportedFact(
     .first<OldestUnexported>();
 }
 
-async function latestLateExportedFact(
-  db: D1Database,
-): Promise<ExportedFact | null> {
-  const rows = await db
-    .prepare(
-      `SELECT fl.fact_seq, fl.created_at, fe.exported_at
-       FROM fact_log fl
-       INNER JOIN fact_export fe ON fl.fact_seq = fe.fact_seq
-       ORDER BY fe.exported_at DESC`,
-    )
-    .all<ExportedFact>();
-  for (const row of rows.results ?? []) {
-    if (Date.parse(row.exported_at) - Date.parse(row.created_at) > ONE_HOUR_MS) {
-      return row;
-    }
+async function clearExportLagWhenResolved(env: AlertEnv): Promise<void> {
+  const existing = await readAlert(env.DB, EXPORT_LAG_ALERT_KEY);
+  if (existing === null || existing.active === 0) {
+    return;
   }
-  return null;
+  if (existing.last_sent_at !== null) {
+    return;
+  }
+  await clearAlert(env, EXPORT_LAG_ALERT_KEY);
 }
 
 export async function markExportLagIfDue(env: AlertEnv): Promise<void> {
@@ -138,32 +131,14 @@ export async function markExportLagIfDue(env: AlertEnv): Promise<void> {
   if (oldest !== null) {
     const createdMs = Date.parse(oldest.created_at);
     if (nowMs - createdMs > ONE_HOUR_MS) {
-      await upsertAlertDue(
-        env,
-        EXPORT_LAG_ALERT_KEY,
-        String(oldest.fact_seq),
-      );
+      await activateExportLagAlert(env, String(oldest.fact_seq));
       return;
     }
-    await clearAlert(env, EXPORT_LAG_ALERT_KEY);
+    await clearExportLagWhenResolved(env);
     return;
   }
 
-  const lateExport = await latestLateExportedFact(env.DB);
-  if (lateExport !== null) {
-    await upsertAlertDue(
-      env,
-      EXPORT_LAG_ALERT_KEY,
-      String(lateExport.fact_seq),
-    );
-    return;
-  }
-
-  const existing = await readAlert(env.DB, EXPORT_LAG_ALERT_KEY);
-  if (existing !== null && existing.last_sent_at !== null) {
-    return;
-  }
-  await clearAlert(env, EXPORT_LAG_ALERT_KEY);
+  await clearExportLagWhenResolved(env);
 }
 
 async function markRepeatDueIfNeeded(
@@ -225,7 +200,7 @@ export async function sendDueAlerts(env: AlertEnv): Promise<void> {
 
   const dueRows = await env.DB.prepare(
     `SELECT alert_key, code, active, unsent, last_sent_at, next_send_at, detail_id
-     FROM alert WHERE unsent = 1`,
+     FROM alert WHERE unsent = 1 AND active = 1`,
   ).all<AlertRow>();
 
   for (const row of dueRows.results ?? []) {
