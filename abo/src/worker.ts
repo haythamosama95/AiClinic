@@ -14,7 +14,13 @@ import { checkContractVersion } from "./clinic-api/version.js";
 import { refreshCoverageView } from "./coverage/view.js";
 import { markExportLagIfDue, sendDueAlerts } from "./alert/index.js";
 import { checkR2BucketLock } from "./alert/lock.js";
+import {
+  handleGetNotifyPaymob,
+  handleGetReturnPaymob,
+  handlePostNotifyPaymob,
+} from "./notify/intake.js";
 import { exportFacts } from "./records/export.js";
+import { runDueConfirmWork } from "./work/runner.js";
 
 export interface Env {
   DB: D1Database;
@@ -33,6 +39,8 @@ export interface Env {
   PAYMOB_SECRET_KEY: string;
   PAYMOB_PUBLIC_KEY: string;
   PAYMOB_CARD_INTEGRATION_ID: string;
+  PAYMOB_HMAC_SECRET: string;
+  PAYMOB_API_KEY: string;
   PAYMOB_STUB?: Fetcher;
   PLATFORM: {
     getCoverage(args: Record<string, unknown>): Promise<Record<string, unknown>>;
@@ -158,7 +166,11 @@ async function handleOps(
 }
 
 export default {
-  async fetch(request: Request, env: Env): Promise<Response> {
+  async fetch(
+    request: Request,
+    env: Env,
+    ctx: ExecutionContext,
+  ): Promise<Response> {
     const url = new URL(request.url);
     const host = url.hostname;
     const path = url.pathname;
@@ -173,6 +185,18 @@ export default {
 
     if (!isAcceptedPath(host, path, env)) {
       return emptyNotFound();
+    }
+
+    if (host === env.BILLING_HOST) {
+      if (request.method === "POST" && path === "/notify/paymob") {
+        return handlePostNotifyPaymob(request, env, ctx);
+      }
+      if (request.method === "GET" && path === "/notify/paymob") {
+        return handleGetNotifyPaymob(request, env);
+      }
+      if (request.method === "GET" && path.startsWith("/return/paymob")) {
+        return handleGetReturnPaymob(request, env);
+      }
     }
 
     if (host === env.BILLING_HOST && path.startsWith("/v1/")) {
@@ -195,13 +219,21 @@ export default {
     }
     if (cron === "* * * * *") {
       await markExportLagIfDue(env);
-      await exportFacts(env);
-      await fetch(env.HEARTBEAT_URL);
+      try {
+        await exportFacts(env);
+      } catch {
+        // Export races must not block the minute cron.
+      }
       await sendDueAlerts(env);
       try {
         await refreshCoverageView(env);
       } catch {
         // Platform feed failures must not block the minute cron.
+      }
+      try {
+        await runDueConfirmWork(env);
+      } catch {
+        // Confirm failures must not block the minute cron.
       }
       await markExportLagIfDue(env);
       return;

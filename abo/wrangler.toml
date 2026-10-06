@@ -26,6 +26,8 @@ PAYMOB_BASE_URL = "https://accept.paymob.com/api"
 PAYMOB_SECRET_KEY = "paymob-secret-unconfigured"
 PAYMOB_PUBLIC_KEY = "paymob-public-unconfigured"
 PAYMOB_CARD_INTEGRATION_ID = "0"
+PAYMOB_HMAC_SECRET = "paymob-hmac-unconfigured"
+PAYMOB_API_KEY = "paymob-api-unconfigured"
 
 [[env.development.send_email]]
 name = "SEND_EMAIL"
@@ -61,6 +63,8 @@ PAYMOB_BASE_URL = "https://accept.paymob.com/api"
 PAYMOB_SECRET_KEY = "paymob-secret-unconfigured"
 PAYMOB_PUBLIC_KEY = "paymob-public-unconfigured"
 PAYMOB_CARD_INTEGRATION_ID = "0"
+PAYMOB_HMAC_SECRET = "paymob-hmac-unconfigured"
+PAYMOB_API_KEY = "paymob-api-unconfigured"
 
 [[env.staging.send_email]]
 name = "SEND_EMAIL"
@@ -96,6 +100,8 @@ PAYMOB_BASE_URL = "https://accept.paymob.com/api"
 PAYMOB_SECRET_KEY = "paymob-secret-unconfigured"
 PAYMOB_PUBLIC_KEY = "paymob-public-unconfigured"
 PAYMOB_CARD_INTEGRATION_ID = "0"
+PAYMOB_HMAC_SECRET = "paymob-hmac-unconfigured"
+PAYMOB_API_KEY = "paymob-api-unconfigured"
 
 [[env.production.send_email]]
 name = "SEND_EMAIL"

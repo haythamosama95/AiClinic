@@ -23,6 +23,8 @@ const EXPORT_LAG_ALERT_KEY = "AL-16:export-lag";
 const R2_LOCK_ALERT_KEY = "AL-16:r2-lock";
 const ALERT_CODE = "AL-16";
 
+export type AlertCode = "AL-01" | "AL-02" | "AL-05" | "AL-09" | "AL-16";
+
 type AlertRow = {
   alert_key: string;
   code: string;
@@ -33,8 +35,21 @@ type AlertRow = {
   detail_id: string;
 };
 
-function alertEmailText(detailId: string): string {
-  return `${ALERT_CODE} ${detailId}`;
+function alertEmailText(code: string, detailId: string): string {
+  return `${code} ${detailId}`;
+}
+
+function nextSendAtForCode(
+  code: string,
+  nowMs: number,
+): string | null {
+  if (code === "AL-16") {
+    return new Date(nowMs + ONE_DAY_MS).toISOString();
+  }
+  if (code === "AL-01" || code === "AL-02") {
+    return new Date(nowMs + ONE_HOUR_MS).toISOString();
+  }
+  return null;
 }
 
 async function readAlert(
@@ -159,18 +174,44 @@ async function markRepeatDueIfNeeded(
     .run();
 }
 
+export async function raiseAlert(
+  env: AlertEnv,
+  code: AlertCode,
+  alertKey: string,
+  detailId: string,
+): Promise<void> {
+  const existing = await readAlert(env.DB, alertKey);
+  if (existing === null) {
+    await env.DB.prepare(
+      `INSERT INTO alert (
+        alert_key, code, active, unsent, last_sent_at, next_send_at, detail_id
+      ) VALUES (?, ?, 1, 1, NULL, NULL, ?)`,
+    )
+      .bind(alertKey, code, detailId)
+      .run();
+    return;
+  }
+  await env.DB.prepare(
+    `UPDATE alert
+     SET active = 1, unsent = 1, code = ?, detail_id = ?
+     WHERE alert_key = ?`,
+  )
+    .bind(code, detailId, alertKey)
+    .run();
+}
+
 async function sendAlertRow(env: AlertEnv, row: AlertRow): Promise<void> {
   const nowIso = await clockNowIso(env);
   const nowMs = await clockNowMs(env);
   const message = {
     from: env.ALERT_EMAIL_TO,
     to: env.ALERT_EMAIL_TO,
-    subject: ALERT_CODE,
-    text: alertEmailText(row.detail_id),
+    subject: row.code,
+    text: alertEmailText(row.code, row.detail_id),
   };
   try {
     await env.SEND_EMAIL.send(message);
-    const nextSendAt = new Date(nowMs + ONE_DAY_MS).toISOString();
+    const nextSendAt = nextSendAtForCode(row.code, nowMs);
     await env.DB.prepare(
       `UPDATE alert
        SET unsent = 0, last_sent_at = ?, next_send_at = ?
