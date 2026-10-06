@@ -18,6 +18,24 @@ const paymobModulesRoot = path.dirname(paymobStub);
 
 const PLATFORM_DB_ID = "22222222-2222-2222-2222-222222222222";
 
+const ABO_GRANT_KEY = {
+  kid: "abo-grant-test",
+  pkcs8:
+    "MC4CAQAwBQYDK2VwBCIEINhOOYX0jTZi98KVn0iV7iqQ4v29ImVy_tKTMfFESzxK",
+  public_key: "u5sqB8SGC8m0kpu1R4R-CbF41y6-7pZuaBT_Iecbuhw",
+};
+
+const PLATFORM_PUBLIC_KEYS = [
+  {
+    kid: "platform-prev-test",
+    public_key: "wTfd0sQ8ylrdkYt5C0bYzxiZGlr-XtEqlbzwgq0-WXQ",
+  },
+  {
+    kid: "platform-test",
+    public_key: "GNzxZ6Gymues_aeJArGyb3wDESTOUJeqhuZBfTByni0",
+  },
+];
+
 const platformWorkerBindings = {
   BUILD_SHA: "local",
   ENVIRONMENT: "development",
@@ -41,6 +59,7 @@ export default defineWorkersConfig({
     include: [
       "test/system/checkout.cross-worker.test.ts",
       "test/system/coverage-view.cross-worker.test.ts",
+      "test/system/grant.cross-worker.test.ts",
     ],
     fileParallelism: false,
     testTimeout: 120_000,
@@ -69,9 +88,12 @@ export default defineWorkersConfig({
             ACCESS_AUD: "vendor-access-aud",
             WEBAUTHN_RP_ID: "ops.vendor.test",
             WEBAUTHN_ORIGIN: "https://ops.vendor.test",
+            ABO_GRANT_KEY: JSON.stringify(ABO_GRANT_KEY),
+            PLATFORM_PUBLIC_KEYS: JSON.stringify(PLATFORM_PUBLIC_KEYS),
           },
           serviceBindings: {
             PLATFORM: { name: "platform", entrypoint: "VendorEntrypoint" },
+            PLATFORM_HTTP: "platform",
             PAYMOB_STUB: "paymob",
           },
           workers: [

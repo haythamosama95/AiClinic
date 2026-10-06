@@ -54,8 +54,9 @@ export function hxwAccessCertsJson(): string {
 export async function mintHxwVendorAccessJwt(
   aud: string,
   email: string,
+  nowSeconds?: number,
 ): Promise<string> {
-  const now = Math.floor(Date.now() / 1000);
+  const now = nowSeconds ?? Math.floor(Date.now() / 1000);
   const header = {
     alg: "RS256",
     kid: ACCESS_CERTS.keys[0].kid,
