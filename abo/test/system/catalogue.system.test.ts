@@ -139,19 +139,15 @@ async function ensureRecordsMigration(): Promise<void> {
 }
 
 async function appendMinimalOffer(): Promise<string> {
-  let appendModule: AppendModule | null = null;
-  try {
-    appendModule = (await dynamicImport(
-      "../../src/records/append",
-    )) as AppendModule;
-  } catch {
-    appendModule = null;
-  }
-  expect(appendModule?.appendOffer).toBeTypeOf("function");
-  const offerId = "01JTEST00000000000000000001";
+  const appendModule = (await import(
+    "../../src/records/append.js"
+  )) as AppendModule;
+  expect(appendModule.appendOffer).toBeTypeOf("function");
+  const suffix = crypto.randomUUID().replace(/-/g, "").slice(0, 20);
+  const offerId = `01JTEST${suffix}`;
   await appendModule.appendOffer!({
     offer_id: offerId,
-    code: "harness-minimal-offer",
+    code: `harness-minimal-offer-${suffix}`,
     contract_version: 1,
   });
   return offerId;

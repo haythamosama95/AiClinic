@@ -6,15 +6,31 @@ import {
 import { handleGetOffers } from "./clinic-api/offers.js";
 import { checkTokenRate } from "./clinic-api/rate.js";
 import { checkContractVersion } from "./clinic-api/version.js";
+import { markExportLagIfDue, sendDueAlerts } from "./alert/index.js";
+import { checkR2BucketLock } from "./alert/lock.js";
+import { exportFacts } from "./records/export.js";
 
 export interface Env {
   DB: D1Database;
   R2: R2Bucket;
   BILLING_HOST: string;
   OPS_HOST: string;
+  HEARTBEAT_URL: string;
+  ALERT_EMAIL_TO: string;
   ISSUER_ID: string;
   ISSUER_KEYS: string;
+  CLOUDFLARE_ACCOUNT_ID: string;
+  R2_BUCKET_NAME: string;
+  R2_LOCK_READ_TOKEN: string;
   TEST_CLOCK: string;
+  SEND_EMAIL: {
+    send(message: {
+      from: string;
+      to: string;
+      subject: string;
+      text: string;
+    }): Promise<void>;
+  };
 }
 
 function emptyNotFound(): Response {
@@ -130,5 +146,24 @@ export default {
 
     return emptyNotFound();
   },
-  async scheduled(): Promise<void> {},
+  async scheduled(
+    controller: ScheduledController,
+    env: Env,
+  ): Promise<void> {
+    const cron = controller.cron;
+    if (cron === "0 * * * *" || cron === "0 */6 * * *") {
+      return;
+    }
+    if (cron === "* * * * *") {
+      await exportFacts(env);
+      await markExportLagIfDue(env);
+      await fetch(env.HEARTBEAT_URL);
+      await sendDueAlerts(env);
+      return;
+    }
+    if (cron === "0 6 * * *") {
+      await checkR2BucketLock(env);
+      await sendDueAlerts(env);
+    }
+  },
 };
