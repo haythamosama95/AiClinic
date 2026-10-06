@@ -849,3 +849,24 @@ export function buildDiscoveryResponse(
     },
   });
 }
+
+/** Max published quota weight among non-retired installed manifests (P3.9). */
+export function publishedQuotaWeightMax(): number {
+  let max = 1;
+  for (const manifest of capabilityRegistry.values()) {
+    const lifecycle =
+      typeof manifest.Identity.lifecycleState === "string"
+        ? manifest.Identity.lifecycleState
+        : "active";
+    if (lifecycle === "retired") {
+      continue;
+    }
+    const raw = manifest.Economics?.quotaWeight;
+    const weight =
+      typeof raw === "number" && Number.isFinite(raw) && raw > 0 ? raw : 1;
+    if (weight > max) {
+      max = weight;
+    }
+  }
+  return max;
+}

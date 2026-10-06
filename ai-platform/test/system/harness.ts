@@ -83,6 +83,7 @@ import usageTermMigrationSql from "../../migrations/20261006120000_usage_term.sq
 import ceilingPolicyMigrationSql from "../../migrations/20261006130000_ceiling_policy.sql?raw";
 import grantVoidMigrationSql from "../../migrations/20261006140000_grant_void.sql?raw";
 import transferMigrationSql from "../../migrations/20261006150000_transfer.sql?raw";
+import fallbackAdmissionFeedMigrationSql from "../../migrations/20261006160000_fallback_admission_feed.sql?raw";
 import { applySqlStatements } from "../split-sql-statements";
 import {
   createCapabilityRegistry,
@@ -163,7 +164,8 @@ export const PLATFORM_TABLES = [
   "usage_rollup",
   "platform_counter",
   "control_audit",
-  "grace_admission_queue",
+  "fallback_admission",
+  "feed_consumer",
   "invoice",
 ] as const;
 
@@ -265,6 +267,7 @@ const MIGRATION_SQL = [
   ceilingPolicyMigrationSql,
   grantVoidMigrationSql,
   transferMigrationSql,
+  fallbackAdmissionFeedMigrationSql,
 ];
 
 const CATALOGUE_PLAN_NAME = "standard";
@@ -343,6 +346,7 @@ export async function applyAllMigrations(db: D1Database): Promise<void> {
     .run();
   await seedCataloguePlan(db);
   await ensureHarnessTestClockTable();
+  await ensureHarnessAdmissionFaultTable();
   migrationsApplied = true;
 }
 
@@ -354,7 +358,9 @@ export async function resetPlatformState(): Promise<void> {
     env.DB.prepare("DELETE FROM operator_credential"),
     env.DB.prepare("DELETE FROM harness_test_clock"),
     env.DB.prepare("DELETE FROM control_audit"),
-    env.DB.prepare("DELETE FROM grace_admission_queue"),
+    env.DB.prepare("DELETE FROM fallback_admission"),
+    env.DB.prepare("DELETE FROM feed_consumer"),
+    env.DB.prepare("DELETE FROM harness_admission_fault"),
     env.DB.prepare("DELETE FROM platform_counter"),
     env.DB.prepare("DELETE FROM usage_rollup"),
     env.DB.prepare("DELETE FROM usage_event"),
@@ -1614,7 +1620,8 @@ export type VendorMethod =
   | "beginTransfer"
   | "transferOut"
   | "transferIn"
-  | "deleteInstallation";
+  | "deleteInstallation"
+  | "feedConsumerHealth";
 
 export const VENDOR_OPERATOR_EMAIL = "operator@clinic.test";
 
@@ -1726,6 +1733,63 @@ async function ensureHarnessTestClockTable(): Promise<void> {
        now_iso TEXT NOT NULL
      )`,
   ).run();
+}
+
+async function ensureHarnessAdmissionFaultTable(): Promise<void> {
+  await env.DB.prepare(
+    `CREATE TABLE IF NOT EXISTS harness_admission_fault (
+       id TEXT PRIMARY KEY,
+       mode TEXT NOT NULL,
+       hold_until INTEGER
+     )`,
+  ).run();
+}
+
+export async function setAdmissionFault(
+  mode: "throw" | "hold",
+  opts: { hold_until?: number } = {},
+): Promise<void> {
+  await ensureHarnessAdmissionFaultTable();
+  await env.DB.prepare(
+    `INSERT OR REPLACE INTO harness_admission_fault (id, mode, hold_until)
+     VALUES ('default', ?, ?)`,
+  )
+    .bind(mode, opts.hold_until ?? null)
+    .run();
+}
+
+export async function clearAdmissionFault(): Promise<void> {
+  await ensureHarnessAdmissionFaultTable();
+  await env.DB
+    .prepare("DELETE FROM harness_admission_fault WHERE id = 'default'")
+    .run();
+}
+
+export async function mintFeedToken(): Promise<string> {
+  const issuer = await ensureHarnessIssuerRegistered();
+  const now = await harnessNowSeconds();
+  const payload = {
+    iss: ISSUER_ID,
+    aud: "ai-platform-feed",
+    sub: "backend-feed",
+    jti: randomUuid(),
+    iat: now,
+    exp: now + 120,
+    ver: "2",
+  };
+  const header = { alg: "EdDSA", kid: issuer.kid, typ: "JWT" };
+  const headerB64 = base64urlEncode(JSON.stringify(header));
+  const { canonicalize } = await import("vendor-contracts");
+  const payloadB64 = base64urlEncode(
+    new TextEncoder().encode(canonicalize(payload)),
+  );
+  const signingInput = `${headerB64}.${payloadB64}`;
+  const signature = await crypto.subtle.sign(
+    { name: "Ed25519" },
+    issuer.privateKey,
+    new TextEncoder().encode(signingInput),
+  );
+  return `${signingInput}.${base64urlEncode(new Uint8Array(signature))}`;
 }
 
 export async function setTestClock(isoUtc: string): Promise<void> {

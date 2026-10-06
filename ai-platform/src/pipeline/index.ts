@@ -493,6 +493,13 @@ export async function runGuard(
     {
       now: nowSeconds,
       nowMs,
+      clock: input.verifyContext?.alertEnv
+        ? {
+            DB: bindings.DB,
+            TEST_CLOCK: (input.verifyContext.alertEnv as { TEST_CLOCK?: string })
+              .TEST_CLOCK,
+          }
+        : { DB: bindings.DB },
     },
   );
   if (!admission.ok) {

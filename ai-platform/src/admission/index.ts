@@ -2,12 +2,7 @@
  * Stage-8 admission caller — one Quota DO round trip per request (B4 §6.1 stage 8).
  */
 
-import {
-  ConfigCacheMissError,
-  type ConfigCache,
-  type D1Reader,
-  loadConfig,
-} from "../config-cache";
+import type { ConfigCache, D1Reader } from "../config-cache";
 import type { Principal } from "../identity";
 import type { Logger } from "../logger";
 import { noopLogger } from "../logger";
@@ -17,6 +12,8 @@ import {
   type TaxonomyCode,
 } from "../errors";
 import { CHANNEL_VERSIONS } from "vendor-contracts";
+import { publishedQuotaWeightMax } from "../capability";
+import { clockNowIso, clockNowMs, type ClockEnv } from "../clock";
 import {
   coerceSoftThreshold,
   type AdmissionResponse,
@@ -27,7 +24,8 @@ import {
   flushRejectionCounters,
   recordGuardRejection,
 } from "../rate-limit";
-const GRACE_ADMISSION_CAP = 5;
+
+const ADMISSION_DEADLINE_MS = 2_000;
 /** Matches B3 identity default skew (seconds) for the defensive stage-8 recheck. */
 const ADMISSION_CLOCK_SKEW_SECONDS = 60;
 
@@ -53,8 +51,10 @@ export type AdmissionBindings = {
 export type AdmissionContext = {
   /** JWT exp skew check (seconds). */
   now?: number;
-  /** Injectable DO clock (milliseconds). */
+  /** Injectable DO clock (milliseconds) at pipeline start. */
   nowMs?: number;
+  /** Harness / platform clock source for admission deadline races. */
+  clock?: ClockEnv;
 };
 
 type AdmissionSuccess =
@@ -97,17 +97,13 @@ type AdmissionFailure = {
 
 export type AdmissionResult = AdmissionSuccess | AdmissionFailure;
 
-/**
- * Queued grace admission params for later DO re-admission + settlement.
- * `graceRequestId` is Worker-local tracking only — never a DO-issued requestId.
- */
+/** Legacy grace-queue shape — retained for downstream imports until suite updates. */
 export type PendingGraceAdmission = {
   installationId: string;
   requestReference: string;
   jti: string;
   idempotencyKey: string;
   entitlement: EntitlementSnapshot;
-  /** Local Worker-side tracking id returned as `grace_admitted.requestId`. */
   graceRequestId: string;
   usage?: { tokens: number; cost: number };
   partial?: boolean;
@@ -116,22 +112,6 @@ export type PendingGraceAdmission = {
 };
 
 export type GraceQueueStatus = "pending" | "reconciled" | "dropped";
-
-type GraceQueueRow = {
-  grace_request_id: string;
-  installation_id: string;
-  idempotency_key: string;
-  jti: string;
-  request_reference: string;
-  entitlement_json: string;
-  usage_tokens: number | null;
-  usage_cost: number | null;
-  partial: number | null;
-  queued_at: string;
-  reconcile_attempts: number;
-  reconcile_first_seen_at_ms: number | null;
-  status: string;
-};
 
 type JournaledRequestRow = {
   request_id: string;
@@ -146,10 +126,12 @@ type AdmissionDoTransportResult =
   | { ok: false; reason: "client_error" }
   | { ok: false; reason: "contract_rejected" };
 
-const GRACE_QUEUE_SELECT = `SELECT grace_request_id, installation_id, idempotency_key, jti,
-  request_reference, entitlement_json, usage_tokens, usage_cost, partial, queued_at,
-  reconcile_attempts, reconcile_first_seen_at_ms, status
- FROM grace_admission_queue`;
+type CoverageMirrorRow = {
+  state: string;
+  suspended: number;
+  hard_stop_at: string | null;
+  term_snapshot: string;
+};
 
 function parseAllowedCapabilities(entitlement: D1Row): string[] {
   const raw = entitlement.allowed_capabilities;
@@ -181,7 +163,6 @@ function mapEntitlementSnapshot(row: D1Row): EntitlementSnapshot {
     },
     credit_budget: row.credit_budget as number,
     allowed_capabilities: parseAllowedCapabilities(row),
-    // Out-of-range values coerce to 0 (never degrade); write path must keep [0, 1].
     soft_threshold: coerceSoftThreshold(row.soft_threshold as number),
     status: row.status as string,
   };
@@ -200,45 +181,8 @@ function mapJournalState(state: string): IdempotencyPriorState["state"] {
   }
 }
 
-function mapGraceQueueRow(row: GraceQueueRow): PendingGraceAdmission {
-  const entry: PendingGraceAdmission = {
-    installationId: row.installation_id,
-    requestReference: row.request_reference,
-    jti: row.jti,
-    idempotencyKey: row.idempotency_key,
-    entitlement: JSON.parse(row.entitlement_json) as EntitlementSnapshot,
-    graceRequestId: row.grace_request_id,
-    reconcileAttempts: Number(row.reconcile_attempts ?? 0),
-    reconcileQueuedAtMs: row.reconcile_first_seen_at_ms ?? undefined,
-  };
-  if (row.usage_tokens != null) {
-    entry.usage = {
-      tokens: Number(row.usage_tokens),
-      cost: Number(row.usage_cost ?? 0),
-    };
-  }
-  if (row.partial != null) {
-    entry.partial = Number(row.partial) === 1;
-  }
-  return entry;
-}
-
 function isUniqueConstraintError(error: unknown): boolean {
   return error instanceof Error && /UNIQUE constraint failed/i.test(error.message);
-}
-
-function graceAdmittedResult(entry: {
-  graceRequestId: string;
-  requestReference: string;
-  entitlement: EntitlementSnapshot;
-}): AdmissionResult {
-  return {
-    ok: true,
-    outcome: "grace_admitted",
-    requestId: entry.graceRequestId,
-    requestReference: entry.requestReference,
-    entitlement: entry.entitlement,
-  };
 }
 
 function idempotentFromJournal(row: JournaledRequestRow): AdmissionResult {
@@ -252,18 +196,6 @@ function idempotentFromJournal(row: JournaledRequestRow): AdmissionResult {
       traceId: row.trace_id,
     },
   };
-}
-
-async function selectGraceByKey(
-  db: D1Database,
-  installationId: string,
-  idempotencyKey: string,
-): Promise<GraceQueueRow | null> {
-  const row = await db
-    .prepare(`${GRACE_QUEUE_SELECT} WHERE installation_id = ? AND idempotency_key = ?`)
-    .bind(installationId, idempotencyKey)
-    .first<GraceQueueRow>();
-  return row ?? null;
 }
 
 async function selectAiRequestByKey(
@@ -301,150 +233,79 @@ async function selectAiRequestById(
   return row ?? null;
 }
 
-async function isLedgerQuotaExhausted(
+async function loadInstallationEntitlement(
   db: D1Database,
   installationId: string,
-  entitlement: EntitlementSnapshot,
-): Promise<boolean> {
-  const periodStart = entitlement.period_bounds.period_start;
-  const periodEnd = entitlement.period_bounds.period_end;
-
-  const requestRow = await db
-    .prepare(
-      `SELECT COUNT(*) AS count
-       FROM ai_request
-       WHERE installation_id = ?
-         AND created_at >= ?
-         AND created_at < ?`,
-    )
-    .bind(installationId, periodStart, periodEnd)
-    .first<{ count: number }>();
-  if (Number(requestRow?.count ?? 0) >= entitlement.request_quota) {
-    return true;
-  }
-
-  const usageRow = await db
-    .prepare(
-      `SELECT COALESCE(SUM(tokens), 0) AS tokens, COALESCE(SUM(cost), 0) AS cost
-       FROM usage_event
-       WHERE installation_id = ?
-         AND recorded_at >= ?
-         AND recorded_at < ?`,
-    )
-    .bind(installationId, periodStart, periodEnd)
-    .first<{ tokens: number; cost: number }>();
-  const tokensUsed = Number(usageRow?.tokens ?? 0);
-  const costUsed = Number(usageRow?.cost ?? 0);
-  return (
-    tokensUsed >= entitlement.token_cost_budget.token_budget ||
-    costUsed >= entitlement.token_cost_budget.cost_budget
-  );
+): Promise<EntitlementSnapshot | undefined> {
+  const row = await db
+    .prepare(`SELECT * FROM entitlement WHERE installation_id = ? LIMIT 1`)
+    .bind(installationId)
+    .first<D1Row>();
+  return row ? mapEntitlementSnapshot(row) : undefined;
 }
 
-function existingGraceOutcome(row: GraceQueueRow): AdmissionResult {
-  if (row.status === "pending") {
-    return graceAdmittedResult({
-      graceRequestId: row.grace_request_id,
-      requestReference: row.request_reference,
-      entitlement: JSON.parse(row.entitlement_json) as EntitlementSnapshot,
+async function currentClockMs(ctx?: AdmissionContext): Promise<number> {
+  if (ctx?.clock) {
+    return clockNowMs(ctx.clock);
+  }
+  return ctx?.nowMs ?? Date.now();
+}
+
+async function yieldForTestClock(ctx?: AdmissionContext): Promise<void> {
+  if (ctx?.clock?.TEST_CLOCK === "1") {
+    await new Promise<void>((resolve) => {
+      setTimeout(resolve, 0);
     });
   }
-  return {
-    ok: true,
-    outcome: "idempotent",
-    priorState: {
-      requestReference: row.request_reference,
-      state: "completed",
-      requestId: row.grace_request_id,
-    },
-  };
 }
 
-/** Lists pending D1 grace rows for cron reconciliation (all isolates). */
+async function waitUntilAdmissionDeadline(
+  deadlineMs: number,
+  ctx?: AdmissionContext,
+): Promise<void> {
+  while ((await currentClockMs(ctx)) < deadlineMs) {
+    await yieldForTestClock(ctx);
+  }
+}
+
+/** Lists pending D1 grace rows for cron reconciliation (legacy — table dropped in P3.9). */
 export async function listPendingGraceAdmissions(
-  db: D1Database,
+  _db: D1Database,
 ): Promise<PendingGraceAdmission[]> {
-  const result = await db
-    .prepare(`${GRACE_QUEUE_SELECT} WHERE status = 'pending' ORDER BY queued_at ASC`)
-    .all<GraceQueueRow>();
-  return (result.results ?? []).map(mapGraceQueueRow);
+  return [];
 }
 
 export async function markGraceAdmissionStatus(
-  db: D1Database,
-  graceRequestId: string,
-  status: Extract<GraceQueueStatus, "reconciled" | "dropped">,
-): Promise<void> {
-  await db
-    .prepare(
-      `UPDATE grace_admission_queue SET status = ? WHERE grace_request_id = ?`,
-    )
-    .bind(status, graceRequestId)
-    .run();
-}
+  _db: D1Database,
+  _graceRequestId: string,
+  _status: Extract<GraceQueueStatus, "reconciled" | "dropped">,
+): Promise<void> { }
 
-/** Persists a failed reconcile attempt so the row stays pending for the next cron. */
 export async function stampGraceReconcileRetry(
-  db: D1Database,
-  entry: PendingGraceAdmission,
-  nowMs: number,
-): Promise<void> {
-  const attempts = (entry.reconcileAttempts ?? 0) + 1;
-  const firstSeen = entry.reconcileQueuedAtMs ?? nowMs;
-  await db
-    .prepare(
-      `UPDATE grace_admission_queue
-       SET reconcile_attempts = ?, reconcile_first_seen_at_ms = ?
-       WHERE grace_request_id = ?`,
-    )
-    .bind(attempts, firstSeen, entry.graceRequestId)
-    .run();
-}
+  _db: D1Database,
+  _entry: PendingGraceAdmission,
+  _nowMs: number,
+): Promise<void> { }
 
-/**
- * Test helper — no longer drains isolate memory. Clearing D1
- * `grace_admission_queue` is the durable reset.
- */
 export function drainPendingGraceAdmissions(): PendingGraceAdmission[] {
   return [];
 }
 
-/** Non-destructive view of pending D1 grace rows (tests / diagnostics). */
 export async function peekPendingGraceAdmissions(
-  db: D1Database,
+  _db: D1Database,
 ): Promise<readonly PendingGraceAdmission[]> {
-  return listPendingGraceAdmissions(db);
+  return [];
 }
 
-/**
- * Persists usage onto a pending D1 grace row before reconcile.
- * Matches by `graceRequestId` or `requestReference`.
- */
 export async function attachGraceUsage(
-  db: D1Database,
-  graceRequestIdOrReference: string,
-  usage: { tokens: number; cost: number },
-  partial = false,
+  _db: D1Database,
+  _graceRequestIdOrReference: string,
+  _usage: { tokens: number; cost: number },
+  _partial = false,
 ): Promise<boolean> {
-  const result = await db
-    .prepare(
-      `UPDATE grace_admission_queue
-       SET usage_tokens = ?, usage_cost = ?, partial = ?
-       WHERE status = 'pending'
-         AND (grace_request_id = ? OR request_reference = ?)`,
-    )
-    .bind(
-      usage.tokens,
-      usage.cost,
-      partial ? 1 : 0,
-      graceRequestIdOrReference,
-      graceRequestIdOrReference,
-    )
-    .run();
-  return (result.meta.changes ?? 0) > 0;
+  return false;
 }
 
-/** No-op: the durable cap is `COUNT(*)` of pending D1 rows, not an isolate Map. */
 export function resetGraceAdmissionCounter(_installationId: string): void { }
 
 async function callAdmissionDo(
@@ -562,91 +423,212 @@ function mapDoOutcome(
   }
 }
 
-async function admitUnderGrace(
+function coverageUnknown(installationId: string): AdmissionResult {
+  recordGuardRejection({
+    error_code: "coverage_unknown",
+    installation_id: installationId,
+  });
+  return {
+    ok: false,
+    code: "coverage_unknown",
+    retryAfter: DEFAULT_RATE_LIMITED_RETRY_AFTER_SECONDS,
+  };
+}
+
+async function pendingFallbackWeight(
   db: D1Database,
-  principal: Principal,
-  idempotencyKey: string,
-  requestReference: string,
-  entitlement: EntitlementSnapshot,
-): Promise<AdmissionResult> {
-  const installationId = principal.installationId;
+  installationId: string,
+): Promise<number> {
+  const row = await db
+    .prepare(
+      `SELECT COALESCE(SUM(weight), 0) AS total
+       FROM fallback_admission
+       WHERE installation_id = ? AND state = 'pending'`,
+    )
+    .bind(installationId)
+    .first<{ total: number }>();
+  return Number(row?.total ?? 0);
+}
 
-  const journaled = await selectAiRequestByKey(db, installationId, idempotencyKey);
-  if (journaled) {
-    return idempotentFromJournal(journaled);
+async function tryMirrorFallbackAdmission(input: {
+  db: D1Database;
+  principal: Principal;
+  idempotencyKey: string;
+  requestReference: string;
+  capabilityId: string;
+  quotaWeight: number;
+  requestId: string;
+  clock?: ClockEnv;
+}): Promise<AdmissionResult | null> {
+  const mirror = await input.db
+    .prepare(
+      `SELECT state, suspended, hard_stop_at, term_snapshot
+       FROM coverage_mirror WHERE installation_id = ?`,
+    )
+    .bind(input.principal.installationId)
+    .first<CoverageMirrorRow>();
+  if (!mirror) {
+    return null;
   }
 
-  const existing = await selectGraceByKey(db, installationId, idempotencyKey);
-  if (existing) {
-    return existingGraceOutcome(existing);
+  const nowIso = input.clock
+    ? await clockNowIso(input.clock)
+    : new Date().toISOString();
+  if (mirror.state !== "active" && mirror.state !== "grace") {
+    return null;
+  }
+  if (Number(mirror.suspended) !== 0) {
+    return null;
+  }
+  if (
+    mirror.hard_stop_at !== null &&
+    mirror.hard_stop_at.length > 0 &&
+    nowIso >= mirror.hard_stop_at
+  ) {
+    return null;
   }
 
-  if (await isLedgerQuotaExhausted(db, installationId, entitlement)) {
-    recordGuardRejection({
-      error_code: "allowance_exhausted",
-      installation_id: installationId,
-    });
-    return {
-      ok: false,
-      code: "allowance_exhausted",
-    };
-  }
-
-  const graceRequestId = crypto.randomUUID();
-  const queuedAt = new Date().toISOString();
-
+  let termRef = "";
+  let capabilities: string[] = [];
   try {
-    const inserted = await db
+    const snapshot = JSON.parse(mirror.term_snapshot) as {
+      ref?: string;
+      capabilities?: unknown;
+    };
+    termRef = typeof snapshot.ref === "string" ? snapshot.ref : "";
+    capabilities = Array.isArray(snapshot.capabilities)
+      ? snapshot.capabilities.filter(
+          (entry): entry is string => typeof entry === "string",
+        )
+      : [];
+  } catch {
+    return null;
+  }
+  if (!termRef || !capabilities.includes(input.capabilityId)) {
+    return null;
+  }
+
+  const w = input.quotaWeight;
+  const cap = 5 * publishedQuotaWeightMax();
+  const pending = await pendingFallbackWeight(
+    input.db,
+    input.principal.installationId,
+  );
+  if (pending + w > cap) {
+    return null;
+  }
+
+  const admittedAt = nowIso;
+  try {
+    const inserted = await input.db
       .prepare(
-        `INSERT INTO grace_admission_queue (
-           grace_request_id, installation_id, idempotency_key, jti, request_reference,
-           entitlement_json, queued_at, reconcile_attempts, status
-         )
-         SELECT ?, ?, ?, ?, ?, ?, ?, 0, 'pending'
-         WHERE (
-           SELECT COUNT(*) FROM grace_admission_queue
-           WHERE installation_id = ? AND status = 'pending'
-         ) < ?`,
+        `INSERT INTO fallback_admission (
+           installation_id, idempotency_key, term_id, request_id, weight, admitted_at, state
+         ) VALUES (?, ?, ?, ?, ?, ?, 'pending')`,
       )
       .bind(
-        graceRequestId,
-        installationId,
-        idempotencyKey,
-        principal.jti,
-        requestReference,
-        JSON.stringify(entitlement),
-        queuedAt,
-        installationId,
-        GRACE_ADMISSION_CAP,
+        input.principal.installationId,
+        input.idempotencyKey,
+        termRef,
+        input.requestId,
+        w,
+        admittedAt,
       )
       .run();
-
     if ((inserted.meta.changes ?? 0) === 0) {
-      const raced = await selectGraceByKey(db, installationId, idempotencyKey);
+      const raced = await input.db
+        .prepare(
+          `SELECT request_id FROM fallback_admission
+           WHERE installation_id = ? AND idempotency_key = ?`,
+        )
+        .bind(input.principal.installationId, input.idempotencyKey)
+        .first<{ request_id: string }>();
       if (raced) {
-        return existingGraceOutcome(raced);
+        const entitlement =
+          (await loadInstallationEntitlement(
+            input.db,
+            input.principal.installationId,
+          )) ?? {
+            plan: "standard",
+            period_bounds: { period_start: admittedAt, period_end: admittedAt },
+            request_quota: 0,
+            token_cost_budget: { token_budget: 0, cost_budget: 0 },
+            credit_budget: 0,
+            allowed_capabilities: capabilities,
+            soft_threshold: 0,
+            status: "active",
+          };
+        return {
+          ok: true,
+          outcome: "grace_admitted",
+          requestId: raced.request_id,
+          requestReference: input.requestReference,
+          entitlement,
+        };
       }
-      recordGuardRejection({
-        error_code: "rate_limited",
-        installation_id: installationId,
-      });
-      return {
-        ok: false,
-        code: "rate_limited",
-        retryAfter: DEFAULT_RATE_LIMITED_RETRY_AFTER_SECONDS,
-      };
+      return null;
     }
   } catch (error) {
     if (isUniqueConstraintError(error)) {
-      const raced = await selectGraceByKey(db, installationId, idempotencyKey);
-      if (raced) {
-        return existingGraceOutcome(raced);
-      }
+      return await tryMirrorFallbackAdmission(input);
     }
     throw error;
   }
 
-  return graceAdmittedResult({ graceRequestId, requestReference, entitlement });
+  const entitlement =
+    (await loadInstallationEntitlement(
+      input.db,
+      input.principal.installationId,
+    )) ?? {
+      plan: "standard",
+      period_bounds: { period_start: admittedAt, period_end: admittedAt },
+      request_quota: 0,
+      token_cost_budget: { token_budget: 0, cost_budget: 0 },
+      credit_budget: 0,
+      allowed_capabilities: capabilities,
+      soft_threshold: 0,
+      status: "active",
+    };
+
+  return {
+    ok: true,
+    outcome: "grace_admitted",
+    requestId: input.requestId,
+    requestReference: input.requestReference,
+    entitlement,
+  };
+}
+
+async function raceAdmissionDo(
+  bindings: AdmissionBindings,
+  installationId: string,
+  rpcBody: Record<string, unknown>,
+  deadlineMs: number,
+  ctx?: AdmissionContext,
+): Promise<AdmissionDoTransportResult> {
+  const doPromise = callAdmissionDo(bindings, installationId, rpcBody);
+  let transport: AdmissionDoTransportResult | undefined;
+
+  while (transport === undefined) {
+    const remaining = deadlineMs - (await currentClockMs(ctx));
+    if (remaining > 0) {
+      const raced = await Promise.race([
+        doPromise.then((result) => ({ kind: "do" as const, result })),
+        waitUntilAdmissionDeadline(deadlineMs, ctx).then(() => ({
+          kind: "deadline" as const,
+        })),
+      ]);
+      if (raced.kind === "do") {
+        transport = raced.result;
+        break;
+      }
+      continue;
+    }
+    transport = await doPromise;
+    break;
+  }
+
+  return transport;
 }
 
 export async function runAdmission(
@@ -655,9 +637,8 @@ export async function runAdmission(
   ctx?: AdmissionContext,
 ): Promise<AdmissionResult> {
   const logger = input.logger ?? noopLogger;
-  // Principal.exp is a JWT NumericDate (seconds). Default must match.
   const now = ctx?.now ?? Math.floor(Date.now() / 1000);
-  const nowMs = ctx?.nowMs ?? Date.now();
+  const startMs = await currentClockMs(ctx);
   const {
     principal,
     idempotencyKey,
@@ -665,8 +646,6 @@ export async function runAdmission(
     capabilityId,
     quotaWeight,
     orgId,
-    cache,
-    reader,
   } = input;
 
   logger.info("Admission started", {
@@ -674,7 +653,6 @@ export async function runAdmission(
     request_reference: requestReference,
   });
 
-  // Defensive recheck for §6.2 harness / mis-ordered pipeline: align with B3 skew.
   if (now > principal.exp + ADMISSION_CLOCK_SKEW_SECONDS) {
     logger.info("Admission rejected — token expired", {
       installation_id: principal.installationId,
@@ -695,9 +673,10 @@ export async function runAdmission(
     return idempotentFromJournal(journaled);
   }
 
+  const requestId = crypto.randomUUID();
   const rpcBody = {
     contract_version: CHANNEL_VERSIONS.platformDo,
-    now: nowMs,
+    now: startMs,
     kind: "admission",
     jti: principal.jti,
     installationId: principal.installationId,
@@ -705,41 +684,59 @@ export async function runAdmission(
     requestReference,
     capabilityId,
     quotaWeight,
+    requestId,
     ...(orgId !== undefined ? { orgId } : {}),
   };
 
-  const transport = await callAdmissionDo(
+  const deadlineMs = startMs + ADMISSION_DEADLINE_MS;
+  const transport = await raceAdmissionDo(
     bindings,
     principal.installationId,
     rpcBody,
+    deadlineMs,
+    ctx,
   );
 
-  if (!transport.ok) {
-    if (transport.reason === "contract_rejected") {
+  if (transport.ok) {
+    if (transport.body.kind !== "admission") {
       recordGuardRejection({
-        error_code: "coverage_unknown",
+        error_code: "internal_error",
         installation_id: principal.installationId,
       });
-      return {
-        ok: false,
-        code: "coverage_unknown",
-        retryAfter: DEFAULT_RATE_LIMITED_RETRY_AFTER_SECONDS,
-      };
+      return { ok: false, code: "internal_error" };
     }
-    if (transport.reason === "unavailable") {
-      logger.info("Quota DO unavailable", {
-        installation_id: principal.installationId,
-      });
-      recordGuardRejection({
-        error_code: "coverage_unknown",
-        installation_id: principal.installationId,
-      });
-      return {
-        ok: false,
-        code: "coverage_unknown",
-        retryAfter: DEFAULT_RATE_LIMITED_RETRY_AFTER_SECONDS,
-      };
+    const result = mapDoOutcome(transport.body, principal.installationId);
+    if (result.ok && result.outcome === "admitted") {
+      const existing = await selectAiRequestById(
+        bindings.DB,
+        principal.installationId,
+        result.requestId,
+      );
+      if (existing) {
+        return idempotentFromJournal(existing);
+      }
     }
+    if (result.ok) {
+      logger.info("Admission DO outcome", {
+        installation_id: principal.installationId,
+        outcome: result.outcome,
+        ...(result.outcome === "admitted" || result.outcome === "grace_admitted"
+          ? { request_id: result.requestId }
+          : {}),
+      });
+    } else {
+      logger.info("Admission rejected", {
+        installation_id: principal.installationId,
+        code: result.code,
+      });
+    }
+    return result;
+  }
+
+  if (transport.reason === "contract_rejected") {
+    return coverageUnknown(principal.installationId);
+  }
+  if (transport.reason === "client_error") {
     logger.error("Admission DO transport failed", {
       installation_id: principal.installationId,
       reason: transport.reason,
@@ -751,40 +748,30 @@ export async function runAdmission(
     return { ok: false, code: "internal_error" };
   }
 
-  if (transport.body.kind !== "admission") {
-    recordGuardRejection({
-      error_code: "internal_error",
+  logger.info("Quota DO unavailable — attempting mirror fallback", {
+    installation_id: principal.installationId,
+  });
+
+  const fallback = await tryMirrorFallbackAdmission({
+    db: bindings.DB,
+    principal,
+    idempotencyKey,
+    requestReference,
+    capabilityId,
+    quotaWeight,
+    requestId,
+    clock: ctx?.clock,
+  });
+  if (fallback) {
+    logger.info("Admission mirror fallback", {
       installation_id: principal.installationId,
+      request_id: fallback.ok ? fallback.requestId : undefined,
+      outcome: fallback.ok ? fallback.outcome : undefined,
     });
-    return { ok: false, code: "internal_error" };
+    return fallback;
   }
 
-  const result = mapDoOutcome(transport.body, principal.installationId);
-  if (result.ok && result.outcome === "admitted") {
-    const existing = await selectAiRequestById(
-      bindings.DB,
-      principal.installationId,
-      result.requestId,
-    );
-    if (existing) {
-      return idempotentFromJournal(existing);
-    }
-  }
-  if (result.ok) {
-    logger.info("Admission DO outcome", {
-      installation_id: principal.installationId,
-      outcome: result.outcome,
-      ...(result.outcome === "admitted" || result.outcome === "grace_admitted"
-        ? { request_id: result.requestId }
-        : {}),
-    });
-  } else {
-    logger.info("Admission rejected", {
-      installation_id: principal.installationId,
-      code: result.code,
-    });
-  }
-  return result;
+  return coverageUnknown(principal.installationId);
 }
 
 /** Re-export B3 shared flush — admission no longer keeps a private tally. */

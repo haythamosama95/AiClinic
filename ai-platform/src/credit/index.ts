@@ -1,27 +1,11 @@
-import {
-  attachGraceUsage,
-  listPendingGraceAdmissions,
-  markGraceAdmissionStatus,
-  stampGraceReconcileRetry,
-  type PendingGraceAdmission,
-} from "../admission";
 import { noopLogger, type Logger } from "../logger";
-import type {
-  AdmissionResponse,
-  CreditIdempotencyState,
-  EntitlementSnapshot,
-  PeriodCounters,
-} from "../quota-do/index";
+import type { CreditIdempotencyState, PeriodCounters } from "../quota-do/index";
 import { CHANNEL_VERSIONS } from "vendor-contracts";
 import type { TaxonomyCode } from "../errors";
+import { clockNowIso } from "../clock";
+import { generateUlid } from "../trace";
 
 const QUOTA_DO_RPC_URL = "https://quota-do.internal/rpc";
-
-/** Max reconcile presentations before a grace entry is dropped. */
-export const GRACE_RECONCILE_MAX_ATTEMPTS = 5;
-
-/** Wall-clock TTL for a grace entry from first reconcile sighting. */
-export const GRACE_RECONCILE_TTL_MS = 7_200_000;
 
 export type CreditInput = {
   installationId: string;
@@ -32,7 +16,7 @@ export type CreditInput = {
   credits: number;
   idempotencyState?: CreditIdempotencyState;
   terminalErrorCode?: TaxonomyCode;
-  entitlement?: EntitlementSnapshot;
+  entitlement?: import("../quota-do/index").EntitlementSnapshot;
 };
 
 export type CreditBindings = {
@@ -50,22 +34,7 @@ export type ReconcileGraceResult = {
 
 export type ReconcileGraceContext = {
   now?: number;
-};
-
-export type GraceDropReason =
-  | "settled_by_another_path_idempotent"
-  | "settled_by_another_path_replay"
-  | "settled_by_another_path_unknown_request"
-  | "expired"
-  | "max_attempts";
-
-export type DroppedGraceJournalEntry = {
-  reason: GraceDropReason;
-  installationId: string;
-  requestReference: string;
-  graceRequestId: string;
-  idempotencyKey: string;
-  atMs: number;
+  clock?: { DB?: D1Database; TEST_CLOCK?: string };
 };
 
 type CreditWireResponse =
@@ -76,83 +45,20 @@ type CreditRpcOutcome =
   | { ok: true; periodCounters: PeriodCounters }
   | { ok: false; reason: "unknown_request" | "unavailable" | "client_error" };
 
-type AdmissionRpcOutcome =
-  | { ok: true; body: AdmissionResponse }
-  | { ok: false; reason: "unavailable" | "client_error" };
-
-/** Credit-owned reconcile bookkeeping stamped onto queue entries on requeue. */
-type TrackedGraceAdmission = PendingGraceAdmission & {
-  reconcileAttempts?: number;
-  reconcileQueuedAtMs?: number;
+type SettleFallbackWireResponse = {
+  kind: "settleFallback";
+  outcome: "settled" | "skipped";
 };
 
-const droppedGraceJournal: DroppedGraceJournalEntry[] = [];
-
-/** Drains journaled grace drops (tests / diagnostics). */
-export function drainDroppedGraceJournal(): DroppedGraceJournalEntry[] {
-  return droppedGraceJournal.splice(0);
-}
-
-/** Non-destructive view of journaled grace drops (tests / diagnostics). */
-export function peekDroppedGraceJournal(): readonly DroppedGraceJournalEntry[] {
-  return droppedGraceJournal.slice();
-}
-
-function journalGraceDrop(
-  entry: TrackedGraceAdmission,
-  reason: GraceDropReason,
-  atMs: number,
-  logger: Logger,
-): void {
-  const record: DroppedGraceJournalEntry = {
-    reason,
-    installationId: entry.installationId,
-    requestReference: entry.requestReference,
-    graceRequestId: entry.graceRequestId,
-    idempotencyKey: entry.idempotencyKey,
-    atMs,
-  };
-  droppedGraceJournal.push(record);
-  const level =
-    reason === "expired" || reason === "max_attempts" ? "error" : "info";
-  logger[level]("grace_reconcile_dropped", record);
-}
-
-async function invokeAdmissionRpc(
-  entry: PendingGraceAdmission,
-  bindings: CreditBindings,
-): Promise<AdmissionRpcOutcome> {
-  const id = bindings.DO.idFromName(entry.installationId);
-  const stub = bindings.DO.get(id);
-
-  let response: Response;
-  try {
-    response = await stub.fetch(QUOTA_DO_RPC_URL, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        contract_version: CHANNEL_VERSIONS.platformDo,
-        kind: "admission",
-        jti: entry.jti,
-        installationId: entry.installationId,
-        idempotencyKey: entry.idempotencyKey,
-        entitlement: entry.entitlement,
-        requestReference: entry.requestReference,
-      }),
-    });
-  } catch {
-    return { ok: false, reason: "unavailable" };
-  }
-
-  if (response.status >= 500) {
-    return { ok: false, reason: "unavailable" };
-  }
-  if (!response.ok) {
-    return { ok: false, reason: "client_error" };
-  }
-
-  return { ok: true, body: (await response.json()) as AdmissionResponse };
-}
+type FallbackAdmissionRow = {
+  installation_id: string;
+  idempotency_key: string;
+  term_id: string;
+  request_id: string;
+  weight: number;
+  admitted_at: string;
+  state: string;
+};
 
 async function invokeCreditRpc(
   installationId: string,
@@ -163,7 +69,7 @@ async function invokeCreditRpc(
   credits: number,
   bindings: CreditBindings,
   idempotencyState?: CreditIdempotencyState,
-  entitlement?: EntitlementSnapshot,
+  entitlement?: import("../quota-do/index").EntitlementSnapshot,
   terminalErrorCode?: TaxonomyCode,
 ): Promise<CreditRpcOutcome> {
   const id = bindings.DO.idFromName(installationId);
@@ -208,27 +114,39 @@ async function invokeCreditRpc(
   return { ok: true, periodCounters: body.periodCounters };
 }
 
+async function invokeSettleFallback(
+  row: FallbackAdmissionRow,
+  bindings: CreditBindings,
+): Promise<SettleFallbackWireResponse | null> {
+  const id = bindings.DO.idFromName(row.installation_id);
+  const stub = bindings.DO.get(id);
+  let response: Response;
+  try {
+    response = await stub.fetch(QUOTA_DO_RPC_URL, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        contract_version: CHANNEL_VERSIONS.platformDo,
+        kind: "settleFallback",
+        installationId: row.installation_id,
+        request_id: row.request_id,
+        term_id: row.term_id,
+        weight: row.weight,
+      }),
+    });
+  } catch {
+    return null;
+  }
+  if (!response.ok) {
+    return null;
+  }
+  return (await response.json()) as SettleFallbackWireResponse;
+}
+
 export async function creditUsage(
   input: CreditInput,
   bindings: CreditBindings,
 ): Promise<CreditResult> {
-  if (bindings.DB) {
-    const attached = await attachGraceUsage(
-      bindings.DB,
-      input.requestId,
-      input.usage,
-      input.partial,
-    );
-    if (!attached) {
-      await attachGraceUsage(
-        bindings.DB,
-        input.requestReference,
-        input.usage,
-        input.partial,
-      );
-    }
-  }
-
   const outcome = await invokeCreditRpc(
     input.installationId,
     input.requestId,
@@ -255,106 +173,74 @@ export async function creditUsage(
   return { ok: false, code: "unknown_request" };
 }
 
-/**
- * Reconciles grace admissions queued by `src/admission/` when the Quota DO was
- * unavailable (FR-013). Re-presents each pending admission so the DO issues a
- * real requestId, then credits that id with attached (or zero) usage.
- *
- * Only a fresh `admitted` outcome may be credited. `idempotent` / `replay`
- * outcomes and `unknown_request` credits mean another path already settled the
- * key — the entry is dropped (journaled). Entries also drop on TTL / max
- * attempts so the queue cannot wedge forever.
- */
+/** Drains pending mirror fallback admissions on the five-minute cron (P3.9). */
 export async function reconcileGraceUsage(
   bindings: CreditBindings,
   ctx?: ReconcileGraceContext,
   logger: Logger = noopLogger,
 ): Promise<ReconcileGraceResult> {
-  const nowMs = ctx?.now ?? Date.now();
   if (!bindings.DB) {
-    logger.info("grace_reconcile_batch_start", { pending_count: 0 });
+    logger.info("fallback_reconcile_batch_start", { pending_count: 0 });
     return { reconciled: 0 };
   }
-  const pending = await listPendingGraceAdmissions(bindings.DB);
-  logger.info("grace_reconcile_batch_start", { pending_count: pending.length });
+
+  const clockEnv = ctx?.clock ?? {
+    DB: bindings.DB,
+    TEST_CLOCK: undefined,
+  };
+  const recordedAt = await clockNowIso(clockEnv);
+
+  const pending = await bindings.DB
+    .prepare(
+      `SELECT installation_id, idempotency_key, term_id, request_id, weight, admitted_at, state
+       FROM fallback_admission WHERE state = 'pending' ORDER BY admitted_at ASC`,
+    )
+    .all<FallbackAdmissionRow>();
+
+  const rows = pending.results ?? [];
+  logger.info("fallback_reconcile_batch_start", { pending_count: rows.length });
   let reconciled = 0;
 
-  for (const raw of pending) {
-    const prior = raw as TrackedGraceAdmission;
-    const entry: TrackedGraceAdmission = {
-      ...prior,
-      reconcileQueuedAtMs: prior.reconcileQueuedAtMs ?? nowMs,
-      reconcileAttempts: prior.reconcileAttempts ?? 0,
-    };
-
-    if (nowMs - entry.reconcileQueuedAtMs! > GRACE_RECONCILE_TTL_MS) {
-      journalGraceDrop(entry, "expired", nowMs, logger);
-      await markGraceAdmissionStatus(bindings.DB, entry.graceRequestId, "dropped");
-      continue;
-    }
-    if (entry.reconcileAttempts! >= GRACE_RECONCILE_MAX_ATTEMPTS) {
-      journalGraceDrop(entry, "max_attempts", nowMs, logger);
-      await markGraceAdmissionStatus(bindings.DB, entry.graceRequestId, "dropped");
+  for (const row of rows) {
+    const usageExists = await bindings.DB
+      .prepare(
+        `SELECT 1 AS ok FROM usage_event WHERE request_id = ? LIMIT 1`,
+      )
+      .bind(row.request_id)
+      .first<{ ok: number }>();
+    if (usageExists?.ok === 1) {
       continue;
     }
 
-    const admission = await invokeAdmissionRpc(entry, bindings);
-    if (!admission.ok) {
-      await stampGraceReconcileRetry(bindings.DB, entry, nowMs);
+    const settled = await invokeSettleFallback(row, bindings);
+    if (settled === null || settled.outcome === "skipped") {
       continue;
     }
 
-    const body = admission.body;
-    if (body.kind !== "admission") {
-      await stampGraceReconcileRetry(bindings.DB, entry, nowMs);
-      continue;
-    }
-
-    if (body.outcome === "idempotent") {
-      journalGraceDrop(entry, "settled_by_another_path_idempotent", nowMs, logger);
-      await markGraceAdmissionStatus(bindings.DB, entry.graceRequestId, "dropped");
-      continue;
-    }
-    if (body.outcome === "replay") {
-      journalGraceDrop(entry, "settled_by_another_path_replay", nowMs, logger);
-      await markGraceAdmissionStatus(bindings.DB, entry.graceRequestId, "dropped");
-      continue;
-    }
-    if (body.outcome !== "admitted") {
-      await stampGraceReconcileRetry(bindings.DB, entry, nowMs);
-      continue;
-    }
-
-    // Credit only a requestId issued by this entry's fresh `admitted` outcome.
-    const requestId = body.requestId;
-    const credit = await invokeCreditRpc(
-      entry.installationId,
-      requestId,
-      entry.requestReference,
-      entry.usage ?? { tokens: 0, cost: 0 },
-      entry.partial ?? false,
-      0,
-      bindings,
-      undefined,
-      entry.entitlement,
-    );
-
-    if (!credit.ok) {
-      if (credit.reason === "unknown_request") {
-        journalGraceDrop(entry, "settled_by_another_path_unknown_request", nowMs, logger);
-        await markGraceAdmissionStatus(bindings.DB, entry.graceRequestId, "dropped");
-        continue;
-      }
-      await stampGraceReconcileRetry(bindings.DB, entry, nowMs);
-      continue;
-    }
-
-    await markGraceAdmissionStatus(bindings.DB, entry.graceRequestId, "reconciled");
+    await bindings.DB.batch([
+      bindings.DB.prepare(
+        `INSERT OR IGNORE INTO usage_event (
+           usage_event_id, installation_id, term_id, request_id,
+           quota_weight, tokens, cost, recorded_at
+         ) VALUES (?, ?, ?, ?, ?, 0, 0, ?)`,
+      ).bind(
+        generateUlid(),
+        row.installation_id,
+        row.term_id,
+        row.request_id,
+        row.weight,
+        recordedAt,
+      ),
+      bindings.DB.prepare(
+        `UPDATE fallback_admission SET state = 'settled'
+         WHERE installation_id = ? AND idempotency_key = ?`,
+      ).bind(row.installation_id, row.idempotency_key),
+    ]);
     reconciled += 1;
   }
 
-  logger.info("grace_reconcile_batch_end", {
-    pending_count: pending.length,
+  logger.info("fallback_reconcile_batch_end", {
+    pending_count: rows.length,
     reconciled,
   });
   return { reconciled };

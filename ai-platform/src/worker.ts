@@ -109,9 +109,11 @@ import {
   voidForReversalRPC,
   voidGrantRPC,
   releaseRPC,
+  settleFallbackRPC,
   shipCoverageOutboxAlarm,
   scheduleOutboxAlarmIfPending,
   type AdmissionRequest,
+  type SettleFallbackRequest,
   type ApplyGrantRequest,
   type CreditIdempotencyState,
   type CreditRequest,
@@ -1666,6 +1668,25 @@ function platformDoContractRefusal(
   };
 }
 
+async function readHarnessAdmissionFault(
+  db: D1Database,
+): Promise<{ mode: string; hold_until: number | null } | null> {
+  try {
+    const row = await db
+      .prepare(
+        "SELECT mode, hold_until FROM harness_admission_fault WHERE id = 'default'",
+      )
+      .first<{ mode: string; hold_until: number | null }>();
+    return row ?? null;
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    if (/no such table/i.test(message)) {
+      return null;
+    }
+    throw error;
+  }
+}
+
 export class GatewayObject extends DurableObject {
   async fetch(request: Request): Promise<Response> {
     const makeLog = createWorkerLogFactory(this.env as Env);
@@ -1715,6 +1736,14 @@ export class GatewayObject extends DurableObject {
             : await clockNowIso(runtimeEnv);
         const durationScale =
           runtimeEnv.DURATION_SCALE === "staging" ? "staging" : undefined;
+        let harnessFault: { mode: string; hold_until: number | null } | null =
+          null;
+        if (runtimeEnv.TEST_CLOCK === "1" && runtimeEnv.DB !== undefined) {
+          harnessFault = await readHarnessAdmissionFault(runtimeEnv.DB);
+        }
+        if (harnessFault?.mode === "throw") {
+          throw new Error("harness_admission_fault_throw");
+        }
         const result = await admissionRPC(
           this.ctx.storage,
           (fn) => this.ctx.blockConcurrencyWhile(fn),
@@ -1726,10 +1755,41 @@ export class GatewayObject extends DurableObject {
           now,
           quotaLog,
         );
+        if (
+          harnessFault?.mode === "hold" &&
+          harnessFault.hold_until !== null &&
+          Number.isFinite(harnessFault.hold_until)
+        ) {
+          const holdUntil = harnessFault.hold_until;
+          while ((await clockNowMs(runtimeEnv)) < holdUntil) {
+            await new Promise<void>((resolve) => {
+              setTimeout(resolve, 0);
+            });
+          }
+        }
         await scheduleOutboxAlarmIfPending(
           this.ctx,
           this.ctx.storage,
           admissionNowIso,
+        );
+        return Response.json({ ...result, contract_version: contractVersion });
+      }
+      if (kind === "settleFallback") {
+        const settleBody = body as SettleFallbackRequest;
+        if (
+          typeof settleBody.installationId !== "string" ||
+          typeof settleBody.request_id !== "string" ||
+          typeof settleBody.term_id !== "string" ||
+          typeof settleBody.weight !== "number"
+        ) {
+          return Response.json({ error: "invalid_settle_fallback_args" }, {
+            status: 400,
+          });
+        }
+        const result = await settleFallbackRPC(
+          this.ctx.storage,
+          (fn) => this.ctx.blockConcurrencyWhile(fn),
+          settleBody,
         );
         return Response.json({ ...result, contract_version: contractVersion });
       }
@@ -2116,19 +2176,6 @@ export default {
         error: error instanceof Error ? error.message : String(error),
       });
     }
-    // FR-013 / §15 #3 — reconcile grace admissions once the Quota DO may be reachable.
-    try {
-      await reconcileGraceUsage(
-        { DO: runtimeEnv.DO, DB: runtimeEnv.DB },
-        undefined,
-        makeLog("credit/index.ts"),
-      );
-    } catch (error) {
-      log.error("scheduled_reconcile_failed", {
-        error: error instanceof Error ? error.message : String(error),
-      });
-    }
-
     if (cron === "0 3 * * *") {
       log.info("scheduled_retention_purge_start");
       try {
@@ -2189,6 +2236,17 @@ export default {
       }
     } else if (cron === "*/5 * * * *") {
       log.info("scheduled_five_minute_start");
+      try {
+        await reconcileGraceUsage(
+          { DO: runtimeEnv.DO, DB: runtimeEnv.DB },
+          undefined,
+          makeLog("credit/index.ts"),
+        );
+      } catch (error) {
+        log.error("scheduled_reconcile_failed", {
+          error: error instanceof Error ? error.message : String(error),
+        });
+      }
       await runFiveMinuteCron(runtimeEnv);
       log.info("scheduled_five_minute_complete");
     }

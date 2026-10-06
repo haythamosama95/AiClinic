@@ -18,6 +18,7 @@ import {
   count,
   fakePolicyDocument,
   flushBackgroundWork,
+  parseSseEvents,
   GATEWAY_ORIGIN,
   getUsageEvents,
   getVendorTestClockIso,
@@ -36,11 +37,14 @@ import {
   registerVisitSummaryCapability,
   resetPlatformState,
   runScheduled,
+  setAdmissionFault,
+  clearAdmissionFault,
+  mintFeedToken,
   setTestClock,
   setupVendorHarness,
   vendorCall,
+  visitSummaryInvokeBody,
   type Scenario,
-  type VendorMethod,
 } from "./harness";
 
 const CONTRACT_VERSION = CHANNEL_VERSIONS.vendorEntrypoint;
@@ -54,37 +58,6 @@ const W_MAX = QUOTA_WEIGHT;
 const FALLBACK_WEIGHT_CAP = 5 * W_MAX;
 
 const doGetReal = env.DO.get.bind(env.DO);
-
-// T010 relocates these helpers to harness.ts and wires GatewayObject.
-let admissionFault: { mode: "throw" | "hold"; hold_until?: number } | null =
-  null;
-
-async function setAdmissionFault(
-  mode: "throw" | "hold",
-  opts: { hold_until?: number } = {},
-): Promise<void> {
-  admissionFault = { mode, ...opts };
-  void admissionFault;
-}
-
-function clearAdmissionFault(): void {
-  admissionFault = null;
-}
-
-async function mintFeedToken(): Promise<string> {
-  return "harness-feed-token-stub";
-}
-
-type P39VendorMethod = VendorMethod | "feedConsumerHealth";
-
-const p39VendorCall = vendorCall as (
-  method: P39VendorMethod,
-  args: Record<string, unknown>,
-  opts?: {
-    accessJwt?: string;
-    assertion?: Record<string, unknown>;
-  },
-) => Promise<{ result: string; code: string; detail: string }>;
 
 type FallbackAdmissionRow = {
   installation_id: string;
@@ -168,7 +141,7 @@ async function activeTermRef(
     }
   }
   const accessJwt = await mintVendorAccessJwt();
-  const inspected = await p39VendorCall(
+  const inspected = await vendorCall(
     "inspectCoverage",
     { contract_version: CONTRACT_VERSION, org_id: orgId },
     { accessJwt },
@@ -240,19 +213,12 @@ async function postRequest(
         "x-capability-version": "1.0.0",
         "Aip-Contract-Version": "1",
       },
-      body: JSON.stringify({
-        capability_id: "clinic.visit_summary",
-        org_id: scenario.orgId,
-        branch_id: scenario.branchId,
-        actor_id: scenario.actorId,
-        context: {
-          "visit.chief_complaint@v1": { text: "Test complaint" },
-        },
-      }),
+      body: JSON.stringify(visitSummaryInvokeBody(scenario)),
     }),
   );
   const contentType = response.headers.get("content-type") ?? "";
   if (contentType.includes("text/event-stream")) {
+    await parseSseEvents(response);
     await flushBackgroundWork();
     return { status: response.status, body: null };
   }
@@ -266,7 +232,7 @@ async function postRequest(
 
 async function readFirstReservationId(orgId: string): Promise<string | null> {
   const accessJwt = await mintVendorAccessJwt();
-  const inspected = await p39VendorCall(
+  const inspected = await vendorCall(
     "inspectCoverage",
     { contract_version: CONTRACT_VERSION, org_id: orgId },
     { accessJwt },
@@ -324,7 +290,7 @@ async function grantSecondPaidTerm(scenario: Scenario): Promise<void> {
     grantId,
   });
   const aboSignature = await signCoverAbo(envelope);
-  const granted = await p39VendorCall("grant", {
+  const granted = await vendorCall("grant", {
     contract_version: CONTRACT_VERSION,
     envelope,
     abo_kid: coverClinicAboKid(),
@@ -337,7 +303,7 @@ async function grantSecondPaidTerm(scenario: Scenario): Promise<void> {
 
 async function getCoverageDetail(scenario: Scenario): Promise<string> {
   const accessJwt = await mintVendorAccessJwt();
-  const coverage = await p39VendorCall(
+  const coverage = await vendorCall(
     "getCoverage",
     {
       contract_version: CONTRACT_VERSION,
@@ -389,7 +355,7 @@ beforeAll(async () => {
 
 beforeEach(async () => {
   await resetPlatformState();
-  clearAdmissionFault();
+  await clearAdmissionFault();
   await setTestClock("2026-04-01T12:00:00.000Z");
 });
 
@@ -424,6 +390,7 @@ describe("P3.9 fallback admission, feed, and coverage read", () => {
       [scenario.installationId, idempotencyKey],
     );
     expect(settled?.state).toBe("settled");
+    await flushBackgroundWork();
   });
 
   it("E2E-P3.9-02 fallback weight beyond 5 × w_max is coverage_unknown", async () => {
@@ -460,7 +427,7 @@ describe("P3.9 fallback admission, feed, and coverage read", () => {
   it("E2E-P3.9-03 fallback at or after hard_stop_at is coverage_unknown", async () => {
     const scenario = await newScenario();
     await coverClinicAndPolicy(scenario);
-    const token = await setupPromotedPolicy(scenario);
+    await setupPromotedPolicy(scenario);
 
     const mirror = await queryOne<{ hard_stop_at: string }>(
       "SELECT hard_stop_at FROM coverage_mirror WHERE installation_id = ?",
@@ -468,6 +435,7 @@ describe("P3.9 fallback admission, feed, and coverage read", () => {
     );
     expect(mirror?.hard_stop_at).toBeTruthy();
     await setTestClock(mirror!.hard_stop_at);
+    const tokenAtHardStop = await mintAat(scenario);
 
     await expectFallbackAdmissionTable();
     const beforeCount = await count(
@@ -477,7 +445,11 @@ describe("P3.9 fallback admission, feed, and coverage read", () => {
     );
 
     await setAdmissionFault("throw");
-    const denied = await postRequest(scenario, token, crypto.randomUUID());
+    const denied = await postRequest(
+      scenario,
+      tokenAtHardStop,
+      crypto.randomUUID(),
+    );
     expect(denied.body?.code).toBe("coverage_unknown");
 
     const afterCount = await count(
@@ -583,7 +555,7 @@ describe("P3.9 fallback admission, feed, and coverage read", () => {
     expect(events[0]?.feed_seq).toBe(firstSeq);
     expect(feedBody.next_after).toBe(firstSeq);
 
-    const health = await p39VendorCall("feedConsumerHealth", {
+    const health = await vendorCall("feedConsumerHealth", {
       contract_version: PLATFORM_FEED_VERSION,
     });
     expect(health.result).toBe("ok");
@@ -653,7 +625,7 @@ describe("P3.9 fallback admission, feed, and coverage read", () => {
     expect(vendorCoverage.queued_terms).toHaveLength(1);
 
     const accessJwt = await mintVendorAccessJwt();
-    const inspected = await p39VendorCall(
+    const inspected = await vendorCall(
       "inspectCoverage",
       { contract_version: CONTRACT_VERSION, org_id: scenario.orgId },
       { accessJwt },

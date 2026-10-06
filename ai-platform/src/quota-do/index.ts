@@ -99,7 +99,20 @@ export interface AdmissionRequest {
   vendorContractVersion?: number;
   nowIso?: string;
   durationScale?: DurationScale;
+  requestId?: string;
 }
+
+export interface SettleFallbackRequest {
+  kind: "settleFallback";
+  installationId: string;
+  request_id: string;
+  term_id: string;
+  weight: number;
+}
+
+export type SettleFallbackResponse =
+  | { kind: "settleFallback"; outcome: "settled" }
+  | { kind: "settleFallback"; outcome: "skipped" };
 
 export interface IdempotencyPriorState {
   requestReference: string;
@@ -900,7 +913,7 @@ function admitOnHotRow(
     }, now);
   }
 
-  const reservationId = crypto.randomUUID();
+  const reservationId = request.requestId ?? crypto.randomUUID();
   hot.reservations.push({
     id: reservationId,
     weight: quotaWeight,
@@ -1113,6 +1126,58 @@ function legacyCountersFromHot(row: HotRow): PeriodCounters {
 function hotReservationCount(row: HotRow): number {
   const reservations = JSON.parse(row.reservations || "[]") as ReservationRow[];
   return reservations.length;
+}
+
+function admittedRequestIdFromAnswer(answer: AdmissionResponse): string | undefined {
+  if (answer.kind !== "admission" || answer.outcome !== "admitted") {
+    return undefined;
+  }
+  return answer.requestId;
+}
+
+function hotStillHoldsRequestId(hot: ParsedHot, requestId: string): boolean {
+  if (hot.reservations.some((reservation) => reservation.id === requestId)) {
+    return true;
+  }
+  for (const entry of Object.values(hot.replay)) {
+    if (admittedRequestIdFromAnswer(entry.answer) === requestId) {
+      return true;
+    }
+  }
+  for (const entry of Object.values(hot.idempotency)) {
+    if (admittedRequestIdFromAnswer(entry.answer) === requestId) {
+      return true;
+    }
+  }
+  return false;
+}
+
+export async function settleFallbackRPC(
+  storage: DurableObjectStorage,
+  blockConcurrencyWhile: <T>(fn: () => Promise<T>) => Promise<T>,
+  request: SettleFallbackRequest,
+): Promise<SettleFallbackResponse> {
+  return blockConcurrencyWhile(async () => {
+    const sqlStorage = storage as SqlStorage;
+    if (!sqlStorage.sql) {
+      return { kind: "settleFallback", outcome: "skipped" };
+    }
+    const hotRows = sqlSelect<HotRow>(storage, "SELECT * FROM hot LIMIT 1");
+    if (hotRows.length === 0) {
+      return { kind: "settleFallback", outcome: "skipped" };
+    }
+    const hot = parseHotRow(hotRows[0]!);
+    if (hotStillHoldsRequestId(hot, request.request_id)) {
+      return { kind: "settleFallback", outcome: "skipped" };
+    }
+    if (hot.row.active_term_id === request.term_id) {
+      hot.row.used += request.weight;
+      persistParsedHot(storage, hot);
+    } else {
+      adjustEndedTermUsedFinal(storage, request.term_id, request.weight);
+    }
+    return { kind: "settleFallback", outcome: "settled" };
+  });
 }
 
 export async function admissionRPC(
