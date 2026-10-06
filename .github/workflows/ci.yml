@@ -184,6 +184,60 @@ jobs:
       - name: Run ABO system harness
         run: npm test
 
+  abo-cross-worker:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    defaults:
+      run:
+        working-directory: abo
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: |
+            abo/package-lock.json
+            ai-platform/package-lock.json
+
+      - name: Install ABO dependencies
+        run: npm ci
+
+      - name: Install ai-platform dependencies
+        working-directory: ai-platform
+        run: npm ci
+
+      - name: Run cross-worker harness
+        run: npm run test:cross-worker
+
+  abo-import-boundary:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: abo
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: abo/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run import-boundary check
+        run: npm run test:import-boundary
+
   vendor-contracts:
     runs-on: ubuntu-latest
     timeout-minutes: 30

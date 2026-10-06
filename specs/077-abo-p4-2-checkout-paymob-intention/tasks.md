@@ -184,7 +184,7 @@ cd abo && npx vitest run --config vitest.platform-throw.config.ts
 
 **Independent Test**: E2E-P4.2-09 on the import-boundary CI check. E2E-P4.2-01 through E2E-P4.2-08 still pass.
 
-- [ ] T028 [US4] Add jobs `abo-cross-worker` and `abo-import-boundary` to `.github/workflows/ci.yml` — produces the two CI jobs, FR-009, E2E-P4.2-09. Depends on T027. `abo-cross-worker` runs `npm ci` in `abo/` and in `ai-platform/`, then `npm run test:cross-worker` from `abo/`. `abo-import-boundary` runs `npm run test:import-boundary` from `abo/`. Leave the existing jobs in that file unchanged.
+- [X] T028 [US4] Add jobs `abo-cross-worker` and `abo-import-boundary` to `.github/workflows/ci.yml` — produces the two CI jobs, FR-009, E2E-P4.2-09. Depends on T027. `abo-cross-worker` runs `npm ci` in `abo/` and in `ai-platform/`, then `npm run test:cross-worker` from `abo/`. `abo-import-boundary` runs `npm run test:import-boundary` from `abo/`. Leave the existing jobs in that file unchanged.
 
 ---
 
@@ -196,7 +196,7 @@ cd abo && npx vitest run --config vitest.platform-throw.config.ts
 
 **Independent Test**: E2E-P4.2-09 on the import-boundary CI check. E2E-P4.2-01 through E2E-P4.2-08 still pass.
 
-- [ ] T029 [US4] Run `npm run test:cross-worker` and `npm run test:import-boundary` from `abo/` until E2E-P4.2-01 through E2E-P4.2-09 pass — produces the green unit harness, FR-001, FR-002, FR-003, FR-004, FR-005, FR-006, FR-007, FR-008, FR-009, E2E-P4.2-01, E2E-P4.2-02, E2E-P4.2-03, E2E-P4.2-04, E2E-P4.2-05, E2E-P4.2-06, E2E-P4.2-07, E2E-P4.2-08, E2E-P4.2-09. Depends on T026 and T028 (and therefore on T001–T025 and T027). This task may edit only files under `abo/test/`. `packages/vendor-contracts/**` and `ai-platform/src/**` stay unchanged.
+- [X] T029 [US4] Run `npm run test:cross-worker` and `npm run test:import-boundary` from `abo/` until E2E-P4.2-01 through E2E-P4.2-09 pass — produces the green unit harness, FR-001, FR-002, FR-003, FR-004, FR-005, FR-006, FR-007, FR-008, FR-009, E2E-P4.2-01, E2E-P4.2-02, E2E-P4.2-03, E2E-P4.2-04, E2E-P4.2-05, E2E-P4.2-06, E2E-P4.2-07, E2E-P4.2-08, E2E-P4.2-09. Depends on T026 and T028 (and therefore on T001–T025 and T027). This task may edit only files under `abo/test/`. `packages/vendor-contracts/**` and `ai-platform/src/**` stay unchanged.
 
 ```bash
 cd abo && npm run test:cross-worker
@@ -213,7 +213,7 @@ cd abo && npm run test:import-boundary
 
 ### 6.1 Quickstart
 
-- [ ] T030 Create `specs/077-abo-p4-2-checkout-paymob-intention/quickstart.md` from the plan's quickstart outline — produces this unit's quickstart, FR-001, FR-002, FR-003, FR-004, FR-005, FR-006, FR-007, FR-008, FR-009, E2E-P4.2-01, E2E-P4.2-02, E2E-P4.2-03, E2E-P4.2-04, E2E-P4.2-05, E2E-P4.2-06, E2E-P4.2-07, E2E-P4.2-08, E2E-P4.2-09. Depends on T029. Sections: (1) what was implemented, and the files added or modified; (2) the two harness commands below; (3) the entry point → module chain per E2E id below. No earlier-unit files, combined counts, or full-suite commands. No manual steps.
+- [X] T030 Create `specs/077-abo-p4-2-checkout-paymob-intention/quickstart.md` from the plan's quickstart outline — produces this unit's quickstart, FR-001, FR-002, FR-003, FR-004, FR-005, FR-006, FR-007, FR-008, FR-009, E2E-P4.2-01, E2E-P4.2-02, E2E-P4.2-03, E2E-P4.2-04, E2E-P4.2-05, E2E-P4.2-06, E2E-P4.2-07, E2E-P4.2-08, E2E-P4.2-09. Depends on T029. Sections: (1) what was implemented, and the files added or modified; (2) the two harness commands below; (3) the entry point → module chain per E2E id below. No earlier-unit files, combined counts, or full-suite commands. No manual steps.
 
 ```bash
 cd abo && npm run test:cross-worker
