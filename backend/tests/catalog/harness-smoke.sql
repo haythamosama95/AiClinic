@@ -93,7 +93,6 @@ DO $$
 DECLARE
   v_key_count int;
   v_issuance_count int;
-  v_flag jsonb;
   v_ok boolean;
 BEGIN
   PERFORM pg_temp.reset_keystore();
@@ -105,21 +104,13 @@ BEGIN
     v_key_count := 0;
   END IF;
   SELECT count(*)::int INTO v_issuance_count FROM ai_internal.ai_token_issuance;
-  SELECT s.value_json INTO v_flag
-  FROM ai_internal.app_settings s
-  WHERE s.key = 'ai.availability'
-    AND s.is_deleted = false;
 
-  v_ok := v_key_count = 0
-    AND v_issuance_count = 0
-    AND v_flag = '{"enrolled": false, "platform_base_url": null}'::jsonb;
+  v_ok := v_key_count = 0 AND v_issuance_count = 0;
 
   PERFORM pg_temp.record(
     'HARNESS-003 — empty keystore after reset',
     v_ok,
-    'keys=' || v_key_count::text
-      || ' issuance=' || v_issuance_count::text
-      || ' flag=' || COALESCE(v_flag::text, '<null>')
+    'keys=' || v_key_count::text || ' issuance=' || v_issuance_count::text
   );
 END;
 $$;

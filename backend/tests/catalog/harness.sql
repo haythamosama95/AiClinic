@@ -112,13 +112,6 @@ BEGIN
   IF to_regclass('ai_internal.issuer_key') IS NOT NULL THEN
     DELETE FROM ai_internal.issuer_key;
   END IF;
-  UPDATE ai_internal.app_settings
-  SET
-    value_json = '{"enrolled": false, "platform_base_url": null}'::jsonb,
-    is_deleted = false,
-    deleted_at = NULL,
-    deleted_by = NULL
-  WHERE key = 'ai.availability';
 END;
 $$;
 

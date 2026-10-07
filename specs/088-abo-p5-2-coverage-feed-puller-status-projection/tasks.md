@@ -92,7 +92,7 @@ Run that command from `e2e/fullstack/`.
 
 **Independent Test**: E2E-P5.2-01 in harness H-FS.
 
-- [ ] T010 [US1] Stop requiring `ai.availability` in `backend/tests/catalog/harness.sql` — produces a catalog harness that matches the dropped setting, FR-011, E2E-P5.2-01. Depends on T009. Do not edit `backend/tests/catalog/harness-smoke.sql` in this task.
+- [X] T010 [US1] Stop requiring `ai.availability` in `backend/tests/catalog/harness.sql` — produces a catalog harness that matches the dropped setting, FR-011, E2E-P5.2-01. Depends on T009. Do not edit `backend/tests/catalog/harness-smoke.sql` in this task.
 
 **Checkpoint**: `harness.sql` does not require `ai.availability`. E2E-P5.2-01 still fails.
 
@@ -100,7 +100,7 @@ Run that command from `e2e/fullstack/`.
 
 **Independent Test**: E2E-P5.2-01 in harness H-FS.
 
-- [ ] T011 [US1] Stop requiring `ai.availability` in `backend/tests/catalog/harness-smoke.sql` — produces a catalog smoke harness that matches the dropped setting, FR-011, E2E-P5.2-01. Depends on T009. Do not edit `backend/tests/catalog/harness.sql` in this task.
+- [X] T011 [US1] Stop requiring `ai.availability` in `backend/tests/catalog/harness-smoke.sql` — produces a catalog smoke harness that matches the dropped setting, FR-011, E2E-P5.2-01. Depends on T009. Do not edit `backend/tests/catalog/harness.sql` in this task.
 
 **Checkpoint**: `harness-smoke.sql` does not require `ai.availability`. E2E-P5.2-01 still fails.
 
