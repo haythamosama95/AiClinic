@@ -5,9 +5,9 @@ This file orients AI coding agents working in this repository. Keep the
 **current active feature's** plan reference when running Spec Kit phases.
 
 <!-- SPECKIT START -->
-Active feature plan: `specs/088-abo-p5-2-coverage-feed-puller-status-projection/plan.md`
-Feature spec: `specs/088-abo-p5-2-coverage-feed-puller-status-projection/spec.md`
-Branch: `ai/088-abo-p5-2-coverage-feed-puller-status-projection`
+Active feature plan: `specs/088b-abo-p5-2b-read-time-status-notices/plan.md`
+Feature spec: `specs/088b-abo-p5-2b-read-time-status-notices/spec.md`
+Branch: `ai/088b-abo-p5-2b-read-time-status-notices`
 <!-- SPECKIT END -->
 
 ## Repo layout quick reference
