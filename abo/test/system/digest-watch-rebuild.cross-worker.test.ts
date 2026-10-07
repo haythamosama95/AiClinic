@@ -3,6 +3,9 @@
  * E2E-P4.11-01 through E2E-P4.11-07.
  */
 
+import { readFile } from "node:fs/promises";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
 import { env } from "cloudflare:test";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import {
@@ -12,6 +15,13 @@ import {
   grantIdTransfer,
   sha256Hex,
 } from "vendor-contracts";
+import {
+  createSoftwareAuthenticator,
+  type SoftwareAuthenticator,
+} from "vendor-contracts/testkit";
+import offersFixture from "../../fixtures/offers.json";
+import successFixture from "../fixtures/paymob/success.json";
+import recordsMigrationSql from "../../migrations/0001_records.sql?raw";
 import checkoutMigrationSql from "../../migrations/0002_checkout.sql?raw";
 import notifyWorkMigrationSql from "../../migrations/0003_notify_work.sql?raw";
 import grantMigrationSql from "../../migrations/0004_grant.sql?raw";
@@ -19,23 +29,33 @@ import reversalMigrationSql from "../../migrations/0005_reversal.sql?raw";
 import operatorActionMigrationSql from "../../migrations/0006_operator_action.sql?raw";
 import hpActionsMigrationSql from "../../migrations/0007_hp_actions.sql?raw";
 import reconciliationMigrationSql from "../../migrations/0008_reconciliation.sql?raw";
+import { loadOffersFixture } from "../../src/records/append";
+import { exportFacts } from "../../src/records/export";
 import {
   applySql,
+  billingFetch,
   clearCapturedEmails,
   clearCapturedHeartbeatFetches,
   getCapturedEmails,
   getCapturedHeartbeatFetches,
   harnessState,
+  mintBilling,
   newIssuer,
   pinIssuer,
   runScheduled,
+  scriptPaymobInquiry,
   sendEmailBinding,
+  setSendEmailThrows,
 } from "./harness";
 import {
   drainPlatformDurableObjects,
+  mintVendorAccessJwt,
+  platformCall,
   resetCrossWorkerHarness,
+  scriptPaymobStub,
   setClock,
   setupCrossWorkerHarness,
+  syncPlatformGrantLedger,
 } from "./cross-worker-harness";
 
 const CONTRACT_VERSION = CHANNEL_VERSIONS.vendorEntrypoint;
@@ -46,7 +66,15 @@ const PLAN_VERSION = 1;
 const ALLOWANCE_CREDITS = 100;
 
 const ORG_DIGEST = "a4110001-0001-4011-8011-000000000001";
+const ORG_REBUILD = "a4110002-0002-4011-8011-000000000002";
 const BASE_CLOCK = "2026-06-15T06:00:00.000Z";
+const CAPABILITY_ID = "clinic.visit_summary";
+const POLICY_ID = "standard";
+const POLICY_VERSION = "1";
+const PAID_PAYMOB_TXN_ID = 941105;
+const GAP_PAYMOB_TXN_ID = 941106;
+const EXTRA_ISSUER_KID = "watch-extra-issuer-kid";
+const EXTRA_CREDENTIAL_ID = "watch-extra-credential-id";
 const BACKEND_LAST_PULL = "2026-06-15T05:54:00.000Z";
 const DAILY_JOB_STAMP = "2026-06-14T06:00:00.000Z";
 const HOURLY_JOB_STAMP = "2026-06-15T05:00:00.000Z";
@@ -72,12 +100,96 @@ CREATE TABLE IF NOT EXISTS channel_version_seen (
 );
 `;
 
+type OffersFixtureExpectations = {
+  offer_id: string;
+  version: number;
+  terms: { version: number; text: string };
+};
+
+type PaymobCallbackObj = {
+  amount_cents: string | number;
+  created_at: string;
+  currency: string;
+  error_occured: boolean;
+  has_parent_transaction: boolean;
+  id: number | string;
+  integration_id: number | string;
+  is_3d_secure: boolean;
+  is_auth: boolean;
+  is_capture: boolean;
+  is_refunded: boolean;
+  is_standalone_payment: boolean;
+  is_voided: boolean;
+  order: { id: number | string };
+  owner: number | string;
+  pending: boolean;
+  source_data: {
+    pan: string;
+    sub_type: string;
+    type: string;
+  };
+  success: boolean;
+};
+
+type PaymobCallbackFixture = {
+  type: string;
+  obj: PaymobCallbackObj;
+};
+
+type AboGrantKey = {
+  kid: string;
+  pkcs8: string;
+  public_key: string;
+};
+
+type HpOperation = {
+  op: string;
+  params: Record<string, unknown>;
+  actor_email: string;
+  issued_at: string;
+  nonce: string;
+  contract_version: number;
+};
+
+const PAYMOB_HMAC_FIELDS = [
+  "amount_cents",
+  "created_at",
+  "currency",
+  "error_occured",
+  "has_parent_transaction",
+  "id",
+  "integration_id",
+  "is_3d_secure",
+  "is_auth",
+  "is_capture",
+  "is_refunded",
+  "is_standalone_payment",
+  "is_voided",
+  "order.id",
+  "owner",
+  "pending",
+  "source_data.pan",
+  "source_data.sub_type",
+  "source_data.type",
+  "success",
+] as const;
+
+const testDir = path.dirname(fileURLToPath(import.meta.url));
+const aboRoot = path.resolve(testDir, "../..");
+
+let clinicIssuer: Awaited<ReturnType<typeof newIssuer>> | null = null;
+
 declare module "cloudflare:test" {
   interface ProvidedEnv {
     PLATFORM_DB: D1Database;
     HEARTBEAT_URL: string;
     ISSUER_ID: string;
     ALERT_EMAIL_TO: string;
+    ABO_GRANT_KEY: string;
+    ACCESS_AUD: string;
+    WEBAUTHN_RP_ID: string;
+    WEBAUTHN_ORIGIN: string;
+    PAYMOB_HMAC_SECRET: string;
   }
 }
 
@@ -87,6 +199,118 @@ function addDays(isoUtc: string, days: number): string {
 
 function addHours(isoUtc: string, hours: number): string {
   return new Date(Date.parse(isoUtc) + hours * 60 * 60_000).toISOString();
+}
+
+function addMinutes(isoUtc: string, minutes: number): string {
+  return new Date(Date.parse(isoUtc) + minutes * 60_000).toISOString();
+}
+
+function parseAboGrantKey(): AboGrantKey {
+  return JSON.parse(env.ABO_GRANT_KEY) as AboGrantKey;
+}
+
+function encodeVendorAssertion(assertion: {
+  alg: "ES256" | "EdDSA";
+  authenticatorData: Uint8Array;
+  clientDataJSON: Uint8Array;
+  signature: Uint8Array;
+}): Record<string, string> {
+  return {
+    alg: assertion.alg,
+    authenticator_data: base64UrlEncode(assertion.authenticatorData),
+    client_data_json: base64UrlEncode(assertion.clientDataJSON),
+    signature: base64UrlEncode(assertion.signature),
+  };
+}
+
+function encodeVendorAttestation(attestation: {
+  alg: "ES256" | "EdDSA";
+  publicKey: Uint8Array;
+}): { alg: "ES256" | "EdDSA"; public_key: string } {
+  return {
+    alg: attestation.alg,
+    public_key: base64UrlEncode(attestation.publicKey),
+  };
+}
+
+function fakePolicyTarget(modelId = "fake-v1"): Record<string, unknown> {
+  return {
+    provider_id: "fake",
+    model_id: modelId,
+    features: {
+      structured_output: false,
+      min_context_window: 32_000,
+      languages: ["en"],
+      latency_class: "standard",
+      cost_class: "standard",
+    },
+    max_attempts: 1,
+    timeout_ms: 30_000,
+  };
+}
+
+function fakePolicyDocument(): Record<string, unknown> {
+  return {
+    schema_version: 1,
+    policy_id: POLICY_ID,
+    policy_version: Number(POLICY_VERSION),
+    defaults: { cost_class: "standard", max_parallel_attempts: 1 },
+    rules: [
+      {
+        rule_id: "catch-all",
+        match: {},
+        requires: {
+          structured_output: false,
+          min_context_window: 0,
+          languages: ["en"],
+        },
+        targets: [fakePolicyTarget()],
+      },
+    ],
+    overrides: [],
+  };
+}
+
+function hmacFieldValue(obj: PaymobCallbackObj, field: string): string {
+  if (field === "order.id") {
+    return String(obj.order.id);
+  }
+  if (field === "source_data.pan") {
+    return String(obj.source_data.pan);
+  }
+  if (field === "source_data.sub_type") {
+    return String(obj.source_data.sub_type);
+  }
+  if (field === "source_data.type") {
+    return String(obj.source_data.type);
+  }
+  const raw = obj[field as keyof PaymobCallbackObj];
+  if (typeof raw === "boolean") {
+    return raw ? "true" : "false";
+  }
+  return String(raw);
+}
+
+function successFixtureWithTxnId(txnId: number): PaymobCallbackFixture {
+  const base = successFixture as PaymobCallbackFixture;
+  return {
+    type: base.type,
+    obj: { ...base.obj, id: txnId },
+  };
+}
+
+function successFixtureWithAmount(
+  amountMinor: number,
+  txnId?: number,
+): PaymobCallbackFixture {
+  const base =
+    txnId !== undefined
+      ? successFixtureWithTxnId(txnId)
+      : (successFixture as PaymobCallbackFixture);
+  return {
+    type: base.type,
+    obj: { ...base.obj, amount_cents: String(amountMinor) },
+  };
 }
 
 function base64UrlEncode(bytes: Uint8Array): string {
@@ -150,6 +374,554 @@ async function rowExists(
     .bind(id)
     .first<{ ok: number }>();
   return row !== null;
+}
+
+async function signPaymobObj(
+  secret: string,
+  obj: PaymobCallbackObj,
+): Promise<string> {
+  const concatenated = PAYMOB_HMAC_FIELDS.map((field) =>
+    hmacFieldValue(obj, field),
+  ).join("");
+  const key = await crypto.subtle.importKey(
+    "raw",
+    new TextEncoder().encode(secret),
+    { name: "HMAC", hash: "SHA-512" },
+    false,
+    ["sign"],
+  );
+  const signature = await crypto.subtle.sign(
+    "HMAC",
+    key,
+    new TextEncoder().encode(concatenated),
+  );
+  return [...new Uint8Array(signature)]
+    .map((byte) => byte.toString(16).padStart(2, "0"))
+    .join("");
+}
+
+async function seedOffersCatalogueFixture(): Promise<OffersFixtureExpectations | null> {
+  try {
+    const fixture = offersFixture as {
+      expectations?: OffersFixtureExpectations;
+    };
+    await loadOffersFixture(fixture);
+    return fixture.expectations ?? null;
+  } catch {
+    return null;
+  }
+}
+
+async function registerAboGrantKeyOnPlatform(): Promise<void> {
+  const aboKey = parseAboGrantKey();
+  const notBefore = "2020-01-01T00:00:00.000Z";
+  const notAfter = "2099-01-01T00:00:00.000Z";
+  await env.PLATFORM_DB.prepare(
+    `INSERT OR REPLACE INTO service_key
+       (kid, service, public_key, status, not_before, not_after, registered_by, assertion_sha256)
+     VALUES (?, 'abo', ?, 'active', ?, ?, ?, 'harness')`,
+  )
+    .bind(aboKey.kid, aboKey.public_key, notBefore, notAfter, VENDOR_OPERATOR_EMAIL)
+    .run();
+}
+
+async function publishPlanProOnPlatform(): Promise<void> {
+  const existing = await env.PLATFORM_DB.prepare(
+    `SELECT 1 AS present FROM plan_version WHERE plan_id = ? AND version = ?`,
+  )
+    .bind(PLAN_ID, PLAN_VERSION)
+    .first<{ present: number }>();
+  if (existing?.present) {
+    await env.PLATFORM_DB.prepare(
+      `UPDATE plan_version SET status = 'published' WHERE plan_id = ? AND version = ?`,
+    )
+      .bind(PLAN_ID, PLAN_VERSION)
+      .run();
+    return;
+  }
+  await env.PLATFORM_DB.prepare(
+    `INSERT INTO plan_version (
+       plan_id, version, display_name, capabilities, max_cost_class,
+       concurrency_limit, max_allowance_per_month, status, published_by,
+       assertion_sha256
+     ) VALUES (?, ?, ?, ?, ?, ?, ?, 'published', ?, 'harness')`,
+  )
+    .bind(
+      PLAN_ID,
+      PLAN_VERSION,
+      "Clinic Pro",
+      JSON.stringify([CAPABILITY_ID]),
+      "2",
+      4,
+      ALLOWANCE_CREDITS,
+      VENDOR_OPERATOR_EMAIL,
+    )
+    .run();
+}
+
+async function registerClinicIssuerKey(): Promise<void> {
+  if (clinicIssuer !== null) {
+    return;
+  }
+  const issuer = await newIssuer();
+  await pinIssuer(issuer.kid, issuer.publicKey);
+  const rawPublicKey = await crypto.subtle.exportKey("raw", issuer.publicKey);
+  const publicKeyB64 = base64UrlEncode(new Uint8Array(rawPublicKey));
+  const notBefore = "2020-01-01T00:00:00.000Z";
+  const notAfter = "2099-01-01T00:00:00.000Z";
+  await env.PLATFORM_DB.prepare(
+    `INSERT OR REPLACE INTO issuer_key
+       (kid, issuer, public_key, status, not_before, not_after, registered_by, assertion_sha256)
+     VALUES (?, ?, ?, 'active', ?, ?, ?, 'harness')`,
+  )
+    .bind(issuer.kid, env.ISSUER_ID, publicKeyB64, notBefore, notAfter, VENDOR_OPERATOR_EMAIL)
+    .run();
+  clinicIssuer = issuer;
+}
+
+async function setupPromotedRoutingPolicy(): Promise<void> {
+  const document = fakePolicyDocument();
+  const contentPointer = `control/routing-policy/${POLICY_ID}/${POLICY_VERSION}.json`;
+  await env.R2.put(contentPointer, JSON.stringify(document), {
+    httpMetadata: { contentType: "application/json" },
+  });
+  const now = "2026-06-01T12:00:00.000Z";
+  await env.PLATFORM_DB.prepare(
+    `INSERT OR REPLACE INTO routing_policy (
+       policy_id, version, content_pointer, active_from, activated_by, status
+     ) VALUES (?, ?, ?, ?, ?, 'active')`,
+  )
+    .bind(POLICY_ID, POLICY_VERSION, contentPointer, now, VENDOR_OPERATOR_EMAIL)
+    .run();
+}
+
+async function setupRebuildHarness(): Promise<OffersFixtureExpectations> {
+  const expectations = await seedOffersCatalogueFixture();
+  expect(expectations).not.toBeNull();
+  await registerAboGrantKeyOnPlatform();
+  await publishPlanProOnPlatform();
+  await registerClinicIssuerKey();
+  await setupPromotedRoutingPolicy();
+  return expectations!;
+}
+
+async function ensureGrantTenantBinding(orgId: string): Promise<void> {
+  const existing = await env.PLATFORM_DB.prepare(
+    `SELECT installation_id FROM tenant_binding
+     WHERE org_id = ? AND status = 'active'`,
+  )
+    .bind(orgId)
+    .first<{ installation_id: string }>();
+  if (existing?.installation_id) {
+    return;
+  }
+  const installationId = crypto.randomUUID();
+  const createdAt = "2026-06-01T12:00:00.000Z";
+  await env.PLATFORM_DB.batch([
+    env.PLATFORM_DB.prepare(
+      `INSERT INTO installation (
+         installation_id, org_id, status, display_name, region, enrolled_at
+       ) VALUES (?, ?, 'active', '', '', ?)`,
+    ).bind(installationId, orgId, createdAt),
+    env.PLATFORM_DB.prepare(
+      `INSERT INTO tenant_binding (
+         org_id, installation_id, epoch, status, retired_at, reason, created_at
+       ) VALUES (?, ?, 1, 'active', NULL, NULL, ?)`,
+    ).bind(orgId, installationId, createdAt),
+  ]);
+}
+
+async function harnessNowSeconds(): Promise<number> {
+  const row = await env.PLATFORM_DB.prepare(
+    `SELECT now_iso FROM harness_test_clock WHERE id = 'default'`,
+  ).first<{ now_iso: string }>();
+  if (row?.now_iso) {
+    const parsed = Date.parse(row.now_iso);
+    if (!Number.isNaN(parsed)) {
+      return Math.floor(parsed / 1000);
+    }
+  }
+  return Math.floor(Date.now() / 1000);
+}
+
+async function currentHarnessClockIso(): Promise<string> {
+  const row = await env.DB.prepare(
+    `SELECT now_iso FROM harness_test_clock WHERE id = 'default'`,
+  ).first<{ now_iso: string }>();
+  return row?.now_iso ?? BASE_CLOCK;
+}
+
+async function administratorHeaders(
+  org: string,
+): Promise<Record<string, string>> {
+  const issuer = clinicIssuer ?? (await newIssuer());
+  if (clinicIssuer === null) {
+    await pinIssuer(issuer.kid, issuer.publicKey);
+    clinicIssuer = issuer;
+  }
+  const now = await harnessNowSeconds();
+  const token = await mintBilling(issuer, {
+    sub: "admin-sub",
+    org,
+    role: "administrator",
+    branch: "branch-test",
+    iat: now,
+    exp: now + 300,
+    jti: crypto.randomUUID(),
+  });
+  return {
+    authorization: `Bearer ${token}`,
+    "Abo-Contract-Version": "1",
+    "content-type": "application/json",
+  };
+}
+
+async function putBillingContact(org: string): Promise<void> {
+  const response = await billingFetch("/v1/billing-contact", {
+    method: "PUT",
+    headers: await administratorHeaders(org),
+    body: JSON.stringify({
+      client_request_id: `req-contact-${org}`,
+      name: "Clinic Admin",
+      email: "admin@clinic.test",
+      phone: "+201001234567",
+    }),
+  });
+  expect(response.status).toBe(200);
+}
+
+async function postCheckout(
+  org: string,
+  expectations: OffersFixtureExpectations,
+  clientRequestId: string,
+): Promise<{ checkoutId: string; reference: string }> {
+  const response = await billingFetch("/v1/checkouts", {
+    method: "POST",
+    headers: await administratorHeaders(org),
+    body: JSON.stringify({
+      client_request_id: clientRequestId,
+      offer_id: expectations.offer_id,
+      offer_version: expectations.version,
+      terms_version: expectations.terms.version,
+    }),
+  });
+  expect(response.status).toBe(201);
+  const body = (await response.json()) as Record<string, unknown>;
+  return {
+    checkoutId: String(body.checkout_id),
+    reference: String(body.reference),
+  };
+}
+
+async function chargedPriceMinorForCheckout(checkoutId: string): Promise<number> {
+  const row = await env.DB.prepare(
+    `SELECT charged_price_minor FROM checkout WHERE checkout_id = ?`,
+  )
+    .bind(checkoutId)
+    .first<{ charged_price_minor: number }>();
+  expect(row).not.toBeNull();
+  return row!.charged_price_minor;
+}
+
+async function scriptPaymobAmount(amountMinor: number): Promise<void> {
+  await env.PAYMOB_STUB.fetch("http://paymob.stub/__script", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ amount_cents: String(amountMinor) }),
+  });
+}
+
+async function syncPaymobForCheckout(checkoutId: string): Promise<number> {
+  const chargedPrice = await chargedPriceMinorForCheckout(checkoutId);
+  await scriptPaymobAmount(chargedPrice);
+  await scriptPaymobInquiry("bound_success");
+  return chargedPrice;
+}
+
+async function postPaymobProcessedCallback(
+  fixture: PaymobCallbackFixture,
+  options?: {
+    txnId?: number;
+    amountMinor?: number;
+  },
+): Promise<Response> {
+  const bodyFixture =
+    options?.amountMinor !== undefined
+      ? successFixtureWithAmount(options.amountMinor, options.txnId)
+      : options?.txnId !== undefined
+        ? successFixtureWithTxnId(options.txnId)
+        : fixture;
+  const body = JSON.stringify({
+    type: bodyFixture.type,
+    obj: bodyFixture.obj,
+  });
+  const hmac = await signPaymobObj(env.PAYMOB_HMAC_SECRET, bodyFixture.obj);
+  return billingFetch(`/notify/paymob?hmac=${encodeURIComponent(hmac)}`, {
+    method: "POST",
+    headers: {
+      "content-type": "application/json",
+      "cf-connecting-ip": "203.0.113.10",
+    },
+    body,
+  });
+}
+
+async function paymentIdForCheckout(checkoutId: string): Promise<string | null> {
+  const row = await env.DB.prepare(
+    `SELECT payment_id FROM payment WHERE checkout_id = ?`,
+  )
+    .bind(checkoutId)
+    .first<{ payment_id: string }>();
+  return row?.payment_id ?? null;
+}
+
+async function runGrantStep(orgId: string): Promise<void> {
+  const { runDueGrantWork } = await import("../../src/work/grant");
+  await runScheduled("* * * * *");
+  await runDueGrantWork(env as never);
+  await syncPlatformGrantLedger(orgId);
+  await drainPlatformDurableObjects();
+}
+
+async function paidCheckoutWithGrant(
+  org: string,
+  expectations: OffersFixtureExpectations,
+  txnId: number,
+  clientRequestId: string,
+): Promise<{ checkoutId: string; paymentId: string }> {
+  await putBillingContact(org);
+  await ensureGrantTenantBinding(org);
+  const { checkoutId } = await postCheckout(org, expectations, clientRequestId);
+  const chargedPrice = await syncPaymobForCheckout(checkoutId);
+  const intake = await postPaymobProcessedCallback(
+    successFixture as PaymobCallbackFixture,
+    { txnId, amountMinor: chargedPrice },
+  );
+  expect(intake.status).toBe(200);
+  await runGrantStep(org);
+  const paymentId = await paymentIdForCheckout(checkoutId);
+  expect(paymentId).not.toBeNull();
+  return { checkoutId, paymentId: paymentId! };
+}
+
+async function gapCheckoutWithIntentionOnly(
+  org: string,
+  expectations: OffersFixtureExpectations,
+  clientRequestId: string,
+): Promise<string> {
+  await putBillingContact(org);
+  await ensureGrantTenantBinding(org);
+  const { checkoutId } = await postCheckout(org, expectations, clientRequestId);
+  await syncPaymobForCheckout(checkoutId);
+  return checkoutId;
+}
+
+async function exportLedgerFacts(): Promise<void> {
+  await runScheduled("* * * * *");
+  await exportFacts(env);
+}
+
+async function wipeAboD1(): Promise<void> {
+  const objects = await env.DB.prepare(
+    `SELECT name, type FROM sqlite_master
+     WHERE type IN ('table', 'trigger', 'view', 'index')
+       AND name NOT LIKE 'sqlite_%'
+       AND name NOT LIKE '_cf_%'`,
+  ).all<{ name: string; type: string }>();
+  for (const row of objects.results ?? []) {
+    if (row.type === "trigger") {
+      await env.DB.prepare(`DROP TRIGGER IF EXISTS ${row.name}`).run();
+    }
+  }
+  for (const row of objects.results ?? []) {
+    if (row.type === "view") {
+      await env.DB.prepare(`DROP VIEW IF EXISTS ${row.name}`).run();
+    }
+  }
+  for (const row of objects.results ?? []) {
+    if (row.type === "table") {
+      await env.DB.prepare(`DROP TABLE IF EXISTS ${row.name}`).run();
+    }
+  }
+  for (const row of objects.results ?? []) {
+    if (row.type === "index") {
+      await env.DB.prepare(`DROP INDEX IF EXISTS ${row.name}`).run();
+    }
+  }
+}
+
+async function reapplyAboSchema(): Promise<void> {
+  await applySql(recordsMigrationSql);
+  await ensureMigrations();
+  await ensureDigestWatchMigration();
+}
+
+async function openFindingCount(): Promise<number> {
+  try {
+    const row = await env.DB.prepare(
+      `SELECT COUNT(*) AS n
+       FROM finding f
+       LEFT JOIN finding_resolution fr ON f.finding_id = fr.finding_id
+       WHERE fr.finding_id IS NULL`,
+    ).first<{ n: number }>();
+    return row?.n ?? 0;
+  } catch {
+    return 0;
+  }
+}
+
+async function readRebuildRunbook(): Promise<string> {
+  try {
+    return await readFile(path.join(aboRoot, "REBUILD.md"), "utf8");
+  } catch {
+    return "";
+  }
+}
+
+async function seedExtraUnpinnedIssuerKey(): Promise<string> {
+  const issuer = await newIssuer();
+  const rawPublicKey = await crypto.subtle.exportKey("raw", issuer.publicKey);
+  const publicKeyB64 = base64UrlEncode(new Uint8Array(rawPublicKey));
+  const notBefore = "2020-01-01T00:00:00.000Z";
+  const notAfter = "2099-01-01T00:00:00.000Z";
+  await env.PLATFORM_DB.prepare(
+    `INSERT OR REPLACE INTO issuer_key
+       (kid, issuer, public_key, status, not_before, not_after, registered_by, assertion_sha256)
+     VALUES (?, ?, ?, 'active', ?, ?, ?, 'harness')`,
+  )
+    .bind(
+      EXTRA_ISSUER_KID,
+      env.ISSUER_ID,
+      publicKeyB64,
+      notBefore,
+      notAfter,
+      VENDOR_OPERATOR_EMAIL,
+    )
+    .run();
+  return EXTRA_ISSUER_KID;
+}
+
+async function seedExtraUnannouncedOperatorCredential(): Promise<{
+  credentialId: string;
+  publicKeyCose: string;
+  alg: string;
+}> {
+  const authenticator = await createSoftwareAuthenticator("EdDSA");
+  const attestation = encodeVendorAttestation(await authenticator.attest());
+  await env.PLATFORM_DB.prepare(
+    `INSERT OR REPLACE INTO operator_credential
+       (credential_id, operator_email, public_key_cose, alg, status, activates_at, approved_by, revoked_by)
+     VALUES (?, ?, ?, ?, 'active', ?, NULL, NULL)`,
+  )
+    .bind(
+      EXTRA_CREDENTIAL_ID,
+      VENDOR_OPERATOR_EMAIL,
+      attestation.public_key,
+      attestation.alg,
+      "2020-01-01T00:00:00.000Z",
+    )
+    .run();
+  return {
+    credentialId: EXTRA_CREDENTIAL_ID,
+    publicKeyCose: attestation.public_key,
+    alg: attestation.alg,
+  };
+}
+
+async function clearWatchAlertSeeds(): Promise<void> {
+  await env.PLATFORM_DB.prepare(
+    `DELETE FROM issuer_key WHERE kid = ?`,
+  )
+    .bind(EXTRA_ISSUER_KID)
+    .run();
+  await env.PLATFORM_DB.prepare(
+    `DELETE FROM operator_credential WHERE credential_id IN (?, ?)`,
+  )
+    .bind(EXTRA_CREDENTIAL_ID, "watch-remembered-credential-id")
+    .run();
+}
+
+async function seedActiveOperatorCredential(
+  authenticator: SoftwareAuthenticator,
+  credentialId = crypto.randomUUID(),
+): Promise<string> {
+  const attestation = encodeVendorAttestation(await authenticator.attest());
+  await env.PLATFORM_DB.prepare(
+    `INSERT OR REPLACE INTO operator_credential
+       (credential_id, operator_email, public_key_cose, alg, status, activates_at, approved_by, revoked_by)
+     VALUES (?, ?, ?, ?, 'active', ?, NULL, NULL)`,
+  )
+    .bind(
+      credentialId,
+      VENDOR_OPERATOR_EMAIL,
+      attestation.public_key,
+      attestation.alg,
+      "2020-01-01T00:00:00.000Z",
+    )
+    .run();
+  return credentialId;
+}
+
+async function registerOperatorCredentialWithSigner(input: {
+  credentialId: string;
+  signerCredentialId: string;
+  signerAuthenticator: SoftwareAuthenticator;
+  attestationAuthenticator: SoftwareAuthenticator;
+  accessJwt: string;
+}): Promise<Record<string, unknown>> {
+  const attestation = encodeVendorAttestation(
+    await input.attestationAuthenticator.attest(),
+  );
+  const issuedAt = await currentHarnessClockIso();
+  const operation: HpOperation = {
+    op: "registerOperatorCredential",
+    params: {
+      contract_version: CONTRACT_VERSION,
+      access_jwt: input.accessJwt,
+      credential_id: input.credentialId,
+      attestation,
+      signer_credential_id: input.signerCredentialId,
+    },
+    actor_email: VENDOR_OPERATOR_EMAIL,
+    issued_at: issuedAt,
+    nonce: crypto.randomUUID(),
+    contract_version: CONTRACT_VERSION,
+  };
+  const assertion = encodeVendorAssertion(
+    await input.signerAuthenticator.assert({
+      operation,
+      rpId: env.WEBAUTHN_RP_ID,
+      origin: env.WEBAUTHN_ORIGIN,
+      up: true,
+      uv: true,
+    }),
+  );
+  return platformCall(
+    "registerOperatorCredential",
+    {
+      contract_version: CONTRACT_VERSION,
+      credential_id: input.credentialId,
+      attestation,
+      signer_credential_id: input.signerCredentialId,
+      operation,
+      assertion,
+    },
+    { accessJwt: input.accessJwt },
+  );
+}
+
+async function seedSeenOperatorCredential(detail: Record<string, unknown>): Promise<void> {
+  await env.DB.prepare(
+    `INSERT OR IGNORE INTO seen_operator_credential (
+       credential_id, public_key_cose, alg
+     ) VALUES (?, ?, ?)`,
+  )
+    .bind(
+      String(detail.credential_id),
+      String(detail.public_key_cose),
+      String(detail.alg),
+    )
+    .run();
 }
 
 type DigestScenario = {
@@ -453,10 +1225,12 @@ function installDigestRetrySendBinding(): void {
 
 describe("P4.11 digest, watch, housekeeping, rebuild (H-XW)", () => {
   beforeEach(async () => {
+    clinicIssuer = null;
     await resetCrossWorkerHarness();
     await setupCrossWorkerHarness();
     await ensureMigrations();
     await ensureDigestWatchMigration();
+    await scriptPaymobStub("ok");
     clearCapturedEmails();
     clearCapturedHeartbeatFetches();
     setSendEmailThrows(false);
@@ -561,5 +1335,130 @@ describe("P4.11 digest, watch, housekeeping, rebuild (H-XW)", () => {
     expect(digestSendAttempts).toBe(2);
     expect(digestEmails()).toHaveLength(1);
     expect(getCapturedHeartbeatFetches()).toContain(env.HEARTBEAT_URL);
+  });
+
+  it("E2E-P4.11-03 FM-10: feed_consumer stale for 6 min → AL-15 hourly", async () => {
+    await seedBackendFeedPull(addMinutes(BASE_CLOCK, -6));
+    clearCapturedEmails();
+
+    await runScheduled("0 * * * *");
+    expect(emailsWithCode("AL-15").length).toBeGreaterThanOrEqual(1);
+
+    await setClock(addHours(BASE_CLOCK, 1));
+    clearCapturedEmails();
+    await runScheduled("0 * * * *");
+    expect(emailsWithCode("AL-15").length).toBe(1);
+  });
+
+  it("E2E-P4.11-04 AD-9: extra issuer kid and unannounced operator credential → AL-22", async () => {
+    await registerClinicIssuerKey();
+    const extraKid = await seedExtraUnpinnedIssuerKey();
+    const extraCredential = await seedExtraUnannouncedOperatorCredential();
+    clearCapturedEmails();
+
+    await runScheduled("0 * * * *");
+
+    const al22Emails = emailsWithCode("AL-22");
+    expect(al22Emails.length).toBeGreaterThanOrEqual(2);
+    expect(
+      al22Emails.some((email) => email.text.includes(extraKid)),
+    ).toBe(true);
+    expect(
+      al22Emails.some((email) =>
+        email.text.includes(extraCredential.credentialId),
+      ),
+    ).toBe(true);
+
+    await clearWatchAlertSeeds();
+    const signerAuthenticator = await createSoftwareAuthenticator("EdDSA");
+    const signerCredentialId = await seedActiveOperatorCredential(
+      signerAuthenticator,
+    );
+    const rememberedAuthenticator = await createSoftwareAuthenticator("EdDSA");
+    const rememberedCredentialId = "watch-remembered-credential-id";
+    const accessJwt = await mintVendorAccessJwt();
+    const registered = await registerOperatorCredentialWithSigner({
+      credentialId: rememberedCredentialId,
+      signerCredentialId,
+      signerAuthenticator,
+      attestationAuthenticator: rememberedAuthenticator,
+      accessJwt,
+    });
+    expect(registered.result).toBe("ok");
+    const detail = JSON.parse(String(registered.detail)) as Record<string, unknown>;
+    await seedSeenOperatorCredential(detail);
+    await setClock(String(detail.activates_at));
+
+    clearCapturedEmails();
+    await runScheduled("0 * * * *");
+    expect(
+      emailsWithCode("AL-22").filter((email) =>
+        email.text.includes(rememberedCredentialId),
+      ),
+    ).toHaveLength(0);
+  });
+
+  it("E2E-P4.11-06 FM-19: wipe the ABO D1 → replay ledger/ → facts and status restored; gap re-inquired; a payment with no grant gets one → already_applied; reconciliation clean", async () => {
+    const expectations = await setupRebuildHarness();
+    const paid = await paidCheckoutWithGrant(
+      ORG_REBUILD,
+      expectations,
+      PAID_PAYMOB_TXN_ID,
+      "req-rebuild-paid",
+    );
+    const gapCheckoutId = await gapCheckoutWithIntentionOnly(
+      ORG_REBUILD,
+      expectations,
+      "req-rebuild-gap",
+    );
+    await exportLedgerFacts();
+
+    const paidCheckoutBefore = await env.DB.prepare(
+      `SELECT checkout_id, state FROM checkout_status WHERE checkout_id = ?`,
+    )
+      .bind(paid.checkoutId)
+      .first<{ checkout_id: string; state: string }>();
+    const paidPaymentBefore = await env.DB.prepare(
+      `SELECT payment_id FROM payment WHERE payment_id = ?`,
+    )
+      .bind(paid.paymentId)
+      .first<{ payment_id: string }>();
+    const ledgerListed = await env.R2.list({ prefix: "ledger/" });
+    expect(ledgerListed.objects.length).toBeGreaterThan(0);
+
+    await wipeAboD1();
+    await reapplyAboSchema();
+
+    const { rebuildAbo } = await import("../../src/rebuild.js");
+    await scriptPaymobInquiry("bound_success");
+    await rebuildAbo(env as never, {
+      providerTransactionReferences: [String(GAP_PAYMOB_TXN_ID)],
+    });
+
+    const restoredPaidCheckout = await env.DB.prepare(
+      `SELECT state FROM checkout_status WHERE checkout_id = ?`,
+    )
+      .bind(paid.checkoutId)
+      .first<{ state: string }>();
+    expect(restoredPaidCheckout?.state).toBe(paidCheckoutBefore?.state);
+    expect(
+      await rowExists("payment", "payment_id", paid.paymentId),
+    ).toBe(true);
+
+    const gapPaymentId = await paymentIdForCheckout(gapCheckoutId);
+    expect(gapPaymentId).not.toBeNull();
+    const gapGrantId = await grantIdPaid(gapPaymentId!);
+    const grantOutcome = await env.DB.prepare(
+      `SELECT result FROM grant_outcome WHERE grant_id = ?`,
+    )
+      .bind(gapGrantId)
+      .first<{ result: string }>();
+    expect(grantOutcome?.result).toBe("already_applied");
+    expect(paidPaymentBefore?.payment_id).toBe(paid.paymentId);
+    expect(await openFindingCount()).toBe(0);
+
+    const runbook = await readRebuildRunbook();
+    expect(runbook).toContain("provider transaction references");
+    expect(runbook.toLowerCase()).toContain("dashboard export");
   });
 });
