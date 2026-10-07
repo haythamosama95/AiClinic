@@ -50,6 +50,7 @@ class _WireDenialSubmitPort implements HttpsSubmitPort {
       wireCode: wireCode,
       requestReference: 'req-$wireCode',
       traceId: 'trace-$wireCode',
+      retryAfter: retryAfter,
     );
   }
 }

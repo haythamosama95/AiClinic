@@ -163,7 +163,7 @@ That command is this unit's new-scenario harness. `npm test` in `e2e/fullstack` 
 
 **Independent Test**: E2E-P6.2-06 in harness H-FL. Every earlier suite stays green (rule S2).
 
-- [ ] T021 [US2] Re-run the H-FL widget commands until E2E-P6.2-01 through E2E-P6.2-07 pass and the two existing widget files stay green — green harness, FR-001, FR-002, FR-003, FR-004, FR-005, E2E-P6.2-01, E2E-P6.2-02, E2E-P6.2-03, E2E-P6.2-04, E2E-P6.2-05, E2E-P6.2-06, E2E-P6.2-07. Depends on T019 and T020. From `frontend/`, run `flutter test test/widget/ai/denial_states_coverage_gauge_test.dart` until E2E-P6.2-01 through E2E-P6.2-07 pass. Re-run `flutter test test/widget/ai/usage_gauge_test.dart test/widget/ai/ai_degraded_mode_test.dart` so those existing expectations stay green. Fixes stay in the files this unit's **Files** table lists under `frontend/`. Do not edit `frontend/lib/features/ai/surface/usage_gauge.dart` or `frontend/lib/app/router.dart`. Do not run `npm test` in `e2e/fullstack`. Do not start wrangler.
+- [X] T021 [US2] Re-run the H-FL widget commands until E2E-P6.2-01 through E2E-P6.2-07 pass and the two existing widget files stay green — green harness, FR-001, FR-002, FR-003, FR-004, FR-005, E2E-P6.2-01, E2E-P6.2-02, E2E-P6.2-03, E2E-P6.2-04, E2E-P6.2-05, E2E-P6.2-06, E2E-P6.2-07. Depends on T019 and T020. From `frontend/`, run `flutter test test/widget/ai/denial_states_coverage_gauge_test.dart` until E2E-P6.2-01 through E2E-P6.2-07 pass. Re-run `flutter test test/widget/ai/usage_gauge_test.dart test/widget/ai/ai_degraded_mode_test.dart` so those existing expectations stay green. Fixes stay in the files this unit's **Files** table lists under `frontend/`. Do not edit `frontend/lib/features/ai/surface/usage_gauge.dart` or `frontend/lib/app/router.dart`. Do not run `npm test` in `e2e/fullstack`. Do not start wrangler.
 
 **Checkpoint**: E2E-P6.2-01 through E2E-P6.2-07 pass. `usage_gauge_test.dart` and `ai_degraded_mode_test.dart` stay green.
 
@@ -177,7 +177,7 @@ That command is this unit's new-scenario harness. `npm test` in `e2e/fullstack` 
 
 **Independent Test**: E2E-P6.2-06 in harness H-FL. Every earlier suite stays green (rule S2).
 
-- [ ] T022 [US2] Write `specs/090-abo-p6-2-desktop-denial-states-administrator-coverage/quickstart.md` — unit quickstart, FR-001, FR-004, E2E-P6.2-01, E2E-P6.2-02, E2E-P6.2-03, E2E-P6.2-04, E2E-P6.2-05, E2E-P6.2-06, E2E-P6.2-07. Depends on T021. Fill only these sections: what was implemented and the files added or modified; the harness command for this unit's tests only, from `frontend/`, `flutter test test/widget/ai/denial_states_coverage_gauge_test.dart`; the entry point → module chain per E2E id. Do not list earlier-unit files, combined counts, or full-suite commands. Manual steps are omitted: the harness sees this behaviour.
+- [X] T022 [US2] Write `specs/090-abo-p6-2-desktop-denial-states-administrator-coverage/quickstart.md` — unit quickstart, FR-001, FR-004, E2E-P6.2-01, E2E-P6.2-02, E2E-P6.2-03, E2E-P6.2-04, E2E-P6.2-05, E2E-P6.2-06, E2E-P6.2-07. Depends on T021. Fill only these sections: what was implemented and the files added or modified; the harness command for this unit's tests only, from `frontend/`, `flutter test test/widget/ai/denial_states_coverage_gauge_test.dart`; the entry point → module chain per E2E id. Do not list earlier-unit files, combined counts, or full-suite commands. Manual steps are omitted: the harness sees this behaviour.
 
 **Checkpoint**: `quickstart.md` names the seven H-FL ids, the unit command, and the entry chain.
 
