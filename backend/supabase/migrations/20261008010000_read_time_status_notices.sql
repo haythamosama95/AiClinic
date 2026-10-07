@@ -150,7 +150,14 @@ BEGIN
     END IF;
   ELSIF v_coverage.state = 'grace' THEN
     v_band := v_coverage.band;
-    v_days_left := NULL;
+
+    IF v_coverage.ends_at IS NOT NULL AND v_as_of < v_coverage.ends_at THEN
+      v_days_left := floor(
+        extract(epoch FROM (v_coverage.ends_at - v_as_of)) / 86400
+      )::integer;
+    ELSE
+      v_days_left := NULL;
+    END IF;
 
     IF v_coverage.grace_ends_at IS NOT NULL AND v_as_of < v_coverage.grace_ends_at THEN
       v_state := 'grace';
@@ -178,8 +185,15 @@ BEGIN
     v_available := false;
     v_reason := v_coverage.reason;
     v_band := v_coverage.band;
-    v_days_left := NULL;
     v_grace_days_left := NULL;
+
+    IF v_coverage.ends_at IS NOT NULL AND v_as_of < v_coverage.ends_at THEN
+      v_days_left := floor(
+        extract(epoch FROM (v_coverage.ends_at - v_as_of)) / 86400
+      )::integer;
+    ELSE
+      v_days_left := NULL;
+    END IF;
 
     IF v_coverage.ends_at IS NOT NULL AND v_coverage.ends_at > v_as_of THEN
       IF v_coverage.grace_ends_at IS NOT NULL
