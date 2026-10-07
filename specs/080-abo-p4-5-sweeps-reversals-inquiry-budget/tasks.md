@@ -92,7 +92,7 @@ cd abo && node scripts/build-platform-for-hxw.mjs && npx vitest run --config vit
 
 **Independent Test**: E2E-P4.5-09 in harnesses H-XW and H-PAY.
 
-- [ ] T013 [US3] Add the failing test `E2E-P4.5-09 hourly, 6-hour, and daily tiers find a lost refund` in `abo/test/system/sweeps.cross-worker.test.ts` — red test, FR-009, E2E-P4.5-09. Depends on T012 (same file). `runScheduled` `0 * * * *` for a 3-day-old payment, `0 */6 * * *` for a payment funding an active term, and `0 6 * * *` for a 100-day-old payment whose `payment_id` slot is today's UTC epoch-day modulo 7; then the minute cron at that daily row's `next_attempt_at`. Stub inquiry `reversed`. Each tier records one reversal with `detected_via` `inquiry` and does not record a payment. Search a parent transaction id until `paymentId("paymob", txnId)` is in today's slot, then age that payment 100 days on the test clock. The daily test advances the clock to the stored due minute. The command fails because those modules are absent.
+- [X] T013 [US3] Add the failing test `E2E-P4.5-09 hourly, 6-hour, and daily tiers find a lost refund` in `abo/test/system/sweeps.cross-worker.test.ts` — red test, FR-009, E2E-P4.5-09. Depends on T012 (same file). `runScheduled` `0 * * * *` for a 3-day-old payment, `0 */6 * * *` for a payment funding an active term, and `0 6 * * *` for a 100-day-old payment whose `payment_id` slot is today's UTC epoch-day modulo 7; then the minute cron at that daily row's `next_attempt_at`. Stub inquiry `reversed`. Each tier records one reversal with `detected_via` `inquiry` and does not record a payment. Search a parent transaction id until `paymentId("paymob", txnId)` is in today's slot, then age that payment 100 days on the test clock. The daily test advances the clock to the stored due minute. The command fails because those modules are absent.
 
 **Checkpoint**: E2E-P4.5-09 exists and fails.
 
@@ -100,7 +100,7 @@ cd abo && node scripts/build-platform-for-hxw.mjs && npx vitest run --config vit
 
 **Independent Test**: E2E-P4.5-10 in harnesses H-XW and H-PAY. Earlier suites stay green, and E2E-P4.5-01 through E2E-P4.5-09, E2E-P4.5-11, and E2E-P4.5-12 still pass.
 
-- [ ] T014 [US4] Add the failing test `E2E-P4.5-10 confirm and grant take the inquiry budget first` in `abo/test/system/sweeps.cross-worker.test.ts` — red test, FR-010, E2E-P4.5-10. Depends on T013 (same file). `runScheduled` `* * * * *` with more than 2 due provider inquiries, including one due `confirm` row and one due `grant` row. Those two rows are served. The extra sweep row stays `open` and due. `inquiry_spend.spent` for that minute is 2. The command fails because those modules are absent.
+- [X] T014 [US4] Add the failing test `E2E-P4.5-10 confirm and grant take the inquiry budget first` in `abo/test/system/sweeps.cross-worker.test.ts` — red test, FR-010, E2E-P4.5-10. Depends on T013 (same file). `runScheduled` `* * * * *` with more than 2 due provider inquiries, including one due `confirm` row and one due `grant` row. Those two rows are served. The extra sweep row stays `open` and due. `inquiry_spend.spent` for that minute is 2. The command fails because those modules are absent.
 
 **Checkpoint**: E2E-P4.5-10 exists and fails. E2E-P4.5-01 through E2E-P4.5-09, E2E-P4.5-11, and E2E-P4.5-12 still fail.
 

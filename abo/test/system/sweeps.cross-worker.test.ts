@@ -4,7 +4,7 @@
 
 import { env } from "cloudflare:test";
 import { beforeEach, describe, expect, it } from "vitest";
-import { CHANNEL_VERSIONS, grantIdPaid } from "vendor-contracts";
+import { CHANNEL_VERSIONS, grantIdPaid, paymentId } from "vendor-contracts";
 import offersFixture from "../../fixtures/offers.json";
 import badHmacFixture from "../fixtures/paymob/bad-hmac.json";
 import refundChildFixture from "../fixtures/paymob/refund-child.json";
@@ -50,6 +50,8 @@ const ORG_SWEEP_05 = "a4550005-0000-4005-8005-000000000005";
 const ORG_SWEEP_06 = "a4550006-0000-4006-8006-000000000006";
 const ORG_SWEEP_07 = "a4550007-0000-4007-8007-000000000007";
 const ORG_SWEEP_08 = "a4550008-0000-4008-8008-000000000008";
+const ORG_SWEEP_09 = "a4550009-0000-4009-8009-000000000009";
+const ORG_SWEEP_10 = "a4550010-0000-4010-8010-000000000010";
 const ORG_SWEEP_11 = "a4550011-0000-4011-8011-000000000011";
 const ORG_SWEEP_12 = "a4550012-0000-4012-8012-000000000012";
 
@@ -890,6 +892,131 @@ async function findingSubjectForKind(kind: string): Promise<string | null> {
   }
 }
 
+function paymentIdSlot(pid: string): bigint {
+  return BigInt(`0x${pid}`) % 7n;
+}
+
+function utcEpochDayMod7(isoUtc: string): number {
+  const epochDay = Math.floor(Date.parse(isoUtc) / 86_400_000);
+  return epochDay % 7;
+}
+
+function minuteKeyFromIso(isoUtc: string): string {
+  return isoUtc.slice(0, 16);
+}
+
+async function findTxnIdForTodaySlot(clockIso: string): Promise<number> {
+  const target = utcEpochDayMod7(clockIso);
+  for (let txnId = 96001; txnId < 97000; txnId += 1) {
+    const pid = await paymentId("paymob", String(txnId));
+    if (paymentIdSlot(pid) === BigInt(target)) {
+      return txnId;
+    }
+  }
+  throw new Error(`no txnId for UTC epoch-day slot ${target}`);
+}
+
+async function reversalDetectedVia(
+  paymentIdValue: string,
+): Promise<string | null> {
+  try {
+    const row = await env.DB.prepare(
+      `SELECT detected_via FROM reversal WHERE payment_id = ?`,
+    )
+      .bind(paymentIdValue)
+      .first<{ detected_via: string }>();
+    return row?.detected_via ?? null;
+  } catch {
+    return null;
+  }
+}
+
+async function inquirySpendForMinute(minuteKey: string): Promise<number | null> {
+  try {
+    const row = await env.DB.prepare(
+      `SELECT spent FROM inquiry_spend WHERE minute_key = ?`,
+    )
+      .bind(minuteKey)
+      .first<{ spent: number }>();
+    return row?.spent ?? null;
+  } catch {
+    return null;
+  }
+}
+
+async function openSweepCheckoutWorkCount(
+  checkoutId: string,
+): Promise<number> {
+  try {
+    const row = await env.DB.prepare(
+      `SELECT COUNT(*) AS n
+       FROM work
+       WHERE kind = 'sweep_checkout'
+         AND subject_id = ?
+         AND state = 'open'`,
+    )
+      .bind(checkoutId)
+      .first<{ n: number }>();
+    return row?.n ?? 0;
+  } catch {
+    return 0;
+  }
+}
+
+async function sweepPaymentNextAttemptAt(
+  paymentIdValue: string,
+): Promise<string | null> {
+  try {
+    const row = await env.DB.prepare(
+      `SELECT next_attempt_at
+       FROM work
+       WHERE kind = 'sweep_payment'
+         AND subject_id = ?
+         AND state = 'open'
+       ORDER BY next_attempt_at
+       LIMIT 1`,
+    )
+      .bind(paymentIdValue)
+      .first<{ next_attempt_at: string }>();
+    return row?.next_attempt_at ?? null;
+  } catch {
+    return null;
+  }
+}
+
+async function dueOpenWorkCount(
+  kind: string,
+  nowIso: string,
+): Promise<number> {
+  try {
+    const row = await env.DB.prepare(
+      `SELECT COUNT(*) AS n
+       FROM work
+       WHERE kind = ?
+         AND state = 'open'
+         AND next_attempt_at <= ?`,
+    )
+      .bind(kind, nowIso)
+      .first<{ n: number }>();
+    return row?.n ?? 0;
+  } catch {
+    return 0;
+  }
+}
+
+async function grantWorkAttempts(paymentIdValue: string): Promise<number> {
+  try {
+    const row = await env.DB.prepare(
+      `SELECT attempts FROM work WHERE kind = 'grant' AND subject_id = ?`,
+    )
+      .bind(paymentIdValue)
+      .first<{ attempts: number }>();
+    return row?.attempts ?? 0;
+  } catch {
+    return 0;
+  }
+}
+
 async function platformGrantVoidCount(grantId: string): Promise<number> {
   try {
     const row = await env.PLATFORM_DB.prepare(
@@ -1379,5 +1506,152 @@ describe("sweeps cross-worker", () => {
     const grantId = await grantIdPaid(paymentId!);
     expect(await platformGrantVoidCount(grantId)).toBe(0);
     expect(await reverseWorkCount()).toBe(0);
+  });
+
+  it("E2E-P4.5-09 hourly, 6-hour, and daily tiers find a lost refund", async () => {
+    const { expectations, offerVersions } = await setupReversalHarness();
+    const baseClock = "2026-06-01T12:00:00.000Z";
+    await setClock(baseClock);
+    await scriptPaymobInquiry("reversed");
+
+    const hourlyTxnId = 95091;
+    const hourlyOrg = ORG_SWEEP_09;
+    const hourlyCheckout = await paidCheckoutWithGrant(
+      hourlyOrg,
+      offerVersions[1],
+      expectations,
+      hourlyTxnId,
+    );
+    const hourlyPaymentId = await paymentIdForCheckout(hourlyCheckout.checkoutId);
+    expect(hourlyPaymentId).not.toBeNull();
+    const paymentsBeforeHourly = await tableCount("payment");
+    const reversalsBeforeHourly = await reversalCount();
+
+    await setClock(addDays(baseClock, 3));
+    await runScheduled("0 * * * *");
+
+    expect(await tableCount("payment")).toBe(paymentsBeforeHourly);
+    expect(await reversalCount()).toBe(reversalsBeforeHourly + 1);
+    expect(await reversalDetectedVia(hourlyPaymentId!)).toBe("inquiry");
+
+    const sixHourTxnId = 95092;
+    const sixHourOrg = ORG_SWEEP_09;
+    const { activePaymentId: sixHourPaymentId } = await setupActiveAndQueuedTerms(
+      sixHourOrg,
+      expectations,
+      offerVersions[1],
+      sixHourTxnId,
+      95093,
+    );
+    const paymentsBeforeSixHour = await tableCount("payment");
+    const reversalsBeforeSixHour = await reversalCount();
+
+    await runScheduled("0 */6 * * *");
+
+    expect(await tableCount("payment")).toBe(paymentsBeforeSixHour);
+    expect(await reversalCount()).toBe(reversalsBeforeSixHour + 1);
+    expect(await reversalDetectedVia(sixHourPaymentId)).toBe("inquiry");
+
+    const dailyRunDay = addDays(baseClock, 100);
+    const dailyTxnId = await findTxnIdForTodaySlot(dailyRunDay);
+    await setClock(baseClock);
+    const dailyOrg = ORG_SWEEP_09;
+    const dailyCheckout = await paidCheckoutWithGrant(
+      dailyOrg,
+      offerVersions[1],
+      expectations,
+      dailyTxnId,
+    );
+    const dailyPaymentId = await paymentIdForCheckout(dailyCheckout.checkoutId);
+    expect(dailyPaymentId).not.toBeNull();
+    expect(paymentIdSlot(dailyPaymentId!)).toBe(
+      BigInt(utcEpochDayMod7(dailyRunDay)),
+    );
+    const paymentsBeforeDaily = await tableCount("payment");
+    const reversalsBeforeDaily = await reversalCount();
+
+    await setClock(dailyRunDay);
+    await runScheduled("0 6 * * *");
+
+    const dailyDueAt = await sweepPaymentNextAttemptAt(dailyPaymentId!);
+    expect(dailyDueAt).not.toBeNull();
+    await setClock(dailyDueAt!);
+    await runScheduled("* * * * *");
+
+    expect(await tableCount("payment")).toBe(paymentsBeforeDaily);
+    expect(await reversalCount()).toBe(reversalsBeforeDaily + 1);
+    expect(await reversalDetectedVia(dailyPaymentId!)).toBe("inquiry");
+  });
+
+  it("E2E-P4.5-10 confirm and grant take the inquiry budget first", async () => {
+    const expectations = await setupSweepsHarness();
+    const offerVersions = await seedTermOfferVersions(expectations);
+    const org = ORG_SWEEP_10;
+    const baseClock = "2026-06-01T12:00:00.000Z";
+    await setClock(baseClock);
+
+    await putBillingContact(org);
+    await ensureGrantTenantBinding(org);
+    await seedHeldForTransferBinding(org);
+    const grantTxnId = 95133;
+    const grantCheckout = await postCheckoutWithOffer(
+      org,
+      offerVersions[1],
+      expectations,
+      `req-sweep-10-grant-${grantTxnId}`,
+    );
+    const grantChargedPrice = await syncPaymobForCheckout(grantCheckout.checkoutId);
+    const grantIntake = await postPaymobProcessedCallback(
+      successFixture as PaymobCallbackFixture,
+      {
+        txnId: grantTxnId,
+        amountMinor: grantChargedPrice,
+        connectingIp: "203.0.113.133",
+      },
+    );
+    expect(grantIntake.status).toBe(200);
+    const grantPaymentId = await paymentIdForCheckout(grantCheckout.checkoutId);
+    expect(grantPaymentId).not.toBeNull();
+    expect(await grantWorkState(grantPaymentId!)).toBe("open");
+
+    const sweepTxnId = 95130;
+    const sweepCheckout = await postCheckout(
+      org,
+      expectations,
+      `req-sweep-10-sweep-${sweepTxnId}`,
+    );
+    await syncPaymobForCheckout(sweepCheckout.checkoutId);
+    const sweepCheckoutId = sweepCheckout.checkoutId;
+    const sweepOpenedAt = await openedEventAt(sweepCheckoutId);
+
+    const confirmCheckout = await postCheckout(
+      org,
+      expectations,
+      "req-sweep-10-confirm-95132",
+    );
+    await syncPaymobForCheckout(confirmCheckout.checkoutId);
+    const confirmReturn = await billingFetch("/return/paymob?v=99");
+    expect(confirmReturn.status).toBe(200);
+    expect(await paymentCountForCheckout(confirmCheckout.checkoutId)).toBe(0);
+    expect(await confirmWorkState(confirmCheckout.checkoutId)).toBe("open");
+
+    const dueMinute = addMinutes(sweepOpenedAt, 2);
+    await setClock(dueMinute);
+    expect(await openSweepCheckoutWorkCount(sweepCheckoutId)).toBeGreaterThan(0);
+    expect(await dueOpenWorkCount("confirm", dueMinute)).toBeGreaterThanOrEqual(1);
+    expect(await dueOpenWorkCount("grant", dueMinute)).toBeGreaterThanOrEqual(1);
+    expect(
+      (await dueOpenWorkCount("confirm", dueMinute)) +
+        (await dueOpenWorkCount("grant", dueMinute)) +
+        (await openSweepCheckoutWorkCount(sweepCheckoutId)),
+    ).toBeGreaterThan(2);
+
+    await runScheduled("* * * * *");
+
+    expect(await dueOpenWorkCount("confirm", dueMinute)).toBe(0);
+    expect(await paymentCountForCheckout(confirmCheckout.checkoutId)).toBe(1);
+    expect(await grantWorkAttempts(grantPaymentId!)).toBeGreaterThanOrEqual(1);
+    expect(await openSweepCheckoutWorkCount(sweepCheckoutId)).toBeGreaterThan(0);
+    expect(await inquirySpendForMinute(minuteKeyFromIso(dueMinute))).toBe(2);
   });
 });
