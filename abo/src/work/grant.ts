@@ -927,8 +927,14 @@ export async function runDueGrantWork(
       if (work === null) {
         continue;
       }
-      await processGrantWork(env, work);
-      processed += 1;
+      try {
+        await processGrantWork(env, work);
+        processed += 1;
+      } catch {
+        if (work.lease_until !== null) {
+          await releaseLease(env, work.work_id, work.lease_until);
+        }
+      }
     } catch {
       // Single row failure must not throw out of cron.
     }

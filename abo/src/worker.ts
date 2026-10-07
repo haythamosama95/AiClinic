@@ -15,7 +15,7 @@ import {
 import { handleGetOffers } from "./clinic-api/offers.js";
 import { checkTokenRate } from "./clinic-api/rate.js";
 import { checkContractVersion } from "./clinic-api/version.js";
-import { handleOps as dispatchOps } from "./ops/index.js";
+import { handleOps as dispatchOps, runDueTransferSteps } from "./ops/index.js";
 import { refreshCoverageView } from "./coverage/view.js";
 import { markExportLagIfDue, sendDueAlerts } from "./alert/index.js";
 import { checkR2BucketLock } from "./alert/lock.js";
@@ -368,6 +368,11 @@ export default {
         await runMinuteInquiryBudget(env);
       } catch {
         // Inquiry budget failures must not block the minute cron.
+      }
+      try {
+        await runDueTransferSteps(env);
+      } catch {
+        // Transfer saga failures must not block the minute cron.
       }
       await markExportLagIfDue(env);
       return;

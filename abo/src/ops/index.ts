@@ -1,6 +1,8 @@
 import {
   canonicalize,
   CHANNEL_VERSIONS,
+  grantIdComp,
+  grantIdTransfer,
   humanRef,
   parseRegistrationAttestation,
   sha256Hex,
@@ -1333,9 +1335,8 @@ async function handleGetClinic(
   access: VerifiedAccess,
   contractVersion: number,
 ): Promise<Response> {
-  const coverage = await env.PLATFORM.inspectCoverage({
+  const coverage = await env.PLATFORM.getCoverage({
     contract_version: CHANNEL_VERSIONS.vendorEntrypoint,
-    access_jwt: access.jwt,
     org_id: orgId,
   });
   if (coverage.result !== "ok" || typeof coverage.detail !== "string") {
@@ -1346,7 +1347,31 @@ async function handleGetClinic(
     );
   }
 
-  const coverageDetail = JSON.parse(coverage.detail) as Record<string, unknown>;
+  const coverageParsed = JSON.parse(coverage.detail) as {
+    snapshot?: Record<string, unknown>;
+  };
+  const snapshot = coverageParsed.snapshot ?? {};
+  const bindingEpoch = snapshot.binding_epoch;
+
+  const inspectCoverage = await env.PLATFORM.inspectCoverage({
+    contract_version: CHANNEL_VERSIONS.vendorEntrypoint,
+    access_jwt: access.jwt,
+    org_id: orgId,
+  });
+  if (inspectCoverage.result !== "ok" || typeof inspectCoverage.detail !== "string") {
+    return clinicErrorResponse(
+      typeof inspectCoverage.code === "string"
+        ? inspectCoverage.code
+        : "coverage_unknown",
+      404,
+      contractVersion,
+    );
+  }
+
+  const coverageDetail = JSON.parse(inspectCoverage.detail) as Record<
+    string,
+    unknown
+  >;
 
   const checkoutRows = await env.DB.prepare(
     `SELECT c.*, cs.state, cs.last_event_at
@@ -1468,6 +1493,7 @@ async function handleGetClinic(
   return clinicJsonResponse(
     {
       contract_version: contractVersion,
+      binding_epoch: bindingEpoch,
       terms: coverageDetail.terms,
       grants: coverageDetail.grants,
       reservations: coverageDetail.reservations,
@@ -1735,6 +1761,894 @@ async function handlePostCancel(
   );
 }
 
+const TRANSFER_LEASE_MS = 60_000;
+const TRANSFER_BATCH_LIMIT = 50;
+
+type TransferWorkRow = {
+  work_id: string;
+  kind: string;
+  subject_id: string;
+  state: string;
+  attempts: number;
+  next_attempt_at: string | null;
+  lease_until: string | null;
+  last_error: string | null;
+};
+
+async function operatorActionExists(
+  env: OpsEnv,
+  actionId: string,
+): Promise<boolean> {
+  const row = await env.DB.prepare(
+    `SELECT 1 FROM operator_action WHERE action_id = ?`,
+  )
+    .bind(actionId)
+    .first();
+  return row !== null;
+}
+
+async function grantRequestExists(
+  env: OpsEnv,
+  grantId: string,
+): Promise<boolean> {
+  const row = await env.DB.prepare(
+    `SELECT 1 FROM grant_request WHERE grant_id = ?`,
+  )
+    .bind(grantId)
+    .first();
+  return row !== null;
+}
+
+function relayFactLogStatement(
+  env: OpsEnv,
+  table: string,
+  key: string,
+  rowSha256: string,
+  createdAt: string,
+): D1PreparedStatement {
+  return env.DB.prepare(
+    `INSERT INTO fact_log ("table", key, row_sha256, created_at) VALUES (?, ?, ?, ?)`,
+  ).bind(table, key, rowSha256, createdAt);
+}
+
+function complimentaryGrantRequestCanonical(input: {
+  grantId: string;
+  orgId: string;
+  actionId: string;
+  envelopeText: string;
+  envelopeSha256: string;
+  assertion: string | null;
+}): Record<string, unknown> {
+  return {
+    grant_id: input.grantId,
+    org_id: input.orgId,
+    source_kind: "complimentary",
+    source_ref: input.actionId,
+    envelope: input.envelopeText,
+    envelope_sha256: input.envelopeSha256,
+    assertion: input.assertion,
+  };
+}
+
+function relayGrantOutcomeCanonical(input: {
+  grantId: string;
+  result: string;
+  receipt: Record<string, unknown> | null;
+  termIds: string[] | null;
+  at: string;
+}): Record<string, unknown> {
+  return {
+    grant_id: input.grantId,
+    result: input.result,
+    abo_kid: null,
+    abo_signature: null,
+    receipt: input.receipt === null ? null : JSON.stringify(input.receipt),
+    term_ids: input.termIds === null ? null : JSON.stringify(input.termIds),
+    at: input.at,
+  };
+}
+
+function transferGrantRequestCanonical(input: {
+  grantId: string;
+  orgId: string;
+  transferId: string;
+  envelopeText: string;
+  envelopeSha256: string;
+}): Record<string, unknown> {
+  return {
+    grant_id: input.grantId,
+    org_id: input.orgId,
+    source_kind: "transfer",
+    source_ref: input.transferId,
+    envelope: input.envelopeText,
+    envelope_sha256: input.envelopeSha256,
+    assertion: null,
+  };
+}
+
+async function insertRelayOperatorAction(
+  env: OpsEnv,
+  row: {
+    action_id: string;
+    actor_email: string;
+    access_jti: string;
+    action: string;
+    subject: string;
+    params_sha256: string;
+    assertion_sha256: string | null;
+    result: string;
+  },
+): Promise<void> {
+  if (await operatorActionExists(env, row.action_id)) {
+    return;
+  }
+  const createdAt = await clockNowIso(env);
+  await insertOperatorAction(env, row, createdAt);
+}
+
+async function recordComplimentaryGrantRows(
+  env: OpsEnv,
+  input: {
+    grantId: string;
+    orgId: string;
+    actionId: string;
+    envelope: Record<string, unknown>;
+    assertion: unknown;
+    platformResult: Record<string, unknown>;
+  },
+): Promise<void> {
+  const result = String(input.platformResult.result ?? "");
+  if (
+    result !== "applied" &&
+    result !== "already_applied" &&
+    result !== "rejected" &&
+    result !== "conflict"
+  ) {
+    return;
+  }
+
+  const envelopeBytes = canonicalize(input.envelope);
+  const envelopeText = new TextDecoder().decode(envelopeBytes);
+  const envelopeSha256 = await sha256Hex(envelopeBytes);
+  const assertionText =
+    input.assertion === undefined || input.assertion === null
+      ? null
+      : JSON.stringify(input.assertion);
+
+  const nowIso = await clockNowIso(env);
+  const requestCanonical = complimentaryGrantRequestCanonical({
+    grantId: input.grantId,
+    orgId: input.orgId,
+    actionId: input.actionId,
+    envelopeText,
+    envelopeSha256,
+    assertion: assertionText,
+  });
+  const receipt =
+    typeof input.platformResult.receipt === "object" &&
+    input.platformResult.receipt !== null &&
+    !Array.isArray(input.platformResult.receipt)
+      ? (input.platformResult.receipt as Record<string, unknown>)
+      : null;
+  const termIds =
+    receipt !== null && Array.isArray(receipt.term_ids)
+      ? receipt.term_ids.filter(
+          (value): value is string => typeof value === "string",
+        )
+      : null;
+  const outcomeCanonical = relayGrantOutcomeCanonical({
+    grantId: input.grantId,
+    result,
+    receipt,
+    termIds,
+    at: nowIso,
+  });
+  const requestSha = await sha256Hex(canonicalize(requestCanonical));
+  const outcomeSha = await sha256Hex(canonicalize(outcomeCanonical));
+
+  const statements: D1PreparedStatement[] = [];
+  if (!(await grantRequestExists(env, input.grantId))) {
+    statements.push(
+      env.DB.prepare(
+        `INSERT OR IGNORE INTO grant_request (
+           grant_id, org_id, source_kind, source_ref, envelope, envelope_sha256, assertion
+         ) VALUES (?, ?, 'complimentary', ?, ?, ?, ?)`,
+      ).bind(
+        input.grantId,
+        input.orgId,
+        input.actionId,
+        envelopeText,
+        envelopeSha256,
+        assertionText,
+      ),
+    );
+  }
+  statements.push(
+    env.DB.prepare(
+      `INSERT OR IGNORE INTO grant_outcome (
+         grant_id, result, abo_kid, abo_signature, receipt, term_ids, at
+       ) VALUES (?, ?, NULL, NULL, ?, ?, ?)`,
+    ).bind(
+      input.grantId,
+      result,
+      receipt === null ? null : JSON.stringify(receipt),
+      termIds === null ? null : JSON.stringify(termIds),
+      nowIso,
+    ),
+    relayFactLogStatement(env, "grant_request", input.grantId, requestSha, nowIso),
+    relayFactLogStatement(env, "grant_outcome", input.grantId, outcomeSha, nowIso),
+  );
+  await env.DB.batch(statements);
+}
+
+function platformResponseJson(
+  platformResult: Record<string, unknown>,
+  contractVersion: number,
+): Response {
+  const body: Record<string, unknown> = {
+    contract_version: contractVersion,
+    result: platformResult.result,
+  };
+  if (typeof platformResult.code === "string" && platformResult.code.length > 0) {
+    body.code = platformResult.code;
+  }
+  if (platformResult.detail !== undefined) {
+    body.detail = platformResult.detail;
+  }
+  if (platformResult.receipt !== undefined) {
+    body.receipt = platformResult.receipt;
+  }
+  return clinicJsonResponse(body, 200, contractVersion);
+}
+
+async function handlePostComplimentaryGrant(
+  env: OpsEnv,
+  orgId: string,
+  access: VerifiedAccess,
+  request: Request,
+  contractVersion: number,
+): Promise<Response> {
+  const body = await parseHpRequestBody(request);
+  if (body === null) {
+    return clinicErrorResponse("assertion_invalid", 400, contractVersion);
+  }
+
+  const actionId = body.action_id;
+  if (typeof actionId !== "string" || actionId.length === 0) {
+    return clinicErrorResponse("assertion_invalid", 400, contractVersion);
+  }
+
+  const envelope = body.envelope;
+  if (!isRecord(envelope)) {
+    return clinicErrorResponse("assertion_invalid", 400, contractVersion);
+  }
+
+  const platformArgs: Record<string, unknown> = {
+    contract_version: CHANNEL_VERSIONS.vendorEntrypoint,
+    access_jwt: access.jwt,
+    envelope,
+    operation: body.operation,
+    signer_credential_id: body.signer_credential_id,
+  };
+  if (body.assertion !== undefined) {
+    platformArgs.assertion = body.assertion;
+  }
+  if (body.ceiling_override_operation !== undefined) {
+    platformArgs.ceiling_override_operation = body.ceiling_override_operation;
+  }
+
+  const platformResult = await env.PLATFORM.grant(platformArgs);
+  const result = String(platformResult.result ?? "");
+  const paramsSha256 = await sha256Hex(
+    canonicalize({ org_id: orgId, action_id: actionId }),
+  );
+  const operation = body.operation;
+  const assertionSha256 =
+    isRecord(operation)
+      ? await sha256Hex(canonicalize(operation))
+      : null;
+
+  await insertRelayOperatorAction(env, {
+    action_id: actionId,
+    actor_email: access.email,
+    access_jti: access.jti,
+    action: "grant",
+    subject: orgId,
+    params_sha256: paramsSha256,
+    assertion_sha256: assertionSha256,
+    result,
+  });
+
+  const grantId = await grantIdComp(actionId);
+  await recordComplimentaryGrantRows(env, {
+    grantId,
+    orgId,
+    actionId,
+    envelope,
+    assertion: body.assertion,
+    platformResult,
+  });
+
+  return platformResponseJson(platformResult, contractVersion);
+}
+
+async function handlePostSuspend(
+  env: OpsEnv,
+  orgId: string,
+  access: VerifiedAccess,
+  request: Request,
+  contractVersion: number,
+): Promise<Response> {
+  const body = await parseHpRequestBody(request);
+  if (body === null) {
+    return clinicErrorResponse("assertion_invalid", 400, contractVersion);
+  }
+
+  const actionId = body.action_id;
+  const reason = body.reason;
+  if (typeof actionId !== "string" || typeof reason !== "string") {
+    return clinicErrorResponse("assertion_invalid", 400, contractVersion);
+  }
+
+  const platformResult = await env.PLATFORM.suspend({
+    contract_version: CHANNEL_VERSIONS.vendorEntrypoint,
+    access_jwt: access.jwt,
+    org_id: orgId,
+    reason,
+  });
+  const result = String(platformResult.result ?? "");
+  const paramsSha256 = await sha256Hex(
+    canonicalize({ org_id: orgId, reason }),
+  );
+
+  await insertRelayOperatorAction(env, {
+    action_id: actionId,
+    actor_email: access.email,
+    access_jti: access.jti,
+    action: "suspend",
+    subject: orgId,
+    params_sha256: paramsSha256,
+    assertion_sha256: null,
+    result,
+  });
+
+  return platformResponseJson(platformResult, contractVersion);
+}
+
+async function handlePostResume(
+  env: OpsEnv,
+  orgId: string,
+  access: VerifiedAccess,
+  request: Request,
+  contractVersion: number,
+): Promise<Response> {
+  const body = await parseHpRequestBody(request);
+  if (body === null) {
+    return clinicErrorResponse("assertion_invalid", 400, contractVersion);
+  }
+
+  const actionId = body.action_id;
+  const reason = body.reason;
+  if (typeof actionId !== "string" || typeof reason !== "string") {
+    return clinicErrorResponse("assertion_invalid", 400, contractVersion);
+  }
+
+  const platformResult = await env.PLATFORM.resume({
+    contract_version: CHANNEL_VERSIONS.vendorEntrypoint,
+    access_jwt: access.jwt,
+    org_id: orgId,
+    reason,
+  });
+  const result = String(platformResult.result ?? "");
+  const paramsSha256 = await sha256Hex(
+    canonicalize({ org_id: orgId, reason }),
+  );
+
+  await insertRelayOperatorAction(env, {
+    action_id: actionId,
+    actor_email: access.email,
+    access_jti: access.jti,
+    action: "resume",
+    subject: orgId,
+    params_sha256: paramsSha256,
+    assertion_sha256: null,
+    result,
+  });
+
+  return platformResponseJson(platformResult, contractVersion);
+}
+
+async function handlePostListGrantsForVoid(
+  env: OpsEnv,
+  access: VerifiedAccess,
+  request: Request,
+  contractVersion: number,
+): Promise<Response> {
+  const body = await parseHpRequestBody(request);
+  if (body === null) {
+    return clinicErrorResponse("assertion_invalid", 400, contractVersion);
+  }
+
+  const actionId = body.action_id;
+  const credentialId = body.credential_id;
+  const window = body.window;
+  if (
+    typeof actionId !== "string" ||
+    typeof credentialId !== "string" ||
+    !isRecord(window)
+  ) {
+    return clinicErrorResponse("assertion_invalid", 400, contractVersion);
+  }
+
+  const platformResult = await env.PLATFORM.listGrantsForVoid({
+    contract_version: CHANNEL_VERSIONS.vendorEntrypoint,
+    access_jwt: access.jwt,
+    credential_id: credentialId,
+    window,
+  });
+  const result = String(platformResult.result ?? "");
+  const paramsSha256 = await sha256Hex(
+    canonicalize({ credential_id: credentialId, window }),
+  );
+
+  await insertRelayOperatorAction(env, {
+    action_id: actionId,
+    actor_email: access.email,
+    access_jti: access.jti,
+    action: "listGrantsForVoid",
+    subject: credentialId,
+    params_sha256: paramsSha256,
+    assertion_sha256: null,
+    result,
+  });
+
+  return platformResponseJson(platformResult, contractVersion);
+}
+
+async function handlePostGrantHpRelay(
+  env: OpsEnv,
+  grantId: string,
+  platformMethod: "voidGrant" | "releaseHeld",
+  access: VerifiedAccess,
+  request: Request,
+  contractVersion: number,
+): Promise<Response> {
+  const body = await parseHpRequestBody(request);
+  if (body === null) {
+    return clinicErrorResponse("assertion_invalid", 400, contractVersion);
+  }
+
+  const actionId = body.action_id;
+  const reason = body.reason;
+  if (typeof actionId !== "string" || typeof reason !== "string") {
+    return clinicErrorResponse("assertion_invalid", 400, contractVersion);
+  }
+
+  const platformArgs: Record<string, unknown> = {
+    contract_version: CHANNEL_VERSIONS.vendorEntrypoint,
+    access_jwt: access.jwt,
+    grant_id: grantId,
+    reason,
+    operation: body.operation,
+    assertion: body.assertion,
+    signer_credential_id: body.signer_credential_id,
+  };
+
+  const platformResult =
+    platformMethod === "voidGrant"
+      ? await env.PLATFORM.voidGrant(platformArgs)
+      : await env.PLATFORM.releaseHeld(platformArgs);
+  const result = String(platformResult.result ?? "");
+  const paramsSha256 = await sha256Hex(
+    canonicalize({ grant_id: grantId, reason }),
+  );
+  const operation = body.operation;
+  const assertionSha256 =
+    isRecord(operation)
+      ? await sha256Hex(canonicalize(operation))
+      : null;
+
+  await insertRelayOperatorAction(env, {
+    action_id: actionId,
+    actor_email: access.email,
+    access_jti: access.jti,
+    action: platformMethod,
+    subject: grantId,
+    params_sha256: paramsSha256,
+    assertion_sha256: assertionSha256,
+    result,
+  });
+
+  return platformResponseJson(platformResult, contractVersion);
+}
+
+async function handlePostDeleteInstallation(
+  env: OpsEnv,
+  orgId: string,
+  access: VerifiedAccess,
+  request: Request,
+  contractVersion: number,
+): Promise<Response> {
+  const body = await parseHpRequestBody(request);
+  if (body === null) {
+    return clinicErrorResponse("assertion_invalid", 400, contractVersion);
+  }
+
+  const actionId = body.action_id;
+  const reason = body.reason;
+  if (typeof actionId !== "string" || typeof reason !== "string") {
+    return clinicErrorResponse("assertion_invalid", 400, contractVersion);
+  }
+
+  const platformResult = await env.PLATFORM.deleteInstallation({
+    contract_version: CHANNEL_VERSIONS.vendorEntrypoint,
+    access_jwt: access.jwt,
+    org_id: orgId,
+    reason,
+    operation: body.operation,
+    assertion: body.assertion,
+    signer_credential_id: body.signer_credential_id,
+  });
+  const result = String(platformResult.result ?? "");
+  const paramsSha256 = await sha256Hex(
+    canonicalize({ org_id: orgId, reason }),
+  );
+  const operation = body.operation;
+  const assertionSha256 =
+    isRecord(operation)
+      ? await sha256Hex(canonicalize(operation))
+      : null;
+
+  await insertRelayOperatorAction(env, {
+    action_id: actionId,
+    actor_email: access.email,
+    access_jti: access.jti,
+    action: "deleteInstallation",
+    subject: orgId,
+    params_sha256: paramsSha256,
+    assertion_sha256: assertionSha256,
+    result,
+  });
+
+  return platformResponseJson(platformResult, contractVersion);
+}
+
+async function handlePostBeginTransfer(
+  env: OpsEnv,
+  orgId: string,
+  access: VerifiedAccess,
+  request: Request,
+  contractVersion: number,
+): Promise<Response> {
+  const body = await parseHpRequestBody(request);
+  if (body === null) {
+    return clinicErrorResponse("assertion_invalid", 400, contractVersion);
+  }
+
+  const actionId = body.action_id;
+  const fromInstallationId = body.from_installation_id;
+  const reason = body.reason;
+  if (
+    typeof actionId !== "string" ||
+    typeof fromInstallationId !== "string" ||
+    typeof reason !== "string"
+  ) {
+    return clinicErrorResponse("assertion_invalid", 400, contractVersion);
+  }
+
+  const platformResult = await env.PLATFORM.beginTransfer({
+    contract_version: CHANNEL_VERSIONS.vendorEntrypoint,
+    access_jwt: access.jwt,
+    org_id: orgId,
+    from_installation_id: fromInstallationId,
+    reason,
+    operation: body.operation,
+    assertion: body.assertion,
+    signer_credential_id: body.signer_credential_id,
+  });
+  const result = String(platformResult.result ?? "");
+  const paramsSha256 = await sha256Hex(
+    canonicalize({
+      org_id: orgId,
+      from_installation_id: fromInstallationId,
+      reason,
+    }),
+  );
+  const operation = body.operation;
+  const assertionSha256 =
+    isRecord(operation)
+      ? await sha256Hex(canonicalize(operation))
+      : null;
+
+  await insertRelayOperatorAction(env, {
+    action_id: actionId,
+    actor_email: access.email,
+    access_jti: access.jti,
+    action: "beginTransfer",
+    subject: orgId,
+    params_sha256: paramsSha256,
+    assertion_sha256: assertionSha256,
+    result,
+  });
+
+  if (result === "ok" && typeof platformResult.detail === "string") {
+    const detail = JSON.parse(platformResult.detail) as Record<string, unknown>;
+    const transferId = detail.transfer_id;
+    if (typeof transferId === "string" && transferId.length > 0) {
+      const dedupeKey = `transfer_step:${transferId}`;
+      const existing = await env.DB.prepare(
+        `SELECT 1 FROM work WHERE dedupe_key = ?`,
+      )
+        .bind(dedupeKey)
+        .first();
+      if (existing === null) {
+        const nowIso = await clockNowIso(env);
+        const workId = crypto.randomUUID();
+        await env.DB.prepare(
+          `INSERT INTO work (
+             work_id, kind, subject_id, dedupe_key, state, attempts,
+             next_attempt_at, lease_until, last_error, opened_at
+           ) VALUES (?, 'transfer_step', ?, ?, 'open', 0, NULL, NULL, NULL, ?)`,
+        )
+          .bind(workId, transferId, dedupeKey, nowIso)
+          .run();
+      }
+    }
+  }
+
+  return platformResponseJson(platformResult, contractVersion);
+}
+
+async function takeTransferWork(
+  env: OpsEnv,
+  workId: string,
+): Promise<TransferWorkRow | null> {
+  const nowMs = await clockNowMs(env);
+  const nowIso = new Date(nowMs).toISOString();
+  const leaseUntil = new Date(nowMs + TRANSFER_LEASE_MS).toISOString();
+
+  const leased = await env.DB.prepare(
+    `UPDATE work
+     SET lease_until = ?
+     WHERE work_id = ?
+       AND kind = 'transfer_step'
+       AND state = 'open'
+       AND (lease_until IS NULL OR lease_until <= ?)
+       AND (next_attempt_at IS NULL OR next_attempt_at <= ?)`,
+  )
+    .bind(leaseUntil, workId, nowIso, nowIso)
+    .run();
+  if ((leased.meta.changes ?? 0) === 0) {
+    return null;
+  }
+
+  return env.DB.prepare(
+    `SELECT work_id, kind, subject_id, state, attempts, next_attempt_at,
+            lease_until, last_error
+     FROM work WHERE work_id = ? AND lease_until = ?`,
+  )
+    .bind(workId, leaseUntil)
+    .first<TransferWorkRow>();
+}
+
+async function clearTransferLease(
+  env: OpsEnv,
+  workId: string,
+  leaseUntil: string,
+): Promise<void> {
+  await env.DB.prepare(
+    `UPDATE work SET lease_until = NULL WHERE work_id = ? AND lease_until = ?`,
+  )
+    .bind(workId, leaseUntil)
+    .run();
+}
+
+async function writeTransferGrantRequests(
+  env: OpsEnv,
+  transferId: string,
+  packageDetail: unknown,
+): Promise<void> {
+  if (!Array.isArray(packageDetail)) {
+    return;
+  }
+
+  const nowIso = await clockNowIso(env);
+  for (let n = 0; n < packageDetail.length; n += 1) {
+    const element = packageDetail[n];
+    if (!isRecord(element)) {
+      continue;
+    }
+    const orgId = element.org_id;
+    if (typeof orgId !== "string" || orgId.length === 0) {
+      continue;
+    }
+    const grantId = await grantIdTransfer(transferId, n);
+    if (await grantRequestExists(env, grantId)) {
+      continue;
+    }
+    const envelopeBytes = canonicalize(element);
+    const envelopeText = new TextDecoder().decode(envelopeBytes);
+    const envelopeSha256 = await sha256Hex(envelopeBytes);
+    const requestCanonical = transferGrantRequestCanonical({
+      grantId,
+      orgId,
+      transferId,
+      envelopeText,
+      envelopeSha256,
+    });
+    const requestSha = await sha256Hex(canonicalize(requestCanonical));
+    await env.DB.batch([
+      env.DB.prepare(
+        `INSERT OR IGNORE INTO grant_request (
+           grant_id, org_id, source_kind, source_ref, envelope, envelope_sha256, assertion
+         ) VALUES (?, ?, 'transfer', ?, ?, ?, NULL)`,
+      ).bind(
+        grantId,
+        orgId,
+        transferId,
+        envelopeText,
+        envelopeSha256,
+      ),
+      relayFactLogStatement(env, "grant_request", grantId, requestSha, nowIso),
+    ]);
+  }
+}
+
+async function finishTransferStep(
+  env: OpsEnv,
+  work: TransferWorkRow,
+  leaseUntil: string,
+): Promise<void> {
+  await env.DB.prepare(
+    `UPDATE work SET state = 'done', lease_until = NULL, last_error = NULL
+     WHERE work_id = ? AND lease_until = ?`,
+  )
+    .bind(work.work_id, leaseUntil)
+    .run();
+}
+
+async function reopenTransferStep(
+  env: OpsEnv,
+  work: TransferWorkRow,
+  leaseUntil: string,
+  lastError: string,
+): Promise<void> {
+  await env.DB.prepare(
+    `UPDATE work SET lease_until = NULL, last_error = ?
+     WHERE work_id = ? AND lease_until = ?`,
+  )
+    .bind(lastError, work.work_id, leaseUntil)
+    .run();
+}
+
+async function processTransferStepWork(
+  env: OpsEnv,
+  work: TransferWorkRow,
+): Promise<void> {
+  const leaseUntil = work.lease_until;
+  if (leaseUntil === null) {
+    return;
+  }
+
+  const transferId = work.subject_id;
+  const contractArgs = {
+    contract_version: CHANNEL_VERSIONS.vendorEntrypoint,
+    transfer_id: transferId,
+  };
+
+  if (work.last_error === null) {
+    const inResult = await env.PLATFORM.transferIn(contractArgs);
+    const inOutcome = String(inResult.result ?? "");
+    if (
+      inOutcome === "transient" &&
+      inResult.detail === "awaiting_transfer_out"
+    ) {
+      await reopenTransferStep(env, work, leaseUntil, "awaiting_transfer_out");
+      return;
+    }
+    if (inOutcome === "applied" || inOutcome === "already_applied") {
+      await finishTransferStep(env, work, leaseUntil);
+      return;
+    }
+    await reopenTransferStep(
+      env,
+      work,
+      leaseUntil,
+      inOutcome.length > 0 ? inOutcome : "transient",
+    );
+    return;
+  }
+
+  if (work.last_error === "awaiting_transfer_out") {
+    const outResult = await env.PLATFORM.transferOut(contractArgs);
+    const outOutcome = String(outResult.result ?? "");
+    if (outOutcome === "applied" || outOutcome === "already_applied") {
+      let packageDetail: unknown = outResult.detail;
+      if (typeof packageDetail === "string") {
+        try {
+          packageDetail = JSON.parse(packageDetail) as unknown;
+        } catch {
+          packageDetail = null;
+        }
+      }
+      await writeTransferGrantRequests(env, transferId, packageDetail);
+
+      const inResult = await env.PLATFORM.transferIn(contractArgs);
+      const inOutcome = String(inResult.result ?? "");
+      if (inOutcome === "applied" || inOutcome === "already_applied") {
+        await finishTransferStep(env, work, leaseUntil);
+        return;
+      }
+      await reopenTransferStep(
+        env,
+        work,
+        leaseUntil,
+        inOutcome === "transient"
+          ? "awaiting_transfer_in"
+          : inOutcome.length > 0
+            ? inOutcome
+            : "awaiting_transfer_in",
+      );
+      return;
+    }
+    await reopenTransferStep(
+      env,
+      work,
+      leaseUntil,
+      outOutcome.length > 0 ? outOutcome : "transient",
+    );
+    return;
+  }
+
+  const inResult = await env.PLATFORM.transferIn(contractArgs);
+  const inOutcome = String(inResult.result ?? "");
+  if (inOutcome === "applied" || inOutcome === "already_applied") {
+    await finishTransferStep(env, work, leaseUntil);
+    return;
+  }
+  await reopenTransferStep(
+    env,
+    work,
+    leaseUntil,
+    inOutcome.length > 0 ? inOutcome : "transient",
+  );
+}
+
+export async function runDueTransferSteps(
+  env: OpsEnv,
+  limit = TRANSFER_BATCH_LIMIT,
+): Promise<number> {
+  const nowIso = await clockNowIso(env);
+  const due = await env.DB.prepare(
+    `SELECT work_id FROM work
+     WHERE kind = 'transfer_step'
+       AND state = 'open'
+       AND (next_attempt_at IS NULL OR next_attempt_at <= ?)
+     ORDER BY opened_at ASC
+     LIMIT ?`,
+  )
+    .bind(nowIso, limit)
+    .all<{ work_id: string }>();
+
+  let processed = 0;
+  for (const row of due.results ?? []) {
+    const work = await takeTransferWork(env, row.work_id);
+    if (work === null) {
+      continue;
+    }
+    try {
+      await processTransferStepWork(env, work);
+      processed += 1;
+    } catch {
+      const leaseUntil = work.lease_until;
+      if (leaseUntil !== null) {
+        await clearTransferLease(env, work.work_id, leaseUntil);
+      }
+    }
+  }
+  return processed;
+}
+
 export async function handleOps(
   request: Request,
   env: OpsEnv,
@@ -1863,6 +2777,91 @@ export async function handleOps(
       request,
       contractVersion,
       handleHpEraseContact,
+    );
+  }
+
+  const complimentaryGrantMatch =
+    /^\/ops\/orgs\/([^/]+)\/complimentary-grant$/u.exec(path);
+  if (request.method === "POST" && complimentaryGrantMatch !== null) {
+    return handlePostComplimentaryGrant(
+      env,
+      complimentaryGrantMatch[1]!,
+      access,
+      request,
+      contractVersion,
+    );
+  }
+
+  const suspendMatch = /^\/ops\/orgs\/([^/]+)\/suspend$/u.exec(path);
+  if (request.method === "POST" && suspendMatch !== null) {
+    return handlePostSuspend(
+      env,
+      suspendMatch[1]!,
+      access,
+      request,
+      contractVersion,
+    );
+  }
+
+  const resumeMatch = /^\/ops\/orgs\/([^/]+)\/resume$/u.exec(path);
+  if (request.method === "POST" && resumeMatch !== null) {
+    return handlePostResume(
+      env,
+      resumeMatch[1]!,
+      access,
+      request,
+      contractVersion,
+    );
+  }
+
+  const deleteInstallationMatch =
+    /^\/ops\/orgs\/([^/]+)\/delete-installation$/u.exec(path);
+  if (request.method === "POST" && deleteInstallationMatch !== null) {
+    return handlePostDeleteInstallation(
+      env,
+      deleteInstallationMatch[1]!,
+      access,
+      request,
+      contractVersion,
+    );
+  }
+
+  const beginTransferMatch = /^\/ops\/orgs\/([^/]+)\/begin-transfer$/u.exec(path);
+  if (request.method === "POST" && beginTransferMatch !== null) {
+    return handlePostBeginTransfer(
+      env,
+      beginTransferMatch[1]!,
+      access,
+      request,
+      contractVersion,
+    );
+  }
+
+  if (request.method === "POST" && path === "/ops/grants/list-for-void") {
+    return handlePostListGrantsForVoid(env, access, request, contractVersion);
+  }
+
+  const voidGrantMatch = /^\/ops\/grants\/([^/]+)\/void$/u.exec(path);
+  if (request.method === "POST" && voidGrantMatch !== null) {
+    return handlePostGrantHpRelay(
+      env,
+      voidGrantMatch[1]!,
+      "voidGrant",
+      access,
+      request,
+      contractVersion,
+    );
+  }
+
+  const releaseHeldMatch = /^\/ops\/grants\/([^/]+)\/release-held$/u.exec(path);
+  if (request.method === "POST" && releaseHeldMatch !== null) {
+    return handlePostGrantHpRelay(
+      env,
+      releaseHeldMatch[1]!,
+      "releaseHeld",
+      access,
+      request,
+      contractVersion,
     );
   }
 

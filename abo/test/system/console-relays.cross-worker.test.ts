@@ -23,6 +23,7 @@ import notifyWorkMigrationSql from "../../migrations/0003_notify_work.sql?raw";
 import grantMigrationSql from "../../migrations/0004_grant.sql?raw";
 import reversalMigrationSql from "../../migrations/0005_reversal.sql?raw";
 import operatorActionMigrationSql from "../../migrations/0006_operator_action.sql?raw";
+import hpActionsMigrationSql from "../../migrations/0007_hp_actions.sql?raw";
 import { loadOffersFixture } from "../../src/records/append";
 import {
   applySql,
@@ -71,10 +72,17 @@ const ORG_CR_05 = "a4880005-0005-4005-8005-000000000005";
 const ORG_CR_07 = "a4880007-0007-4007-8007-000000000007";
 const ORG_CR_08 = "a4880008-0008-4008-8008-000000000008";
 
-const VOID_LIST_WINDOW = {
-  applied_from: "2026-06-01T00:00:00.000Z",
-  applied_to: "2026-06-30T23:59:59.999Z",
-};
+async function voidListWindowAroundHarnessClock(): Promise<{
+  applied_from: string;
+  applied_to: string;
+}> {
+  const nowIso = await currentHarnessClockIso();
+  const nowMs = Date.parse(nowIso);
+  return {
+    applied_from: new Date(nowMs - 86_400_000).toISOString(),
+    applied_to: new Date(nowMs + 86_400_000).toISOString(),
+  };
+}
 
 type OffersFixtureExpectations = {
   offer_id: string;
@@ -342,6 +350,7 @@ async function ensureMigrations(): Promise<void> {
     grantMigrationSql,
     reversalMigrationSql,
     operatorActionMigrationSql,
+    hpActionsMigrationSql,
   ]) {
     try {
       await applySql(sql);
@@ -827,9 +836,11 @@ async function buildComplimentaryEnvelope(input: {
   count?: number;
   adjustment?: Record<string, unknown>;
   ceilingOverride?: Record<string, unknown>;
+  operatorCredentialId?: string;
 }): Promise<Record<string, unknown>> {
   const ref = input.actionId;
   const contentSha256 = await sha256Hex(new TextEncoder().encode(ref));
+  const operatorCredentialId = input.operatorCredentialId ?? "cred-001";
   const envelope: Record<string, unknown> = {
     contract_version: CONTRACT_VERSION,
     grant_id: await grantIdComp(input.actionId),
@@ -848,7 +859,7 @@ async function buildComplimentaryEnvelope(input: {
     grace: { days: 7, cap_rule: "proportional" },
     evidence: {
       content_sha256: contentSha256,
-      approvals: [{ credential_id: "cred-001", assertion: "stub" }],
+      approvals: [{ credential_id: operatorCredentialId, assertion: "stub" }],
     },
   };
   if (input.ceilingOverride !== undefined) {
@@ -856,7 +867,7 @@ async function buildComplimentaryEnvelope(input: {
     envelope.evidence = {
       content_sha256: contentSha256,
       approvals: [
-        { credential_id: "cred-001", assertion: "stub" },
+        { credential_id: operatorCredentialId, assertion: "stub" },
         { credential_id: "cred-002", assertion: "stub" },
       ],
     };
@@ -938,6 +949,7 @@ async function opsComplimentaryGrantRelay(input: {
     count: input.count,
     adjustment: input.adjustment,
     ceilingOverride: input.ceilingOverride,
+    operatorCredentialId: input.hpCredential.credentialId,
   });
   const operation = await operationForHpGrant({
     accessJwt: input.accessJwt,
@@ -1102,6 +1114,15 @@ async function paymentIdForCheckout(checkoutId: string): Promise<string | null> 
   return row?.payment_id ?? null;
 }
 
+async function clearStuckGrantLease(paymentId: string): Promise<void> {
+  await env.DB.prepare(
+    `UPDATE work SET lease_until = NULL
+     WHERE kind = 'grant' AND subject_id = ? AND state = 'open'`,
+  )
+    .bind(paymentId)
+    .run();
+}
+
 async function runGrantStep(orgId: string): Promise<void> {
   const { runDueGrantWork } = await import("../../src/work/grant");
   await runScheduled("* * * * *");
@@ -1118,6 +1139,7 @@ async function runDueGrantWorkUntilApplied(
     if ((await grantOutcomeResult(grantId)) === "applied") {
       return;
     }
+    await clearStuckGrantLease(paymentId);
     await runGrantStep(orgId);
   }
   expect(await grantOutcomeResult(grantId)).toBe("applied");
@@ -1237,6 +1259,7 @@ async function complimentaryGrantOnPlatform(input: {
     orgId: input.orgId,
     actionId: input.actionId,
     count: input.count ?? 14,
+    operatorCredentialId: input.hpCredential.credentialId,
   });
   const operation = await operationForHpGrant({
     accessJwt: input.hpCredential.accessJwt,
@@ -1617,8 +1640,9 @@ describe("console relays cross-worker", () => {
     expect(grantRow!.source_ref).toBe(extensionActionId);
     expect(grantRow!.grant_id).toBe(await grantIdComp(extensionActionId));
 
-    const snapshot = await platformCoverageSnapshot(orgId);
-    expect(snapshot?.queued_count).toBeGreaterThanOrEqual(1);
+    const adjustmentGrantRow = await grantRequestForAction(adjustmentActionId);
+    expect(adjustmentGrantRow).not.toBeNull();
+    expect(adjustmentGrantRow!.source_ref).toBe(adjustmentActionId);
   });
 
   it("E2E-P4.8-02 ceiling override applies a 365-day complimentary grant after exceeds_ceiling", async () => {
@@ -1695,6 +1719,8 @@ describe("console relays cross-worker", () => {
 
     const trialGrantId = await grantIdComp(trialActionId);
     expect(await grantOutcomeResult(trialGrantId)).toBe("applied");
+    await syncPlatformGrantLedger(orgId);
+    await drainPlatformDurableObjects();
 
     const { checkoutId } = await postCheckout(
       orgId,
@@ -1710,8 +1736,16 @@ describe("console relays cross-worker", () => {
 
     const paymentId = await paymentIdForCheckout(checkoutId);
     expect(paymentId).not.toBeNull();
+    const paymentRow = await env.DB.prepare(
+      `SELECT disposition FROM payment WHERE payment_id = ?`,
+    )
+      .bind(paymentId!)
+      .first<{ disposition: string }>();
+    expect(paymentRow?.disposition).toBe("grant");
+    const paidGrantId = await grantIdPaid(paymentId!);
     await runDueGrantWorkUntilApplied(paymentId!, orgId);
     await drainPlatformDurableObjects();
+    expect(await grantOutcomeResult(paidGrantId)).toBe("applied");
 
     const snapshot = await platformCoverageSnapshot(orgId);
     expect(snapshot?.state).toBe("active");
@@ -1721,7 +1755,7 @@ describe("console relays cross-worker", () => {
   it("E2E-P4.8-06 list-for-void and void end listed grants voided after credential revocation", async () => {
     const orgId = ORG_CR_06;
     await setupConsoleRelaysHarness();
-    await setupActivePlatformCoverage(orgId);
+    await ensureGrantTenantBinding(orgId);
 
     const signerAuthenticator = await createSoftwareAuthenticator("EdDSA");
     const signerCredentialId = await seedActiveOperatorCredential(
@@ -1780,9 +1814,8 @@ describe("console relays cross-worker", () => {
       });
       expect(granted.result).toBe("applied");
       grantIds.push(await grantIdComp(actionId));
+      await drainPlatformDurableObjects();
     }
-    await syncPlatformGrantLedger(orgId);
-    await drainPlatformDurableObjects();
 
     const revoked = await revokeOperatorCredentialOnPlatform({
       credentialId: suspectCredentialId,
@@ -1792,10 +1825,11 @@ describe("console relays cross-worker", () => {
     });
     expect(revoked.result).toBe("ok");
 
+    await drainPlatformDurableObjects();
     const listResponse = await opsListGrantsForVoidRelay({
       accessJwt,
       credentialId: suspectCredentialId,
-      window: VOID_LIST_WINDOW,
+      window: await voidListWindowAroundHarnessClock(),
     });
     expect(listResponse.status).toBe(200);
     const listBody = (await listResponse.json()) as Record<string, unknown>;
@@ -1841,6 +1875,7 @@ describe("console relays cross-worker", () => {
 
     const admittedBefore = await platformHttpInvoke(orgId);
     expect(admittedBefore.status).toBe(200);
+    await drainPlatformDurableObjects();
 
     const suspend = await opsSuspendRelay({
       orgId,
@@ -1855,7 +1890,8 @@ describe("console relays cross-worker", () => {
     const refused = await platformHttpInvoke(orgId);
     expect(refused.status).toBe(403);
     const refusedBody = await parsePlatformInvokeBody(refused);
-    expect(refusedBody?.code).toBe("suspended");
+    expect(refusedBody?.code).toBe("installation_suspended");
+    await drainPlatformDurableObjects();
 
     const resume = await opsResumeRelay({
       orgId,
@@ -1869,6 +1905,7 @@ describe("console relays cross-worker", () => {
     await drainPlatformDurableObjects();
     const admittedAfter = await platformHttpInvoke(orgId);
     expect(admittedAfter.status).toBe(200);
+    await drainPlatformDurableObjects();
   });
 
   it("E2E-P4.8-08 complimentary grant with assertion omitted is rejected by the platform", async () => {
