@@ -39,23 +39,23 @@ That command is this unit's new-scenario harness. `npm test` in `e2e/fullstack` 
 
 **Independent Test**: E2E-P6.2-01, E2E-P6.2-02, E2E-P6.2-03, E2E-P6.2-04, E2E-P6.2-05, and E2E-P6.2-07 in harness H-FL.
 
-- [ ] T001 [US1] Add the failing test `E2E-P6.2-01` in `frontend/test/widget/ai/denial_states_coverage_gauge_test.dart` — red test, FR-001, FR-002, E2E-P6.2-01. Depends on nothing. Create the file. Title `E2E-P6.2-01`. Fake ports only. Compose with `buildLiveVisitSummaryComposition` and pump `AiFeatureHostPage`. `coverage_lapsed` shows staff "AI not available, contact your administrator" and no renew or buy control. The administrator session shows that sentence and a renew or buy control. No dialog in either session. The widget command fails because that inline state is absent.
+- [X] T001 [US1] Add the failing test `E2E-P6.2-01` in `frontend/test/widget/ai/denial_states_coverage_gauge_test.dart` — red test, FR-001, FR-002, E2E-P6.2-01. Depends on nothing. Create the file. Title `E2E-P6.2-01`. Fake ports only. Compose with `buildLiveVisitSummaryComposition` and pump `AiFeatureHostPage`. `coverage_lapsed` shows staff "AI not available, contact your administrator" and no renew or buy control. The administrator session shows that sentence and a renew or buy control. No dialog in either session. The widget command fails because that inline state is absent.
 
 **Checkpoint**: E2E-P6.2-01 exists and fails.
 
-- [ ] T002 [US1] Add the failing test `E2E-P6.2-02` in `frontend/test/widget/ai/denial_states_coverage_gauge_test.dart` — red test, FR-001, FR-002, FR-003, E2E-P6.2-02. Depends on T001 (same file). Title `E2E-P6.2-02`. The same host. `allowance_exhausted` shows staff "AI not available, contact your administrator". The administrator sees the renew or buy control. The status refresh callback runs. The widget command fails because that state and refresh are absent. E2E-P6.2-01 still fails.
+- [X] T002 [US1] Add the failing test `E2E-P6.2-02` in `frontend/test/widget/ai/denial_states_coverage_gauge_test.dart` — red test, FR-001, FR-002, FR-003, E2E-P6.2-02. Depends on T001 (same file). Title `E2E-P6.2-02`. The same host. `allowance_exhausted` shows staff "AI not available, contact your administrator". The administrator sees the renew or buy control. The status refresh callback runs. The widget command fails because that state and refresh are absent. E2E-P6.2-01 still fails.
 
 **Checkpoint**: E2E-P6.2-01 and E2E-P6.2-02 exist and fail.
 
-- [ ] T003 [US1] Add the failing test `E2E-P6.2-03` in `frontend/test/widget/ai/denial_states_coverage_gauge_test.dart` — red test, FR-001, FR-002, FR-005, E2E-P6.2-03. Depends on T002 (same file). Title `E2E-P6.2-03`. The same host, with the coverage client returning `subscription_ref`. `suspended`: staff see "AI not available, contact your administrator". The administrator sees "Contact support" and that subscription reference. The widget command fails because that state is absent. E2E-P6.2-01 and E2E-P6.2-02 still fail.
+- [X] T003 [US1] Add the failing test `E2E-P6.2-03` in `frontend/test/widget/ai/denial_states_coverage_gauge_test.dart` — red test, FR-001, FR-002, FR-005, E2E-P6.2-03. Depends on T002 (same file). Title `E2E-P6.2-03`. The same host, with the coverage client returning `subscription_ref`. `suspended`: staff see "AI not available, contact your administrator". The administrator sees "Contact support" and that subscription reference. The widget command fails because that state is absent. E2E-P6.2-01 and E2E-P6.2-02 still fail.
 
 **Checkpoint**: E2E-P6.2-01 through E2E-P6.2-03 exist and fail.
 
-- [ ] T004 [US1] Add the failing test `E2E-P6.2-04` in `frontend/test/widget/ai/denial_states_coverage_gauge_test.dart` — red test, FR-001, FR-002, E2E-P6.2-04. Depends on T003 (same file). Title `E2E-P6.2-04`. The same host. Fake denials carry `retry_after`. `concurrency_limited` and `rate_limited` each show "AI busy, try again shortly" and that `retry_after`, for a staff session and an administrator session. The widget command fails because that state is absent. E2E-P6.2-01 through E2E-P6.2-03 still fail.
+- [X] T004 [US1] Add the failing test `E2E-P6.2-04` in `frontend/test/widget/ai/denial_states_coverage_gauge_test.dart` — red test, FR-001, FR-002, E2E-P6.2-04. Depends on T003 (same file). Title `E2E-P6.2-04`. The same host. Fake denials carry `retry_after`. `concurrency_limited` and `rate_limited` each show "AI busy, try again shortly" and that `retry_after`, for a staff session and an administrator session. The widget command fails because that state is absent. E2E-P6.2-01 through E2E-P6.2-03 still fail.
 
 **Checkpoint**: E2E-P6.2-01 through E2E-P6.2-04 exist and fail.
 
-- [ ] T005 [US1] Add the failing test `E2E-P6.2-05` in `frontend/test/widget/ai/denial_states_coverage_gauge_test.dart` — red test, FR-001, FR-002, E2E-P6.2-05. Depends on T004 (same file). Title `E2E-P6.2-05`. The same host. `coverage_unknown` shows "AI service unreachable". A submit port that fails with `TransportFailure` until `TransportRetryExhausted` shows the same sentence. Both sessions, no dialog. The widget command fails because that state is absent. E2E-P6.2-01 through E2E-P6.2-04 still fail.
+- [X] T005 [US1] Add the failing test `E2E-P6.2-05` in `frontend/test/widget/ai/denial_states_coverage_gauge_test.dart` — red test, FR-001, FR-002, E2E-P6.2-05. Depends on T004 (same file). Title `E2E-P6.2-05`. The same host. `coverage_unknown` shows "AI service unreachable". A submit port that fails with `TransportFailure` until `TransportRetryExhausted` shows the same sentence. Both sessions, no dialog. The widget command fails because that state is absent. E2E-P6.2-01 through E2E-P6.2-04 still fail.
 
 **Checkpoint**: E2E-P6.2-01 through E2E-P6.2-05 exist and fail. E2E-P6.2-06 and E2E-P6.2-07 are not written yet.
 
@@ -63,7 +63,7 @@ That command is this unit's new-scenario harness. `npm test` in `e2e/fullstack` 
 
 **Independent Test**: E2E-P6.2-06 in harness H-FL. Every earlier suite stays green (rule S2).
 
-- [ ] T006 [US2] Add the failing test `E2E-P6.2-06` in `frontend/test/widget/ai/denial_states_coverage_gauge_test.dart` — red test, FR-004, FR-005, E2E-P6.2-06. Depends on T005 (same file). Title `E2E-P6.2-06`. `UsageGauge` in `AiFeatureHostPage`, fed by `frontend/lib/core/ai/usage_summary_client.dart`. The administrator gauge shows `term.used` and `term.allowance` from `GET /v1/coverage`. The staff session records no `/v1/coverage` URL and no `/v1/usage` URL, and the gauge is absent. The widget command fails because the host still calls `/v1/usage`. E2E-P6.2-01 through E2E-P6.2-05 still fail.
+- [X] T006 [US2] Add the failing test `E2E-P6.2-06` in `frontend/test/widget/ai/denial_states_coverage_gauge_test.dart` — red test, FR-004, FR-005, E2E-P6.2-06. Depends on T005 (same file). Title `E2E-P6.2-06`. `UsageGauge` in `AiFeatureHostPage`, fed by `frontend/lib/core/ai/usage_summary_client.dart`. The administrator gauge shows `term.used` and `term.allowance` from `GET /v1/coverage`. The staff session records no `/v1/coverage` URL and no `/v1/usage` URL, and the gauge is absent. The widget command fails because the host still calls `/v1/usage`. E2E-P6.2-01 through E2E-P6.2-05 still fail.
 
 **Checkpoint**: E2E-P6.2-06 exists and fails. E2E-P6.2-07 is not written yet.
 
