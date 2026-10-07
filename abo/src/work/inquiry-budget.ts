@@ -7,7 +7,6 @@ import {
   type ReversalEnv,
 } from "./reversal.js";
 import {
-  expireDueOpenCheckouts,
   materializeCheckoutSweepSchedules,
   processSweepCheckoutWork,
   processSweepPaymentWork,
@@ -102,6 +101,13 @@ async function dueOpenSweepWork(
          )
        )
      ORDER BY CASE kind WHEN 'sweep_payment' THEN 0 ELSE 1 END,
+              CASE
+                WHEN kind = 'sweep_checkout'
+                 AND next_attempt_at = (
+                   SELECT expires_at FROM checkout WHERE checkout_id = subject_id
+                 ) THEN 0
+                ELSE 1
+              END,
               next_attempt_at ASC
      LIMIT ?`,
   )
@@ -133,13 +139,21 @@ export async function runMinuteInquiryBudget(
   env: InquiryBudgetEnv,
 ): Promise<void> {
   await materializeCheckoutSweepSchedules(env);
-  await expireDueOpenCheckouts(env);
 
   const nowMs = await clockNowMs(env);
   const nowIso = await clockNowIso(env);
   const minuteKey = minuteKeyFromMs(nowMs);
   let spent = await ensureInquirySpendRow(env, minuteKey);
 
+  await processPendingNotificationReversals(env, {
+    budgetRemaining: Math.max(0, INQUIRY_CAP - spent),
+    onInquired: () => {
+      spent += 1;
+      return incrementInquirySpend(env, minuteKey);
+    },
+  });
+
+  let confirmsProcessed = 0;
   const confirmRows = await dueOpenWork(
     env,
     "confirm",
@@ -151,23 +165,30 @@ export async function runMinuteInquiryBudget(
       break;
     }
     try {
-      await runConfirmForWorkId(env, row.work_id);
-      spent += 1;
-      await incrementInquirySpend(env, minuteKey);
+      const result = await runConfirmForWorkId(env, row.work_id);
+      if (result.inquired) {
+        spent += 1;
+        await incrementInquirySpend(env, minuteKey);
+      }
+      confirmsProcessed += 1;
     } catch {
       // Single row failure must not throw out of cron.
     }
   }
 
+  let grantsProcessed = 0;
   const grantRows = await dueOpenWork(env, "grant", nowIso, WORK_BATCH_LIMIT);
   for (const row of grantRows) {
     if (spent >= INQUIRY_CAP) {
       break;
     }
     try {
-      await runDueGrantWork(env, 1);
-      spent += 1;
-      await incrementInquirySpend(env, minuteKey);
+      const processed = await runDueGrantWork(env, 1);
+      if (processed > 0) {
+        spent += 1;
+        await incrementInquirySpend(env, minuteKey);
+        grantsProcessed += 1;
+      }
     } catch {
       // Single row failure must not throw out of cron.
     }
@@ -180,29 +201,31 @@ export async function runMinuteInquiryBudget(
       break;
     }
     try {
-      if (row.kind === "sweep_checkout") {
-        await processSweepCheckoutWork(env, row.work_id);
-      } else {
-        await processSweepPaymentWork(env, row.work_id);
+      const result =
+        row.kind === "sweep_checkout"
+          ? await processSweepCheckoutWork(env, row.work_id)
+          : await processSweepPaymentWork(env, row.work_id);
+      if (result.inquired) {
+        spent += 1;
+        await incrementInquirySpend(env, minuteKey);
       }
-      spent += 1;
       sweepsProcessed += 1;
-      await incrementInquirySpend(env, minuteKey);
     } catch {
       // Single row failure must not throw out of cron.
     }
   }
 
-  await processPendingNotificationReversals(env);
-
   let reverseProcessed = 0;
   const reverseRows = await dueReverseWork(
     env,
     nowIso,
-    WORK_BATCH_LIMIT -
-      confirmRows.length -
-      grantRows.length -
-      sweepsProcessed,
+    Math.max(
+      0,
+      WORK_BATCH_LIMIT -
+        confirmsProcessed -
+        grantsProcessed -
+        sweepsProcessed,
+    ),
   );
   for (const row of reverseRows) {
     if (reverseProcessed >= WORK_BATCH_LIMIT) {

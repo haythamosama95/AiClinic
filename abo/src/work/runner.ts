@@ -813,16 +813,16 @@ async function confirmSuccessBatch(
 async function processConfirmWork(
   env: WorkRunnerEnv,
   work: WorkRow,
-): Promise<void> {
+): Promise<{ inquired: boolean }> {
   const leaseUntil = work.lease_until;
   if (leaseUntil === null) {
-    return;
+    return { inquired: false };
   }
 
   const checkout = await loadCheckout(env, work.subject_id);
   if (checkout === null) {
     await markWorkDone(env, work.work_id, leaseUntil);
-    return;
+    return { inquired: false };
   }
 
   const notification =
@@ -839,7 +839,7 @@ async function processConfirmWork(
   if (notification === null) {
     const provider = providerForId(env, PAYMOB_PROVIDER_ID);
     if (provider === null) {
-      return;
+      return { inquired: false };
     }
     const inquiry = await provider.inquire({ checkout_id: checkout.checkout_id });
     if (!inquiry.bound && inquiry.transactions.length === 0) {
@@ -850,7 +850,7 @@ async function processConfirmWork(
         work.attempts + 1,
         "no_notification",
       );
-      return;
+      return { inquired: false };
     }
     if (inquiry.transactions.length === 0) {
       await releaseLeaseRetry(
@@ -860,7 +860,7 @@ async function processConfirmWork(
         work.attempts + 1,
         "inquiry_retry",
       );
-      return;
+      return { inquired: true };
     }
     const syntheticNotification: NotificationRow = {
       notification_id: "synthetic",
@@ -875,7 +875,7 @@ async function processConfirmWork(
       syntheticNotification,
       leaseUntil,
     );
-    return;
+    return { inquired: true };
   }
 
   if (notification.body_r2_key.length === 0) {
@@ -886,7 +886,7 @@ async function processConfirmWork(
       notification,
       leaseUntil,
     );
-    return;
+    return { inquired: true };
   }
 
   const paymobTxnId = await paymobTxnIdFromNotification(env, notification);
@@ -898,7 +898,7 @@ async function processConfirmWork(
       work.attempts + 1,
       "parse_failed",
     );
-    return;
+    return { inquired: false };
   }
 
   try {
@@ -909,6 +909,7 @@ async function processConfirmWork(
       notification,
       leaseUntil,
     );
+    return { inquired: true };
   } catch {
     await releaseLeaseRetry(
       env,
@@ -917,23 +918,24 @@ async function processConfirmWork(
       work.attempts + 1,
       "batch_failed",
     );
+    return { inquired: true };
   }
 }
 
 export async function runConfirmForWorkId(
   env: WorkRunnerEnv,
   workId: string,
-): Promise<void> {
+): Promise<{ inquired: boolean }> {
   const work = await takeWork(env, workId);
   if (work === null || work.kind !== "confirm") {
-    return;
+    return { inquired: false };
   }
   const leaseUntil = work.lease_until;
   if (leaseUntil === null) {
-    return;
+    return { inquired: false };
   }
   try {
-    await processConfirmWork(env, work);
+    return await processConfirmWork(env, work);
   } catch {
     await releaseLeaseRetry(
       env,
@@ -942,6 +944,7 @@ export async function runConfirmForWorkId(
       work.attempts + 1,
       "batch_failed",
     );
+    return { inquired: false };
   }
 }
 

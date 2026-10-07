@@ -368,10 +368,6 @@ export async function handlePostNotifyPaymob(
         "notification",
         bodySha256,
       );
-      const budgetEnv = env as NotifyIntakeEnv & ReversalEnv & GrantEnv;
-      const budgetRun = runMinuteInquiryBudget(budgetEnv);
-      ctx.waitUntil(budgetRun);
-      await budgetRun;
     } catch {
       return emptyResponse(500);
     }
@@ -458,18 +454,14 @@ export async function handleGetReturnPaymob(
   _request: Request,
   env: NotifyIntakeEnv,
 ): Promise<Response> {
-  const row = await env.DB.prepare(
+  const rows = await env.DB.prepare(
     `SELECT c.checkout_id
      FROM checkout c
      INNER JOIN checkout_status cs ON cs.checkout_id = c.checkout_id
-     INNER JOIN checkout_event ce
-       ON ce.checkout_id = c.checkout_id AND ce.kind = 'opened'
-     WHERE cs.state = 'open'
-     ORDER BY ce.at DESC, c.checkout_id DESC
-     LIMIT 1`,
-  ).first<{ checkout_id: string }>();
+     WHERE cs.state = 'open'`,
+  ).all<{ checkout_id: string }>();
 
-  if (row !== null) {
+  for (const row of rows.results ?? []) {
     await scheduleConfirmForCheckout(env, row.checkout_id);
   }
 

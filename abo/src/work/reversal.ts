@@ -566,7 +566,11 @@ export async function recordReversalFromProviderTxn(
   await raiseAlert(env, "AL-06", `AL-06:${reversalId}`, reversalId);
 
   if (needsVoid(effect) && detectedVia === "inquiry") {
-    await tryApplyReversalVoid(env, reversalId);
+    await insertReverseWorkRow(env, reversalId);
+    const reversal = await loadReversal(env, reversalId);
+    if (reversal !== null) {
+      await callVoidForReversal(env, reversal);
+    }
   }
 
   return reversalId;
@@ -598,29 +602,57 @@ async function readSigningGatePaused(env: ReversalEnv): Promise<boolean> {
   }
 }
 
-export async function tryApplyReversalVoid(
+export type ReversalVerifyResult = {
+  inquired: boolean;
+  agreed: boolean;
+};
+
+async function recordInquiryDisagreesFinding(
   env: ReversalEnv,
   reversalId: string,
 ): Promise<void> {
+  if (await findingExists(env, reversalId, "inquiry_disagrees")) {
+    return;
+  }
+  const nowIso = await clockNowIso(env);
+  const findingId = await newId(env);
+  await env.DB.prepare(
+    `INSERT INTO finding (finding_id, kind, subject, detail, detected_at)
+     VALUES (?, 'inquiry_disagrees', ?, '', ?)`,
+  )
+    .bind(findingId, reversalId, nowIso)
+    .run();
+}
+
+export async function verifyNotificationReversal(
+  env: ReversalEnv,
+  reversalId: string,
+): Promise<ReversalVerifyResult> {
   const reversal = await loadReversal(env, reversalId);
   if (reversal === null) {
-    return;
+    return { inquired: false, agreed: false };
   }
   if (!needsVoid(reversal.effect)) {
-    return;
+    return { inquired: false, agreed: false };
   }
   if (await reversalOutcomeExists(env, reversalId)) {
-    return;
+    return { inquired: false, agreed: false };
+  }
+  if (await reverseWorkExists(env, reversalId)) {
+    return { inquired: false, agreed: true };
+  }
+  if (await findingExists(env, reversalId, "inquiry_disagrees")) {
+    return { inquired: false, agreed: false };
   }
 
   const provider = providerForId(env, PAYMOB_PROVIDER_ID);
   if (provider === null) {
-    return;
+    return { inquired: false, agreed: false };
   }
 
   const payment = await loadPayment(env, reversal.payment_id);
   if (payment === null) {
-    return;
+    return { inquired: false, agreed: false };
   }
 
   const checkoutRow = await env.DB.prepare(
@@ -629,7 +661,7 @@ export async function tryApplyReversalVoid(
     .bind(reversal.payment_id)
     .first<{ checkout_id: string }>();
   if (checkoutRow === null) {
-    return;
+    return { inquired: false, agreed: false };
   }
 
   const txnRow = await env.DB.prepare(
@@ -644,38 +676,30 @@ export async function tryApplyReversalVoid(
     checkout_id: checkoutRow.checkout_id,
     paymob_txn_id: txnRow?.txn_id,
   });
-  if (!inquiry.bound || inquiry.transactions.length === 0) {
-    return;
+  if (!inquiry.bound) {
+    return { inquired: false, agreed: false };
   }
+  if (inquiry.transactions.length === 0) {
+    return { inquired: true, agreed: false };
+  }
+
   const inquiryTxn = inquiry.transactions[0]!;
   const resolvedParent = await resolveParentTxnRef(env, inquiryTxn);
-
   const agrees = inquiryAgreesWithReversal(
     inquiryTxn,
     resolvedParent,
     reversal.cumulative_reversed_minor,
   );
   if (!agrees) {
-    const contradicts =
-      inquiryTxn.kind === "payment_succeeded" ||
-      inquiryTxn.kind === "payment_pending" ||
-      inquiryTxn.kind === "payment_failed";
-    if (contradicts) {
-      if (!(await findingExists(env, reversalId, "inquiry_disagrees"))) {
-        const nowIso = await clockNowIso(env);
-        const findingId = await newId(env);
-        await env.DB.prepare(
-          `INSERT INTO finding (finding_id, kind, subject, detail, detected_at)
-           VALUES (?, 'inquiry_disagrees', ?, '', ?)`,
-        )
-          .bind(findingId, reversalId, nowIso)
-          .run();
-      }
+    if (inquiry.transactions.length > 0) {
+      await recordInquiryDisagreesFinding(env, reversalId);
     }
-    return;
+    return { inquired: true, agreed: false };
   }
 
+  await insertReverseWorkRow(env, reversalId);
   await callVoidForReversal(env, reversal);
+  return { inquired: true, agreed: true };
 }
 
 async function callVoidForReversal(
@@ -762,8 +786,7 @@ async function callVoidForReversal(
       )
       .run();
     await env.DB.prepare(
-      `UPDATE work SET state = 'done', lease_until = NULL, last_error = NULL
-       WHERE kind = 'reverse' AND subject_id = ?`,
+      `DELETE FROM work WHERE kind = 'reverse' AND subject_id = ?`,
     )
       .bind(reversal.reversal_id)
       .run();
@@ -775,7 +798,7 @@ async function callVoidForReversal(
   }
 }
 
-async function insertReverseWorkRow(
+export async function insertReverseWorkRow(
   env: ReversalEnv,
   reversalId: string,
 ): Promise<void> {
@@ -846,6 +869,10 @@ async function reverseWorkExists(
 
 export async function processPendingNotificationReversals(
   env: ReversalEnv,
+  options?: {
+    budgetRemaining?: number;
+    onInquired?: () => void | Promise<void>;
+  },
 ): Promise<void> {
   const rows = await env.DB.prepare(
     `SELECT reversal_id FROM reversal
@@ -854,11 +881,23 @@ export async function processPendingNotificationReversals(
        AND reversal_id NOT IN (SELECT reversal_id FROM reversal_outcome)`,
   ).all<{ reversal_id: string }>();
 
+  let remaining = options?.budgetRemaining ?? Number.POSITIVE_INFINITY;
+
   for (const row of rows.results ?? []) {
+    if (remaining <= 0) {
+      break;
+    }
     if (await reverseWorkExists(env, row.reversal_id)) {
       continue;
     }
-    await tryApplyReversalVoid(env, row.reversal_id);
+    if (await findingExists(env, row.reversal_id, "inquiry_disagrees")) {
+      continue;
+    }
+    const result = await verifyNotificationReversal(env, row.reversal_id);
+    if (result.inquired) {
+      remaining -= 1;
+      await options?.onInquired?.();
+    }
   }
 }
 
@@ -943,8 +982,7 @@ export async function processReverseWork(
 
   if (await reversalOutcomeExists(env, reversal.reversal_id)) {
     await env.DB.prepare(
-      `UPDATE work SET state = 'done', lease_until = NULL, last_error = NULL
-       WHERE work_id = ? AND lease_until = ?`,
+      `DELETE FROM work WHERE work_id = ? AND lease_until = ?`,
     )
       .bind(work.work_id, leaseUntil)
       .run();
@@ -955,8 +993,7 @@ export async function processReverseWork(
     await callVoidForReversal(env, reversal);
     if (await reversalOutcomeExists(env, reversal.reversal_id)) {
       await env.DB.prepare(
-        `UPDATE work SET state = 'done', lease_until = NULL, last_error = NULL
-         WHERE work_id = ? AND lease_until = ?`,
+        `DELETE FROM work WHERE work_id = ? AND lease_until = ?`,
       )
         .bind(work.work_id, leaseUntil)
         .run();

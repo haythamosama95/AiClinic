@@ -880,9 +880,9 @@ async function processGrantWork(env: GrantEnv, work: WorkRow): Promise<void> {
 export async function runDueGrantWork(
   env: GrantEnv,
   limit = GRANT_BATCH_LIMIT,
-): Promise<void> {
+): Promise<number> {
   if (await readSigningGatePaused(env)) {
-    return;
+    return 0;
   }
 
   const nowIso = await clockNowIso(env);
@@ -897,6 +897,7 @@ export async function runDueGrantWork(
     .bind(nowIso, limit)
     .all<{ work_id: string }>();
 
+  let processed = 0;
   for (const row of due.results ?? []) {
     try {
       const work = await takeGrantWork(env, row.work_id);
@@ -904,8 +905,10 @@ export async function runDueGrantWork(
         continue;
       }
       await processGrantWork(env, work);
+      processed += 1;
     } catch {
       // Single row failure must not throw out of cron.
     }
   }
+  return processed;
 }

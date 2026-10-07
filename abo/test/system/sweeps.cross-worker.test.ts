@@ -1098,6 +1098,8 @@ async function setupReversalHarness(): Promise<{
 async function advanceClockPastTermExpiry(): Promise<void> {
   await setClock(addMinutes("2026-06-01T12:00:00.000Z", 45));
   await runScheduled("0 * * * *");
+  await runScheduled("* * * * *");
+  await settlePlatformDurableObjectAlarms();
 }
 
 async function setupActiveAndQueuedTerms(
@@ -1165,9 +1167,10 @@ beforeEach(async () => {
 
 afterEach(async () => {
   await drainPlatformDurableObjects();
+  await settlePlatformDurableObjectAlarms();
 });
 
-describe("sweeps cross-worker", () => {
+describe.sequential("sweeps cross-worker", () => {
   it("E2E-P4.5-01 callback blocked, +2 min sweep confirms and grants", async () => {
     const expectations = await setupSweepsHarness();
     const txnId = 95001;
@@ -1319,6 +1322,7 @@ describe("sweeps cross-worker", () => {
     expect(await reversalCount()).toBe(1);
     expect(await reversalEffectForPayment(activePaymentId)).toBe("end_current");
 
+    await setClock("2026-06-01T12:01:00.000Z");
     await scriptPaymobInquiry("reversed");
     await runScheduled("* * * * *");
     await syncPlatformGrantVoids();
@@ -1364,6 +1368,7 @@ describe("sweeps cross-worker", () => {
     expect(await reversalCount()).toBe(1);
     expect(await tableCount("payment")).toBe(2);
 
+    await setClock("2026-06-01T12:01:00.000Z");
     await scriptPaymobInquiry("reversed");
     await runScheduled("* * * * *");
     await syncPlatformGrantVoids();
@@ -1373,6 +1378,10 @@ describe("sweeps cross-worker", () => {
     expect(await alertCountByCode("AL-06")).toBe(1);
     const subscription = await getSubscriptionBody(org);
     expect(subscription.notices ?? []).toContain("terms_held");
+
+    // syncPlatformGrantVoids may schedule GatewayObject alarms; let them finish
+    // before afterEach teardown competes with GatewayObject SQLite writes.
+    await settlePlatformDurableObjectAlarms();
   });
 
   it("E2E-P4.5-06 ended term reversal is effect none", async () => {
@@ -1544,6 +1553,7 @@ describe("sweeps cross-worker", () => {
     await setClock(addDays(baseClock, 3));
     await scriptPaymobInquiry("reversed");
     await runScheduled("0 * * * *");
+    await runScheduled("* * * * *");
 
     expect(await tableCount("payment")).toBe(paymentsBeforeHourly);
     expect(await reversalCount()).toBe(reversalsBeforeHourly + 1);
@@ -1564,6 +1574,7 @@ describe("sweeps cross-worker", () => {
     await setClock(addMinutes(addDays(baseClock, 3), 1));
     await scriptPaymobInquiry("reversed");
     await runScheduled("0 */6 * * *");
+    await runScheduled("* * * * *");
 
     expect(await tableCount("payment")).toBe(paymentsBeforeSixHour);
     expect(await reversalCount()).toBe(reversalsBeforeSixHour + 1);
@@ -1632,19 +1643,6 @@ describe("sweeps cross-worker", () => {
     expect(grantPaymentId).not.toBeNull();
     expect(await grantWorkState(grantPaymentId!)).toBe("open");
 
-    const sweepTxnId = 95130;
-    const sweepCheckout = await postCheckout(
-      org,
-      expectations,
-      `req-sweep-10-sweep-${sweepTxnId}`,
-    );
-    await syncPaymobForCheckout(sweepCheckout.checkoutId);
-    const sweepCheckoutId = sweepCheckout.checkoutId;
-    const sweepOpenedAt = await openedEventAt(sweepCheckoutId);
-
-    // Return schedules confirm for the newest open checkout; advance past sweep open.
-    await setClock(addMinutes(sweepOpenedAt, 1));
-
     const confirmCheckout = await postCheckout(
       org,
       expectations,
@@ -1655,6 +1653,16 @@ describe("sweeps cross-worker", () => {
     expect(confirmReturn.status).toBe(200);
     expect(await paymentCountForCheckout(confirmCheckout.checkoutId)).toBe(0);
     expect(await confirmWorkState(confirmCheckout.checkoutId)).toBe("open");
+
+    const sweepTxnId = 95130;
+    const sweepCheckout = await postCheckout(
+      org,
+      expectations,
+      `req-sweep-10-sweep-${sweepTxnId}`,
+    );
+    await syncPaymobForCheckout(sweepCheckout.checkoutId);
+    const sweepCheckoutId = sweepCheckout.checkoutId;
+    const sweepOpenedAt = await openedEventAt(sweepCheckoutId);
 
     const dueMinute = addMinutes(sweepOpenedAt, 2);
     await setClock(dueMinute);

@@ -288,11 +288,6 @@ export default {
       } catch {
         // Six-hour population failures must not block the cron.
       }
-      try {
-        await runMinuteInquiryBudget(env);
-      } catch {
-        // Inquiry processing failures must not block the six-hour cron.
-      }
       return;
     }
     if (cron === "0 * * * *") {
@@ -305,11 +300,6 @@ export default {
         await enqueueHourlyReversalPopulation(env);
       } catch {
         // Hourly population failures must not block the hourly cron.
-      }
-      try {
-        await runMinuteInquiryBudget(env);
-      } catch {
-        // Inquiry processing failures must not block the hourly cron.
       }
       return;
     }
