@@ -5,9 +5,9 @@ This file orients AI coding agents working in this repository. Keep the
 **current active feature's** plan reference when running Spec Kit phases.
 
 <!-- SPECKIT START -->
-Active feature plan: `specs/080-abo-p4-5-sweeps-reversals-inquiry-budget/plan.md`
-Feature spec: `specs/080-abo-p4-5-sweeps-reversals-inquiry-budget/spec.md`
-Branch: `ai/080-abo-p4-5-sweeps-reversals-inquiry-budget`
+Active feature plan: `specs/081-abo-p4-6-operator-console-access-perimeter-lookup/plan.md`
+Feature spec: `specs/081-abo-p4-6-operator-console-access-perimeter-lookup/spec.md`
+Branch: `ai/081-abo-p4-6-operator-console-access-perimeter-lookup`
 <!-- SPECKIT END -->
 
 ## Repo layout quick reference

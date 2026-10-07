@@ -111,7 +111,7 @@ HP actions run the passkey ceremony in the console. "Verified by" says which sys
 | Erase a tenant's payer contact data and raw provider bodies (03 §2.3) | HP | ABO   | 01 R-9              |
 
 
-Every action writes `operator_action` in the ABO and `control_audit` on the platform, with the Access email as actor (FR-73).
+Every action writes `operator_action` in the ABO with the Access email as actor (FR-73). When the AI Platform verifies the action, that class-H or class-HP call writes `control_audit` with the Access email as `actor` (and `assertion_sha256` on HP), the audit every H/HP call already records. When the ABO verifies the action, the ABO writes `control_audit` by calling class-H `recordOperatorAction` on `VendorEntrypoint` after it commits `operator_action`. The arguments are `access_jwt` plus `action`, `subject`, and `action_id` from that row. The call inserts one `control_audit` row and leaves every other platform table unchanged: `actor` and `operator_id` are the Access email, `action` is the `action` argument, `target` is the `action_id`, and `assertion_sha256` is null. A repeated `action_id` returns `ok` and inserts no second row. `ok` has an empty `code`, an empty `detail`, and no `receipt`. A missing, expired, or wrong-`aud` Access JWT is `rejected` with code `unauthenticated` and inserts no row. Retry parked work and cancel an open checkout are ABO-verified, so they use this call. Cancel an open checkout has this call as its only platform call.
 
 **Compromise response (SR-25):** revoke the suspect credential from another credential; list grants by credential and window (`listGrantsForVoid`); void each one; revoke Access sessions; rotate any machine key involved (02 §6).
 

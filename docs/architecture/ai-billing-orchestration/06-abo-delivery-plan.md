@@ -109,8 +109,8 @@ independently shippable is not a criterion (nothing ships before P8).
 
 There are no XL units. Stop condition: if `tasks.md` goes past 40 tasks, stop before implementing and
 split the unit along its user stories into `<ID>a`/`<ID>b`, keeping the same scenario IDs. A unit
-touches one codebase unless its row names a wiring exception (P2.1 platform header wiring; P5.1 the
-full-stack harness; P7.1 viewer + scripts + docs).
+touches one codebase unless its row names a wiring exception (P2.1 platform header wiring; P4.6
+`recordOperatorAction` on `VendorEntrypoint`; P5.1 the full-stack harness; P7.1 viewer + scripts + docs).
 
 **S4. IDs and Spec Kit numbering.** Unit IDs are `P<phase>.<n>`; they never change. Spec numbers are
 **pre-assigned in plan order, starting at 061** (table below), not at start time, so parallel tracks
@@ -145,8 +145,10 @@ in P8.1); R-6 → P8.1; R-7 → P3.11. OQ-3 covers the accounts these need.
 
 **S7. Contract-first ordering and freezing.** P2.1/P2.2 freeze the shared package
 (`packages/vendor-contracts/`, a `file:` dependency) before any consumer. Platform units freeze each
-`VendorEntrypoint` method when they implement it. The ABO calls only methods that are already frozen,
-and it calls them through the real platform worker, never a hand-written stub. No-rework rule (reused
+`VendorEntrypoint` method when they implement it. P4.6's wiring exception implements and freezes
+class-H `recordOperatorAction` the same way; the ABO calls that method only after this freeze. The ABO
+calls only methods that are already frozen, and it calls them through the real platform worker, never a
+hand-written stub. No-rework rule (reused
 from the AI Platform (AP) plan §2.3): a later unit may extend a frozen contract but never rewrite one. If a
 contract is wrong, amend the v2 design doc first and then return. Design deviations recorded here:
 Access-JWT verification is placed in the shared package, next to WebAuthn, so both Workers use one
@@ -173,7 +175,8 @@ P3.10. Each unit's Out-of-scope list names the transitional item and its owner.
 in parallel with P3.6–P3.8), ABO (P4.x), and backend tenancy (P1.x, which can start on day 1). The ABO starts with P4.1
 alongside P3.1 and joins the platform at P4.2 (needs P3.3), P4.4 (needs P3.4), P4.5 (needs P3.7), P4.8
 (needs P3.8), P4.9 (needs P3.10). Backend P5.x needs P1.2 + P3.2/P3.9; desktop P6.x needs P5.2. Two units
-in the same codebase never run concurrently, except P3.9 as noted.
+in the same codebase never run concurrently, except P3.9 as noted, and except P4.6's wiring exception,
+which adds only class-H `recordOperatorAction` on `VendorEntrypoint`.
 
 **S11. Review checkpoints** (composition checks, not shipping gates; each needs all prior suites green):
 
@@ -819,14 +822,18 @@ frozen, and always call the real platform worker over the service binding (rules
   - E2E-P4.5-12 FM-01: ABO crashes after receiving a callback → the callback was answered with 5xx or the work row is open; the sweep inquires within 2–20 minutes.
 
 ### P4.6 — Operator console: Access perimeter, lookup, views and class-H ABO actions
-- **Spec** 081 · **Codebase** abo · **Size** M · **Depends** P4.5, P3.6 · **Parallel** P3.9–P3.11
+- **Spec** 081 · **Codebase** abo + thin wiring in `ai-platform/` (`recordOperatorAction` on `VendorEntrypoint`) · **Size** M · **Depends** P4.5, P3.6 · **Parallel** P3.9–P3.11
 - **Read:** 05 §3.1; 05 §3.2 (rows "Retry parked work", "Cancel an open checkout", and the sentence after the table); 02 §2 row TB-7; 02 §3.1 row K-8;
   03 §2.10 row `operator_action`; 04 §7.1 row "ABO console".
 - **Implements:** `/ops/*` on the ops host with Access JWT validation in the Worker (package); console pages served by the ABO; lookup by subscription ref, `org_id`,
   billing email, `CK-`/`PAY-`/`GR-` refs; clinic page (`inspectCoverage` forwarded with the operator's Access JWT; checkouts + events, payments, reversals, grant
   requests + receipts, operator actions, findings, alerts); global views (parked work, open findings, recent grants by source and credential via `listGrants`,
   payout imports, key and credential registries); H actions retry-parked and cancel-checkout; `operator_action` with actor email + `access_jti`; version header + reload prompt.
+  Wiring exception: this unit adds class-H `recordOperatorAction` on the real platform `VendorEntrypoint` and freezes it before the ABO calls it. After the ABO
+  commits `operator_action`, retry parked work and cancel an open checkout call it with `access_jwt`, `action`, `subject`, and `action_id` copied from that row.
+  Cancel uses that call as its only platform call.
 - **Out of scope:** passkey ceremony and HP actions (→ P4.7–P4.9); findings content (→ P4.10).
+- **Outputs / freezes:** class-H `recordOperatorAction` on `VendorEntrypoint` (05 §3.2 sentence after the action table: one `control_audit` insert, every other platform table unchanged). Consumed by this unit's retry and cancel, and by later ABO-verified actions.
 - **E2E (H-XW, console HTTP):**
   - E2E-P4.6-01 Ops host without, or with an expired or wrong-`aud`, Access JWT → rejected [SR-22, TB-7].
   - E2E-P4.6-02 Lookup by `AIC-…` → the clinic page shows platform terms (`inspectCoverage`) and ABO checkouts and payments [FR-70].
@@ -1180,7 +1187,7 @@ The first unit listed is the primary owner; the others own named slices of the s
 | 03 §7 Identifiers | P2.1 (+ vectors); SQL copy P5.2 |
 | 03 §8 Retention | P3.8 (platform), P4.1 (ABO facts), P4.3 (HMAC samples), P4.11 (housekeeping), P5.2 (projection) |
 | 04 §1.1–§1.2 Transport, envelope | P2.1/P2.2, P3.1 |
-| 04 §1.3 Methods | Operator credentials P3.1; issuer keys P3.2; grant (paid), coverage reads, service keys, plan versions P3.3; complimentary, adjustment, ceiling, suspend/resume, inspect P3.6; voids, release, listGrantsForVoid P3.7; transfer, delete P3.8; `feedConsumerHealth` P3.9; kill switch…token contract, `supportLookup` P3.10 |
+| 04 §1.3 Methods | Operator credentials P3.1; issuer keys P3.2; grant (paid), coverage reads, service keys, plan versions P3.3; complimentary, adjustment, ceiling, suspend/resume, inspect P3.6; voids, release, listGrantsForVoid P3.7; transfer, delete P3.8; `feedConsumerHealth` P3.9; kill switch…token contract, `supportLookup` P3.10; `recordOperatorAction` P4.6 |
 | 04 §1.4 Envelope and validation | P3.3 (steps 1–3, 5 binding; velocity), P3.6 (step 4), P3.7 (`voided`), P3.8 (`transferred_out`, awaiting) |
 | 04 §1.5 Operator assertion | P2.2 (verify), P3.1 (registry rules), P4.7 (ceremony) |
 | 04 §1.6 / §1.7 Receipt, snapshot | P2.2 (types), P3.3 (produce) |
