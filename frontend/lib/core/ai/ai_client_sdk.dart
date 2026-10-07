@@ -255,6 +255,7 @@ class AiInvokeSession {
             return CompletedTerminal(result: result);
           case FailedEvent(
               :final code,
+              :final wireCode,
               :final requestReference,
               :final traceId,
               :final retrySafe,
@@ -262,6 +263,7 @@ class AiInvokeSession {
             _onRequestReference(requestReference);
             return FailedTerminal(
               code: code,
+              wireCode: wireCode,
               requestReference: requestReference,
               traceId: traceId,
               retrySafe: retrySafe,

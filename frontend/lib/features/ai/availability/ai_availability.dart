@@ -31,6 +31,16 @@ class AiStatusNotice {
       };
 }
 
+/// Platform denial wire codes that refresh `get_ai_status` (04 §3.4; P6.1 escalations).
+const kCoverageDenialWireCodes = <String>{
+  'allowance_exhausted',
+  'coverage_lapsed',
+  'coverage_unknown',
+};
+
+bool isCoverageDenialWireCode(String? wireCode) =>
+    wireCode != null && kCoverageDenialWireCodes.contains(wireCode);
+
 /// Thrown when an RPC answers `CONTRACT_VERSION_UNSUPPORTED`.
 class ContractVersionUnsupportedException implements Exception {
   const ContractVersionUnsupportedException();

@@ -72,6 +72,7 @@ class PlatformHttpsSubmitPort implements HttpsSubmitPort {
         final code = classifyTaxonomyCode(wireCode);
         return PlatformHttpException(
           code: code,
+          wireCode: wireCode.isEmpty ? null : wireCode,
           requestReference: decoded['request_reference']?.toString(),
           traceId: decoded['trace_id']?.toString(),
           retrySafe: decoded['retry_safe'] == true,

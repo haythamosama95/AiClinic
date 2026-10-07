@@ -159,15 +159,15 @@ Those two commands are the unit harness. `npm test` in `e2e/fullstack` is not th
 
 **Independent Test**: E2E-P6.1-01, E2E-P6.1-02, E2E-P6.1-03, E2E-P6.1-04, E2E-P6.1-05, and E2E-P6.1-06 in harness H-FL. Every earlier suite stays green (rule S2).
 
-- [ ] T017 [US2] Refresh status from the app shell in `frontend/lib/app/app.dart` — produces the one status scheduler, FR-005, E2E-P6.1-02. Depends on T012 and T016. The existing lifecycle path calls `SupabaseAiAvailabilityReader.read` on open (after the current authenticated bootstrap), on resume (`didChangeAppLifecycleState`), at `next_change_at` from the last status, and every 5 minutes. One refresh function. Resume still reloads auth context. Expose that same function for the live composition. Those reads contact only the backend. Do not add a second scheduler or a second status client.
+- [X] T017 [US2] Refresh status from the app shell in `frontend/lib/app/app.dart` — produces the one status scheduler, FR-005, E2E-P6.1-02. Depends on T012 and T016. The existing lifecycle path calls `SupabaseAiAvailabilityReader.read` on open (after the current authenticated bootstrap), on resume (`didChangeAppLifecycleState`), at `next_change_at` from the last status, and every 5 minutes. One refresh function. Resume still reloads auth context. Expose that same function for the live composition. Those reads contact only the backend. Do not add a second scheduler or a second status client.
 
 **Checkpoint**: Open, resume, `next_change_at`, and the 5-minute timer share one refresh. The live composition does not call it on a coverage-code denial yet.
 
-- [ ] T018 [US2] Refresh after a coverage-code denial in `frontend/lib/features/ai/presentation/pages/ai_page.dart` — produces the denial refresh, FR-005, FR-006, E2E-P6.1-01, E2E-P6.1-03. Depends on T017. Pass `StaffRole.administrator` versus any other role from `authSessionProvider` into the live composition. The composition calls the app-shell refresh when it sees a coverage-code denial. A coverage code is `allowance_exhausted`, `coverage_lapsed`, or `coverage_unknown`. Do not add a scheduler or a second reader. Do not add `get_ai_billing_status`, the ABO API, or `/v1/coverage`.
+- [X] T018 [US2] Refresh after a coverage-code denial in `frontend/lib/features/ai/presentation/pages/ai_page.dart` — produces the denial refresh, FR-005, FR-006, E2E-P6.1-01, E2E-P6.1-03. Depends on T017. Pass `StaffRole.administrator` versus any other role from `authSessionProvider` into the live composition. The composition calls the app-shell refresh when it sees a coverage-code denial. A coverage code is `allowance_exhausted`, `coverage_lapsed`, or `coverage_unknown`. Do not add a scheduler or a second reader. Do not add `get_ai_billing_status`, the ABO API, or `/v1/coverage`.
 
 **Checkpoint**: A denial whose code is `allowance_exhausted`, `coverage_lapsed`, or `coverage_unknown` calls the app-shell refresh. Notice forms are still absent.
 
-- [ ] T019 [US2] Render staff and administrator notice forms in `frontend/lib/features/ai/host/ai_feature_host_page.dart` — produces the notice surface, FR-004, FR-006, FR-007, E2E-P6.1-03, E2E-P6.1-04. Depends on T018. Render `notices[]` from the status read. Staff form is the text "ask your administrator", with no price and no purchase control. Administrator form includes a visible renew control that has no navigation, mint, or billing call. A contract-version refusal shows the inline update state and no dialog. Leave the host gate change to T022.
+- [X] T019 [US2] Render staff and administrator notice forms in `frontend/lib/features/ai/host/ai_feature_host_page.dart` — produces the notice surface, FR-004, FR-006, FR-007, E2E-P6.1-03, E2E-P6.1-04. Depends on T018. Render `notices[]` from the status read. Staff form is the text "ask your administrator", with no price and no purchase control. Administrator form includes a visible renew control that has no navigation, mint, or billing call. A contract-version refusal shows the inline update state and no dialog. Leave the host gate change to T022.
 
 **Checkpoint**: Staff and administrators see the notice forms. The renew control does not navigate, mint, or call billing.
 
@@ -175,11 +175,11 @@ Those two commands are the unit harness. `npm test` in `e2e/fullstack` is not th
 
 **Independent Test**: E2E-P6.1-01, E2E-P6.1-02, E2E-P6.1-03, E2E-P6.1-04, E2E-P6.1-05, and E2E-P6.1-06 in harness H-FL. Every earlier suite stays green (rule S2).
 
-- [ ] T020 [US2] Set the inline update copy in `frontend/lib/features/ai/degraded/ai_degraded_view.dart` — produces the update message, FR-007, E2E-P6.1-05, E2E-P6.1-06. Depends on T019. The existing `AiDegradedMode.appUpdate` message is "Update the app to use AI". It stays inline. No dialog.
+- [X] T020 [US2] Set the inline update copy in `frontend/lib/features/ai/degraded/ai_degraded_view.dart` — produces the update message, FR-007, E2E-P6.1-05, E2E-P6.1-06. Depends on T019. The existing `AiDegradedMode.appUpdate` message is "Update the app to use AI". It stays inline. No dialog.
 
 **Checkpoint**: `AiDegradedMode.appUpdate` reads "Update the app to use AI".
 
-- [ ] T021 [US2] Expect the update copy in `frontend/test/widget/ai/ai_degraded_mode_test.dart` — produces the existing expectation, FR-007, E2E-P6.1-05, E2E-P6.1-06. Depends on T020. The existing `appUpdate` text expectation uses "Update the app to use AI".
+- [X] T021 [US2] Expect the update copy in `frontend/test/widget/ai/ai_degraded_mode_test.dart` — produces the existing expectation, FR-007, E2E-P6.1-05, E2E-P6.1-06. Depends on T020. The existing `appUpdate` text expectation uses "Update the app to use AI".
 
 **Checkpoint**: The existing degraded-mode test expects "Update the app to use AI".
 
@@ -187,7 +187,7 @@ Those two commands are the unit harness. `npm test` in `e2e/fullstack` is not th
 
 **Independent Test**: E2E-P6.1-01, E2E-P6.1-02, E2E-P6.1-03, E2E-P6.1-04, E2E-P6.1-05, and E2E-P6.1-06 in harness H-FL. Every earlier suite stays green (rule S2).
 
-- [ ] T022 [US2] Drive the host gate from `available` in `frontend/lib/features/ai/host/ai_feature_host_page.dart` — produces the status gate, FR-004, E2E-P6.1-01. Depends on T021. Same file as T019. `available` from the status read drives the existing gate. Do not call `get_ai_availability`.
+- [X] T022 [US2] Drive the host gate from `available` in `frontend/lib/features/ai/host/ai_feature_host_page.dart` — produces the status gate, FR-004, E2E-P6.1-01. Depends on T021. Same file as T019. `available` from the status read drives the existing gate. Do not call `get_ai_availability`.
 
 **Checkpoint**: The live surface follows `available` from `get_ai_status`. The Flutter `fullstack` CI job is not added yet.
 

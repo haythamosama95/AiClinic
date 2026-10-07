@@ -142,7 +142,7 @@ void main() {
 
       expect(find.byKey(kAiDegradedAppUpdateKey), findsOneWidget);
       expect(
-        find.text('Please update the app to use this AI feature.'),
+        find.text('Update the app to use AI'),
         findsOneWidget,
       );
       expect(find.byKey(kAiDegradedRetryKey), findsNothing);

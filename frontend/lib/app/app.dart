@@ -6,6 +6,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:ai_clinic/app/router.dart';
 import 'package:ai_clinic/app/session_activity_scope.dart';
 import 'package:ai_clinic/features/settings/application/idle_timeout_settings_notifier.dart';
+import 'package:ai_clinic/app/providers/ai_shell_status_provider.dart';
 import 'package:ai_clinic/app/providers/auth_session_provider.dart';
 import 'package:ai_clinic/app/providers/startup_session_provider.dart';
 import 'package:ai_clinic/app/providers/locale_provider.dart';
@@ -24,6 +25,9 @@ class AiClinicApp extends ConsumerStatefulWidget {
 }
 
 class _AiClinicAppState extends ConsumerState<AiClinicApp> with WidgetsBindingObserver {
+  var _shellStatusSchedulerStarted = false;
+  AiShellStatusNotifier? _shellStatusNotifier;
+
   @override
   void initState() {
     super.initState();
@@ -34,12 +38,27 @@ class _AiClinicAppState extends ConsumerState<AiClinicApp> with WidgetsBindingOb
       // Load persisted idle timeout before bootstrap can restore an authenticated session.
       await ref.read(idleTimeoutSettingsProvider.future);
       await ref.read(startupSessionProvider.notifier).bootstrap();
+      await _refreshShellStatusIfAuthenticated();
     });
+  }
+
+  Future<void> _refreshShellStatusIfAuthenticated() async {
+    final auth = ref.read(authSessionProvider);
+    if (!auth.isAuthenticated || auth.context!.needsClinicSetup) {
+      return;
+    }
+    if (!_shellStatusSchedulerStarted) {
+      _shellStatusSchedulerStarted = true;
+      _shellStatusNotifier = ref.read(aiShellStatusNotifierProvider.notifier);
+      _shellStatusNotifier!.startPeriodicRefresh();
+    }
+    await ref.read(aiShellStatusRefreshProvider)();
   }
 
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
+    _shellStatusNotifier?.cancelTimers();
     super.dispose();
   }
 
@@ -55,6 +74,7 @@ class _AiClinicAppState extends ConsumerState<AiClinicApp> with WidgetsBindingOb
     }
 
     unawaited(ref.read(authSessionProvider.notifier).reloadContext());
+    unawaited(ref.read(aiShellStatusRefreshProvider)());
   }
 
   @override

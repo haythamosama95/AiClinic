@@ -87,6 +87,7 @@ Future<void> _pumpLiveSurface(
     contextProviderOverride: harness.contextProvider,
     manifestRefreshPortOverride: harness.manifestRefreshPort,
     autoInvoke: false,
+    staffIsAdministrator: role == StaffRole.administrator,
   );
 
   await tester.pumpWidget(
@@ -125,9 +126,17 @@ class _NoticeScenarioReader implements AiAvailabilityReader {
 
   @override
   Future<AiAvailability> read() async {
-    return const AiAvailability(
+    return AiAvailability(
       enrolled: true,
       platformBaseUrl: testPlatformBaseUrl,
+      daysLeft: daysLeft,
+      notices: [
+        AiStatusNotice(
+          code: noticeCode,
+          audience: 'member',
+          channel: 'in_app',
+        ),
+      ],
     );
   }
 }

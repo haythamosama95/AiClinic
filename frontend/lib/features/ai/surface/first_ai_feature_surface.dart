@@ -122,7 +122,7 @@ class FirstAiFeatureSurface extends StatefulWidget {
 
   /// Notifies the host when a platform terminal failure arrives so degraded mode
   /// can apply the §5.4 Client behaviour column.
-  final void Function(TaxonomyCode code)? onTerminalFailure;
+  final void Function(TaxonomyCode code, {String? wireCode})? onTerminalFailure;
 
   final bool autoInvoke;
 
@@ -225,9 +225,15 @@ class _FirstAiFeatureSurfaceState extends State<FirstAiFeatureSurface> {
             _requestReference = requestReference;
           case CompletedEvent(:final result):
             settle(CompletedTerminal(result: result));
-          case FailedEvent(:final code, :final requestReference, :final traceId, :final retrySafe):
+          case FailedEvent(:final code, :final wireCode, :final requestReference, :final traceId, :final retrySafe):
             settle(
-              FailedTerminal(code: code, requestReference: requestReference, traceId: traceId, retrySafe: retrySafe),
+              FailedTerminal(
+                code: code,
+                wireCode: wireCode,
+                requestReference: requestReference,
+                traceId: traceId,
+                retrySafe: retrySafe,
+              ),
             );
           case CancelledEvent():
             settle(const CancelledTerminal());
@@ -250,7 +256,7 @@ class _FirstAiFeatureSurfaceState extends State<FirstAiFeatureSurface> {
       // terminal event; no-ops if events already settled the surface.
       settle(terminal);
     } on PlatformHttpException catch (error) {
-      widget.onTerminalFailure?.call(error.code);
+      widget.onTerminalFailure?.call(error.code, wireCode: error.wireCode);
       _setFailed(requestReference: error.requestReference);
     } on InvokeCancelledException {
       _returnToIdle();
@@ -272,8 +278,8 @@ class _FirstAiFeatureSurfaceState extends State<FirstAiFeatureSurface> {
           _provisionalText = null;
           _terminalText = text;
         });
-      case FailedTerminal(:final code, :final requestReference):
-        widget.onTerminalFailure?.call(code);
+      case FailedTerminal(:final code, :final wireCode, :final requestReference):
+        widget.onTerminalFailure?.call(code, wireCode: wireCode);
         _setFailed(requestReference: requestReference);
       case StreamDroppedTerminal(:final requestReference):
         widget.onTerminalFailure?.call(TaxonomyCode.internalError);

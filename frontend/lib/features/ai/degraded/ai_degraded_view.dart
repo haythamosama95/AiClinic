@@ -87,7 +87,7 @@ class AiDegradedView extends StatelessWidget {
         AiDegradedMode.unreachable => 'AI platform is currently unreachable.',
         AiDegradedMode.quotaExhausted => 'AI quota exhausted. Contact your administrator.',
         AiDegradedMode.aiUnavailable => 'AI is temporarily unavailable.',
-        AiDegradedMode.appUpdate => 'Please update the app to use this AI feature.',
+        AiDegradedMode.appUpdate => 'Update the app to use AI',
         AiDegradedMode.providerUnavailable =>
           'AI provider is unavailable. You can retry.',
         AiDegradedMode.installationSuspended =>

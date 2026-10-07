@@ -36,6 +36,7 @@ final class CompletedEvent extends SseEvent {
 final class FailedEvent extends SseEvent {
   const FailedEvent({
     required this.code,
+    this.wireCode,
     this.requestReference,
     this.traceId,
     this.retrySafe = false,
@@ -51,12 +52,14 @@ final class FailedEvent extends SseEvent {
   }) =>
       FailedEvent(
         code: classifyTaxonomyCode(wireCode),
+        wireCode: wireCode,
         requestReference: requestReference,
         traceId: traceId,
         retrySafe: retrySafe,
       );
 
   final TaxonomyCode code;
+  final String? wireCode;
   final String? requestReference;
   final String? traceId;
   final bool retrySafe;
@@ -96,12 +99,14 @@ final class CompletedTerminal extends TerminalState {
 final class FailedTerminal extends TerminalState {
   const FailedTerminal({
     required this.code,
+    this.wireCode,
     this.requestReference,
     this.traceId,
     this.retrySafe = false,
   });
 
   final TaxonomyCode code;
+  final String? wireCode;
   final String? requestReference;
   final String? traceId;
   final bool retrySafe;

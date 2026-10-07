@@ -1,4 +1,5 @@
 import 'package:ai_clinic/app/app.dart';
+import 'package:ai_clinic/app/providers/ai_shell_status_provider.dart';
 import 'package:ai_clinic/app/providers/auth_session_provider.dart';
 import 'package:ai_clinic/app/providers/startup_session_provider.dart';
 import 'package:ai_clinic/app/services/startup_health_service.dart';
@@ -43,6 +44,8 @@ void main() {
       expect(reader.platformUrls, isEmpty, reason: 'status refresh must contact only the backend');
 
       reader.nextChangeAt = DateTime.now().add(const Duration(seconds: 2));
+      tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
+      await tester.pump(const Duration(milliseconds: 100));
       final readsBeforeTimer = reader.readCallCount;
       await tester.pump(const Duration(seconds: 3));
 
@@ -52,6 +55,15 @@ void main() {
         reason: 'next_change_at timer should call the one status refresh → SupabaseAiAvailabilityReader.read',
       );
       expect(reader.platformUrls, isEmpty, reason: 'timer refresh must contact only the backend');
+
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: _appOverrides(statusReader: reader),
+          child: const SizedBox.shrink(),
+        ),
+      );
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 1));
     });
   });
 }
@@ -83,11 +95,6 @@ _appOverrides({
     aiShellStatusReaderProvider.overrideWithValue(statusReader),
   ];
 }
-
-/// T017 moves this provider beside [AiClinicApp] and calls it from the one shell refresh.
-final aiShellStatusReaderProvider = Provider<AiAvailabilityReader>((ref) {
-  return SupabaseAiAvailabilityReader(client: ref.watch(supabaseClientProvider));
-});
 
 class _FakeIdleStore extends IdleTimeoutPreferencesStore {
   _FakeIdleStore(this.duration);
@@ -137,9 +144,10 @@ class _ShellStatusReaderSpy implements AiAvailabilityReader {
   @override
   Future<AiAvailability> read() async {
     readCallCount++;
-    return const AiAvailability(
+    return AiAvailability(
       enrolled: true,
       platformBaseUrl: testPlatformBaseUrl,
+      nextChangeAt: nextChangeAt,
     );
   }
 }

@@ -9,7 +9,10 @@ import 'package:ai_clinic/core/ai/ai_client_sdk.dart';
 import 'package:ai_clinic/core/ai/context_provider_port.dart';
 import 'package:ai_clinic/core/ai/context_required_self_heal.dart';
 import 'package:ai_clinic/core/ai/context_resolver.dart';
+import 'package:ai_clinic/core/ai/taxonomy.dart';
 import 'package:ai_clinic/core/ai/usage_summary_client.dart';
+import 'package:ai_clinic/core/ui/components/app_button.dart';
+import 'package:ai_clinic/core/ui/theme/app_typography.dart';
 
 import '../availability/ai_availability.dart';
 import '../degraded/ai_degraded_mode.dart';
@@ -64,6 +67,8 @@ class AiFeatureHostDependencies {
     this.usageSummaryClient,
     this.skipReachabilityProbe = false,
     this.autoInvoke = true,
+    this.staffIsAdministrator = false,
+    this.onStatusRefresh,
   });
 
   final AiAvailabilityReader availabilityReader;
@@ -82,6 +87,12 @@ class AiFeatureHostDependencies {
 
   /// When false, [FirstAiFeatureSurface] stays idle until the caller triggers invoke.
   final bool autoInvoke;
+
+  /// When true, notice forms show the administrator renew control.
+  final bool staffIsAdministrator;
+
+  /// App-shell `get_ai_status` refresh after a coverage-code denial.
+  final Future<void> Function()? onStatusRefresh;
 }
 
 /// Standalone host composing availability gate + surface (Clarification Q2).
@@ -104,6 +115,7 @@ class _AiFeatureHostPageState extends State<AiFeatureHostPage> {
   bool _platformReachable = false;
   int? _creditsUsed;
   int? _creditBudget;
+  List<AiStatusNotice> _notices = const [];
 
   @override
   void initState() {
@@ -122,7 +134,7 @@ class _AiFeatureHostPageState extends State<AiFeatureHostPage> {
     try {
       final availability = await widget.dependencies.availabilityReader.read();
 
-      if (!availability.enrolled) {
+      if (!availability.available) {
         if (!mounted) {
           return;
         }
@@ -130,6 +142,7 @@ class _AiFeatureHostPageState extends State<AiFeatureHostPage> {
           _loading = false;
           _mode = AiDegradedMode.nonEnrolled;
           _platformReachable = false;
+          _notices = const [];
         });
         return;
       }
@@ -160,9 +173,21 @@ class _AiFeatureHostPageState extends State<AiFeatureHostPage> {
         _platformReachable = reachable;
         _creditsUsed = creditsUsed;
         _creditBudget = creditBudget;
+        _notices = availability.notices;
         if (mode == AiDegradedMode.ready) {
           _resolver = ContextResolver(providerPort: widget.dependencies.contextProvider);
         }
+      });
+    } on ContractVersionUnsupportedException {
+      if (!mounted) {
+        return;
+      }
+      setState(() {
+        _loading = false;
+        _mode = AiDegradedMode.appUpdate;
+        _platformReachable = false;
+        _resolver = null;
+        _notices = const [];
       });
     } catch (e, st) {
       debugPrint('AiFeatureHostPage bootstrap failed: $e\n$st');
@@ -175,6 +200,7 @@ class _AiFeatureHostPageState extends State<AiFeatureHostPage> {
         _mode = AiDegradedMode.nonEnrolled;
         _platformReachable = false;
         _resolver = null;
+        _notices = const [];
       });
     }
   }
@@ -230,7 +256,11 @@ class _AiFeatureHostPageState extends State<AiFeatureHostPage> {
     }
   }
 
-  void _onTerminalFailure(TaxonomyCode code) {
+  void _onTerminalFailure(TaxonomyCode code, {String? wireCode}) {
+    if (isCoverageDenialWireCode(wireCode)) {
+      unawaited(widget.dependencies.onStatusRefresh?.call());
+    }
+
     final mode = resolveDegradedMode(
       availability: const AiAvailability(enrolled: true, platformBaseUrl: null),
       platformReachable: _platformReachable,
@@ -294,13 +324,20 @@ class _AiFeatureHostPageState extends State<AiFeatureHostPage> {
               requiredContextKeys: widget.dependencies.requiredContextKeys,
               persistenceProbe: widget.dependencies.persistenceProbe,
               exportProbe: widget.dependencies.exportProbe,
-              onTerminalFailure: _onTerminalFailure,
+              onTerminalFailure: (code, {wireCode}) => _onTerminalFailure(code, wireCode: wireCode),
               autoInvoke: widget.dependencies.autoInvoke,
             )
           : null,
     );
 
     final chrome = <Widget>[
+      if (_notices.isNotEmpty) ...[
+        _AiStatusNotices(
+          notices: _notices,
+          staffIsAdministrator: widget.dependencies.staffIsAdministrator,
+        ),
+        const SizedBox(height: 16),
+      ],
       if (showUsageGauge) ...[
         UsageGauge(creditsUsed: _creditsUsed!, creditBudget: _creditBudget!),
         const SizedBox(height: 16),
@@ -349,6 +386,68 @@ class _AiFeatureHostPageState extends State<AiFeatureHostPage> {
     return Scaffold(
       appBar: AppBar(title: const Text('AI Feature')),
       body: body,
+    );
+  }
+}
+
+class _AiStatusNotices extends StatelessWidget {
+  const _AiStatusNotices({
+    required this.notices,
+    required this.staffIsAdministrator,
+  });
+
+  final List<AiStatusNotice> notices;
+  final bool staffIsAdministrator;
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        for (final notice in notices) _AiStatusNoticeBanner(notice: notice, staffIsAdministrator: staffIsAdministrator),
+      ],
+    );
+  }
+}
+
+class _AiStatusNoticeBanner extends StatelessWidget {
+  const _AiStatusNoticeBanner({
+    required this.notice,
+    required this.staffIsAdministrator,
+  });
+
+  final AiStatusNotice notice;
+  final bool staffIsAdministrator;
+
+  @override
+  Widget build(BuildContext context) {
+    if (staffIsAdministrator) {
+      return Padding(
+        padding: const EdgeInsets.only(bottom: 8),
+        child: Row(
+          children: [
+            Expanded(
+              child: Text(
+                notice.code,
+                style: AppTypography.bodySm(context),
+              ),
+            ),
+            AppButton(
+              key: const Key('ai_notice_renew'),
+              onPressed: () {},
+              child: const Text('Renew'),
+            ),
+          ],
+        ),
+      );
+    }
+
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 8),
+      child: Text(
+        'ask your administrator',
+        style: AppTypography.bodySm(context),
+      ),
     );
   }
 }

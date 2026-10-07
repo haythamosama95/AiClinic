@@ -70,6 +70,7 @@ abstract class SseConnection {
 class PlatformHttpException implements Exception {
   const PlatformHttpException({
     required this.code,
+    this.wireCode,
     this.requestReference,
     this.traceId,
     this.retrySafe = false,
@@ -80,6 +81,7 @@ class PlatformHttpException implements Exception {
   });
 
   final TaxonomyCode code;
+  final String? wireCode;
   final String? requestReference;
   final String? traceId;
   final bool retrySafe;

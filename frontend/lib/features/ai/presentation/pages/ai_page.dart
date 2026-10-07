@@ -3,7 +3,10 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import 'package:ai_clinic/app/providers/ai_shell_status_provider.dart';
+import 'package:ai_clinic/app/providers/auth_session_provider.dart';
 import 'package:ai_clinic/app/shell/navigation/shell_route_meta.dart';
+import 'package:ai_clinic/features/auth/domain/auth_session.dart';
 import 'package:ai_clinic/core/ai/ai_client_sdk.dart';
 import 'package:ai_clinic/core/ai/context_required_self_heal.dart';
 import 'package:ai_clinic/core/ai/context_provider_port.dart';
@@ -33,6 +36,7 @@ class LiveVisitSummaryComposition {
     required this.submitPort,
     this.discoveryFailureReference,
     this.discoveryFailureCode,
+    this.contractVersionUnsupported = false,
   });
 
   final AiFeatureHostDependencies dependencies;
@@ -40,6 +44,7 @@ class LiveVisitSummaryComposition {
   final HttpsSubmitPort submitPort;
   final String? discoveryFailureReference;
   final TaxonomyCode? discoveryFailureCode;
+  final bool contractVersionUnsupported;
 }
 
 /// Builds live-host dependencies with production mint/submit unless overridden.
@@ -61,6 +66,8 @@ LiveVisitSummaryComposition buildLiveVisitSummaryComposition({
   int? maxTransportAttempts,
   Duration Function(int attemptAfterFailure)? transportBackoff,
   String platformBaseUrl = 'https://ai.example.workers.dev',
+  bool staffIsAdministrator = false,
+  Future<void> Function()? onStatusRefresh,
 }) {
   final reader = availabilityReader ?? SupabaseAiAvailabilityReader(client: client);
   final reachability = reachabilityPort ?? HttpPlatformReachabilityPort();
@@ -94,6 +101,8 @@ LiveVisitSummaryComposition buildLiveVisitSummaryComposition({
       persistenceProbe: persistenceProbe,
       exportProbe: exportProbe,
       autoInvoke: autoInvoke ?? true,
+      staffIsAdministrator: staffIsAdministrator,
+      onStatusRefresh: onStatusRefresh,
     ),
     mintPort: mintPort,
     submitPort: submitPort,
@@ -116,6 +125,8 @@ Future<LiveVisitSummaryComposition> composeLiveVisitSummaryHost({
   ManifestRefreshPort? manifestRefreshPortOverride,
   int? maxTransportAttempts,
   Duration Function(int attemptAfterFailure)? transportBackoff,
+  bool staffIsAdministrator = false,
+  Future<void> Function()? onStatusRefresh,
 }) async {
   final reader = availabilityReader ?? SupabaseAiAvailabilityReader(client: client);
   final reachability = reachabilityPort ?? HttpPlatformReachabilityPort();
@@ -134,7 +145,7 @@ Future<LiveVisitSummaryComposition> composeLiveVisitSummaryHost({
   String? discoveryFailureReference;
   TaxonomyCode? discoveryFailureCode;
 
-  if (availability.enrolled && baseUrl.isNotEmpty) {
+  if (availability.available && baseUrl.isNotEmpty) {
     try {
       final aat = await mintPort.mint();
       final discoveryResult = await discovery.fetchCapabilities(platformBaseUrl: baseUrl, aat: aat);
@@ -145,6 +156,37 @@ Future<LiveVisitSummaryComposition> composeLiveVisitSummaryHost({
           requiredKeys = discovered;
         }
       }
+    } on ContractVersionUnsupportedException {
+      return LiveVisitSummaryComposition(
+        dependencies: AiFeatureHostDependencies(
+          availabilityReader: reader,
+          reachabilityPort: reachability,
+          sdk: AiClientSdk(
+            mintPort: mintPort,
+            submitPort: submitPort,
+            maxTransportAttempts: maxTransportAttempts ?? kDefaultMaxTransportAttempts,
+            transportBackoff: transportBackoff,
+          ),
+          contextProvider: contextProviderOverride ?? SupabaseContextProviderPort(client: client, visitId: visitId),
+          manifestRefreshPort: manifestRefreshPortOverride ??
+              DiscoveryManifestRefreshPort(
+                discoveryClient: discovery,
+                mintPort: mintPort,
+                platformBaseUrl: baseUrl.isNotEmpty ? baseUrl : 'https://ai.invalid',
+              ),
+          visitId: visitId,
+          requiredContextKeys: requiredKeys,
+          networkSpy: networkSpy,
+          persistenceProbe: persistenceProbe,
+          exportProbe: exportProbe,
+          autoInvoke: false,
+          staffIsAdministrator: staffIsAdministrator,
+          onStatusRefresh: onStatusRefresh,
+        ),
+        mintPort: mintPort,
+        submitPort: submitPort,
+        contractVersionUnsupported: true,
+      );
     } on DiscoveryAuthFailure catch (error) {
       discoveryFailureCode = error.code;
       discoveryFailureReference = error.responseBody['request_reference']?.toString();
@@ -178,7 +220,9 @@ Future<LiveVisitSummaryComposition> composeLiveVisitSummaryHost({
       networkSpy: networkSpy,
       persistenceProbe: persistenceProbe,
       exportProbe: exportProbe,
-      autoInvoke: availability.enrolled && discoveryFailureCode == null,
+      autoInvoke: availability.available && discoveryFailureCode == null,
+      staffIsAdministrator: staffIsAdministrator,
+      onStatusRefresh: onStatusRefresh,
     ),
     mintPort: mintPort,
     submitPort: submitPort,
@@ -241,6 +285,13 @@ Widget liveVisitSummaryHostBody({
   required String visitId,
   required LiveVisitSummaryComposition composition,
 }) {
+  if (composition.contractVersionUnsupported) {
+    return const AiDegradedView(
+      mode: AiDegradedMode.appUpdate,
+      child: Text('Clinical workflows remain available.'),
+    );
+  }
+
   // §5.4 / FR-012: discovery installation_suspended hides AI features and instructs admin.
   if (composition.discoveryFailureCode == TaxonomyCode.installationSuspended) {
     return AiDegradedView(
@@ -578,7 +629,14 @@ class _LiveVisitSummaryHostState extends ConsumerState<_LiveVisitSummaryHost> {
 
   Future<void> _load() async {
     final client = ref.read(supabaseClientProvider);
-    final composition = await composeLiveVisitSummaryHost(client: client, visitId: widget.visitId);
+    final auth = ref.read(authSessionProvider);
+    final role = auth.context?.staffProfile.role;
+    final composition = await composeLiveVisitSummaryHost(
+      client: client,
+      visitId: widget.visitId,
+      staffIsAdministrator: role == StaffRole.administrator,
+      onStatusRefresh: ref.read(aiShellStatusRefreshProvider),
+    );
     if (mounted) {
       setState(() {
         _composition = composition;
