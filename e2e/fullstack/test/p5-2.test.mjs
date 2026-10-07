@@ -6,7 +6,7 @@ import test, { after, before } from "node:test";
 import assert from "node:assert/strict";
 import { createClient } from "@supabase/supabase-js";
 import { MockAgent } from "undici";
-import { unstable_startWorker as startWorker } from "wrangler";
+import { getPlatformProxy, unstable_startWorker as startWorker } from "wrangler";
 import { CHANNEL_VERSIONS } from "vendor-contracts";
 import {
   createAccessTeam,
@@ -45,8 +45,55 @@ const WEBAUTHN_RP_ID = "ops.vendor.test";
 const WEBAUTHN_ORIGIN = "https://ops.vendor.test";
 const OPERATOR_EMAIL = "operator@clinic.test";
 const BILLING_HOST = "billing.vendor.test";
+const PAYMOB_HMAC_SECRET = "paymob-hmac-unconfigured";
+const ABO_GRANT_KEY = {
+  kid: "abo-grant-test",
+  pkcs8:
+    "MC4CAQAwBQYDK2VwBCIEINhOOYX0jTZi98KVn0iV7iqQ4v29ImVy_tKTMfFESzxK",
+  public_key: "u5sqB8SGC8m0kpu1R4R-CbF41y6-7pZuaBT_Iecbuhw",
+};
+const PLATFORM_PUBLIC_KEYS = [
+  {
+    kid: "platform-prev-test",
+    public_key: "wTfd0sQ8ylrdkYt5C0bYzxiZGlr-XtEqlbzwgq0-WXQ",
+  },
+  {
+    kid: "platform-test",
+    public_key: "GNzxZ6Gymues_aeJArGyb3wDESTOUJeqhuZBfTByni0",
+  },
+];
+const OFFER_ID = "01JHARNESSOFFERPUBLISH001";
+const OFFER_VERSION = 2;
+const TERMS_VERSION = 1;
+const PLAN_ID = "plan-pro";
+const PLAN_VERSION = 1;
+const CAPABILITY_ID = "clinic.visit_summary";
+const ALLOWANCE_CREDITS = 100;
+const PAYMOB_HMAC_FIELDS = [
+  "amount_cents",
+  "created_at",
+  "currency",
+  "error_occured",
+  "has_parent_transaction",
+  "id",
+  "integration_id",
+  "is_3d_secure",
+  "is_auth",
+  "is_capture",
+  "is_refunded",
+  "is_standalone_payment",
+  "is_voided",
+  "order.id",
+  "owner",
+  "pending",
+  "source_data.pan",
+  "source_data.sub_type",
+  "source_data.type",
+  "success",
+];
 
 let stack = null;
+let harnessPlatformProxy = null;
 
 function base64urlEncode(bytes) {
   return Buffer.from(bytes).toString("base64url");
@@ -534,6 +581,8 @@ async function startStack() {
     {
       PAYMOB_BASE_URL: PAYMOB_URL,
       ISSUER_KEYS: JSON.stringify(issuerKeys),
+      ABO_GRANT_KEY: JSON.stringify(ABO_GRANT_KEY),
+      PLATFORM_PUBLIC_KEYS: JSON.stringify(PLATFORM_PUBLIC_KEYS),
     },
   );
   await waitForHttp(`${ABO_URL}/v1/offers`, {
@@ -582,6 +631,8 @@ async function startStack() {
         {
           PAYMOB_BASE_URL: PAYMOB_URL,
           ISSUER_KEYS: JSON.stringify(nextIssuerKeys),
+          ABO_GRANT_KEY: JSON.stringify(ABO_GRANT_KEY),
+          PLATFORM_PUBLIC_KEYS: JSON.stringify(PLATFORM_PUBLIC_KEYS),
         },
       );
       await waitForHttp(`${ABO_URL}/v1/offers`, {
@@ -608,6 +659,7 @@ function insertGrantAppliedEvent({
   installationId,
   bindingEpoch = 1,
   clinicSeq = 1,
+  planDisplayName = "P5.2 Test Plan",
 }) {
   const eventId = `${installationId}:${clinicSeq}`;
   const at = new Date().toISOString();
@@ -622,7 +674,7 @@ function insertGrantAppliedEvent({
     suspended: false,
     term: {
       ref: "TERM-P52-01",
-      plan_display_name: "P5.2 Test Plan",
+      plan_display_name: planDisplayName,
       starts_at: at,
       ends_at: endsAt,
       grace_ends_at: graceEndsAt,
@@ -794,11 +846,386 @@ function readHeaderValue(headers, name) {
   return undefined;
 }
 
+function runAboD1Command(sql) {
+  runWrangler([
+    "d1",
+    "execute",
+    "abo-development",
+    "--local",
+    "--env",
+    "development",
+    "--config",
+    ABO_CONFIG,
+    "--persist-to",
+    ABO_PERSIST,
+    "--command",
+    sql,
+  ]);
+}
+
+function runPlatformD1Command(sql) {
+  runWrangler([
+    "d1",
+    "execute",
+    "ai-platform-development",
+    "--local",
+    "--env",
+    "development",
+    "--config",
+    PLATFORM_CONFIG,
+    "--persist-to",
+    PLATFORM_PERSIST,
+    "--command",
+    sql,
+  ]);
+}
+
+function readClinicAiCoverage(orgId) {
+  const row = psqlQuery(`
+    SELECT row_to_json(t)::text
+    FROM (
+      SELECT
+        binding_epoch::text,
+        clinic_seq::text,
+        state,
+        plan_display_name,
+        term_ref
+      FROM ai_internal.clinic_ai_coverage
+      WHERE organization_id = '${orgId}'
+      LIMIT 1
+    ) t
+  `);
+  return row ? JSON.parse(row) : null;
+}
+
+function readFeedState() {
+  const row = psqlQuery(`
+    SELECT row_to_json(t)::text
+    FROM (
+      SELECT
+        cursor::text,
+        consecutive_failures::text,
+        last_success_at::text
+      FROM ai_internal.feed_state
+      WHERE singleton
+      LIMIT 1
+    ) t
+  `);
+  if (!row) {
+    return null;
+  }
+  const parsed = JSON.parse(row);
+  return {
+    cursor: parsed.cursor,
+    consecutive_failures: Number(parsed.consecutive_failures ?? "0"),
+    last_success_at: parsed.last_success_at,
+  };
+}
+
+function setPlatformFeedCurrent(version) {
+  psqlQuery(`
+    UPDATE ai_internal.app_settings
+    SET value_json = jsonb_set(
+      value_json,
+      '{platformFeed,current}',
+      to_jsonb(${version}::int),
+      true
+    ),
+    updated_at = now()
+    WHERE key = 'ai.contract_versions'
+  `);
+}
+
+function setFeedStateLastSuccessAgo(seconds) {
+  psqlQuery(`
+    UPDATE ai_internal.feed_state
+    SET last_success_at = now() - interval '${seconds} seconds'
+    WHERE singleton
+  `);
+}
+
+function setFeedStateCursor(cursor) {
+  psqlQuery(`
+    UPDATE ai_internal.feed_state
+    SET cursor = ${cursor}
+    WHERE singleton
+  `);
+}
+
+function setCronJobActive(active) {
+  psqlQuery(`
+    UPDATE cron.job
+    SET active = ${active}
+    WHERE jobname = 'ai_coverage_feed_pull'
+  `);
+}
+
+function setFeedConsumerLastPullAt(isoTimestamp) {
+  runPlatformD1Command(`
+    INSERT INTO feed_consumer (consumer, last_pull_at, last_cursor)
+    VALUES ('backend-feed', ${sqlLiteral(isoTimestamp)}, 0)
+    ON CONFLICT(consumer) DO UPDATE SET
+      last_pull_at = excluded.last_pull_at,
+      last_cursor = excluded.last_cursor
+  `);
+}
+
+async function callFeedConsumerHealth() {
+  if (!harnessPlatformProxy) {
+    harnessPlatformProxy = await getPlatformProxy({
+      configPath: HARNESS_CONFIG,
+    });
+  }
+  return await harnessPlatformProxy.env.PLATFORM.feedConsumerHealth({
+    contract_version: 1,
+  });
+}
+
+function paymobFieldValue(obj, field) {
+  if (field === "order.id") {
+    return String(obj.order?.id ?? "");
+  }
+  if (field.startsWith("source_data.")) {
+    const key = field.slice("source_data.".length);
+    return String(obj.source_data?.[key] ?? "");
+  }
+  const value = obj[field];
+  if (typeof value === "boolean") {
+    return value ? "true" : "false";
+  }
+  return String(value ?? "");
+}
+
+async function signPaymobObj(obj) {
+  const concatenated = PAYMOB_HMAC_FIELDS.map((field) =>
+    paymobFieldValue(obj, field),
+  ).join("");
+  const key = await crypto.subtle.importKey(
+    "raw",
+    new TextEncoder().encode(PAYMOB_HMAC_SECRET),
+    { name: "HMAC", hash: "SHA-512" },
+    false,
+    ["sign"],
+  );
+  const signature = await crypto.subtle.sign(
+    "HMAC",
+    key,
+    new TextEncoder().encode(concatenated),
+  );
+  return [...new Uint8Array(signature)]
+    .map((byte) => byte.toString(16).padStart(2, "0"))
+    .join("");
+}
+
+function seedAboOffers() {
+  runAboD1Command(`
+    INSERT OR IGNORE INTO terms_version (
+      terms_version, locale, text_r2_key, text_sha256, published_by, contract_version
+    ) VALUES (
+      ${TERMS_VERSION}, 'en', 'terms/en/1.txt',
+      'dbb6d8870e5636c8da062789e912326c66eacd68838980a81bf6ad9484677753',
+      'fixture', 1
+    );
+    INSERT OR IGNORE INTO offer (offer_id, code, contract_version)
+    VALUES ('${OFFER_ID}', 'harness-pro-monthly', 1);
+    INSERT OR REPLACE INTO offer_version (
+      offer_id, version, plan_id, plan_version, term_unit, term_count,
+      price_minor, currency, allowance_credits, grace_days, grace_cap_rule,
+      copy, terms_version, published_by, assertion_sha256, contract_version
+    ) VALUES (
+      '${OFFER_ID}', ${OFFER_VERSION}, '${PLAN_ID}', ${PLAN_VERSION},
+      'month', 1, 1000, 'EGP', ${ALLOWANCE_CREDITS}, 7, 'proportional',
+      '{"en":{"name":"Clinic Pro Monthly","summary":"Monthly clinic subscription"}}',
+      ${TERMS_VERSION}, 'fixture', 'fixture-assertion-v2', 1
+    );
+    INSERT OR IGNORE INTO offer_event (
+      offer_id, kind, version, actor, at, contract_version
+    ) VALUES (
+      '${OFFER_ID}', 'published', ${OFFER_VERSION}, 'fixture',
+      '2026-02-01T00:00:00.000Z', 1
+    );
+  `);
+}
+
+function ensurePlatformGrantPrerequisites(orgId, installationId) {
+  const createdAt = new Date().toISOString();
+  runPlatformD1Command(`
+    INSERT OR IGNORE INTO installation (
+      installation_id, org_id, status, display_name, region, enrolled_at
+    ) VALUES (
+      ${sqlLiteral(installationId)},
+      ${sqlLiteral(orgId)},
+      'active', '', '', ${sqlLiteral(createdAt)}
+    );
+    INSERT OR REPLACE INTO tenant_binding (
+      org_id, installation_id, epoch, status, retired_at, reason, created_at
+    ) VALUES (
+      ${sqlLiteral(orgId)},
+      ${sqlLiteral(installationId)},
+      1, 'active', NULL, NULL, ${sqlLiteral(createdAt)}
+    );
+    INSERT OR REPLACE INTO service_key (
+      kid, service, public_key, status, not_before, not_after,
+      registered_by, assertion_sha256
+    ) VALUES (
+      ${sqlLiteral(ABO_GRANT_KEY.kid)},
+      'abo',
+      ${sqlLiteral(ABO_GRANT_KEY.public_key)},
+      'active',
+      '2020-01-01T00:00:00.000Z',
+      '2099-01-01T00:00:00.000Z',
+      ${sqlLiteral(OPERATOR_EMAIL)},
+      'harness'
+    );
+    INSERT OR IGNORE INTO plan_version (
+      plan_id, version, display_name, capabilities, max_cost_class,
+      concurrency_limit, max_allowance_per_month, status, published_by,
+      assertion_sha256
+    ) VALUES (
+      '${PLAN_ID}', ${PLAN_VERSION}, 'Clinic Pro',
+      ${sqlLiteral(JSON.stringify([CAPABILITY_ID]))},
+      '2', 4, ${ALLOWANCE_CREDITS}, 'published',
+      ${sqlLiteral(OPERATOR_EMAIL)}, 'harness'
+    );
+  `);
+}
+
+async function putBillingContact(billingToken) {
+  const response = await fetch(`${ABO_URL}/v1/billing-contact`, {
+    method: "PUT",
+    headers: {
+      authorization: `Bearer ${billingToken}`,
+      host: BILLING_HOST,
+      "Abo-Contract-Version": "1",
+      "content-type": "application/json",
+    },
+    body: JSON.stringify({
+      client_request_id: `p52-contact-${crypto.randomUUID()}`,
+      name: "P5.2 Administrator",
+      email: "p5-2-admin@clinic.test",
+      phone: "+201001234567",
+    }),
+  });
+  assert.equal(response.status, 200, "billing contact should be accepted");
+}
+
+async function openCheckout(billingToken) {
+  const response = await fetch(`${ABO_URL}/v1/checkouts`, {
+    method: "POST",
+    headers: {
+      authorization: `Bearer ${billingToken}`,
+      host: BILLING_HOST,
+      "Abo-Contract-Version": "1",
+      "content-type": "application/json",
+    },
+    body: JSON.stringify({
+      client_request_id: `p52-checkout-${crypto.randomUUID()}`,
+      offer_id: OFFER_ID,
+      offer_version: OFFER_VERSION,
+      terms_version: TERMS_VERSION,
+    }),
+  });
+  assert.equal(response.status, 201, "checkout should be created");
+  const body = await response.json();
+  return {
+    checkoutId: String(body.checkout_id),
+    reference: String(body.reference),
+  };
+}
+
+async function scriptPaymobAmount(amountMinor) {
+  await fetch(`${PAYMOB_URL}/__script`, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ amount_cents: String(amountMinor) }),
+  });
+}
+
+async function postPaymobProcessedCallback(checkoutReference) {
+  const paymobObj = {
+    amount_cents: "1000",
+    created_at: new Date().toISOString(),
+    currency: "EGP",
+    error_occured: false,
+    has_parent_transaction: false,
+    id: 99001,
+    integration_id: 123456,
+    is_3d_secure: true,
+    is_auth: false,
+    is_capture: true,
+    is_refunded: false,
+    is_standalone_payment: true,
+    is_voided: false,
+    order: { id: 9001 },
+    owner: 0,
+    pending: false,
+    source_data: {
+      pan: "2346",
+      sub_type: "MasterCard",
+      type: "card",
+    },
+    success: true,
+  };
+  const body = JSON.stringify({ type: "TRANSACTION", obj: paymobObj });
+  const hmac = await signPaymobObj(paymobObj);
+  const response = await fetch(
+    `${ABO_URL}/notify/paymob?hmac=${encodeURIComponent(hmac)}`,
+    {
+      method: "POST",
+      headers: {
+        host: BILLING_HOST,
+        "content-type": "application/json",
+        "cf-connecting-ip": "203.0.113.10",
+      },
+      body,
+    },
+  );
+  assert.equal(response.status, 200, "paymob notify should be accepted");
+}
+
+function stopSupabase() {
+  const result = spawnSync("npx", ["supabase", "stop"], {
+    cwd: path.join(REPO_ROOT, "backend"),
+    encoding: "utf8",
+  });
+  if (result.status !== 0) {
+    throw new Error(`supabase stop failed: ${result.stderr || result.stdout}`);
+  }
+}
+
+function startSupabase() {
+  const result = spawnSync("npx", ["supabase", "start"], {
+    cwd: path.join(REPO_ROOT, "backend"),
+    encoding: "utf8",
+  });
+  if (result.status !== 0) {
+    throw new Error(`supabase start failed: ${result.stderr || result.stdout}`);
+  }
+}
+
+async function waitForPlatformGrantEvent(orgId, { timeoutMs = 30_000 } = {}) {
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    const row = queryD1One(
+      `SELECT event_id FROM coverage_event
+       WHERE org_id = ${sqlLiteral(orgId)} AND kind = 'grant_applied'
+       ORDER BY feed_seq DESC LIMIT 1`,
+    );
+    if (row?.event_id) {
+      return row.event_id;
+    }
+    await new Promise((resolve) => setTimeout(resolve, 250));
+  }
+  throw new Error(`Timed out waiting for grant_applied on platform for ${orgId}`);
+}
+
 before(async () => {
   stack = await startStack();
 });
 
 after(async () => {
+  await harnessPlatformProxy?.dispose();
+  harnessPlatformProxy = null;
   await stack?.stop();
   stack = null;
 });
@@ -941,4 +1368,179 @@ test("E2E-P5.2-02 Refresh starts a pull and a second call within 10 seconds is R
     responsesBeforeUnsupported,
     "no-session unsupported version should not request a pull",
   );
+});
+
+test("E2E-P5.2-05 Epoch 2 sequence 1 replaces epoch 1 sequence 9", async () => {
+  const { orgId, installationId } = stack.clinic;
+
+  insertGrantAppliedEvent({
+    orgId,
+    installationId,
+    bindingEpoch: 1,
+    clinicSeq: 9,
+    planDisplayName: "Epoch 1 Seq 9",
+  });
+  await runTwoPhaseCoveragePull();
+
+  let coverage = readClinicAiCoverage(orgId);
+  assert.ok(coverage, "epoch 1 sequence 9 should be projected");
+  assert.equal(coverage.binding_epoch, "1");
+  assert.equal(coverage.clinic_seq, "9");
+  assert.equal(coverage.plan_display_name, "Epoch 1 Seq 9");
+
+  insertGrantAppliedEvent({
+    orgId,
+    installationId,
+    bindingEpoch: 2,
+    clinicSeq: 1,
+    planDisplayName: "Epoch 2 Seq 1",
+  });
+  await runTwoPhaseCoveragePull();
+
+  coverage = readClinicAiCoverage(orgId);
+  assert.equal(coverage.binding_epoch, "2");
+  assert.equal(coverage.clinic_seq, "1");
+  assert.equal(coverage.plan_display_name, "Epoch 2 Seq 1");
+
+  insertGrantAppliedEvent({
+    orgId,
+    installationId,
+    bindingEpoch: 1,
+    clinicSeq: 5,
+    planDisplayName: "Epoch 1 Seq 5",
+  });
+  await runTwoPhaseCoveragePull();
+
+  coverage = readClinicAiCoverage(orgId);
+  assert.equal(coverage.binding_epoch, "2");
+  assert.equal(coverage.clinic_seq, "1");
+  assert.equal(
+    coverage.plan_display_name,
+    "Epoch 2 Seq 1",
+    "older epoch and sequence should leave the stored row unchanged",
+  );
+});
+
+test("E2E-P5.2-06 Unsupported feed version keeps the cursor and does not write the projection", async () => {
+  const { orgId, installationId, administrator } = stack.clinic;
+
+  insertGrantAppliedEvent({ orgId, installationId, bindingEpoch: 1, clinicSeq: 1 });
+  await runTwoPhaseCoveragePull();
+
+  const projectionBefore = readClinicAiCoverage(orgId);
+  assert.ok(projectionBefore, "baseline projection should exist");
+  const feedStateBefore = readFeedState();
+  assert.ok(feedStateBefore, "feed_state should exist");
+  const cursorBefore = feedStateBefore.cursor;
+  const failuresBefore = feedStateBefore.consecutive_failures;
+
+  const originalFeedVersion = readPlatformFeedCurrent();
+  setPlatformFeedCurrent(2);
+
+  await runTwoPhaseCoveragePull();
+
+  const feedStateAfter = readFeedState();
+  assert.ok(
+    feedStateAfter.consecutive_failures > failuresBefore,
+    "unsupported feed version should increment consecutive_failures",
+  );
+  assert.equal(
+    feedStateAfter.cursor,
+    cursorBefore,
+    "unsupported feed version should keep the cursor",
+  );
+  assert.deepEqual(
+    readClinicAiCoverage(orgId),
+    projectionBefore,
+    "unsupported feed version should not write the projection",
+  );
+
+  setPlatformFeedCurrent(originalFeedVersion);
+  setFeedStateLastSuccessAgo(121);
+
+  const status = await rpc(administrator, "get_ai_status", {
+    p_contract_version: 1,
+  });
+  assert.equal(status.success, true);
+  assert.equal(status.data.stale, true, "stale read should follow last_success_at");
+});
+
+test("E2E-P5.2-07 Disabled pull is stale and feedConsumerHealth shows the lag", async () => {
+  const { administrator } = stack.clinic;
+  const lagAt = new Date(Date.now() - 5 * 60 * 1000).toISOString();
+
+  setCronJobActive(false);
+  setFeedStateLastSuccessAgo(121);
+  setFeedConsumerLastPullAt(lagAt);
+
+  const status = await rpc(administrator, "get_ai_status", {
+    p_contract_version: 1,
+  });
+  assert.equal(status.success, true);
+  assert.equal(status.data.stale, true, "disabled pull with stale feed_state is stale");
+
+  const health = await callFeedConsumerHealth();
+  assert.equal(health.result, "ok");
+  const detail = JSON.parse(health.detail);
+  assert.equal(
+    detail.last_pull_at,
+    lagAt,
+    "feedConsumerHealth should show the platform feed_consumer lag",
+  );
+});
+
+test("E2E-P5.2-08 Cursor reset to 0 reproduces the projection", async () => {
+  const { orgId, installationId } = stack.clinic;
+
+  insertGrantAppliedEvent({ orgId, installationId, bindingEpoch: 1, clinicSeq: 1 });
+  await runTwoPhaseCoveragePull();
+
+  const projectionBefore = readClinicAiCoverage(orgId);
+  assert.ok(projectionBefore, "baseline projection should exist");
+
+  setFeedStateCursor(0);
+  await runTwoPhaseCoveragePull();
+
+  const projectionAfter = readClinicAiCoverage(orgId);
+  assert.deepEqual(
+    projectionAfter,
+    projectionBefore,
+    "cursor reset to 0 should reproduce the same projection",
+  );
+});
+
+test("E2E-P5.2-10 Supabase stopped during a payment still provisions and status catches up", async () => {
+  const { orgId, installationId, administrator } = stack.clinic;
+
+  seedAboOffers();
+  ensurePlatformGrantPrerequisites(orgId, installationId);
+
+  const billing = await rpc(administrator, "issue_billing_token", {
+    p_contract_version: 1,
+  });
+  assert.equal(billing.success, true);
+  const billingToken = billing.data.token;
+
+  await putBillingContact(billingToken);
+  const { checkoutId } = await openCheckout(billingToken);
+  assert.ok(checkoutId);
+
+  stopSupabase();
+  try {
+    await scriptPaymobAmount(1000);
+    await postPaymobProcessedCallback(checkoutId);
+    await waitForPlatformGrantEvent(orgId);
+  } finally {
+    startSupabase();
+  }
+
+  await runTwoPhaseCoveragePull();
+
+  const status = await rpc(administrator, "get_ai_status", {
+    p_contract_version: 1,
+  });
+  assert.equal(status.contract_version, 1);
+  assert.equal(status.success, true);
+  assert.equal(status.data.available, true);
+  assert.equal(status.data.state, "active");
 });
