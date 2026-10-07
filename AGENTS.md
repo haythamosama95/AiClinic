@@ -5,9 +5,9 @@ This file orients AI coding agents working in this repository. Keep the
 **current active feature's** plan reference when running Spec Kit phases.
 
 <!-- SPECKIT START -->
-Active feature plan: `specs/089-abo-p6-1-desktop-contract-versions-token-minting/plan.md`
-Feature spec: `specs/089-abo-p6-1-desktop-contract-versions-token-minting/spec.md`
-Branch: `ai/089-abo-p6-1-desktop-contract-versions-token-minting`
+Active feature plan: `specs/090-abo-p6-2-desktop-denial-states-administrator-coverage/plan.md`
+Feature spec: `specs/090-abo-p6-2-desktop-denial-states-administrator-coverage/spec.md`
+Branch: `ai/090-abo-p6-2-desktop-denial-states-administrator-coverage`
 <!-- SPECKIT END -->
 
 ## Repo layout quick reference
