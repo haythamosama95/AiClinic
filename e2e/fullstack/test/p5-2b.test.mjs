@@ -84,8 +84,26 @@ async function signIn(email, password) {
   return client;
 }
 
+function seedStaffMembership(orgId, username, role) {
+  psqlQuery(`
+    INSERT INTO ai_internal.membership (user_id, organization_id, role)
+    SELECT u.id, '${orgId}', '${role}'::public.staff_role
+    FROM auth.users u
+    WHERE u.email = '${username}'
+    ON CONFLICT (user_id, organization_id) DO NOTHING
+  `);
+}
+
 async function createClinicFixture() {
   psqlQuery(`
+    DELETE FROM ai_internal.user_active_organization uao
+    USING auth.users u
+    WHERE uao.user_id = u.id
+      AND u.email LIKE 'p5-2b-%';
+    DELETE FROM ai_internal.membership m
+    USING auth.users u
+    WHERE m.user_id = u.id
+      AND u.email LIKE 'p5-2b-%';
     DELETE FROM public.staff_branch_assignments sba
     USING public.staff_members sm
     WHERE sba.staff_member_id = sm.id
@@ -115,21 +133,23 @@ async function createClinicFixture() {
   const orgId = orgResult.data.organization_id;
   await bootstrap.auth.refreshSession();
 
-  let branchResult = await rpc(bootstrap, "bootstrap_create_branch", {
-    p_organization_id: orgId,
-    p_name: "H-FS P5.2b Main",
-    p_code: "P52B",
-  });
-  if (!branchResult?.success) {
-    const existingBranch = psqlQuery(
-      `SELECT id FROM public.branches WHERE organization_id = '${orgId}' AND is_deleted = false LIMIT 1`,
-    );
-    branchResult = {
-      success: true,
-      data: { branch_id: existingBranch },
-    };
+  let branchId = psqlQuery(
+    `SELECT id FROM public.branches WHERE organization_id = '${orgId}' AND code = 'P52B' AND is_deleted = false LIMIT 1`,
+  );
+  if (!branchId) {
+    let branchResult = await rpc(bootstrap, "bootstrap_create_branch", {
+      p_organization_id: orgId,
+      p_name: "H-FS P5.2b Main",
+      p_code: "P52B",
+    });
+    if (!branchResult?.success) {
+      branchId = psqlQuery(
+        `SELECT id FROM public.branches WHERE organization_id = '${orgId}' AND is_deleted = false LIMIT 1`,
+      );
+    } else {
+      branchId = branchResult.data.branch_id;
+    }
   }
-  const branchId = branchResult.data.branch_id;
   await bootstrap.auth.refreshSession();
 
   const createStaff = async (username, password, fullName, role) => {
@@ -147,6 +167,7 @@ async function createClinicFixture() {
         `create_staff_account(${username}) failed: ${result?.error_code ?? "unknown"}`,
       );
     }
+    seedStaffMembership(orgId, username, role);
     return signIn(username, password);
   };
 
@@ -409,7 +430,7 @@ test(
       const endsAtSql =
         days === 0
           ? "now() + interval '12 hours'"
-          : `now() + interval '${days} days'`;
+          : `date_trunc('day', now()) + interval '${days + 1} days'`;
       seedClinicAiCoverage({
         orgId,
         installationId,
