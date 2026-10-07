@@ -38,7 +38,7 @@ cd abo && node scripts/build-platform-for-hxw.mjs && npx vitest run --config vit
 
 **Independent Test**: E2E-P4.5-04, E2E-P4.5-05, E2E-P4.5-06, E2E-P4.5-07, E2E-P4.5-08, and E2E-P4.5-11 in harnesses H-XW and H-PAY.
 
-- [ ] T001 [US2] Add inquiry script `partial_refund` in `abo/test/stubs/paymob/worker.ts` — produces the partial-refund inquiry, FR-008, E2E-P4.5-08. Depends on nothing. `partial_refund` returns `is_refunded` true and `refunded_amount_cents` `"400"` while `amount_cents` stays `"800"`. Existing `reversed`, `bound_success`, and `rate_limit` scripts stay. Do not edit `abo/vitest.cross-worker.config.ts` or `abo/test/system/sweeps.cross-worker.test.ts` in this task.
+- [X] T001 [US2] Add inquiry script `partial_refund` in `abo/test/stubs/paymob/worker.ts` — produces the partial-refund inquiry, FR-008, E2E-P4.5-08. Depends on nothing. `partial_refund` returns `is_refunded` true and `refunded_amount_cents` `"400"` while `amount_cents` stays `"800"`. Existing `reversed`, `bound_success`, and `rate_limit` scripts stay. Do not edit `abo/vitest.cross-worker.config.ts` or `abo/test/system/sweeps.cross-worker.test.ts` in this task.
 
 **Checkpoint**: The stub answers `partial_refund`. `abo/test/system/sweeps.cross-worker.test.ts` does not exist yet.
 
@@ -46,7 +46,7 @@ cd abo && node scripts/build-platform-for-hxw.mjs && npx vitest run --config vit
 
 **Independent Test**: E2E-P4.5-01, E2E-P4.5-02, E2E-P4.5-03, and E2E-P4.5-12 in harnesses H-XW and H-PAY.
 
-- [ ] T002 [US1] Add the sweeps test include in `abo/vitest.cross-worker.config.ts` — produces the H-XW include for this unit, FR-001, E2E-P4.5-01. Depends on nothing. Add `test/system/sweeps.cross-worker.test.ts` to `test.include`. The unit command still names only that file. Do not add `TEST_CLOCK` to `abo/wrangler.toml`. Do not edit `abo/test/stubs/paymob/worker.ts` in this task.
+- [X] T002 [US1] Add the sweeps test include in `abo/vitest.cross-worker.config.ts` — produces the H-XW include for this unit, FR-001, E2E-P4.5-01. Depends on nothing. Add `test/system/sweeps.cross-worker.test.ts` to `test.include`. The unit command still names only that file. Do not add `TEST_CLOCK` to `abo/wrangler.toml`. Do not edit `abo/test/stubs/paymob/worker.ts` in this task.
 
 **Checkpoint**: The include lists `test/system/sweeps.cross-worker.test.ts`. That file does not exist yet.
 

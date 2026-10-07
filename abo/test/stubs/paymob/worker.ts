@@ -155,6 +155,15 @@ export default {
           }),
         );
       }
+      if (inquiryScript === "partial_refund") {
+        return jsonResponse(
+          transactionPayload(DEFAULT_ORDER_ID, {
+            id: txnId,
+            is_refunded: true,
+            refunded_amount_cents: "400",
+          }),
+        );
+      }
       if (inquiryScript === "pending") {
         return jsonResponse(
           transactionPayload(DEFAULT_ORDER_ID, {
