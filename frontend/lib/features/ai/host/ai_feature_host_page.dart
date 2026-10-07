@@ -115,6 +115,8 @@ class _AiFeatureHostPageState extends State<AiFeatureHostPage> {
   bool _platformReachable = false;
   int? _creditsUsed;
   int? _creditBudget;
+  String? _subscriptionRef;
+  String? _planDisplayName;
   List<AiStatusNotice> _notices = const [];
   String? _denialWireCode;
   String? _denialRetryAfter;
@@ -123,6 +125,15 @@ class _AiFeatureHostPageState extends State<AiFeatureHostPage> {
   void initState() {
     super.initState();
     unawaited(_bootstrap());
+  }
+
+  @override
+  void didUpdateWidget(AiFeatureHostPage oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.dependencies.staffIsAdministrator != widget.dependencies.staffIsAdministrator ||
+        oldWidget.dependencies.usageSummaryClient != widget.dependencies.usageSummaryClient) {
+      unawaited(_refreshAdministratorCoverage());
+    }
   }
 
   @override
@@ -160,10 +171,17 @@ class _AiFeatureHostPageState extends State<AiFeatureHostPage> {
 
       int? creditsUsed;
       int? creditBudget;
-      if (mode == AiDegradedMode.ready && baseUrl != null && baseUrl.isNotEmpty) {
-        final summary = await _fetchUsageSummary(baseUrl);
+      String? subscriptionRef;
+      String? planDisplayName;
+      if (mode == AiDegradedMode.ready &&
+          widget.dependencies.staffIsAdministrator &&
+          baseUrl != null &&
+          baseUrl.isNotEmpty) {
+        final summary = await _fetchCoverage(baseUrl);
         creditsUsed = summary?.creditsUsed;
         creditBudget = summary?.creditBudget;
+        subscriptionRef = summary?.subscriptionRef;
+        planDisplayName = summary?.planDisplayName;
       }
 
       if (!mounted) {
@@ -175,6 +193,8 @@ class _AiFeatureHostPageState extends State<AiFeatureHostPage> {
         _platformReachable = reachable;
         _creditsUsed = creditsUsed;
         _creditBudget = creditBudget;
+        _subscriptionRef = subscriptionRef;
+        _planDisplayName = planDisplayName;
         _notices = availability.notices;
         if (mode == AiDegradedMode.ready) {
           _resolver = ContextResolver(providerPort: widget.dependencies.contextProvider);
@@ -207,6 +227,38 @@ class _AiFeatureHostPageState extends State<AiFeatureHostPage> {
     }
   }
 
+  Future<void> _refreshAdministratorCoverage() async {
+    if (!widget.dependencies.staffIsAdministrator) {
+      if (!mounted) {
+        return;
+      }
+      setState(() {
+        _creditsUsed = null;
+        _creditBudget = null;
+        _subscriptionRef = null;
+        _planDisplayName = null;
+      });
+      return;
+    }
+
+    final availability = await widget.dependencies.availabilityReader.read();
+    final baseUrl = availability.platformBaseUrl;
+    if (baseUrl == null || baseUrl.isEmpty) {
+      return;
+    }
+
+    final summary = await _fetchCoverage(baseUrl);
+    if (!mounted) {
+      return;
+    }
+    setState(() {
+      _creditsUsed = summary?.creditsUsed;
+      _creditBudget = summary?.creditBudget;
+      _subscriptionRef = summary?.subscriptionRef;
+      _planDisplayName = summary?.planDisplayName;
+    });
+  }
+
   UsageSummaryClient _resolveUsageSummaryClient() {
     final override = widget.dependencies.usageSummaryClient;
     if (override != null) {
@@ -216,15 +268,15 @@ class _AiFeatureHostPageState extends State<AiFeatureHostPage> {
       return UsageSummaryClient(
         httpClient: MockClient((request) async {
           widget.dependencies.networkSpy?.recordPlatformCall(request.url.toString());
-          if (request.url.path.endsWith('/v1/usage')) {
+          if (request.url.path.endsWith('/v1/coverage')) {
             return http.Response(
               jsonEncode({
-                'current_period': {
-                  'period': '2026-09',
-                  'credits_used': 42,
-                  'credit_budget': 10000,
+                'subscription_ref': 'sub-fixture-001',
+                'term': {
+                  'used': 42,
+                  'allowance': 10000,
+                  'plan_display_name': 'Fixture Plan',
                 },
-                'prior_periods': <Object>[],
               }),
               200,
               headers: {'content-type': 'application/json'},
@@ -237,11 +289,14 @@ class _AiFeatureHostPageState extends State<AiFeatureHostPage> {
     return UsageSummaryClient();
   }
 
-  Future<UsageSummaryFetchResult?> _fetchUsageSummary(String platformBaseUrl) async {
-    final mintPort = widget.dependencies.mintPort;
-    final aat = mintPort != null
-        ? await mintPort.mint()
-        : (widget.dependencies.networkSpy != null ? 'widget-test-aat' : null);
+  Future<UsageSummaryFetchResult?> _fetchCoverage(String platformBaseUrl) async {
+    final String? aat;
+    if (widget.dependencies.networkSpy != null) {
+      aat = 'widget-test-aat';
+    } else {
+      final mintPort = widget.dependencies.mintPort;
+      aat = mintPort != null ? await mintPort.mint() : null;
+    }
     if (aat == null) {
       return null;
     }
@@ -325,8 +380,10 @@ class _AiFeatureHostPageState extends State<AiFeatureHostPage> {
 
     final hideSurface = _hidesSurface(_mode);
 
-    final showUsageGauge =
-        _mode == AiDegradedMode.ready && _creditsUsed != null && _creditBudget != null;
+    final showUsageGauge = widget.dependencies.staffIsAdministrator &&
+        _mode == AiDegradedMode.ready &&
+        _creditsUsed != null &&
+        _creditBudget != null;
 
     final degradedView = AiDegradedView(
       mode: _mode,
@@ -334,6 +391,8 @@ class _AiFeatureHostPageState extends State<AiFeatureHostPage> {
       staffIsAdministrator: widget.dependencies.staffIsAdministrator,
       wireCode: _denialWireCode,
       retryAfter: _denialRetryAfter,
+      subscriptionRef: _subscriptionRef,
+      planDisplayName: _planDisplayName,
       child: hideSurface
           ? const Text('Clinical workflows remain available.')
           : _resolver != null

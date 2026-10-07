@@ -15,6 +15,7 @@ import 'package:ai_clinic/core/ai/discovery_manifest_refresh_port.dart';
 import 'package:ai_clinic/core/ai/https_submit_port.dart';
 import 'package:ai_clinic/core/ai/supabase_aat_mint_port.dart';
 import 'package:ai_clinic/core/ai/supabase_context_provider_port.dart';
+import 'package:ai_clinic/core/ai/usage_summary_client.dart';
 import 'package:ai_clinic/core/config/supabase_config.dart';
 import 'package:ai_clinic/core/ui/widgets/widgets.dart';
 import 'package:ai_clinic/features/ai/availability/ai_availability.dart';
@@ -68,6 +69,7 @@ LiveVisitSummaryComposition buildLiveVisitSummaryComposition({
   String platformBaseUrl = 'https://ai.example.workers.dev',
   bool staffIsAdministrator = false,
   Future<void> Function()? onStatusRefresh,
+  UsageSummaryClient? usageSummaryClientOverride,
 }) {
   final reader = availabilityReader ?? SupabaseAiAvailabilityReader(client: client);
   final reachability = reachabilityPort ?? HttpPlatformReachabilityPort();
@@ -100,6 +102,8 @@ LiveVisitSummaryComposition buildLiveVisitSummaryComposition({
       networkSpy: networkSpy,
       persistenceProbe: persistenceProbe,
       exportProbe: exportProbe,
+      mintPort: mintPort,
+      usageSummaryClient: usageSummaryClientOverride,
       autoInvoke: autoInvoke ?? true,
       staffIsAdministrator: staffIsAdministrator,
       onStatusRefresh: onStatusRefresh,
