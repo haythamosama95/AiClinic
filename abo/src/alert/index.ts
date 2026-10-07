@@ -33,6 +33,7 @@ export type AlertCode =
   | "AL-07"
   | "AL-08"
   | "AL-09"
+  | "AL-10"
   | "AL-16"
   | "AL-23";
 
@@ -54,7 +55,7 @@ function nextSendAtForCode(
   code: string,
   nowMs: number,
 ): string | null {
-  if (code === "AL-16") {
+  if (code === "AL-16" || code === "AL-10") {
     return new Date(nowMs + ONE_DAY_MS).toISOString();
   }
   if (

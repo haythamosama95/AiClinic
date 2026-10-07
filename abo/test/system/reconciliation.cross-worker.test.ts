@@ -18,12 +18,15 @@ import {
 } from "vendor-contracts/testkit";
 import offersFixture from "../../fixtures/offers.json";
 import successFixture from "../fixtures/paymob/success.json";
+import payoutAmountMismatchCsv from "../fixtures/paymob/payout-amount-mismatch.csv?raw";
+import payoutUnrecordedChargebackCsv from "../fixtures/paymob/payout-unrecorded-chargeback.csv?raw";
 import checkoutMigrationSql from "../../migrations/0002_checkout.sql?raw";
 import notifyWorkMigrationSql from "../../migrations/0003_notify_work.sql?raw";
 import grantMigrationSql from "../../migrations/0004_grant.sql?raw";
 import reversalMigrationSql from "../../migrations/0005_reversal.sql?raw";
 import operatorActionMigrationSql from "../../migrations/0006_operator_action.sql?raw";
 import hpActionsMigrationSql from "../../migrations/0007_hp_actions.sql?raw";
+import reconciliationMigrationSql from "../../migrations/0008_reconciliation.sql?raw";
 import { loadOffersFixture } from "../../src/records/append";
 import { runReconciliation } from "../../src/reconciliation/run";
 import {
@@ -48,7 +51,9 @@ import {
   setClock,
   setupActivePlatformCoverage,
   setupCrossWorkerHarness,
+  settlePlatformDurableObjectAlarms,
   syncPlatformGrantLedger,
+  syncPlatformGrantVoids,
 } from "./cross-worker-harness";
 
 const CONTRACT_VERSION = CHANNEL_VERSIONS.vendorEntrypoint;
@@ -65,7 +70,13 @@ const ORG_RC_02 = "a4100002-0002-4002-8002-000000000002";
 const ORG_RC_03A = "a4100003-0003-4003-8003-000000000003";
 const ORG_RC_03B = "a4100003-0003-4003-8003-00000000000b";
 const ORG_RC_04 = "a4100004-0004-4004-8004-000000000004";
+const ORG_RC_05 = "a4100005-0005-4005-8005-000000000005";
+const ORG_RC_06 = "a4100006-0006-4006-8006-000000000006";
 const ORG_RC_07 = "a4100007-0007-4007-8007-000000000007";
+const ORG_RC_08 = "a4100008-0008-4008-8008-000000000008";
+const ORG_RC_09 = "a4100009-0009-4009-8009-000000000009";
+
+const HPAY_TXN_ID = 99001;
 
 type OffersFixtureExpectations = {
   offer_id: string;
@@ -316,6 +327,7 @@ async function ensureMigrations(): Promise<void> {
     reversalMigrationSql,
     operatorActionMigrationSql,
     hpActionsMigrationSql,
+    reconciliationMigrationSql,
   ]) {
     try {
       await applySql(sql);
@@ -529,6 +541,211 @@ async function opsHeaders(accessJwt: string): Promise<Record<string, string>> {
     "Abo-Contract-Version": "1",
     "content-type": "application/json",
   };
+}
+
+async function opsHeadersRaw(accessJwt: string): Promise<Record<string, string>> {
+  return {
+    "Cf-Access-Jwt-Assertion": accessJwt,
+    "Abo-Contract-Version": "1",
+  };
+}
+
+async function buildHpOperation(input: {
+  op: string;
+  params: Record<string, unknown>;
+  actorEmail: string;
+}): Promise<HpOperation> {
+  return {
+    op: input.op,
+    params: input.params,
+    actor_email: input.actorEmail,
+    issued_at: await currentHarnessClockIso(),
+    nonce: crypto.randomUUID(),
+    contract_version: CONTRACT_VERSION,
+  };
+}
+
+async function opsHpFetch(
+  path: string,
+  input: {
+    accessJwt: string;
+    operation: HpOperation;
+    assertion: Record<string, string>;
+  },
+): Promise<Response> {
+  return opsFetch(path, {
+    method: "POST",
+    headers: await opsHeaders(input.accessJwt),
+    body: JSON.stringify({
+      operation: input.operation,
+      assertion: input.assertion,
+    }),
+  });
+}
+
+async function postPayoutImport(
+  accessJwt: string,
+  csvBytes: string,
+): Promise<Response> {
+  return opsFetch("/ops/payout-imports", {
+    method: "POST",
+    headers: await opsHeadersRaw(accessJwt),
+    body: csvBytes,
+  });
+}
+
+async function platformGrantVoidCount(grantId: string): Promise<number> {
+  try {
+    const row = await env.PLATFORM_DB.prepare(
+      `SELECT COUNT(*) AS n FROM grant_void WHERE grant_id = ?`,
+    )
+      .bind(grantId)
+      .first<{ n: number }>();
+    return row?.n ?? 0;
+  } catch {
+    return 0;
+  }
+}
+
+async function recentTermState(
+  orgId: string,
+  paymentId: string,
+): Promise<string | null> {
+  const coverage = await platformCall("getCoverage", {
+    contract_version: CONTRACT_VERSION,
+    org_id: orgId,
+  });
+  if (coverage.result !== "ok") {
+    return null;
+  }
+  const parsed = JSON.parse(String(coverage.detail)) as {
+    recent_terms?: Array<{ term_id?: string; state?: string }>;
+  };
+  const grantId = await grantIdPaid(paymentId);
+  const outcome = await env.DB.prepare(
+    `SELECT term_ids FROM grant_outcome WHERE grant_id = ?`,
+  )
+    .bind(grantId)
+    .first<{ term_ids: string }>();
+  if (!outcome?.term_ids) {
+    return null;
+  }
+  const termIds = JSON.parse(outcome.term_ids) as string[];
+  const termId = termIds[0];
+  if (termId === undefined) {
+    return null;
+  }
+  const match = (parsed.recent_terms ?? []).find(
+    (term) => term.term_id === termId,
+  );
+  return match?.state ?? null;
+}
+
+async function tamperCoverageViewSnapshot(orgId: string): Promise<void> {
+  const row = await env.DB.prepare(
+    `SELECT binding_epoch, clinic_seq, snapshot FROM coverage_view WHERE org_id = ?`,
+  )
+    .bind(orgId)
+    .first<{
+      binding_epoch: number;
+      clinic_seq: number;
+      snapshot: string;
+    }>();
+  expect(row).not.toBeNull();
+  const snapshot = JSON.parse(row!.snapshot) as Record<string, unknown>;
+  snapshot.tampered = true;
+  await env.DB.prepare(
+    `UPDATE coverage_view
+     SET snapshot = ?
+     WHERE org_id = ?`,
+  )
+    .bind(JSON.stringify(snapshot), orgId)
+    .run();
+}
+
+async function seedFullReversalWithoutOutcome(
+  paymentId: string,
+  reference: string,
+): Promise<string> {
+  const reversalId = crypto.randomUUID();
+  await env.DB.prepare(
+    `INSERT INTO reversal (
+       reversal_id, payment_id, reference, amount_minor, kind, is_full,
+       source, cumulative_reversed_minor, detected_via, recorded_by,
+       evidence_sha256, effect, dedupe_key
+     ) VALUES (?, ?, ?, 1000, 'refund', 1, 'operator', 1000, 'manual', ?, 'evidence', 'hold', ?)`,
+  )
+    .bind(
+      reversalId,
+      paymentId,
+      reference,
+      VENDOR_OPERATOR_EMAIL,
+      `reversal-${paymentId}`,
+    )
+    .run();
+  return reversalId;
+}
+
+async function tamperGrantOutcomeReceiptSignature(grantId: string): Promise<void> {
+  const row = await env.DB.prepare(
+    `SELECT result, abo_kid, abo_signature, receipt, term_ids, at
+     FROM grant_outcome WHERE grant_id = ?`,
+  )
+    .bind(grantId)
+    .first<{
+      result: string;
+      abo_kid: string | null;
+      abo_signature: string | null;
+      receipt: string;
+      term_ids: string | null;
+      at: string;
+    }>();
+  expect(row).not.toBeNull();
+  const receipt = JSON.parse(row!.receipt) as Record<string, unknown>;
+  receipt.signature = "tampered-reconciliation-signature";
+  const tamperedReceipt = JSON.stringify(receipt);
+  await env.DB.prepare(`DELETE FROM grant_outcome WHERE grant_id = ?`)
+    .bind(grantId)
+    .run();
+  await env.DB.prepare(
+    `INSERT INTO grant_outcome (
+       grant_id, result, abo_kid, abo_signature, receipt, term_ids, at
+     ) VALUES (?, ?, ?, ?, ?, ?, ?)`,
+  )
+    .bind(
+      grantId,
+      row!.result,
+      row!.abo_kid,
+      row!.abo_signature,
+      tamperedReceipt,
+      row!.term_ids,
+      row!.at,
+    )
+    .run();
+}
+
+async function payoutLineRow(
+  importId: string,
+  lineNo: number,
+): Promise<{
+  kind: string;
+  gross_minor: number;
+  payment_id: string | null;
+} | null> {
+  try {
+    return env.DB.prepare(
+      `SELECT kind, gross_minor, payment_id
+       FROM payout_line WHERE import_id = ? AND line_no = ?`,
+    )
+      .bind(importId, lineNo)
+      .first<{
+        kind: string;
+        gross_minor: number;
+        payment_id: string | null;
+      }>();
+  } catch {
+    return null;
+  }
 }
 
 async function currentHarnessClockIso(): Promise<string> {
@@ -1233,5 +1450,188 @@ describe("reconciliation cross-worker", () => {
     const finding = await findingRow("callback_without_confirmation");
     expect(finding).not.toBeNull();
     expect(finding!.subject).toBe(notification!.notification_id);
+  });
+
+  it("E2E-P4.10-08 tampered coverage_view and full reversal without outcome raise feed_divergence and reversal_not_applied", async () => {
+    const expectations = await setupReconciliationHarness();
+    const feedOrgId = ORG_RC_08;
+    await paidCheckoutWithGrant(
+      feedOrgId,
+      expectations,
+      94108,
+      "req-rc-08-feed",
+    );
+    await syncPlatformGrantLedger(feedOrgId);
+    await drainPlatformDurableObjects();
+    await runScheduled("* * * * *");
+    await tamperCoverageViewSnapshot(feedOrgId);
+
+    const reversalOrgId = ORG_RC_08;
+    const { paymentId } = await paidCheckoutWithGrant(
+      reversalOrgId,
+      expectations,
+      941081,
+      "req-rc-08-reversal",
+    );
+    const paymentRow = await env.DB.prepare(
+      `SELECT reference FROM payment WHERE payment_id = ?`,
+    )
+      .bind(paymentId)
+      .first<{ reference: string }>();
+    expect(paymentRow).not.toBeNull();
+    const reversalId = await seedFullReversalWithoutOutcome(
+      paymentId,
+      paymentRow!.reference,
+    );
+
+    await runDailyReconciliation();
+
+    const feedFinding = await findingRow("feed_divergence");
+    expect(feedFinding).not.toBeNull();
+    expect(feedFinding!.subject).toBe(feedOrgId);
+
+    const reversalFinding = await findingRow("reversal_not_applied");
+    expect(reversalFinding).not.toBeNull();
+    expect(reversalFinding!.subject).toBe(reversalId);
+  });
+
+  it("E2E-P4.10-09 tampered grant_outcome receipt raises receipt_mismatch and AL-10", async () => {
+    const expectations = await setupReconciliationHarness();
+    const orgId = ORG_RC_09;
+    const { paymentId } = await paidCheckoutWithGrant(
+      orgId,
+      expectations,
+      94109,
+      "req-rc-09-receipt",
+    );
+    const grantId = await grantIdPaid(paymentId);
+    await syncPlatformGrantLedger(orgId);
+    await drainPlatformDurableObjects();
+    await tamperGrantOutcomeReceiptSignature(grantId);
+
+    await runDailyReconciliation();
+
+    const finding = await findingRow("receipt_mismatch");
+    expect(finding).not.toBeNull();
+    expect(finding!.subject).toBe(grantId);
+    expect(capturedEmailMentions("AL-10")).toBe(true);
+  });
+
+  it("E2E-P4.10-05 unrecorded payout chargeback resolves after manual chargeback and re-run", async () => {
+    const expectations = await setupReconciliationHarness();
+    const orgId = ORG_RC_05;
+    const hp = await ensureActiveHpCredential();
+    const { paymentId } = await paidCheckoutWithGrant(
+      orgId,
+      expectations,
+      HPAY_TXN_ID,
+      "req-rc-05-payout",
+    );
+    await syncPlatformGrantLedger(orgId);
+    await drainPlatformDurableObjects();
+
+    const importResponse = await postPayoutImport(
+      hp.accessJwt,
+      payoutUnrecordedChargebackCsv,
+    );
+    expect(importResponse.status).toBe(200);
+
+    const finding = await findingRow("unrecorded_reversal");
+    expect(finding).not.toBeNull();
+
+    const chargebackOperation = await buildHpOperation({
+      op: "manual_chargeback",
+      params: {},
+      actorEmail: VENDOR_OPERATOR_EMAIL,
+    });
+    const chargebackAssertion = await signHpOperation(
+      hp.authenticator,
+      chargebackOperation,
+    );
+    const chargeback = await opsHpFetch(
+      `/ops/payments/${paymentId}/chargeback`,
+      {
+        accessJwt: hp.accessJwt,
+        operation: chargebackOperation,
+        assertion: chargebackAssertion,
+      },
+    );
+    expect(chargeback.status).toBe(200);
+
+    await setClock(
+      new Date(Date.parse(await currentHarnessClockIso()) + 60_000).toISOString(),
+    );
+    await runScheduled("* * * * *");
+    await syncPlatformGrantVoids();
+    await settlePlatformDurableObjectAlarms();
+
+    const grantId = await grantIdPaid(paymentId);
+    expect(await platformGrantVoidCount(grantId)).toBe(1);
+    expect(await recentTermState(orgId, paymentId)).toBe("ended");
+
+    const findingsBeforeRerun = await findingCount();
+    await runDailyReconciliation();
+    expect(await findingCount()).toBe(findingsBeforeRerun);
+    expect(await findingCount("unrecorded_reversal")).toBe(1);
+  });
+
+  it("E2E-P4.10-06 payout amount mismatch and omitted payment raise payout findings", async () => {
+    const expectations = await setupReconciliationHarness();
+    const orgId = ORG_RC_06;
+    const hp = await ensureActiveHpCredential();
+
+    await setClock("2026-01-10T12:00:00.000Z");
+    await paidCheckoutWithGrant(
+      orgId,
+      expectations,
+      99002,
+      "req-rc-06-omitted",
+    );
+
+    await setClock("2026-01-31T12:00:00.000Z");
+    const { paymentId: matchedPaymentId } = await paidCheckoutWithGrant(
+      orgId,
+      expectations,
+      HPAY_TXN_ID,
+      "req-rc-06-matched",
+    );
+    const matchedPayment = await env.DB.prepare(
+      `SELECT amount_minor FROM payment WHERE payment_id = ?`,
+    )
+      .bind(matchedPaymentId)
+      .first<{ amount_minor: number }>();
+    expect(matchedPayment).not.toBeNull();
+    expect(matchedPayment!.amount_minor).not.toBe(1);
+
+    const omittedPayment = await env.DB.prepare(
+      `SELECT payment_id FROM payment
+       WHERE org_id = ? AND payment_id != ?
+       ORDER BY paid_at ASC LIMIT 1`,
+    )
+      .bind(orgId, matchedPaymentId)
+      .first<{ payment_id: string }>();
+    expect(omittedPayment).not.toBeNull();
+
+    const importResponse = await postPayoutImport(
+      hp.accessJwt,
+      payoutAmountMismatchCsv,
+    );
+    expect(importResponse.status).toBe(200);
+    const importBody = (await importResponse.json()) as Record<string, unknown>;
+    const importId = String(importBody.import_id);
+
+    const payoutLine = await payoutLineRow(importId, 1);
+    expect(payoutLine).not.toBeNull();
+    expect(payoutLine!.kind).toBe("payment");
+    expect(payoutLine!.gross_minor).toBe(1);
+    expect(payoutLine!.payment_id).toBe(matchedPaymentId);
+
+    const unmatchedFinding = await findingRow("payout_unmatched");
+    expect(unmatchedFinding).not.toBeNull();
+    expect(unmatchedFinding!.subject).toBe(`${importId}:1`);
+
+    const omittedFinding = await findingRow("payment_not_in_payout");
+    expect(omittedFinding).not.toBeNull();
+    expect(omittedFinding!.subject).toBe(omittedPayment!.payment_id);
   });
 });
