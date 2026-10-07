@@ -353,3 +353,4 @@ jobs:
         run: |
           npm ci
           npm test
+          node --import tsx --test test/p5-2.test.mjs

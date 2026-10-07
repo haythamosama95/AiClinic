@@ -180,7 +180,7 @@ Run that command from `e2e/fullstack/`.
 
 **Independent Test**: E2E-P5.2-01 in harness H-FS.
 
-- [ ] T023 [US1] Run this unit's command after `npm test` in `.github/workflows/ci.yml` — produces the fullstack job step for P5.2a, FR-001, FR-016, E2E-P5.2-01, E2E-P5.2-02, E2E-P5.2-05, E2E-P5.2-06, E2E-P5.2-07, E2E-P5.2-08, E2E-P5.2-10. Depends on T022. In job `fullstack`, after `npm test` in `e2e/fullstack`, run `node --import tsx --test test/p5-2.test.mjs`. Leave `npm test` on the P5.1 file.
+- [X] T023 [US1] Run this unit's command after `npm test` in `.github/workflows/ci.yml` — produces the fullstack job step for P5.2a, FR-001, FR-016, E2E-P5.2-01, E2E-P5.2-02, E2E-P5.2-05, E2E-P5.2-06, E2E-P5.2-07, E2E-P5.2-08, E2E-P5.2-10. Depends on T022. In job `fullstack`, after `npm test` in `e2e/fullstack`, run `node --import tsx --test test/p5-2.test.mjs`. Leave `npm test` on the P5.1 file.
 
 **Checkpoint**: Job `fullstack` runs the P5.1 `npm test` and then this unit's command. The seven E2E tests still fail until T024–T030.
 
@@ -188,7 +188,7 @@ Run that command from `e2e/fullstack/`.
 
 **Independent Test**: E2E-P5.2-01 in harness H-FS.
 
-- [ ] T024 [US1] Make E2E-P5.2-01 pass in `e2e/fullstack/test/p5-2.test.mjs` — produces the grant reaching available/active, FR-001, FR-006, FR-014, FR-016, E2E-P5.2-01. Depends on T023 (same test file as T007). `cron.job` for `ai_coverage_feed_pull` has schedule `30 seconds`. The runner calls `auth_internal.pull_coverage_feed` through both phases without sleeping 60 seconds. `get_ai_status(1)` is available and `active` and `contract_version` is 1. The accepted page echoed the sent feed version on `Aip-Contract-Version` and `contract_version`. E2E-P5.2-02, E2E-P5.2-05, E2E-P5.2-06, E2E-P5.2-07, E2E-P5.2-08, and E2E-P5.2-10 still fail.
+- [X] T024 [US1] Make E2E-P5.2-01 pass in `e2e/fullstack/test/p5-2.test.mjs` — produces the grant reaching available/active, FR-001, FR-006, FR-014, FR-016, E2E-P5.2-01. Depends on T023 (same test file as T007). `cron.job` for `ai_coverage_feed_pull` has schedule `30 seconds`. The runner calls `auth_internal.pull_coverage_feed` through both phases without sleeping 60 seconds. `get_ai_status(1)` is available and `active` and `contract_version` is 1. The accepted page echoed the sent feed version on `Aip-Contract-Version` and `contract_version`. E2E-P5.2-02, E2E-P5.2-05, E2E-P5.2-06, E2E-P5.2-07, E2E-P5.2-08, and E2E-P5.2-10 still fail.
 
 **Checkpoint**: E2E-P5.2-01 passes.
 
@@ -196,7 +196,7 @@ Run that command from `e2e/fullstack/`.
 
 **Independent Test**: E2E-P5.2-02 in harness H-FS. Every earlier suite stays green (rule S2).
 
-- [ ] T025 [US4] Make E2E-P5.2-02 pass in `e2e/fullstack/test/p5-2.test.mjs` — produces the immediate pull and the 10-second refusal, FR-005, FR-016, E2E-P5.2-02. Depends on T024 (same file). An administrator `request_ai_status_refresh(1)` returns `contract_version` 1 and `data.requested_at`, and a pull was requested. An immediate second call returns `RATE_LIMITED` and leaves `requested_at` unchanged. After owner SQL sets `requested_at` to 10 seconds ago, another call is accepted. `request_ai_status_refresh()` and `request_ai_status_refresh(2)`, including with no session, return `CONTRACT_VERSION_UNSUPPORTED` and do not write `status_refresh` or request a pull. E2E-P5.2-01 still passes. E2E-P5.2-05, E2E-P5.2-06, E2E-P5.2-07, E2E-P5.2-08, and E2E-P5.2-10 still fail.
+- [X] T025 [US4] Make E2E-P5.2-02 pass in `e2e/fullstack/test/p5-2.test.mjs` — produces the immediate pull and the 10-second refusal, FR-005, FR-016, E2E-P5.2-02. Depends on T024 (same file). An administrator `request_ai_status_refresh(1)` returns `contract_version` 1 and `data.requested_at`, and a pull was requested. An immediate second call returns `RATE_LIMITED` and leaves `requested_at` unchanged. After owner SQL sets `requested_at` to 10 seconds ago, another call is accepted. `request_ai_status_refresh()` and `request_ai_status_refresh(2)`, including with no session, return `CONTRACT_VERSION_UNSUPPORTED` and do not write `status_refresh` or request a pull. E2E-P5.2-01 still passes. E2E-P5.2-05, E2E-P5.2-06, E2E-P5.2-07, E2E-P5.2-08, and E2E-P5.2-10 still fail.
 
 **Checkpoint**: E2E-P5.2-02 passes. E2E-P5.2-01 still passes.
 

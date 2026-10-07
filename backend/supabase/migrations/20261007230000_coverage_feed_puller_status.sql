@@ -553,5 +553,5 @@ END;
 $$;
 
 REVOKE ALL ON FUNCTION auth_internal.request_ai_status_refresh(integer) FROM PUBLIC, anon, authenticated, service_role;
-REVOKE ALL ON FUNCTION public.request_ai_status_refresh(integer) FROM PUBLIC, anon;
-GRANT EXECUTE ON FUNCTION public.request_ai_status_refresh(integer) TO authenticated;
+REVOKE ALL ON FUNCTION public.request_ai_status_refresh(integer) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION public.request_ai_status_refresh(integer) TO authenticated, anon;
