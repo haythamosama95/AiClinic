@@ -3,10 +3,11 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "test": "node --test test/p5-1.test.mjs"
+    "test": "node --import tsx --test test/p5-1.test.mjs"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.49.8",
+    "tsx": "^4.20.5",
     "vendor-contracts": "file:../../packages/vendor-contracts",
     "wrangler": "~4.86.0"
   }
