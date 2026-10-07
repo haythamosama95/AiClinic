@@ -1116,10 +1116,16 @@ async function tenantEvidenceR2Keys(orgId: string): Promise<string[]> {
   const notifications = await env.DB.prepare(
     `SELECT n.body_r2_key
      FROM notification n
-     INNER JOIN payment p ON p.evidence_sha256 = n.body_sha256
-     WHERE p.org_id = ? AND n.body_r2_key != ''`,
+     WHERE n.body_r2_key != ''
+       AND (
+         n.checkout_id IN (SELECT checkout_id FROM checkout WHERE org_id = ?)
+         OR n.body_sha256 IN (
+           SELECT evidence_sha256 FROM payment
+           WHERE org_id = ? AND evidence_sha256 != ''
+         )
+       )`,
   )
-    .bind(orgId)
+    .bind(orgId, orgId)
     .all<{ body_r2_key: string }>();
   for (const row of notifications.results ?? []) {
     keys.add(row.body_r2_key);
@@ -1127,8 +1133,10 @@ async function tenantEvidenceR2Keys(orgId: string): Promise<string[]> {
   const inquiryRows = await env.DB.prepare(
     `SELECT ir.raw_r2_key
      FROM inquiry_result ir
-     INNER JOIN payment p ON p.checkout_id = ir.subject
-     WHERE p.org_id = ? AND ir.raw_r2_key != ''`,
+     WHERE ir.raw_r2_key != ''
+       AND ir.subject IN (
+         SELECT 'checkout:' || checkout_id FROM checkout WHERE org_id = ?
+       )`,
   )
     .bind(orgId)
     .all<{ raw_r2_key: string }>();
