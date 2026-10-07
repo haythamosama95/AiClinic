@@ -154,7 +154,7 @@ cd abo && node scripts/build-platform-for-hxw.mjs && vitest run --config vitest.
 
 **Independent Test**: E2E-P4.9-02, E2E-P4.9-05, E2E-P4.9-06, and E2E-P4.9-07 in harness H-XW. Earlier suites stay green, and E2E-P4.9-01, E2E-P4.9-03, and E2E-P4.9-04 still pass.
 
-- [ ] T017 [US2] Run `node scripts/build-platform-for-hxw.mjs && vitest run --config vitest.cross-worker.config.ts test/system/configuration-relays.cross-worker.test.ts` from `abo/` until E2E-P4.9-01 through E2E-P4.9-07 pass — produces the green unit harness, FR-001, FR-002, FR-003, FR-004, FR-005, FR-006, FR-007, FR-008, FR-009, FR-010, FR-011, E2E-P4.9-01, E2E-P4.9-02, E2E-P4.9-03, E2E-P4.9-04, E2E-P4.9-05, E2E-P4.9-06, E2E-P4.9-07. Depends on T016 (and therefore on T001–T015). This task may edit only `abo/test/system/configuration-relays.cross-worker.test.ts`. It does not add an E2E id and does not change `abo/src/ops/index.ts`.
+- [X] T017 [US2] Run `node scripts/build-platform-for-hxw.mjs && vitest run --config vitest.cross-worker.config.ts test/system/configuration-relays.cross-worker.test.ts` from `abo/` until E2E-P4.9-01 through E2E-P4.9-07 pass — produces the green unit harness, FR-001, FR-002, FR-003, FR-004, FR-005, FR-006, FR-007, FR-008, FR-009, FR-010, FR-011, E2E-P4.9-01, E2E-P4.9-02, E2E-P4.9-03, E2E-P4.9-04, E2E-P4.9-05, E2E-P4.9-06, E2E-P4.9-07. Depends on T016 (and therefore on T001–T015). This task may edit only `abo/test/system/configuration-relays.cross-worker.test.ts`. It does not add an E2E id and does not change `abo/src/ops/index.ts`.
 
 ```bash
 cd abo && node scripts/build-platform-for-hxw.mjs && vitest run --config vitest.cross-worker.config.ts test/system/configuration-relays.cross-worker.test.ts
@@ -170,7 +170,7 @@ cd abo && node scripts/build-platform-for-hxw.mjs && vitest run --config vitest.
 
 ### 7.1 Quickstart
 
-- [ ] T018 [US2] Create `specs/084-abo-p4-9-console-relays-configuration-registries-bootstrap/quickstart.md` from the plan's quickstart outline — produces this unit's quickstart, FR-001, FR-002, FR-003, FR-004, FR-005, FR-006, FR-007, FR-008, FR-009, FR-010, FR-011, E2E-P4.9-01, E2E-P4.9-02, E2E-P4.9-03, E2E-P4.9-04, E2E-P4.9-05, E2E-P4.9-06, E2E-P4.9-07. Depends on T017. Sections: (1) what was implemented, and the files added or modified; (2) the harness command below; (3) the entry point → module chain per E2E id below. No earlier-unit files, combined counts, or full-suite commands. No manual steps; the harness observes every scenario.
+- [X] T018 [US2] Create `specs/084-abo-p4-9-console-relays-configuration-registries-bootstrap/quickstart.md` from the plan's quickstart outline — produces this unit's quickstart, FR-001, FR-002, FR-003, FR-004, FR-005, FR-006, FR-007, FR-008, FR-009, FR-010, FR-011, E2E-P4.9-01, E2E-P4.9-02, E2E-P4.9-03, E2E-P4.9-04, E2E-P4.9-05, E2E-P4.9-06, E2E-P4.9-07. Depends on T017. Sections: (1) what was implemented, and the files added or modified; (2) the harness command below; (3) the entry point → module chain per E2E id below. No earlier-unit files, combined counts, or full-suite commands. No manual steps; the harness observes every scenario.
 
 ```bash
 cd abo && node scripts/build-platform-for-hxw.mjs && vitest run --config vitest.cross-worker.config.ts test/system/configuration-relays.cross-worker.test.ts
