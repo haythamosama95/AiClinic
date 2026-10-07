@@ -137,11 +137,11 @@ That command is this unit's new-scenario harness. `npm test` in `e2e/fullstack` 
 
 **Independent Test**: E2E-P6.2-06 in harness H-FL. Every earlier suite stays green (rule S2).
 
-- [ ] T018 [US2] Accept `staffIsAdministrator` on `hostDependencies` in `frontend/test/widget/ai/ai_surface_test_harness.dart` — produces the administrator session seam, FR-004, E2E-P6.2-06. Depends on T017. The existing gauge test can open an administrator session through this seam.
+- [X] T018 [US2] Accept `staffIsAdministrator` on `hostDependencies` in `frontend/test/widget/ai/ai_surface_test_harness.dart` — produces the administrator session seam, FR-004, E2E-P6.2-06. Depends on T017. The existing gauge test can open an administrator session through this seam.
 
 **Checkpoint**: `hostDependencies` accepts `staffIsAdministrator`. The ready-host gauge test does not set it yet.
 
-- [ ] T019 [US2] Run the ready-host gauge as an administrator in `frontend/test/widget/ai/usage_gauge_test.dart` — produces the existing gauge expectation, FR-004, FR-005, E2E-P6.2-06. Depends on T018. The ready-host gauge test sets `staffIsAdministrator` and still expects 42 and 10000. The non-enrolled test still sees no `/v1/usage` call.
+- [X] T019 [US2] Run the ready-host gauge as an administrator in `frontend/test/widget/ai/usage_gauge_test.dart` — produces the existing gauge expectation, FR-004, FR-005, E2E-P6.2-06. Depends on T018. The ready-host gauge test sets `staffIsAdministrator` and still expects 42 and 10000. The non-enrolled test still sees no `/v1/usage` call.
 
 **Checkpoint**: The ready-host gauge test opens an administrator session and still expects 42 and 10000.
 
@@ -149,7 +149,7 @@ That command is this unit's new-scenario harness. `npm test` in `e2e/fullstack` 
 
 **Independent Test**: E2E-P6.2-01, E2E-P6.2-02, E2E-P6.2-03, E2E-P6.2-04, E2E-P6.2-05, and E2E-P6.2-07 in harness H-FL.
 
-- [ ] T020 [US1] Expect "AI temporarily unavailable" in `frontend/test/widget/ai/ai_degraded_mode_test.dart` — produces the existing sentence expectation, FR-002, E2E-P6.2-07. Depends on T011. The provider-unavailable sentence expectation is "AI temporarily unavailable". The retry key stays.
+- [X] T020 [US1] Expect "AI temporarily unavailable" in `frontend/test/widget/ai/ai_degraded_mode_test.dart` — produces the existing sentence expectation, FR-002, E2E-P6.2-07. Depends on T011. The provider-unavailable sentence expectation is "AI temporarily unavailable". The retry key stays.
 
 **Checkpoint**: The existing degraded-mode test expects "AI temporarily unavailable" for provider unavailable.
 

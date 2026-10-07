@@ -114,7 +114,10 @@ class AiSurfaceHarness {
     _resolvers.clear();
   }
 
-  AiFeatureHostDependencies hostDependencies({bool skipReachabilityProbe = false}) {
+  AiFeatureHostDependencies hostDependencies({
+    bool skipReachabilityProbe = false,
+    bool staffIsAdministrator = false,
+  }) {
     return AiFeatureHostDependencies(
       availabilityReader: availabilityReader,
       reachabilityPort: reachabilityPort,
@@ -126,10 +129,12 @@ class AiSurfaceHarness {
       persistenceProbe: persistenceProbe,
       exportProbe: exportProbe,
       skipReachabilityProbe: skipReachabilityProbe || this.skipReachabilityProbe,
+      staffIsAdministrator: staffIsAdministrator,
     );
   }
 
-  Widget host() => AiFeatureHostPage(dependencies: hostDependencies());
+  Widget host({bool staffIsAdministrator = false}) =>
+      AiFeatureHostPage(dependencies: hostDependencies(staffIsAdministrator: staffIsAdministrator));
 
   Widget surface({bool autoInvoke = true}) => FirstAiFeatureSurface(
     sdk: sdk,
@@ -145,8 +150,8 @@ class AiSurfaceHarness {
     await tester.pumpWidget(MaterialApp(theme: AppTheme.light(), home: child));
   }
 
-  Future<void> pumpHost(WidgetTester tester) async {
-    await pumpWidgetWithTheme(tester, host());
+  Future<void> pumpHost(WidgetTester tester, {bool staffIsAdministrator = false}) async {
+    await pumpWidgetWithTheme(tester, host(staffIsAdministrator: staffIsAdministrator));
     await tester.pumpAndSettle();
   }
 

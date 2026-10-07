@@ -165,7 +165,7 @@ void main() {
       );
 
       expect(find.byKey(kAiDegradedProviderUnavailableKey), findsOneWidget);
-      expect(find.text('AI provider is unavailable. You can retry.'), findsOneWidget);
+      expect(find.text('AI temporarily unavailable'), findsOneWidget);
       expect(find.byKey(kAiDegradedRetryKey), findsOneWidget);
       expect(find.byKey(kAiDegradedAiUnavailableKey), findsNothing);
 
