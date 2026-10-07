@@ -363,7 +363,7 @@ npm test
 
 **Independent Test**: E2E-P5.1-07 in harness H-BK, and E2E-P5.1-06 in harness H-FS.
 
-- [ ] T036 [US1] Create `specs/087-abo-p5-1-issuer-key-custody-token-issuance/quickstart.md` from the plan's quickstart outline — produces this unit's quickstart, FR-001, FR-002, FR-003, FR-004, FR-005, FR-006, FR-007, FR-008, FR-009, FR-010, FR-011, FR-012, E2E-P5.1-01, E2E-P5.1-02, E2E-P5.1-03, E2E-P5.1-04, E2E-P5.1-05, E2E-P5.1-06, E2E-P5.1-07, E2E-P5.1-08, E2E-P5.1-09. Depends on T035. Sections: (1) what was implemented — issuer key custody, the three mints, the versioned issue RPCs, and H-FS; (2) files added or modified — the Files section of `plan.md`; (3) the two harness commands below, and no earlier-unit files, no combined counts, and no full-suite command; (4) the entry point → module chain per E2E id below.
+- [X] T036 [US1] Create `specs/087-abo-p5-1-issuer-key-custody-token-issuance/quickstart.md` from the plan's quickstart outline — produces this unit's quickstart, FR-001, FR-002, FR-003, FR-004, FR-005, FR-006, FR-007, FR-008, FR-009, FR-010, FR-011, FR-012, E2E-P5.1-01, E2E-P5.1-02, E2E-P5.1-03, E2E-P5.1-04, E2E-P5.1-05, E2E-P5.1-06, E2E-P5.1-07, E2E-P5.1-08, E2E-P5.1-09. Depends on T035. Sections: (1) what was implemented — issuer key custody, the three mints, the versioned issue RPCs, and H-FS; (2) files added or modified — the Files section of `plan.md`; (3) the two harness commands below, and no earlier-unit files, no combined counts, and no full-suite command; (4) the entry point → module chain per E2E id below.
 
 ```bash
 psql "postgresql://postgres:postgres@127.0.0.1:54322/postgres" -v ON_ERROR_STOP=1 -f backend/tests/ai_keystore_rls.sql
