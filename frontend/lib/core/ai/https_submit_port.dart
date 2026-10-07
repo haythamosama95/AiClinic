@@ -1,6 +1,8 @@
 import 'dart:async';
 import 'dart:convert';
 
+import 'package:ai_clinic/core/contract_versions.dart';
+import 'package:ai_clinic/features/ai/availability/ai_availability.dart';
 import 'package:http/http.dart' as http;
 
 import 'ports.dart';
@@ -36,18 +38,19 @@ class PlatformHttpsSubmitPort implements HttpsSubmitPort {
       if (input.transcript != null) 'transcript': input.transcript,
     });
 
-    final response = await _client.send(
-      http.Request('POST', uri)
-        ..headers.addAll({
-          'content-type': 'application/json',
-          'authorization': 'Bearer ${headers.aat}',
-          'x-idempotency-key': headers.idempotencyKey,
-          'x-trace-id': headers.traceId,
-          'x-capability-version': headers.capabilityVersion,
-          'accept': 'text/event-stream',
-        })
-        ..body = body,
-    );
+    final request = http.Request('POST', uri);
+    request.headers.addAll({
+      'content-type': 'application/json',
+      'authorization': 'Bearer ${headers.aat}',
+      'x-idempotency-key': headers.idempotencyKey,
+      'x-trace-id': headers.traceId,
+      'x-capability-version': headers.capabilityVersion,
+      'accept': 'text/event-stream',
+      'aip-contract-version': '$platformClinic',
+    });
+    request.body = body;
+
+    final response = await _client.send(request);
 
     final contentType = response.headers['content-type'] ?? '';
     if (response.statusCode < 200 || response.statusCode >= 300 || !contentType.contains('text/event-stream')) {
@@ -62,7 +65,11 @@ class PlatformHttpsSubmitPort implements HttpsSubmitPort {
     try {
       final decoded = jsonDecode(response.body);
       if (decoded is Map<String, dynamic>) {
-        final code = classifyTaxonomyCode(decoded['code']?.toString() ?? '');
+        final wireCode = decoded['code']?.toString() ?? '';
+        if (wireCode == 'contract_version_unsupported') {
+          throw const ContractVersionUnsupportedException();
+        }
+        final code = classifyTaxonomyCode(wireCode);
         return PlatformHttpException(
           code: code,
           requestReference: decoded['request_reference']?.toString(),

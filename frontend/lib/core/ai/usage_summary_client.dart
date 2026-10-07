@@ -1,5 +1,6 @@
 import 'dart:convert';
 
+import 'package:ai_clinic/core/contract_versions.dart';
 import 'package:http/http.dart' as http;
 
 import 'taxonomy.dart';
@@ -50,6 +51,7 @@ class UsageSummaryClient {
       headers: <String, String>{
         'authorization': 'Bearer $aat',
         'accept': 'application/json',
+        'aip-contract-version': '$platformClinic',
       },
     );
 

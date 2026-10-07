@@ -1,5 +1,7 @@
 import 'dart:convert';
 
+import 'package:ai_clinic/core/contract_versions.dart';
+import 'package:ai_clinic/features/ai/availability/ai_availability.dart';
 import 'package:http/http.dart' as http;
 
 import 'taxonomy.dart';
@@ -50,6 +52,7 @@ class DiscoveryClient {
     final headers = <String, String>{
       'authorization': 'Bearer $aat',
       'accept': 'application/json',
+      'Aip-Contract-Version': '$platformClinic',
     };
     final etag = ifNoneMatch ?? _cachedEtag;
     if (etag != null && etag.isNotEmpty) {
@@ -77,23 +80,35 @@ class DiscoveryClient {
       return DiscoveryFetchResult(manifests: manifests, etag: responseEtag, notModified: false);
     }
 
+    if (response.statusCode == 400) {
+      final body = _decodeResponseBody(response.body);
+      if (body['code']?.toString() == 'contract_version_unsupported') {
+        throw const ContractVersionUnsupportedException();
+      }
+    }
+
     throw _mapAuthFailure(response);
   }
 
   DiscoveryAuthFailure _mapAuthFailure(http.Response response) {
-    Map<String, Object?> body = {};
-    try {
-      final decoded = jsonDecode(response.body);
-      if (decoded is Map<String, dynamic>) {
-        body = Map<String, Object?>.from(decoded);
-      } else if (decoded is Map) {
-        body = Map<String, Object?>.from(decoded);
-      }
-    } on FormatException {
-      body = {};
-    }
+    final body = _decodeResponseBody(response.body);
     final code = classifyTaxonomyCode(body['code']?.toString() ?? 'unauthenticated');
     return DiscoveryAuthFailure(code: code, responseBody: body);
+  }
+
+  Map<String, Object?> _decodeResponseBody(String responseBody) {
+    try {
+      final decoded = jsonDecode(responseBody);
+      if (decoded is Map<String, dynamic>) {
+        return Map<String, Object?>.from(decoded);
+      }
+      if (decoded is Map) {
+        return Map<String, Object?>.from(decoded);
+      }
+    } on FormatException {
+      // Fall through to empty body.
+    }
+    return {};
   }
 }
 

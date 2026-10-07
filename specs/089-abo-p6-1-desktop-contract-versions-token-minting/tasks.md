@@ -139,7 +139,7 @@ Those two commands are the unit harness. `npm test` in `e2e/fullstack` is not th
 
 **Independent Test**: E2E-P6.1-01, E2E-P6.1-02, E2E-P6.1-03, E2E-P6.1-04, E2E-P6.1-05, and E2E-P6.1-06 in harness H-FL. Every earlier suite stays green (rule S2).
 
-- [ ] T014 [US2] Send `Aip-Contract-Version` from `DiscoveryClient` in `frontend/lib/core/ai/discovery_client.dart` — produces the capabilities header, FR-003, FR-007, E2E-P6.1-06. Depends on T013. Set `Aip-Contract-Version` to `platformClinic` on `GET /v1/capabilities` before the request is sent. HTTP 400 with body code `contract_version_unsupported` is the update state. An accepted response is the one that carries that header and `contract_version` in the JSON body. The `/health` reachability probe does not gain this header.
+- [X] T014 [US2] Send `Aip-Contract-Version` from `DiscoveryClient` in `frontend/lib/core/ai/discovery_client.dart` — produces the capabilities header, FR-003, FR-007, E2E-P6.1-06. Depends on T013. Set `Aip-Contract-Version` to `platformClinic` on `GET /v1/capabilities` before the request is sent. HTTP 400 with body code `contract_version_unsupported` is the update state. An accepted response is the one that carries that header and `contract_version` in the JSON body. The `/health` reachability probe does not gain this header.
 
 **Checkpoint**: Discovery sends `platformClinic` and maps HTTP 400 `contract_version_unsupported` to the update state.
 
@@ -147,11 +147,11 @@ Those two commands are the unit harness. `npm test` in `e2e/fullstack` is not th
 
 **Independent Test**: E2E-P6.1-01, E2E-P6.1-02, E2E-P6.1-03, E2E-P6.1-04, E2E-P6.1-05, and E2E-P6.1-06 in harness H-FL. Every earlier suite stays green (rule S2).
 
-- [ ] T015 [US2] Send `Aip-Contract-Version` from `PlatformHttpsSubmitPort` in `frontend/lib/core/ai/https_submit_port.dart` — produces the requests header and the denial code, FR-003, FR-005, FR-007, E2E-P6.1-06. Depends on T013. Set `Aip-Contract-Version` to `platformClinic` on `POST /v1/requests` before the request body is assigned. Keep the response `code` string so the live surface can see `allowance_exhausted`, `coverage_lapsed`, and `coverage_unknown`. HTTP 400 `contract_version_unsupported` is the update state. The `/health` probe does not gain this header.
+- [X] T015 [US2] Send `Aip-Contract-Version` from `PlatformHttpsSubmitPort` in `frontend/lib/core/ai/https_submit_port.dart` — produces the requests header and the denial code, FR-003, FR-005, FR-007, E2E-P6.1-06. Depends on T013. Set `Aip-Contract-Version` to `platformClinic` on `POST /v1/requests` before the request body is assigned. Keep the response `code` string so the live surface can see `allowance_exhausted`, `coverage_lapsed`, and `coverage_unknown`. HTTP 400 `contract_version_unsupported` is the update state. The `/health` probe does not gain this header.
 
 **Checkpoint**: Submit sets the header before the body and keeps the three coverage denial codes.
 
-- [ ] T016 [US2] Send `Aip-Contract-Version` from `frontend/lib/core/ai/usage_summary_client.dart` — produces the usage header, FR-003, E2E-P6.1-06. Depends on T015 (same subphase). Set `Aip-Contract-Version` to `platformClinic` on `GET /v1/usage` before the request is sent. The `/health` probe does not gain this header.
+- [X] T016 [US2] Send `Aip-Contract-Version` from `frontend/lib/core/ai/usage_summary_client.dart` — produces the usage header, FR-003, E2E-P6.1-06. Depends on T015 (same subphase). Set `Aip-Contract-Version` to `platformClinic` on `GET /v1/usage` before the request is sent. The `/health` probe does not gain this header.
 
 **Checkpoint**: `GET /v1/capabilities`, `POST /v1/requests`, and `GET /v1/usage` send `platformClinic`.
 
