@@ -19,6 +19,10 @@ import { handleOps as dispatchOps, runDueTransferSteps } from "./ops/index.js";
 import { refreshCoverageView } from "./coverage/view.js";
 import { markExportLagIfDue, sendDueAlerts } from "./alert/index.js";
 import { checkR2BucketLock } from "./alert/lock.js";
+import { clockNowIso } from "./clock.js";
+import { runDailyDigest } from "./digest/run.js";
+import { runHousekeeping } from "./housekeeping/run.js";
+import { runHourlyWatch } from "./watch/hourly.js";
 import {
   handleGetNotifyPaymob,
   handleGetReturnPaymob,
@@ -104,6 +108,9 @@ export interface Env {
     listOperatorCredentials(
       args: Record<string, unknown>,
     ): Promise<Record<string, unknown>>;
+    feedConsumerHealth(
+      args: Record<string, unknown>,
+    ): Promise<Record<string, unknown>>;
     recordOperatorAction(
       args: Record<string, unknown>,
     ): Promise<Record<string, unknown>>;
@@ -119,6 +126,28 @@ export interface Env {
 }
 
 const SIGNING_KEY_GATE_ROW_ID = 1;
+
+async function stampScheduledJobRun(env: Env, job: string): Promise<void> {
+  try {
+    const nowIso = await clockNowIso(env);
+    await env.DB.prepare(
+      `INSERT INTO scheduled_job_run (job, last_run_at) VALUES (?, ?)
+       ON CONFLICT(job) DO UPDATE SET last_run_at = excluded.last_run_at`,
+    )
+      .bind(job, nowIso)
+      .run();
+  } catch {
+    // Missing table is ignored.
+  }
+}
+
+async function pingHeartbeat(env: Env): Promise<void> {
+  try {
+    await fetch(env.HEARTBEAT_URL);
+  } catch {
+    // Heartbeat failures must not block the cron.
+  }
+}
 
 function emptyNotFound(): Response {
   return new Response(null, { status: 404 });
@@ -330,6 +359,7 @@ export default {
     env: Env,
   ): Promise<void> {
     const cron = controller.cron;
+    await stampScheduledJobRun(env, cron);
     if (cron === "0 */6 * * *") {
       try {
         await enqueueSixHourReversalPopulation(env);
@@ -348,6 +378,11 @@ export default {
         await enqueueHourlyReversalPopulation(env);
       } catch {
         // Hourly population failures must not block the hourly cron.
+      }
+      try {
+        await runHourlyWatch(env);
+      } catch {
+        // Hourly watch failures must not block the hourly cron.
       }
       return;
     }
@@ -385,12 +420,23 @@ export default {
       } catch {
         // Reconciliation failures must not block the 06:00 cron.
       }
-      await sendDueAlerts(env);
       try {
         await enqueueDailyReversalPopulation(env);
       } catch {
         // Daily population failures must not block the 06:00 cron.
       }
+      try {
+        await runDailyDigest(env);
+      } catch {
+        // Digest failures must not block the 06:00 cron.
+      }
+      await pingHeartbeat(env);
+      try {
+        await runHousekeeping(env);
+      } catch {
+        // Housekeeping failures must not block the 06:00 cron.
+      }
+      await sendDueAlerts(env);
     }
   },
 };

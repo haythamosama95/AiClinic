@@ -22,6 +22,7 @@ import {
 import { clockNowIso, clockNowMs, type ClockEnv } from "../clock.js";
 import { PAYMOB_PROVIDER_ID, providerForId } from "../provider/registry.js";
 import { runReconciliation } from "../reconciliation/run.js";
+import { rememberOperatorCredential } from "../watch/hourly.js";
 import {
   determineReversalEffect,
   insertReverseWorkRow,
@@ -2379,13 +2380,52 @@ async function handlePostRegisterOperatorCredential(
     params.attestation = body.attestation;
   }
 
-  return forwardPlatformRelay(env, access, contractVersion, {
-    method: "registerOperatorCredential",
-    subject: credentialId,
-    actionId,
+  const platformResult = await env.PLATFORM.registerOperatorCredential(
     platformArgs,
-    params,
+  );
+  const result = String(platformResult.result ?? "");
+  const paramsSha256 = await sha256Hex(canonicalize(params));
+  const operation = platformArgs.operation;
+  const assertionSha256 =
+    platformArgs.assertion !== undefined && isRecord(operation)
+      ? await sha256Hex(canonicalize(operation))
+      : null;
+
+  await insertRelayOperatorAction(env, {
+    action_id: actionId,
+    actor_email: access.email,
+    access_jti: access.jti,
+    action: "registerOperatorCredential",
+    subject: credentialId,
+    params_sha256: paramsSha256,
+    assertion_sha256: assertionSha256,
+    result,
   });
+
+  if (result === "ok" && platformResult.detail !== undefined) {
+    let detail: unknown = platformResult.detail;
+    if (typeof detail === "string") {
+      try {
+        detail = JSON.parse(detail) as unknown;
+      } catch {
+        detail = null;
+      }
+    }
+    if (
+      isRecord(detail) &&
+      typeof detail.credential_id === "string" &&
+      typeof detail.public_key_cose === "string" &&
+      typeof detail.alg === "string"
+    ) {
+      await rememberOperatorCredential(env.DB, {
+        credential_id: detail.credential_id,
+        public_key_cose: detail.public_key_cose,
+        alg: detail.alg,
+      });
+    }
+  }
+
+  return platformResponseJson(platformResult, contractVersion);
 }
 
 async function handlePostRevokeOperatorCredential(

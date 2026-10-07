@@ -73,7 +73,9 @@ async function importEd25519PublicKey(publicKeyB64: string): Promise<CryptoKey |
   }
 }
 
-async function loadIssuerPins(env: BillingAuthEnv): Promise<Map<string, string>> {
+export async function loadIssuerPins(
+  env: BillingAuthEnv,
+): Promise<Map<string, string>> {
   const pins = new Map<string, string>();
   if (env.TEST_CLOCK === "1") {
     try {
