@@ -112,7 +112,7 @@ jobs:
         run: flutter analyze
 
       - name: Test
-        run: flutter test --file-reporter=json:test-results/flutter.json
+        run: flutter test --exclude-tags fullstack --file-reporter=json:test-results/flutter.json
 
       - name: Publish test results
         if: always()
