@@ -83,16 +83,19 @@ DECLARE
 BEGIN
   PERFORM set_config('role', 'postgres', true);
   PERFORM set_config('app.environment', 'development', true);
-  PERFORM auth_internal.delete_clinic_test_fixtures(ARRAY[v_bootstrap_staff]::uuid[]);
-  DELETE FROM public.audit_log WHERE organization_id IS NOT NULL;
-  DELETE FROM public.app_settings WHERE true;
-  DELETE FROM public.subscription_cache WHERE true;
   IF to_regclass('ai_internal.ai_token_issuance') IS NOT NULL THEN
     DELETE FROM ai_internal.ai_token_issuance WHERE true;
   END IF;
   IF to_regclass('ai_internal.installation_keys') IS NOT NULL THEN
     DELETE FROM ai_internal.installation_keys WHERE true;
   END IF;
+  IF to_regclass('public.ai_accepted_output') IS NOT NULL THEN
+    DELETE FROM public.ai_accepted_output WHERE true;
+  END IF;
+  PERFORM auth_internal.delete_clinic_test_fixtures(ARRAY[v_bootstrap_staff]::uuid[]);
+  DELETE FROM public.audit_log WHERE organization_id IS NOT NULL;
+  DELETE FROM public.app_settings WHERE true;
+  DELETE FROM public.subscription_cache WHERE true;
 
   PERFORM pg_temp.set_authenticated_session(v_bootstrap_user);
 
@@ -363,6 +366,14 @@ BEGIN
 
   DELETE FROM ai_internal.user_active_organization WHERE user_id = v_user_id;
   DELETE FROM ai_internal.membership WHERE user_id = v_user_id;
+  IF to_regclass('ai_internal.ai_token_issuance') IS NOT NULL THEN
+    DELETE FROM ai_internal.ai_token_issuance
+    WHERE actor_staff_id = v_staff_id
+       OR organization_id IN (v_org_a, v_org_b);
+  END IF;
+  IF to_regclass('public.ai_accepted_output') IS NOT NULL THEN
+    DELETE FROM public.ai_accepted_output WHERE organization_id IN (v_org_a, v_org_b);
+  END IF;
   DELETE FROM public.staff_branch_assignments WHERE staff_member_id = v_staff_id;
   DELETE FROM public.staff_members WHERE id = v_staff_id;
   DELETE FROM public.audit_log
@@ -372,9 +383,6 @@ BEGIN
   DELETE FROM public.organization_billing_settings WHERE organization_id IN (v_org_a, v_org_b);
   DELETE FROM public.organizations WHERE id IN (v_org_a, v_org_b);
   DELETE FROM auth.users WHERE id = v_user_id;
-  IF to_regclass('ai_internal.ai_token_issuance') IS NOT NULL THEN
-    DELETE FROM ai_internal.ai_token_issuance WHERE true;
-  END IF;
   IF to_regclass('ai_internal.installation_keys') IS NOT NULL THEN
     DELETE FROM ai_internal.installation_keys WHERE true;
   END IF;

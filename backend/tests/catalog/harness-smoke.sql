@@ -97,7 +97,13 @@ DECLARE
   v_ok boolean;
 BEGIN
   PERFORM pg_temp.reset_keystore();
-  SELECT count(*)::int INTO v_key_count FROM ai_internal.installation_keys;
+  IF to_regclass('ai_internal.installation_keys') IS NOT NULL THEN
+    SELECT count(*)::int INTO v_key_count FROM ai_internal.installation_keys;
+  ELSIF to_regclass('ai_internal.issuer_key') IS NOT NULL THEN
+    SELECT count(*)::int INTO v_key_count FROM ai_internal.issuer_key;
+  ELSE
+    v_key_count := 0;
+  END IF;
   SELECT count(*)::int INTO v_issuance_count FROM ai_internal.ai_token_issuance;
   SELECT s.value_json INTO v_flag
   FROM ai_internal.app_settings s

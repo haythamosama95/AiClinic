@@ -382,6 +382,15 @@ BEGIN
       );
   END;
 
+  IF NULLIF(trim(COALESCE(p_mrn, '')), '') IS NOT NULL THEN
+    v_mrn_numeric := substring(v_mrn from 'MRN-(\d+)$')::bigint;
+    PERFORM setval(
+      'public.patient_mrn_seq',
+      GREATEST((SELECT last_value FROM public.patient_mrn_seq), v_mrn_numeric),
+      true
+    );
+  END IF;
+
   INSERT INTO public.audit_log (user_id, organization_id, action, table_name, record_id, new_data_json)
   VALUES (
     auth.uid(),
@@ -389,7 +398,12 @@ BEGIN
     'patient.create',
     'patients',
     v_patient_id,
-    jsonb_build_object('patient_id', v_patient_id, 'mrn', v_mrn)
+    jsonb_build_object(
+      'full_name', trim(p_full_name),
+      'branch_id', p_active_branch_id,
+      'phone', v_normalized_phone,
+      'mrn', v_mrn
+    )
   );
 
   RETURN public.rpc_success(jsonb_build_object('patient_id', v_patient_id, 'mrn', v_mrn));
@@ -1423,3 +1437,150 @@ END;
 $$;
 
 REVOKE ALL ON FUNCTION auth_internal.switch_issuer_signing_kid(text) FROM PUBLIC, anon, authenticated, service_role;
+
+-- -----------------------------------------------------------------------------
+-- Clinic self-test verifier: issuer_key custody (replaces installation_keys)
+-- -----------------------------------------------------------------------------
+
+CREATE OR REPLACE FUNCTION auth_internal.verify_aat(p_token text)
+RETURNS boolean
+LANGUAGE plpgsql
+STABLE
+SECURITY DEFINER
+SET search_path = ai_internal, pgsodium, auth_internal
+AS $$
+DECLARE
+  v_header_part text;
+  v_payload_part text;
+  v_signature_part text;
+  v_header jsonb;
+  v_payload jsonb;
+  v_kid text;
+  v_iss text;
+  v_issuer_id text;
+  v_public_key_text text;
+  v_key_status text;
+  v_signing_input text;
+  v_signature bytea;
+BEGIN
+  IF p_token IS NULL OR p_token = '' THEN
+    RETURN false;
+  END IF;
+
+  v_header_part := split_part(p_token, '.', 1);
+  v_payload_part := split_part(p_token, '.', 2);
+  v_signature_part := split_part(p_token, '.', 3);
+
+  IF v_header_part = ''
+     OR v_payload_part = ''
+     OR v_signature_part = ''
+     OR array_length(string_to_array(p_token, '.'), 1) <> 3 THEN
+    RETURN false;
+  END IF;
+
+  BEGIN
+    v_header := convert_from(
+      auth_internal.base64url_decode(v_header_part),
+      'utf8'
+    )::jsonb;
+  EXCEPTION
+    WHEN OTHERS THEN
+      RETURN false;
+  END;
+
+  v_kid := v_header ->> 'kid';
+  IF v_kid IS NULL OR (v_header ->> 'alg') IS DISTINCT FROM 'EdDSA' THEN
+    RETURN false;
+  END IF;
+
+  SELECT ik.public_key, ik.status
+  INTO v_public_key_text, v_key_status
+  FROM ai_internal.issuer_key ik
+  WHERE ik.kid = v_kid;
+
+  IF NOT FOUND OR v_key_status = 'retired' THEN
+    RETURN false;
+  END IF;
+
+  BEGIN
+    v_payload := convert_from(
+      auth_internal.base64url_decode(v_payload_part),
+      'utf8'
+    )::jsonb;
+  EXCEPTION
+    WHEN OTHERS THEN
+      RETURN false;
+  END;
+
+  v_iss := v_payload ->> 'iss';
+  v_issuer_id := auth_internal.ai_app_setting_text('ai.issuer_id', 'issuer-test');
+  IF v_iss IS NULL OR v_iss IS DISTINCT FROM v_issuer_id THEN
+    RETURN false;
+  END IF;
+
+  -- Clinic self-test does not evaluate exp; platform verifier (B3) enforces expiry.
+
+  v_signing_input := v_header_part || '.' || v_payload_part;
+
+  BEGIN
+    v_signature := auth_internal.base64url_decode(v_signature_part);
+    RETURN pgsodium.crypto_sign_verify_detached(
+      v_signature,
+      convert_to(v_signing_input, 'utf8'),
+      auth_internal.base64url_decode(v_public_key_text)
+    );
+  EXCEPTION
+    WHEN OTHERS THEN
+      RETURN false;
+  END;
+END;
+$$;
+
+REVOKE EXECUTE ON FUNCTION auth_internal.verify_aat(text) FROM PUBLIC, anon, authenticated;
+
+-- -----------------------------------------------------------------------------
+-- Test fixture helper: clear AI issuance/acceptance before staff teardown.
+-- -----------------------------------------------------------------------------
+
+CREATE OR REPLACE FUNCTION auth_internal.delete_clinic_test_fixtures(
+  p_preserve_staff_ids uuid[] DEFAULT '{}'::uuid[]
+)
+RETURNS void
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
+AS $$
+BEGIN
+  PERFORM auth_internal.delete_clinic_operational_dependents();
+
+  IF to_regclass('ai_internal.ai_token_issuance') IS NOT NULL THEN
+    DELETE FROM ai_internal.ai_token_issuance;
+  END IF;
+  IF to_regclass('public.ai_accepted_output') IS NOT NULL THEN
+    DELETE FROM public.ai_accepted_output;
+  END IF;
+
+  DELETE FROM public.staff_branch_assignments;
+
+  IF COALESCE(array_length(p_preserve_staff_ids, 1), 0) > 0 THEN
+    DELETE FROM public.staff_members
+    WHERE id <> ALL (p_preserve_staff_ids);
+  ELSE
+    DELETE FROM public.staff_members;
+  END IF;
+
+  DELETE FROM public.audit_log;
+  DELETE FROM public.app_settings;
+  DELETE FROM public.subscription_cache;
+
+  IF to_regclass('public.service_branches') IS NOT NULL THEN
+    DELETE FROM public.service_branches;
+  END IF;
+  IF to_regclass('public.services') IS NOT NULL THEN
+    DELETE FROM public.services;
+  END IF;
+
+  DELETE FROM public.branches;
+  DELETE FROM public.organizations;
+END;
+$$;

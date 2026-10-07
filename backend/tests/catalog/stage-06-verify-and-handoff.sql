@@ -119,11 +119,22 @@ LANGUAGE plpgsql
 AS $$
 DECLARE
   v_doc_auth uuid;
+  v_org uuid;
   v_token text;
 BEGIN
   PERFORM pg_temp.reset_postgres();
   SELECT value INTO STRICT v_doc_auth FROM catalog_setup WHERE key = 'doctor_auth';
-  PERFORM pg_temp.set_authenticated_session(v_doc_auth);
+  SELECT value INTO STRICT v_org FROM catalog_setup WHERE key = 'org';
+  PERFORM set_config('role', 'authenticated', true);
+  PERFORM set_config(
+    'request.jwt.claims',
+    json_build_object(
+      'sub', v_doc_auth::text,
+      'role', 'authenticated',
+      'organization_id', v_org::text
+    )::text,
+    true
+  );
   v_token := public.issue_ai_token(1);
   PERFORM pg_temp.reset_postgres();
   RETURN v_token;
@@ -162,6 +173,9 @@ BEGIN
   PERFORM pg_temp.reset_postgres();
   PERFORM set_config('app.environment', 'development', true);
 
+  -- Clear issuance rows before fixture teardown (P5.1 per-audience ledger FK).
+  PERFORM pg_temp.reset_keystore();
+
   PERFORM auth_internal.delete_clinic_test_fixtures(ARRAY[v_boot_staff]::uuid[]);
 
   -- CONFLICT: catalog B0 usernames nadia.h/lina.k/rami.s contain '.' ;
@@ -172,8 +186,6 @@ BEGIN
     AND provider_id IN ('nadia.h', 'lina.k', 'rami.s', 'nadia_h', 'lina_k', 'rami_s');
   DELETE FROM auth.users
   WHERE lower(email) IN ('nadia.h', 'lina.k', 'rami.s', 'nadia_h', 'lina_k', 'rami_s');
-
-  PERFORM pg_temp.reset_keystore();
 
   PERFORM pg_temp.set_authenticated_session(v_boot_auth);
 
@@ -228,6 +240,13 @@ BEGIN
   WHERE lower(u.email) = 'rami_s'
     AND sm.is_deleted = false;
 
+  INSERT INTO ai_internal.membership (user_id, organization_id, role)
+  SELECT sm.auth_user_id, v_org_id, sm.role
+  FROM public.staff_members sm
+  WHERE sm.auth_user_id IN (v_doc_auth, v_adm_auth, v_rec_auth)
+    AND sm.is_deleted = false
+  ON CONFLICT (user_id, organization_id) DO NOTHING;
+
   DELETE FROM catalog_setup;
   INSERT INTO catalog_setup (key, value) VALUES
     ('org', v_org_id),
@@ -265,25 +284,20 @@ END;
 $$;
 
 -- -----------------------------------------------------------------------------
--- S06-033 — Non-numeric rate-ceiling setting fails with an uncoded cast error
--- CONFLICT: catalog pins SQLSTATE 22P02 / invalid input syntax for type numeric:"abc".
--- CODE (value_json)::numeric on a jsonb string raises 22023
--- "cannot cast jsonb string to type numeric".
+-- S06-033 — P5.1 issuer ignores non-numeric rate-ceiling setting
+-- Pre-P5.1 read ai.issuer.rate_limit.ceiling and raised SQLSTATE 22023 on
+-- (value_json)::numeric for a jsonb string. P5.1 issue_ai_token does not read
+-- that setting; mint proceeds with exp = iat + 600.
 -- -----------------------------------------------------------------------------
 DO $$
 DECLARE
-  v_doc_auth uuid;
   v_before int;
   v_after int;
-  v_raised boolean := false;
-  v_sqlstate text;
-  v_msg text;
   v_token text;
   v_ok boolean;
   v_detail text;
 BEGIN
   PERFORM pg_temp.reset_postgres();
-  SELECT value INTO STRICT v_doc_auth FROM catalog_setup WHERE key = 'doctor_auth';
   SELECT count(*)::int INTO v_before
   FROM ai_internal.ai_token_issuance
   WHERE is_deleted = false;
@@ -293,20 +307,7 @@ BEGIN
   SET value_json = '"abc"'::jsonb
   WHERE key = 'ai.issuer.rate_limit.ceiling';
 
-  PERFORM pg_temp.set_authenticated_session(v_doc_auth);
-  BEGIN
-    v_token := public.issue_ai_token(1);
-    v_raised := false;
-  EXCEPTION
-    WHEN SQLSTATE '22023' THEN
-      v_sqlstate := '22023';
-      GET STACKED DIAGNOSTICS v_msg = MESSAGE_TEXT;
-      v_raised := true;
-    WHEN OTHERS THEN
-      v_sqlstate := SQLSTATE;
-      GET STACKED DIAGNOSTICS v_msg = MESSAGE_TEXT;
-      v_raised := true;
-  END;
+  v_token := pg_temp.s06_mint_as_doc();
 
   PERFORM pg_temp.reset_postgres();
   SELECT count(*)::int INTO v_after
@@ -317,19 +318,15 @@ BEGIN
   SET value_json = '100'::jsonb
   WHERE key = 'ai.issuer.rate_limit.ceiling';
 
-  v_ok := v_raised
-    AND v_sqlstate = '22023'
-    AND COALESCE(v_msg, '') = 'cannot cast jsonb string to type numeric'
-    AND v_token IS NULL
-    AND v_after = v_before;
+  v_ok := pg_temp.s06_is_compact_jws(v_token)
+    AND v_after = v_before + 1;
 
-  v_detail := 'sqlstate=' || COALESCE(v_sqlstate, '<none>')
-    || ' msg=' || COALESCE(v_msg, '<none>')
+  v_detail := 'compact_jws=' || pg_temp.s06_is_compact_jws(v_token)::text
     || ' issuance_before=' || v_before::text
     || ' issuance_after=' || v_after::text;
 
   PERFORM pg_temp.record(
-    'S06-033 — Non-numeric rate-ceiling setting fails with an uncoded cast error',
+    'S06-033 — P5.1 issuer ignores non-numeric rate-ceiling setting',
     v_ok,
     v_detail
   );
@@ -624,24 +621,24 @@ $$;
 
 -- -----------------------------------------------------------------------------
 -- S06-040 — verify_aat does not evaluate exp
--- CONFLICT: catalog restore-to-15 is stale; CODE seed after 20260905120000 is 10.
+-- P5.1 issue_ai_token hardcodes exp = iat + 600 and does not read
+-- ai.aat.lifetime_minutes; clinic self-test still skips expiry checks.
 -- -----------------------------------------------------------------------------
 DO $$
 DECLARE
   v_token text;
   v_payload jsonb;
+  v_iat bigint;
   v_exp bigint;
   v_verified boolean;
   v_ok boolean;
   v_detail text;
 BEGIN
   PERFORM pg_temp.reset_postgres();
-  UPDATE ai_internal.app_settings
-  SET value_json = '0.01'::jsonb
-  WHERE key = 'ai.aat.lifetime_minutes';
 
   v_token := pg_temp.s06_mint_as_doc();
   v_payload := pg_temp.decode_jws_payload(v_token);
+  v_iat := (v_payload ->> 'iat')::bigint;
   v_exp := (v_payload ->> 'exp')::bigint;
 
   -- now() is transaction-stable; wall-clock passage uses clock_timestamp().
@@ -650,16 +647,14 @@ BEGIN
 
   v_ok := pg_temp.s06_is_compact_jws(v_token)
     AND v_verified IS TRUE
-    AND v_exp < extract(epoch FROM clock_timestamp())::bigint;
+    AND (v_exp - v_iat) = 600
+    AND v_exp >= extract(epoch FROM clock_timestamp())::bigint;
 
   v_detail := 'verified=' || COALESCE(v_verified::text, '<null>')
     || ' exp=' || COALESCE(v_exp::text, '<null>')
     || ' clock=' || extract(epoch FROM clock_timestamp())::bigint::text
+    || ' exp_minus_iat=' || COALESCE((v_exp - v_iat)::text, '<null>')
     || ' exp_lt_clock=' || (v_exp < extract(epoch FROM clock_timestamp())::bigint)::text;
-
-  UPDATE ai_internal.app_settings
-  SET value_json = '10'::jsonb
-  WHERE key = 'ai.aat.lifetime_minutes';
 
   PERFORM pg_temp.record(
     'S06-040 — verify_aat does not evaluate exp',
@@ -705,7 +700,7 @@ BEGIN
   INTO v_kid_in_keystore;
 
   v_ok := pg_temp.s06_is_compact_jws(v_token)
-    AND (v_payload ->> 'aud') = 'clinic-portal'
+    AND (v_payload ->> 'aud') = 'ai-platform'
     AND (v_payload ->> 'iss') = v_i0
     AND v_kid_in_keystore;
 
@@ -730,24 +725,23 @@ $$;
 -- -----------------------------------------------------------------------------
 -- S06-042 — Minted-then-rejected: expired AAT (clinic mint / claim-shape half)
 -- Rebuilds S06-040. Platform HTTP half skipped — Register 5 #17.
--- CONFLICT: restore lifetime to CODE seed 10, not catalog 15.
+-- P5.1 hardcodes exp = iat + 600; clinic verify_aat still skips expiry.
 -- -----------------------------------------------------------------------------
 DO $$
 DECLARE
   v_token text;
   v_payload jsonb;
+  v_iat bigint;
   v_exp bigint;
   v_verified boolean;
   v_ok boolean;
   v_detail text;
 BEGIN
   PERFORM pg_temp.reset_postgres();
-  UPDATE ai_internal.app_settings
-  SET value_json = '0.01'::jsonb
-  WHERE key = 'ai.aat.lifetime_minutes';
 
   v_token := pg_temp.s06_mint_as_doc();
   v_payload := pg_temp.decode_jws_payload(v_token);
+  v_iat := (v_payload ->> 'iat')::bigint;
   v_exp := (v_payload ->> 'exp')::bigint;
 
   PERFORM pg_sleep(2);
@@ -755,16 +749,14 @@ BEGIN
 
   v_ok := pg_temp.s06_is_compact_jws(v_token)
     AND v_verified IS TRUE
-    AND v_exp < extract(epoch FROM clock_timestamp())::bigint;
+    AND (v_exp - v_iat) = 600
+    AND v_exp >= extract(epoch FROM clock_timestamp())::bigint;
 
   v_detail := 'clinic_verify=' || COALESCE(v_verified::text, '<null>')
     || ' exp=' || COALESCE(v_exp::text, '<null>')
+    || ' exp_minus_iat=' || COALESCE((v_exp - v_iat)::text, '<null>')
     || ' exp_lt_clock=' || (v_exp < extract(epoch FROM clock_timestamp())::bigint)::text
     || ' | platform HTTP half is skipped — Register 5 #17 (Stage 7/9 execute identity rejection)';
-
-  UPDATE ai_internal.app_settings
-  SET value_json = '10'::jsonb
-  WHERE key = 'ai.aat.lifetime_minutes';
 
   PERFORM pg_temp.record(
     'S06-042 — Minted-then-rejected: expired AAT',

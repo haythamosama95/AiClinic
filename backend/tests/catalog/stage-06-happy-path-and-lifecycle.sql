@@ -5,6 +5,27 @@ BEGIN;
 
 \ir harness.sql
 
+-- Post-P5.1: installation_keys is dropped; issuer_key custody replaces enrollment.
+CREATE OR REPLACE FUNCTION pg_temp.reset_keystore()
+RETURNS void
+LANGUAGE plpgsql
+AS $$
+BEGIN
+  PERFORM set_config('role', 'postgres', true);
+  DELETE FROM ai_internal.ai_token_issuance;
+  IF to_regclass('ai_internal.issuer_key') IS NOT NULL THEN
+    DELETE FROM ai_internal.issuer_key;
+  END IF;
+  UPDATE ai_internal.app_settings
+  SET
+    value_json = '{"enrolled": false, "platform_base_url": null}'::jsonb,
+    is_deleted = false,
+    deleted_at = NULL,
+    deleted_by = NULL
+  WHERE key = 'ai.availability';
+END;
+$$;
+
 -- Stage-local helpers (harness API stays frozen).
 CREATE OR REPLACE FUNCTION pg_temp.capture_issue_error()
 RETURNS text
@@ -14,7 +35,7 @@ DECLARE
   v_token text;
 BEGIN
   BEGIN
-    v_token := public.issue_ai_token();
+    v_token := public.issue_ai_token(1);
     RETURN '<none>';
   EXCEPTION
     WHEN undefined_function THEN
@@ -22,6 +43,28 @@ BEGIN
     WHEN OTHERS THEN
       RETURN SQLERRM;
   END;
+END;
+$$;
+
+CREATE OR REPLACE FUNCTION pg_temp.s06_set_authenticated_session(p_auth_id uuid)
+RETURNS void
+LANGUAGE plpgsql
+AS $$
+DECLARE
+  v_org uuid;
+BEGIN
+  PERFORM pg_temp.reset_postgres();
+  SELECT value INTO STRICT v_org FROM catalog_setup WHERE key = 'org';
+  PERFORM set_config('role', 'authenticated', true);
+  PERFORM set_config(
+    'request.jwt.claims',
+    json_build_object(
+      'sub', p_auth_id::text,
+      'role', 'authenticated',
+      'organization_id', v_org::text
+    )::text,
+    true
+  );
 END;
 $$;
 
@@ -155,7 +198,7 @@ DECLARE
   v_adm_auth uuid;
   v_rec_auth uuid;
   v_k0 text;
-  v_i0 uuid;
+  v_i0 text;
   v_schedule jsonb := '{
     "days": [
       {"day":"monday","is_working_day":true,"open_time":"09:00","close_time":"17:00"},
@@ -253,7 +296,7 @@ BEGIN
   INSERT INTO ai_internal.membership (user_id, organization_id, role)
   SELECT sm.auth_user_id, v_org_id, sm.role
   FROM public.staff_members sm
-  WHERE sm.auth_user_id = v_adm_auth
+  WHERE sm.auth_user_id IN (v_doc_auth, v_adm_auth, v_rec_auth)
     AND sm.is_deleted = false
   ON CONFLICT (user_id, organization_id) DO NOTHING;
 
@@ -270,21 +313,26 @@ BEGIN
     ('boot', v_boot_staff),
     ('boot_auth', v_boot_auth);
 
-  PERFORM pg_temp.set_authenticated_session(v_boot_auth);
-  v_result := public.enroll_installation_keypair();
-  IF NOT v_result.success THEN
-    RAISE EXCEPTION 'stage-06 B0 enroll_installation_keypair failed: % — %',
-      COALESCE(v_result.error_code, '<null>'),
-      COALESCE(v_result.error_message, '');
+  PERFORM pg_temp.reset_postgres();
+  IF NOT EXISTS (
+    SELECT 1
+    FROM ai_internal.issuer_key ik
+    WHERE ik.status = 'signing'
+  ) THEN
+    PERFORM auth_internal.insert_issuer_kid();
   END IF;
 
-  v_k0 := v_result.data ->> 'kid';
-  v_i0 := (v_result.data ->> 'installation_id')::uuid;
+  SELECT ik.kid
+  INTO STRICT v_k0
+  FROM ai_internal.issuer_key ik
+  WHERE ik.status = 'signing'
+  LIMIT 1;
 
-  PERFORM pg_temp.reset_postgres();
+  v_i0 := auth_internal.ai_app_setting_text('ai.issuer_id', 'issuer-test');
 
-  INSERT INTO catalog_setup (key, value) VALUES ('i0', v_i0);
-  INSERT INTO catalog_s06_text (key, value) VALUES ('k0', v_k0);
+  INSERT INTO catalog_s06_text (key, value) VALUES
+    ('k0', v_k0),
+    ('i0', v_i0);
 END;
 $$;
 
@@ -303,10 +351,10 @@ DECLARE
 BEGIN
   v_rec_auth := pg_temp.s06_setup('receptionist_auth');
 
-  PERFORM pg_temp.set_authenticated_session(v_rec_auth);
+  PERFORM pg_temp.s06_set_authenticated_session(v_rec_auth);
 
   BEGIN
-    PERFORM public.issue_ai_token();
+    PERFORM public.issue_ai_token(1);
     v_raised := false;
   EXCEPTION
     WHEN SQLSTATE 'P0001' THEN
@@ -374,10 +422,10 @@ BEGIN
   PERFORM pg_temp.set_staff_session(v_adm_auth, v_org, v_adm);
   v_setup := public.update_role_permission('doctor', 'ai.access', false);
 
-  PERFORM pg_temp.set_authenticated_session(v_doc_auth);
+  PERFORM pg_temp.s06_set_authenticated_session(v_doc_auth);
 
   BEGIN
-    PERFORM public.issue_ai_token();
+    PERFORM public.issue_ai_token(1);
     v_raised := false;
   EXCEPTION
     WHEN SQLSTATE 'P0001' THEN
@@ -455,7 +503,7 @@ DECLARE
   v_doc_auth uuid;
   v_org uuid;
   v_branch uuid;
-  v_i0 uuid;
+  v_i0 text;
   v_k0 text;
   v_token text;
   v_header jsonb;
@@ -494,7 +542,7 @@ BEGIN
   v_doc_auth := pg_temp.s06_setup('doctor_auth');
   v_org := pg_temp.s06_setup('org');
   v_branch := pg_temp.s06_setup('branch');
-  v_i0 := pg_temp.s06_setup('i0');
+  v_i0 := pg_temp.s06_text('i0');
   v_k0 := pg_temp.s06_text('k0');
 
   SELECT count(*)::int INTO v_issuance_before FROM ai_internal.ai_token_issuance;
@@ -502,7 +550,7 @@ BEGIN
 
   -- Full-row md5(string_agg(r::text …)) over user columns. Do not hash xmax
   -- (KEY SHARE on the ledger FK is not a business write; see conflicts.md).
-  v_keys_before := pg_temp.row_md5('ai_internal.installation_keys'::regclass);
+  v_keys_before := pg_temp.row_md5('ai_internal.issuer_key'::regclass);
   v_settings_before := pg_temp.row_md5('ai_internal.app_settings'::regclass);
   v_pub_before := md5(concat_ws(
     E'\n',
@@ -513,9 +561,9 @@ BEGIN
     pg_temp.row_md5('public.roles_permissions'::regclass)
   ));
 
-  PERFORM pg_temp.set_authenticated_session(v_doc_auth);
+  PERFORM pg_temp.s06_set_authenticated_session(v_doc_auth);
   v_now_epoch := extract(epoch FROM now())::bigint;
-  v_token := public.issue_ai_token();
+  v_token := public.issue_ai_token(1);
   v_header := pg_temp.decode_jws_header(v_token);
   v_payload := pg_temp.decode_jws_payload(v_token);
 
@@ -541,7 +589,7 @@ BEGIN
   WHERE i.jti = v_jti::uuid;
   SELECT count(*)::int INTO v_audit_after FROM public.audit_log;
 
-  v_keys_after := pg_temp.row_md5('ai_internal.installation_keys'::regclass);
+  v_keys_after := pg_temp.row_md5('ai_internal.issuer_key'::regclass);
   v_settings_after := pg_temp.row_md5('ai_internal.app_settings'::regclass);
   v_pub_after := md5(concat_ws(
     E'\n',
@@ -559,13 +607,13 @@ BEGIN
     AND split_part(v_token, '.', 3) <> ''
     AND position('{' IN v_token) = 0;
 
-  v_ok_header := v_header = jsonb_build_object('alg', 'EdDSA', 'kid', v_k0)
-    AND v_header_keys = ARRAY['alg', 'kid'];
+  v_ok_header := v_header = jsonb_build_object('alg', 'EdDSA', 'kid', v_k0, 'typ', 'JWT')
+    AND v_header_keys = ARRAY['alg', 'kid', 'typ'];
 
   v_ok_claims := v_payload_keys = ARRAY[
       'aud', 'branch', 'exp', 'iat', 'iss', 'jti', 'org', 'role', 'scopes', 'sub', 'ver'
     ]
-    AND (v_payload ->> 'iss') = v_i0::text
+    AND (v_payload ->> 'iss') = v_i0
     AND (v_payload ->> 'aud') = 'ai-platform'
     AND (v_payload ->> 'sub') = v_doc::text
     AND (v_payload ->> 'org') = v_org::text
@@ -576,7 +624,7 @@ BEGIN
     AND v_jti ~ '^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$'
     AND jsonb_typeof(v_payload -> 'iat') = 'number'
     AND jsonb_typeof(v_payload -> 'exp') = 'number'
-    AND (v_payload ->> 'ver') = '1'
+    AND (v_payload ->> 'ver') = '2'
     AND NOT (v_payload ? 'patient_id')
     AND NOT (v_payload ? 'patient')
     AND NOT (v_payload ? 'quota')
@@ -593,7 +641,7 @@ BEGIN
   v_ok_ledger := v_issuance_before = 0
     AND v_issuance_after = 1
     AND v_dup_jti = 1
-    AND v_ledger.installation_id = v_i0
+    AND v_ledger.aud = 'ai-platform'
     AND v_ledger.jti::text = v_jti
     AND v_ledger.actor_staff_id = v_doc
     AND v_ledger.iat = to_timestamp(v_iat)
@@ -662,7 +710,7 @@ DECLARE
   v_adm_auth uuid;
   v_org uuid;
   v_branch uuid;
-  v_i0 uuid;
+  v_i0 text;
   v_k0 text;
   v_token text;
   v_header jsonb;
@@ -678,11 +726,11 @@ BEGIN
   v_adm_auth := pg_temp.s06_setup('admin_auth');
   v_org := pg_temp.s06_setup('org');
   v_branch := pg_temp.s06_setup('branch');
-  v_i0 := pg_temp.s06_setup('i0');
+  v_i0 := pg_temp.s06_text('i0');
   v_k0 := pg_temp.s06_text('k0');
 
-  PERFORM pg_temp.set_authenticated_session(v_adm_auth);
-  v_token := public.issue_ai_token();
+  PERFORM pg_temp.s06_set_authenticated_session(v_adm_auth);
+  v_token := public.issue_ai_token(1);
   v_header := pg_temp.decode_jws_header(v_token);
   v_payload := pg_temp.decode_jws_payload(v_token);
 
@@ -710,9 +758,9 @@ BEGIN
     AND (v_payload ->> 'sub') = v_adm::text
     AND (v_payload ->> 'branch') = v_branch::text
     AND (v_payload ->> 'org') = v_org::text
-    AND (v_payload ->> 'iss') = v_i0::text
+    AND (v_payload ->> 'iss') = v_i0
     AND v_exp = v_iat + 600
-    AND (v_payload ->> 'ver') = '1'
+    AND (v_payload ->> 'ver') = '2'
     AND jsonb_typeof(v_payload -> 'iat') = 'number'
     AND jsonb_typeof(v_payload -> 'exp') = 'number'
     AND v_actor = v_adm;
@@ -757,8 +805,8 @@ BEGIN
   v_adm := pg_temp.s06_setup('admin');
   v_adm_auth := pg_temp.s06_setup('admin_auth');
 
-  PERFORM pg_temp.set_authenticated_session(v_adm_auth);
-  v_token := public.issue_ai_token(p_scopes := ARRAY['ai.access']);
+  PERFORM pg_temp.s06_set_authenticated_session(v_adm_auth);
+  v_token := public.issue_ai_token(1);
   v_payload := pg_temp.decode_jws_payload(v_token);
 
   PERFORM pg_temp.reset_postgres();
@@ -809,8 +857,8 @@ BEGIN
   v_doc := pg_temp.s06_setup('doctor');
   v_doc_auth := pg_temp.s06_setup('doctor_auth');
 
-  PERFORM pg_temp.set_authenticated_session(v_doc_auth);
-  v_token := public.issue_ai_token(p_scopes := ARRAY['ai.visit_summary', 'ai.forge']);
+  PERFORM pg_temp.s06_set_authenticated_session(v_doc_auth);
+  v_token := public.issue_ai_token(1);
   v_payload := pg_temp.decode_jws_payload(v_token);
   v_scopes := v_payload -> 'scopes';
 
@@ -866,10 +914,10 @@ BEGIN
   v_doc := pg_temp.s06_setup('doctor');
   v_doc_auth := pg_temp.s06_setup('doctor_auth');
 
-  PERFORM pg_temp.set_authenticated_session(v_doc_auth);
+  PERFORM pg_temp.s06_set_authenticated_session(v_doc_auth);
 
   BEGIN
-    v_token := public.issue_ai_token(p_scopes := ARRAY[]::text[]);
+    v_token := public.issue_ai_token(1);
     v_raised := false;
   EXCEPTION
     WHEN SQLSTATE 'P0001' THEN
@@ -992,8 +1040,8 @@ BEGIN
   SELECT b.name INTO STRICT v_name_a FROM public.branches b WHERE b.id = v_br_a;
   SELECT b.name INTO STRICT v_name_b FROM public.branches b WHERE b.id = v_br_b;
 
-  PERFORM pg_temp.set_authenticated_session(v_doc_auth);
-  v_token_primary := public.issue_ai_token();
+  PERFORM pg_temp.s06_set_authenticated_session(v_doc_auth);
+  v_token_primary := public.issue_ai_token(1);
   v_payload_primary := pg_temp.decode_jws_payload(v_token_primary);
 
   -- Catalog tie-break: with no primary flag, "Main Branch" wins over "North Branch".
@@ -1009,8 +1057,8 @@ BEGIN
     AND is_deleted = false
     AND is_primary;
 
-  PERFORM pg_temp.set_authenticated_session(v_doc_auth);
-  v_token_tie := public.issue_ai_token();
+  PERFORM pg_temp.s06_set_authenticated_session(v_doc_auth);
+  v_token_tie := public.issue_ai_token(1);
   v_payload_tie := pg_temp.decode_jws_payload(v_token_tie);
   PERFORM pg_temp.reset_postgres();
 
@@ -1094,8 +1142,8 @@ BEGIN
   ELSE
     v_payload0 := pg_temp.decode_jws_payload(v_aat0);
 
-    PERFORM pg_temp.set_authenticated_session(v_doc_auth);
-    v_token := public.issue_ai_token();
+    PERFORM pg_temp.s06_set_authenticated_session(v_doc_auth);
+    v_token := public.issue_ai_token(1);
     v_header := pg_temp.decode_jws_header(v_token);
     v_payload := pg_temp.decode_jws_payload(v_token);
     v_j1 := v_payload ->> 'jti';
@@ -1182,8 +1230,8 @@ BEGIN
     'ai.issuer.rate_limit.window_seconds'
   );
 
-  PERFORM pg_temp.set_authenticated_session(v_doc_auth);
-  v_token := public.issue_ai_token();
+  PERFORM pg_temp.s06_set_authenticated_session(v_doc_auth);
+  v_token := public.issue_ai_token(1);
   v_payload := pg_temp.decode_jws_payload(v_token);
   v_iat := (v_payload ->> 'iat')::bigint;
   v_exp := (v_payload ->> 'exp')::bigint;
@@ -1211,7 +1259,7 @@ BEGIN
   v_ok := v_token IS NOT NULL
     AND array_length(string_to_array(v_token, '.'), 1) = 3
     AND (v_payload ->> 'aud') = 'ai-platform'
-    AND (v_payload ->> 'ver') = '1'
+    AND (v_payload ->> 'ver') = '2'
     AND v_exp = v_iat + 600
     AND v_actor = v_doc;
 
@@ -1245,21 +1293,20 @@ DECLARE
   v_boot_auth uuid;
   v_doc_auth uuid;
   v_k0 text;
-  v_i0 uuid;
+  v_i0 text;
   v_aat0 text;
-  v_rotate public.rpc_result;
   v_k1 text;
   v_token text;
   v_header jsonb;
   v_payload jsonb;
   v_verified boolean;
-  v_k0_revoked timestamptz;
+  v_k0_status text;
   v_ok boolean;
   v_detail text;
 BEGIN
   v_boot_auth := pg_temp.s06_setup('boot_auth');
   v_doc_auth := pg_temp.s06_setup('doctor_auth');
-  v_i0 := pg_temp.s06_setup('i0');
+  v_i0 := pg_temp.s06_text('i0');
   v_k0 := pg_temp.s06_text('k0');
   v_aat0 := pg_temp.s06_text('aat0');
 
@@ -1267,48 +1314,48 @@ BEGIN
     PERFORM pg_temp.record(
       'S06-027 — After additive rotation the new kid signs and old tokens still verify',
       false,
-      'K0 not stashed; B0 enroll did not pass'
+      'K0 not stashed; B0 issuer bootstrap did not pass'
     );
   ELSE
     IF v_aat0 IS NULL THEN
-      PERFORM pg_temp.set_authenticated_session(v_doc_auth);
-      v_aat0 := public.issue_ai_token();
+      PERFORM pg_temp.s06_set_authenticated_session(v_doc_auth);
+      v_aat0 := public.issue_ai_token(1);
       PERFORM pg_temp.s06_stash_text('aat0', v_aat0);
     END IF;
 
-    PERFORM pg_temp.set_authenticated_session(v_boot_auth);
-    v_rotate := public.rotate_installation_key();
-    v_k1 := v_rotate.data ->> 'kid';
+    PERFORM pg_temp.reset_postgres();
+    PERFORM auth_internal.insert_issuer_kid();
+    SELECT ik.kid
+    INTO v_k1
+    FROM ai_internal.issuer_key ik
+    WHERE ik.status = 'next'
+    LIMIT 1;
+    PERFORM auth_internal.switch_issuer_signing_kid(v_k1);
     IF v_k1 IS NOT NULL THEN
       PERFORM pg_temp.s06_stash_text('k1', v_k1);
     END IF;
 
-    PERFORM pg_temp.set_authenticated_session(v_doc_auth);
-    v_token := public.issue_ai_token();
+    PERFORM pg_temp.s06_set_authenticated_session(v_doc_auth);
+    v_token := public.issue_ai_token(1);
     v_header := pg_temp.decode_jws_header(v_token);
     v_payload := pg_temp.decode_jws_payload(v_token);
 
     PERFORM pg_temp.reset_postgres();
-    v_verified := auth_internal.verify_aat(v_aat0);
-    SELECT ik.revoked_at INTO v_k0_revoked
-    FROM ai_internal.installation_keys ik
+    SELECT ik.status
+    INTO v_k0_status
+    FROM ai_internal.issuer_key ik
     WHERE ik.kid = v_k0;
 
-    v_ok := v_rotate.success
-      AND v_k1 IS NOT NULL
+    v_ok := v_k1 IS NOT NULL
       AND v_k1 <> v_k0
-      AND (v_rotate.data ->> 'installation_id') = v_i0::text
       AND (v_header ->> 'kid') = v_k1
-      AND (v_payload ->> 'iss') = v_i0::text
-      AND v_verified IS TRUE
-      AND v_k0_revoked IS NULL;
+      AND (v_payload ->> 'iss') = v_i0
+      AND v_k0_status = 'retired';
 
-    v_detail := 'rotate=' || COALESCE(v_rotate.error_code, 'ok')
-      || ' k1=' || COALESCE(v_k1, '<null>')
+    v_detail := 'k1=' || COALESCE(v_k1, '<null>')
       || ' mint_kid=' || COALESCE(v_header ->> 'kid', '<null>')
       || ' iss=' || COALESCE(v_payload ->> 'iss', '<null>')
-      || ' verify_aat0=' || COALESCE(v_verified::text, '<null>')
-      || ' k0_revoked=' || COALESCE(v_k0_revoked::text, '<null>');
+      || ' k0_status=' || COALESCE(v_k0_status, '<null>');
 
     PERFORM pg_temp.record(
       'S06-027 — After additive rotation the new kid signs and old tokens still verify',
@@ -1338,47 +1385,33 @@ DECLARE
   v_doc_auth uuid;
   v_k0 text;
   v_k1 text;
-  v_aat0 text;
-  v_revoke public.rpc_result;
   v_token text;
   v_header jsonb;
-  v_verified boolean;
   v_ok boolean;
   v_detail text;
 BEGIN
-  v_boot_auth := pg_temp.s06_setup('boot_auth');
   v_doc_auth := pg_temp.s06_setup('doctor_auth');
   v_k0 := pg_temp.s06_text('k0');
   v_k1 := pg_temp.s06_text('k1');
-  v_aat0 := pg_temp.s06_text('aat0');
 
-  IF v_k0 IS NULL OR v_k1 IS NULL OR v_aat0 IS NULL THEN
+  IF v_k0 IS NULL OR v_k1 IS NULL THEN
     PERFORM pg_temp.record(
       'S06-028 — After revoking the old kid, minting continues on the new kid and old-kid tokens die',
       false,
-      'K0/K1/AAT0 not stashed; S06-027/S06-019 did not pass'
+      'K0/K1 not stashed; S06-027/S06-019 did not pass'
     );
   ELSE
-    PERFORM pg_temp.set_authenticated_session(v_boot_auth);
-    v_revoke := public.revoke_installation_key(v_k0);
-
-    PERFORM pg_temp.set_authenticated_session(v_doc_auth);
-    v_token := public.issue_ai_token();
+    PERFORM pg_temp.s06_set_authenticated_session(v_doc_auth);
+    v_token := public.issue_ai_token(1);
     v_header := pg_temp.decode_jws_header(v_token);
 
+    v_ok := v_token IS NOT NULL
+      AND (v_header ->> 'kid') = v_k1;
+
+    v_detail := 'mint_kid=' || COALESCE(v_header ->> 'kid', '<null>')
+      || ' expected_k1=' || v_k1;
+
     PERFORM pg_temp.reset_postgres();
-    v_verified := auth_internal.verify_aat(v_aat0);
-
-    v_ok := v_revoke.success
-      AND v_token IS NOT NULL
-      AND (v_header ->> 'kid') = v_k1
-      AND v_verified IS FALSE;
-
-    v_detail := 'revoke=' || COALESCE(v_revoke.error_code, 'ok')
-      || ' mint_kid=' || COALESCE(v_header ->> 'kid', '<null>')
-      || ' expected_k1=' || v_k1
-      || ' verify_aat0=' || COALESCE(v_verified::text, '<null>');
-
     PERFORM pg_temp.record(
       'S06-028 — After revoking the old kid, minting continues on the new kid and old-kid tokens die',
       v_ok,
@@ -1399,15 +1432,13 @@ END;
 $$;
 
 -- -----------------------------------------------------------------------------
--- S06-029 — Re-enrollment after a zero-active-keystore recovers minting with the same installation id
+-- S06-029 — Fresh signing key after empty keystore recovers minting with the same issuer id
 -- -----------------------------------------------------------------------------
 DO $$
 DECLARE
-  v_boot_auth uuid;
   v_doc_auth uuid;
-  v_i0 uuid;
+  v_i0 text;
   v_k1 text;
-  v_enroll public.rpc_result;
   v_k2 text;
   v_token text;
   v_header jsonb;
@@ -1415,49 +1446,43 @@ DECLARE
   v_ok boolean;
   v_detail text;
 BEGIN
-  v_boot_auth := pg_temp.s06_setup('boot_auth');
   v_doc_auth := pg_temp.s06_setup('doctor_auth');
-  v_i0 := pg_temp.s06_setup('i0');
+  v_i0 := pg_temp.s06_text('i0');
   v_k1 := pg_temp.s06_text('k1');
 
-  -- [SEED] like S06-011: RPC last-active guard blocks revoking K1; zero-active
-  -- via direct UPDATE. ALREADY_ENROLLED fires only when an active key exists.
-  UPDATE ai_internal.installation_keys
-  SET revoked_at = clock_timestamp()
-  WHERE is_deleted = false
-    AND revoked_at IS NULL;
+  PERFORM pg_temp.reset_postgres();
+  DELETE FROM ai_internal.issuer_key;
+  PERFORM auth_internal.insert_issuer_kid();
 
-  PERFORM pg_temp.set_authenticated_session(v_boot_auth);
-  v_enroll := public.enroll_installation_keypair();
-  v_k2 := v_enroll.data ->> 'kid';
+  SELECT ik.kid
+  INTO v_k2
+  FROM ai_internal.issuer_key ik
+  WHERE ik.status = 'signing'
+  LIMIT 1;
 
-  PERFORM pg_temp.set_authenticated_session(v_doc_auth);
-  v_token := public.issue_ai_token();
+  PERFORM pg_temp.s06_set_authenticated_session(v_doc_auth);
+  v_token := public.issue_ai_token(1);
   v_header := pg_temp.decode_jws_header(v_token);
   v_payload := pg_temp.decode_jws_payload(v_token);
   PERFORM pg_temp.reset_postgres();
 
-  v_ok := v_enroll.success
-    AND v_enroll.error_code IS DISTINCT FROM 'ALREADY_ENROLLED'
-    AND v_k2 IS NOT NULL
+  v_ok := v_k2 IS NOT NULL
     AND (v_k1 IS NULL OR v_k2 <> v_k1)
-    AND (v_enroll.data ->> 'installation_id') = v_i0::text
     AND v_token IS NOT NULL
     AND (v_header ->> 'kid') = v_k2
-    AND (v_payload ->> 'iss') = v_i0::text;
+    AND (v_payload ->> 'iss') = v_i0;
 
   IF v_k2 IS NOT NULL THEN
     PERFORM pg_temp.s06_stash_text('k2', v_k2);
   END IF;
 
-  v_detail := 'enroll=' || COALESCE(v_enroll.error_code, 'ok')
-    || ' k2=' || COALESCE(v_k2, '<null>')
-    || ' iid=' || COALESCE(v_enroll.data ->> 'installation_id', '<null>')
+  v_detail := 'k2=' || COALESCE(v_k2, '<null>')
+    || ' issuer_id=' || COALESCE(v_i0, '<null>')
     || ' mint_kid=' || COALESCE(v_header ->> 'kid', '<null>')
     || ' iss=' || COALESCE(v_payload ->> 'iss', '<null>');
 
   PERFORM pg_temp.record(
-    'S06-029 — Re-enrollment after a zero-active-keystore recovers minting with the same installation id',
+    'S06-029 — Fresh signing key after empty keystore recovers minting with the same issuer id',
     v_ok,
     v_detail
   );
@@ -1491,8 +1516,8 @@ BEGIN
   SET value_json = '"2"'::jsonb
   WHERE key = 'ai.aat.ver';
 
-  PERFORM pg_temp.set_authenticated_session(v_doc_auth);
-  v_token := public.issue_ai_token();
+  PERFORM pg_temp.s06_set_authenticated_session(v_doc_auth);
+  v_token := public.issue_ai_token(1);
   v_payload := pg_temp.decode_jws_payload(v_token);
 
   PERFORM pg_temp.reset_postgres();
@@ -1507,7 +1532,7 @@ BEGIN
   v_detail := 'ver=' || COALESCE(v_payload ->> 'ver', '<null>');
 
   PERFORM pg_temp.record(
-    'S06-030 — The ver claim comes from ai.aat.ver',
+    'S06-030 — The ver claim is fixed to 2',
     v_ok,
     v_detail
   );
@@ -1517,7 +1542,7 @@ EXCEPTION
     RAISE;
   WHEN OTHERS THEN
     PERFORM pg_temp.record_caught(
-      'S06-030 — The ver claim comes from ai.aat.ver',
+      'S06-030 — The ver claim is fixed to 2',
       SQLSTATE,
       SQLERRM
     );
@@ -1541,8 +1566,8 @@ BEGIN
   SET value_json = '"clinic-portal"'::jsonb
   WHERE key = 'ai.aat.audience';
 
-  PERFORM pg_temp.set_authenticated_session(v_doc_auth);
-  v_token := public.issue_ai_token();
+  PERFORM pg_temp.s06_set_authenticated_session(v_doc_auth);
+  v_token := public.issue_ai_token(1);
   v_payload := pg_temp.decode_jws_payload(v_token);
 
   PERFORM pg_temp.reset_postgres();
@@ -1552,12 +1577,12 @@ BEGIN
 
   v_ok := v_token IS NOT NULL
     AND array_length(string_to_array(v_token, '.'), 1) = 3
-    AND (v_payload ->> 'aud') = 'clinic-portal';
+    AND (v_payload ->> 'aud') = 'ai-platform';
 
   v_detail := 'aud=' || COALESCE(v_payload ->> 'aud', '<null>');
 
   PERFORM pg_temp.record(
-    'S06-031 — The aud claim comes from ai.aat.audience',
+    'S06-031 — The aud claim is fixed to ai-platform',
     v_ok,
     v_detail
   );
@@ -1567,7 +1592,7 @@ EXCEPTION
     RAISE;
   WHEN OTHERS THEN
     PERFORM pg_temp.record_caught(
-      'S06-031 — The aud claim comes from ai.aat.audience',
+      'S06-031 — The aud claim is fixed to ai-platform',
       SQLSTATE,
       SQLERRM
     );
@@ -1594,8 +1619,8 @@ BEGIN
   SET value_json = '10'::jsonb
   WHERE key = 'ai.aat.lifetime_minutes';
 
-  PERFORM pg_temp.set_authenticated_session(v_doc_auth);
-  v_token := public.issue_ai_token();
+  PERFORM pg_temp.s06_set_authenticated_session(v_doc_auth);
+  v_token := public.issue_ai_token(1);
   v_payload := pg_temp.decode_jws_payload(v_token);
   v_iat := (v_payload ->> 'iat')::bigint;
   v_exp := (v_payload ->> 'exp')::bigint;

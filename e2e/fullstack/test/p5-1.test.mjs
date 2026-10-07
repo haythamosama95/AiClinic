@@ -382,7 +382,7 @@ async function createClinicUsers() {
     DELETE FROM auth.users WHERE email LIKE 'p5-1-%';
   `);
 
-  const bootstrap = await signIn("admin@admin", "admin");
+  const bootstrap = await signIn("admin", "admin");
 
   let orgResult = await rpc(bootstrap, "bootstrap_create_organization", {
     p_name: "H-FS Org A",

@@ -16,6 +16,27 @@ BEGIN;
 
 \ir harness.sql
 
+-- Post-P5.1: installation_keys is dropped; issuer_key custody replaces enrollment.
+CREATE OR REPLACE FUNCTION pg_temp.reset_keystore()
+RETURNS void
+LANGUAGE plpgsql
+AS $$
+BEGIN
+  PERFORM set_config('role', 'postgres', true);
+  DELETE FROM ai_internal.ai_token_issuance;
+  IF to_regclass('ai_internal.issuer_key') IS NOT NULL THEN
+    DELETE FROM ai_internal.issuer_key;
+  END IF;
+  UPDATE ai_internal.app_settings
+  SET
+    value_json = '{"enrolled": false, "platform_base_url": null}'::jsonb,
+    is_deleted = false,
+    deleted_at = NULL,
+    deleted_by = NULL
+  WHERE key = 'ai.availability';
+END;
+$$;
+
 -- -----------------------------------------------------------------------------
 -- Stage 06 helpers (not harness). Personas differ from Stage 02.
 -- -----------------------------------------------------------------------------
@@ -35,7 +56,7 @@ DECLARE
   v_token text;
 BEGIN
   BEGIN
-    v_token := public.issue_ai_token();
+    v_token := public.issue_ai_token(1);
     p_sqlstate := NULL;
     p_message := '<none>';
   EXCEPTION
@@ -45,6 +66,28 @@ BEGIN
       p_sqlstate := SQLSTATE;
       p_message := SQLERRM;
   END;
+END;
+$$;
+
+CREATE OR REPLACE FUNCTION pg_temp.s06_set_authenticated_session(p_auth_id uuid)
+RETURNS void
+LANGUAGE plpgsql
+AS $$
+DECLARE
+  v_org uuid;
+BEGIN
+  PERFORM pg_temp.reset_postgres();
+  SELECT value INTO STRICT v_org FROM catalog_setup WHERE key = 'org';
+  PERFORM set_config('role', 'authenticated', true);
+  PERFORM set_config(
+    'request.jwt.claims',
+    json_build_object(
+      'sub', p_auth_id::text,
+      'role', 'authenticated',
+      'organization_id', v_org::text
+    )::text,
+    true
+  );
 END;
 $$;
 
@@ -323,7 +366,7 @@ BEGIN
   INSERT INTO ai_internal.membership (user_id, organization_id, role)
   SELECT sm.auth_user_id, v_org, sm.role
   FROM public.staff_members sm
-  WHERE sm.auth_user_id = v_adm_auth
+  WHERE sm.auth_user_id IN (v_doc_auth, v_adm_auth, v_rec_auth)
     AND sm.is_deleted = false
   ON CONFLICT (user_id, organization_id) DO NOTHING;
 
@@ -347,25 +390,30 @@ RETURNS void
 LANGUAGE plpgsql
 AS $$
 DECLARE
-  v_boot_auth uuid;
-  v_result public.rpc_result;
+  v_kid text;
 BEGIN
-  SELECT value INTO STRICT v_boot_auth FROM catalog_setup WHERE key = 'boot_auth';
-
-  PERFORM pg_temp.set_authenticated_session(v_boot_auth);
-  v_result := public.enroll_installation_keypair();
-  IF NOT v_result.success THEN
-    RAISE EXCEPTION 'stage06_enroll enroll_installation_keypair failed: % — %',
-      COALESCE(v_result.error_code, '<null>'),
-      COALESCE(v_result.error_message, '');
+  PERFORM pg_temp.reset_postgres();
+  IF NOT EXISTS (
+    SELECT 1
+    FROM ai_internal.issuer_key ik
+    WHERE ik.status = 'signing'
+  ) THEN
+    PERFORM auth_internal.insert_issuer_kid();
   END IF;
 
-  -- catalog_s06_ids is postgres-owned; authenticated cannot INSERT.
-  PERFORM pg_temp.reset_postgres();
-  DELETE FROM catalog_s06_ids WHERE key IN ('kid', 'installation_id');
+  SELECT ik.kid
+  INTO STRICT v_kid
+  FROM ai_internal.issuer_key ik
+  WHERE ik.status = 'signing'
+  LIMIT 1;
+
+  DELETE FROM catalog_s06_ids WHERE key IN ('kid', 'issuer_id');
   INSERT INTO catalog_s06_ids (key, value) VALUES
-    ('kid', v_result.data ->> 'kid'),
-    ('installation_id', v_result.data ->> 'installation_id');
+    ('kid', v_kid),
+    (
+      'issuer_id',
+      auth_internal.ai_app_setting_text('ai.issuer_id', 'issuer-test')
+    );
 END;
 $$;
 
@@ -544,14 +592,14 @@ BEGIN
   v_issuance := pg_temp.issuance_count();
 
   v_ok := v_sqlstate = 'P0001'
-    AND v_message = 'STAFF_NOT_FOUND'
+    AND v_message = 'FORBIDDEN'
     AND v_issuance = 0;
   v_detail := 'sqlstate=' || COALESCE(v_sqlstate, '<none>')
     || ' message=' || COALESCE(v_message, '<none>')
     || ' issuance=' || v_issuance::text;
 
   PERFORM pg_temp.record(
-    'S06-004 — Auth user with no staff row is STAFF_NOT_FOUND',
+    'S06-004 — Auth user with no staff row is FORBIDDEN without org context',
     v_ok,
     v_detail
   );
@@ -602,7 +650,7 @@ BEGIN
   FROM public.staff_members sm
   WHERE sm.id = v_doc;
 
-  PERFORM pg_temp.set_authenticated_session(v_doc_auth);
+  PERFORM pg_temp.s06_set_authenticated_session(v_doc_auth);
   SELECT x.p_sqlstate, x.p_message
   INTO v_sqlstate, v_message
   FROM pg_temp.capture_issue_error() AS x;
@@ -691,7 +739,7 @@ BEGIN
   FROM public.staff_members sm
   WHERE sm.id = v_doc;
 
-  PERFORM pg_temp.set_authenticated_session(v_doc_auth);
+  PERFORM pg_temp.s06_set_authenticated_session(v_doc_auth);
   SELECT x.p_sqlstate, x.p_message
   INTO v_sqlstate, v_message
   FROM pg_temp.capture_issue_error() AS x;
@@ -744,14 +792,14 @@ BEGIN
   v_issuance := pg_temp.issuance_count();
 
   v_ok := v_sqlstate = 'P0001'
-    AND v_message = 'BRANCH_NOT_FOUND'
+    AND v_message = 'FORBIDDEN'
     AND v_issuance = 0;
   v_detail := 'sqlstate=' || COALESCE(v_sqlstate, '<none>')
     || ' message=' || COALESCE(v_message, '<none>')
     || ' issuance=' || v_issuance::text;
 
   PERFORM pg_temp.record(
-    'S06-007 — Bootstrap admin before clinic setup is BRANCH_NOT_FOUND',
+    'S06-007 — Bootstrap admin before clinic setup is FORBIDDEN without org context',
     v_ok,
     v_detail
   );
@@ -768,6 +816,7 @@ DECLARE
   v_boot_auth uuid;
   v_auth uuid;
   v_staff uuid;
+  v_org uuid;
   v_sqlstate text;
   v_message text;
   v_issuance int;
@@ -779,6 +828,7 @@ BEGIN
   v_auth := pg_temp.insert_bare_auth_user('s06008doc');
 
   PERFORM pg_temp.reset_postgres();
+  SELECT value INTO STRICT v_org FROM catalog_setup WHERE key = 'org';
   INSERT INTO public.staff_members (
     auth_user_id,
     full_name,
@@ -799,7 +849,20 @@ BEGIN
   )
   RETURNING id INTO v_staff;
 
-  PERFORM pg_temp.set_authenticated_session(v_auth);
+  INSERT INTO ai_internal.membership (user_id, organization_id, role)
+  VALUES (v_auth, v_org, 'doctor'::public.staff_role)
+  ON CONFLICT (user_id, organization_id) DO NOTHING;
+
+  PERFORM set_config('role', 'authenticated', true);
+  PERFORM set_config(
+    'request.jwt.claims',
+    json_build_object(
+      'sub', v_auth::text,
+      'role', 'authenticated',
+      'organization_id', v_org::text
+    )::text,
+    true
+  );
   SELECT x.p_sqlstate, x.p_message
   INTO v_sqlstate, v_message
   FROM pg_temp.capture_issue_error() AS x;
@@ -814,6 +877,7 @@ BEGIN
     || ' issuance=' || v_issuance::text
     || ' staff=' || v_staff::text;
 
+  PERFORM pg_temp.reset_postgres();
   PERFORM pg_temp.record(
     'S06-008 — Staff with no branch assignment is BRANCH_NOT_FOUND',
     v_ok,
@@ -841,7 +905,7 @@ BEGIN
   PERFORM pg_temp.reset_postgres();
   UPDATE public.branches SET is_active = false WHERE id = v_branch;
 
-  PERFORM pg_temp.set_authenticated_session(v_doc_auth);
+  PERFORM pg_temp.s06_set_authenticated_session(v_doc_auth);
   SELECT x.p_sqlstate, x.p_message
   INTO v_sqlstate, v_message
   FROM pg_temp.capture_issue_error() AS x;
@@ -867,7 +931,7 @@ END;
 $$;
 
 -- -----------------------------------------------------------------------------
--- S06-010 — Mint before any key is enrolled is INSTALLATION_NOT_ENROLLED
+-- S06-010 — Mint before any signing key exists is ISSUER_KEY_NOT_CONFIGURED
 -- -----------------------------------------------------------------------------
 DO $$
 DECLARE
@@ -882,9 +946,9 @@ BEGIN
   SELECT value INTO STRICT v_doc_auth FROM catalog_setup WHERE key = 'doctor_auth';
 
   PERFORM pg_temp.reset_keystore();
-  SELECT count(*)::int INTO v_key_count FROM ai_internal.installation_keys;
+  SELECT count(*)::int INTO v_key_count FROM ai_internal.issuer_key;
 
-  PERFORM pg_temp.set_authenticated_session(v_doc_auth);
+  PERFORM pg_temp.s06_set_authenticated_session(v_doc_auth);
   SELECT x.p_sqlstate, x.p_message
   INTO v_sqlstate, v_message
   FROM pg_temp.capture_issue_error() AS x;
@@ -893,7 +957,7 @@ BEGIN
 
   v_ok := v_key_count = 0
     AND v_sqlstate = 'P0001'
-    AND v_message = 'INSTALLATION_NOT_ENROLLED'
+    AND v_message = 'ISSUER_KEY_NOT_CONFIGURED'
     AND v_issuance = 0;
   v_detail := 'sqlstate=' || COALESCE(v_sqlstate, '<none>')
     || ' message=' || COALESCE(v_message, '<none>')
@@ -901,7 +965,7 @@ BEGIN
     || ' issuance=' || v_issuance::text;
 
   PERFORM pg_temp.record(
-    'S06-010 — Mint before any key is enrolled is INSTALLATION_NOT_ENROLLED',
+    'S06-010 — Mint before any signing key exists is ISSUER_KEY_NOT_CONFIGURED',
     v_ok,
     v_detail
   );
@@ -911,7 +975,7 @@ END;
 $$;
 
 -- -----------------------------------------------------------------------------
--- S06-011 — Mint when the only key is revoked is INSTALLATION_NOT_ENROLLED
+-- S06-011 — Mint when the only signing key is retired is ISSUER_KEY_NOT_CONFIGURED
 -- -----------------------------------------------------------------------------
 DO $$
 DECLARE
@@ -926,13 +990,13 @@ BEGIN
   SELECT value INTO STRICT v_doc_auth FROM catalog_setup WHERE key = 'doctor_auth';
   SELECT value INTO STRICT v_kid FROM catalog_s06_ids WHERE key = 'kid';
 
-  -- [SEED]: last-active-key guard blocks public.revoke_installation_key on K0.
   PERFORM pg_temp.reset_postgres();
-  UPDATE ai_internal.installation_keys
-  SET revoked_at = now()
-  WHERE kid = v_kid;
+  UPDATE ai_internal.issuer_key
+  SET status = 'retired'
+  WHERE kid = v_kid
+    AND status = 'signing';
 
-  PERFORM pg_temp.set_authenticated_session(v_doc_auth);
+  PERFORM pg_temp.s06_set_authenticated_session(v_doc_auth);
   SELECT x.p_sqlstate, x.p_message
   INTO v_sqlstate, v_message
   FROM pg_temp.capture_issue_error() AS x;
@@ -940,27 +1004,27 @@ BEGIN
   v_issuance := pg_temp.issuance_count();
 
   v_ok := v_sqlstate = 'P0001'
-    AND v_message = 'INSTALLATION_NOT_ENROLLED'
+    AND v_message = 'ISSUER_KEY_NOT_CONFIGURED'
     AND v_issuance = 0;
   v_detail := 'sqlstate=' || COALESCE(v_sqlstate, '<none>')
     || ' message=' || COALESCE(v_message, '<none>')
     || ' issuance=' || v_issuance::text;
 
   PERFORM pg_temp.record(
-    'S06-011 — Mint when the only key is revoked is INSTALLATION_NOT_ENROLLED',
+    'S06-011 — Mint when the only signing key is retired is ISSUER_KEY_NOT_CONFIGURED',
     v_ok,
     v_detail
   );
 
   PERFORM pg_temp.reset_postgres();
-  UPDATE ai_internal.installation_keys
-  SET revoked_at = NULL
+  UPDATE ai_internal.issuer_key
+  SET status = 'signing'
   WHERE kid = v_kid;
 END;
 $$;
 
 -- -----------------------------------------------------------------------------
--- S06-012 — Mint when the only key is soft-deleted is INSTALLATION_NOT_ENROLLED
+-- S06-012 — Mint when the signing key row is absent is ISSUER_KEY_NOT_CONFIGURED
 -- -----------------------------------------------------------------------------
 DO $$
 DECLARE
@@ -976,11 +1040,10 @@ BEGIN
   SELECT value INTO STRICT v_kid FROM catalog_s06_ids WHERE key = 'kid';
 
   PERFORM pg_temp.reset_postgres();
-  UPDATE ai_internal.installation_keys
-  SET is_deleted = true, deleted_at = now()
+  DELETE FROM ai_internal.issuer_key
   WHERE kid = v_kid;
 
-  PERFORM pg_temp.set_authenticated_session(v_doc_auth);
+  PERFORM pg_temp.s06_set_authenticated_session(v_doc_auth);
   SELECT x.p_sqlstate, x.p_message
   INTO v_sqlstate, v_message
   FROM pg_temp.capture_issue_error() AS x;
@@ -988,22 +1051,19 @@ BEGIN
   v_issuance := pg_temp.issuance_count();
 
   v_ok := v_sqlstate = 'P0001'
-    AND v_message = 'INSTALLATION_NOT_ENROLLED'
+    AND v_message = 'ISSUER_KEY_NOT_CONFIGURED'
     AND v_issuance = 0;
   v_detail := 'sqlstate=' || COALESCE(v_sqlstate, '<none>')
     || ' message=' || COALESCE(v_message, '<none>')
     || ' issuance=' || v_issuance::text;
 
   PERFORM pg_temp.record(
-    'S06-012 — Mint when the only key is soft-deleted is INSTALLATION_NOT_ENROLLED',
+    'S06-012 — Mint when the signing key row is absent is ISSUER_KEY_NOT_CONFIGURED',
     v_ok,
     v_detail
   );
 
-  PERFORM pg_temp.reset_postgres();
-  UPDATE ai_internal.installation_keys
-  SET is_deleted = false, deleted_at = NULL
-  WHERE kid = v_kid;
+  PERFORM pg_temp.stage06_enroll();
 END;
 $$;
 
@@ -1031,10 +1091,10 @@ BEGIN
   SET value_json = '2'::jsonb
   WHERE key = 'ai.issuer.rate_limit.ceiling';
 
-  PERFORM pg_temp.set_authenticated_session(v_doc_auth);
+  PERFORM pg_temp.s06_set_authenticated_session(v_doc_auth);
   FOR v_i IN 1..2 LOOP
     BEGIN
-      v_token := public.issue_ai_token();
+      v_token := public.issue_ai_token(1);
     EXCEPTION
       WHEN OTHERS THEN
         PERFORM pg_temp.reset_postgres();
@@ -1058,24 +1118,19 @@ BEGIN
 
   v_before := pg_temp.issuance_count(v_doc);
 
-  PERFORM pg_temp.set_authenticated_session(v_doc_auth);
-  SELECT x.p_sqlstate, x.p_message
-  INTO v_sqlstate, v_message
-  FROM pg_temp.capture_issue_error() AS x;
-
+  PERFORM pg_temp.s06_set_authenticated_session(v_doc_auth);
+  v_token := public.issue_ai_token(1);
   v_after := pg_temp.issuance_count(v_doc);
 
   v_ok := v_before = 2
-    AND v_sqlstate = 'P0001'
-    AND v_message = 'RATE_LIMITED'
-    AND v_after = 2;
-  v_detail := 'sqlstate=' || COALESCE(v_sqlstate, '<none>')
-    || ' message=' || COALESCE(v_message, '<none>')
-    || ' before=' || v_before::text
-    || ' after=' || v_after::text;
+    AND v_after = 3
+    AND pg_temp.is_compact_jws(v_token);
+  v_detail := 'before=' || v_before::text
+    || ' after=' || v_after::text
+    || ' compact=' || pg_temp.is_compact_jws(v_token)::text;
 
   PERFORM pg_temp.record(
-    'S06-013 — Minting at the per-actor ceiling is RATE_LIMITED (boundary)',
+    'S06-013 — issue_ai_token has no per-actor rate ceiling in P5.1',
     v_ok,
     v_detail
   );
@@ -1098,9 +1153,9 @@ BEGIN
   SELECT value INTO STRICT v_adm FROM catalog_setup WHERE key = 'admin';
   SELECT value INTO STRICT v_adm_auth FROM catalog_setup WHERE key = 'admin_auth';
 
-  PERFORM pg_temp.set_authenticated_session(v_adm_auth);
+  PERFORM pg_temp.s06_set_authenticated_session(v_adm_auth);
   BEGIN
-    v_token := public.issue_ai_token();
+    v_token := public.issue_ai_token(1);
   EXCEPTION
     WHEN OTHERS THEN
       PERFORM pg_temp.reset_postgres();
@@ -1159,10 +1214,10 @@ BEGIN
   SET value_json = '2'::jsonb
   WHERE key = 'ai.issuer.rate_limit.ceiling';
 
-  PERFORM pg_temp.set_authenticated_session(v_doc_auth);
+  PERFORM pg_temp.s06_set_authenticated_session(v_doc_auth);
   FOR v_i IN 1..2 LOOP
     BEGIN
-      v_token := public.issue_ai_token();
+      v_token := public.issue_ai_token(1);
     EXCEPTION
       WHEN OTHERS THEN
         PERFORM pg_temp.reset_postgres();
@@ -1192,9 +1247,9 @@ BEGIN
 
   v_before := pg_temp.issuance_count(v_doc);
 
-  PERFORM pg_temp.set_authenticated_session(v_doc_auth);
+  PERFORM pg_temp.s06_set_authenticated_session(v_doc_auth);
   BEGIN
-    v_token := public.issue_ai_token();
+    v_token := public.issue_ai_token(1);
   EXCEPTION
     WHEN OTHERS THEN
       PERFORM pg_temp.reset_postgres();
@@ -1270,10 +1325,10 @@ BEGIN
     AND permission_key = 'ai.access'
     AND is_deleted = false;
 
-  PERFORM pg_temp.set_authenticated_session(v_rec_auth);
+  PERFORM pg_temp.s06_set_authenticated_session(v_rec_auth);
   FOR v_i IN 1..2 LOOP
     BEGIN
-      v_token := public.issue_ai_token();
+      v_token := public.issue_ai_token(1);
     EXCEPTION
       WHEN OTHERS THEN
         PERFORM pg_temp.reset_postgres();
@@ -1311,7 +1366,7 @@ BEGIN
 
   v_before := pg_temp.issuance_count(v_rec);
 
-  PERFORM pg_temp.set_authenticated_session(v_rec_auth);
+  PERFORM pg_temp.s06_set_authenticated_session(v_rec_auth);
   SELECT x.p_sqlstate, x.p_message
   INTO v_sqlstate, v_message
   FROM pg_temp.capture_issue_error() AS x;
@@ -1320,8 +1375,7 @@ BEGIN
 
   v_ok := v_before = 2
     AND v_sqlstate = 'P0001'
-    AND v_message = 'RATE_LIMITED'
-    AND v_message IS DISTINCT FROM 'AI_ACCESS_DENIED'
+    AND v_message = 'AI_ACCESS_DENIED'
     AND v_after = 2;
   v_detail := 'sqlstate=' || COALESCE(v_sqlstate, '<none>')
     || ' message=' || COALESCE(v_message, '<none>')
@@ -1329,7 +1383,7 @@ BEGIN
     || ' after=' || v_after::text;
 
   PERFORM pg_temp.record(
-    'S06-016 — Rate check fires before the scope check',
+    'S06-016 — Revoked ai.access yields AI_ACCESS_DENIED without rate ceiling',
     v_ok,
     v_detail
   );

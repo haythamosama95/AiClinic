@@ -106,7 +106,12 @@ AS $$
 BEGIN
   PERFORM set_config('role', 'postgres', true);
   DELETE FROM ai_internal.ai_token_issuance;
-  DELETE FROM ai_internal.installation_keys;
+  IF to_regclass('ai_internal.installation_keys') IS NOT NULL THEN
+    DELETE FROM ai_internal.installation_keys;
+  END IF;
+  IF to_regclass('ai_internal.issuer_key') IS NOT NULL THEN
+    DELETE FROM ai_internal.issuer_key;
+  END IF;
   UPDATE ai_internal.app_settings
   SET
     value_json = '{"enrolled": false, "platform_base_url": null}'::jsonb,

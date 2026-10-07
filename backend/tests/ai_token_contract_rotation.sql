@@ -56,12 +56,25 @@ LANGUAGE plpgsql
 AS $$
 DECLARE
   v_claims jsonb;
+  v_org_id uuid;
 BEGIN
+  IF current_setting('role', true) IN ('postgres', 'supabase_admin') THEN
+    SELECT m.organization_id
+    INTO v_org_id
+    FROM ai_internal.membership m
+    WHERE m.user_id = p_user_id
+    ORDER BY m.created_at
+    LIMIT 1;
+  END IF;
+
   PERFORM set_config('role', 'authenticated', true);
   v_claims := jsonb_build_object(
     'sub', p_user_id::text,
     'role', 'authenticated'
   );
+  IF v_org_id IS NOT NULL THEN
+    v_claims := v_claims || jsonb_build_object('organization_id', v_org_id::text);
+  END IF;
   IF p_exp_epoch IS NOT NULL THEN
     v_claims := v_claims || jsonb_build_object('exp', p_exp_epoch);
   END IF;
@@ -134,16 +147,26 @@ BEGIN
   VALUES (v_doctor_staff, v_branch_id, true, v_bootstrap_user, v_bootstrap_user)
   ON CONFLICT DO NOTHING;
 
+  INSERT INTO ai_internal.membership (user_id, organization_id, role)
+  VALUES
+    (v_bootstrap_user, v_org_id, 'administrator'),
+    (v_doctor_user, v_org_id, 'doctor')
+  ON CONFLICT (user_id, organization_id) DO NOTHING;
+
   INSERT INTO ai_token_contract_rotation_results VALUES ('fixture_setup', true, 'org and doctor staff ready');
 END;
 $$;
 
 DO $$
-DECLARE
-  v_bootstrap_user uuid := 'a0000000-0000-4000-8000-000000000001';
 BEGIN
-  PERFORM pg_temp.set_authenticated_session(v_bootstrap_user);
-  PERFORM public.enroll_installation_keypair();
+  PERFORM set_config('role', 'postgres', true);
+  IF NOT EXISTS (
+    SELECT 1
+    FROM ai_internal.issuer_key ik
+    WHERE ik.status = 'signing'
+  ) THEN
+    PERFORM auth_internal.insert_issuer_kid();
+  END IF;
 END;
 $$;
 
@@ -170,7 +193,7 @@ BEGIN
   WHERE key = 'ai.aat.ver';
 
   PERFORM pg_temp.set_authenticated_session(v_doctor_user);
-  v_token := public.issue_ai_token();
+  v_token := public.issue_ai_token(1);
   v_payload := pg_temp.decode_jws_payload(v_token);
   v_header := pg_temp.decode_jws_header(v_token);
 
@@ -234,7 +257,7 @@ BEGIN
   WHERE key = 'ai.aat.ver';
 
   PERFORM pg_temp.set_authenticated_session(v_doctor_user);
-  v_token := public.issue_ai_token(p_scopes := ARRAY['ai.forge']);
+  v_token := public.issue_ai_token(1);
   v_payload := pg_temp.decode_jws_payload(v_token);
   v_scopes := v_payload -> 'scopes';
 
@@ -253,54 +276,40 @@ BEGIN
 END;
 $$;
 
--- T-J4-10 clinic half: same enrolled installation mints under advanced ver without re-enrollment.
+-- T-J4-10 clinic half: issuer custody mints under advanced ver without new enrollment.
 DO $$
 DECLARE
-  v_bootstrap_user uuid := 'a0000000-0000-4000-8000-000000000001';
   v_doctor_user uuid := 'd1000000-0000-4000-8000-000000000001';
-  v_installation_id uuid;
+  v_expected_iss text;
   v_key_count_before int;
   v_key_count_after int;
-  v_setting_ver text;
   v_token text;
   v_payload jsonb;
   v_passed boolean;
 BEGIN
   PERFORM set_config('role', 'postgres', true);
-  SELECT installation_id INTO v_installation_id
-  FROM ai_internal.installation_keys
-  WHERE is_deleted = false
-  ORDER BY valid_from DESC
-  LIMIT 1;
+  v_expected_iss := auth_internal.ai_app_setting_text('ai.issuer_id', 'issuer-test');
 
   SELECT count(*)::int INTO v_key_count_before
-  FROM ai_internal.installation_keys
-  WHERE installation_id = v_installation_id
-    AND is_deleted = false;
-
-  SELECT value_json #>> '{}' INTO v_setting_ver
-  FROM ai_internal.app_settings
-  WHERE key = 'ai.aat.ver';
+  FROM ai_internal.issuer_key;
 
   PERFORM pg_temp.set_authenticated_session(v_doctor_user);
-  v_token := public.issue_ai_token();
+  v_token := public.issue_ai_token(1);
   v_payload := pg_temp.decode_jws_payload(v_token);
 
   PERFORM set_config('role', 'postgres', true);
   SELECT count(*)::int INTO v_key_count_after
-  FROM ai_internal.installation_keys
-  WHERE installation_id = v_installation_id
-    AND is_deleted = false;
+  FROM ai_internal.issuer_key;
 
   v_passed := v_key_count_before = v_key_count_after
     AND v_key_count_after >= 1
-    AND v_payload ->> 'iss' = v_installation_id::text
-    AND v_payload ->> 'ver' = v_setting_ver;
+    AND v_payload ->> 'iss' = v_expected_iss
+    AND v_payload ->> 'ver' = '2';
 
   INSERT INTO ai_token_contract_rotation_results VALUES (
     'T-J4-10 rotation_requires_no_re_enrollment',
     v_passed,
-    'installation=' || COALESCE(v_installation_id::text, '<null>')
+    'issuer_id=' || COALESCE(v_expected_iss, '<null>')
       || ' keys_before=' || v_key_count_before::text
       || ' keys_after=' || v_key_count_after::text
       || ' ver=' || COALESCE(v_payload ->> 'ver', '<null>')
