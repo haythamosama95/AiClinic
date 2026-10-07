@@ -5,9 +5,9 @@ This file orients AI coding agents working in this repository. Keep the
 **current active feature's** plan reference when running Spec Kit phases.
 
 <!-- SPECKIT START -->
-Active feature plan: `specs/081-abo-p4-6-operator-console-access-perimeter-lookup/plan.md`
-Feature spec: `specs/081-abo-p4-6-operator-console-access-perimeter-lookup/spec.md`
-Branch: `ai/081-abo-p4-6-operator-console-access-perimeter-lookup`
+Active feature plan: `specs/082-abo-p4-7-console-passkey-ceremony-abo-side-hp/plan.md`
+Feature spec: `specs/082-abo-p4-7-console-passkey-ceremony-abo-side-hp/spec.md`
+Branch: `ai/082-abo-p4-7-console-passkey-ceremony-abo-side-hp`
 <!-- SPECKIT END -->
 
 ## Repo layout quick reference
