@@ -66,6 +66,7 @@ export default defineWorkersConfig({
       "test/system/hp-actions.cross-worker.test.ts",
       "test/system/ops.cross-worker.test.ts",
       "test/system/sweeps.cross-worker.test.ts",
+      "test/system/console-relays.cross-worker.test.ts",
     ],
     fileParallelism: false,
     testTimeout: 120_000,
