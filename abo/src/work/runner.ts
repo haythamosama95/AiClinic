@@ -5,6 +5,10 @@ import { PAYMOB_PROVIDER_ID, providerForId } from "../provider/registry.js";
 import type { PaymobAdapterEnv } from "../provider/paymob/adapter.js";
 import type { ProviderTxn } from "../provider/port.js";
 import { PAYMOB_ADAPTER_VERSION } from "../provider/paymob/adapter.js";
+import {
+  recordReversalFromProviderTxn,
+  type ReversalEnv,
+} from "./reversal.js";
 
 const LEASE_MS = 60_000;
 const MIN_BACKOFF_MS = 60_000;
@@ -570,6 +574,13 @@ async function confirmSuccessBatch(
     if ((reversalResults[reversalWorkIdx]?.meta.changes ?? 0) === 0) {
       throw new Error("lease_lost");
     }
+    await recordReversalFromProviderTxn(
+      env as WorkRunnerEnv & ReversalEnv,
+      confirmedTxn,
+      "inquiry",
+      inquirySha,
+      paymentId,
+    );
     return;
   }
 
