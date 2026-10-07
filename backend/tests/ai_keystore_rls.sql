@@ -932,38 +932,21 @@ BEGIN
 END;
 $$;
 
--- T08: revoke empty kid → INVALID_INPUT.
+-- T08: revoke_installation_key dropped (was empty kid → INVALID_INPUT).
 DO $$
 DECLARE
-  v_bootstrap_user uuid := 'a0000000-0000-4000-8000-000000000001';
-  v_bootstrap_staff uuid := 'b0000000-0000-4000-8000-000000000001';
-  v_result public.rpc_result;
-  v_org_id uuid;
+  v_public_absent boolean;
+  v_internal_absent boolean;
   v_passed boolean;
   v_detail text;
 BEGIN
   PERFORM set_config('role', 'postgres', true);
-  PERFORM set_config('app.environment', 'development', true);
-  PERFORM auth_internal.delete_clinic_test_fixtures(ARRAY[v_bootstrap_staff]::uuid[]);
-  DELETE FROM public.audit_log WHERE organization_id IS NOT NULL;
-  DELETE FROM public.app_settings WHERE true;
-  DELETE FROM public.subscription_cache WHERE true;
-  IF to_regclass('ai_internal.ai_token_issuance') IS NOT NULL THEN
-    DELETE FROM ai_internal.ai_token_issuance WHERE true;
-  END IF;
-  IF to_regclass('ai_internal.installation_keys') IS NOT NULL THEN
-    DELETE FROM ai_internal.installation_keys WHERE true;
-  END IF;
 
-  PERFORM pg_temp.set_authenticated_session(v_bootstrap_user);
-  v_result := public.bootstrap_create_organization('AI RevokeEmpty Clinic', '{}'::jsonb, NULL, 'EGP', 'UTC');
-  v_org_id := (v_result.data ->> 'organization_id')::uuid;
-  PERFORM public.bootstrap_create_branch(v_org_id, 'RevokeEmpty Branch', NULL, NULL, 'REB1', NULL);
-
-  v_result := public.revoke_installation_key('');
-  v_passed := (NOT v_result.success) AND v_result.error_code = 'INVALID_INPUT';
-  v_detail := 'success=' || v_result.success::text
-    || ' error_code=' || COALESCE(v_result.error_code, '<null>');
+  v_public_absent := to_regprocedure('public.revoke_installation_key(text)') IS NULL;
+  v_internal_absent := to_regprocedure('auth_internal.revoke_installation_key(text)') IS NULL;
+  v_passed := v_public_absent AND v_internal_absent;
+  v_detail := 'public_absent=' || v_public_absent::text
+    || ' internal_absent=' || v_internal_absent::text;
 
   PERFORM set_config('role', 'postgres', true);
   INSERT INTO ai_keystore_rls_results VALUES (

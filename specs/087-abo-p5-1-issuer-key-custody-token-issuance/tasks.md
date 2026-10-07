@@ -169,7 +169,7 @@ node backend/tests/contract_versions.mjs
 
 **Independent Test**: E2E-P5.1-07 in harness H-BK, and E2E-P5.1-06 in harness H-FS.
 
-- [ ] T017 [US1] Stop calling the dropped RPCs in `backend/tests/catalog/stage-02-revoke-rotate-availability.sql` — produces a catalog that survives the drop, FR-003, E2E-P5.1-07. Depends on T016. Availability cases stay. Leave `backend/tests/catalog/stage-02-availability-and-enroll.sql` for T018.
+- [X] T017 [US1] Stop calling the dropped RPCs in `backend/tests/catalog/stage-02-revoke-rotate-availability.sql` — produces a catalog that survives the drop, FR-003, E2E-P5.1-07. Depends on T016. Availability cases stay. Leave `backend/tests/catalog/stage-02-availability-and-enroll.sql` for T018.
 
 **Checkpoint**: `stage-02-revoke-rotate-availability.sql` no longer calls enroll, rotate, or revoke. Availability cases stay.
 
@@ -177,7 +177,7 @@ node backend/tests/contract_versions.mjs
 
 **Independent Test**: E2E-P5.1-07 in harness H-BK, and E2E-P5.1-06 in harness H-FS.
 
-- [ ] T018 [US1] Stop calling enroll in `backend/tests/catalog/stage-02-availability-and-enroll.sql` — produces a catalog that survives the drop, FR-003, E2E-P5.1-07. Depends on T016. Availability cases stay. Leave `stage-02-revoke-rotate-availability.sql` for T017.
+- [X] T018 [US1] Stop calling enroll in `backend/tests/catalog/stage-02-availability-and-enroll.sql` — produces a catalog that survives the drop, FR-003, E2E-P5.1-07. Depends on T016. Availability cases stay. Leave `stage-02-revoke-rotate-availability.sql` for T017.
 
 **Checkpoint**: `stage-02-availability-and-enroll.sql` no longer calls enroll. Availability cases stay.
 
