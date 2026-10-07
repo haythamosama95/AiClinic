@@ -2446,6 +2446,7 @@ async function clearTransferLease(
 async function writeTransferGrantRequests(
   env: OpsEnv,
   transferId: string,
+  orgId: string,
   packageDetail: unknown,
 ): Promise<void> {
   if (!Array.isArray(packageDetail)) {
@@ -2456,10 +2457,6 @@ async function writeTransferGrantRequests(
   for (let n = 0; n < packageDetail.length; n += 1) {
     const element = packageDetail[n];
     if (!isRecord(element)) {
-      continue;
-    }
-    const orgId = element.org_id;
-    if (typeof orgId !== "string" || orgId.length === 0) {
       continue;
     }
     const grantId = await grantIdTransfer(transferId, n);
@@ -2521,6 +2518,25 @@ async function reopenTransferStep(
     .run();
 }
 
+function transferOutPackageDetail(detail: unknown): unknown {
+  if (typeof detail === "string") {
+    try {
+      return JSON.parse(detail) as unknown;
+    } catch {
+      return null;
+    }
+  }
+  return detail;
+}
+
+function transferOrgIdFromReceipt(receipt: unknown): string | null {
+  if (!isRecord(receipt)) {
+    return null;
+  }
+  const orgId = receipt.org_id;
+  return typeof orgId === "string" && orgId.length > 0 ? orgId : null;
+}
+
 async function processTransferStepWork(
   env: OpsEnv,
   work: TransferWorkRow,
@@ -2559,38 +2575,9 @@ async function processTransferStepWork(
     return;
   }
 
-  if (work.last_error === "awaiting_transfer_out") {
-    const outResult = await env.PLATFORM.transferOut(contractArgs);
-    const outOutcome = String(outResult.result ?? "");
-    if (outOutcome === "applied" || outOutcome === "already_applied") {
-      let packageDetail: unknown = outResult.detail;
-      if (typeof packageDetail === "string") {
-        try {
-          packageDetail = JSON.parse(packageDetail) as unknown;
-        } catch {
-          packageDetail = null;
-        }
-      }
-      await writeTransferGrantRequests(env, transferId, packageDetail);
-
-      const inResult = await env.PLATFORM.transferIn(contractArgs);
-      const inOutcome = String(inResult.result ?? "");
-      if (inOutcome === "applied" || inOutcome === "already_applied") {
-        await finishTransferStep(env, work, leaseUntil);
-        return;
-      }
-      await reopenTransferStep(
-        env,
-        work,
-        leaseUntil,
-        inOutcome === "transient"
-          ? "awaiting_transfer_in"
-          : inOutcome.length > 0
-            ? inOutcome
-            : "awaiting_transfer_in",
-      );
-      return;
-    }
+  const outResult = await env.PLATFORM.transferOut(contractArgs);
+  const outOutcome = String(outResult.result ?? "");
+  if (outOutcome !== "applied" && outOutcome !== "already_applied") {
     await reopenTransferStep(
       env,
       work,
@@ -2598,6 +2585,12 @@ async function processTransferStepWork(
       outOutcome.length > 0 ? outOutcome : "transient",
     );
     return;
+  }
+
+  const orgId = transferOrgIdFromReceipt(outResult.receipt);
+  if (orgId !== null) {
+    const packageDetail = transferOutPackageDetail(outResult.detail);
+    await writeTransferGrantRequests(env, transferId, orgId, packageDetail);
   }
 
   const inResult = await env.PLATFORM.transferIn(contractArgs);
@@ -2610,7 +2603,11 @@ async function processTransferStepWork(
     env,
     work,
     leaseUntil,
-    inOutcome.length > 0 ? inOutcome : "transient",
+    inOutcome === "transient"
+      ? "awaiting_transfer_in"
+      : inOutcome.length > 0
+        ? inOutcome
+        : "awaiting_transfer_in",
   );
 }
 
