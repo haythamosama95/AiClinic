@@ -43,7 +43,7 @@ node backend/tests/contract_versions.mjs
 
 **Independent Test**: E2E-P5.1-07 in harness H-BK, and E2E-P5.1-06 in harness H-FS.
 
-- [ ] T001 [US1] Add the failing test `E2E-P5.1-07` in `backend/tests/ai_keystore_rls.sql` — red test, FR-002, FR-003, FR-011, E2E-P5.1-07. Depends on nothing. Title `E2E-P5.1-07 No clinic role can read private key material and no plaintext key column remains`. As `authenticated`, `SELECT` on `ai_internal.issuer_key` and `vault.decrypted_secrets` is denied. `information_schema` has no `secret_key` column under `ai_internal`, and `installation_keys` is absent. As the database owner, `auth_internal.issue_feed_token()` has `aud` `ai-platform-feed`, `sub` `backend-feed`, no `org`, and `exp − iat` of 120 seconds. As `authenticated`, `issue_feed_token` and `switch_issuer_signing_kid` cannot be executed. The psql command fails because that custody behavior is absent.
+- [X] T001 [US1] Add the failing test `E2E-P5.1-07` in `backend/tests/ai_keystore_rls.sql` — red test, FR-002, FR-003, FR-011, E2E-P5.1-07. Depends on nothing. Title `E2E-P5.1-07 No clinic role can read private key material and no plaintext key column remains`. As `authenticated`, `SELECT` on `ai_internal.issuer_key` and `vault.decrypted_secrets` is denied. `information_schema` has no `secret_key` column under `ai_internal`, and `installation_keys` is absent. As the database owner, `auth_internal.issue_feed_token()` has `aud` `ai-platform-feed`, `sub` `backend-feed`, no `org`, and `exp − iat` of 120 seconds. As `authenticated`, `issue_feed_token` and `switch_issuer_signing_kid` cannot be executed. The psql command fails because that custody behavior is absent.
 
 **Checkpoint**: E2E-P5.1-07 exists and fails.
 
@@ -51,7 +51,7 @@ node backend/tests/contract_versions.mjs
 
 **Independent Test**: E2E-P5.1-09 in harness H-BK. Every earlier suite stays green (rule S2).
 
-- [ ] T002 [US4] Add the failing test `E2E-P5.1-04` in `backend/tests/issuer_rpc.sql` — red test, FR-009, E2E-P5.1-04. Depends on T001. Create the file. Title `E2E-P5.1-04 Version 2 raises CONTRACT_VERSION_UNSUPPORTED and rpc_result carries contract_version`. `public.issue_ai_token(2)` and `public.issue_ai_token()` raise `CONTRACT_VERSION_UNSUPPORTED`. The exception detail is `accepted_versions` `[0, 1]`. No issuance row is inserted. A prior unauthenticated session is not required. `public.issue_billing_token(1)` as an administrator returns `contract_version` 1. The psql command fails because the versioned signatures are absent.
+- [X] T002 [US4] Add the failing test `E2E-P5.1-04` in `backend/tests/issuer_rpc.sql` — red test, FR-009, E2E-P5.1-04. Depends on T001. Create the file. Title `E2E-P5.1-04 Version 2 raises CONTRACT_VERSION_UNSUPPORTED and rpc_result carries contract_version`. `public.issue_ai_token(2)` and `public.issue_ai_token()` raise `CONTRACT_VERSION_UNSUPPORTED`. The exception detail is `accepted_versions` `[0, 1]`. No issuance row is inserted. A prior unauthenticated session is not required. `public.issue_billing_token(1)` as an administrator returns `contract_version` 1. The psql command fails because the versioned signatures are absent.
 
 **Checkpoint**: E2E-P5.1-04 exists and fails. E2E-P5.1-07 still fails.
 
@@ -59,7 +59,7 @@ node backend/tests/contract_versions.mjs
 
 **Independent Test**: E2E-P5.1-02 in harness H-FS.
 
-- [ ] T003 [US3] Add the failing test `E2E-P5.1-05` in `backend/tests/issuer_rpc.sql` — red test, FR-005, FR-007, E2E-P5.1-05. Depends on T002 (same file). Title `E2E-P5.1-05 21st billing token in 10 min is RATE_LIMITED`. One user. Twenty `public.issue_billing_token(1)` calls succeed. The 21st returns `error_code` `RATE_LIMITED` and does not insert a 21st `aud = 'abo'` row. AI rows for that user do not count. The psql command fails because the per-audience limit is absent.
+- [X] T003 [US3] Add the failing test `E2E-P5.1-05` in `backend/tests/issuer_rpc.sql` — red test, FR-005, FR-007, E2E-P5.1-05. Depends on T002 (same file). Title `E2E-P5.1-05 21st billing token in 10 min is RATE_LIMITED`. One user. Twenty `public.issue_billing_token(1)` calls succeed. The 21st returns `error_code` `RATE_LIMITED` and does not insert a 21st `aud = 'abo'` row. AI rows for that user do not count. The psql command fails because the per-audience limit is absent.
 
 **Checkpoint**: E2E-P5.1-05 exists and fails. E2E-P5.1-04 and E2E-P5.1-07 still fail.
 
@@ -67,7 +67,7 @@ node backend/tests/contract_versions.mjs
 
 **Independent Test**: E2E-P5.1-01 in harness H-FS.
 
-- [ ] T004 [US2] Add the failing test `E2E-P5.1-08` in `backend/tests/issuer_rpc.sql` — red test, FR-004, E2E-P5.1-08. Depends on T003 (same file). Title `E2E-P5.1-08 Membership switched to org B yields token org B`. `public.set_active_organization` to org B, then `public.issue_ai_token(1)`. The token `org` is B and equals `current_org_id()`. The psql command fails because the token `org` is not taken from `current_org_id()`.
+- [X] T004 [US2] Add the failing test `E2E-P5.1-08` in `backend/tests/issuer_rpc.sql` — red test, FR-004, E2E-P5.1-08. Depends on T003 (same file). Title `E2E-P5.1-08 Membership switched to org B yields token org B`. `public.set_active_organization` to org B, then `public.issue_ai_token(1)`. The token `org` is B and equals `current_org_id()`. The psql command fails because the token `org` is not taken from `current_org_id()`.
 
 **Checkpoint**: E2E-P5.1-08 exists and fails. E2E-P5.1-04, E2E-P5.1-05, and E2E-P5.1-07 still fail.
 
@@ -75,7 +75,7 @@ node backend/tests/contract_versions.mjs
 
 **Independent Test**: E2E-P5.1-09 in harness H-BK. Every earlier suite stays green (rule S2).
 
-- [ ] T005 [US4] Add the failing test `E2E-P5.1-09` in `backend/tests/contract_versions.mjs` — red test, FR-008, E2E-P5.1-09. Depends on T004. Title `E2E-P5.1-09 ai.contract_versions equals the package constants`. The script reads `CHANNEL_VERSIONS` out of `packages/vendor-contracts/src/version.ts` as text and passes those integers to psql. It does not copy the constants into the script. Each stored `current` equals that integer and each stored `minimum` equals `current - 1`. The node command fails because `ai.contract_versions` is absent or differs.
+- [X] T005 [US4] Add the failing test `E2E-P5.1-09` in `backend/tests/contract_versions.mjs` — red test, FR-008, E2E-P5.1-09. Depends on T004. Title `E2E-P5.1-09 ai.contract_versions equals the package constants`. The script reads `CHANNEL_VERSIONS` out of `packages/vendor-contracts/src/version.ts` as text and passes those integers to psql. It does not copy the constants into the script. Each stored `current` equals that integer and each stored `minimum` equals `current - 1`. The node command fails because `ai.contract_versions` is absent or differs.
 
 **Checkpoint**: E2E-P5.1-09 exists and fails. E2E-P5.1-04, E2E-P5.1-05, E2E-P5.1-07, and E2E-P5.1-08 still fail.
 
@@ -89,7 +89,7 @@ node backend/tests/contract_versions.mjs
 
 **Independent Test**: E2E-P5.1-09 in harness H-BK. Every earlier suite stays green (rule S2).
 
-- [ ] T006 [US4] Register the H-BK files in `backend/tests/run_all_backend_tests.sh` and add Node to job `backend-sql` in `.github/workflows/ci.yml` — produces the suite registration and the Node runtime for the contract test, FR-008, FR-009, E2E-P5.1-04, E2E-P5.1-05, E2E-P5.1-08, E2E-P5.1-09. Depends on T005. Add `issuer_rpc.sql` and `node backend/tests/contract_versions.mjs`. The unit command stays the three commands in §3. Leave the `fullstack` job uncreated.
+- [X] T006 [US4] Register the H-BK files in `backend/tests/run_all_backend_tests.sh` and add Node to job `backend-sql` in `.github/workflows/ci.yml` — produces the suite registration and the Node runtime for the contract test, FR-008, FR-009, E2E-P5.1-04, E2E-P5.1-05, E2E-P5.1-08, E2E-P5.1-09. Depends on T005. Add `issuer_rpc.sql` and `node backend/tests/contract_versions.mjs`. The unit command stays the three commands in §3. Leave the `fullstack` job uncreated.
 
 **Checkpoint**: `run_all_backend_tests.sh` lists `issuer_rpc.sql` and `contract_versions.mjs`. Job `backend-sql` can run Node. E2E-P5.1-04, E2E-P5.1-05, E2E-P5.1-07, E2E-P5.1-08, and E2E-P5.1-09 still fail.
 

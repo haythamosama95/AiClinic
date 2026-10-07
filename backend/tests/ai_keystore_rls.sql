@@ -1246,6 +1246,128 @@ BEGIN
 END;
 $$;
 
+-- E2E-P5.1-07: No clinic role can read private key material and no plaintext key column remains.
+DO $$
+DECLARE
+  v_bootstrap_user uuid := 'a0000000-0000-4000-8000-000000000001';
+  v_issuer_read_denied boolean := false;
+  v_vault_read_denied boolean := false;
+  v_no_secret_key_col boolean := false;
+  v_installation_keys_absent boolean := false;
+  v_feed_token_ok boolean := false;
+  v_feed_exec_denied boolean := false;
+  v_switch_exec_denied boolean := false;
+  v_feed_token text;
+  v_payload jsonb;
+  v_detail text;
+  v_passed boolean;
+BEGIN
+  PERFORM pg_temp.set_authenticated_session(v_bootstrap_user);
+
+  IF to_regclass('ai_internal.issuer_key') IS NOT NULL THEN
+    BEGIN
+      PERFORM count(*) FROM ai_internal.issuer_key;
+      v_detail := 'issuer_key select succeeded unexpectedly';
+    EXCEPTION
+      WHEN insufficient_privilege THEN
+        v_issuer_read_denied := true;
+      WHEN OTHERS THEN
+        v_detail := 'issuer_key select: ' || SQLERRM;
+    END;
+  ELSE
+    v_detail := 'ai_internal.issuer_key is absent';
+  END IF;
+
+  BEGIN
+    PERFORM count(*) FROM vault.decrypted_secrets;
+    v_detail := coalesce(v_detail || '; ', '') || 'vault.decrypted_secrets select succeeded unexpectedly';
+  EXCEPTION
+    WHEN insufficient_privilege THEN
+      v_vault_read_denied := true;
+    WHEN undefined_table THEN
+      v_vault_read_denied := true;
+    WHEN OTHERS THEN
+      v_detail := coalesce(v_detail || '; ', '') || 'vault.decrypted_secrets: ' || SQLERRM;
+  END;
+
+  SELECT NOT EXISTS (
+    SELECT 1
+    FROM information_schema.columns c
+    WHERE c.table_schema = 'ai_internal'
+      AND c.column_name = 'secret_key'
+  )
+  INTO v_no_secret_key_col;
+
+  v_installation_keys_absent := to_regclass('ai_internal.installation_keys') IS NULL;
+
+  IF to_regprocedure('auth_internal.issue_feed_token()') IS NOT NULL THEN
+    PERFORM set_config('role', 'postgres', true);
+    BEGIN
+      v_feed_token := auth_internal.issue_feed_token();
+      v_payload := pg_temp.decode_jws_payload(v_feed_token);
+      v_feed_token_ok :=
+        (v_payload ->> 'aud') = 'ai-platform-feed'
+        AND (v_payload ->> 'sub') = 'backend-feed'
+        AND NOT (v_payload ? 'org')
+        AND ((v_payload ->> 'exp')::bigint - (v_payload ->> 'iat')::bigint) = 120;
+    EXCEPTION
+      WHEN OTHERS THEN
+        v_feed_token_ok := false;
+        v_detail := coalesce(v_detail || '; ', '') || 'issue_feed_token: ' || SQLERRM;
+    END;
+  ELSE
+    v_detail := coalesce(v_detail || '; ', '') || 'auth_internal.issue_feed_token is absent';
+  END IF;
+
+  PERFORM pg_temp.set_authenticated_session(v_bootstrap_user);
+
+  IF to_regprocedure('auth_internal.issue_feed_token()') IS NOT NULL THEN
+    BEGIN
+      PERFORM auth_internal.issue_feed_token();
+      v_detail := coalesce(v_detail || '; ', '') || 'authenticated executed issue_feed_token';
+    EXCEPTION
+      WHEN insufficient_privilege THEN
+        v_feed_exec_denied := true;
+      WHEN OTHERS THEN
+        v_detail := coalesce(v_detail || '; ', '') || 'issue_feed_token exec: ' || SQLERRM;
+    END;
+  END IF;
+
+  IF to_regprocedure('auth_internal.switch_issuer_signing_kid(text)') IS NOT NULL THEN
+    BEGIN
+      PERFORM auth_internal.switch_issuer_signing_kid('any-kid');
+      v_detail := coalesce(v_detail || '; ', '') || 'authenticated executed switch_issuer_signing_kid';
+    EXCEPTION
+      WHEN insufficient_privilege THEN
+        v_switch_exec_denied := true;
+      WHEN OTHERS THEN
+        v_detail := coalesce(v_detail || '; ', '') || 'switch_issuer_signing_kid exec: ' || SQLERRM;
+    END;
+  ELSE
+    v_detail := coalesce(v_detail || '; ', '') || 'auth_internal.switch_issuer_signing_kid is absent';
+  END IF;
+
+  v_passed := v_issuer_read_denied
+    AND v_vault_read_denied
+    AND v_no_secret_key_col
+    AND v_installation_keys_absent
+    AND v_feed_token_ok
+    AND v_feed_exec_denied
+    AND v_switch_exec_denied;
+
+  IF v_passed THEN
+    v_detail := 'issuer custody and feed mint checks passed';
+  END IF;
+
+  PERFORM set_config('role', 'postgres', true);
+  INSERT INTO ai_keystore_rls_results VALUES (
+    'E2E-P5.1-07 No clinic role can read private key material and no plaintext key column remains',
+    v_passed,
+    v_detail
+  );
+END;
+$$;
+
 SELECT test_name, passed, detail FROM ai_keystore_rls_results ORDER BY test_name;
 
 DO $$

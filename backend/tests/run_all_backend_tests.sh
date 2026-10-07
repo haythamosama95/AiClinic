@@ -54,6 +54,20 @@ run_shell_test() {
   fi
 }
 
+run_node_test() {
+  local name="$1"
+  local file="$2"
+  total_suites=$((total_suites + 1))
+  printf -- '== [%d] %s ==\n' "${total_suites}" "${name}"
+  if node "${script_dir}/${file}" >/dev/null 2>&1; then
+    passed_suites=$((passed_suites + 1))
+    printf -- '   PASS\n'
+  else
+    failed_suites+=("${name}")
+    printf -- '   FAIL\n'
+  fi
+}
+
 printf -- '==========================================================\n'
 printf -- ' AiClinic Backend Test Suite\n'
 printf -- '==========================================================\n\n'
@@ -123,6 +137,11 @@ run_sql_test "Membership active org" "membership_active_org.sql"
 # --- Cross-tenant suite (P1.2) ---
 printf '\n--- Cross-tenant suite ---\n'
 run_sql_test "Cross-tenant suite" "cross_tenant_suite.sql"
+
+# --- P5.1 issuer key custody ---
+printf '\n--- P5.1 issuer key custody ---\n'
+run_sql_test "Issuer RPC" "issuer_rpc.sql"
+run_node_test "Contract versions" "contract_versions.mjs"
 
 # --- Summary ---
 printf -- '\n==========================================================\n'
