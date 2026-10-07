@@ -1009,7 +1009,7 @@ and the RPCs of 04 §3.1. The backend only pulls from the platform; it never pus
 - **Code:** `lib/core/ai/discovery_client.dart`, `supabase_aat_mint_port.dart:22-30`, `lib/features/ai/availability/ai_availability_reader.dart:17-18`,
   `ai_availability.dart:11-15`, `lib/app/app.dart:47-57`, `frontend/test/widget/ai/`.
 - **Implements:** `lib/core/contract_versions.dart` + a contract test against the package vectors; `Aip-Contract-Version` on every platform call; `p_contract_version` on
-  every RPC; the new `issue_ai_token` signature; `get_ai_status` replaces the availability reader; refresh on open, resume, coverage denial, `next_change_at` and
+  every RPC; the new `issue_ai_token` signature; `get_ai_status` replaces the availability reader; refresh on open, resume, a coverage-code denial (`allowance_exhausted`, `coverage_lapsed`, `coverage_unknown`), `next_change_at` and
   every 5 min, contacting the backend only; notice rendering (staff form vs administrator form with a renew action wired in P6.3); the inline "update the app" state;
   **H-FL** (Dart `fullstack`-tagged tests on H-FS + widget scenarios; CI job).
 - **E2E (H-FL):**

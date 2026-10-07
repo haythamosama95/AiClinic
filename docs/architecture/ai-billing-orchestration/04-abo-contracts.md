@@ -311,7 +311,7 @@ The read does not update `clinic_ai_coverage.reason`. `get_ai_billing_status` re
 
 ### 3.4 Desktop behaviour
 
-- **When to read status.** Every desktop calls `get_ai_status()` on app open, on resume (as `frontend/lib/app/app.dart:47-57` does today), after any AI denial with a coverage code, at `next_change_at`, and every 5 minutes. This contacts only the backend (FR-61). Administrators additionally use `get_ai_billing_status()`, the ABO API, and `/v1/coverage` for live allowance.
+- **When to read status.** Every desktop calls `get_ai_status()` on app open, on resume (as `frontend/lib/app/app.dart:47-57` does today), after any AI denial with a coverage code, at `next_change_at`, and every 5 minutes. A coverage code is `allowance_exhausted`, `coverage_lapsed`, or `coverage_unknown`. This contacts only the backend (FR-61). Administrators additionally use `get_ai_billing_status()`, the ABO API, and `/v1/coverage` for live allowance.
 - **Denial display.** Denials are inline states, never dialogs (FR-64), extending the existing `AiDegradedView` pattern (`frontend/lib/features/ai/degraded/ai_degraded_view.dart:33-110`):
 
 
