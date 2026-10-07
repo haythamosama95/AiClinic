@@ -70,8 +70,9 @@ but never drop one.
 | P4.10 | Reconciliation, payout import and findings | M | P4.8 |
 | P4.11 | Daily digest, platform watch, housekeeping and ABO rebuild | M | P4.10, P3.9 |
 | P5.1 | Issuer key custody, token issuance and the versioned RPC envelope | L | P1.2, P3.2, P4.1 |
-| P5.2 | Coverage feed puller, status projection and status RPCs | L | P5.1, P3.9 |
-| P6.1 | Desktop contract versions, token minting and AI status reads | M | P5.2 |
+| P5.2a | Coverage feed puller, projection and status refresh | M | P5.1, P3.9 |
+| P5.2b | Read-time status, notices and billing status | S | P5.2a |
+| P6.1 | Desktop contract versions, token minting and AI status reads | M | P5.2b |
 | P6.2 | Desktop denial states and the administrator coverage view | M | P6.1 |
 | P6.3 | Administrator billing: offers, contact and checkout flow | L | P6.1, P4.5 |
 | P6.4 | Administrator subscription, payment history and commercial notices | M | P6.3 |
@@ -123,12 +124,12 @@ updated to the active unit when its specify step starts.
 | P2 | P2.1=063, P2.2=064 |
 | P3 | P3.1=065, P3.2=066, P3.3=067, P3.4=068, P3.5=069, P3.6=070, P3.7=071, P3.8=072, P3.9=073, P3.10=074, P3.11=075 |
 | P4 | P4.1=076, P4.2=077, P4.3=078, P4.4=079, P4.5=080, P4.6=081, P4.7=082, P4.8=083, P4.9=084, P4.10=085, P4.11=086 |
-| P5 | P5.1=087, P5.2=088 |
+| P5 | P5.1=087, P5.2a=088, P5.2b=088b |
 | P6 | P6.1=089, P6.2=090, P6.3=091, P6.4=092 |
 | P7 | P7.1=093, P7.2=094, P7.3=095 |
 | P8 | P8.1=096, P8.2=097, P8.3=098 |
 
-Total: 38 units, specs 061–098. If a unit splits under the rule S3 stop condition, the halves share its number with suffixes `a`/`b` (e.g. `068a`, `068b`).
+Total: 39 units after the P5.2 split under rule S3 (38 before that split). Specs stay 061–098, and the new half is 088b. If a unit splits under the rule S3 stop condition, the halves share its number with suffixes `a`/`b` (e.g. `068a`, `068b`). An already-numbered half keeps its directory: P5.2a stays spec 088 in `specs/088-abo-p5-2-coverage-feed-puller-status-projection/` on branch `ai/088-abo-p5-2-coverage-feed-puller-status-projection`. P5.2b is spec 088b. Its directory is created when that half's specify step starts.
 
 **S5. The tenancy retrofit is in scope (P1.1, P1.2).** The design names it as precondition 1 (05 §6.3,
 01 R-1) and as a launch condition (05 §6.2). Without it SR-03, SR-08 and A36 cannot pass (05 §10), and
@@ -140,7 +141,7 @@ to the new membership-checked `current_org_id()`, rather than rewriting every po
 units: Spec Kit's `research.md` is where they belong. Each must record its outcome and, if it fails, pick
 the fallback the design names (05 §10 "Spike-dependent items"). R-5 → P2.2 (WebAuthn/ES256) and P3.1
 (Access `amr`, service-binding caller identity); R-2 → P4.2 (intention expiry default, bound by OQ-3) and P4.3
-(redelivery, second success, order listing, rate limits); R-3 → P5.1; R-4 → P5.2 (local, then confirmed
+(redelivery, second success, order listing, rate limits); R-3 → P5.1; R-4 → P5.2a (local, then confirmed
 in P8.1); R-6 → P8.1; R-7 → P3.11. OQ-3 covers the accounts these need.
 
 **S7. Contract-first ordering and freezing.** P2.1/P2.2 freeze the shared package
@@ -174,7 +175,7 @@ P3.10. Each unit's Out-of-scope list names the transitional item and its owner.
 **S10. Parallelism.** Three tracks after P2.2: platform (P3.x, sequential, except that P3.9 may run
 in parallel with P3.6–P3.8), ABO (P4.x), and backend tenancy (P1.x, which can start on day 1). The ABO starts with P4.1
 alongside P3.1 and joins the platform at P4.2 (needs P3.3), P4.4 (needs P3.4), P4.5 (needs P3.7), P4.8
-(needs P3.8), P4.9 (needs P3.10). Backend P5.x needs P1.2 + P3.2/P3.9; desktop P6.x needs P5.2. Two units
+(needs P3.8), P4.9 (needs P3.10). Backend P5.x needs P1.2 + P3.2/P3.9; desktop P6.x needs P5.2b (which needs P5.2a). Two units
 in the same codebase never run concurrently, except P3.9 as noted, and except P4.6's wiring exception,
 which adds only class-H `recordOperatorAction` on `VendorEntrypoint`.
 
@@ -185,7 +186,7 @@ which adds only class-H `recordOperatorAction` on `VendorEntrypoint`.
 | CP-A | P2.2 | Do the frozen package contracts work in both runtimes, and are the vectors consumable by SQL/Dart? |
 | CP-B | P3.4 | Falsification: does a paid grant over the real entrypoint, then an issuer token, give a completed live `POST /v1/requests` charged to a term? |
 | CP-C | P4.4 | Does purchase → callback → inquiry → grant → AI on run across the real ABO and platform workers with the Paymob stub (local A1)? |
-| CP-D | P5.2 | Does a platform coverage event reach `get_ai_status()` through local Supabase within the bound? |
+| CP-D | P5.2a | Does a platform coverage event reach `get_ai_status()` through local Supabase within the bound? |
 | CP-E | P6.3 | Does one thread go from the admin desktop client to checkout, payment, grant, status and an AI request? |
 | CP-F | P7.3 | Is the design fully implemented? Diff 02–05 against the code, no `/control/*` residue, version matrix green. Gate to staging |
 | CP-G | P8.2 | All A1–A36 pass on staging. Launch gate (FR-90) |
@@ -211,7 +212,7 @@ constitution check (02 §7).
 | H-PAY | Paymob stub (an auxiliary worker scripted per test: auth token, intention, order inquiry, transaction endpoints; bound/unbound, mismatch, pending, reversed, timeout, rate limit) + **HMAC replay fixture** (recorded bodies re-signed with a local secret: success, decline, parent-flag refund, child refund, bad HMAC, replay) | `abo/test/stubs/paymob/`, `abo/test/fixtures/paymob/` | P4.2 (intention), P4.3 (callbacks + inquiry), P4.10 (payout CSV) |
 | H-XW | Cross-worker: ABO tests run the **real ai-platform worker** as an auxiliary Miniflare worker, bound as `PLATFORM` with `entrypoint = "VendorEntrypoint"`; the platform is built from source before the run | `abo/test/system/` + build script | P4.2 |
 | H-BK | Backend SQL harness (existing psql suites + catalog) on local Supabase; **new backend CI job** | `backend/tests/` | P1.1 (CI), P1.2 onward |
-| H-FS | Full stack: `supabase start` + `wrangler dev` for the platform and ABO + Paymob stub server + Node scenario runner (supabase-js as real test users). The same runner is pointed at staging in P8 | new top-level `e2e/fullstack/` (own package.json, `file:` dep on the package) | P5.1 (+ CI job), P5.2 (pg_net to the host) |
+| H-FS | Full stack: `supabase start` + `wrangler dev` for the platform and ABO + Paymob stub server + Node scenario runner (supabase-js as real test users). The same runner is pointed at staging in P8 | new top-level `e2e/fullstack/` (own package.json, `file:` dep on the package) | P5.1 (+ CI job), P5.2a (pg_net to the host) |
 | H-FL | Flutter: Dart client tests against H-FS (tag `fullstack`) for real network behaviour; widget scenario tests with fake ports for UI states. No `integration_test/` desktop driver (OQ-6) | `frontend/test/integration/`, `frontend/test/widget/` | P6.1 |
 | H-STG | Staging runner = H-FS runner with staging config, Paymob test cards, `DURATION_SCALE`; manual steps scripted as checklists | `e2e/fullstack/staging/` | P8.1, P8.2 |
 
@@ -315,7 +316,7 @@ adversaries (AD-#), credentials (K-#) and seed requirement IDs.
 - **Out of scope:** per-tenant `roles_permissions` and the org audit of tables and RPCs (→ P1.2); token changes (→ P5.1);
   a desktop organisation switcher (not in the design, OQ-2).
 - **Inputs:** existing auth/RBAC migrations.
-- **Outputs / freezes:** `current_org_id()` and `current_membership_role()` semantics (consumed by P1.2, P5.1, P5.2); migrations; backend CI job.
+- **Outputs / freezes:** `current_org_id()` and `current_membership_role()` semantics (consumed by P1.2, P5.1, P5.2a, P5.2b); migrations; backend CI job.
 - **E2E (H-BK, psql impersonating JWT users):**
   - E2E-P1.1-01 One-membership user signs in → the claim carries that org; `current_org_id()` = org.
   - E2E-P1.1-02 User in orgs A and B calls `set_active_organization(B)` and refreshes → `current_org_id()` = B; tenant RPCs return only B rows.
@@ -335,7 +336,7 @@ adversaries (AD-#), credentials (K-#) and seed requirement IDs.
 - **Spec** 062 · **Codebase** backend · **Size** L · **Depends** P1.1 · **Parallel** P2.x, P3.x, P4.x
 - **Read:** 01 §2 rows T-1–T-3; 01 §7 row R-1 ("`organization_id` on all AI and billing state"); 02 §4.2 rows
   AD-2, AD-3; 04 §3.1 (intro paragraph only); 05 §8 row A36.
-- **Do not read:** 04 §3.2–§3.3 (status RPCs, P5.2).
+- **Do not read:** 04 §3.2–§3.3 (status RPCs, P5.2b).
 - **Code:** every `SECURITY DEFINER` function and RLS policy in `backend/supabase/migrations/`; `roles_permissions`
   (`20260516100000_auth_rbac_schema.sql:163-176`); `staff_members`, `staff_branch_assignments`; AI tables in `ai_internal`.
 - **Implements:**
@@ -344,7 +345,7 @@ adversaries (AD-#), credentials (K-#) and seed requirement IDs.
   - Per-tenant `roles_permissions` (organization_id column, policies, seed per org), so one tenant's admin cannot change another's AI scopes [T-2].
   - Staff and branch assignment rows tied to org through membership.
   - A two-org, two-admin cross-tenant suite in `backend/tests/`.
-- **Out of scope:** installation keys and the single-installation trigger (→ P5.1); availability flag (→ P5.2).
+- **Out of scope:** installation keys and the single-installation trigger (→ P5.1); availability flag (→ P5.2a).
 - **Inputs:** P1.1 helpers. **Outputs / freezes:** the tenant inventory; per-tenant `roles_permissions`; cross-tenant suite (re-run by P7.2).
 - **E2E (H-BK):**
   - E2E-P1.2-01 Admin of A edits `roles_permissions` → B's permissions and B's AI scopes unchanged.
@@ -369,7 +370,7 @@ adversaries (AD-#), credentials (K-#) and seed requirement IDs.
   - RFC 8785 canonicalisation; SHA-256 hex; Ed25519 compact JWS sign/verify (`alg=EdDSA`, `kid`) on WebCrypto.
   - 03 §7 identifiers: subscription ref `AIC-…`, `payment_id`, the three `grant_id` forms, coverage `event_id`, `CK-/PAY-/REV-/GR-` refs, ULID (80 random bits), Crockford base-32.
   - Per-channel version constants (04 §7.1, all = 1); negotiation helper (accept N and N−1, answer in the request's version; refusal `{code: contract_version_unsupported, accepted_versions}`).
-  - Golden vector files (canonical bytes, hashes, identifiers, JWS) for later SQL (P5.2) and Dart (P6.1) contract tests.
+  - Golden vector files (canonical bytes, hashes, identifiers, JWS) for later SQL (P5.2b) and Dart (P6.1) contract tests.
   - Platform wiring: `src/vendor/contract-version.ts`; `Aip-Contract-Version` checked before token verification and echoed on every
     clinic `/v1/*` response, sent before the first SSE byte. H-AP harness sends it by default. Package CI job.
 - **Out of scope:** message types, WebAuthn, Access, testkit (→ P2.2); entrypoint version checks (→ P3.1); feed route (→ P3.9);
@@ -614,7 +615,7 @@ adversaries (AD-#), credentials (K-#) and seed requirement IDs.
   `transfer_id`) moving the package with `origin_grant_id`; the old DO is `transferred_out` and refuses grants; `deleteInstallation` (HP: no coverage → retire;
   coverage left → `held_for_transfer`, `transfer_pending` refusals, grants `transient`, no new binding, AL-18 daily); voiding the remaining grants retires the held
   binding; `voidForReversal` lineage across transfer; retention purge marks installations deleted and never touches ledgers, events, transfers or unended-term usage.
-- **Out of scope:** the saga driver (→ P4.8); projection epoch handling (→ P5.2).
+- **Out of scope:** the saga driver (→ P4.8); projection epoch handling (→ P5.2a).
 - **E2E (H-AP):**
   - E2E-P3.8-01 A14: active + queued clinic → `beginTransfer` → `transferOut` → `transferIn` → the new installation holds the terms with the same `origin_grant_id`s and remaining allowance; old answers `transferred`; AL-11 transfer; events carry epoch 2 [FR-72].
   - E2E-P3.8-02 Non-transfer grant during `awaiting_transfer` → `transient awaiting_transfer`; after `transferIn` it applies behind the moved terms.
@@ -629,13 +630,13 @@ adversaries (AD-#), credentials (K-#) and seed requirement IDs.
 - **Spec** 073 · **Codebase** ai-platform · **Size** M · **Depends** P3.5 · **Parallel** P3.6–P3.8 (rule S10), P4.x
 - **Read:** 03 §6.5; 03 §6.6 (outage row); 03 §3.2 rows `fallback_admission`, `feed_consumer`, `coverage_mirror`; 03 §7 (Subscription reference row only); 04 §4.1 (first two paragraphs only);
   04 §4.2 rows `/v1/coverage`, `/v1/usage`; 04 §1.7 (companion-list bullets for `queued_terms` and `recent_terms` only); 04 §1.3 row feedConsumerHealth; 02 §3.2 (Feed row); 04 §6.1 rows admission (fallback), credit (reconcile), usage-summary, `worker.ts` (`*/5`).
-- **Do not read:** 04 §4.1 backend pull cycle (→ P5.2).
+- **Do not read:** 04 §4.1 backend pull cycle (→ P5.2a).
 - **Implements:** fallback when the DO errors or takes > 2 s: mirror by primary key, then the four conditions (state, not suspended, before `hard_stop_at`,
   capability, outage weight ≤ 5 × w_max); otherwise `coverage_unknown` + `retry_after`; `fallback_admission` rows with `request_id`; `*/5` drain with dedupe;
   `GRACE_ADMISSION_CAP` and `grace_admission_queue` removed. `GET /v1/feed/coverage` (feed token `aud=ai-platform-feed`, `sub=backend-feed`, no `org`;
   version header; pages; `feed_consumer` updated); `feedConsumerHealth` (M). `GET /v1/coverage` (administrator only: subscription ref, live DO snapshot read-only,
   queued terms, last 12 terms with usage). `/v1/usage` and `src/usage-summary` removed.
-- **Out of scope:** backend puller (→ P5.2); desktop client (→ P6.2).
+- **Out of scope:** backend puller (→ P5.2a); desktop client (→ P6.2).
 - **Outputs / freezes:** the HTTP feed contract; `/v1/coverage` response; `feedConsumerHealth`.
 - **E2E (H-AP):**
   - E2E-P3.9-01 FM-06: DO forced to fail for an active clinic → admitted via fallback with a `fallback_admission` row; the DO recovers and `*/5` charges it once [P-12].
@@ -949,10 +950,10 @@ and the RPCs of 04 §3.1. The backend only pulls from the platform; it never pus
 - **Implements:** R-3 spike → Vault + SQL signing, or the Edge Function signer fallback (OQ-4); `ai_internal.issuer_key` (≥ 2 `kid`s, `status` `signing` / `next` / `retired`, validity, `secret_ref`);
   `issue_ai_token(p_contract_version)` (EdDSA, `kid`, 04 §2.1 claims, `org = current_org_id()`, role from membership, scopes as today, ≤ 600 s);
   `issue_billing_token(p_contract_version)` (administrator only, 300 s, `{token, abo_base_url, expires_at}`, 20 per user per 10 min); internal feed-token minting
-  (used by P5.2); `ai_token_issuance` with `aud` + org and per-audience limits; `app_settings` keys incl. `ai.contract_versions` + a contract test against the package
+  (used by P5.2a); `ai_token_issuance` with `aud` + org and per-audience limits; `app_settings` keys incl. `ai.contract_versions` + a contract test against the package
   vectors; `rpc_result.contract_version`; `CONTRACT_VERSION_UNSUPPORTED`; drop `installation_keys`, the single-installation trigger and the enroll/rotate/revoke RPCs
   + `auth_internal` bodies; `auth_internal.switch_issuer_signing_kid` (02 §6 switch signing: `next` becomes `signing`, the previous `signing` row becomes `retired`). **Builds H-FS** (local Supabase + `wrangler dev` platform and ABO + Paymob stub + Node runner + CI job).
-- **Out of scope:** feed puller, projection, status RPCs, availability flag (→ P5.2).
+- **Out of scope:** feed puller, projection, refresh, availability flag (→ P5.2a); read-time grace, lapse, notices, and billing status (→ P5.2b).
 - **E2E (H-BK + H-FS):**
   - E2E-P5.1-01 Org A member: `issue_ai_token(1)` → accepted by the local platform `/v1/capabilities`; A's binding created.
   - E2E-P5.1-02 Administrator: `issue_billing_token(1)` → accepted by the local ABO `/v1/offers`; doctor → `FORBIDDEN_ROLE` [FR-10, AD-2].
@@ -964,26 +965,37 @@ and the RPCs of 04 §3.1. The backend only pulls from the platform; it never pus
   - E2E-P5.1-08 Membership switched to org B → token `org` = B [SR-03].
   - E2E-P5.1-09 `ai.contract_versions` equals the package constants (contract test).
 
-### P5.2 — Coverage feed puller, status projection and status RPCs
-- **Spec** 088 · **Codebase** backend · **Size** L · **Depends** P5.1, P3.9 · **Parallel** P4.x
-- **Read:** 04 §4.1; 03 §4 (rows `clinic_ai_coverage`, `feed_state` + ordering rule); 04 §3.1 (rows `get_ai_status`, `get_ai_billing_status`, `request_ai_status_refresh`; "Removed",
-  the availability part); 04 §3.2; 04 §3.3; 05 §5.4; 01 §7 row R-4 (spike); 05 §4 rows FM-10, FM-11.
+### P5.2a — Coverage feed puller, projection and status refresh
+- **Spec** 088 · **Codebase** backend · **Size** M · **Depends** P5.1, P3.9 · **Parallel** P4.x
+- **Continues:** this half. Branch `ai/088-abo-p5-2-coverage-feed-puller-status-projection`. Directory `specs/088-abo-p5-2-coverage-feed-puller-status-projection/`. Stories: User Story 1 (Coverage pull and projection) and User Story 4 (Administrator status refresh).
+- **Read:** 04 §4.1; 03 §4 (rows `clinic_ai_coverage`, `feed_state`, `status_refresh` + ordering rule); 04 §3.1 (rows `get_ai_status` for available/active and `stale`, `request_ai_status_refresh`; "Removed", the availability part); 04 §3.3 (`stale` and available/active only); 05 §5.4; 01 §7 row R-4 (spike); 05 §4 rows FM-10, FM-11.
 - **Implements:** enable `pg_cron` + `pg_net`; the two-phase 30 s pull (fresh feed token, checks for status, version, `after` = cursor and ascending order; abandon responses
-  older than 5 min); projection upsert by the ordering rule; `feed_state` failure counting; `request_ai_status_refresh` (administrator, ≤ 1 per 10 s per tenant, immediate pull);
-  `get_ai_status` read-time computation + the closed notice vocabulary; `get_ai_billing_status` (administrator; subscription ref computed in SQL to the package vector;
-  `abo_base_url`); drop `get_ai_availability`/`set_ai_availability` and `ai.availability`; projection rebuild by cursor reset. R-4 spike locally (confirmed in P8.1).
-- **Outputs / freezes:** status RPC results and notice codes (consumed by P6.x). CP-D.
-- **E2E (H-FS, compressed scale, rule V4):**
+  older than 5 min); projection upsert by the ordering rule; `feed_state` failure counting; `ai_internal.status_refresh` (`organization_id`, `requested_at`) as the per-tenant refresh clock;
+  `request_ai_status_refresh` (administrator; accept when the row is absent or `requested_at` is at least 10 s old, then upsert `requested_at` and start an immediate pull, success `{requested_at}`;
+  a call inside 10 s returns `RATE_LIMITED` with no pull and no clock write; a non-administrator returns `FORBIDDEN_ROLE` with no pull and no clock write);
+  `get_ai_status` for a current grant returns available/active, and `stale` when `feed_state.last_success_at` is more than 2 minutes old; `clinic_ai_coverage.reason` is copied from the snapshot on upsert (null when that snapshot `state` is `active` or `grace`; otherwise the snapshot `reason`); drop `get_ai_availability`/`set_ai_availability` and `ai.availability`; projection rebuild by cursor reset. R-4 spike locally (confirmed in P8.1).
+- **Out of scope:** read-time grace, lapse, notices, `days_left`, the `reason` read mapping, and `get_ai_billing_status` (→ P5.2b).
+- **Outputs / freezes:** the pull, the projection, and `request_ai_status_refresh`. CP-D.
+- **E2E (H-FS, compressed scale, rule V4):** same ids.
   - E2E-P5.2-01 Grant applied on the platform → within about 60 s `get_ai_status` is available/active [FR-62, FR-63, A2].
-  - E2E-P5.2-02 `request_ai_status_refresh` → immediate pull; a second call within 10 s → throttled.
-  - E2E-P5.2-03 A10/A28: platform and ABO stopped; stored dates pass → status goes to grace, then lapsed, on time; `stale` + `status_stale` after 2 min [SR-13].
-  - E2E-P5.2-04 `ends_soon` at 7, 3 and 1 days only when `queued_count = 0`; staff `get_ai_status` has no prices; staff `get_ai_billing_status` → forbidden [FR-61].
+  - E2E-P5.2-02 `request_ai_status_refresh` → immediate pull; a second call within 10 s → `RATE_LIMITED`, no pull, clock unchanged.
   - E2E-P5.2-05 A14: events from epoch 2, `clinic_seq` 1 replace epoch 1, seq 9; older events ignored.
   - E2E-P5.2-06 The platform answers an unsupported feed version → cursor kept, failure counted, stale [FM-25].
   - E2E-P5.2-07 FM-10: job disabled 5 min → stale; platform `feedConsumerHealth` shows the lag.
   - E2E-P5.2-08 Cursor reset to 0 → identical projection [RC-04].
-  - E2E-P5.2-09 SQL subscription ref equals the package vector and the ABO/platform values [FR-66].
   - E2E-P5.2-10 FM-11: Supabase stopped during a payment → the ABO and platform still provision; status catches up after restart.
+
+### P5.2b — Read-time status, notices and billing status
+- **Spec** 088b · **Codebase** backend · **Size** S · **Depends** P5.2a · **Parallel** P4.x
+- **Stories:** User Story 2 (Read-time status and notices) and User Story 3 (Administrator billing status). Directory `specs/088b-abo-p5-2b-read-time-status-notices/` is created when this half's specify step starts.
+- **Read:** 04 §3.1 (rows `get_ai_status`, `get_ai_billing_status`); 04 §3.2; 04 §3.3 (grace, lapse, and the rest of the read-time clock); 03 §4 (row `clinic_ai_coverage`, the columns status reads).
+- **Implements:** `get_ai_status` read-time computation + the closed notice vocabulary as records `{code, audience: member, channel: in_app}`, with `grace_days_left` (non-negative integer; whole 24-hour days from `now` until `grace_ends_at`, floored) only when `code` is `in_grace`, and with `days_left` the whole 24-hour days from `now` until the projection `ends_at`, floored (null when the row or `ends_at` is absent or `now >= ends_at`; separate from `grace_days_left`; a null `days_left` does not raise `ends_soon`); `get_ai_status` `reason` null for returned `active`, `grace`, or `suspended`, `none` when the row is absent, `expired` when stored `active` or `grace` becomes `lapsed` at read time, otherwise the stored column written by P5.2a; `get_ai_billing_status` (administrator; a non-administrator returns `FORBIDDEN_ROLE` with no status payload; flat fields `plan_display_name`, `starts_at`, `ends_at`, `grace_ends_at`, `allowance`, `used`, `queued_count`, `held_count`, `subscription_ref`, `abo_base_url`; no `remaining` field, remaining is `allowance - used` when both are non-null, otherwise null; those plan, date, and allowance values are null when the projection row is absent or the column is null; subscription ref computed in SQL to the package vector).
+- **Out of scope:** the puller, projection writes, `request_ai_status_refresh`, the availability drop, and the R-4 spike (→ P5.2a).
+- **Outputs / freezes:** status RPC results and notice codes (consumed by P6.x).
+- **E2E (H-FS, compressed scale, rule V4):** same ids.
+  - E2E-P5.2-03 A10/A28: platform and ABO stopped; stored dates pass → status goes to grace, then lapsed, on time; `stale` + `status_stale` after 2 min [SR-13].
+  - E2E-P5.2-04 `ends_soon` at 7, 3 and 1 days only when `queued_count = 0`; staff `get_ai_status` has no prices; staff `get_ai_billing_status` → `FORBIDDEN_ROLE` [FR-61].
+  - E2E-P5.2-09 SQL subscription ref equals the package vector and the ABO/platform values [FR-66].
   - E2E-P5.2-11 Band 90 event → `allowance_low` for every role [A29].
 
 ---
@@ -991,7 +1003,7 @@ and the RPCs of 04 §3.1. The backend only pulls from the platform; it never pus
 ## Phase P6 — Desktop (05 §6.3 step 6)
 
 ### P6.1 — Desktop contract versions, token minting and AI status reads
-- **Spec** 089 · **Codebase** frontend · **Size** M · **Depends** P5.2 · **Parallel** P4.9–P4.11
+- **Spec** 089 · **Codebase** frontend · **Size** M · **Depends** P5.2b · **Parallel** P4.9–P4.11
 - **Read:** 04 §3.1 (intro; rows `issue_ai_token`, `get_ai_status`); 04 §3.2; 04 §3.4 (first bullet "When to read status"); 04 §3.5 row "Frontend status";
   04 §7.1 rows Desktop→RPCs and Desktop→platform; 04 §7.2 (constants bullet); 04 §6.6 row frontend.
 - **Code:** `lib/core/ai/discovery_client.dart`, `supabase_aat_mint_port.dart:22-30`, `lib/features/ai/availability/ai_availability_reader.dart:17-18`,
@@ -1144,8 +1156,8 @@ The first unit listed is the primary owner; the others own named slices of the s
 | 02 §1.2 ABO modules; import boundary G6 | P4.1 (layout), P4.2 (port, boundary check); modules P4.1–P4.11 |
 | 02 §1.3 Platform surfaces | P3.1 (entrypoint), P3.2 (`/v1/requests`, `/v1/capabilities` identity), P3.9 (`/v1/coverage`, feed, `/v1/usage` removed), P3.10 (`/control/*` removed) |
 | 02 §1.4 Hostnames, `workers_dev`/previews | P4.1 (billing host), P4.6 (ops host), P3.10 + P4.1 (flags), P8.1 (staging account) |
-| 02 §1.5 Key flows | P4.4 (purchase → AI on), P5.2 (status), P6.3 (desktop part) |
-| 02 §2 TB-1…TB-10 | TB-1 P4.3; TB-2 P4.1/P4.2; TB-3 P3.2/P3.9; TB-4 P1.1/P1.2; TB-5 P5.2; TB-6 P3.1/P3.3; TB-7 P4.6/P4.7; TB-8 P4.3; TB-9 P3.1/P4.1; TB-10 P8.1/P8.3; verified together in P7.2 |
+| 02 §1.5 Key flows | P4.4 (purchase → AI on), P5.2a (pull), P5.2b (status), P6.3 (desktop part) |
+| 02 §2 TB-1…TB-10 | TB-1 P4.3; TB-2 P4.1/P4.2; TB-3 P3.2/P3.9; TB-4 P1.1/P1.2; TB-5 P5.2a; TB-6 P3.1/P3.3; TB-7 P4.6/P4.7; TB-8 P4.3; TB-9 P3.1/P4.1; TB-10 P8.1/P8.3; verified together in P7.2 |
 | 02 §3.1 Credentials K-1…K-10 + removed | K-1 P7.2; K-2 P5.1/P3.2; K-3 P3.3; K-4 P4.4; K-5/K-6 P4.2/P4.3; K-7 P3.1/P4.7/P4.9; K-8 P4.6; K-9/K-10 P8.1; removals P3.2, P3.10, P5.1 |
 | 02 §3.2 Token profiles | P5.1 (mint), P3.2 (AI verify), P4.1 (billing verify), P3.9 (feed verify) |
 | 02 §3.3 Authorization classes | P3.1 (framework); ABO-side HP P4.7 |
@@ -1169,7 +1181,7 @@ The first unit listed is the primary owner; the others own named slices of the s
 | 03 §3.1 DO storage | P3.3 (tables), P3.4 (`hot` admission), P3.6 (suspended), P3.8 (transfer flags) |
 | 03 §3.2 Platform D1 tables | `issuer_key`/`tenant_binding` P3.2; `operator_credential`/`assertion_used`/`platform_alert`/`control_audit` P3.1; `service_key`/`plan_version`/mirror/event/ledger P3.3; `usage_*` P3.4; `ceiling_policy` P3.6; `grant_void` P3.7; `transfer*` P3.8; `fallback_admission`/`feed_consumer` P3.9; drops P3.2 (key), P3.9 (grace queue), P3.10 (rest) |
 | 03 §3.3 R2 grant ledger | P3.3, P3.7 |
-| 03 §4 Backend records + ordering rule | Tenancy P1.1/P1.2; `issuer_key`, `ai_token_issuance`, `app_settings`, drops P5.1; projection, `feed_state` P5.2; ordering rule P5.2 + P4.2 |
+| 03 §4 Backend records + ordering rule | Tenancy P1.1/P1.2; `issuer_key`, `ai_token_issuance`, `app_settings`, drops P5.1; projection, `feed_state`, `status_refresh` P5.2a; ordering rule P5.2a + P4.2 |
 | 03 §5.1 Checkout lifecycle | P4.2 (open/open_failed), P4.3 (attempts, paid), P4.4 (Active), P4.5 (expired, paid_late), P4.6 (cancelled) |
 | 03 §5.2 Payment lifecycle | P4.3, P4.4, P4.5, P4.7 (release) |
 | 03 §5.3 Grant | P3.3 (paid), P3.6 (complimentary, adjustment), P3.8 (transfer) |
@@ -1184,8 +1196,8 @@ The first unit listed is the primary owner; the others own named slices of the s
 | 03 §6.6 Overshoot | P3.4 (normal), P3.9 (outage), P3.11 (load) |
 | 03 §6.7 Events, alarm, write budget | P3.3 (outbox), P3.5 (boundary alarm), P3.11 (budget) |
 | 03 §6.8 Worked examples | P3.4, P3.5 scenarios |
-| 03 §7 Identifiers | P2.1 (+ vectors); SQL copy P5.2 |
-| 03 §8 Retention | P3.8 (platform), P4.1 (ABO facts), P4.3 (HMAC samples), P4.11 (housekeeping), P5.2 (projection) |
+| 03 §7 Identifiers | P2.1 (+ vectors); SQL copy P5.2b |
+| 03 §8 Retention | P3.8 (platform), P4.1 (ABO facts), P4.3 (HMAC samples), P4.11 (housekeeping), P5.2a (projection) |
 | 04 §1.1–§1.2 Transport, envelope | P2.1/P2.2, P3.1 |
 | 04 §1.3 Methods | Operator credentials P3.1; issuer keys P3.2; grant (paid), coverage reads, service keys, plan versions P3.3; complimentary, adjustment, ceiling, suspend/resume, inspect P3.6; voids, release, listGrantsForVoid P3.7; transfer, delete P3.8; `feedConsumerHealth` P3.9; kill switch…token contract, `supportLookup` P3.10; `recordOperatorAction` P4.6 |
 | 04 §1.4 Envelope and validation | P3.3 (steps 1–3, 5 binding; velocity), P3.6 (step 4), P3.7 (`voided`), P3.8 (`transferred_out`, awaiting) |
@@ -1193,24 +1205,24 @@ The first unit listed is the primary owner; the others own named slices of the s
 | 04 §1.6 / §1.7 Receipt, snapshot | P2.2 (types), P3.3 (produce) |
 | 04 §2.1 Token claims | P2.2, P5.1, P3.2 |
 | 04 §2.2 / §2.3 Clinic API, errors | P4.1 (offers, contact, rules, errors), P4.2 (checkouts), P4.4 (subscription, payments) |
-| 04 §3.1 RPCs | P5.1 (issue_*), P5.2 (status RPCs, availability removal) |
-| 04 §3.2 / §3.3 Status, notices, read-time | P5.2 |
+| 04 §3.1 RPCs | P5.1 (issue_*), P5.2a (refresh, availability removal, available/active and stale), P5.2b (read-time status, billing status) |
+| 04 §3.2 / §3.3 Status, notices, read-time | P5.2b (`stale` flag also P5.2a) |
 | 04 §3.4 Desktop behaviour | P6.1 (reads), P6.2 (denials) |
-| 04 §3.5 Affected files | P5.1, P5.2, P6.1–P6.4 |
-| 04 §4.1 Feed | P3.9 (platform), P5.2 (puller) |
+| 04 §3.5 Affected files | P5.1, P5.2a, P5.2b, P6.1–P6.4 |
+| 04 §4.1 Feed | P3.9 (platform), P5.2a (puller) |
 | 04 §4.2 Clinic routes, codes | P2.1 (header), P3.4 (codes, capabilities), P3.9 (`/v1/coverage`, `/v1/usage`) |
 | 04 §5.1–§5.3 Provider port, Paymob | P4.2 (create, capabilities, cancel), P4.3 (parse, inquire, normalise), P4.5 (reversal normalisation), P4.10 (payoutLines); refund/mandate stubs P4.2 |
 | 04 §6.1–§6.5 Platform change list | Spread across P3.1–P3.11 as listed in each unit's Read row |
 | 04 §6.6 Other affected paths | P7.1 (viewer, script, docs), P6.x (frontend) |
 | 04 §7 Contract versioning | P2.1 (constants), every channel unit, P5.1/P6.1 (copies), P7.3 (matrix) |
-| 05 §1 Scheduled work | ABO P4.1, P4.2, P4.3, P4.4, P4.5, P4.11; platform P3.1, P3.3, P3.4, P3.9; backend P5.2; external P8.1 |
+| 05 §1 Scheduled work | ABO P4.1, P4.2, P4.3, P4.4, P4.5, P4.11; platform P3.1, P3.3, P3.4, P3.9; backend P5.2a; external P8.1 |
 | 05 §2 Alerts | AL-01/02/05/09 P4.3; AL-03/06/08 P4.5; AL-04/07/23 P4.4; AL-10 P4.10; AL-11/17 P3.3; AL-12 P3.6; AL-13 P3.1 (+P3.2, P3.3); AL-14/15/22 P4.11; AL-16 P4.1; AL-18 P3.8; AL-19 P3.6 + P3.10; AL-20 P3.2; AL-21 P8.1 |
 | 05 §3.1 Views | P4.6 |
 | 05 §3.2 Actions | P4.6 (H, ABO), P4.7 (HP, ABO), P4.8 (coverage relays), P4.9 (configuration relays) |
 | 05 §3.3 Reconciliation | P4.10 |
 | 05 §3.4 Digest | P4.11 |
-| 05 §4 Failure modes | FM-01 P4.5-12; FM-02/03/18 P4.5; FM-04/05/24 P4.4; FM-06 P3.9; FM-07/08/15/21 P4.3; FM-09/22 P4.2; FM-10/11 P5.2; FM-12/13/14 P8.2 (plus P3.5-06, P4.4-04 locally); FM-16 P3.1/P4.1; FM-17 P4.11; FM-19 P4.11; FM-20 P3.11; FM-23 P3.8; FM-25 P7.3 |
-| 05 §5 Rebuilds | §5.1 P4.11; §5.2/§5.3 P3.11; §5.4 P5.2 |
+| 05 §4 Failure modes | FM-01 P4.5-12; FM-02/03/18 P4.5; FM-04/05/24 P4.4; FM-06 P3.9; FM-07/08/15/21 P4.3; FM-09/22 P4.2; FM-10/11 P5.2a; FM-12/13/14 P8.2 (plus P3.5-06, P4.4-04 locally); FM-16 P3.1/P4.1; FM-17 P4.11; FM-19 P4.11; FM-20 P3.11; FM-23 P3.8; FM-25 P7.3 |
+| 05 §5 Rebuilds | §5.1 P4.11; §5.2/§5.3 P3.11; §5.4 P5.2a |
 | 05 §6.1 Staging profile, local stubs, matrix | P8.1 (profile), P4.2/P4.3 (stub, fixture), P7.3 (matrix) |
 | 05 §6.2 Launch conditions | P8.3 (checks + checklist) |
 | 05 §6.3 Delivery sequence | Phases P1–P8 (rule S1) |
@@ -1261,9 +1273,9 @@ Until the owner answers an item, units proceed on the default stated in it.
    still names a live membership; otherwise it writes the deterministically first live membership — earliest
    membership `created_at`, then lowest `organization_id` — and the claim carries that organisation. With no live
    membership the claim carries no organisation.
-2. **OQ-3: Staging accounts earlier than P8.** The R-2 spike (Paymob sandbox, in P4.2/P4.3 research) and the R-4 spike (hosted pg_cron/pg_net, P5.2) need a Paymob
+2. **OQ-3: Staging accounts earlier than P8.** The R-2 spike (Paymob sandbox, in P4.2/P4.3 research) and the R-4 spike (hosted pg_cron/pg_net, P5.2a) need a Paymob
    test integration and a staging Supabase project well before P8.1. Can those accounts be provisioned at the start of P4.2?
-   **Default:** yes, provisioned at the start of P4.2. If the staging Supabase project is not available, P5.2 stops at its spike step. If the Paymob test integration is not available, P4.2 does not stop. The R-2 intention-expiry default is bound: `POST /v1/intention/` with `expiration` = 1800 s is the expiry that call is taken to honor, and checkout `expires_at` is creation plus 30 minutes (01 §3.3, 04 §5.3). P4.2 records that outcome and verifies `expiration` and `expires_at` against the H-PAY stub. A live Paymob account is not required for this unit. The remaining R-2 items stay with P4.3.
+   **Default:** yes, provisioned at the start of P4.2. If the staging Supabase project is not available, P5.2a stops at its spike step. If the Paymob test integration is not available, P4.2 does not stop. The R-2 intention-expiry default is bound: `POST /v1/intention/` with `expiration` = 1800 s is the expiry that call is taken to honor, and checkout `expires_at` is creation plus 30 minutes (01 §3.3, 04 §5.3). P4.2 records that outcome and verifies `expiration` and `expires_at` against the H-PAY stub. A live Paymob account is not required for this unit. The remaining R-2 items stay with P4.3.
 3. **OQ-4: R-3 fallback adds a runtime part.** If Vault + SQL signing fails the P5.1 spike, the design's fallback is a single-purpose Supabase Edge Function signer.
    That is a new deployable on the backend side. Is it acceptable under the constitution, or must the spike pass with SQL?
    **Default:** P5.1 stops and escalates if the spike fails; the fallback is used only with the owner's approval.
@@ -1275,5 +1287,5 @@ Until the owner answers an item, units proceed on the default stated in it.
    **Default:** no `integration_test` driver; Dart client tests against H-FS plus widget scenario tests (harness H-FL).
 
 Smaller risks noted inside units (no decision needed now): the per-channel version counts in the digest (P4.11) are limited to channels the ABO observes. pg_net in the
-Supabase container must reach `wrangler dev` on the host (P5.1/P5.2). The `file:` package must bundle under wrangler and work in the Miniflare auxiliary worker (P2.1, P4.2).
+Supabase container must reach `wrangler dev` on the host (P5.1/P5.2a). The `file:` package must bundle under wrangler and work in the Miniflare auxiliary worker (P2.1, P4.2).
 

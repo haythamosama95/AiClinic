@@ -170,7 +170,7 @@ Used by `getCoverage`, the feed (§4.1) and the backend projection.
 
 | Field          | Content                                                                                                                                           |
 | -------------- | ------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `contract_version` | Version of the snapshot shape. Every stored copy (`coverage_mirror`, `coverage_view`, the backend projection) keeps it, so old rows are read by the rules they were written with |
+| `contract_version` | Version of the snapshot shape. `coverage_mirror` and `coverage_view` keep it, so those copies are read by the rules they were written with. The backend projection does not keep it: `clinic_ai_coverage` has no `contract_version` column (03 §4). Status RPCs set `contract_version` to the version the request used (§3.1) |
 | `state`        | 03 §5.7                                                                                                                                           |
 | `reason`       | For non-available states: `none`, `expired`, `grace_exhausted`, `exhausted`, `reversed`, `transferred`, `transfer_pending`                        |
 | `suspended`    | Boolean                                                                                                                                           |
@@ -269,23 +269,25 @@ All are `SECURITY DEFINER` in `public`, delegating to `auth_internal`, keyed on 
 | `issue_ai_token(p_contract_version)` | Members with an AI scope    | AI token (§2.1). Same name and return shape as today (`frontend/lib/core/ai/supabase_aat_mint_port.dart:22-30`), plus the version argument |
 | `issue_billing_token(p_contract_version)` | `administrator` only   | `{token, abo_base_url, expires_at}`; errors `FORBIDDEN_ROLE`, `RATE_LIMITED` (20 per user per 10 minutes)     |
 | `get_ai_status(p_contract_version)` | Every member                 | §3.2 status view                                                                                             |
-| `get_ai_billing_status(p_contract_version)` | `administrator` only | Status view plus plan, dates, allowance figures, `queued_count`, `held_count`, `subscription_ref`, `abo_base_url` (FR-60, FR-66) |
-| `request_ai_status_refresh(p_contract_version)` | `administrator` only | `{requested_at}`; starts an immediate pull (FR-62); at most once per 10 seconds per tenant               |
+| `get_ai_billing_status(p_contract_version)` | `administrator` only | §3.2 status view plus flat `data` fields `plan_display_name`, `starts_at`, `ends_at`, `grace_ends_at`, `allowance`, `used`, `queued_count`, `held_count`, `subscription_ref`, `abo_base_url` (FR-60, FR-66). Plan is `plan_display_name`. Dates are `starts_at`, `ends_at` (the term end date), and `grace_ends_at`. Allowance figures are `allowance` and `used`, copied from `clinic_ai_coverage` (03 §4). There is no `remaining` field. Remaining is `allowance - used` when both are non-null, including when `used` exceeds `allowance`; it is null when either is null. When the projection row is absent, or a copied column is null, that JSON value is null. A caller whose membership role is not `administrator` returns `rpc_result` with `success = false`, `error_code = 'FORBIDDEN_ROLE'`, and no status payload |
+| `request_ai_status_refresh(p_contract_version)` | `administrator` only | Success `data` is `{requested_at}` and the call starts an immediate pull (FR-62). The clock is `ai_internal.status_refresh.requested_at` for `current_org_id()` (03 §4): accept when that row is absent or `now() - requested_at >= interval '10 seconds'`, then upsert `requested_at = now()` and return that stored value. A call with `now() - requested_at < interval '10 seconds'` returns `success = false`, `error_code = 'RATE_LIMITED'`, starts no pull, and leaves `requested_at` unchanged. A caller whose membership role is not `administrator` returns `FORBIDDEN_ROLE`, starts no pull, and writes nothing. Both refusals set `contract_version` to the accepted request version |
 
 
 Removed: `get_ai_availability` and `set_ai_availability` (latest definitions `20260821120000_fix_get_ai_availability_security_definer.sql:4`, `20260905120100_set_ai_availability_rpc.sql:67`, `20260905120400_fix_set_ai_availability_created_by.sql:4`), and `enroll_installation_keypair`, `rotate_installation_key`, `revoke_installation_key` (`20260803140000_b1_review_resolution.sql:284,293,302`) with their `auth_internal` bodies. No RPC lets a clinic user write status (SR-07, SR-13).
 
 ### 3.2 Status fields and notice codes
 
-`get_ai_status()` returns `available`, `state` (§1.7 states), `reason`, `days_left`, `band`, `notices[]`, `next_change_at`, `as_of`, `stale`, `platform_base_url`. It returns no prices, payments or references (FR-61).
+`get_ai_status()` returns `available`, `state` (§1.7 states), `reason`, `days_left`, `band`, `notices[]`, `next_change_at`, `as_of`, `stale`, `platform_base_url`. It returns no prices, payments or references (FR-61). `days_left` counts toward the projection row's `ends_at` (`clinic_ai_coverage.ends_at`), not toward `grace_ends_at` and not toward `next_change_at`. It is the whole 24-hour days from `now` until that `ends_at`, floored, so a remaining partial day is `0`. When the projection row is absent, `ends_at` is null, or `now` is at or after `ends_at`, `days_left` is null. A null `days_left` does not raise `ends_soon`. `days_left` is separate from `grace_days_left`. `get_ai_billing_status` returns this same `days_left` on the status view.
 
-Notice codes are a closed vocabulary: they are records, not UI strings (X-05). The desktop renders each code in an administrator form (with a renew action) or a staff form ("ask your administrator"), with no prices (FR-26, FR-27).
+`reason` is set by §3.3 from `clinic_ai_coverage.reason` (03 §4). It is null when the returned state is `active`, `grace`, or `suspended`. It is `none` when the projection row is absent. It is `expired` when stored `active` or stored `grace` becomes `lapsed` at read time. Otherwise it is the stored snapshot reason: `none`, `expired`, `grace_exhausted`, `exhausted`, `reversed`, `transferred`, or `transfer_pending`. `get_ai_billing_status` returns this same `reason`.
+
+Notice codes are a closed vocabulary: they are records, not UI strings (X-05). Each element of `notices[]` is `{code, audience, channel}`, and `in_grace` also carries `grace_days_left`. `code` is one code from the table below. `audience` is `member`. `channel` is `in_app` (X-05). `grace_days_left` is present only when `code` is `in_grace`: a non-negative integer, the whole 24-hour days from `now` until `grace_ends_at`, floored, so a remaining partial day is `0`. Every other code omits `grace_days_left`. The same records are returned to every member. The desktop renders each `code` in an administrator form (with a renew action) or a staff form ("ask your administrator"), with no prices (FR-26, FR-27).
 
 
 | Code                    | Raised when                                                                    |
 | ----------------------- | ------------------------------------------------------------------------------ |
-| `ends_soon`             | `days_left` is 7, 3 or 1 or fewer, with `queued_count = 0` (01 I-10)           |
-| `in_grace`              | State `grace`; carries grace days left                                         |
+| `ends_soon`             | `days_left` is 7, 3 or 1 or fewer (null does not match), with `queued_count = 0` (01 I-10) |
+| `in_grace`              | State `grace`; carries `grace_days_left`                                       |
 | `allowance_low`         | Band 75 or 90 (FR-34, A29)                                                     |
 | `allowance_exhausted`   | State `exhausted`                                                              |
 | `lapsed`                | State `lapsed`                                                                 |
@@ -298,14 +300,14 @@ Notice codes are a closed vocabulary: they are records, not UI strings (X-05). T
 
 For the tenant's projection row and the current time `now`:
 
-1. No row: `state = none`, `available = false`.
-2. Suspended: `available = false`, `state = suspended`.
-3. Stored `active`: if `now < ends_at`, the state is `active`. Otherwise, if `queued_count > 0`, it is `active` (the successor's details arrive with the next event, within 2 minutes). Otherwise, if `now < grace_ends_at`, it is `grace`; otherwise `lapsed`.
-4. Stored `grace`: `grace` while `now < grace_ends_at`, then `lapsed`.
-5. Any other stored state is unavailable as stored.
+1. No row: `state = none`, `available = false`, `reason = none`.
+2. Suspended: `available = false`, `state = suspended`, `reason = null`. The flag is an overlay (03 §5.7), and `suspended` is not a §1.7 reason. This step wins over the stored state, so a suspended row does not also take the `expired` reason from rules 3 or 4.
+3. Stored `active`: if `now < ends_at`, the state is `active`. Otherwise, if `queued_count > 0`, it is `active` (the successor's details arrive with the next event, within 2 minutes). Otherwise, if `now < grace_ends_at`, it is `grace`; otherwise `lapsed`. `reason` is null while this step returns `active` or `grace`, and `expired` when it returns `lapsed`.
+4. Stored `grace`: `grace` while `now < grace_ends_at`, then `lapsed`. `reason` is null while this step returns `grace`, and `expired` when it returns `lapsed`.
+5. Any other stored state is unavailable as stored. `reason` is that row's stored `reason` (03 §4).
 6. `available` is true exactly for `active` and `grace`. `next_change_at` is the next of `ends_at` and `grace_ends_at` that is still in the future. `stale` is true when `feed_state.last_success_at` is more than 2 minutes old.
 
-Because of rules 3 and 4, a lapse shows on time from stored dates alone, even when every vendor service is down (A10, A28).
+The read does not update `clinic_ai_coverage.reason`. `get_ai_billing_status` returns this same `reason`. Because of rules 3 and 4, a lapse shows on time from stored dates alone, even when every vendor service is down (A10, A28). That clock lapse is `expired`. A platform snapshot that already stored `lapsed` with `grace_exhausted` stays on rule 5, so that reason is kept after `grace_ends_at`.
 
 ### 3.4 Desktop behaviour
 

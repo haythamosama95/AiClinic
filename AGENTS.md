@@ -5,9 +5,9 @@ This file orients AI coding agents working in this repository. Keep the
 **current active feature's** plan reference when running Spec Kit phases.
 
 <!-- SPECKIT START -->
-Active feature plan: `specs/087-abo-p5-1-issuer-key-custody-token-issuance/plan.md`
-Feature spec: `specs/087-abo-p5-1-issuer-key-custody-token-issuance/spec.md`
-Branch: `ai/087-abo-p5-1-issuer-key-custody-token-issuance`
+Active feature plan: `specs/088-abo-p5-2-coverage-feed-puller-status-projection/plan.md`
+Feature spec: `specs/088-abo-p5-2-coverage-feed-puller-status-projection/spec.md`
+Branch: `ai/088-abo-p5-2-coverage-feed-puller-status-projection`
 <!-- SPECKIT END -->
 
 ## Repo layout quick reference
