@@ -160,10 +160,7 @@ class AiDegradedView extends StatelessWidget {
         }
         return 'AI features are suspended for this installation.';
       case AiDegradedMode.forbiddenCapability:
-        if (!staffIsAdministrator) {
-          return "Not included in your clinic's AI plan";
-        }
-        return 'You do not have permission to use this AI capability.';
+        return "Not included in your clinic's AI plan";
       case AiDegradedMode.safetyLimited:
         final retrySuffix = retryAfter != null ? ' $retryAfter' : '';
         return 'AI busy, try again shortly$retrySuffix';
