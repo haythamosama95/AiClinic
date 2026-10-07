@@ -116,6 +116,8 @@ class _AiFeatureHostPageState extends State<AiFeatureHostPage> {
   int? _creditsUsed;
   int? _creditBudget;
   List<AiStatusNotice> _notices = const [];
+  String? _denialWireCode;
+  String? _denialRetryAfter;
 
   @override
   void initState() {
@@ -256,7 +258,12 @@ class _AiFeatureHostPageState extends State<AiFeatureHostPage> {
     }
   }
 
-  void _onTerminalFailure(TaxonomyCode code, {String? wireCode}) {
+  void _onTerminalFailure(
+    TaxonomyCode code, {
+    String? wireCode,
+    String? retryAfter,
+    bool networkFailure = false,
+  }) {
     if (isCoverageDenialWireCode(wireCode)) {
       unawaited(widget.dependencies.onStatusRefresh?.call());
     }
@@ -265,12 +272,15 @@ class _AiFeatureHostPageState extends State<AiFeatureHostPage> {
       availability: const AiAvailability(enrolled: true, platformBaseUrl: null),
       platformReachable: _platformReachable,
       terminalFailureCode: code,
+      networkFailure: networkFailure,
     );
     if (mode == AiDegradedMode.ready) {
       return;
     }
     setState(() {
       _mode = mode;
+      _denialWireCode = wireCode;
+      _denialRetryAfter = retryAfter;
       if (_hidesSurface(mode)) {
         _resolver?.dispose();
         _resolver = null;
@@ -293,7 +303,8 @@ class _AiFeatureHostPageState extends State<AiFeatureHostPage> {
       mode == AiDegradedMode.quotaExhausted ||
       mode == AiDegradedMode.aiUnavailable ||
       mode == AiDegradedMode.appUpdate ||
-      mode == AiDegradedMode.providerUnavailable;
+      mode == AiDegradedMode.providerUnavailable ||
+      mode == AiDegradedMode.safetyLimited;
 
   Widget _body() {
     if (_loading) {
@@ -320,6 +331,9 @@ class _AiFeatureHostPageState extends State<AiFeatureHostPage> {
     final degradedView = AiDegradedView(
       mode: _mode,
       onRetry: _mode == AiDegradedMode.providerUnavailable ? _onRetry : null,
+      staffIsAdministrator: widget.dependencies.staffIsAdministrator,
+      wireCode: _denialWireCode,
+      retryAfter: _denialRetryAfter,
       child: hideSurface
           ? const Text('Clinical workflows remain available.')
           : _resolver != null
@@ -331,7 +345,20 @@ class _AiFeatureHostPageState extends State<AiFeatureHostPage> {
               requiredContextKeys: widget.dependencies.requiredContextKeys,
               persistenceProbe: widget.dependencies.persistenceProbe,
               exportProbe: widget.dependencies.exportProbe,
-              onTerminalFailure: (code, {wireCode}) => _onTerminalFailure(code, wireCode: wireCode),
+              onTerminalFailure: (
+                code, {
+                wireCode,
+                retryAfter,
+                coverageReason,
+                acceptedVersions,
+                networkFailure = false,
+              }) =>
+                  _onTerminalFailure(
+                    code,
+                    wireCode: wireCode,
+                    retryAfter: retryAfter,
+                    networkFailure: networkFailure,
+                  ),
               autoInvoke: widget.dependencies.autoInvoke,
             )
           : null,

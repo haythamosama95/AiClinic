@@ -15,6 +15,8 @@ const kAiDegradedRetryKey = Key('ai_degraded_retry');
 const kAiDegradedNonEnrolledKey = Key('ai_degraded_non_enrolled');
 const kAiDegradedInstallationSuspendedKey = Key('ai_degraded_installation_suspended');
 const kAiDegradedForbiddenCapabilityKey = Key('ai_degraded_forbidden_capability');
+const kAiDegradedSafetyLimitedKey = Key('ai_degraded_safety_limited');
+const kAiDegradedRenewOrBuyKey = Key('ai_degraded_renew_or_buy');
 const kAiAffordanceKey = Key('ai_affordance');
 
 /// Normal-state UI for degraded modes — not error dialogs (A11; FR-011).
@@ -24,11 +26,21 @@ class AiDegradedView extends StatelessWidget {
     required this.mode,
     this.child,
     this.onRetry,
+    this.staffIsAdministrator = false,
+    this.wireCode,
+    this.retryAfter,
+    this.subscriptionRef,
+    this.planDisplayName,
   });
 
   final AiDegradedMode mode;
   final Widget? child;
   final VoidCallback? onRetry;
+  final bool staffIsAdministrator;
+  final String? wireCode;
+  final String? retryAfter;
+  final String? subscriptionRef;
+  final String? planDisplayName;
 
   @override
   Widget build(BuildContext context) {
@@ -45,7 +57,16 @@ class AiDegradedView extends StatelessWidget {
     }
 
     final colors = context.appColors;
-    final message = _messageForMode(mode);
+    final message = _messageForMode(
+      mode,
+      wireCode: wireCode,
+      staffIsAdministrator: staffIsAdministrator,
+      retryAfter: retryAfter,
+    );
+    final showRenewOrBuy = staffIsAdministrator &&
+        (wireCode == 'allowance_exhausted' || wireCode == 'coverage_lapsed');
+    final showContactSupport = staffIsAdministrator && wireCode == 'suspended';
+    final showPlanName = staffIsAdministrator && wireCode == 'forbidden_capability' && planDisplayName != null;
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -66,6 +87,35 @@ class AiDegradedView extends StatelessWidget {
             ),
           ),
         ),
+        if (showRenewOrBuy) ...[
+          const SizedBox(height: 12),
+          AppButton(
+            key: kAiDegradedRenewOrBuyKey,
+            onPressed: () {},
+            child: const Text('Renew or buy'),
+          ),
+        ],
+        if (showContactSupport) ...[
+          const SizedBox(height: 12),
+          Text(
+            'Contact support',
+            style: AppTypography.body(context).copyWith(color: colors.textSecondary),
+          ),
+          if (subscriptionRef != null) ...[
+            const SizedBox(height: 4),
+            Text(
+              subscriptionRef!,
+              style: AppTypography.body(context).copyWith(color: colors.textSecondary),
+            ),
+          ],
+        ],
+        if (showPlanName) ...[
+          const SizedBox(height: 12),
+          Text(
+            planDisplayName!,
+            style: AppTypography.body(context).copyWith(color: colors.textSecondary),
+          ),
+        ],
         if (mode == AiDegradedMode.providerUnavailable && onRetry != null) ...[
           const SizedBox(height: 12),
           AppButton(
@@ -82,20 +132,45 @@ class AiDegradedView extends StatelessWidget {
     );
   }
 
-  static String _messageForMode(AiDegradedMode mode) => switch (mode) {
-        AiDegradedMode.nonEnrolled => '',
-        AiDegradedMode.unreachable => 'AI platform is currently unreachable.',
-        AiDegradedMode.quotaExhausted => 'AI quota exhausted. Contact your administrator.',
-        AiDegradedMode.aiUnavailable => 'AI is temporarily unavailable.',
-        AiDegradedMode.appUpdate => 'Update the app to use AI',
-        AiDegradedMode.providerUnavailable =>
-          'AI provider is unavailable. You can retry.',
-        AiDegradedMode.installationSuspended =>
-          'AI features are suspended for this installation.',
-        AiDegradedMode.forbiddenCapability =>
-          'You do not have permission to use this AI capability.',
-        AiDegradedMode.ready => '',
-      };
+  static String _messageForMode(
+    AiDegradedMode mode, {
+    String? wireCode,
+    required bool staffIsAdministrator,
+    String? retryAfter,
+  }) {
+    switch (mode) {
+      case AiDegradedMode.nonEnrolled:
+        return '';
+      case AiDegradedMode.unreachable:
+        return 'AI service unreachable';
+      case AiDegradedMode.quotaExhausted:
+        if (wireCode == 'allowance_exhausted' || wireCode == 'coverage_lapsed') {
+          return 'AI not available, contact your administrator';
+        }
+        return 'AI quota exhausted. Contact your administrator.';
+      case AiDegradedMode.aiUnavailable:
+        return 'AI temporarily unavailable';
+      case AiDegradedMode.appUpdate:
+        return 'Update the app to use AI';
+      case AiDegradedMode.providerUnavailable:
+        return 'AI temporarily unavailable';
+      case AiDegradedMode.installationSuspended:
+        if (wireCode == 'suspended') {
+          return 'AI not available, contact your administrator';
+        }
+        return 'AI features are suspended for this installation.';
+      case AiDegradedMode.forbiddenCapability:
+        if (!staffIsAdministrator) {
+          return "Not included in your clinic's AI plan";
+        }
+        return 'You do not have permission to use this AI capability.';
+      case AiDegradedMode.safetyLimited:
+        final retrySuffix = retryAfter != null ? ' $retryAfter' : '';
+        return 'AI busy, try again shortly$retrySuffix';
+      case AiDegradedMode.ready:
+        return '';
+    }
+  }
 
   static Key _keyForMode(AiDegradedMode mode) => switch (mode) {
         AiDegradedMode.nonEnrolled => kAiDegradedNonEnrolledKey,
@@ -106,6 +181,7 @@ class AiDegradedView extends StatelessWidget {
         AiDegradedMode.providerUnavailable => kAiDegradedProviderUnavailableKey,
         AiDegradedMode.installationSuspended => kAiDegradedInstallationSuspendedKey,
         AiDegradedMode.forbiddenCapability => kAiDegradedForbiddenCapabilityKey,
+        AiDegradedMode.safetyLimited => kAiDegradedSafetyLimitedKey,
         AiDegradedMode.ready => kAiAffordanceKey,
       };
 }

@@ -123,7 +123,14 @@ class FirstAiFeatureSurface extends StatefulWidget {
 
   /// Notifies the host when a platform terminal failure arrives so degraded mode
   /// can apply the §5.4 Client behaviour column.
-  final void Function(TaxonomyCode code, {String? wireCode})? onTerminalFailure;
+  final void Function(
+    TaxonomyCode code, {
+    String? wireCode,
+    String? retryAfter,
+    String? coverageReason,
+    List<String>? acceptedVersions,
+    bool networkFailure,
+  })? onTerminalFailure;
 
   final bool autoInvoke;
 
@@ -257,10 +264,25 @@ class _FirstAiFeatureSurfaceState extends State<FirstAiFeatureSurface> {
       // terminal event; no-ops if events already settled the surface.
       settle(terminal);
     } on ContractVersionUnsupportedException {
-      widget.onTerminalFailure?.call(TaxonomyCode.capabilityUnknown);
+      widget.onTerminalFailure?.call(
+        TaxonomyCode.contractVersionUnsupported,
+        wireCode: 'contract_version_unsupported',
+      );
     } on PlatformHttpException catch (error) {
-      widget.onTerminalFailure?.call(error.code, wireCode: error.wireCode);
+      widget.onTerminalFailure?.call(
+        error.code,
+        wireCode: error.wireCode,
+        retryAfter: error.retryAfter,
+        coverageReason: error.coverageReason,
+        acceptedVersions: error.acceptedVersions,
+      );
       _setFailed(requestReference: error.requestReference);
+    } on TransportRetryExhausted {
+      widget.onTerminalFailure?.call(
+        TaxonomyCode.coverageUnknown,
+        networkFailure: true,
+      );
+      _setFailed();
     } on InvokeCancelledException {
       _returnToIdle();
     } catch (e, st) {

@@ -65,10 +65,27 @@ class PlatformHttpsSubmitPort implements HttpsSubmitPort {
     try {
       final decoded = jsonDecode(response.body);
       if (decoded is Map<String, dynamic>) {
-        final wireCode = decoded['code']?.toString() ?? '';
-        if (wireCode == 'contract_version_unsupported') {
-          throw const ContractVersionUnsupportedException();
+        final denial = classifyPreStreamDenial(
+          httpStatus: response.statusCode,
+          body: decoded,
+        );
+        if (denial != null) {
+          if (denial.wireCode == 'contract_version_unsupported') {
+            throw const ContractVersionUnsupportedException();
+          }
+          return PlatformHttpException(
+            code: denial.code,
+            wireCode: denial.wireCode,
+            requestReference: decoded['request_reference']?.toString(),
+            traceId: decoded['trace_id']?.toString(),
+            retrySafe: decoded['retry_safe'] == true,
+            retryAfter: denial.retryAfter,
+            coverageReason: denial.coverageReason,
+            acceptedVersions: denial.acceptedVersions,
+          );
         }
+
+        final wireCode = decoded['code']?.toString() ?? '';
         final code = classifyTaxonomyCode(wireCode);
         return PlatformHttpException(
           code: code,

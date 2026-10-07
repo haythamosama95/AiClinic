@@ -78,6 +78,9 @@ class PlatformHttpException implements Exception {
     this.shapes,
     this.manifestVersion,
     this.manifestCapabilityId,
+    this.retryAfter,
+    this.coverageReason,
+    this.acceptedVersions,
   });
 
   final TaxonomyCode code;
@@ -91,6 +94,11 @@ class PlatformHttpException implements Exception {
   final Map<String, Object?>? shapes;
   final String? manifestVersion;
   final String? manifestCapabilityId;
+
+  /// 04 §4.2 pre-stream denial extra fields (P6.2).
+  final String? retryAfter;
+  final String? coverageReason;
+  final List<String>? acceptedVersions;
 }
 
 /// Transport failure before a terminal platform event (retryable by SDK).
