@@ -414,10 +414,16 @@ async function handleGetClinic(
     `SELECT f.*
      FROM finding f
      WHERE f.subject IN (SELECT checkout_id FROM checkout WHERE org_id = ?)
+        OR f.subject IN (
+          SELECT r.reversal_id
+          FROM reversal r
+          INNER JOIN payment p ON p.payment_id = r.payment_id
+          WHERE p.org_id = ?
+        )
         OR f.detail LIKE ?
      ORDER BY f.detected_at ASC`,
   )
-    .bind(orgId, `%${orgId}%`)
+    .bind(orgId, orgId, `%${orgId}%`)
     .all<Record<string, unknown>>();
   const findings = findingRows.results ?? [];
 
