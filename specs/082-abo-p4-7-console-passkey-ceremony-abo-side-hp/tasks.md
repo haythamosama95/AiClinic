@@ -128,7 +128,7 @@ cd abo && node scripts/build-platform-for-hxw.mjs && vitest run --config vitest.
 
 **Independent Test**: E2E-P4.7-04, E2E-P4.7-05, and E2E-P4.7-06 in harness H-XW. Earlier suites stay green, and E2E-P4.7-01, E2E-P4.7-02, E2E-P4.7-03, and E2E-P4.7-07 still pass.
 
-- [ ] T013 [US3] Run `node scripts/build-platform-for-hxw.mjs && vitest run --config vitest.cross-worker.config.ts test/system/hp-actions.cross-worker.test.ts` from `abo/` until E2E-P4.7-01 through E2E-P4.7-07 pass — produces the green unit harness, FR-001, FR-002, FR-003, FR-004, FR-005, FR-006, FR-007, FR-008, FR-009, FR-010, FR-011, E2E-P4.7-01, E2E-P4.7-02, E2E-P4.7-03, E2E-P4.7-04, E2E-P4.7-05, E2E-P4.7-06, E2E-P4.7-07. Depends on T009, T010, T011, and T012 (and therefore on T001–T008). This task may edit only files under `abo/test/`.
+- [X] T013 [US3] Run `node scripts/build-platform-for-hxw.mjs && vitest run --config vitest.cross-worker.config.ts test/system/hp-actions.cross-worker.test.ts` from `abo/` until E2E-P4.7-01 through E2E-P4.7-07 pass — produces the green unit harness, FR-001, FR-002, FR-003, FR-004, FR-005, FR-006, FR-007, FR-008, FR-009, FR-010, FR-011, E2E-P4.7-01, E2E-P4.7-02, E2E-P4.7-03, E2E-P4.7-04, E2E-P4.7-05, E2E-P4.7-06, E2E-P4.7-07. Depends on T009, T010, T011, and T012 (and therefore on T001–T008). This task may edit only files under `abo/test/`.
 
 ```bash
 cd abo && node scripts/build-platform-for-hxw.mjs && vitest run --config vitest.cross-worker.config.ts test/system/hp-actions.cross-worker.test.ts
@@ -144,7 +144,7 @@ cd abo && node scripts/build-platform-for-hxw.mjs && vitest run --config vitest.
 
 ### 7.1 Quickstart
 
-- [ ] T014 [US3] Create `specs/082-abo-p4-7-console-passkey-ceremony-abo-side-hp/quickstart.md` from the plan's quickstart outline — produces this unit's quickstart, FR-001, FR-002, FR-003, FR-004, FR-005, FR-006, FR-007, FR-008, FR-009, FR-010, FR-011, E2E-P4.7-01, E2E-P4.7-02, E2E-P4.7-03, E2E-P4.7-04, E2E-P4.7-05, E2E-P4.7-06, E2E-P4.7-07. Depends on T013. Sections: (1) what was implemented, and the files added or modified; (2) the harness command below; (3) the entry point → module chain per E2E id below. No earlier-unit files, combined counts, or full-suite commands. No manual steps; the harness observes every scenario.
+- [X] T014 [US3] Create `specs/082-abo-p4-7-console-passkey-ceremony-abo-side-hp/quickstart.md` from the plan's quickstart outline — produces this unit's quickstart, FR-001, FR-002, FR-003, FR-004, FR-005, FR-006, FR-007, FR-008, FR-009, FR-010, FR-011, E2E-P4.7-01, E2E-P4.7-02, E2E-P4.7-03, E2E-P4.7-04, E2E-P4.7-05, E2E-P4.7-06, E2E-P4.7-07. Depends on T013. Sections: (1) what was implemented, and the files added or modified; (2) the harness command below; (3) the entry point → module chain per E2E id below. No earlier-unit files, combined counts, or full-suite commands. No manual steps; the harness observes every scenario.
 
 ```bash
 cd abo && node scripts/build-platform-for-hxw.mjs && vitest run --config vitest.cross-worker.config.ts test/system/hp-actions.cross-worker.test.ts
