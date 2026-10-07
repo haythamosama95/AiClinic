@@ -108,7 +108,7 @@ Run that command from `e2e/fullstack/`.
 
 **Independent Test**: E2E-P5.2-01 in harness H-FS.
 
-- [ ] T012 [US1] Expect the availability flag to be absent in `backend/tests/catalog/stage-02-availability-and-enroll.sql` — produces a catalog that asserts the drop, FR-011, E2E-P5.2-01. Depends on T010 and T011. Assert `get_ai_availability` and `ai.availability` are absent. Leave `backend/tests/catalog/stage-02-revoke-rotate-availability.sql` for T013.
+- [X] T012 [US1] Expect the availability flag to be absent in `backend/tests/catalog/stage-02-availability-and-enroll.sql` — produces a catalog that asserts the drop, FR-011, E2E-P5.2-01. Depends on T010 and T011. Assert `get_ai_availability` and `ai.availability` are absent. Leave `backend/tests/catalog/stage-02-revoke-rotate-availability.sql` for T013.
 
 **Checkpoint**: The stage-02 enroll catalog expects `get_ai_availability` and `ai.availability` to be absent. E2E-P5.2-01 still fails.
 
@@ -116,7 +116,7 @@ Run that command from `e2e/fullstack/`.
 
 **Independent Test**: E2E-P5.2-01 in harness H-FS.
 
-- [ ] T013 [US1] Expect the availability RPCs to be absent in `backend/tests/catalog/stage-02-revoke-rotate-availability.sql` — produces a catalog that asserts the drop, FR-011, E2E-P5.2-01. Depends on T012. Assert `set_ai_availability` and `get_ai_availability` are absent.
+- [X] T013 [US1] Expect the availability RPCs to be absent in `backend/tests/catalog/stage-02-revoke-rotate-availability.sql` — produces a catalog that asserts the drop, FR-011, E2E-P5.2-01. Depends on T012. Assert `set_ai_availability` and `get_ai_availability` are absent.
 
 **Checkpoint**: The stage-02 revoke catalog expects `set_ai_availability` and `get_ai_availability` to be absent. E2E-P5.2-01 still fails.
 
