@@ -199,7 +199,7 @@ cd abo && node scripts/build-platform-for-hxw.mjs && vitest run --config vitest.
 
 **Independent Test**: E2E-P4.11-06 in harness H-XW. Earlier suites stay green, and E2E-P4.11-01, E2E-P4.11-02, E2E-P4.11-03, E2E-P4.11-04, E2E-P4.11-05, and E2E-P4.11-07 still pass.
 
-- [ ] T026 [US3] Run `node scripts/build-platform-for-hxw.mjs && vitest run --config vitest.cross-worker.config.ts test/system/digest-watch-rebuild.cross-worker.test.ts` from `abo/` until E2E-P4.11-01 through E2E-P4.11-07 pass — produces the green unit harness, FR-001, FR-002, FR-003, FR-004, FR-005, FR-006, FR-007, E2E-P4.11-01, E2E-P4.11-02, E2E-P4.11-03, E2E-P4.11-04, E2E-P4.11-05, E2E-P4.11-06, E2E-P4.11-07. Depends on T025 (and therefore on T001–T024). Confirm the vitest path is that file only. This task may edit only `abo/test/system/digest-watch-rebuild.cross-worker.test.ts`. It does not add an E2E id.
+- [X] T026 [US3] Run `node scripts/build-platform-for-hxw.mjs && vitest run --config vitest.cross-worker.config.ts test/system/digest-watch-rebuild.cross-worker.test.ts` from `abo/` until E2E-P4.11-01 through E2E-P4.11-07 pass — produces the green unit harness, FR-001, FR-002, FR-003, FR-004, FR-005, FR-006, FR-007, E2E-P4.11-01, E2E-P4.11-02, E2E-P4.11-03, E2E-P4.11-04, E2E-P4.11-05, E2E-P4.11-06, E2E-P4.11-07. Depends on T025 (and therefore on T001–T024). Confirm the vitest path is that file only. This task may edit only `abo/test/system/digest-watch-rebuild.cross-worker.test.ts`. It does not add an E2E id.
 
 ```bash
 cd abo && node scripts/build-platform-for-hxw.mjs && vitest run --config vitest.cross-worker.config.ts test/system/digest-watch-rebuild.cross-worker.test.ts
@@ -215,7 +215,7 @@ cd abo && node scripts/build-platform-for-hxw.mjs && vitest run --config vitest.
 
 ### 7.1 Quickstart
 
-- [ ] T027 [US3] Create `specs/086-abo-p4-11-daily-digest-platform-watch-housekeeping/quickstart.md` from the plan's quickstart outline — produces this unit's quickstart, FR-001, FR-002, FR-003, FR-004, FR-005, FR-006, FR-007, E2E-P4.11-01, E2E-P4.11-02, E2E-P4.11-03, E2E-P4.11-04, E2E-P4.11-05, E2E-P4.11-06, E2E-P4.11-07. Depends on T026. Sections: (1) what was implemented — daily digest, AL-14, AL-15, AL-22, housekeeping, the daily heartbeat ping, and the ABO rebuild module, operator script, and runbook; (2) files added or modified — the Files section of `plan.md`; (3) the harness command below; (4) the entry point → module chain per E2E id below. Manual steps: none. The harness can see every behaviour in the test plan.
+- [X] T027 [US3] Create `specs/086-abo-p4-11-daily-digest-platform-watch-housekeeping/quickstart.md` from the plan's quickstart outline — produces this unit's quickstart, FR-001, FR-002, FR-003, FR-004, FR-005, FR-006, FR-007, E2E-P4.11-01, E2E-P4.11-02, E2E-P4.11-03, E2E-P4.11-04, E2E-P4.11-05, E2E-P4.11-06, E2E-P4.11-07. Depends on T026. Sections: (1) what was implemented — daily digest, AL-14, AL-15, AL-22, housekeeping, the daily heartbeat ping, and the ABO rebuild module, operator script, and runbook; (2) files added or modified — the Files section of `plan.md`; (3) the harness command below; (4) the entry point → module chain per E2E id below. Manual steps: none. The harness can see every behaviour in the test plan.
 
 ```bash
 cd abo && node scripts/build-platform-for-hxw.mjs && vitest run --config vitest.cross-worker.config.ts test/system/digest-watch-rebuild.cross-worker.test.ts

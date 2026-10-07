@@ -3,9 +3,7 @@
  * E2E-P4.11-01 through E2E-P4.11-07.
  */
 
-import { readFile } from "node:fs/promises";
-import path from "node:path";
-import { fileURLToPath } from "node:url";
+import rebuildRunbookMd from "../../REBUILD.md?raw";
 import { env } from "cloudflare:test";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import {
@@ -173,9 +171,6 @@ const PAYMOB_HMAC_FIELDS = [
   "source_data.type",
   "success",
 ] as const;
-
-const testDir = path.dirname(fileURLToPath(import.meta.url));
-const aboRoot = path.resolve(testDir, "../..");
 
 let clinicIssuer: Awaited<ReturnType<typeof newIssuer>> | null = null;
 
@@ -770,12 +765,8 @@ async function openFindingCount(): Promise<number> {
   }
 }
 
-async function readRebuildRunbook(): Promise<string> {
-  try {
-    return await readFile(path.join(aboRoot, "REBUILD.md"), "utf8");
-  } catch {
-    return "";
-  }
+function readRebuildRunbook(): string {
+  return rebuildRunbookMd;
 }
 
 async function seedExtraUnpinnedIssuerKey(): Promise<string> {
@@ -1457,7 +1448,7 @@ describe("P4.11 digest, watch, housekeeping, rebuild (H-XW)", () => {
     expect(paidPaymentBefore?.payment_id).toBe(paid.paymentId);
     expect(await openFindingCount()).toBe(0);
 
-    const runbook = await readRebuildRunbook();
+    const runbook = readRebuildRunbook();
     expect(runbook).toContain("provider transaction references");
     expect(runbook.toLowerCase()).toContain("dashboard export");
   });
