@@ -9,7 +9,7 @@ import {
   grantIdPaid,
   sha256Hex,
 } from "vendor-contracts";
-import { mintHxwVendorAccessJwt } from "./hxw-access-fixture";
+import { hxwAccessCertsJson, mintHxwVendorAccessJwt } from "./hxw-access-fixture";
 import {
   createAboGrantSigner,
   createAccessTeam,
@@ -269,17 +269,36 @@ async function ensureVendorAccessTeam(): Promise<
     fetchMock
       .get(issuer)
       .intercept({ path: "/cdn-cgi/access/certs", method: "GET" })
-      .reply(200, JSON.stringify({ keys: vendorAccessTeam.certs.keys }))
+      .reply(200, hxwAccessCertsJson())
       .persist();
   }
   return vendorAccessTeam;
+}
+
+async function harnessNowSeconds(): Promise<number> {
+  const row = await env.PLATFORM_DB.prepare(
+    `SELECT now_iso FROM harness_test_clock WHERE id = 'default'`,
+  ).first<{ now_iso: string }>();
+  if (row?.now_iso) {
+    const parsed = Date.parse(row.now_iso);
+    if (!Number.isNaN(parsed)) {
+      return Math.floor(parsed / 1000);
+    }
+  }
+  return Math.floor(Date.now() / 1000);
 }
 
 export async function mintVendorAccessJwt(
   email = VENDOR_OPERATOR_EMAIL,
 ): Promise<string> {
   await ensureVendorAccessTeam();
-  return mintHxwVendorAccessJwt(env.ACCESS_AUD, email);
+  const harnessNow = await harnessNowSeconds();
+  const wallNow = Math.floor(Date.now() / 1000);
+  return mintHxwVendorAccessJwt(
+    env.ACCESS_AUD,
+    email,
+    Math.max(harnessNow, wallNow),
+  );
 }
 
 export async function platformCall(
@@ -832,7 +851,6 @@ export async function setupCrossWorkerHarness(): Promise<void> {
   await applyPlatformMigrations();
   await ensurePaymobFetchMock();
   platformBootstrap = null;
-  vendorAccessTeam = null;
 }
 
 async function clearAboTransactionalTables(): Promise<void> {

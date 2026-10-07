@@ -16,10 +16,7 @@ export const ACCESS_CERTS_JSON = JSON.stringify({
 /** Outbound fetch handler for the auxiliary platform worker (Access JWKS). */
 export async function hxwPlatformOutboundFetch(request) {
   const url = new URL(request.url);
-  if (
-    url.origin === "https://access.test" &&
-    url.pathname === "/cdn-cgi/access/certs"
-  ) {
+  if (url.pathname.includes("access/certs")) {
     return new Response(ACCESS_CERTS_JSON, {
       status: 200,
       headers: { "content-type": "application/json" },
@@ -37,5 +34,17 @@ export function installCrossWorkerFetchMock() {
     .reply(200, ACCESS_CERTS_JSON)
     .persist();
   setGlobalDispatcher(agent);
+  return agent;
+}
+
+/** Dedicated fetch mock for the auxiliary platform worker (Access JWKS). */
+export function installPlatformWorkerFetchMock() {
+  const agent = new MockAgent();
+  agent.disableNetConnect();
+  agent
+    .get("https://access.test")
+    .intercept({ path: "/cdn-cgi/access/certs", method: "GET" })
+    .reply(200, ACCESS_CERTS_JSON)
+    .persist();
   return agent;
 }

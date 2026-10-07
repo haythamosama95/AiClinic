@@ -1,5 +1,5 @@
 /**
- * P4.6 — operator console E2E tests (H-XW), E2E-P4.6-01 through E2E-P4.6-05 and E2E-P4.6-07.
+ * P4.6 — operator console E2E tests (H-XW), E2E-P4.6-01 through E2E-P4.6-07.
  */
 
 import { env } from "cloudflare:test";
@@ -16,6 +16,7 @@ import checkoutMigrationSql from "../../migrations/0002_checkout.sql?raw";
 import notifyWorkMigrationSql from "../../migrations/0003_notify_work.sql?raw";
 import grantMigrationSql from "../../migrations/0004_grant.sql?raw";
 import reversalMigrationSql from "../../migrations/0005_reversal.sql?raw";
+import operatorActionMigrationSql from "../../migrations/0006_operator_action.sql?raw";
 import { loadOffersFixture } from "../../src/records/append";
 import {
   applySql,
@@ -35,6 +36,7 @@ import {
   scriptPaymobStub,
   setClock,
   setupActivePlatformCoverage,
+  drainPlatformDurableObjects,
   setupCrossWorkerHarness,
   syncPlatformGrantLedger,
 } from "./cross-worker-harness";
@@ -49,6 +51,7 @@ const ORG_OPS_02 = "a4660002-0000-4002-8002-000000000002";
 const ORG_OPS_03 = "a4660003-0000-4003-8003-000000000003";
 const ORG_OPS_04 = "a4660004-0000-4004-8004-000000000004";
 const ORG_OPS_05 = "a4660005-0000-4005-8005-000000000005";
+const ORG_OPS_06 = "a4660006-0000-4006-8006-000000000006";
 const ORG_OPS_07 = "a4660007-0000-4007-8007-000000000007";
 
 type OffersFixtureExpectations = {
@@ -216,6 +219,7 @@ async function ensureMigrations(): Promise<void> {
     notifyWorkMigrationSql,
     grantMigrationSql,
     reversalMigrationSql,
+    operatorActionMigrationSql,
   ]) {
     try {
       await applySql(sql);
@@ -464,6 +468,61 @@ async function postPaymobProcessedCallback(
   });
 }
 
+async function pauseSigningKeyGate(): Promise<void> {
+  await env.DB.prepare(
+    `INSERT INTO signing_key_gate (id, paused, checked_at)
+     VALUES (1, 1, ?)
+     ON CONFLICT(id) DO UPDATE SET paused = 1, checked_at = excluded.checked_at`,
+  )
+    .bind(new Date().toISOString())
+    .run();
+}
+
+async function refreshSigningKeyGate(): Promise<void> {
+  const { refreshSigningKeyCheck } = await import("../../src/work/grant");
+  await refreshSigningKeyCheck(env as never);
+}
+
+async function paidCheckoutFlowWithParkedGrant(
+  org: string,
+  offer: { offerId: string; version: number },
+  expectations: OffersFixtureExpectations,
+  txnId: number,
+): Promise<{ checkoutId: string; paymentId: string }> {
+  await putBillingContact(org);
+  const checkout = await postCheckout(
+    org,
+    offer,
+    expectations,
+    `req-ops-parked-${org}-${txnId}`,
+  );
+  await pauseSigningKeyGate();
+  const chargedPrice = await syncPaymobForCheckout(checkout.checkoutId);
+  const intake = await postPaymobProcessedCallback(
+    successFixture as PaymobCallbackFixture,
+    {
+      txnId,
+      connectingIp: `203.0.113.${txnId % 200}`,
+      amountMinor: chargedPrice,
+    },
+  );
+  expect(intake.status).toBe(200);
+  await runScheduled("* * * * *");
+  const paymentId = await paymentIdForCheckout(checkout.checkoutId);
+  expect(paymentId).not.toBeNull();
+  expect(await grantOutcomeResult(await grantIdPaid(paymentId!))).toBeNull();
+  await env.DB.prepare(
+    `UPDATE work
+     SET state = 'parked', lease_until = NULL, last_error = 'rejected'
+     WHERE kind = 'grant' AND subject_id = ?`,
+  )
+    .bind(paymentId!)
+    .run();
+  expect(await grantWorkState(paymentId!)).toBe("parked");
+  await refreshSigningKeyGate();
+  return { checkoutId: checkout.checkoutId, paymentId: paymentId! };
+}
+
 async function paidCheckoutFlow(
   org: string,
   offer: { offerId: string; version: number },
@@ -696,6 +755,7 @@ async function seedRichClinic(
   const grantId = await grantIdPaid(paymentId!);
   const grantReference = humanRef("GR", grantId);
   await syncPlatformGrantLedger(orgId);
+  await drainPlatformDurableObjects();
   await seedFinding(orgId, checkoutId);
   await seedAlert(orgId, checkoutId);
   await seedReversal(paymentId!, humanRef("REV", crypto.randomUUID()));
@@ -805,12 +865,14 @@ describe("ops cross-worker", () => {
     expect(noJwtCall.result).toBe("rejected");
     expect(noJwtCall.code).toBe("unauthenticated");
 
+    await setClock("2026-06-03T12:00:00.000Z");
     const expiredCall = await platformCall("recordOperatorAction", recordArgs, {
       accessJwt: expiredJwt,
     });
     expect(expiredCall.result).toBe("rejected");
     expect(expiredCall.code).toBe("unauthenticated");
 
+    await setClock(clockIso);
     const wrongAudCall = await platformCall("recordOperatorAction", recordArgs, {
       accessJwt: wrongAudJwt,
     });
@@ -968,17 +1030,16 @@ describe("ops cross-worker", () => {
     await putBillingContact(orgId);
     await setupActivePlatformCoverage(orgId);
     await retirePlanProOnPlatform();
-    const { checkoutId } = await paidCheckoutFlow(
+    const { paymentId } = await paidCheckoutFlowWithParkedGrant(
       orgId,
       offerVersions[1],
       expectations,
       96604,
     );
-    const paymentId = await paymentIdForCheckout(checkoutId);
-    expect(paymentId).not.toBeNull();
-    expect(await grantWorkState(paymentId!)).toBe("parked");
+    expect(await grantWorkState(paymentId)).toBe("parked");
 
     await publishPlanProOnPlatform();
+    await drainPlatformDurableObjects();
     const accessJwt = await mintVendorAccessJwt(OPS_OPERATOR_EMAIL);
     const sessionHeaders = await opsHeaders(accessJwt);
     const controlAuditBefore = await platformControlAuditCountForActor(
@@ -1006,8 +1067,9 @@ describe("ops cross-worker", () => {
 
     const { runDueGrantWork } = await import("../../src/work/grant");
     await runDueGrantWork(env as never);
+    await drainPlatformDurableObjects();
     await syncPlatformGrantLedger(orgId);
-    const grantId = await grantIdPaid(paymentId!);
+    const grantId = await grantIdPaid(paymentId);
     expect(await grantOutcomeResult(grantId)).toBe("applied");
 
     const actionRow = await operatorActionRow(actionId);
@@ -1138,5 +1200,49 @@ describe("ops cross-worker", () => {
     expect(intake.status).toBe(200);
     await runScheduled("* * * * *");
     expect(await checkoutStatusState(checkoutId)).toBe("paid_late");
+  });
+
+  it("E2E-P4.6-06 stale contract version rejects before auth and writes", async () => {
+    const { expectations, offerVersions } = await setupOpsHarness();
+    const orgId = ORG_OPS_06;
+    await setClock("2026-06-01T12:00:00.000Z");
+    await putBillingContact(orgId);
+    await setupActivePlatformCoverage(orgId);
+    const { checkoutId } = await postCheckout(
+      orgId,
+      offerVersions[1],
+      expectations,
+      "req-ops-06-stale",
+    );
+    expect(await checkoutStatusState(checkoutId)).toBe("open");
+
+    const operatorActionBefore = await tableCount("operator_action");
+    const accessJwt = await mintVendorAccessJwt(OPS_OPERATOR_EMAIL);
+
+    const stale = await opsFetch(`/ops/checkouts/${checkoutId}/cancel`, {
+      method: "POST",
+      headers: {
+        "Cf-Access-Jwt-Assertion": accessJwt,
+        "Abo-Contract-Version": "2",
+      },
+    });
+    expect(stale.status).toBe(400);
+    const staleBody = (await stale.json()) as Record<string, unknown>;
+    expect(staleBody.code).toBe("contract_version_unsupported");
+    expect(staleBody.reload).toBe(true);
+    expect(await checkoutStatusState(checkoutId)).toBe("open");
+
+    const missing = await opsFetch(`/ops/checkouts/${checkoutId}/cancel`, {
+      method: "POST",
+      headers: {
+        "Cf-Access-Jwt-Assertion": accessJwt,
+      },
+    });
+    expect(missing.status).toBe(400);
+    const missingBody = (await missing.json()) as Record<string, unknown>;
+    expect(missingBody.code).toBe("contract_version_unsupported");
+    expect(missingBody.reload).toBe(true);
+    expect(await checkoutStatusState(checkoutId)).toBe("open");
+    expect(await tableCount("operator_action")).toBe(operatorActionBefore);
   });
 });

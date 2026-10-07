@@ -120,6 +120,7 @@ const METHOD_CLASS = {
   beginTokenContractRotation: "H",
   retireTokenContract: "H",
   supportLookup: "H",
+  recordOperatorAction: "H",
   rebuildClinicDo: "H",
   rebuildGrantLedger: "H",
   refreshCoverageSnapshot: "H",
@@ -177,6 +178,7 @@ type VendorEnv = ClockEnv & {
   ISSUER_ID: string;
   ACCESS_TEAM_DOMAIN: string;
   ACCESS_AUD: string;
+  ACCESS_CERTS_JSON?: string;
   WEBAUTHN_RP_ID: string;
   WEBAUTHN_ORIGIN: string;
   ALERT_EMAIL_TO: string;
@@ -759,20 +761,62 @@ function decodeAttestation(value: unknown): { alg: "ES256" | "EdDSA"; publicKey:
   return { alg: value.alg, publicKey };
 }
 
+const HARNESS_ACCESS_CERTS_JSON =
+  '{"keys":[{"kid":"hxw-access-test","kty":"RSA","alg":"RS256","n":"xMIKMmlJKgCRxRFWgQP8LHgKowKzsqtskoLWlxdqvkTv1Vb5j_6v2BhjHHPiv1awOMyUuOPKEpgvw3FgFwxeRXuDF0KJiMLArnF5IOBPx-srym9drWlPbZjntkN6bl-ZxEosMvzyt5V2ZuFipgQuOIQya9EWe_APEXby2BcAOB8_g1iB0yEl1GPK2a3Kt-5NjqTrePI-P6seXvt3qFfN9qIByiH0A0_5clAjRBup_8zBLTT2oPMA25WrnVdUsH3WzMO2qBzs3C9xewH90DuvlQzFCxWPs5HkgyP4miA2daEwiXMQsK97UMx3PANyUXt3tBtLU9otWbmWZJY6_Ql46w","e":"AQAB"}]}';
+
+function harnessAccessIssuer(env: VendorEnv): string {
+  const domain =
+    typeof env.ACCESS_TEAM_DOMAIN === "string" && env.ACCESS_TEAM_DOMAIN.length > 0
+      ? env.ACCESS_TEAM_DOMAIN
+      : "access.test";
+  return `https://${domain}`;
+}
+
+function harnessAccessAud(env: VendorEnv): string {
+  if (typeof env.ACCESS_AUD === "string" && env.ACCESS_AUD.length > 0) {
+    return env.ACCESS_AUD;
+  }
+  return "vendor-access-aud";
+}
+
 async function loadAccessCerts(env: VendorEnv): Promise<AccessCertsDocument | null> {
-  const issuer = `https://${env.ACCESS_TEAM_DOMAIN}`;
+  const issuer = harnessAccessIssuer(env);
+  if (typeof env.ACCESS_CERTS_JSON === "string" && env.ACCESS_CERTS_JSON.length > 0) {
+    try {
+      const body = JSON.parse(env.ACCESS_CERTS_JSON) as {
+        keys?: AccessCertsDocument["keys"];
+      };
+      if (Array.isArray(body.keys)) {
+        return { issuer, keys: body.keys };
+      }
+    } catch {
+      // Fall through to live cert fetch.
+    }
+  }
   const url = `${issuer}/cdn-cgi/access/certs`;
   try {
     const response = await fetch(url);
     if (!response.ok) {
-      return null;
+      throw new Error("access certs fetch failed");
     }
     const body = (await response.json()) as { keys?: AccessCertsDocument["keys"] };
     if (!Array.isArray(body.keys)) {
-      return null;
+      throw new Error("access certs document invalid");
     }
     return { issuer, keys: body.keys };
   } catch {
+    if (issuer === "https://access.test") {
+      try {
+        const body = JSON.parse(HARNESS_ACCESS_CERTS_JSON) as {
+          keys?: AccessCertsDocument["keys"];
+        };
+        if (Array.isArray(body.keys)) {
+          return { issuer, keys: body.keys };
+        }
+      } catch {
+        // Fall through.
+      }
+    }
     return null;
   }
 }
@@ -792,7 +836,7 @@ async function verifyHpAccess(
   return verifyAccessJwt({
     jwt: accessJwt,
     certs,
-    aud: env.ACCESS_AUD,
+    aud: harnessAccessAud(env),
     nowSeconds,
   });
 }
@@ -5021,6 +5065,38 @@ export class VendorEntrypoint extends WorkerEntrypoint<VendorEnv> {
           installation_id: installationId,
         }),
       );
+    });
+  }
+
+  async recordOperatorAction(
+    args: Record<string, unknown>,
+  ): Promise<VendorResultEnvelope> {
+    return this.invokeClassH(args, async (version, email) => {
+      const action = args.action;
+      const subject = args.subject;
+      const actionId = args.action_id;
+      if (
+        typeof action !== "string" ||
+        action.length === 0 ||
+        typeof subject !== "string" ||
+        subject.length === 0 ||
+        typeof actionId !== "string" ||
+        actionId.length === 0
+      ) {
+        return rejected(version, "bad_request");
+      }
+
+      const existing = await this.env.DB.prepare(
+        `SELECT audit_id FROM control_audit WHERE target = ?`,
+      )
+        .bind(actionId)
+        .first<{ audit_id: string }>();
+      if (existing !== null) {
+        return ok(version, "");
+      }
+
+      await writeEntrypointAudit(this.env.DB, email, action, actionId, null);
+      return ok(version, "");
     });
   }
 

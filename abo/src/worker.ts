@@ -15,6 +15,7 @@ import {
 import { handleGetOffers } from "./clinic-api/offers.js";
 import { checkTokenRate } from "./clinic-api/rate.js";
 import { checkContractVersion } from "./clinic-api/version.js";
+import { handleOps as dispatchOps } from "./ops/index.js";
 import { refreshCoverageView } from "./coverage/view.js";
 import { markExportLagIfDue, sendDueAlerts } from "./alert/index.js";
 import { checkR2BucketLock } from "./alert/lock.js";
@@ -55,6 +56,8 @@ export interface Env {
   PAYMOB_STUB?: Fetcher;
   ABO_GRANT_KEY: string;
   PLATFORM_PUBLIC_KEYS: string;
+  ACCESS_TEAM_DOMAIN: string;
+  ACCESS_AUD: string;
   PLATFORM: {
     getCoverage(args: Record<string, unknown>): Promise<Record<string, unknown>>;
     readCoverageEvents(
@@ -65,6 +68,19 @@ export interface Env {
       args: Record<string, unknown>,
     ): Promise<Record<string, unknown>>;
     voidForReversal(
+      args: Record<string, unknown>,
+    ): Promise<Record<string, unknown>>;
+    inspectCoverage(
+      args: Record<string, unknown>,
+    ): Promise<Record<string, unknown>>;
+    listGrants(args: Record<string, unknown>): Promise<Record<string, unknown>>;
+    listIssuerKeys(
+      args: Record<string, unknown>,
+    ): Promise<Record<string, unknown>>;
+    listOperatorCredentials(
+      args: Record<string, unknown>,
+    ): Promise<Record<string, unknown>>;
+    recordOperatorAction(
       args: Record<string, unknown>,
     ): Promise<Record<string, unknown>>;
   };
@@ -221,14 +237,22 @@ async function handleBillingV1(
 
 async function handleOps(
   request: Request,
-  _env: Env,
-  _path: string,
+  env: Env,
+  path: string,
 ): Promise<Response> {
   const versionGate = checkContractVersion(request, "aboConsole");
   if (!versionGate.ok) {
-    return versionGate.response;
+    const body = (await versionGate.response.clone().json()) as Record<
+      string,
+      unknown
+    >;
+    body.reload = true;
+    return new Response(JSON.stringify(body), {
+      status: 400,
+      headers: versionGate.response.headers,
+    });
   }
-  return emptyNotFound();
+  return dispatchOps(request, env, path, versionGate.version);
 }
 
 export default {
