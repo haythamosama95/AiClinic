@@ -177,7 +177,7 @@ cd abo && node scripts/build-platform-for-hxw.mjs && vitest run --config vitest.
 
 **Independent Test**: E2E-P4.11-06 in harness H-XW. Earlier suites stay green, and E2E-P4.11-01, E2E-P4.11-02, E2E-P4.11-03, E2E-P4.11-04, E2E-P4.11-05, and E2E-P4.11-07 still pass.
 
-- [ ] T024 [US3] Add the operator wrapper in `abo/scripts/rebuild-abo.ts` — produces the script that passes provider transaction references to `rebuildAbo`, FR-006, E2E-P4.11-06. Depends on T023. Import `rebuildAbo`. The script accepts the provider transaction references the operator copies from the dashboard export and passes those references to `rebuildAbo`. No new export schema. Leave `abo/REBUILD.md` uncreated in this task.
+- [X] T024 [US3] Add the operator wrapper in `abo/scripts/rebuild-abo.ts` — produces the script that passes provider transaction references to `rebuildAbo`, FR-006, E2E-P4.11-06. Depends on T023. Import `rebuildAbo`. The script accepts the provider transaction references the operator copies from the dashboard export and passes those references to `rebuildAbo`. No new export schema. Leave `abo/REBUILD.md` uncreated in this task.
 
 **Checkpoint**: `abo/scripts/rebuild-abo.ts` calls `rebuildAbo` with the operator's references. E2E-P4.11-06 still fails the runbook assertion until `abo/REBUILD.md` exists.
 
@@ -185,7 +185,7 @@ cd abo && node scripts/build-platform-for-hxw.mjs && vitest run --config vitest.
 
 **Independent Test**: E2E-P4.11-06 in harness H-XW. Earlier suites stay green, and E2E-P4.11-01, E2E-P4.11-02, E2E-P4.11-03, E2E-P4.11-04, E2E-P4.11-05, and E2E-P4.11-07 still pass.
 
-- [ ] T025 [US3] Add the runbook in `abo/REBUILD.md` — produces the operator steps for §5.1, FR-006, E2E-P4.11-06. Depends on T023. State §5.1 step 1 (Time Travel within 30 days) and, otherwise, the script: empty D1, replay, and the operator copying provider transaction references from the dashboard export into the script. Leave `abo/scripts/rebuild-abo.ts` unchanged in this task.
+- [X] T025 [US3] Add the runbook in `abo/REBUILD.md` — produces the operator steps for §5.1, FR-006, E2E-P4.11-06. Depends on T023. State §5.1 step 1 (Time Travel within 30 days) and, otherwise, the script: empty D1, replay, and the operator copying provider transaction references from the dashboard export into the script. Leave `abo/scripts/rebuild-abo.ts` unchanged in this task.
 
 **Checkpoint**: `abo/REBUILD.md` states the operator step of copying provider transaction references from the dashboard export.
 
