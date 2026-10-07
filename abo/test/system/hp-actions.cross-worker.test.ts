@@ -20,6 +20,7 @@ import notifyWorkMigrationSql from "../../migrations/0003_notify_work.sql?raw";
 import grantMigrationSql from "../../migrations/0004_grant.sql?raw";
 import reversalMigrationSql from "../../migrations/0005_reversal.sql?raw";
 import operatorActionMigrationSql from "../../migrations/0006_operator_action.sql?raw";
+import hpActionsMigrationSql from "../../migrations/0007_hp_actions.sql?raw";
 import { loadOffersFixture } from "../../src/records/append";
 import {
   applySql,
@@ -29,6 +30,7 @@ import {
   opsFetch,
   pinIssuer,
   runScheduled,
+  scriptPaymobInquiry,
   tableCount,
 } from "./harness";
 import {
@@ -39,6 +41,10 @@ import {
   setClock,
   setupActivePlatformCoverage,
   setupCrossWorkerHarness,
+  drainPlatformDurableObjects,
+  settlePlatformDurableObjectAlarms,
+  syncPlatformGrantLedger,
+  syncPlatformGrantVoids,
 } from "./cross-worker-harness";
 
 const VENDOR_CONTRACT_VERSION = CHANNEL_VERSIONS.vendorEntrypoint;
@@ -50,6 +56,9 @@ const ALLOWANCE_CREDITS = 100;
 
 const ORG_HP_01 = "a4770001-0001-4001-8001-000000000001";
 const ORG_HP_02 = "a4770002-0002-4002-8002-000000000002";
+const ORG_HP_03 = "a4770003-0003-4003-8003-000000000003";
+const ORG_HP_04 = "a4770004-0004-4004-8004-000000000004";
+const ORG_HP_05 = "a4770005-0005-4005-8005-000000000005";
 
 const HP_V1_ONLY_OFFER_ID = "01JHP4P7PUBLISH00001";
 const HP_V1_ONLY_VERSION = 1;
@@ -272,6 +281,7 @@ async function ensureMigrations(): Promise<void> {
     grantMigrationSql,
     reversalMigrationSql,
     operatorActionMigrationSql,
+    hpActionsMigrationSql,
   ]) {
     try {
       await applySql(sql);
@@ -343,6 +353,40 @@ async function publishPlanProOnPlatform(): Promise<void> {
 async function registerClinicIssuerKey(): Promise<void> {
   const issuer = await newIssuer();
   await pinIssuer(issuer.kid, issuer.publicKey);
+}
+
+async function ensureGrantTenantBinding(orgId: string): Promise<void> {
+  const existing = await env.PLATFORM_DB.prepare(
+    `SELECT installation_id FROM tenant_binding
+     WHERE org_id = ? AND status = 'active'`,
+  )
+    .bind(orgId)
+    .first<{ installation_id: string }>();
+  if (existing?.installation_id) {
+    return;
+  }
+  const installationId = crypto.randomUUID();
+  const createdAt = "2026-06-01T12:00:00.000Z";
+  await env.PLATFORM_DB.batch([
+    env.PLATFORM_DB.prepare(
+      `INSERT INTO installation (
+         installation_id, org_id, status, display_name, region, enrolled_at
+       ) VALUES (?, ?, 'active', '', '', ?)`,
+    ).bind(installationId, orgId, createdAt),
+    env.PLATFORM_DB.prepare(
+      `INSERT INTO tenant_binding (
+         org_id, installation_id, epoch, status, retired_at, reason, created_at
+       ) VALUES (?, ?, 1, 'active', NULL, NULL, ?)`,
+    ).bind(orgId, installationId, createdAt),
+  ]);
+}
+
+async function expectR2ObjectExists(key: string): Promise<void> {
+  const object = await env.R2.get(key);
+  expect(object).not.toBeNull();
+  if (object !== null) {
+    await object.text();
+  }
 }
 
 async function setupHpHarness(): Promise<OffersFixtureExpectations> {
@@ -815,6 +859,290 @@ async function latestOperatorActionResult(): Promise<string | null> {
   return row?.result ?? null;
 }
 
+async function paymentDisposition(paymentId: string): Promise<string | null> {
+  const row = await env.DB.prepare(
+    `SELECT disposition FROM payment WHERE payment_id = ?`,
+  )
+    .bind(paymentId)
+    .first<{ disposition: string }>();
+  return row?.disposition ?? null;
+}
+
+async function paymentReleaseCount(paymentId?: string): Promise<number> {
+  try {
+    if (paymentId !== undefined) {
+      const row = await env.DB.prepare(
+        `SELECT COUNT(*) AS n FROM payment_release WHERE payment_id = ?`,
+      )
+        .bind(paymentId)
+        .first<{ n: number }>();
+      return row?.n ?? 0;
+    }
+    const row = await env.DB.prepare(
+      `SELECT COUNT(*) AS n FROM payment_release`,
+    ).first<{ n: number }>();
+    return row?.n ?? 0;
+  } catch {
+    return 0;
+  }
+}
+
+async function grantWorkCountForPayment(paymentId: string): Promise<number> {
+  try {
+    const row = await env.DB.prepare(
+      `SELECT COUNT(*) AS n FROM work WHERE kind = 'grant' AND subject_id = ?`,
+    )
+      .bind(paymentId)
+      .first<{ n: number }>();
+    return row?.n ?? 0;
+  } catch {
+    return 0;
+  }
+}
+
+async function alertCountByCode(code: string): Promise<number> {
+  try {
+    const row = await env.DB.prepare(
+      `SELECT COUNT(*) AS n FROM alert WHERE code = ? AND active = 1`,
+    )
+      .bind(code)
+      .first<{ n: number }>();
+    return row?.n ?? 0;
+  } catch {
+    return 0;
+  }
+}
+
+async function createWithheldMismatchPayment(
+  org: string,
+  offer: { offerId: string; version: number },
+  expectations: OffersFixtureExpectations,
+  txnId: number,
+): Promise<{ checkoutId: string; paymentId: string; amountMinor: number }> {
+  await putBillingContact(org);
+  await setupActivePlatformCoverage(org);
+  const { checkoutId } = await postCheckout(
+    org,
+    offer,
+    expectations,
+    `req-hp-withheld-${txnId}`,
+  );
+  await scriptPaymobInquiry("amount_mismatch");
+  const chargedPrice = await syncPaymobForCheckout(checkoutId);
+  const intake = await postPaymobProcessedCallback(
+    successFixture as PaymobCallbackFixture,
+    { txnId, amountMinor: chargedPrice },
+  );
+  expect(intake.status).toBe(200);
+  const paymentId = await paymentIdForCheckout(checkoutId);
+  expect(paymentId).not.toBeNull();
+  expect(await paymentDisposition(paymentId!)).toBe("withheld_mismatch");
+  return {
+    checkoutId,
+    paymentId: paymentId!,
+    amountMinor: chargedPrice,
+  };
+}
+
+async function seedFullReversalForPayment(
+  paymentId: string,
+  amountMinor: number,
+): Promise<void> {
+  const reversalId = crypto.randomUUID();
+  const parentTxn = await env.DB.prepare(
+    `SELECT txn_id FROM paymob_txn
+     WHERE payment_id = ? AND parent_txn_id IS NULL
+     ORDER BY txn_id ASC LIMIT 1`,
+  )
+    .bind(paymentId)
+    .first<{ txn_id: string }>();
+  const parentRef = parentTxn?.txn_id ?? paymentId;
+  const dedupeKey = `paymob:${parentRef}:reversal:${amountMinor}`;
+  await env.DB.prepare(
+    `INSERT INTO reversal (
+       reversal_id, payment_id, reference, amount_minor, kind, is_full,
+       source, cumulative_reversed_minor, detected_via, recorded_by,
+       evidence_sha256, effect, dedupe_key
+     ) VALUES (?, ?, ?, ?, 'chargeback', 1, 'operator', ?, 'manual', ?, 'evidence', 'hold', ?)`,
+  )
+    .bind(
+      reversalId,
+      paymentId,
+      `REV-${reversalId.slice(0, 8)}`,
+      amountMinor,
+      amountMinor,
+      VENDOR_OPERATOR_EMAIL,
+      dedupeKey,
+    )
+    .run();
+}
+
+async function runGrantStep(orgId: string): Promise<void> {
+  const { runDueGrantWork } = await import("../../src/work/grant");
+  await runScheduled("* * * * *");
+  await runDueGrantWork(env as never);
+  await syncPlatformGrantLedger(orgId);
+}
+
+async function runDueGrantWorkUntilApplied(
+  paymentId: string,
+  orgId: string,
+): Promise<void> {
+  const grantId = await grantIdPaid(paymentId);
+  for (let attempt = 0; attempt < 12; attempt += 1) {
+    if ((await grantOutcomeResult(grantId)) === "applied") {
+      return;
+    }
+    await runGrantStep(orgId);
+  }
+  expect(await grantOutcomeResult(grantId)).toBe("applied");
+}
+
+async function recentTermState(
+  orgId: string,
+  paymentId: string,
+): Promise<string | null> {
+  const coverage = await platformCall("getCoverage", {
+    contract_version: VENDOR_CONTRACT_VERSION,
+    org_id: orgId,
+  });
+  if (coverage.result !== "ok") {
+    return null;
+  }
+  const parsed = JSON.parse(String(coverage.detail)) as {
+    recent_terms?: Array<{ term_id?: string; state?: string }>;
+  };
+  const grantId = await grantIdPaid(paymentId);
+  const outcome = await env.DB.prepare(
+    `SELECT term_ids FROM grant_outcome WHERE grant_id = ?`,
+  )
+    .bind(grantId)
+    .first<{ term_ids: string }>();
+  if (!outcome?.term_ids) {
+    return null;
+  }
+  const termIds = JSON.parse(outcome.term_ids) as string[];
+  const termId = termIds[0];
+  if (termId === undefined) {
+    return null;
+  }
+  const match = (parsed.recent_terms ?? []).find(
+    (term) => term.term_id === termId,
+  );
+  return match?.state ?? null;
+}
+
+async function platformGrantVoidCount(grantId: string): Promise<number> {
+  try {
+    const row = await env.PLATFORM_DB.prepare(
+      `SELECT COUNT(*) AS n FROM grant_void WHERE grant_id = ?`,
+    )
+      .bind(grantId)
+      .first<{ n: number }>();
+    return row?.n ?? 0;
+  } catch {
+    return 0;
+  }
+}
+
+async function getSubscriptionBody(
+  org: string,
+): Promise<{
+  snapshot?: { queued_count?: number; held_count?: number; state?: string };
+  notices?: string[];
+}> {
+  const headers = await administratorHeaders(org);
+  const response = await billingFetch("/v1/subscription", { headers });
+  expect(response.status).toBe(200);
+  return (await response.json()) as {
+    snapshot?: { queued_count?: number; held_count?: number; state?: string };
+    notices?: string[];
+  };
+}
+
+async function putBillingContactVersion(
+  org: string,
+  clientRequestId: string,
+  email: string,
+): Promise<void> {
+  const headers = await administratorHeaders(org);
+  const response = await billingFetch("/v1/billing-contact", {
+    method: "PUT",
+    headers,
+    body: JSON.stringify({
+      client_request_id: clientRequestId,
+      name: "Clinic Admin",
+      email,
+      phone: "+201001234567",
+    }),
+  });
+  expect(response.status).toBe(200);
+}
+
+async function billingContactRows(
+  orgId: string,
+): Promise<
+  Array<{
+    version: number;
+    name: string;
+    email: string;
+    phone: string;
+    contact_sha256: string;
+    erased_at: string | null;
+    erased_by: string | null;
+  }>
+> {
+  const rows = await env.DB.prepare(
+    `SELECT version, name, email, phone, contact_sha256, erased_at, erased_by
+     FROM billing_contact
+     WHERE org_id = ?
+     ORDER BY version ASC`,
+  )
+    .bind(orgId)
+    .all<{
+      version: number;
+      name: string;
+      email: string;
+      phone: string;
+      contact_sha256: string;
+      erased_at: string | null;
+      erased_by: string | null;
+    }>();
+  return rows.results ?? [];
+}
+
+async function tenantEvidenceR2Keys(orgId: string): Promise<string[]> {
+  const keys = new Set<string>();
+  const notifications = await env.DB.prepare(
+    `SELECT n.body_r2_key
+     FROM notification n
+     INNER JOIN payment p ON p.evidence_sha256 = n.body_sha256
+     WHERE p.org_id = ? AND n.body_r2_key != ''`,
+  )
+    .bind(orgId)
+    .all<{ body_r2_key: string }>();
+  for (const row of notifications.results ?? []) {
+    keys.add(row.body_r2_key);
+  }
+  const inquiryRows = await env.DB.prepare(
+    `SELECT ir.raw_r2_key
+     FROM inquiry_result ir
+     INNER JOIN payment p ON p.checkout_id = ir.subject
+     WHERE p.org_id = ? AND ir.raw_r2_key != ''`,
+  )
+    .bind(orgId)
+    .all<{ raw_r2_key: string }>();
+  for (const row of inquiryRows.results ?? []) {
+    keys.add(row.raw_r2_key);
+  }
+  return [...keys];
+}
+
+async function listLedgerExportKeys(): Promise<string[]> {
+  const listed = await env.R2.list({ prefix: "ledger/" });
+  return listed.objects.map((object) => object.key);
+}
+
 beforeEach(async () => {
   await resetCrossWorkerHarness();
   await setupCrossWorkerHarness();
@@ -991,7 +1319,7 @@ describe("hp-actions cross-worker", () => {
     expect(publish.status).toBe(200);
 
     const offersResponse = await billingFetch("/v1/offers", {
-      headers: { "Abo-Contract-Version": "1" },
+      headers: await administratorHeaders(orgId),
     });
     expect(offersResponse.status).toBe(200);
     const offersBody = (await offersResponse.json()) as {
@@ -1046,7 +1374,7 @@ describe("hp-actions cross-worker", () => {
     expect(retire.status).toBe(200);
 
     const offersResponse = await billingFetch("/v1/offers", {
-      headers: { "Abo-Contract-Version": "1" },
+      headers: await administratorHeaders(orgId),
     });
     expect(offersResponse.status).toBe(200);
     const offersBody = (await offersResponse.json()) as {
@@ -1071,5 +1399,272 @@ describe("hp-actions cross-worker", () => {
     expect(checkoutBody.code).toBe("offer_unavailable");
 
     expect(await platformPlanVersionSnapshot()).toBe(platformTermsBefore);
+  });
+
+  it("E2E-P4.7-04 withheld release applies grant; fully reversed release is refused", async () => {
+    const expectations = await setupHpHarness();
+    const orgId = ORG_HP_03;
+    const offer = { offerId: expectations.offer_id, version: expectations.version };
+    const withheld = await createWithheldMismatchPayment(
+      orgId,
+      offer,
+      expectations,
+      97704,
+    );
+    expect(await paymentReleaseCount()).toBe(0);
+    expect(await grantWorkCountForPayment(withheld.paymentId)).toBe(0);
+
+    const hp = await ensureActiveHpCredential();
+    const releaseOperation = await buildHpOperation({
+      op: "release_payment",
+      params: {},
+      actorEmail: VENDOR_OPERATOR_EMAIL,
+    });
+    const releaseAssertion = await signHpOperation(
+      hp.authenticator,
+      releaseOperation,
+    );
+    const release = await opsHpFetch(
+      `/ops/payments/${withheld.paymentId}/release`,
+      {
+        accessJwt: hp.accessJwt,
+        operation: releaseOperation,
+        assertion: releaseAssertion,
+      },
+    );
+    expect(release.status).toBe(200);
+    expect(await paymentReleaseCount(withheld.paymentId)).toBe(1);
+    expect(await grantWorkCountForPayment(withheld.paymentId)).toBe(1);
+    await runDueGrantWorkUntilApplied(withheld.paymentId, orgId);
+
+    const reversed = await createWithheldMismatchPayment(
+      orgId,
+      offer,
+      expectations,
+      97705,
+    );
+    await seedFullReversalForPayment(reversed.paymentId, reversed.amountMinor);
+    const releaseBefore = await paymentReleaseCount();
+    const grantWorkBefore = await grantWorkCountForPayment(reversed.paymentId);
+    const reversedOperation = await buildHpOperation({
+      op: "release_payment",
+      params: {},
+      actorEmail: VENDOR_OPERATOR_EMAIL,
+    });
+    const reversedAssertion = await signHpOperation(
+      hp.authenticator,
+      reversedOperation,
+    );
+    const refused = await opsHpFetch(
+      `/ops/payments/${reversed.paymentId}/release`,
+      {
+        accessJwt: hp.accessJwt,
+        operation: reversedOperation,
+        assertion: reversedAssertion,
+      },
+    );
+    expect(refused.status).toBe(400);
+    expect(await paymentReleaseCount()).toBe(releaseBefore);
+    expect(await grantWorkCountForPayment(reversed.paymentId)).toBe(
+      grantWorkBefore,
+    );
+  });
+
+  it("E2E-P4.7-05 manual chargeback voids the active term and holds the queue", async () => {
+    const expectations = await setupHpHarness();
+    const orgId = ORG_HP_04;
+    const offer = { offerId: expectations.offer_id, version: expectations.version };
+    const firstTxnId = 97706;
+    const secondTxnId = 97707;
+    const hp = await ensureActiveHpCredential();
+    await putBillingContact(orgId);
+    await ensureGrantTenantBinding(orgId);
+    const firstCheckout = await postCheckout(
+      orgId,
+      offer,
+      expectations,
+      `req-hp-cb-active-${firstTxnId}`,
+    );
+    const secondCheckout = await postCheckout(
+      orgId,
+      offer,
+      expectations,
+      `req-hp-cb-queued-${secondTxnId}`,
+    );
+    const firstCharged = await syncPaymobForCheckout(firstCheckout.checkoutId);
+    await scriptPaymobInquiry("bound_success");
+    await postPaymobProcessedCallback(successFixture as PaymobCallbackFixture, {
+      txnId: firstTxnId,
+      amountMinor: firstCharged,
+    });
+    await runDueGrantWorkUntilApplied(
+      (await paymentIdForCheckout(firstCheckout.checkoutId))!,
+      orgId,
+    );
+    const subscriptionAfterFirst = await getSubscriptionBody(orgId);
+    expect(subscriptionAfterFirst.snapshot?.state).toBe("active");
+    const secondCharged = await syncPaymobForCheckout(secondCheckout.checkoutId);
+    await scriptPaymobInquiry("bound_success");
+    await postPaymobProcessedCallback(successFixture as PaymobCallbackFixture, {
+      txnId: secondTxnId,
+      connectingIp: `203.0.113.${secondTxnId % 200}`,
+      amountMinor: secondCharged,
+    });
+    await runDueGrantWorkUntilApplied(
+      (await paymentIdForCheckout(secondCheckout.checkoutId))!,
+      orgId,
+    );
+    const activePaymentId = await paymentIdForCheckout(firstCheckout.checkoutId);
+    expect(activePaymentId).not.toBeNull();
+    const subscriptionBefore = await getSubscriptionBody(orgId);
+    expect((subscriptionBefore.snapshot?.queued_count ?? 0) > 0).toBe(true);
+
+    await syncPlatformGrantLedger(orgId);
+    await settlePlatformDurableObjectAlarms();
+
+    const chargebackOperation = await buildHpOperation({
+      op: "manual_chargeback",
+      params: {},
+      actorEmail: VENDOR_OPERATOR_EMAIL,
+    });
+    const chargebackAssertion = await signHpOperation(
+      hp.authenticator,
+      chargebackOperation,
+    );
+    const chargeback = await opsHpFetch(
+      `/ops/payments/${activePaymentId}/chargeback`,
+      {
+        accessJwt: hp.accessJwt,
+        operation: chargebackOperation,
+        assertion: chargebackAssertion,
+      },
+    );
+    expect(chargeback.status).toBe(200);
+
+    const reversal = await env.DB.prepare(
+      `SELECT source, detected_via, kind, is_full, recorded_by, effect
+       FROM reversal WHERE payment_id = ?`,
+    )
+      .bind(activePaymentId)
+      .first<{
+        source: string;
+        detected_via: string;
+        kind: string;
+        is_full: number;
+        recorded_by: string;
+        effect: string;
+      }>();
+    expect(reversal?.source).toBe("operator");
+    expect(reversal?.detected_via).toBe("manual");
+    expect(reversal?.kind).toBe("chargeback");
+    expect(reversal?.is_full).toBe(1);
+    expect(reversal?.recorded_by).toBe(VENDOR_OPERATOR_EMAIL);
+    expect(reversal?.effect).toBe("end_current");
+
+    await setClock(
+      new Date(Date.parse(await currentHarnessClockIso()) + 60_000).toISOString(),
+    );
+    await runScheduled("* * * * *");
+    await syncPlatformGrantVoids();
+    await settlePlatformDurableObjectAlarms();
+    const grantId = await grantIdPaid(activePaymentId!);
+    expect(await platformGrantVoidCount(grantId)).toBe(1);
+    expect(await alertCountByCode("AL-06")).toBe(1);
+    expect(await recentTermState(orgId, activePaymentId!)).toBe("ended");
+    const subscription = await getSubscriptionBody(orgId);
+    expect((subscription.snapshot?.held_count ?? 0) > 0).toBe(true);
+    expect(subscription.notices ?? []).toContain("terms_held");
+    await drainPlatformDurableObjects();
+    await settlePlatformDurableObjectAlarms();
+  });
+
+  it("E2E-P4.7-06 erasure blanks contact versions and blocks checkout", async () => {
+    const expectations = await setupHpHarness();
+    const orgId = ORG_HP_05;
+    const offer = { offerId: expectations.offer_id, version: expectations.version };
+    await putBillingContactVersion(orgId, "req-hp-erase-v1", "erase-v1@clinic.test");
+    await putBillingContactVersion(orgId, "req-hp-erase-v2", "erase-v2@clinic.test");
+    const contactsBefore = await billingContactRows(orgId);
+    expect(contactsBefore.length).toBeGreaterThanOrEqual(2);
+    const contactHashes = contactsBefore.map((row) => row.contact_sha256);
+    const ledgerBefore = await listLedgerExportKeys();
+
+    await setupActivePlatformCoverage(orgId);
+    const { checkoutId } = await postCheckout(
+      orgId,
+      offer,
+      expectations,
+      "req-hp-erase-paid",
+    );
+    const chargedPrice = await syncPaymobForCheckout(checkoutId);
+    await scriptPaymobInquiry("bound_success");
+    const intake = await postPaymobProcessedCallback(
+      successFixture as PaymobCallbackFixture,
+      {
+        txnId: 97708,
+        connectingIp: "203.0.113.108",
+        amountMinor: chargedPrice,
+      },
+    );
+    expect(intake.status).toBe(200);
+    const paymentId = await paymentIdForCheckout(checkoutId);
+    expect(paymentId).not.toBeNull();
+    await runDueGrantWorkUntilApplied(paymentId!, orgId);
+    const evidenceKeys = await tenantEvidenceR2Keys(orgId);
+    expect(evidenceKeys.length).toBeGreaterThan(0);
+    for (const key of evidenceKeys) {
+      await expectR2ObjectExists(key);
+    }
+
+    const hp = await ensureActiveHpCredential();
+    const eraseOperation = await buildHpOperation({
+      op: "erase_contact",
+      params: {},
+      actorEmail: VENDOR_OPERATOR_EMAIL,
+    });
+    const eraseAssertion = await signHpOperation(hp.authenticator, eraseOperation);
+    const erase = await opsHpFetch(`/ops/orgs/${orgId}/erase-contact`, {
+      accessJwt: hp.accessJwt,
+      operation: eraseOperation,
+      assertion: eraseAssertion,
+    });
+    expect(erase.status).toBe(200);
+
+    const contactsAfter = await billingContactRows(orgId);
+    expect(contactsAfter.length).toBe(contactsBefore.length);
+    for (const row of contactsAfter) {
+      expect(row.name).toBe("");
+      expect(row.email).toBe("");
+      expect(row.phone).toBe("");
+      expect(row.erased_at).not.toBeNull();
+      expect(row.erased_by).toBe(VENDOR_OPERATOR_EMAIL);
+    }
+    expect(contactsAfter.map((row) => row.contact_sha256)).toEqual(contactHashes);
+    for (const key of evidenceKeys) {
+      expect(await env.R2.get(key)).toBeNull();
+    }
+    const ledgerAfter = await listLedgerExportKeys();
+    expect(ledgerAfter).toEqual(ledgerBefore);
+    for (const key of ledgerAfter) {
+      await expectR2ObjectExists(key);
+    }
+
+    const checkoutResponse = await billingFetch("/v1/checkouts", {
+      method: "POST",
+      headers: await administratorHeaders(orgId),
+      body: JSON.stringify({
+        client_request_id: "req-hp-erase-checkout",
+        offer_id: expectations.offer_id,
+        offer_version: expectations.version,
+        terms_version: expectations.terms.version,
+      }),
+    });
+    expect(checkoutResponse.status).toBe(409);
+    const checkoutBody = (await checkoutResponse.json()) as Record<string, unknown>;
+    expect(checkoutBody.code).toBe("billing_contact_required");
+
+    expect(paymentId.length).toBeGreaterThan(0);
+    await drainPlatformDurableObjects();
+    await settlePlatformDurableObjectAlarms();
   });
 });
