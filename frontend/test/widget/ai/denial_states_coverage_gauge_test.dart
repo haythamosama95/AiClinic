@@ -23,6 +23,8 @@ const _unreachableMessage = 'AI service unreachable';
 const _busyMessage = 'AI busy, try again shortly';
 const _renewOrBuyLabel = 'Renew or buy';
 const _contactSupportLabel = 'Contact support';
+const _staffForbiddenMessage = "Not included in your clinic's AI plan";
+const _testPlanDisplayName = 'Standard Plan';
 const _testSubscriptionRef = 'sub-ref-test-001';
 const _testRetryAfter = '2026-10-08T12:00:00Z';
 
@@ -69,7 +71,7 @@ class _FakeCoverageUsageClient extends UsageSummaryClient {
                   'term': {
                     'used': termUsed,
                     'allowance': termAllowance,
-                    'plan_display_name': 'Standard Plan',
+                    'plan_display_name': _testPlanDisplayName,
                   },
                 }),
                 200,
@@ -407,6 +409,41 @@ void main() {
         staffHarness.networkSpy.urls.where((url) => url.contains('/v1/usage')),
         isEmpty,
       );
+    });
+  });
+
+  group('E2E-P6.2-07', () {
+    testWidgets('E2E-P6.2-07 forbidden_capability shows plan name to administrator and staff denial', (
+      tester,
+    ) async {
+      final harness = AiSurfaceHarness();
+      final submitPort = _WireDenialSubmitPort(wireCode: 'forbidden_capability');
+      final coverageClient = _FakeCoverageUsageClient(networkSpy: harness.networkSpy);
+
+      await _pumpDenialHost(
+        tester,
+        composition: _buildComposition(
+          harness: harness,
+          submitPort: submitPort,
+          staffIsAdministrator: false,
+          usageSummaryClient: coverageClient,
+        ),
+      );
+
+      expect(find.text(_staffForbiddenMessage), findsOneWidget);
+      expect(find.text(_testPlanDisplayName), findsNothing);
+
+      await _pumpDenialHost(
+        tester,
+        composition: _buildComposition(
+          harness: harness,
+          submitPort: submitPort,
+          staffIsAdministrator: true,
+          usageSummaryClient: coverageClient,
+        ),
+      );
+
+      expect(find.text(_testPlanDisplayName), findsOneWidget);
     });
   });
 }

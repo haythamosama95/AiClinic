@@ -71,11 +71,11 @@ That command is this unit's new-scenario harness. `npm test` in `e2e/fullstack` 
 
 **Independent Test**: E2E-P6.2-01, E2E-P6.2-02, E2E-P6.2-03, E2E-P6.2-04, E2E-P6.2-05, and E2E-P6.2-07 in harness H-FL.
 
-- [ ] T007 [US1] Add the failing test `E2E-P6.2-07` in `frontend/test/widget/ai/denial_states_coverage_gauge_test.dart` — red test, FR-001, FR-002, E2E-P6.2-07. Depends on T006 (same file). Title `E2E-P6.2-07`. The same host, with the coverage client returning `term.plan_display_name`. `forbidden_capability`: the administrator sees that plan name. Staff see "Not included in your clinic's AI plan". The widget command fails because that state is absent. E2E-P6.2-01 through E2E-P6.2-06 still fail.
+- [X] T007 [US1] Add the failing test `E2E-P6.2-07` in `frontend/test/widget/ai/denial_states_coverage_gauge_test.dart` — red test, FR-001, FR-002, E2E-P6.2-07. Depends on T006 (same file). Title `E2E-P6.2-07`. The same host, with the coverage client returning `term.plan_display_name`. `forbidden_capability`: the administrator sees that plan name. Staff see "Not included in your clinic's AI plan". The widget command fails because that state is absent. E2E-P6.2-01 through E2E-P6.2-06 still fail.
 
 **Checkpoint**: E2E-P6.2-01 through E2E-P6.2-07 exist. The red run has not confirmed them yet.
 
-- [ ] T008 [US1] Run `flutter test test/widget/ai/denial_states_coverage_gauge_test.dart` from `frontend/` and confirm E2E-P6.2-01 through E2E-P6.2-07 fail — red run, FR-001, FR-002, FR-003, FR-004, FR-005, E2E-P6.2-01, E2E-P6.2-02, E2E-P6.2-03, E2E-P6.2-04, E2E-P6.2-05, E2E-P6.2-06, E2E-P6.2-07. Depends on T007. Leave the production files unchanged. Do not edit `frontend/test/widget/ai/denial_states_coverage_gauge_test.dart` in this task. Do not run `npm test` in `e2e/fullstack`. Do not start wrangler.
+- [X] T008 [US1] Run `flutter test test/widget/ai/denial_states_coverage_gauge_test.dart` from `frontend/` and confirm E2E-P6.2-01 through E2E-P6.2-07 fail — red run, FR-001, FR-002, FR-003, FR-004, FR-005, E2E-P6.2-01, E2E-P6.2-02, E2E-P6.2-03, E2E-P6.2-04, E2E-P6.2-05, E2E-P6.2-06, E2E-P6.2-07. Depends on T007. Leave the production files unchanged. Do not edit `frontend/test/widget/ai/denial_states_coverage_gauge_test.dart` in this task. Do not run `npm test` in `e2e/fullstack`. Do not start wrangler.
 
 **Checkpoint**: E2E-P6.2-01 through E2E-P6.2-07 fail. Production files in **Files** are unchanged.
 
