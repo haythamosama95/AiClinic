@@ -223,6 +223,22 @@ function addMs(isoUtc: string, ms: number): string {
   return new Date(Date.parse(isoUtc) + ms).toISOString();
 }
 
+function baselinePolicyTarget(modelId = "deepseek-chat"): Record<string, unknown> {
+  return {
+    provider_id: "deepseek",
+    model_id: modelId,
+    features: {
+      structured_output: false,
+      min_context_window: 32_000,
+      languages: ["en"],
+      latency_class: "standard",
+      cost_class: "standard",
+    },
+    max_attempts: 1,
+    timeout_ms: 30_000,
+  };
+}
+
 function fakePolicyTarget(modelId = "fake-v1"): Record<string, unknown> {
   return {
     provider_id: "fake",
@@ -445,8 +461,30 @@ async function registerClinicIssuerKey(): Promise<void> {
   clinicIssuer = issuer;
 }
 
+function baselinePolicyDocument(): Record<string, unknown> {
+  return {
+    schema_version: 1,
+    policy_id: POLICY_ID,
+    policy_version: Number(POLICY_VERSION),
+    defaults: { cost_class: "standard", max_parallel_attempts: 1 },
+    rules: [
+      {
+        rule_id: "catch-all",
+        match: {},
+        requires: {
+          structured_output: false,
+          min_context_window: 0,
+          languages: ["en"],
+        },
+        targets: [baselinePolicyTarget()],
+      },
+    ],
+    overrides: [],
+  };
+}
+
 async function setupPromotedRoutingPolicy(): Promise<void> {
-  const document = fakePolicyDocument();
+  const document = baselinePolicyDocument();
   const contentPointer = `control/routing-policy/${POLICY_ID}/${POLICY_VERSION}.json`;
   const now = "2026-06-01T12:00:00.000Z";
   await env.R2.put(contentPointer, JSON.stringify(document), {
@@ -919,7 +957,9 @@ async function installationIdForOrg(orgId: string): Promise<string> {
   return row!.installation_id;
 }
 
-async function latestRoutingProviderId(orgId: string): Promise<string | null> {
+async function latestRoutingDecision(
+  orgId: string,
+): Promise<{ providerId: string | null; policyVersion: number | null }> {
   const installationId = await installationIdForOrg(orgId);
   const row = await env.PLATFORM_DB.prepare(
     `SELECT routing_decision FROM ai_request
@@ -928,12 +968,19 @@ async function latestRoutingProviderId(orgId: string): Promise<string | null> {
     .bind(installationId)
     .first<{ routing_decision: string | null }>();
   if (row?.routing_decision === null || row?.routing_decision === undefined) {
-    return null;
+    return { providerId: null, policyVersion: null };
   }
   const decision = JSON.parse(row.routing_decision) as {
     chain?: Array<{ provider_id?: string }>;
+    policy_version?: number;
   };
-  return decision.chain?.[0]?.provider_id ?? null;
+  return {
+    providerId: decision.chain?.[0]?.provider_id ?? null,
+    policyVersion:
+      typeof decision.policy_version === "number"
+        ? decision.policy_version
+        : null,
+  };
 }
 
 async function latestRequestReference(orgId: string): Promise<string> {
@@ -954,7 +1001,7 @@ async function seedSupportLookupRequest(
 ): Promise<void> {
   const installationId = await installationIdForOrg(orgId);
   const requestId = crypto.randomUUID();
-  const now = await currentHarnessClockIso();
+  const now = new Date().toISOString();
   const payloadPointer = `request/${requestId}/envelope`;
   await env.PLATFORM_DB.prepare(
     `INSERT INTO ai_request (
@@ -1758,7 +1805,11 @@ describe("configuration relays cross-worker", () => {
     const accepted = await platformHttpInvoke(orgId, clinicIssuer!);
     expect(accepted.status).toBe(200);
     await drainPlatformDurableObjects();
-    expect(await latestRoutingProviderId(orgId)).toBe("fake");
+    const routingDecision = await latestRoutingDecision(orgId);
+    expect(routingDecision.providerId).toBe("fake");
+    expect(routingDecision.policyVersion).toBe(
+      Number(ROUTING_POLICY_VERSION_2),
+    );
 
     const promoteActionId = crypto.randomUUID();
     const promote = await opsClassHRelay({
@@ -1920,7 +1971,11 @@ describe("configuration relays cross-worker", () => {
     expect(lookup.status).toBe(200);
     const lookupBody = (await lookup.json()) as Record<string, unknown>;
     expect(lookupBody.result).toBe("ok");
-    expect(lookupBody.detail).toBeTruthy();
+    expect(typeof lookupBody.detail).toBe("string");
+    const lookupDetail = JSON.parse(String(lookupBody.detail)) as {
+      envelope: unknown;
+    };
+    expect(lookupDetail.envelope).not.toBeNull();
 
     expect(await operatorActionCount()).toBe(operatorActionBefore + 1);
     for (const email of await operatorActionActorEmails()) {

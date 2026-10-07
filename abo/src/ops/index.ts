@@ -2102,26 +2102,6 @@ async function forwardPlatformRelay(
     result,
   });
 
-  if (result === "ok" && input.method === "revokeServiceKey") {
-    try {
-      await env.DB.prepare(
-        `UPDATE alert SET active = 0 WHERE alert_key = ?`,
-      )
-        .bind(`AL-23:${input.subject}`)
-        .run();
-    } catch {
-      // Signing-key alert cleanup must not block configuration relays.
-    }
-  }
-
-  if (result === "ok" && input.method === "registerServiceKey") {
-    try {
-      await env.DB.prepare(`DELETE FROM signing_key_gate WHERE id = 1`).run();
-    } catch {
-      // Gate reset must not block configuration relays.
-    }
-  }
-
   return platformResponseJson(platformResult, contractVersion);
 }
 
