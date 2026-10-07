@@ -34,7 +34,7 @@
 
 **Independent Test**: E2E-P4.10-05 and E2E-P4.10-06 in harness H-XW + H-PAY. Earlier suites stay green, and E2E-P4.10-01, E2E-P4.10-02, E2E-P4.10-03, E2E-P4.10-04, E2E-P4.10-07, E2E-P4.10-08, and E2E-P4.10-09 still pass.
 
-- [ ] T001 [US2] Add the H-PAY payout CSV fixture in `abo/test/fixtures/paymob/payout-unrecorded-chargeback.csv` — produces the committed file for the unrecorded chargeback, FR-010, FR-015, E2E-P4.10-05. Depends on nothing. Header row exactly `transaction_id,type,gross_minor,fee_minor,net_minor,settled_at`. One data row: `transaction_id` `99001` (H-PAY stub transaction id in `abo/test/stubs/paymob/worker.ts`), `type` `chargeback`, integer minor units `gross_minor` `5000`, `fee_minor` `0`, `net_minor` `5000`, `settled_at` `2026-03-15T00:00:00.000Z`. Column mapping stays in the Paymob adapter and is not frozen. Leave `abo/test/system/reconciliation.cross-worker.test.ts` uncreated.
+- [X] T001 [US2] Add the H-PAY payout CSV fixture in `abo/test/fixtures/paymob/payout-unrecorded-chargeback.csv` — produces the committed file for the unrecorded chargeback, FR-010, FR-015, E2E-P4.10-05. Depends on nothing. Header row exactly `transaction_id,type,gross_minor,fee_minor,net_minor,settled_at`. One data row: `transaction_id` `99001` (H-PAY stub transaction id in `abo/test/stubs/paymob/worker.ts`), `type` `chargeback`, integer minor units `gross_minor` `5000`, `fee_minor` `0`, `net_minor` `5000`, `settled_at` `2026-03-15T00:00:00.000Z`. Column mapping stays in the Paymob adapter and is not frozen. Leave `abo/test/system/reconciliation.cross-worker.test.ts` uncreated.
 
 **Checkpoint**: `abo/test/fixtures/paymob/payout-unrecorded-chargeback.csv` exists with that one chargeback line.
 
@@ -42,7 +42,7 @@
 
 **Independent Test**: E2E-P4.10-05 and E2E-P4.10-06 in harness H-XW + H-PAY. Earlier suites stay green, and E2E-P4.10-01, E2E-P4.10-02, E2E-P4.10-03, E2E-P4.10-04, E2E-P4.10-07, E2E-P4.10-08, and E2E-P4.10-09 still pass.
 
-- [ ] T002 [US2] Add the H-PAY payout CSV fixture in `abo/test/fixtures/paymob/payout-amount-mismatch.csv` — produces the committed file for the amount mismatch and the omitted settled payment, FR-008, FR-009, FR-015, E2E-P4.10-06. Depends on nothing. Same header as T001. One data row: `transaction_id` `99001`, `type` `payment`, `gross_minor` `1`, `fee_minor` `0`, `net_minor` `1`, `settled_at` `2026-01-31T12:00:00.000Z` (last day of a month). The file has no second payment line. Leave the reconciliation test file uncreated.
+- [X] T002 [US2] Add the H-PAY payout CSV fixture in `abo/test/fixtures/paymob/payout-amount-mismatch.csv` — produces the committed file for the amount mismatch and the omitted settled payment, FR-008, FR-009, FR-015, E2E-P4.10-06. Depends on nothing. Same header as T001. One data row: `transaction_id` `99001`, `type` `payment`, `gross_minor` `1`, `fee_minor` `0`, `net_minor` `1`, `settled_at` `2026-01-31T12:00:00.000Z` (last day of a month). The file has no second payment line. Leave the reconciliation test file uncreated.
 
 **Checkpoint**: `abo/test/fixtures/paymob/payout-amount-mismatch.csv` exists with that one payment line.
 
