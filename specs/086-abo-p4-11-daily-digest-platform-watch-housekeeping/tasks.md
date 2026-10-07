@@ -145,7 +145,7 @@ cd abo && node scripts/build-platform-for-hxw.mjs && vitest run --config vitest.
 
 **Independent Test**: E2E-P4.11-06 in harness H-XW. Earlier suites stay green, and E2E-P4.11-01, E2E-P4.11-02, E2E-P4.11-03, E2E-P4.11-04, E2E-P4.11-05, and E2E-P4.11-07 still pass.
 
-- [ ] T019 [US3] Add `insertFactLog` in `abo/src/records/append.ts` — produces the fact insert that stores `row_json`, FR-006, E2E-P4.11-06. Depends on T018. `insertFactLog` writes `row_json` as the canonical JSON whose SHA-256 is `row_sha256`. Leave the existing `INSERT INTO fact_log` call sites unchanged in this task. Leave `abo/src/records/export.ts` unchanged in this task.
+- [X] T019 [US3] Add `insertFactLog` in `abo/src/records/append.ts` — produces the fact insert that stores `row_json`, FR-006, E2E-P4.11-06. Depends on T018. `insertFactLog` writes `row_json` as the canonical JSON whose SHA-256 is `row_sha256`. Leave the existing `INSERT INTO fact_log` call sites unchanged in this task. Leave `abo/src/records/export.ts` unchanged in this task.
 
 **Checkpoint**: `insertFactLog` writes `row_json`. Existing call sites still use their current inserts. E2E-P4.11-06 still fails.
 
@@ -153,7 +153,7 @@ cd abo && node scripts/build-platform-for-hxw.mjs && vitest run --config vitest.
 
 **Independent Test**: E2E-P4.11-06 in harness H-XW. Earlier suites stay green, and E2E-P4.11-01, E2E-P4.11-02, E2E-P4.11-03, E2E-P4.11-04, E2E-P4.11-05, and E2E-P4.11-07 still pass.
 
-- [ ] T020 [US3] Add `row` to the ledger line in `abo/src/records/export.ts` — produces the replayable ledger object, FR-006, E2E-P4.11-06. Depends on T018. The `ledger/<fact_seq>.ndjson` line keeps `fact_seq`, `table`, `key`, and `row_sha256`, and adds `row` from `row_json` when present. Still one JSON line. Still no payer `name`, `email`, or `phone`. Leave `abo/src/records/append.ts` unchanged in this task.
+- [X] T020 [US3] Add `row` to the ledger line in `abo/src/records/export.ts` — produces the replayable ledger object, FR-006, E2E-P4.11-06. Depends on T018. The `ledger/<fact_seq>.ndjson` line keeps `fact_seq`, `table`, `key`, and `row_sha256`, and adds `row` from `row_json` when present. Still one JSON line. Still no payer `name`, `email`, or `phone`. Leave `abo/src/records/append.ts` unchanged in this task.
 
 **Checkpoint**: Exported ledger lines include `row` when `row_json` is present. E2E-P4.11-06 still fails.
 

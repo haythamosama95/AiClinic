@@ -5,6 +5,27 @@ export type AppendEnv = ClockEnv & {
   DB: D1Database;
 };
 
+export type FactLogEnv = {
+  DB: D1Database;
+};
+
+const textDecoder = new TextDecoder();
+
+export async function insertFactLog(
+  env: FactLogEnv,
+  table: string,
+  key: string,
+  canonicalRow: Record<string, unknown>,
+  createdAt: string,
+): Promise<D1PreparedStatement> {
+  const rowJsonBytes = canonicalize(canonicalRow);
+  const rowJson = textDecoder.decode(rowJsonBytes);
+  const rowSha256 = await sha256Hex(rowJsonBytes);
+  return env.DB.prepare(
+    `INSERT INTO fact_log ("table", key, row_sha256, row_json, created_at) VALUES (?, ?, ?, ?, ?)`,
+  ).bind(table, key, rowSha256, rowJson, createdAt);
+}
+
 export type OfferRow = {
   offer_id: string;
   code: string;
