@@ -124,7 +124,7 @@ Run that command from `e2e/fullstack/`.
 
 **Independent Test**: E2E-P5.2-01 in harness H-FS.
 
-- [ ] T014 [US1] Stop reading `ai.availability` in `backend/tests/catalog/stage-06-verify-and-handoff.sql` — produces a catalog that survives the drop, FR-011, E2E-P5.2-01. Depends on T013. Leave the other two stage-06 files for T015 and T016.
+- [X] T014 [US1] Stop reading `ai.availability` in `backend/tests/catalog/stage-06-verify-and-handoff.sql` — produces a catalog that survives the drop, FR-011, E2E-P5.2-01. Depends on T013. Leave the other two stage-06 files for T015 and T016.
 
 **Checkpoint**: `stage-06-verify-and-handoff.sql` does not read `ai.availability`. E2E-P5.2-01 still fails.
 
@@ -132,7 +132,7 @@ Run that command from `e2e/fullstack/`.
 
 **Independent Test**: E2E-P5.2-01 in harness H-FS.
 
-- [ ] T015 [US1] Stop reading `ai.availability` in `backend/tests/catalog/stage-06-happy-path-and-lifecycle.sql` — produces a catalog that survives the drop, FR-011, E2E-P5.2-01. Depends on T013. Leave `stage-06-verify-and-handoff.sql` and `stage-06-issuer-guards.sql` for T014 and T016.
+- [X] T015 [US1] Stop reading `ai.availability` in `backend/tests/catalog/stage-06-happy-path-and-lifecycle.sql` — produces a catalog that survives the drop, FR-011, E2E-P5.2-01. Depends on T013. Leave `stage-06-verify-and-handoff.sql` and `stage-06-issuer-guards.sql` for T014 and T016.
 
 **Checkpoint**: `stage-06-happy-path-and-lifecycle.sql` does not read `ai.availability`. E2E-P5.2-01 still fails.
 
@@ -140,7 +140,7 @@ Run that command from `e2e/fullstack/`.
 
 **Independent Test**: E2E-P5.2-01 in harness H-FS.
 
-- [ ] T016 [US1] Stop reading `ai.availability` in `backend/tests/catalog/stage-06-issuer-guards.sql` — produces a catalog that survives the drop, FR-011, E2E-P5.2-01. Depends on T013. Leave the other two stage-06 files for T014 and T015.
+- [X] T016 [US1] Stop reading `ai.availability` in `backend/tests/catalog/stage-06-issuer-guards.sql` — produces a catalog that survives the drop, FR-011, E2E-P5.2-01. Depends on T013. Leave the other two stage-06 files for T014 and T015.
 
 **Checkpoint**: `stage-06-issuer-guards.sql` does not read `ai.availability`. E2E-P5.2-01 still fails.
 
