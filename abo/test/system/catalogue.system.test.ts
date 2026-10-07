@@ -193,7 +193,7 @@ function emailsWithAl16(): Array<{
   subject: string;
   text: string;
 }> {
-  return getCapturedEmails().filter((message) => message.text.includes("AL-16"));
+  return getCapturedEmails().filter((message) => message.subject === "AL-16");
 }
 
 async function billingContactCount(orgId: string): Promise<number> {

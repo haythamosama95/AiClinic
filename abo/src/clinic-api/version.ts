@@ -6,6 +6,10 @@ import {
 
 export type ContractChannel = "aboClinic" | "aboConsole";
 
+export type VersionEnv = {
+  DB?: D1Database;
+};
+
 export function parseContractVersionHeader(
   request: Request,
 ): number | null {
@@ -35,14 +39,49 @@ export type VersionGateFailure = {
   response: Response;
 };
 
+async function recordChannelVersionSeen(
+  env: VersionEnv,
+  channel: ContractChannel,
+  contractVersion: number,
+  unsupported: boolean,
+): Promise<void> {
+  if (env.DB === undefined) {
+    return;
+  }
+  try {
+    await env.DB.prepare(
+      `INSERT INTO channel_version_seen (
+         channel, contract_version, received, unsupported
+       ) VALUES (?, ?, 1, ?)
+       ON CONFLICT(channel, contract_version) DO UPDATE SET
+         received = received + 1,
+         unsupported = unsupported + excluded.unsupported`,
+    )
+      .bind(channel, contractVersion, unsupported ? 1 : 0)
+      .run();
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    if (/no such table/i.test(message)) {
+      return;
+    }
+    throw error;
+  }
+}
+
 export function checkContractVersion(
   request: Request,
   channel: ContractChannel,
+  env?: VersionEnv,
 ): VersionGateSuccess | VersionGateFailure {
   const current = currentChannelVersion(channel);
   const requested = parseContractVersionHeader(request);
   const result = negotiate(current, requested);
   if (!result.ok) {
+    if (env !== undefined) {
+      void recordChannelVersionSeen(env, channel, current, true).catch(() => {
+        // Version-gate recording failures must not block the refusal.
+      });
+    }
     const body = {
       code: result.code,
       message: result.code,
@@ -59,6 +98,13 @@ export function checkContractVersion(
         },
       }),
     };
+  }
+  if (env !== undefined) {
+    void recordChannelVersionSeen(env, channel, result.version, false).catch(
+      () => {
+        // Version-gate recording failures must not block the request.
+      },
+    );
   }
   return { ok: true, version: result.version, current };
 }

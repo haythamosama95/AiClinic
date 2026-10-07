@@ -34,7 +34,10 @@ export type AlertCode =
   | "AL-08"
   | "AL-09"
   | "AL-10"
+  | "AL-14"
+  | "AL-15"
   | "AL-16"
+  | "AL-22"
   | "AL-23";
 
 type AlertRow = {
@@ -55,7 +58,7 @@ function nextSendAtForCode(
   code: string,
   nowMs: number,
 ): string | null {
-  if (code === "AL-16" || code === "AL-10") {
+  if (code === "AL-16" || code === "AL-10" || code === "AL-14") {
     return new Date(nowMs + ONE_DAY_MS).toISOString();
   }
   if (
@@ -63,6 +66,8 @@ function nextSendAtForCode(
     code === "AL-02" ||
     code === "AL-04" ||
     code === "AL-07" ||
+    code === "AL-15" ||
+    code === "AL-22" ||
     code === "AL-23"
   ) {
     return new Date(nowMs + ONE_HOUR_MS).toISOString();
