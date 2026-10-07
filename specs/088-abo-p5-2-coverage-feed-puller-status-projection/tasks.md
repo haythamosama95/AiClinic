@@ -244,7 +244,7 @@ node --import tsx --test test/p5-2.test.mjs
 
 **Independent Test**: E2E-P5.2-01 in harness H-FS.
 
-- [ ] T032 [US1] Create `specs/088-abo-p5-2-coverage-feed-puller-status-projection/quickstart.md` from the plan's quickstart outline — produces this half's quickstart, FR-001, FR-002, FR-003, FR-004, FR-005, FR-006, FR-007, FR-011, FR-012, FR-013, FR-014, FR-015, FR-016, E2E-P5.2-01, E2E-P5.2-02, E2E-P5.2-05, E2E-P5.2-06, E2E-P5.2-07, E2E-P5.2-08, E2E-P5.2-10. Depends on T031. Sections: (1) what was implemented — the 30-second pull, the projection, `request_ai_status_refresh`, available/active and `stale` on `get_ai_status`, and the dropped availability flag; (2) files added or modified — the Files paths this half edits; (3) the harness command below, and no earlier-unit files, no combined counts, and no full-suite command; (4) the entry point → module chain per E2E id below.
+- [X] T032 [US1] Create `specs/088-abo-p5-2-coverage-feed-puller-status-projection/quickstart.md` from the plan's quickstart outline — produces this half's quickstart, FR-001, FR-002, FR-003, FR-004, FR-005, FR-006, FR-007, FR-011, FR-012, FR-013, FR-014, FR-015, FR-016, E2E-P5.2-01, E2E-P5.2-02, E2E-P5.2-05, E2E-P5.2-06, E2E-P5.2-07, E2E-P5.2-08, E2E-P5.2-10. Depends on T031. Sections: (1) what was implemented — the 30-second pull, the projection, `request_ai_status_refresh`, available/active and `stale` on `get_ai_status`, and the dropped availability flag; (2) files added or modified — the Files paths this half edits; (3) the harness command below, and no earlier-unit files, no combined counts, and no full-suite command; (4) the entry point → module chain per E2E id below.
 
 ```bash
 node --import tsx --test test/p5-2.test.mjs
