@@ -34,7 +34,7 @@
 
 **Independent Test**: E2E-P4.6-01, E2E-P4.6-02, E2E-P4.6-03, and E2E-P4.6-07 in harness H-XW.
 
-- [ ] T001 [US1] Add the ops test include in `abo/vitest.cross-worker.config.ts` — produces the H-XW include for this unit, FR-001, E2E-P4.6-01. Depends on nothing. Add `test/system/ops.cross-worker.test.ts` to `test.include`. The unit command still names only that file. Leave `TEST_CLOCK` off production and staging wrangler envs. Leave `abo/test/system/hxw-access-fixture.ts` unchanged in this task.
+- [X] T001 [US1] Add the ops test include in `abo/vitest.cross-worker.config.ts` — produces the H-XW include for this unit, FR-001, E2E-P4.6-01. Depends on nothing. Add `test/system/ops.cross-worker.test.ts` to `test.include`. The unit command still names only that file. Leave `TEST_CLOCK` off production and staging wrangler envs. Leave `abo/test/system/hxw-access-fixture.ts` unchanged in this task.
 
 **Checkpoint**: The include lists `test/system/ops.cross-worker.test.ts`. That file does not exist yet.
 
@@ -42,7 +42,7 @@
 
 **Independent Test**: E2E-P4.6-04 and E2E-P4.6-05 in harness H-XW.
 
-- [ ] T002 [US2] Teach `mintHxwVendorAccessJwt` in `abo/test/system/hxw-access-fixture.ts` to set `jti` and accept an issuer override — produces the Access JWT the ops tests mint, FR-001, FR-007, E2E-P4.6-01, E2E-P4.6-04. Depends on nothing. Put `jti` on the payload (a UUID when the caller omits it). Accept an optional `iss` override for the bad-issuer case. Default `iss` stays `https://access.test`. `verifyAccessJwt` ignores the extra `jti` claim, so earlier suites that mint with this helper still verify. Leave `abo/vitest.cross-worker.config.ts` unchanged in this task.
+- [X] T002 [US2] Teach `mintHxwVendorAccessJwt` in `abo/test/system/hxw-access-fixture.ts` to set `jti` and accept an issuer override — produces the Access JWT the ops tests mint, FR-001, FR-007, E2E-P4.6-01, E2E-P4.6-04. Depends on nothing. Put `jti` on the payload (a UUID when the caller omits it). Accept an optional `iss` override for the bad-issuer case. Default `iss` stays `https://access.test`. `verifyAccessJwt` ignores the extra `jti` claim, so earlier suites that mint with this helper still verify. Leave `abo/vitest.cross-worker.config.ts` unchanged in this task.
 
 **Checkpoint**: Minted vendor Access JWTs carry `jti`. `abo/test/system/ops.cross-worker.test.ts` does not exist yet.
 

@@ -60,6 +60,7 @@ export default defineWorkersConfig({
       "test/system/checkout.cross-worker.test.ts",
       "test/system/coverage-view.cross-worker.test.ts",
       "test/system/grant.cross-worker.test.ts",
+      "test/system/ops.cross-worker.test.ts",
       "test/system/sweeps.cross-worker.test.ts",
     ],
     fileParallelism: false,

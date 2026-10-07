@@ -55,6 +55,7 @@ export async function mintHxwVendorAccessJwt(
   aud: string,
   email: string,
   nowSeconds?: number,
+  options?: { iss?: string },
 ): Promise<string> {
   const now = nowSeconds ?? Math.floor(Date.now() / 1000);
   const header = {
@@ -63,9 +64,10 @@ export async function mintHxwVendorAccessJwt(
     typ: "JWT",
   };
   const payload = {
-    iss: ACCESS_ISSUER,
+    iss: options?.iss ?? ACCESS_ISSUER,
     aud,
     email,
+    jti: crypto.randomUUID(),
     iat: now - 60,
     exp: now + 3600,
   };
