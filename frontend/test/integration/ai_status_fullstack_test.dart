@@ -31,15 +31,16 @@ void main() {
   group('E2E-P6.1-01', () {
     test('E2E-P6.1-01 staff session reads active status via get_ai_status without ABO calls', () async {
       final clinic = await ctx.ensureClinic(label: 'p61_status');
-      final installationId = 'p61-${clinic.suffix}';
+      final installationId = _deterministicUuid('b61', clinic.suffix);
+
+      final sessions = RoleSessions(ctx, clinic);
+      await sessions.signInAs(StaffRole.doctor);
+
       await _seedActiveCoverage(
         ctx: ctx,
         orgId: clinic.organizationId,
         installationId: installationId,
       );
-
-      final sessions = RoleSessions(ctx, clinic);
-      await sessions.signInAs(StaffRole.doctor);
 
       final client = LiveSupabaseHarness.client;
       final directStatus = await client.rpc(
@@ -82,6 +83,16 @@ int _readBackendRpcVersion() {
   return int.parse(match!.group(1)!);
 }
 
+String _deterministicUuid(String prefix, String label) {
+  final hash = '$prefix$label'.hashCode.abs();
+  final p1 = hash.toRadixString(16).padLeft(8, '0').substring(0, 8);
+  final p2 = (hash >> 4).toRadixString(16).padLeft(4, '0').substring(0, 4);
+  final p3 = (hash >> 8).toRadixString(16).padLeft(3, '0').substring(0, 3);
+  final p4 = (hash >> 12).toRadixString(16).padLeft(3, '0').substring(0, 3);
+  final p5 = hash.toRadixString(16).padLeft(12, '0').substring(0, 12);
+  return '$p1-$p2-4$p3-8$p4-$p5';
+}
+
 Future<void> _seedActiveCoverage({
   required BoundaryTestContext ctx,
   required String orgId,
@@ -89,6 +100,20 @@ Future<void> _seedActiveCoverage({
 }) async {
   await ctx.sql.execute('''
 DELETE FROM ai_internal.clinic_ai_coverage WHERE organization_id = '$orgId'::uuid;
+
+INSERT INTO ai_internal.membership (user_id, organization_id, role)
+SELECT sm.auth_user_id, '$orgId'::uuid, sm.role
+FROM public.staff_members sm
+JOIN public.staff_branch_assignments sba
+  ON sba.staff_member_id = sm.id
+  AND sba.is_deleted = false
+JOIN public.branches b
+  ON b.id = sba.branch_id
+  AND b.organization_id = '$orgId'::uuid
+  AND b.is_deleted = false
+WHERE sm.is_deleted = false
+  AND sm.is_active = true
+ON CONFLICT (user_id, organization_id) DO NOTHING;
 
 INSERT INTO ai_internal.clinic_ai_coverage (
   organization_id,
@@ -116,7 +141,7 @@ INSERT INTO ai_internal.clinic_ai_coverage (
   1,
   1,
   'active',
-  'none',
+  NULL,
   'TERM-P61',
   'P6.1 Test Plan',
   now() - interval '30 days',
