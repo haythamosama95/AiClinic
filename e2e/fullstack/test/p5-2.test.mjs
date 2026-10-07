@@ -1077,6 +1077,26 @@ function seedAboOffers() {
   `);
 }
 
+function ensurePlatformInstallation(orgId, installationId) {
+  const createdAt = new Date().toISOString();
+  runPlatformD1Command(`
+    INSERT OR IGNORE INTO installation (
+      installation_id, org_id, status, display_name, region, enrolled_at
+    ) VALUES (
+      ${sqlLiteral(installationId)},
+      ${sqlLiteral(orgId)},
+      'active', '', '', ${sqlLiteral(createdAt)}
+    );
+  `);
+}
+
+function clearClinicAiCoverage(orgId) {
+  psqlQuery(`
+    DELETE FROM ai_internal.clinic_ai_coverage
+    WHERE organization_id = '${orgId}'
+  `);
+}
+
 function ensurePlatformGrantPrerequisites(orgId, installationId) {
   const createdAt = new Date().toISOString();
   runPlatformD1Command(`
@@ -1254,20 +1274,33 @@ async function waitForSupabaseReady() {
   });
 }
 
-async function waitForPlatformGrantEvent(orgId, { timeoutMs = 30_000 } = {}) {
+async function waitForPlatformGrantEvent(
+  orgId,
+  { eventId, timeoutMs = 30_000 } = {},
+) {
   const deadline = Date.now() + timeoutMs;
   while (Date.now() < deadline) {
     const row = queryD1One(
-      `SELECT event_id FROM coverage_event
-       WHERE org_id = ${sqlLiteral(orgId)} AND kind = 'grant_applied'
-       ORDER BY feed_seq DESC LIMIT 1`,
+      eventId
+        ? `SELECT event_id FROM coverage_event
+           WHERE org_id = ${sqlLiteral(orgId)}
+             AND kind = 'grant_applied'
+             AND event_id = ${sqlLiteral(eventId)}
+           LIMIT 1`
+        : `SELECT event_id FROM coverage_event
+           WHERE org_id = ${sqlLiteral(orgId)} AND kind = 'grant_applied'
+           ORDER BY feed_seq DESC LIMIT 1`,
     );
     if (row?.event_id) {
       return row.event_id;
     }
     await new Promise((resolve) => setTimeout(resolve, 250));
   }
-  throw new Error(`Timed out waiting for grant_applied on platform for ${orgId}`);
+  throw new Error(
+    eventId
+      ? `Timed out waiting for grant_applied ${eventId} on platform for ${orgId}`
+      : `Timed out waiting for grant_applied on platform for ${orgId}`,
+  );
 }
 
 before(async () => {
@@ -1422,7 +1455,9 @@ test("E2E-P5.2-02 Refresh starts a pull and a second call within 10 seconds is R
 });
 
 test("E2E-P5.2-05 Epoch 2 sequence 1 replaces epoch 1 sequence 9", async () => {
-  const { orgId, installationId } = stack.clinic;
+  const { orgId } = stack.clinic;
+  const installationId = crypto.randomUUID();
+  ensurePlatformInstallation(orgId, installationId);
 
   insertGrantAppliedEvent({
     orgId,
@@ -1473,10 +1508,7 @@ test("E2E-P5.2-05 Epoch 2 sequence 1 replaces epoch 1 sequence 9", async () => {
 });
 
 test("E2E-P5.2-06 Unsupported feed version keeps the cursor and does not write the projection", async () => {
-  const { orgId, installationId, administrator } = stack.clinic;
-
-  insertGrantAppliedEvent({ orgId, installationId, bindingEpoch: 1, clinicSeq: 1 });
-  await runTwoPhaseCoveragePull();
+  const { orgId, administrator } = stack.clinic;
 
   const projectionBefore = readClinicAiCoverage(orgId);
   assert.ok(projectionBefore, "baseline projection should exist");
@@ -1548,10 +1580,7 @@ test("E2E-P5.2-07 Disabled pull is stale and feedConsumerHealth shows the lag", 
 });
 
 test("E2E-P5.2-08 Cursor reset to 0 reproduces the projection", async () => {
-  const { orgId, installationId } = stack.clinic;
-
-  insertGrantAppliedEvent({ orgId, installationId, bindingEpoch: 1, clinicSeq: 1 });
-  await runTwoPhaseCoveragePull();
+  const { orgId } = stack.clinic;
 
   const projectionBefore = readClinicAiCoverage(orgId);
   assert.ok(projectionBefore, "baseline projection should exist");
@@ -1568,10 +1597,12 @@ test("E2E-P5.2-08 Cursor reset to 0 reproduces the projection", async () => {
 });
 
 test("E2E-P5.2-10 Supabase stopped during a payment still provisions and status catches up", async () => {
-  const { orgId, installationId, administrator } = stack.clinic;
+  const { orgId, administrator } = stack.clinic;
+  const paymentInstallationId = crypto.randomUUID();
 
+  clearClinicAiCoverage(orgId);
   seedAboOffers();
-  ensurePlatformGrantPrerequisites(orgId, installationId);
+  ensurePlatformGrantPrerequisites(orgId, paymentInstallationId);
 
   const billing = await rpc(administrator, "issue_billing_token", {
     p_contract_version: 1,
@@ -1584,14 +1615,26 @@ test("E2E-P5.2-10 Supabase stopped during a payment still provisions and status 
   assert.ok(checkoutId);
   await syncPaymobForCheckout(checkoutId);
 
+  const expectedGrantEventId = `${paymentInstallationId}:1`;
+
   stopSupabase();
   try {
     await postPaymobProcessedCallback(checkoutId);
-    await waitForPlatformGrantEvent(orgId);
+    await waitForPlatformGrantEvent(orgId, { eventId: expectedGrantEventId });
   } finally {
     startSupabase();
     await waitForSupabaseReady();
   }
+
+  const statusBeforePull = await rpc(administrator, "get_ai_status", {
+    p_contract_version: 1,
+  });
+  assert.equal(statusBeforePull.success, true);
+  assert.equal(
+    statusBeforePull.data.available,
+    false,
+    "projection should be absent before the post-restart pull",
+  );
 
   await runTwoPhaseCoveragePull();
 
@@ -1603,4 +1646,12 @@ test("E2E-P5.2-10 Supabase stopped during a payment still provisions and status 
   assert.equal(status.success, true);
   assert.equal(status.data.available, true);
   assert.equal(status.data.state, "active");
+
+  const coverage = readClinicAiCoverage(orgId);
+  assert.ok(coverage, "payment grant should project clinic coverage");
+  assert.equal(
+    coverage.plan_display_name,
+    "Clinic Pro",
+    "status should reflect the paid grant, not an earlier fixture",
+  );
 });
