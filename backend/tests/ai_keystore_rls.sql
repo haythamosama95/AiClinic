@@ -914,19 +914,14 @@ BEGIN
 
   PERFORM pg_temp.set_authenticated_session(v_doctor_user);
 
-  v_result := public.enroll_installation_keypair();
-  v_enroll_ok := (NOT v_result.success) AND v_result.error_code = 'FORBIDDEN';
-
-  v_result := public.rotate_installation_key();
-  v_rotate_ok := (NOT v_result.success) AND v_result.error_code = 'FORBIDDEN';
-
-  v_result := public.revoke_installation_key('any-kid');
-  v_revoke_ok := (NOT v_result.success) AND v_result.error_code = 'FORBIDDEN';
+  v_enroll_ok := to_regprocedure('public.enroll_installation_keypair()') IS NULL;
+  v_rotate_ok := to_regprocedure('public.rotate_installation_key()') IS NULL;
+  v_revoke_ok := to_regprocedure('public.revoke_installation_key(text)') IS NULL;
 
   v_passed := v_enroll_ok AND v_rotate_ok AND v_revoke_ok;
-  v_detail := 'enroll_forbidden=' || v_enroll_ok::text
-    || ' rotate_forbidden=' || v_rotate_ok::text
-    || ' revoke_forbidden=' || v_revoke_ok::text;
+  v_detail := 'enroll_absent=' || v_enroll_ok::text
+    || ' rotate_absent=' || v_rotate_ok::text
+    || ' revoke_absent=' || v_revoke_ok::text;
 
   PERFORM set_config('role', 'postgres', true);
   INSERT INTO ai_keystore_rls_results VALUES (
