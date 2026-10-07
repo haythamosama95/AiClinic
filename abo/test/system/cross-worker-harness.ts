@@ -590,7 +590,7 @@ export async function setupPlatformCoverageFeed(orgId: string): Promise<void> {
     .run();
 }
 
-async function ensureGrantTenantBinding(orgId: string): Promise<void> {
+export async function ensureGrantTenantBinding(orgId: string): Promise<void> {
   const existing = await env.PLATFORM_DB.prepare(
     `SELECT installation_id FROM tenant_binding
      WHERE org_id = ? AND status = 'active'`,
@@ -894,6 +894,9 @@ async function clearPlatformTransactionalTables(): Promise<void> {
   for (const table of [
     "grant_void",
     "coverage_event",
+    "capability_grant",
+    "kill_switch",
+    "control_audit",
     "tenant_binding",
     "installation",
   ]) {

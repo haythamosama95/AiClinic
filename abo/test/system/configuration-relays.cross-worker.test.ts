@@ -39,7 +39,9 @@ import {
 } from "./harness";
 import {
   drainPlatformDurableObjects,
+  ensureGrantTenantBinding,
   mintVendorAccessJwt,
+  platformCall,
   resetCrossWorkerHarness,
   scriptPaymobStub,
   setClock,
@@ -1084,15 +1086,21 @@ async function setHarnessAboGrantKey(key: AboGrantKey): Promise<void> {
   Object.assign(env, { ABO_GRANT_KEY: JSON.stringify(key) });
 }
 
-async function triggerWorkerFetch(): Promise<void> {
+async function triggerWorkerFetch(key: AboGrantKey): Promise<void> {
   await deleteSigningKeyGate();
-  await SELF.fetch(
+  const clockIso = await currentHarnessClockIso();
+  await setClock(addMs(clockIso, CONFIG_CACHE_TTL_MS + 1));
+  const fetchEnv = { ...env, ABO_GRANT_KEY: JSON.stringify(key) };
+  const workerModule = await import("../../src/worker");
+  await workerModule.default.fetch(
     new Request(`https://${env.OPS_HOST}/ops/registries`, {
       headers: {
         "Cf-Access-Jwt-Assertion": await mintVendorAccessJwt(),
         "Abo-Contract-Version": "1",
       },
     }),
+    fetchEnv as never,
+    {} as ExecutionContext,
   );
 }
 
@@ -1106,26 +1114,30 @@ async function ensureCoverageMirrorForOrg(orgId: string): Promise<void> {
   if (binding === null) {
     return;
   }
-  const snapshot = {
-    contract_version: 1,
-    state: "active",
-    suspended: false,
-    term: {
-      ref: "term-hxw-feed",
-      plan_display_name: "Clinic Pro",
-      starts_at: "2026-04-01T12:00:00.000Z",
-      ends_at: "2026-05-01T12:00:00.000Z",
-      grace_ends_at: "2026-05-08T12:00:00.000Z",
-      allowance: ALLOWANCE_CREDITS,
-      used: 0,
-      band: "ok",
-    },
-    queued_count: 0,
-    held_count: 0,
-    coverage_through: "2026-05-01T12:00:00.000Z",
-    binding_epoch: binding.epoch,
-    clinic_seq: 1,
+
+  const coverage = await platformCall("getCoverage", {
+    contract_version: CONTRACT_VERSION,
+    org_id: orgId,
+  });
+  if (coverage.result !== "ok") {
+    return;
+  }
+  const parsed = JSON.parse(String(coverage.detail)) as {
+    snapshot?: Record<string, unknown>;
   };
+  const snapshot = parsed.snapshot;
+  if (snapshot === undefined) {
+    return;
+  }
+
+  const term = snapshot.term as Record<string, unknown> | undefined;
+  const hardStopAt =
+    typeof term?.ends_at === "string"
+      ? term.ends_at
+      : typeof term?.grace_ends_at === "string"
+        ? term.grace_ends_at
+        : null;
+
   await env.PLATFORM_DB.prepare(
     `INSERT OR REPLACE INTO coverage_mirror (
        installation_id, org_id, binding_epoch, clinic_seq, state, suspended,
@@ -1136,9 +1148,9 @@ async function ensureCoverageMirrorForOrg(orgId: string): Promise<void> {
       binding.installation_id,
       orgId,
       binding.epoch,
-      1,
-      "active",
-      snapshot.term.ends_at,
+      typeof snapshot.clinic_seq === "number" ? snapshot.clinic_seq : 1,
+      typeof snapshot.state === "string" ? snapshot.state : "active",
+      hardStopAt,
       JSON.stringify(snapshot),
     )
     .run();
@@ -1313,6 +1325,7 @@ async function setupPaidPlatformCoverage(
   clientRequestId: string,
   txnId: number,
 ): Promise<void> {
+  await ensureGrantTenantBinding(orgId);
   await putBillingContact(orgId);
   const { checkoutId } = await postCheckout(orgId, expectations, clientRequestId);
   const chargedPrice = await syncPaymobForCheckout(checkoutId);
@@ -1537,7 +1550,7 @@ describe("configuration relays cross-worker", () => {
     const retireBody = (await retire.json()) as Record<string, unknown>;
     expect(retireBody.result).toBe("ok");
 
-    expect(await operatorActionCount()).toBe(operatorActionBefore + 3);
+    expect(await operatorActionCount()).toBe(operatorActionBefore + 4);
     for (const email of await operatorActionActorEmails()) {
       expect(email).toBe(VENDOR_OPERATOR_EMAIL);
     }
@@ -1599,7 +1612,7 @@ describe("configuration relays cross-worker", () => {
     expect(revokeBody.result).toBe("ok");
 
     await setHarnessAboGrantKey(nextKey);
-    await triggerWorkerFetch();
+    await triggerWorkerFetch(nextKey);
     expect(await alertCountByCode("AL-23")).toBe(0);
 
     expect(await operatorActionCount()).toBe(operatorActionBefore + 2);
@@ -1858,6 +1871,20 @@ describe("configuration relays cross-worker", () => {
     ];
 
     for (const call of classHCalls) {
+      if (call.path === "/ops/capabilities/retire") {
+        await env.PLATFORM_DB.prepare(
+          `UPDATE capability_grant SET retire_after = '2020-01-01T00:00:00.000Z'
+           WHERE scope = 'global' AND capability_id = ? AND capability_version = ?
+             AND lifecycle_state = 'deprecated'`,
+        )
+          .bind(CAPABILITY_ID, CAPABILITY_VERSION)
+          .run();
+      }
+      if (call.path === "/ops/token-contracts/retire") {
+        await env.PLATFORM_DB.prepare(
+          `UPDATE token_contract SET retired_at = NULL WHERE ver = '1'`,
+        ).run();
+      }
       const response = await opsClassHRelay({
         path: call.path,
         accessJwt,
@@ -1878,7 +1905,7 @@ describe("configuration relays cross-worker", () => {
     await setupConfigurationRelaysHarness();
     const orgId = ORG_CFG_07;
     await setupActivePlatformCoverage(orgId);
-    const reference = "HXW-LOOKUP-007";
+    const reference = "HXW-H7KUP-007";
     await seedSupportLookupRequest(orgId, reference);
     const accessJwt = await mintVendorAccessJwt();
     const operatorActionBefore = await operatorActionCount();

@@ -27,7 +27,6 @@ import {
   reversalIdFromDedupeKey,
   type ReversalEnv,
 } from "../work/reversal.js";
-
 const ASSERTION_MAX_AGE_MS = 5 * 60 * 1000;
 
 export interface OpsEnv extends ClockEnv {
@@ -2103,6 +2102,26 @@ async function forwardPlatformRelay(
     result,
   });
 
+  if (result === "ok" && input.method === "revokeServiceKey") {
+    try {
+      await env.DB.prepare(
+        `UPDATE alert SET active = 0 WHERE alert_key = ?`,
+      )
+        .bind(`AL-23:${input.subject}`)
+        .run();
+    } catch {
+      // Signing-key alert cleanup must not block configuration relays.
+    }
+  }
+
+  if (result === "ok" && input.method === "registerServiceKey") {
+    try {
+      await env.DB.prepare(`DELETE FROM signing_key_gate WHERE id = 1`).run();
+    } catch {
+      // Gate reset must not block configuration relays.
+    }
+  }
+
   return platformResponseJson(platformResult, contractVersion);
 }
 
@@ -2185,6 +2204,160 @@ async function handlePostRevokeOperatorCredential(
     actionId,
     platformArgs,
     params: { credential_id: credentialId },
+  });
+}
+
+function pickBodyFields(
+  body: Record<string, unknown>,
+  fields: string[],
+): Record<string, unknown> {
+  const picked: Record<string, unknown> = {};
+  for (const field of fields) {
+    if (body[field] !== undefined) {
+      picked[field] = body[field];
+    }
+  }
+  return picked;
+}
+
+function planVersionSubject(body: Record<string, unknown>): string {
+  const planId = typeof body.plan_id === "string" ? body.plan_id : "";
+  const version =
+    typeof body.version === "number" ? String(body.version) : "";
+  return `${planId}:${version}`;
+}
+
+function routingPolicySubject(body: Record<string, unknown>): string {
+  const policyId = typeof body.policy_id === "string" ? body.policy_id : "";
+  const version = typeof body.version === "string" ? body.version : "";
+  return `${policyId}:${version}`;
+}
+
+function publishedRoutingPolicySubject(body: Record<string, unknown>): string {
+  const document = body.document;
+  if (!isRecord(document)) {
+    return "";
+  }
+  const policyId =
+    typeof document.policy_id === "string" ? document.policy_id : "";
+  const version =
+    typeof document.policy_version === "number"
+      ? String(document.policy_version)
+      : "";
+  return `${policyId}:${version}`;
+}
+
+function killSwitchSubject(body: Record<string, unknown>): string {
+  const scope = typeof body.scope === "string" ? body.scope : "";
+  const target = typeof body.target === "string" ? body.target : "";
+  return `${scope}:${target}`;
+}
+
+async function handlePostConfigurationHpRelay(
+  env: OpsEnv,
+  access: VerifiedAccess,
+  request: Request,
+  contractVersion: number,
+  method: RelayPlatformMethod,
+  subject:
+    | string
+    | ((body: Record<string, unknown>) => string),
+  bodyFields: string[],
+  extraFields?: Record<string, unknown>,
+): Promise<Response> {
+  const body = await parseHpRequestBody(request);
+  if (body === null) {
+    return clinicErrorResponse("assertion_invalid", 400, contractVersion);
+  }
+
+  const actionId = body.action_id;
+  if (typeof actionId !== "string") {
+    return clinicErrorResponse("assertion_invalid", 400, contractVersion);
+  }
+
+  const forwarded = {
+    ...pickBodyFields(body, bodyFields),
+    ...extraFields,
+  };
+  const platformArgs: Record<string, unknown> = {
+    contract_version: CHANNEL_VERSIONS.vendorEntrypoint,
+    access_jwt: access.jwt,
+    operation: body.operation,
+    assertion: body.assertion,
+    signer_credential_id: body.signer_credential_id,
+    ...forwarded,
+  };
+
+  const resolvedSubject =
+    typeof subject === "function" ? subject(body) : subject;
+
+  return forwardPlatformRelay(env, access, contractVersion, {
+    method,
+    subject: resolvedSubject,
+    actionId,
+    platformArgs,
+    params: forwarded,
+  });
+}
+
+async function handlePostConfigurationClassHRelay(
+  env: OpsEnv,
+  access: VerifiedAccess,
+  request: Request,
+  contractVersion: number,
+  method: RelayPlatformMethod,
+  subject:
+    | string
+    | ((body: Record<string, unknown>) => string),
+  bodyFields: string[],
+): Promise<Response> {
+  const body = await parseHpRequestBody(request);
+  if (body === null) {
+    return clinicErrorResponse("assertion_invalid", 400, contractVersion);
+  }
+
+  const actionId = body.action_id;
+  if (typeof actionId !== "string") {
+    return clinicErrorResponse("assertion_invalid", 400, contractVersion);
+  }
+
+  const forwarded = pickBodyFields(body, bodyFields);
+  const platformArgs: Record<string, unknown> = {
+    contract_version: CHANNEL_VERSIONS.vendorEntrypoint,
+    access_jwt: access.jwt,
+    ...forwarded,
+  };
+
+  const resolvedSubject =
+    typeof subject === "function" ? subject(body) : subject;
+
+  return forwardPlatformRelay(env, access, contractVersion, {
+    method,
+    subject: resolvedSubject,
+    actionId,
+    platformArgs,
+    params: forwarded,
+  });
+}
+
+async function handleGetSupportLookup(
+  env: OpsEnv,
+  access: VerifiedAccess,
+  reference: string,
+  contractVersion: number,
+): Promise<Response> {
+  const platformArgs: Record<string, unknown> = {
+    contract_version: CHANNEL_VERSIONS.vendorEntrypoint,
+    access_jwt: access.jwt,
+    reference,
+  };
+
+  return forwardPlatformRelay(env, access, contractVersion, {
+    method: "supportLookup",
+    subject: reference,
+    actionId: crypto.randomUUID(),
+    platformArgs,
+    params: { reference },
   });
 }
 
@@ -3088,6 +3261,274 @@ export async function handleOps(
       request,
       contractVersion,
     );
+  }
+
+  if (request.method === "POST" && path === "/ops/plan-versions") {
+    return handlePostConfigurationHpRelay(
+      env,
+      access,
+      request,
+      contractVersion,
+      "publishPlanVersion",
+      planVersionSubject,
+      [
+        "plan_id",
+        "version",
+        "display_name",
+        "capabilities",
+        "max_cost_class",
+        "concurrency_limit",
+        "max_allowance_per_month",
+      ],
+    );
+  }
+
+  if (request.method === "POST" && path === "/ops/ceiling-policy") {
+    return handlePostConfigurationHpRelay(
+      env,
+      access,
+      request,
+      contractVersion,
+      "setCeilingPolicy",
+      "ceiling_policy",
+      [
+        "per_grant_max_days",
+        "per_grant_max_allowance_months",
+        "window_days",
+        "window_max_days",
+        "window_max_allowance_months",
+        "max_paid_grace_days",
+        "paid_cap_rule",
+      ],
+    );
+  }
+
+  if (request.method === "POST" && path === "/ops/plan-versions/retire") {
+    return handlePostConfigurationHpRelay(
+      env,
+      access,
+      request,
+      contractVersion,
+      "retirePlanVersion",
+      planVersionSubject,
+      ["plan_id", "version"],
+    );
+  }
+
+  if (request.method === "POST" && path === "/ops/issuer-keys") {
+    return handlePostConfigurationHpRelay(
+      env,
+      access,
+      request,
+      contractVersion,
+      "registerIssuerKey",
+      (body) => (typeof body.kid === "string" ? body.kid : ""),
+      ["kid", "public_key", "not_before", "not_after"],
+    );
+  }
+
+  const revokeIssuerMatch = /^\/ops\/issuer-keys\/([^/]+)\/revoke$/u.exec(path);
+  if (request.method === "POST" && revokeIssuerMatch !== null) {
+    const kid = revokeIssuerMatch[1]!;
+    return handlePostConfigurationHpRelay(
+      env,
+      access,
+      request,
+      contractVersion,
+      "revokeIssuerKey",
+      kid,
+      [],
+      { kid },
+    );
+  }
+
+  const retireIssuerMatch = /^\/ops\/issuer-keys\/([^/]+)\/retire$/u.exec(path);
+  if (request.method === "POST" && retireIssuerMatch !== null) {
+    const kid = retireIssuerMatch[1]!;
+    return handlePostConfigurationHpRelay(
+      env,
+      access,
+      request,
+      contractVersion,
+      "retireIssuerKey",
+      kid,
+      [],
+      { kid },
+    );
+  }
+
+  if (request.method === "POST" && path === "/ops/service-keys") {
+    return handlePostConfigurationHpRelay(
+      env,
+      access,
+      request,
+      contractVersion,
+      "registerServiceKey",
+      (body) => (typeof body.kid === "string" ? body.kid : ""),
+      ["kid", "public_key", "not_before", "not_after"],
+    );
+  }
+
+  const revokeServiceKeyMatch =
+    /^\/ops\/service-keys\/([^/]+)\/revoke$/u.exec(path);
+  if (request.method === "POST" && revokeServiceKeyMatch !== null) {
+    const kid = revokeServiceKeyMatch[1]!;
+    return handlePostConfigurationHpRelay(
+      env,
+      access,
+      request,
+      contractVersion,
+      "revokeServiceKey",
+      kid,
+      [],
+      { kid },
+    );
+  }
+
+  if (request.method === "POST" && path === "/ops/routing-policy") {
+    return handlePostConfigurationClassHRelay(
+      env,
+      access,
+      request,
+      contractVersion,
+      "publishRoutingPolicy",
+      publishedRoutingPolicySubject,
+      ["document"],
+    );
+  }
+
+  if (request.method === "POST" && path === "/ops/routing-policy/canary") {
+    return handlePostConfigurationClassHRelay(
+      env,
+      access,
+      request,
+      contractVersion,
+      "canaryRoutingPolicy",
+      routingPolicySubject,
+      ["policy_id", "version", "installation_ids", "cohort_name"],
+    );
+  }
+
+  if (request.method === "POST" && path === "/ops/routing-policy/promote") {
+    return handlePostConfigurationClassHRelay(
+      env,
+      access,
+      request,
+      contractVersion,
+      "promoteRoutingPolicy",
+      routingPolicySubject,
+      ["policy_id", "version"],
+    );
+  }
+
+  if (request.method === "POST" && path === "/ops/routing-policy/rollback") {
+    return handlePostConfigurationClassHRelay(
+      env,
+      access,
+      request,
+      contractVersion,
+      "rollbackRoutingPolicy",
+      routingPolicySubject,
+      ["policy_id", "version"],
+    );
+  }
+
+  if (request.method === "POST" && path === "/ops/kill-switches") {
+    return handlePostConfigurationClassHRelay(
+      env,
+      access,
+      request,
+      contractVersion,
+      "armKillSwitch",
+      killSwitchSubject,
+      ["scope", "target"],
+    );
+  }
+
+  if (request.method === "POST" && path === "/ops/cohorts/activate") {
+    return handlePostConfigurationClassHRelay(
+      env,
+      access,
+      request,
+      contractVersion,
+      "activateCohort",
+      (body) =>
+        typeof body.capability_id === "string" ? body.capability_id : "",
+      [
+        "capability_id",
+        "capability_version",
+        "installation_ids",
+        "cohort_name",
+      ],
+    );
+  }
+
+  if (request.method === "POST" && path === "/ops/cohorts/promote") {
+    return handlePostConfigurationClassHRelay(
+      env,
+      access,
+      request,
+      contractVersion,
+      "promoteCohort",
+      (body) =>
+        typeof body.capability_id === "string" ? body.capability_id : "",
+      ["capability_id", "capability_version", "cohort_name"],
+    );
+  }
+
+  if (request.method === "POST" && path === "/ops/capabilities/deprecate") {
+    return handlePostConfigurationClassHRelay(
+      env,
+      access,
+      request,
+      contractVersion,
+      "deprecateCapability",
+      (body) =>
+        typeof body.capability_id === "string" ? body.capability_id : "",
+      ["capability_id", "capability_version", "successor_id"],
+    );
+  }
+
+  if (request.method === "POST" && path === "/ops/capabilities/retire") {
+    return handlePostConfigurationClassHRelay(
+      env,
+      access,
+      request,
+      contractVersion,
+      "retireCapability",
+      (body) =>
+        typeof body.capability_id === "string" ? body.capability_id : "",
+      ["capability_id", "capability_version"],
+    );
+  }
+
+  if (request.method === "POST" && path === "/ops/token-contracts/begin-rotation") {
+    return handlePostConfigurationClassHRelay(
+      env,
+      access,
+      request,
+      contractVersion,
+      "beginTokenContractRotation",
+      "token_contract",
+      [],
+    );
+  }
+
+  if (request.method === "POST" && path === "/ops/token-contracts/retire") {
+    return handlePostConfigurationClassHRelay(
+      env,
+      access,
+      request,
+      contractVersion,
+      "retireTokenContract",
+      (body) => (typeof body.ver === "string" ? body.ver : ""),
+      ["ver"],
+    );
+  }
+
+  if (request.method === "GET" && path === "/ops/support-lookup") {
+    const reference = url.searchParams.get("reference") ?? "";
+    return handleGetSupportLookup(env, access, reference, contractVersion);
   }
 
   return new Response(null, { status: 404 });
