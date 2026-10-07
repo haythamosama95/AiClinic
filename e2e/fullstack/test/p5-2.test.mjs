@@ -12,6 +12,9 @@ import {
   createAccessTeam,
   createSoftwareAuthenticator,
 } from "vendor-contracts/testkit";
+import { VendorEntrypoint } from "../../../ai-platform/src/vendor/entrypoint.ts";
+
+// H-FS unit harness (P5.2a): node --import tsx --test test/p5-2.test.mjs
 
 const REPO_ROOT = path.resolve(
   path.dirname(fileURLToPath(import.meta.url)),
@@ -93,7 +96,7 @@ const PAYMOB_HMAC_FIELDS = [
 ];
 
 let stack = null;
-let harnessPlatformProxy = null;
+let platformVendorProxy = null;
 
 function base64urlEncode(bytes) {
   return Buffer.from(bytes).toString("base64url");
@@ -863,6 +866,27 @@ function runAboD1Command(sql) {
   ]);
 }
 
+function queryAboD1One(sql) {
+  const stdout = runWrangler([
+    "d1",
+    "execute",
+    "abo-development",
+    "--local",
+    "--env",
+    "development",
+    "--config",
+    ABO_CONFIG,
+    "--persist-to",
+    ABO_PERSIST,
+    "--json",
+    "--command",
+    sql,
+  ]);
+  const batches = JSON.parse(stdout);
+  const results = batches[0]?.results ?? [];
+  return results[0] ?? null;
+}
+
 function runPlatformD1Command(sql) {
   runWrangler([
     "d1",
@@ -971,12 +995,18 @@ function setFeedConsumerLastPullAt(isoTimestamp) {
 }
 
 async function callFeedConsumerHealth() {
-  if (!harnessPlatformProxy) {
-    harnessPlatformProxy = await getPlatformProxy({
-      configPath: HARNESS_CONFIG,
+  if (!platformVendorProxy) {
+    platformVendorProxy = await getPlatformProxy({
+      configPath: PLATFORM_CONFIG,
+      environment: "development",
+      persist: { path: PLATFORM_PERSIST },
     });
   }
-  return await harnessPlatformProxy.env.PLATFORM.feedConsumerHealth({
+  const entrypoint = new VendorEntrypoint(
+    platformVendorProxy.ctx,
+    platformVendorProxy.env,
+  );
+  return await entrypoint.feedConsumerHealth({
     contract_version: 1,
   });
 }
@@ -1133,12 +1163,27 @@ async function openCheckout(billingToken) {
   };
 }
 
-async function scriptPaymobAmount(amountMinor) {
+async function scriptPaymobAmount(amountMinor, orderId = "9001") {
   await fetch(`${PAYMOB_URL}/__script`, {
     method: "POST",
     headers: { "content-type": "application/json" },
-    body: JSON.stringify({ amount_cents: String(amountMinor) }),
+    body: JSON.stringify({
+      amount_cents: String(amountMinor),
+      intention_order_id: orderId,
+    }),
   });
+}
+
+async function syncPaymobForCheckout(checkoutId) {
+  const row = queryAboD1One(
+    `SELECT c.charged_price_minor, pi.order_id
+     FROM checkout c
+     LEFT JOIN paymob_intention pi ON pi.checkout_id = c.checkout_id
+     WHERE c.checkout_id = ${sqlLiteral(checkoutId)}`,
+  );
+  const amountMinor = row?.charged_price_minor ?? 1000;
+  const orderId = row?.order_id ?? "9001";
+  await scriptPaymobAmount(amountMinor, orderId);
 }
 
 async function postPaymobProcessedCallback(checkoutReference) {
@@ -1203,6 +1248,12 @@ function startSupabase() {
   }
 }
 
+async function waitForSupabaseReady() {
+  await waitForHttp(`${SUPABASE_URL}/rest/v1/`, {
+    accept: [200, 401, 404],
+  });
+}
+
 async function waitForPlatformGrantEvent(orgId, { timeoutMs = 30_000 } = {}) {
   const deadline = Date.now() + timeoutMs;
   while (Date.now() < deadline) {
@@ -1224,8 +1275,8 @@ before(async () => {
 });
 
 after(async () => {
-  await harnessPlatformProxy?.dispose();
-  harnessPlatformProxy = null;
+  await platformVendorProxy?.dispose();
+  platformVendorProxy = null;
   await stack?.stop();
   stack = null;
 });
@@ -1456,6 +1507,11 @@ test("E2E-P5.2-06 Unsupported feed version keeps the cursor and does not write t
   );
 
   setPlatformFeedCurrent(originalFeedVersion);
+  psqlQuery(`
+    UPDATE ai_internal.feed_state
+    SET pending_request_id = NULL, pending_since = NULL
+    WHERE singleton
+  `);
   setFeedStateLastSuccessAgo(121);
 
   const status = await rpc(administrator, "get_ai_status", {
@@ -1487,6 +1543,8 @@ test("E2E-P5.2-07 Disabled pull is stale and feedConsumerHealth shows the lag", 
     lagAt,
     "feedConsumerHealth should show the platform feed_consumer lag",
   );
+
+  setCronJobActive(true);
 });
 
 test("E2E-P5.2-08 Cursor reset to 0 reproduces the projection", async () => {
@@ -1524,19 +1582,21 @@ test("E2E-P5.2-10 Supabase stopped during a payment still provisions and status 
   await putBillingContact(billingToken);
   const { checkoutId } = await openCheckout(billingToken);
   assert.ok(checkoutId);
+  await syncPaymobForCheckout(checkoutId);
 
   stopSupabase();
   try {
-    await scriptPaymobAmount(1000);
     await postPaymobProcessedCallback(checkoutId);
     await waitForPlatformGrantEvent(orgId);
   } finally {
     startSupabase();
+    await waitForSupabaseReady();
   }
 
   await runTwoPhaseCoveragePull();
 
-  const status = await rpc(administrator, "get_ai_status", {
+  const administratorAfterRestart = await signIn("p5-2-admin", "P5AdminPass2!");
+  const status = await rpc(administratorAfterRestart, "get_ai_status", {
     p_contract_version: 1,
   });
   assert.equal(status.contract_version, 1);
