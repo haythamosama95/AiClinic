@@ -65,6 +65,7 @@ export default defineWorkersConfig({
       "test/system/grant.cross-worker.test.ts",
       "test/system/hp-actions.cross-worker.test.ts",
       "test/system/ops.cross-worker.test.ts",
+      "test/system/reconciliation.cross-worker.test.ts",
       "test/system/sweeps.cross-worker.test.ts",
       "test/system/console-relays.cross-worker.test.ts",
       "test/system/configuration-relays.cross-worker.test.ts",
