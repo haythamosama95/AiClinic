@@ -114,13 +114,13 @@ cd abo && node scripts/build-platform-for-hxw.mjs && npx vitest run --config vit
 
 **Independent Test**: E2E-P4.5-04, E2E-P4.5-05, E2E-P4.5-06, E2E-P4.5-07, E2E-P4.5-08, and E2E-P4.5-11 in harnesses H-XW and H-PAY.
 
-- [ ] T015 [US2] Add `abo/migrations/0005_reversal.sql` — produces reversal columns, `reversal_outcome`, `finding`, and `inquiry_spend`, FR-004, FR-007, FR-011, FR-013, FR-014, E2E-P4.5-04. Depends on T014. Tables, columns, and constraints are those already written in `data-model.md`. `reversal` and `reversal_outcome` are append-only. Do not rewrite `data-model.md`. Do not edit `abo/src/alert/index.ts` in this task. The harness applies this file before the sweeps tests.
+- [X] T015 [US2] Add `abo/migrations/0005_reversal.sql` — produces reversal columns, `reversal_outcome`, `finding`, and `inquiry_spend`, FR-004, FR-007, FR-011, FR-013, FR-014, E2E-P4.5-04. Depends on T014. Tables, columns, and constraints are those already written in `data-model.md`. `reversal` and `reversal_outcome` are append-only. Do not rewrite `data-model.md`. Do not edit `abo/src/alert/index.ts` in this task. The harness applies this file before the sweeps tests.
 
 ### 4.2 User Story 1 - Recover a checkout when the callback does not confirm it (Priority: P1) — alerts
 
 **Independent Test**: E2E-P4.5-01, E2E-P4.5-02, E2E-P4.5-03, and E2E-P4.5-12 in harnesses H-XW and H-PAY.
 
-- [ ] T016 [US1] Extend alert codes in `abo/src/alert/index.ts` — produces AL-03, AL-06, and AL-08, FR-001, FR-003, FR-004, FR-006, FR-008, FR-013, E2E-P4.5-01, E2E-P4.5-03, E2E-P4.5-04. Depends on T014. Extend `AlertCode` with `AL-03`, `AL-06`, and `AL-08`. `nextSendAtForCode` returns null for those three, the same send-once path as `AL-05` and `AL-09`. Email text stays `{code} {detail_id}`. Do not edit `abo/migrations/0005_reversal.sql` in this task.
+- [X] T016 [US1] Extend alert codes in `abo/src/alert/index.ts` — produces AL-03, AL-06, and AL-08, FR-001, FR-003, FR-004, FR-006, FR-008, FR-013, E2E-P4.5-01, E2E-P4.5-03, E2E-P4.5-04. Depends on T014. Extend `AlertCode` with `AL-03`, `AL-06`, and `AL-08`. `nextSendAtForCode` returns null for those three, the same send-once path as `AL-05` and `AL-09`. Email text stays `{code} {detail_id}`. Do not edit `abo/migrations/0005_reversal.sql` in this task.
 
 ### 4.3 User Story 2 - Record a refund and apply its effect (Priority: P2) — reversal recorder and parent rewrite
 

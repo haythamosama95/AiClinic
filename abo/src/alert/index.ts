@@ -26,9 +26,12 @@ const ALERT_CODE = "AL-16";
 export type AlertCode =
   | "AL-01"
   | "AL-02"
+  | "AL-03"
   | "AL-04"
   | "AL-05"
+  | "AL-06"
   | "AL-07"
+  | "AL-08"
   | "AL-09"
   | "AL-16"
   | "AL-23";
