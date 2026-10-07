@@ -3,7 +3,7 @@
  */
 
 import { env } from "cloudflare:test";
-import { beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { CHANNEL_VERSIONS, grantIdPaid, paymentId } from "vendor-contracts";
 import offersFixture from "../../fixtures/offers.json";
 import badHmacFixture from "../fixtures/paymob/bad-hmac.json";
@@ -32,6 +32,8 @@ import {
   scriptPaymobStub,
   setClock,
   setupCrossWorkerHarness,
+  drainPlatformDurableObjects,
+  settlePlatformDurableObjectAlarms,
   syncPlatformGrantLedger,
   syncPlatformGrantVoids,
 } from "./cross-worker-harness";
@@ -1161,6 +1163,10 @@ beforeEach(async () => {
   await setClock("2026-06-01T12:00:00.000Z");
 });
 
+afterEach(async () => {
+  await drainPlatformDurableObjects();
+});
+
 describe("sweeps cross-worker", () => {
   it("E2E-P4.5-01 callback blocked, +2 min sweep confirms and grants", async () => {
     const expectations = await setupSweepsHarness();
@@ -1636,6 +1642,9 @@ describe("sweeps cross-worker", () => {
     const sweepCheckoutId = sweepCheckout.checkoutId;
     const sweepOpenedAt = await openedEventAt(sweepCheckoutId);
 
+    // Return schedules confirm for the newest open checkout; advance past sweep open.
+    await setClock(addMinutes(sweepOpenedAt, 1));
+
     const confirmCheckout = await postCheckout(
       org,
       expectations,
@@ -1665,5 +1674,9 @@ describe("sweeps cross-worker", () => {
     expect(await grantWorkAttempts(grantPaymentId!)).toBeGreaterThanOrEqual(1);
     expect(await openSweepCheckoutWorkCount(sweepCheckoutId)).toBeGreaterThan(0);
     expect(await inquirySpendForMinute(minuteKeyFromIso(dueMinute))).toBe(2);
+
+    // runScheduled may grant on the platform DO at the end; let that alarm finish
+    // before afterEach teardown competes with GatewayObject SQLite writes.
+    await settlePlatformDurableObjectAlarms();
   });
 });

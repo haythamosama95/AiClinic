@@ -188,7 +188,7 @@ cd abo && node scripts/build-platform-for-hxw.mjs && npx vitest run --config vit
 
 **Independent Test**: E2E-P4.5-10 in harnesses H-XW and H-PAY. Earlier suites stay green, and E2E-P4.5-01 through E2E-P4.5-09, E2E-P4.5-11, and E2E-P4.5-12 still pass.
 
-- [ ] T025 [US4] Run `node scripts/build-platform-for-hxw.mjs && npx vitest run --config vitest.cross-worker.config.ts test/system/sweeps.cross-worker.test.ts` from `abo/` until E2E-P4.5-01 through E2E-P4.5-12 pass — produces the green unit harness, FR-001, FR-002, FR-003, FR-004, FR-005, FR-006, FR-007, FR-008, FR-009, FR-010, FR-011, FR-012, FR-013, FR-014, E2E-P4.5-01, E2E-P4.5-02, E2E-P4.5-03, E2E-P4.5-04, E2E-P4.5-05, E2E-P4.5-06, E2E-P4.5-07, E2E-P4.5-08, E2E-P4.5-09, E2E-P4.5-10, E2E-P4.5-11, E2E-P4.5-12. Depends on T018, T021, T023, and T024 (and therefore on T001–T017, T019, T020, and T022). This task may edit only files under `abo/test/`.
+- [X] T025 [US4] Run `node scripts/build-platform-for-hxw.mjs && npx vitest run --config vitest.cross-worker.config.ts test/system/sweeps.cross-worker.test.ts` from `abo/` until E2E-P4.5-01 through E2E-P4.5-12 pass — produces the green unit harness, FR-001, FR-002, FR-003, FR-004, FR-005, FR-006, FR-007, FR-008, FR-009, FR-010, FR-011, FR-012, FR-013, FR-014, E2E-P4.5-01, E2E-P4.5-02, E2E-P4.5-03, E2E-P4.5-04, E2E-P4.5-05, E2E-P4.5-06, E2E-P4.5-07, E2E-P4.5-08, E2E-P4.5-09, E2E-P4.5-10, E2E-P4.5-11, E2E-P4.5-12. Depends on T018, T021, T023, and T024 (and therefore on T001–T017, T019, T020, and T022). This task may edit only files under `abo/test/`.
 
 ```bash
 cd abo && node scripts/build-platform-for-hxw.mjs && npx vitest run --config vitest.cross-worker.config.ts test/system/sweeps.cross-worker.test.ts
@@ -204,7 +204,7 @@ cd abo && node scripts/build-platform-for-hxw.mjs && npx vitest run --config vit
 
 ### 6.1 Quickstart
 
-- [ ] T026 Create `specs/080-abo-p4-5-sweeps-reversals-inquiry-budget/quickstart.md` from the plan's quickstart outline — produces this unit's quickstart, FR-001, FR-002, FR-003, FR-004, FR-005, FR-006, FR-007, FR-008, FR-009, FR-010, FR-011, FR-012, FR-013, FR-014, E2E-P4.5-01, E2E-P4.5-02, E2E-P4.5-03, E2E-P4.5-04, E2E-P4.5-05, E2E-P4.5-06, E2E-P4.5-07, E2E-P4.5-08, E2E-P4.5-09, E2E-P4.5-10, E2E-P4.5-11, E2E-P4.5-12. Depends on T025. Sections: (1) what was implemented, and the files added or modified; (2) the harness command below; (3) the entry point → module chain per E2E id below. No earlier-unit files, combined counts, or full-suite commands. No manual steps; the harness observes every scenario.
+- [X] T026 Create `specs/080-abo-p4-5-sweeps-reversals-inquiry-budget/quickstart.md` from the plan's quickstart outline — produces this unit's quickstart, FR-001, FR-002, FR-003, FR-004, FR-005, FR-006, FR-007, FR-008, FR-009, FR-010, FR-011, FR-012, FR-013, FR-014, E2E-P4.5-01, E2E-P4.5-02, E2E-P4.5-03, E2E-P4.5-04, E2E-P4.5-05, E2E-P4.5-06, E2E-P4.5-07, E2E-P4.5-08, E2E-P4.5-09, E2E-P4.5-10, E2E-P4.5-11, E2E-P4.5-12. Depends on T025. Sections: (1) what was implemented, and the files added or modified; (2) the harness command below; (3) the entry point → module chain per E2E id below. No earlier-unit files, combined counts, or full-suite commands. No manual steps; the harness observes every scenario.
 
 ```bash
 cd abo && node scripts/build-platform-for-hxw.mjs && npx vitest run --config vitest.cross-worker.config.ts test/system/sweeps.cross-worker.test.ts
