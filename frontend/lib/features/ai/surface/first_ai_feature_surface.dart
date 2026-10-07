@@ -8,6 +8,7 @@ import 'package:ai_clinic/core/ai/context_required_self_heal.dart';
 import 'package:ai_clinic/core/ai/context_resolver.dart';
 import 'package:ai_clinic/core/ui/components/app_button.dart';
 import 'package:ai_clinic/core/ui/theme/app_typography.dart';
+import 'package:ai_clinic/features/ai/availability/ai_availability.dart';
 
 import 'provisional_prose_view.dart';
 import 'request_reference_view.dart';
@@ -255,6 +256,8 @@ class _FirstAiFeatureSurfaceState extends State<FirstAiFeatureSurface> {
       // Applies StreamDroppedTerminal / CancelledTerminal when the wire had no
       // terminal event; no-ops if events already settled the surface.
       settle(terminal);
+    } on ContractVersionUnsupportedException {
+      widget.onTerminalFailure?.call(TaxonomyCode.capabilityUnknown);
     } on PlatformHttpException catch (error) {
       widget.onTerminalFailure?.call(error.code, wireCode: error.wireCode);
       _setFailed(requestReference: error.requestReference);

@@ -142,7 +142,7 @@ class _AiFeatureHostPageState extends State<AiFeatureHostPage> {
           _loading = false;
           _mode = AiDegradedMode.nonEnrolled;
           _platformReachable = false;
-          _notices = const [];
+          _notices = availability.notices;
         });
         return;
       }
@@ -301,8 +301,15 @@ class _AiFeatureHostPageState extends State<AiFeatureHostPage> {
     }
 
     // Non-enrolled: hide AI chrome entirely (§4.2; A11) — no banner, no AI app bar.
+    // Status notices still render when the backend supplies them.
     if (_mode == AiDegradedMode.nonEnrolled) {
-      return const SizedBox.shrink();
+      if (_notices.isEmpty) {
+        return const SizedBox.shrink();
+      }
+      return _AiStatusNotices(
+        notices: _notices,
+        staffIsAdministrator: widget.dependencies.staffIsAdministrator,
+      );
     }
 
     final hideSurface = _hidesSurface(_mode);
@@ -381,7 +388,18 @@ class _AiFeatureHostPageState extends State<AiFeatureHostPage> {
       return Scaffold(body: body);
     }
     if (_mode == AiDegradedMode.nonEnrolled) {
-      return Scaffold(body: const UsageGaugeGate());
+      if (_notices.isEmpty) {
+        return Scaffold(body: const UsageGaugeGate());
+      }
+      return Scaffold(
+        body: Padding(
+          padding: const EdgeInsets.all(16),
+          child: _AiStatusNotices(
+            notices: _notices,
+            staffIsAdministrator: widget.dependencies.staffIsAdministrator,
+          ),
+        ),
+      );
     }
     return Scaffold(
       appBar: AppBar(title: const Text('AI Feature')),

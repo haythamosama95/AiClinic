@@ -133,7 +133,42 @@ Future<LiveVisitSummaryComposition> composeLiveVisitSummaryHost({
   final discovery = discoveryClientOverride ?? DiscoveryClient();
   final mintPort = mintPortOverride ?? SupabaseAatMintPort(client: client);
 
-  final availability = await reader.read();
+  late final AiAvailability availability;
+  try {
+    availability = await reader.read();
+  } on ContractVersionUnsupportedException {
+    final submitPort = submitPortOverride ?? PlatformHttpsSubmitPort(platformBaseUrl: 'https://ai.invalid');
+    return LiveVisitSummaryComposition(
+      dependencies: AiFeatureHostDependencies(
+        availabilityReader: reader,
+        reachabilityPort: reachability,
+        sdk: AiClientSdk(
+          mintPort: mintPort,
+          submitPort: submitPort,
+          maxTransportAttempts: maxTransportAttempts ?? kDefaultMaxTransportAttempts,
+          transportBackoff: transportBackoff,
+        ),
+        contextProvider: contextProviderOverride ?? SupabaseContextProviderPort(client: client, visitId: visitId),
+        manifestRefreshPort: manifestRefreshPortOverride ??
+            DiscoveryManifestRefreshPort(
+              discoveryClient: discovery,
+              mintPort: mintPort,
+              platformBaseUrl: 'https://ai.invalid',
+            ),
+        visitId: visitId,
+        requiredContextKeys: kFirstAiRequiredContextKeys,
+        networkSpy: networkSpy,
+        persistenceProbe: persistenceProbe,
+        exportProbe: exportProbe,
+        autoInvoke: false,
+        staffIsAdministrator: staffIsAdministrator,
+        onStatusRefresh: onStatusRefresh,
+      ),
+      mintPort: mintPort,
+      submitPort: submitPort,
+      contractVersionUnsupported: true,
+    );
+  }
   final baseUrl = availability.platformBaseUrl ?? '';
   final submitPort = submitPortOverride ??
       (baseUrl.isNotEmpty

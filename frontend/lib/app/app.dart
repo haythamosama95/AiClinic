@@ -79,6 +79,14 @@ class _AiClinicAppState extends ConsumerState<AiClinicApp> with WidgetsBindingOb
 
   @override
   Widget build(BuildContext context) {
+    ref.listen<AuthSessionState>(authSessionProvider, (previous, next) {
+      final wasReady = previous?.isAuthenticated == true && previous?.context?.needsClinicSetup != true;
+      final isReady = next.isAuthenticated && next.context?.needsClinicSetup != true;
+      if (!wasReady && isReady) {
+        unawaited(_refreshShellStatusIfAuthenticated());
+      }
+    });
+
     final router = ref.watch(appRouterProvider);
     final themeMode = ref.watch(themeModeProvider);
     final locale = ref.watch(localeProvider);

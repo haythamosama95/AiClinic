@@ -50,6 +50,8 @@ class AiShellStatusNotifier extends Notifier<AsyncValue<AiAvailability?>> {
       return;
     }
 
+    startPeriodicRefresh();
+
     try {
       final availability = await ref.read(aiShellStatusReaderProvider).read();
       state = AsyncValue.data(availability);
