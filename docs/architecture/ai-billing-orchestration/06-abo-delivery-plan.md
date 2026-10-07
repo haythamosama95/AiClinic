@@ -901,9 +901,9 @@ frozen, and always call the real platform worker over the service binding (rules
 - **Spec** 085 · **Codebase** abo · **Size** M · **Depends** P4.8 · **Parallel** P4.9, P5.x
 - **Read:** 05 §3.3; 03 §2.10 rows `finding`, `finding_resolution`, `payout_import`, `payout_line`; 04 §5.1 + §5.3 rows payoutLines; 05 §3.2 row "Import a payout CSV; resolve a finding";
   05 §2 row AL-10; 05 §10 row FR-80.
-- **Implements:** reconciliation daily and after each import, with all ten 05 §3.3 checks; `finding` + AL-10 (daily); H resolve-finding; payout CSV import
+- **Implements:** reconciliation daily and after each import, with all eleven 05 §3.3 checks; `finding` + AL-10 (daily); H resolve-finding; payout CSV import
   (H; file to R2 + SHA; lines parsed by the adapter; transaction ids mapped via `paymob_txn`); `feed_divergence` compares `coverage_view` with `getCoverage` for
-  clinics with events in the last day. H-PAY payout CSV fixtures.
+  clinics with events in the last day; `receipt_mismatch` compares each stored `grant_outcome` receipt with the `listGrants` receipt for that `grant_id` (AD-15). H-PAY payout CSV fixtures.
 - **E2E (H-XW + H-PAY):**
   - E2E-P4.10-01 A clean month (payments, grants, complimentary grants, a transfer) → zero findings [FR-81].
   - E2E-P4.10-02 AD-8: paid grant applied on the platform with the testkit ABO key and no ABO payment → `grant_without_payment` + AL-10.
@@ -913,7 +913,7 @@ frozen, and always call the real platform worker over the service binding (rules
   - E2E-P4.10-06 Amount mismatch → `payout_unmatched`; a missing settled payment → `payment_not_in_payout`.
   - E2E-P4.10-07 HMAC-valid success never confirmed → `callback_without_confirmation`.
   - E2E-P4.10-08 Tampered `coverage_view` → `feed_divergence`; full reversal without a void receipt → `reversal_not_applied`.
-  - E2E-P4.10-09 AD-15: stored receipt that differs from `listGrants` → finding.
+  - E2E-P4.10-09 AD-15: stored receipt that differs from `listGrants` → `receipt_mismatch`.
 
 ### P4.11 — Daily digest, platform watch, housekeeping and ABO rebuild
 - **Spec** 086 · **Codebase** abo · **Size** M · **Depends** P4.10, P3.9 · **Parallel** P5.x

@@ -132,6 +132,7 @@ Runs daily, and again after each payout import (FR-80, FR-81). Each failed check
 | Every payout refund or chargeback line has a recorded reversal                                 | `unrecorded_reversal` (A18)     |
 | Every HMAC-valid success callback was confirmed by an inquiry                                  | `callback_without_confirmation` |
 | For clinics with events in the last day, the feed snapshot equals `getCoverage`                | `feed_divergence`               |
+| Every `grant_outcome` receipt (`applied` or `already_applied`) equals the `receipt` `listGrants` returns for that `grant_id` | `receipt_mismatch` (AD-15) |
 
 
 ### 3.4 Daily digest
