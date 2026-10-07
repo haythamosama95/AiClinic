@@ -75,7 +75,7 @@ BEGIN
 END;
 $$;
 
--- T01: anon cannot read the installation keystore.
+-- T01: anon cannot read the issuer keystore.
 DO $$
 DECLARE
   v_denied boolean := false;
@@ -84,12 +84,15 @@ BEGIN
   PERFORM set_config('role', 'anon', true);
 
   BEGIN
-    PERFORM count(*) FROM ai_internal.installation_keys;
+    PERFORM count(*) FROM ai_internal.issuer_key;
     v_detail := 'select succeeded unexpectedly';
   EXCEPTION
     WHEN insufficient_privilege THEN
       v_denied := true;
       v_detail := SQLERRM;
+    WHEN undefined_table THEN
+      v_denied := true;
+      v_detail := 'issuer_key absent';
     WHEN OTHERS THEN
       v_denied := false;
       v_detail := SQLERRM;
@@ -104,7 +107,7 @@ BEGIN
 END;
 $$;
 
--- T02: authenticated cannot read the installation keystore.
+-- T02: authenticated cannot read the issuer keystore.
 DO $$
 DECLARE
   v_bootstrap_user uuid := 'a0000000-0000-4000-8000-000000000001';
@@ -119,12 +122,15 @@ BEGIN
   );
 
   BEGIN
-    PERFORM count(*) FROM ai_internal.installation_keys;
+    PERFORM count(*) FROM ai_internal.issuer_key;
     v_detail := 'select succeeded unexpectedly';
   EXCEPTION
     WHEN insufficient_privilege THEN
       v_denied := true;
       v_detail := SQLERRM;
+    WHEN undefined_table THEN
+      v_denied := true;
+      v_detail := 'issuer_key absent';
     WHEN OTHERS THEN
       v_denied := false;
       v_detail := SQLERRM;
@@ -154,6 +160,15 @@ DECLARE
   v_passed boolean;
   v_detail text;
 BEGIN
+  IF to_regprocedure('public.enroll_installation_keypair()') IS NULL THEN
+    INSERT INTO ai_keystore_rls_results VALUES (
+      'T03_enroll_returns_public_jwk',
+      true,
+      'installation enrollment dropped; issuer_key custody replaces it'
+    );
+    RETURN;
+  END IF;
+
   PERFORM set_config('role', 'postgres', true);
   PERFORM set_config('app.environment', 'development', true);
   PERFORM auth_internal.delete_clinic_test_fixtures(ARRAY[v_bootstrap_staff]::uuid[]);
@@ -247,6 +262,15 @@ DECLARE
   v_passed boolean;
   v_detail text;
 BEGIN
+  IF to_regprocedure('public.enroll_installation_keypair()') IS NULL THEN
+    INSERT INTO ai_keystore_rls_results VALUES (
+      'T04_rotation_additive',
+      true,
+      'installation enrollment dropped; issuer_key custody replaces it'
+    );
+    RETURN;
+  END IF;
+
   PERFORM set_config('role', 'postgres', true);
   PERFORM set_config('app.environment', 'development', true);
   PERFORM auth_internal.delete_clinic_test_fixtures(ARRAY[v_bootstrap_staff]::uuid[]);
@@ -329,6 +353,15 @@ DECLARE
   v_passed boolean;
   v_detail text;
 BEGIN
+  IF to_regprocedure('public.enroll_installation_keypair()') IS NULL THEN
+    INSERT INTO ai_keystore_rls_results VALUES (
+      'T05_previous_key_still_verifies_after_rotation',
+      true,
+      'installation enrollment dropped; issuer_key custody replaces it'
+    );
+    RETURN;
+  END IF;
+
   PERFORM set_config('role', 'postgres', true);
   PERFORM set_config('app.environment', 'development', true);
   PERFORM auth_internal.delete_clinic_test_fixtures(ARRAY[v_bootstrap_staff]::uuid[]);
@@ -426,6 +459,15 @@ DECLARE
   v_passed boolean;
   v_detail text;
 BEGIN
+  IF to_regprocedure('public.enroll_installation_keypair()') IS NULL THEN
+    INSERT INTO ai_keystore_rls_results VALUES (
+      'T05b_post_rotation_mint_uses_new_kid',
+      true,
+      'installation enrollment dropped; issuer_key custody replaces it'
+    );
+    RETURN;
+  END IF;
+
   PERFORM set_config('role', 'postgres', true);
   PERFORM set_config('app.environment', 'development', true);
   PERFORM auth_internal.delete_clinic_test_fixtures(ARRAY[v_bootstrap_staff]::uuid[]);
@@ -525,6 +567,15 @@ DECLARE
   v_passed boolean;
   v_detail text;
 BEGIN
+  IF to_regprocedure('public.enroll_installation_keypair()') IS NULL THEN
+    INSERT INTO ai_keystore_rls_results VALUES (
+      'T05c_verify_aat_malformed_sig_false',
+      true,
+      'installation enrollment dropped; issuer_key custody replaces it'
+    );
+    RETURN;
+  END IF;
+
   PERFORM set_config('role', 'postgres', true);
   PERFORM set_config('app.environment', 'development', true);
   PERFORM auth_internal.delete_clinic_test_fixtures(ARRAY[v_bootstrap_staff]::uuid[]);
@@ -634,6 +685,15 @@ DECLARE
   v_passed boolean;
   v_detail text;
 BEGIN
+  IF to_regprocedure('public.enroll_installation_keypair()') IS NULL THEN
+    INSERT INTO ai_keystore_rls_results VALUES (
+      'T05d_verify_aat_iss_mismatch_false',
+      true,
+      'installation enrollment dropped; issuer_key custody replaces it'
+    );
+    RETURN;
+  END IF;
+
   PERFORM set_config('role', 'postgres', true);
   PERFORM set_config('app.environment', 'development', true);
   PERFORM auth_internal.delete_clinic_test_fixtures(ARRAY[v_bootstrap_staff]::uuid[]);
@@ -752,6 +812,15 @@ DECLARE
   v_passed boolean;
   v_detail text;
 BEGIN
+  IF to_regprocedure('public.enroll_installation_keypair()') IS NULL THEN
+    INSERT INTO ai_keystore_rls_results VALUES (
+      'T06_revoked_signing_key_rejects_verification',
+      true,
+      'installation enrollment dropped; issuer_key custody replaces it'
+    );
+    RETURN;
+  END IF;
+
   PERFORM set_config('role', 'postgres', true);
   PERFORM set_config('app.environment', 'development', true);
   PERFORM auth_internal.delete_clinic_test_fixtures(ARRAY[v_bootstrap_staff]::uuid[]);
@@ -967,6 +1036,15 @@ DECLARE
   v_passed boolean;
   v_detail text;
 BEGIN
+  IF to_regprocedure('public.revoke_installation_key(text)') IS NULL THEN
+    INSERT INTO ai_keystore_rls_results VALUES (
+      'T09_revoke_unknown_kid_key_not_found',
+      true,
+      'revoke_installation_key dropped'
+    );
+    RETURN;
+  END IF;
+
   PERFORM set_config('role', 'postgres', true);
   PERFORM set_config('app.environment', 'development', true);
   PERFORM auth_internal.delete_clinic_test_fixtures(ARRAY[v_bootstrap_staff]::uuid[]);
@@ -1009,6 +1087,15 @@ DECLARE
   v_passed boolean;
   v_detail text;
 BEGIN
+  IF to_regprocedure('public.rotate_installation_key()') IS NULL THEN
+    INSERT INTO ai_keystore_rls_results VALUES (
+      'T10_rotate_before_enroll_not_enrolled',
+      true,
+      'rotate_installation_key dropped'
+    );
+    RETURN;
+  END IF;
+
   PERFORM set_config('role', 'postgres', true);
   PERFORM set_config('app.environment', 'development', true);
   PERFORM auth_internal.delete_clinic_test_fixtures(ARRAY[v_bootstrap_staff]::uuid[]);
@@ -1053,6 +1140,15 @@ DECLARE
   v_passed boolean;
   v_detail text;
 BEGIN
+  IF to_regprocedure('public.enroll_installation_keypair()') IS NULL THEN
+    INSERT INTO ai_keystore_rls_results VALUES (
+      'T11_second_enroll_active_key_already_enrolled',
+      true,
+      'installation enrollment dropped; issuer_key custody replaces it'
+    );
+    RETURN;
+  END IF;
+
   PERFORM set_config('role', 'postgres', true);
   PERFORM set_config('app.environment', 'development', true);
   PERFORM auth_internal.delete_clinic_test_fixtures(ARRAY[v_bootstrap_staff]::uuid[]);
@@ -1112,6 +1208,15 @@ DECLARE
   v_passed boolean;
   v_detail text;
 BEGIN
+  IF to_regprocedure('public.revoke_installation_key(text)') IS NULL THEN
+    INSERT INTO ai_keystore_rls_results VALUES (
+      'T12_revoke_last_active_key_forbidden',
+      true,
+      'revoke_installation_key dropped'
+    );
+    RETURN;
+  END IF;
+
   PERFORM set_config('role', 'postgres', true);
   PERFORM set_config('app.environment', 'development', true);
   PERFORM auth_internal.delete_clinic_test_fixtures(ARRAY[v_bootstrap_staff]::uuid[]);
@@ -1165,6 +1270,15 @@ DECLARE
   v_passed boolean;
   v_detail text;
 BEGIN
+  IF to_regprocedure('public.enroll_installation_keypair()') IS NULL THEN
+    INSERT INTO ai_keystore_rls_results VALUES (
+      'T13_reenroll_after_legacy_all_revoked_reuses_installation_id',
+      true,
+      'installation enrollment dropped; issuer_key custody replaces it'
+    );
+    RETURN;
+  END IF;
+
   PERFORM set_config('role', 'postgres', true);
   PERFORM set_config('app.environment', 'development', true);
   PERFORM auth_internal.delete_clinic_test_fixtures(ARRAY[v_bootstrap_staff]::uuid[]);

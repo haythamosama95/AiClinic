@@ -50,13 +50,16 @@ RETURNS TABLE (
 )
 LANGUAGE plpgsql
 AS $$
+DECLARE
+  v_exc_detail text;
 BEGIN
   BEGIN
     EXECUTE p_sql;
     RETURN QUERY SELECT false, '<none>'::text, '<none>'::text;
   EXCEPTION
     WHEN OTHERS THEN
-      RETURN QUERY SELECT true, SQLERRM, COALESCE(PG_EXCEPTION_DETAIL, '<null>');
+      GET STACKED DIAGNOSTICS v_exc_detail = PG_EXCEPTION_DETAIL;
+      RETURN QUERY SELECT true, SQLERRM, COALESCE(v_exc_detail, '<null>');
   END;
 END;
 $$;
@@ -70,6 +73,7 @@ RETURNS TABLE (
 )
 LANGUAGE plpgsql
 AS $$
+#variable_conflict use_column
 DECLARE
   v_bootstrap_user uuid := 'a0000000-0000-4000-8000-000000000001';
   v_bootstrap_staff uuid := 'b0000000-0000-4000-8000-000000000001';
@@ -178,6 +182,13 @@ BEGIN
   INTO v_admin_user, v_admin_staff, v_org_id, v_branch_id
   FROM pg_temp.issuer_rpc_admin_fixture() f;
 
+  PERFORM set_config('role', 'postgres', true);
+  IF NOT EXISTS (
+    SELECT 1 FROM ai_internal.issuer_key ik WHERE ik.status = 'signing'
+  ) THEN
+    PERFORM auth_internal.insert_issuer_kid();
+  END IF;
+
   PERFORM set_config('role', 'authenticated', true);
   PERFORM set_config(
     'request.jwt.claims',
@@ -192,10 +203,6 @@ BEGIN
     )::text,
     true
   );
-
-  IF to_regclass('ai_internal.installation_keys') IS NOT NULL THEN
-    PERFORM public.enroll_installation_keypair();
-  END IF;
 
   v_billing := public.issue_billing_token(1);
   v_billing_version := v_billing.contract_version;
@@ -256,6 +263,13 @@ BEGIN
   INTO v_admin_user, v_admin_staff, v_org_id, v_branch_id
   FROM pg_temp.issuer_rpc_admin_fixture() f;
 
+  PERFORM set_config('role', 'postgres', true);
+  IF NOT EXISTS (
+    SELECT 1 FROM ai_internal.issuer_key ik WHERE ik.status = 'signing'
+  ) THEN
+    PERFORM auth_internal.insert_issuer_kid();
+  END IF;
+
   PERFORM set_config('role', 'authenticated', true);
   PERFORM set_config(
     'request.jwt.claims',
@@ -270,10 +284,6 @@ BEGIN
     )::text,
     true
   );
-
-  IF to_regclass('ai_internal.installation_keys') IS NOT NULL THEN
-    PERFORM public.enroll_installation_keypair();
-  END IF;
 
   FOR v_i IN 1..20 LOOP
     v_result := public.issue_billing_token(1);
@@ -432,12 +442,15 @@ BEGIN
     )
   );
 
+  PERFORM set_config('role', 'postgres', true);
+  IF NOT EXISTS (
+    SELECT 1 FROM ai_internal.issuer_key ik WHERE ik.status = 'signing'
+  ) THEN
+    PERFORM auth_internal.insert_issuer_kid();
+  END IF;
+
   PERFORM set_config('role', 'authenticated', true);
   PERFORM set_config('request.jwt.claims', (v_hook -> 'claims')::text, true);
-
-  IF to_regclass('ai_internal.installation_keys') IS NOT NULL THEN
-    PERFORM public.enroll_installation_keypair();
-  END IF;
 
   v_current_org := public.current_org_id();
   v_token := public.issue_ai_token(1);

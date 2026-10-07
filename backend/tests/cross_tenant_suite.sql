@@ -255,7 +255,6 @@ DECLARE
   v_attachment_b uuid := '0621d000-0000-4000-8000-00000000000b';
   v_start timestamptz := date_trunc('day', now() AT TIME ZONE 'UTC') AT TIME ZONE 'UTC' + interval '10 hours';
   v_note_ts timestamptz := '2026-10-02T10:00:00+00';
-  v_enroll public.rpc_result;
 BEGIN
   PERFORM set_config('role', 'postgres', true);
   PERFORM set_config('app.environment', 'development', true);
@@ -492,35 +491,24 @@ BEGIN
 
   IF NOT EXISTS (
     SELECT 1
-    FROM ai_internal.installation_keys ik
-    WHERE ik.is_deleted = false
+    FROM ai_internal.issuer_key ik
+    WHERE ik.status = 'signing'
   ) THEN
-    PERFORM set_config('role', 'authenticated', true);
-    PERFORM set_config(
-      'request.jwt.claims',
-      json_build_object('sub', v_bootstrap_user::text, 'role', 'authenticated')::text,
-      true
-    );
-    v_enroll := public.enroll_installation_keypair();
-    IF NOT v_enroll.success THEN
-      RAISE EXCEPTION 'fixture enroll_installation_keypair failed: %', COALESCE(v_enroll.error_code, '<null>');
-    END IF;
     PERFORM set_config('role', 'postgres', true);
+    PERFORM auth_internal.insert_issuer_kid();
     PERFORM set_config('request.jwt.claims', '', true);
   END IF;
 
   INSERT INTO ai_internal.ai_token_issuance (
-    installation_id, jti, actor_staff_id, organization_id, created_by
+    jti, actor_staff_id, organization_id, created_by, aud
   )
-  SELECT ik.installation_id,
-         '0621e000-0000-4000-8000-00000000000b'::uuid,
-         v_staff_b_only,
-         v_org_b,
-         v_dual_user
-  FROM ai_internal.installation_keys ik
-  WHERE ik.is_deleted = false
-  ORDER BY ik.valid_from ASC, ik.kid ASC
-  LIMIT 1;
+  VALUES (
+    '0621e000-0000-4000-8000-00000000000b'::uuid,
+    v_staff_b_only,
+    v_org_b,
+    v_dual_user,
+    'ai-platform'
+  );
 END;
 $$;
 
@@ -1294,11 +1282,11 @@ BEGIN
       END IF;
   END;
   BEGIN
-    PERFORM public.issue_ai_token(ARRAY['ai.forge']::text[]);
+    PERFORM public.issue_ai_token(1);
   EXCEPTION
     WHEN OTHERS THEN
       IF NOT pg_temp.cross_tenant_exception_acceptable(SQLSTATE, SQLERRM) THEN
-        v_violations := array_append(v_violations, 'issue_ai_token(p_scopes text[]) raised ' || SQLSTATE || ': ' || left(SQLERRM, 120));
+        v_violations := array_append(v_violations, 'issue_ai_token(integer) raised ' || SQLSTATE || ': ' || left(SQLERRM, 120));
       END IF;
   END;
   BEGIN
@@ -2243,7 +2231,7 @@ BEGIN
   PERFORM set_config('role', 'authenticated', true);
   PERFORM pg_temp.cross_tenant_refresh_session(v_dual_user);
   BEGIN
-    v_token := public.issue_ai_token(ARRAY['ai.forge']::text[]);
+    v_token := public.issue_ai_token(1);
     v_payload := pg_temp.decode_jws_payload(v_token);
     v_token_org := v_payload ->> 'org';
     v_jti := (v_payload ->> 'jti')::uuid;

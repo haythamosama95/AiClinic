@@ -63,7 +63,7 @@ DECLARE
 BEGIN
   SELECT value_json
   INTO v_stored
-  FROM public.app_settings
+  FROM ai_internal.app_settings
   WHERE key = 'ai.contract_versions';
 
   IF v_stored IS NULL THEN

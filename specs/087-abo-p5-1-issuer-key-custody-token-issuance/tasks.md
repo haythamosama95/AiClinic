@@ -185,7 +185,7 @@ node backend/tests/contract_versions.mjs
 
 **Independent Test**: E2E-P5.1-01 in harness H-FS.
 
-- [ ] T019 [US2] Stop signing with `installation_keys.secret_key` in `backend/tests/catalog/stage-06-verify-and-handoff.sql` — produces a catalog that uses the issuer key, FR-003, FR-004, E2E-P5.1-01. Depends on T017 and T018. It does not read `installation_keys.secret_key`.
+- [X] T019 [US2] Stop signing with `installation_keys.secret_key` in `backend/tests/catalog/stage-06-verify-and-handoff.sql` — produces a catalog that uses the issuer key, FR-003, FR-004, E2E-P5.1-01. Depends on T017 and T018. It does not read `installation_keys.secret_key`.
 
 **Checkpoint**: `stage-06-verify-and-handoff.sql` does not read `installation_keys.secret_key`.
 
@@ -193,7 +193,7 @@ node backend/tests/contract_versions.mjs
 
 **Independent Test**: E2E-P5.1-01 in harness H-FS.
 
-- [ ] T020 [US2] Update call sites in `backend/tests/cross_tenant_suite.sql` — produces a suite on the new signature, FR-003, FR-004, E2E-P5.1-01, E2E-P5.1-08. Depends on T019. Replace enroll setup with owner `insert_issuer_kid`. Replace `issue_ai_token(text[])` with `issue_ai_token(1)`. Leave the tenant assertions.
+- [X] T020 [US2] Update call sites in `backend/tests/cross_tenant_suite.sql` — produces a suite on the new signature, FR-003, FR-004, E2E-P5.1-01, E2E-P5.1-08. Depends on T019. Replace enroll setup with owner `insert_issuer_kid`. Replace `issue_ai_token(text[])` with `issue_ai_token(1)`. Leave the tenant assertions.
 
 **Checkpoint**: `cross_tenant_suite.sql` uses `insert_issuer_kid` and `issue_ai_token(1)`. Tenant assertions stay.
 
@@ -207,7 +207,7 @@ node backend/tests/contract_versions.mjs
 
 **Independent Test**: E2E-P5.1-09 in harness H-BK. Every earlier suite stays green (rule S2).
 
-- [ ] T021 [US4] Run the H-BK unit command until E2E-P5.1-04, E2E-P5.1-05, E2E-P5.1-07, E2E-P5.1-08, and E2E-P5.1-09 pass — produces the green H-BK harness, FR-002, FR-003, FR-004, FR-005, FR-007, FR-008, FR-009, FR-011, E2E-P5.1-04, E2E-P5.1-05, E2E-P5.1-07, E2E-P5.1-08, E2E-P5.1-09. Depends on T020 (and therefore on T001–T019). This task may edit only `backend/tests/ai_keystore_rls.sql`, `backend/tests/issuer_rpc.sql`, and `backend/tests/contract_versions.mjs`. It does not add an E2E id.
+- [X] T021 [US4] Run the H-BK unit command until E2E-P5.1-04, E2E-P5.1-05, E2E-P5.1-07, E2E-P5.1-08, and E2E-P5.1-09 pass — produces the green H-BK harness, FR-002, FR-003, FR-004, FR-005, FR-007, FR-008, FR-009, FR-011, E2E-P5.1-04, E2E-P5.1-05, E2E-P5.1-07, E2E-P5.1-08, E2E-P5.1-09. Depends on T020 (and therefore on T001–T019). This task may edit only `backend/tests/ai_keystore_rls.sql`, `backend/tests/issuer_rpc.sql`, and `backend/tests/contract_versions.mjs`. It does not add an E2E id.
 
 ```bash
 psql "postgresql://postgres:postgres@127.0.0.1:54322/postgres" -v ON_ERROR_STOP=1 -f backend/tests/ai_keystore_rls.sql
@@ -227,7 +227,7 @@ node backend/tests/contract_versions.mjs
 
 **Independent Test**: E2E-P5.1-07 in harness H-BK, and E2E-P5.1-06 in harness H-FS.
 
-- [ ] T022 [US1] Add `e2e/fullstack/package.json`, `e2e/fullstack/wrangler.toml`, and `e2e/fullstack/src/register-issuer.ts` — produces the H-FS package and the harness route, FR-010, FR-012, E2E-P5.1-01, E2E-P5.1-02, E2E-P5.1-03, E2E-P5.1-06. Depends on T021. `package.json` depends on `file:../packages/vendor-contracts`, `@supabase/supabase-js`, and `wrangler` `~4.86.0`. Script `test` runs `node --test test/p5-1.test.mjs`. `wrangler.toml` is the harness worker. `PLATFORM` is a service binding to `ai-platform-gateway-development` with `entrypoint = "VendorEntrypoint"`. No `TEST_CLOCK`. `fetch` on `POST /register-issuer-key` calls `env.PLATFORM.registerIssuerKey` and returns the envelope. This route is not added to the platform or the ABO. Leave `e2e/fullstack/test/p5-1.test.mjs` uncreated.
+- [X] T022 [US1] Add `e2e/fullstack/package.json`, `e2e/fullstack/wrangler.toml`, and `e2e/fullstack/src/register-issuer.ts` — produces the H-FS package and the harness route, FR-010, FR-012, E2E-P5.1-01, E2E-P5.1-02, E2E-P5.1-03, E2E-P5.1-06. Depends on T021. `package.json` depends on `file:../packages/vendor-contracts`, `@supabase/supabase-js`, and `wrangler` `~4.86.0`. Script `test` runs `node --test test/p5-1.test.mjs`. `wrangler.toml` is the harness worker. `PLATFORM` is a service binding to `ai-platform-gateway-development` with `entrypoint = "VendorEntrypoint"`. No `TEST_CLOCK`. `fetch` on `POST /register-issuer-key` calls `env.PLATFORM.registerIssuerKey` and returns the envelope. This route is not added to the platform or the ABO. Leave `e2e/fullstack/test/p5-1.test.mjs` uncreated.
 
 **Checkpoint**: The package, the harness worker, and `register-issuer.ts` exist. The test file does not.
 
@@ -245,7 +245,7 @@ npm test
 
 **Independent Test**: E2E-P5.1-01 in harness H-FS.
 
-- [ ] T023 [US2] Add the failing test `E2E-P5.1-01` in `e2e/fullstack/test/p5-1.test.mjs` — red test, FR-004, FR-012, E2E-P5.1-01. Depends on T022. Create the file. Title `E2E-P5.1-01 Org A member issue_ai_token(1) is accepted by the local platform and A's binding is created`. After the signing `kid` is registered and pinned, the org A member calls `issue_ai_token(1)`. `GET /v1/capabilities` returns 200. Local D1 has one `tenant_binding` for that org with `epoch` 1. Clinic calls use supabase-js. `npm test` fails because the runner does not yet accept that token.
+- [X] T023 [US2] Add the failing test `E2E-P5.1-01` in `e2e/fullstack/test/p5-1.test.mjs` — red test, FR-004, FR-012, E2E-P5.1-01. Depends on T022. Create the file. Title `E2E-P5.1-01 Org A member issue_ai_token(1) is accepted by the local platform and A's binding is created`. After the signing `kid` is registered and pinned, the org A member calls `issue_ai_token(1)`. `GET /v1/capabilities` returns 200. Local D1 has one `tenant_binding` for that org with `epoch` 1. Clinic calls use supabase-js. `npm test` fails because the runner does not yet accept that token.
 
 **Checkpoint**: E2E-P5.1-01 exists and fails.
 
@@ -253,7 +253,7 @@ npm test
 
 **Independent Test**: E2E-P5.1-02 in harness H-FS.
 
-- [ ] T024 [US3] Add the failing test `E2E-P5.1-02` in `e2e/fullstack/test/p5-1.test.mjs` — red test, FR-005, FR-009, E2E-P5.1-02. Depends on T023 (same file). Title `E2E-P5.1-02 Administrator issue_billing_token(1) is accepted by the local ABO and a doctor receives FORBIDDEN_ROLE`. The administrator call returns `contract_version` 1. `GET /v1/offers` returns 200. The doctor call returns `FORBIDDEN_ROLE`. Clinic ABO calls send `Host: billing.vendor.test`. `npm test` fails because the ABO does not yet accept that token.
+- [X] T024 [US3] Add the failing test `E2E-P5.1-02` in `e2e/fullstack/test/p5-1.test.mjs` — red test, FR-005, FR-009, E2E-P5.1-02. Depends on T023 (same file). Title `E2E-P5.1-02 Administrator issue_billing_token(1) is accepted by the local ABO and a doctor receives FORBIDDEN_ROLE`. The administrator call returns `contract_version` 1. `GET /v1/offers` returns 200. The doctor call returns `FORBIDDEN_ROLE`. Clinic ABO calls send `Host: billing.vendor.test`. `npm test` fails because the ABO does not yet accept that token.
 
 **Checkpoint**: E2E-P5.1-02 exists and fails. E2E-P5.1-01 still fails.
 

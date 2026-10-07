@@ -1,11 +1,31 @@
 -- Stage 06 catalog SQL: S06-033 … S06-047 (clinic verify_aat + mint/claim-shape half).
 -- Does not call catalog_common_setup(); implements Baseline B0 locally.
 -- Platform HTTP half of S06-041…S06-047 is skipped (Register 5 #17).
+-- S06-038, S06-044, and S06-045 were removed when installation_keys custody was dropped.
 -- Run via backend/tests/catalog/run.sh (do not execute from a stage-writer task).
 
 BEGIN;
 
 \ir harness.sql
+
+-- Post-drop override: installation_keys is absent after issuer-key custody migration.
+CREATE OR REPLACE FUNCTION pg_temp.reset_keystore()
+RETURNS void
+LANGUAGE plpgsql
+AS $$
+BEGIN
+  PERFORM set_config('role', 'postgres', true);
+  DELETE FROM ai_internal.ai_token_issuance;
+  DELETE FROM ai_internal.issuer_key;
+  UPDATE ai_internal.app_settings
+  SET
+    value_json = '{"enrolled": false, "platform_base_url": null}'::jsonb,
+    is_deleted = false,
+    deleted_at = NULL,
+    deleted_by = NULL
+  WHERE key = 'ai.availability';
+END;
+$$;
 
 CREATE TEMP TABLE catalog_s06_ids (
   key text PRIMARY KEY,
@@ -59,7 +79,7 @@ DECLARE
   v_token text;
 BEGIN
   BEGIN
-    v_token := public.issue_ai_token();
+    v_token := public.issue_ai_token(1);
     RETURN '<none>';
   EXCEPTION
     WHEN undefined_function THEN
@@ -75,20 +95,20 @@ RETURNS void
 LANGUAGE plpgsql
 AS $$
 DECLARE
-  v_boot_auth uuid;
-  v_result public.rpc_result;
+  v_kid text;
 BEGIN
   PERFORM pg_temp.reset_keystore();
-  SELECT value INTO STRICT v_boot_auth FROM catalog_setup WHERE key = 'boot_auth';
-  PERFORM pg_temp.set_authenticated_session(v_boot_auth);
-  v_result := public.enroll_installation_keypair();
-  IF NOT v_result.success THEN
-    RAISE EXCEPTION 's06_reenroll failed: % — %',
-      COALESCE(v_result.error_code, '<null>'),
-      COALESCE(v_result.error_message, '');
-  END IF;
-  PERFORM pg_temp.s06_stash('I0', v_result.data ->> 'installation_id');
-  PERFORM pg_temp.s06_stash('K0', v_result.data ->> 'kid');
+  PERFORM auth_internal.insert_issuer_kid();
+  SELECT ik.kid
+  INTO STRICT v_kid
+  FROM ai_internal.issuer_key ik
+  WHERE ik.status = 'signing'
+  LIMIT 1;
+  PERFORM pg_temp.s06_stash(
+    'I0',
+    auth_internal.ai_app_setting_text('ai.issuer_id', 'issuer-test')
+  );
+  PERFORM pg_temp.s06_stash('K0', v_kid);
   PERFORM pg_temp.reset_postgres();
 END;
 $$;
@@ -104,23 +124,24 @@ BEGIN
   PERFORM pg_temp.reset_postgres();
   SELECT value INTO STRICT v_doc_auth FROM catalog_setup WHERE key = 'doctor_auth';
   PERFORM pg_temp.set_authenticated_session(v_doc_auth);
-  v_token := public.issue_ai_token();
+  v_token := public.issue_ai_token(1);
   PERFORM pg_temp.reset_postgres();
   RETURN v_token;
 END;
 $$;
 
 -- -----------------------------------------------------------------------------
--- Stage 06 Baseline B0 (Nadia Haddad / Lina Khoury / Rami Saleh + enroll)
+-- Stage 06 Baseline B0 (Nadia Haddad / Lina Khoury / Rami Saleh + signing kid)
 -- -----------------------------------------------------------------------------
 DO $$
 DECLARE
   v_boot_auth uuid := 'a0000000-0000-4000-8000-000000000001';
   v_boot_staff uuid := 'b0000000-0000-4000-8000-000000000001';
-  v_result public.rpc_result;
   v_org_id uuid;
   v_branch_id uuid;
   v_doc uuid;
+  v_signing_kid text;
+  v_result public.rpc_result;
   v_doc_auth uuid;
   v_adm uuid;
   v_adm_auth uuid;
@@ -220,16 +241,25 @@ BEGIN
     ('boot', v_boot_staff),
     ('boot_auth', v_boot_auth);
 
-  PERFORM pg_temp.set_authenticated_session(v_boot_auth);
-  v_result := public.enroll_installation_keypair();
-  IF NOT v_result.success THEN
-    RAISE EXCEPTION 'stage-06 B0 enroll_installation_keypair failed: % — %',
-      COALESCE(v_result.error_code, '<null>'),
-      COALESCE(v_result.error_message, '');
+  IF NOT EXISTS (
+    SELECT 1
+    FROM ai_internal.issuer_key ik
+    WHERE ik.status = 'signing'
+  ) THEN
+    PERFORM auth_internal.insert_issuer_kid();
   END IF;
 
-  PERFORM pg_temp.s06_stash('I0', v_result.data ->> 'installation_id');
-  PERFORM pg_temp.s06_stash('K0', v_result.data ->> 'kid');
+  SELECT ik.kid
+  INTO STRICT v_signing_kid
+  FROM ai_internal.issuer_key ik
+  WHERE ik.status = 'signing'
+  LIMIT 1;
+
+  PERFORM pg_temp.s06_stash(
+    'I0',
+    auth_internal.ai_app_setting_text('ai.issuer_id', 'issuer-test')
+  );
+  PERFORM pg_temp.s06_stash('K0', v_signing_kid);
   PERFORM pg_temp.reset_postgres();
 END;
 $$;
@@ -265,7 +295,7 @@ BEGIN
 
   PERFORM pg_temp.set_authenticated_session(v_doc_auth);
   BEGIN
-    v_token := public.issue_ai_token();
+    v_token := public.issue_ai_token(1);
     v_raised := false;
   EXCEPTION
     WHEN SQLSTATE '22023' THEN
@@ -521,117 +551,8 @@ END;
 $$;
 
 -- -----------------------------------------------------------------------------
--- S06-038 — verify_aat rejects unknown, revoked, and soft-deleted kids
--- Rebuilds S06-028 (rotate then revoke K0). Soft-deletes K1 for the
--- deleted-kid arm. Restores keystore afterwards.
--- -----------------------------------------------------------------------------
-DO $$
-DECLARE
-  v_boot_auth uuid;
-  v_k0 text;
-  v_k1 text;
-  v_token text;
-  v_k1_token text;
-  v_k1_header jsonb;
-  v_payload_part text;
-  v_sig_part text;
-  v_rotate public.rpc_result;
-  v_revoke public.rpc_result;
-  v_unknown_kid uuid;
-  v_hdr jsonb;
-  v_unknown_token text;
-  v_revoked boolean;
-  v_unknown boolean;
-  v_soft_deleted boolean;
-  v_ok boolean;
-  v_detail text;
-BEGIN
-  SELECT value INTO STRICT v_boot_auth FROM catalog_setup WHERE key = 'boot_auth';
-  v_k0 := pg_temp.s06_id('K0');
-
-  v_token := pg_temp.s06_mint_as_doc();
-  v_payload_part := split_part(v_token, '.', 2);
-  v_sig_part := split_part(v_token, '.', 3);
-
-  PERFORM pg_temp.set_authenticated_session(v_boot_auth);
-  v_rotate := public.rotate_installation_key();
-  IF NOT v_rotate.success THEN
-    PERFORM pg_temp.reset_postgres();
-    PERFORM pg_temp.record(
-      'S06-038 — verify_aat rejects unknown, revoked, and soft-deleted kids',
-      false,
-      'rotate failed: ' || COALESCE(v_rotate.error_code, '<null>')
-        || ' — ' || COALESCE(v_rotate.error_message, '')
-    );
-    PERFORM pg_temp.s06_reenroll();
-    RETURN;
-  END IF;
-
-  v_k1 := v_rotate.data ->> 'kid';
-
-  v_revoke := public.revoke_installation_key(v_k0);
-  IF NOT v_revoke.success THEN
-    PERFORM pg_temp.reset_postgres();
-    PERFORM pg_temp.record(
-      'S06-038 — verify_aat rejects unknown, revoked, and soft-deleted kids',
-      false,
-      'revoke(K0) failed: ' || COALESCE(v_revoke.error_code, '<null>')
-        || ' — ' || COALESCE(v_revoke.error_message, '')
-    );
-    PERFORM pg_temp.s06_reenroll();
-    RETURN;
-  END IF;
-
-  PERFORM pg_temp.reset_postgres();
-  v_revoked := auth_internal.verify_aat(v_token);
-
-  -- Unknown kid: generate a random uuid; do not pin the catalog example.
-  v_unknown_kid := gen_random_uuid();
-  v_hdr := jsonb_build_object('alg', 'EdDSA', 'kid', v_unknown_kid::text);
-  v_unknown_token := auth_internal.base64url_encode(convert_to(v_hdr::text, 'utf8'))
-    || '.' || v_payload_part || '.' || v_sig_part;
-  v_unknown := auth_internal.verify_aat(v_unknown_token);
-
-  -- Soft-deleted K1: mint under the rotated kid, then [SEED] hide the row.
-  -- No RPC soft-deletes keystore rows; lookup filters is_deleted = false.
-  v_k1_token := pg_temp.s06_mint_as_doc();
-  v_k1_header := pg_temp.decode_jws_header(v_k1_token);
-  UPDATE ai_internal.installation_keys
-  SET is_deleted = true,
-      deleted_at = now()
-  WHERE kid = v_k1;
-  v_soft_deleted := auth_internal.verify_aat(v_k1_token);
-
-  v_ok := v_rotate.success
-    AND v_revoke.success
-    AND v_revoked IS FALSE
-    AND v_unknown IS FALSE
-    AND v_unknown_kid::text IS DISTINCT FROM v_k0
-    AND v_k1 IS NOT NULL
-    AND v_k1 IS DISTINCT FROM v_k0
-    AND (v_k1_header ->> 'kid') = v_k1
-    AND v_soft_deleted IS FALSE;
-
-  v_detail := 'revoked_kid_verify=' || COALESCE(v_revoked::text, '<null>')
-    || ' unknown_kid_verify=' || COALESCE(v_unknown::text, '<null>')
-    || ' soft_deleted_k1_verify=' || COALESCE(v_soft_deleted::text, '<null>')
-    || ' rotated=' || COALESCE(v_k1, '<null>')
-    || ' k1_mint_kid=' || COALESCE(v_k1_header ->> 'kid', '<null>');
-
-  PERFORM pg_temp.record(
-    'S06-038 — verify_aat rejects unknown, revoked, and soft-deleted kids',
-    v_ok,
-    v_detail
-  );
-
-  -- Restore an active K0/I0 so later IDs still mint (039 needs a non-revoked kid).
-  PERFORM pg_temp.s06_reenroll();
-END;
-$$;
-
--- -----------------------------------------------------------------------------
--- S06-039 — verify_aat rejects an iss that does not match the key's installation
--- [SEED]: postgres reads K0 secret_key and re-signs a foreign iss.
+-- S06-039 — verify_aat rejects an iss that does not match the issuer id
+-- [SEED]: postgres reads the signing kid's Vault secret and re-signs a foreign iss.
 -- -----------------------------------------------------------------------------
 DO $$
 DECLARE
@@ -658,12 +579,12 @@ BEGIN
   v_payload := pg_temp.decode_jws_payload(v_token);
   v_payload := (v_payload - 'iss') || jsonb_build_object('iss', v_foreign_iss::text);
 
-  SELECT ik.secret_key
+  SELECT decode(ds.decrypted_secret, 'base64')
   INTO STRICT v_secret
-  FROM ai_internal.installation_keys ik
+  FROM ai_internal.issuer_key ik
+  JOIN vault.decrypted_secrets ds ON ds.id = ik.secret_ref
   WHERE ik.kid = v_k0
-    AND ik.is_deleted = false
-    AND ik.revoked_at IS NULL;
+    AND ik.status = 'signing';
 
   v_payload_b64 := auth_internal.base64url_encode(convert_to(v_payload::text, 'utf8'));
   v_signing_input := v_header_part || '.' || v_payload_b64;
@@ -694,7 +615,7 @@ BEGIN
   END IF;
 
   PERFORM pg_temp.record(
-    'S06-039 — verify_aat rejects an iss that does not match the key''s installation',
+    'S06-039 — verify_aat rejects an iss that does not match the issuer id',
     v_ok,
     v_detail
   );
@@ -777,9 +698,9 @@ BEGIN
 
   SELECT EXISTS (
     SELECT 1
-    FROM ai_internal.installation_keys ik
+    FROM ai_internal.issuer_key ik
     WHERE ik.kid = v_kid
-      AND ik.is_deleted = false
+      AND ik.status IN ('signing', 'next')
   )
   INTO v_kid_in_keystore;
 
@@ -879,10 +800,9 @@ BEGIN
 
   SELECT EXISTS (
     SELECT 1
-    FROM ai_internal.installation_keys ik
+    FROM ai_internal.issuer_key ik
     WHERE ik.kid = v_kid
-      AND ik.is_deleted = false
-      AND ik.revoked_at IS NULL
+      AND ik.status = 'signing'
   )
   INTO v_kid_active;
 
@@ -898,153 +818,6 @@ BEGIN
 
   PERFORM pg_temp.record(
     'S06-043 — Default lifetime within platform cap: seed-default tokens are accepted',
-    v_ok,
-    v_detail
-  );
-END;
-$$;
-
--- -----------------------------------------------------------------------------
--- S06-044 — Minted-then-rejected: kid unknown to the platform (clinic half)
--- Rebuilds S06-027 rotate. Platform would reject unknown K1 — Register 5 #17.
--- Isolates afterwards by revoking K1 so later IDs mint under K0.
--- -----------------------------------------------------------------------------
-DO $$
-DECLARE
-  v_boot_auth uuid;
-  v_i0 text;
-  v_k0 text;
-  v_k1 text;
-  v_rotate public.rpc_result;
-  v_token text;
-  v_header jsonb;
-  v_payload jsonb;
-  v_verified boolean;
-  v_revoke public.rpc_result;
-  v_ok boolean;
-  v_detail text;
-BEGIN
-  SELECT value INTO STRICT v_boot_auth FROM catalog_setup WHERE key = 'boot_auth';
-  v_i0 := pg_temp.s06_id('I0');
-  v_k0 := pg_temp.s06_id('K0');
-
-  PERFORM pg_temp.set_authenticated_session(v_boot_auth);
-  v_rotate := public.rotate_installation_key();
-  IF NOT v_rotate.success THEN
-    PERFORM pg_temp.reset_postgres();
-    PERFORM pg_temp.record(
-      'S06-044 — Minted-then-rejected: kid unknown to the platform',
-      false,
-      'rotate failed: ' || COALESCE(v_rotate.error_code, '<null>')
-        || ' — ' || COALESCE(v_rotate.error_message, '')
-        || ' | platform HTTP half is skipped — Register 5 #17'
-    );
-    RETURN;
-  END IF;
-  v_k1 := v_rotate.data ->> 'kid';
-  PERFORM pg_temp.s06_stash('K1', v_k1);
-
-  v_token := pg_temp.s06_mint_as_doc();
-  v_header := pg_temp.decode_jws_header(v_token);
-  v_payload := pg_temp.decode_jws_payload(v_token);
-  v_verified := auth_internal.verify_aat(v_token);
-
-  v_ok := v_rotate.success
-    AND v_k1 IS NOT NULL
-    AND v_k1 IS DISTINCT FROM v_k0
-    AND pg_temp.s06_is_compact_jws(v_token)
-    AND (v_header ->> 'kid') = v_k1
-    AND (v_payload ->> 'iss') = v_i0
-    AND v_verified IS TRUE;
-
-  v_detail := 'kid=' || COALESCE(v_header ->> 'kid', '<null>')
-    || ' kid_is_k1=' || ((v_header ->> 'kid') = v_k1)::text
-    || ' iss_match=' || ((v_payload ->> 'iss') = v_i0)::text
-    || ' clinic_verify=' || COALESCE(v_verified::text, '<null>')
-    || ' | platform HTTP half is skipped — Register 5 #17 (Stage 7/9 execute identity rejection); platform would reject unknown K1';
-
-  PERFORM pg_temp.record(
-    'S06-044 — Minted-then-rejected: kid unknown to the platform',
-    v_ok,
-    v_detail
-  );
-
-  -- Isolate: revoke K1 so S06-045 can mint under K0 (last-active guard needs K0 live).
-  PERFORM pg_temp.set_authenticated_session(v_boot_auth);
-  v_revoke := public.revoke_installation_key(v_k1);
-  PERFORM pg_temp.reset_postgres();
-  IF NOT v_revoke.success THEN
-    PERFORM pg_temp.s06_reenroll();
-  END IF;
-END;
-$$;
-
--- -----------------------------------------------------------------------------
--- S06-045 — Minted-then-rejected: kid revoked platform-side (clinic equivalent)
--- Mint under K0, rotate (last-active guard), revoke K0, clinic verify_aat false.
--- Platform HTTP half skipped — Register 5 #17.
--- -----------------------------------------------------------------------------
-DO $$
-DECLARE
-  v_boot_auth uuid;
-  v_k0 text;
-  v_token text;
-  v_header jsonb;
-  v_rotate public.rpc_result;
-  v_revoke public.rpc_result;
-  v_verified boolean;
-  v_ok boolean;
-  v_detail text;
-BEGIN
-  SELECT value INTO STRICT v_boot_auth FROM catalog_setup WHERE key = 'boot_auth';
-  v_k0 := pg_temp.s06_id('K0');
-
-  v_token := pg_temp.s06_mint_as_doc();
-  v_header := pg_temp.decode_jws_header(v_token);
-
-  PERFORM pg_temp.set_authenticated_session(v_boot_auth);
-  v_rotate := public.rotate_installation_key();
-  IF NOT v_rotate.success THEN
-    PERFORM pg_temp.reset_postgres();
-    PERFORM pg_temp.record(
-      'S06-045 — Minted-then-rejected: kid revoked platform-side',
-      false,
-      'rotate failed: ' || COALESCE(v_rotate.error_code, '<null>')
-        || ' — ' || COALESCE(v_rotate.error_message, '')
-        || ' | platform HTTP half is skipped — Register 5 #17'
-    );
-    RETURN;
-  END IF;
-
-  v_revoke := public.revoke_installation_key(v_k0);
-  IF NOT v_revoke.success THEN
-    PERFORM pg_temp.reset_postgres();
-    PERFORM pg_temp.record(
-      'S06-045 — Minted-then-rejected: kid revoked platform-side',
-      false,
-      'revoke(K0) failed: ' || COALESCE(v_revoke.error_code, '<null>')
-        || ' — ' || COALESCE(v_revoke.error_message, '')
-        || ' | platform HTTP half is skipped — Register 5 #17'
-    );
-    RETURN;
-  END IF;
-
-  PERFORM pg_temp.reset_postgres();
-  v_verified := auth_internal.verify_aat(v_token);
-
-  v_ok := pg_temp.s06_is_compact_jws(v_token)
-    AND (v_header ->> 'kid') = v_k0
-    AND v_rotate.success
-    AND v_revoke.success
-    AND v_verified IS FALSE;
-
-  v_detail := 'mint_kid=' || COALESCE(v_header ->> 'kid', '<null>')
-    || ' kid_was_k0=' || ((v_header ->> 'kid') = v_k0)::text
-    || ' after_revoke_verify=' || COALESCE(v_verified::text, '<null>')
-    || ' | platform HTTP half is skipped — Register 5 #17 (Stage 7/9 execute identity rejection)';
-
-  PERFORM pg_temp.record(
-    'S06-045 — Minted-then-rejected: kid revoked platform-side',
     v_ok,
     v_detail
   );
@@ -1082,10 +855,9 @@ BEGIN
 
   SELECT EXISTS (
     SELECT 1
-    FROM ai_internal.installation_keys ik
+    FROM ai_internal.issuer_key ik
     WHERE ik.kid = v_kid
-      AND ik.is_deleted = false
-      AND ik.revoked_at IS NULL
+      AND ik.status = 'signing'
   )
   INTO v_kid_ok;
 
@@ -1135,10 +907,9 @@ BEGIN
 
   SELECT EXISTS (
     SELECT 1
-    FROM ai_internal.installation_keys ik
+    FROM ai_internal.issuer_key ik
     WHERE ik.kid = v_kid
-      AND ik.is_deleted = false
-      AND ik.installation_id::text = v_i0
+      AND ik.status IN ('signing', 'next')
   )
   INTO v_kid_in_keystore;
 
