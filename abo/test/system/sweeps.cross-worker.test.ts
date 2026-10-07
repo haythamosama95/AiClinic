@@ -13,6 +13,7 @@ import successFixture from "../fixtures/paymob/success.json";
 import checkoutMigrationSql from "../../migrations/0002_checkout.sql?raw";
 import notifyWorkMigrationSql from "../../migrations/0003_notify_work.sql?raw";
 import grantMigrationSql from "../../migrations/0004_grant.sql?raw";
+import reversalMigrationSql from "../../migrations/0005_reversal.sql?raw";
 import { loadOffersFixture } from "../../src/records/append";
 import {
   applySql,
@@ -31,6 +32,8 @@ import {
   scriptPaymobStub,
   setClock,
   setupCrossWorkerHarness,
+  syncPlatformGrantLedger,
+  syncPlatformGrantVoids,
 } from "./cross-worker-harness";
 
 const CONTRACT_VERSION = CHANNEL_VERSIONS.vendorEntrypoint;
@@ -210,6 +213,7 @@ async function ensureMigrations(): Promise<void> {
     checkoutMigrationSql,
     notifyWorkMigrationSql,
     grantMigrationSql,
+    reversalMigrationSql,
   ]) {
     try {
       await applySql(sql);
@@ -441,10 +445,11 @@ async function postBadHmacFixture(connectingIp?: string): Promise<Response> {
   });
 }
 
-async function runGrantStep(): Promise<void> {
+async function runGrantStep(orgId: string): Promise<void> {
   const { runDueGrantWork } = await import("../../src/work/grant");
   await runScheduled("* * * * *");
   await runDueGrantWork(env as never);
+  await syncPlatformGrantLedger(orgId);
 }
 
 async function openedEventAt(checkoutId: string): Promise<string> {
@@ -741,6 +746,7 @@ function partialRefundFixtureWithTxnId(txnId: number): PaymobCallbackFixture {
       id: txnId,
       is_refunded: true,
       amount_cents: "800",
+      refunded_amount_cents: "400",
     },
   };
 }
@@ -769,7 +775,7 @@ async function paidCheckoutWithGrant(
     },
   );
   expect(intake.status).toBe(200);
-  await runGrantStep();
+  await runGrantStep(org);
   return checkout;
 }
 
@@ -1118,7 +1124,7 @@ async function setupActiveAndQueuedTerms(
     txnId: firstTxnId,
     amountMinor: firstChargedPrice,
   });
-  await runGrantStep();
+  await runGrantStep(org);
   const secondChargedPrice = await syncPaymobForCheckout(
     secondCheckout.checkoutId,
   );
@@ -1127,7 +1133,7 @@ async function setupActiveAndQueuedTerms(
     connectingIp: `203.0.113.${secondTxnId % 200}`,
     amountMinor: secondChargedPrice,
   });
-  await runGrantStep();
+  await runGrantStep(org);
   const activePaymentId = await paymentIdForCheckout(firstCheckout.checkoutId);
   expect(activePaymentId).not.toBeNull();
   const subscriptionBefore = await getSubscriptionBody(org);
@@ -1171,7 +1177,7 @@ describe("sweeps cross-worker", () => {
 
     await setClock(addMinutes(openedAt, 2));
     await runScheduled("* * * * *");
-    await runGrantStep();
+    await runGrantStep(ORG_SWEEP_01);
 
     expect(await paymentCountForCheckout(checkoutId)).toBe(1);
     expect(await grantOutcomeCount()).toBeGreaterThan(0);
@@ -1211,7 +1217,7 @@ describe("sweeps cross-worker", () => {
 
     await setClock(addMinutes(openedAt, 2));
     await runScheduled("* * * * *");
-    await runGrantStep();
+    await runGrantStep(ORG_SWEEP_02);
 
     expect(await paymentCountForCheckout(checkoutId)).toBe(1);
     expect(await grantOutcomeCount()).toBeGreaterThan(0);
@@ -1245,7 +1251,7 @@ describe("sweeps cross-worker", () => {
     expect(await getCheckoutShownState(ORG_SWEEP_03, checkoutId)).toBe("Paid");
     expect(await grantOutcomeCount()).toBe(0);
 
-    await runGrantStep();
+    await runGrantStep(ORG_SWEEP_03);
     expect(await grantOutcomeCount()).toBeGreaterThan(0);
     expect(await alertCountByCode("AL-08")).toBe(1);
   });
@@ -1309,6 +1315,7 @@ describe("sweeps cross-worker", () => {
 
     await scriptPaymobInquiry("reversed");
     await runScheduled("* * * * *");
+    await syncPlatformGrantVoids();
 
     const grantId = await grantIdPaid(activePaymentId);
     expect(await platformGrantVoidCount(grantId)).toBe(1);
@@ -1353,6 +1360,7 @@ describe("sweeps cross-worker", () => {
 
     await scriptPaymobInquiry("reversed");
     await runScheduled("* * * * *");
+    await syncPlatformGrantVoids();
 
     const grantId = await grantIdPaid(activePaymentId);
     expect(await platformGrantVoidCount(grantId)).toBe(1);
@@ -1436,7 +1444,7 @@ describe("sweeps cross-worker", () => {
     expect(await platformGrantVoidCount(grantId)).toBe(1);
 
     await activateTenantBinding(org);
-    await runGrantStep();
+    await runGrantStep(org);
     expect(await grantWorkState(paymentId!)).toBe("done");
     const outcome = await env.DB.prepare(
       `SELECT result FROM grant_outcome WHERE grant_id = ?`,
@@ -1528,6 +1536,7 @@ describe("sweeps cross-worker", () => {
     const reversalsBeforeHourly = await reversalCount();
 
     await setClock(addDays(baseClock, 3));
+    await scriptPaymobInquiry("reversed");
     await runScheduled("0 * * * *");
 
     expect(await tableCount("payment")).toBe(paymentsBeforeHourly);
@@ -1546,6 +1555,8 @@ describe("sweeps cross-worker", () => {
     const paymentsBeforeSixHour = await tableCount("payment");
     const reversalsBeforeSixHour = await reversalCount();
 
+    await setClock(addMinutes(addDays(baseClock, 3), 1));
+    await scriptPaymobInquiry("reversed");
     await runScheduled("0 */6 * * *");
 
     expect(await tableCount("payment")).toBe(paymentsBeforeSixHour);
@@ -1576,6 +1587,7 @@ describe("sweeps cross-worker", () => {
     const dailyDueAt = await sweepPaymentNextAttemptAt(dailyPaymentId!);
     expect(dailyDueAt).not.toBeNull();
     await setClock(dailyDueAt!);
+    await scriptPaymobInquiry("reversed");
     await runScheduled("* * * * *");
 
     expect(await tableCount("payment")).toBe(paymentsBeforeDaily);

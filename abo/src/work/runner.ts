@@ -668,6 +668,11 @@ async function confirmSuccessBatch(
       checkout.checkout_id,
     );
   }
+  if (classification === "late") {
+    await raiseAlert(env, "AL-08", `AL-08:${checkout.checkout_id}`, checkout.checkout_id);
+  }
+  const paidCheckoutState =
+    classification === "late" ? "paid_late" : "paid";
 
   const paymentCanonical = {
     payment_id: paymentId,
@@ -737,8 +742,8 @@ async function confirmSuccessBatch(
   );
   statements.push(
     env.DB.prepare(
-      `UPDATE checkout_status SET state = 'paid', last_event_at = ? WHERE checkout_id = ?`,
-    ).bind(nowIso, checkout.checkout_id),
+      `UPDATE checkout_status SET state = ?, last_event_at = ? WHERE checkout_id = ?`,
+    ).bind(paidCheckoutState, nowIso, checkout.checkout_id),
   );
   statements.push(
     env.DB.prepare(

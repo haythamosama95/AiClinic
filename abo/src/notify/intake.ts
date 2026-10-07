@@ -6,8 +6,11 @@ import type { PaymobAdapterEnv } from "../provider/paymob/adapter.js";
 
 const NOTIFY_ADAPTER_VERSION = 1;
 import type { ProviderNotificationRequest } from "../provider/port.js";
-import { runDueGrantWork, type GrantEnv } from "../work/grant.js";
+import { runMinuteInquiryBudget } from "../work/inquiry-budget.js";
+import { recordReversalFromProviderTxn } from "../work/reversal.js";
+import type { ReversalEnv } from "../work/reversal.js";
 import { runConfirmForWorkId } from "../work/runner.js";
+import type { GrantEnv } from "../work/grant.js";
 
 const MAX_NOTIFY_BODY_BYTES = 1_048_576;
 const RATE_LIMIT_WINDOW_MS = 60_000;
@@ -320,7 +323,8 @@ export async function handlePostNotifyPaymob(
   }
 
   const bodySha256 = await sha256Hex(new TextEncoder().encode(body));
-  const checkoutId = parsed.events[0]?.checkout_id ?? null;
+  const event = parsed.events[0] ?? null;
+  const checkoutId = event?.checkout_id ?? null;
   const notificationId = await newId(env);
   const bodyR2Key = `evidence/notification/${notificationId}`;
 
@@ -328,6 +332,50 @@ export async function handlePostNotifyPaymob(
     await env.R2.put(bodyR2Key, body);
   } catch {
     return emptyResponse(500);
+  }
+
+  if (event !== null && event.kind === "reversal") {
+    try {
+      if (checkoutId !== null) {
+        await env.DB.prepare(
+          `INSERT INTO notification (
+             notification_id, provider_id, channel, hmac_valid, body_r2_key,
+             body_sha256, dedupe_key, checkout_id, disposition, adapter_version
+           ) VALUES (?, ?, 'processed', 1, ?, ?, ?, ?, 'enqueued', ?)`,
+        )
+          .bind(
+            notificationId,
+            PAYMOB_PROVIDER_ID,
+            bodyR2Key,
+            bodySha256,
+            bodySha256,
+            checkoutId,
+            NOTIFY_ADAPTER_VERSION,
+          )
+          .run();
+      } else {
+        await insertUnmatchedNotification(env, {
+          notificationId,
+          bodySha256,
+          bodyR2Key,
+          channel: "processed",
+        });
+      }
+      const reversalEnv = env as NotifyIntakeEnv & ReversalEnv;
+      await recordReversalFromProviderTxn(
+        reversalEnv,
+        event,
+        "notification",
+        bodySha256,
+      );
+      const budgetEnv = env as NotifyIntakeEnv & ReversalEnv & GrantEnv;
+      const budgetRun = runMinuteInquiryBudget(budgetEnv);
+      ctx.waitUntil(budgetRun);
+      await budgetRun;
+    } catch {
+      return emptyResponse(500);
+    }
+    return emptyResponse(200);
   }
 
   let confirmWorkId: string | null = null;
@@ -365,9 +413,9 @@ export async function handlePostNotifyPaymob(
   }
 
   if (confirmWorkId !== null) {
-    const grantEnv = env as NotifyIntakeEnv & GrantEnv;
+    const budgetEnv = env as NotifyIntakeEnv & ReversalEnv & GrantEnv;
     const confirmAndGrant = runConfirmForWorkId(env, confirmWorkId).then(() =>
-      runDueGrantWork(grantEnv),
+      runMinuteInquiryBudget(budgetEnv),
     );
     ctx.waitUntil(confirmAndGrant);
     await confirmAndGrant;
@@ -410,14 +458,18 @@ export async function handleGetReturnPaymob(
   _request: Request,
   env: NotifyIntakeEnv,
 ): Promise<Response> {
-  const rows = await env.DB.prepare(
+  const row = await env.DB.prepare(
     `SELECT c.checkout_id
      FROM checkout c
      INNER JOIN checkout_status cs ON cs.checkout_id = c.checkout_id
-     WHERE cs.state = 'open'`,
-  ).all<{ checkout_id: string }>();
+     INNER JOIN checkout_event ce
+       ON ce.checkout_id = c.checkout_id AND ce.kind = 'opened'
+     WHERE cs.state = 'open'
+     ORDER BY ce.at DESC, c.checkout_id DESC
+     LIMIT 1`,
+  ).first<{ checkout_id: string }>();
 
-  for (const row of rows.results ?? []) {
+  if (row !== null) {
     await scheduleConfirmForCheckout(env, row.checkout_id);
   }
 

@@ -769,7 +769,11 @@ function shownStateForOpenStates(state: string): string | null {
   if (state === "open") {
     return "Waiting";
   }
-  if (state === "open_failed") {
+  if (
+    state === "open_failed" ||
+    state === "expired" ||
+    state === "cancelled"
+  ) {
     return "Abandoned";
   }
   return null;
@@ -793,13 +797,12 @@ async function shownStateForPaidCheckout(
   )
     .bind(grantId)
     .first<{ result: string }>();
-  if (
-    outcome?.result === "applied" ||
-    outcome?.result === "already_applied"
-  ) {
+  const grantApplied =
+    outcome?.result === "applied" || outcome?.result === "already_applied";
+  if (grantApplied) {
     return "Active";
   }
-  return null;
+  return "Paid";
 }
 
 async function checkoutReadObject(

@@ -632,6 +632,81 @@ export async function setupActivePlatformCoverage(orgId: string): Promise<void> 
   }
 }
 
+export async function syncPlatformGrantVoids(): Promise<void> {
+  const rows = await env.DB.prepare(
+    `SELECT gr.grant_id, r.evidence_sha256, ro.at
+     FROM reversal_outcome ro
+     INNER JOIN reversal r ON r.reversal_id = ro.reversal_id
+     INNER JOIN payment p ON p.payment_id = r.payment_id
+     INNER JOIN grant_request gr ON gr.source_ref = p.payment_id
+     WHERE ro.result IN ('applied', 'already_applied')`,
+  ).all<{
+    grant_id: string;
+    evidence_sha256: string;
+    at: string;
+  }>();
+
+  for (const row of rows.results ?? []) {
+    await env.PLATFORM_DB.prepare(
+      `INSERT OR IGNORE INTO grant_void (
+         grant_id, reason, source, evidence_sha256, at
+       ) VALUES (?, 'end_current', 'reversal', ?, ?)`,
+    )
+      .bind(row.grant_id, row.evidence_sha256, row.at)
+      .run();
+  }
+}
+
+export async function syncPlatformGrantLedger(orgId: string): Promise<void> {
+  const binding = await env.PLATFORM_DB.prepare(
+    `SELECT installation_id FROM tenant_binding
+     WHERE org_id = ? AND status = 'active'`,
+  )
+    .bind(orgId)
+    .first<{ installation_id: string }>();
+  if (binding?.installation_id === undefined) {
+    return;
+  }
+
+  const boot = await ensurePlatformBootstrap();
+  const rows = await env.DB.prepare(
+    `SELECT gr.grant_id, gr.envelope_sha256, gr.source_kind, go.receipt, go.at
+     FROM grant_outcome go
+     INNER JOIN grant_request gr ON gr.grant_id = go.grant_id
+     WHERE gr.org_id = ?
+       AND go.result IN ('applied', 'already_applied')`,
+  )
+    .bind(orgId)
+    .all<{
+      grant_id: string;
+      envelope_sha256: string;
+      source_kind: string;
+      receipt: string;
+      at: string;
+    }>();
+
+  for (const row of rows.results ?? []) {
+    await env.PLATFORM_DB.prepare(
+      `INSERT OR IGNORE INTO grant_ledger (
+         grant_id, origin_grant_id, org_id, installation_id, kind, source_kind,
+         operator_credential_id, envelope_sha256, receipt, applied_at
+       ) VALUES (?, ?, ?, ?, 'term', ?, ?, ?, ?, ?)`,
+    )
+      .bind(
+        row.grant_id,
+        row.grant_id,
+        orgId,
+        binding.installation_id,
+        row.source_kind,
+        boot.signerCredentialId,
+        row.envelope_sha256,
+        row.receipt,
+        row.at,
+      )
+      .run();
+  }
+}
+
 export async function setupCrossWorkerHarness(): Promise<void> {
   await setupHarness();
   await ensureVendorAccessTeam();
@@ -641,8 +716,62 @@ export async function setupCrossWorkerHarness(): Promise<void> {
   vendorAccessTeam = null;
 }
 
+async function clearAboTransactionalTables(): Promise<void> {
+  for (const table of [
+    "reversal_outcome",
+    "reversal",
+    "finding",
+    "inquiry_spend",
+    "inquiry_result",
+    "grant_outcome",
+    "grant_request",
+    "work",
+    "notification",
+    "payment",
+    "paymob_txn",
+    "paymob_state_seen",
+    "paymob_intention",
+    "checkout_event",
+    "checkout_status",
+    "checkout",
+    "coverage_view",
+    "alert",
+    "notify_rate",
+  ]) {
+    try {
+      await env.DB.prepare(`DELETE FROM ${table}`).run();
+    } catch {
+      // Table may not exist before migrations run.
+    }
+  }
+  try {
+    await env.DB.prepare(
+      `UPDATE feed_cursor SET feed_seq = 0 WHERE id = 1`,
+    ).run();
+  } catch {
+    // feed_cursor may not exist yet.
+  }
+}
+
+async function clearPlatformTransactionalTables(): Promise<void> {
+  for (const table of [
+    "grant_void",
+    "coverage_event",
+    "tenant_binding",
+    "installation",
+  ]) {
+    try {
+      await env.PLATFORM_DB.prepare(`DELETE FROM ${table}`).run();
+    } catch {
+      // Table may not exist before migrations run.
+    }
+  }
+}
+
 export async function resetCrossWorkerHarness(): Promise<void> {
   await resetHarnessState();
+  await clearAboTransactionalTables();
+  await clearPlatformTransactionalTables();
   platformBootstrap = null;
   vendorAccessTeam = null;
   platformMigrationsApplied = false;

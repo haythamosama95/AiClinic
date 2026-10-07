@@ -764,6 +764,60 @@ async function processGrantWork(env: GrantEnv, work: WorkRow): Promise<void> {
     return;
   }
 
+  if (result === "rejected" && platformResult.code === "voided") {
+    const requestCanonical = grantRequestCanonical({
+      grantId,
+      orgId: payment.org_id,
+      paymentId: payment.payment_id,
+      envelopeText,
+      envelopeSha256,
+    });
+    const outcomeCanonical = grantOutcomeCanonical({
+      grantId,
+      result: "rejected",
+      aboKid: null,
+      aboSignature: null,
+      receipt: null,
+      termIds: null,
+      at: nowIso,
+    });
+    const requestSha = await sha256Hex(canonicalize(requestCanonical));
+    const outcomeSha = await sha256Hex(canonicalize(outcomeCanonical));
+
+    const statements: D1PreparedStatement[] = [
+      insertGrantRequestIfAbsent(
+        env,
+        grantId,
+        payment.org_id,
+        payment.payment_id,
+        envelopeText,
+        envelopeSha256,
+      ),
+      env.DB.prepare(
+        `INSERT INTO grant_outcome (
+           grant_id, result, abo_kid, abo_signature, receipt, term_ids, at
+         ) VALUES (?, ?, NULL, NULL, NULL, NULL, ?)`,
+      ).bind(grantId, "rejected", nowIso),
+      factLogStatement(env, "grant_request", grantId, requestSha, nowIso),
+      factLogStatement(env, "grant_outcome", grantId, outcomeSha, nowIso),
+      env.DB.prepare(
+        `UPDATE work SET state = 'done', lease_until = NULL, last_error = NULL
+         WHERE work_id = ? AND lease_until = ?`,
+      ).bind(work.work_id, leaseUntil),
+    ];
+
+    try {
+      const results = await env.DB.batch(statements);
+      const workIdx = statements.length - 1;
+      if ((results[workIdx]?.meta.changes ?? 0) === 0) {
+        throw new Error("lease_lost");
+      }
+    } catch {
+      await releaseLease(env, work.work_id, leaseUntil);
+    }
+    return;
+  }
+
   if (result === "conflict" || result === "rejected") {
     const requestCanonical = grantRequestCanonical({
       grantId,

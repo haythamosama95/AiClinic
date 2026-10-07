@@ -24,8 +24,14 @@ import {
   handlePostNotifyPaymob,
 } from "./notify/intake.js";
 import { exportFacts } from "./records/export.js";
-import { refreshSigningKeyCheck, runDueGrantWork } from "./work/grant.js";
-import { runDueConfirmWork } from "./work/runner.js";
+import { refreshSigningKeyCheck } from "./work/grant.js";
+import { runMinuteInquiryBudget } from "./work/inquiry-budget.js";
+import {
+  enqueueDailyReversalPopulation,
+  enqueueHourlyReversalPopulation,
+  enqueueSixHourReversalPopulation,
+  scheduleCheckoutSweepRows,
+} from "./work/sweep.js";
 
 export interface Env {
   DB: D1Database;
@@ -56,6 +62,9 @@ export interface Env {
     ): Promise<Record<string, unknown>>;
     grant(args: Record<string, unknown>): Promise<Record<string, unknown>>;
     listServiceKeys(
+      args: Record<string, unknown>,
+    ): Promise<Record<string, unknown>>;
+    voidForReversal(
       args: Record<string, unknown>,
     ): Promise<Record<string, unknown>>;
   };
@@ -170,7 +179,23 @@ async function handleBillingV1(
   }
 
   if (request.method === "POST" && path === "/v1/checkouts") {
-    return handlePostCheckout(request, env, auth.claims, versionGate.version);
+    const response = await handlePostCheckout(
+      request,
+      env,
+      auth.claims,
+      versionGate.version,
+    );
+    if (response.status === 201) {
+      try {
+        const body = (await response.clone().json()) as { checkout_id?: string };
+        if (typeof body.checkout_id === "string") {
+          await scheduleCheckoutSweepRows(env, body.checkout_id);
+        }
+      } catch {
+        // Sweep scheduling failures must not block checkout creation.
+      }
+    }
+    return response;
   }
 
   if (request.method === "GET" && path === "/v1/checkouts") {
@@ -258,6 +283,16 @@ export default {
   ): Promise<void> {
     const cron = controller.cron;
     if (cron === "0 */6 * * *") {
+      try {
+        await enqueueSixHourReversalPopulation(env);
+      } catch {
+        // Six-hour population failures must not block the cron.
+      }
+      try {
+        await runMinuteInquiryBudget(env);
+      } catch {
+        // Inquiry processing failures must not block the six-hour cron.
+      }
       return;
     }
     if (cron === "0 * * * *") {
@@ -265,6 +300,16 @@ export default {
         await refreshSigningKeyCheck(env);
       } catch {
         // Signing-key check failures must not block the hourly cron.
+      }
+      try {
+        await enqueueHourlyReversalPopulation(env);
+      } catch {
+        // Hourly population failures must not block the hourly cron.
+      }
+      try {
+        await runMinuteInquiryBudget(env);
+      } catch {
+        // Inquiry processing failures must not block the hourly cron.
       }
       return;
     }
@@ -283,14 +328,9 @@ export default {
         // Platform feed failures must not block the minute cron.
       }
       try {
-        await runDueConfirmWork(env);
+        await runMinuteInquiryBudget(env);
       } catch {
-        // Confirm failures must not block the minute cron.
-      }
-      try {
-        await runDueGrantWork(env);
-      } catch {
-        // Grant failures must not block the minute cron.
+        // Inquiry budget failures must not block the minute cron.
       }
       await markExportLagIfDue(env);
       return;
@@ -298,6 +338,11 @@ export default {
     if (cron === "0 6 * * *") {
       await checkR2BucketLock(env);
       await sendDueAlerts(env);
+      try {
+        await enqueueDailyReversalPopulation(env);
+      } catch {
+        // Daily population failures must not block the 06:00 cron.
+      }
     }
   },
 };

@@ -1,4 +1,4 @@
-import { sha256Hex } from "vendor-contracts";
+import { paymentId, sha256Hex } from "vendor-contracts";
 import type {
   CancelCheckoutResult,
   CreateCheckoutInput,
@@ -9,11 +9,12 @@ import type {
   ProviderCapabilities,
   ProviderNotificationRequest,
   ProviderPort,
-  ProviderReversal,
+  type ProviderReversal,
   ProviderTxn,
   ProviderTxnKind,
 } from "../port.js";
 import { clockNowMs, type ClockEnv } from "../../clock.js";
+import { PAYMOB_PROVIDER_ID } from "../registry.js";
 import {
   createPaymobIntention,
   fetchPaymobAuthToken,
@@ -59,6 +60,7 @@ const PAYMOB_HMAC_FIELDS = [
 
 type PaymobCallbackObj = {
   amount_cents: string | number;
+  refunded_amount_cents?: string | number;
   created_at: string;
   currency: string;
   error_occured: boolean;
@@ -313,6 +315,17 @@ function paymobObjFromProcessedBody(body: string): PaymobCallbackObj | null {
   }
 }
 
+const UNPAID_CHECKOUT_OPEN_ORDER = `ORDER BY (
+     SELECT ce.at
+     FROM checkout_event ce
+     WHERE ce.checkout_id = pi.checkout_id AND ce.kind = 'opened'
+   ) ASC,
+   (
+     SELECT ce.rowid
+     FROM checkout_event ce
+     WHERE ce.checkout_id = pi.checkout_id AND ce.kind = 'opened'
+   ) ASC`;
+
 async function checkoutIdForOrder(
   env: PaymobAdapterEnv,
   orderId: string | number,
@@ -331,7 +344,7 @@ async function checkoutIdForOrder(
          WHERE n.checkout_id = pi.checkout_id
            AND n.disposition IN ('enqueued', 'duplicate')
        )
-     ORDER BY pi.checkout_id ASC
+     ${UNPAID_CHECKOUT_OPEN_ORDER}
      LIMIT 1`,
   )
     .bind(orderKey)
@@ -345,13 +358,28 @@ async function checkoutIdForOrder(
      FROM paymob_intention pi
      LEFT JOIN payment p ON p.checkout_id = pi.checkout_id
      WHERE pi.order_id = ? AND p.payment_id IS NULL
-     ORDER BY pi.checkout_id ASC
+     ${UNPAID_CHECKOUT_OPEN_ORDER}
      LIMIT 1`,
   )
     .bind(orderKey)
     .first<{ checkout_id: string }>();
   if (withoutPayment !== null) {
     return withoutPayment.checkout_id;
+  }
+
+  const withReversal = await env.DB.prepare(
+    `SELECT pi.checkout_id
+     FROM paymob_intention pi
+     INNER JOIN payment p ON p.checkout_id = pi.checkout_id
+     INNER JOIN reversal r ON r.payment_id = p.payment_id
+     WHERE pi.order_id = ?
+     ORDER BY pi.checkout_id ASC
+     LIMIT 1`,
+  )
+    .bind(orderKey)
+    .first<{ checkout_id: string }>();
+  if (withReversal !== null) {
+    return withReversal.checkout_id;
   }
 
   const fallback = await env.DB.prepare(
@@ -421,37 +449,119 @@ function txnKindFromCallback(obj: PaymobCallbackObj): ProviderTxnKind {
   return "payment_failed";
 }
 
+async function parentTxnRefForCallback(
+  env: PaymobAdapterEnv,
+  obj: PaymobCallbackObj,
+  checkoutId: string,
+): Promise<string> {
+  const txnId = String(obj.id);
+  if (obj.has_parent_transaction) {
+    const intention = await env.DB.prepare(
+      `SELECT order_id FROM paymob_intention WHERE checkout_id = ?`,
+    )
+      .bind(checkoutId)
+      .first<{ order_id: string }>();
+    if (intention !== null) {
+      const checkout = await env.DB.prepare(
+        `SELECT org_id FROM checkout WHERE checkout_id = ?`,
+      )
+        .bind(checkoutId)
+        .first<{ org_id: string }>();
+      if (checkout !== null) {
+        const reversedParent = await env.DB.prepare(
+          `SELECT pt.txn_id
+           FROM reversal r
+           INNER JOIN payment p ON p.payment_id = r.payment_id
+           INNER JOIN paymob_txn pt
+             ON pt.payment_id = r.payment_id AND pt.parent_txn_id IS NULL
+           INNER JOIN paymob_intention pi ON pi.checkout_id = pt.checkout_id
+           WHERE pi.order_id = ? AND p.org_id = ?
+           ORDER BY pt.txn_id ASC
+           LIMIT 1`,
+        )
+          .bind(intention.order_id, checkout.org_id)
+          .first<{ txn_id: string }>();
+        if (reversedParent !== null) {
+          return reversedParent.txn_id;
+        }
+      }
+    }
+    const parentRow = await env.DB.prepare(
+      `SELECT txn_id FROM paymob_txn
+       WHERE checkout_id = ? AND parent_txn_id IS NULL
+       ORDER BY txn_id ASC
+       LIMIT 1`,
+    )
+      .bind(checkoutId)
+      .first<{ txn_id: string }>();
+    if (parentRow !== null) {
+      return parentRow.txn_id;
+    }
+  }
+  return txnId;
+}
+
+function reversalFromCallback(
+  obj: PaymobCallbackObj,
+): ProviderReversal | undefined {
+  const amountMinor = amountMinorFromCents(obj.amount_cents);
+  if (obj.is_voided) {
+    return {
+      kind: "void",
+      amount_minor: amountMinor,
+      cumulative_reversed_minor: amountMinor,
+      is_full: true,
+    };
+  }
+  if (obj.is_refunded || obj.has_parent_transaction) {
+    const cumulative = amountMinorFromCents(
+      obj.refunded_amount_cents ?? obj.amount_cents,
+    );
+    const parentFlagFullRefund =
+      obj.is_refunded &&
+      !obj.has_parent_transaction &&
+      obj.refunded_amount_cents === undefined;
+    return {
+      kind: "refund",
+      amount_minor: amountMinor,
+      cumulative_reversed_minor: cumulative,
+      is_full: parentFlagFullRefund ? true : cumulative >= amountMinor,
+    };
+  }
+  return undefined;
+}
+
 async function providerTxnFromCallback(
   env: PaymobAdapterEnv,
   obj: PaymobCallbackObj,
 ): Promise<ProviderTxn | null> {
-  const checkoutId = await checkoutIdForOrder(env, obj.order.id);
+  const txnId = String(obj.id);
+  const txnCheckout = await env.DB.prepare(
+    `SELECT checkout_id FROM paymob_txn WHERE txn_id = ?`,
+  )
+    .bind(txnId)
+    .first<{ checkout_id: string }>();
+  const checkoutId =
+    txnCheckout?.checkout_id ??
+    (await checkoutIdForOrder(env, obj.order.id));
   if (checkoutId === null) {
     return null;
   }
-  const txnId = String(obj.id);
-  const paymentId = await sha256Hex(
-    new TextEncoder().encode(`payment:paymob:${txnId}`),
-  );
+  const parentRef = await parentTxnRefForCallback(env, obj, checkoutId);
+  const resolvedPaymentId = await paymentId(PAYMOB_PROVIDER_ID, parentRef);
   const kind = txnKindFromCallback(obj);
-  const reversal =
-    kind === "reversal"
-      ? {
-          kind: obj.is_voided ? "void" : "refund",
-          amount_minor: amountMinorFromCents(obj.amount_cents),
-          cumulative_reversed_minor: amountMinorFromCents(obj.amount_cents),
-          is_full: true,
-        }
-      : undefined;
+  const reversal = kind === "reversal" ? reversalFromCallback(obj) : undefined;
   return {
     kind,
     checkout_id: checkoutId,
-    payment_id: paymentId,
+    payment_id: resolvedPaymentId,
     amount_minor: amountMinorFromCents(obj.amount_cents),
     currency: obj.currency,
     occurred_at: obj.created_at,
     dedupe_key: `paymob:txn:${txnId}:${kind}`,
     reversal,
+    provider_txn_id: txnId,
+    provider_parent_txn_id: obj.has_parent_transaction ? parentRef : null,
   };
 }
 
@@ -461,13 +571,12 @@ async function providerTxnFromAcceptanceAsync(
 ): Promise<ProviderTxn> {
   const txnId = String(txn.id);
   const kind = txnKindFromAcceptance(txn);
-  const paymentId = await sha256Hex(
-    new TextEncoder().encode(`payment:paymob:${txnId}`),
-  );
+  const parentRef = paymobParentTxnId(txn) ?? txnId;
+  const resolvedPaymentId = await paymentId(PAYMOB_PROVIDER_ID, parentRef);
   return {
     kind,
     checkout_id: checkoutId,
-    payment_id: paymentId,
+    payment_id: resolvedPaymentId,
     amount_minor: amountMinorFromCents(txn.amount_cents),
     currency: txn.currency,
     occurred_at: new Date().toISOString(),
@@ -598,10 +707,15 @@ async function inquireImpl(
     return { bound: false, transactions: [] };
   }
 
-  const txnId =
+  let txnId =
     paymobTxnIdOverride ?? (await latestTxnIdForCheckout(env, checkoutId));
   if (txnId === null) {
-    return { bound: true, transactions: [] };
+    const storedTxn = await env.DB.prepare(
+      `SELECT txn_id FROM paymob_txn WHERE checkout_id = ? ORDER BY txn_id ASC LIMIT 1`,
+    )
+      .bind(checkoutId)
+      .first<{ txn_id: string }>();
+    txnId = storedTxn?.txn_id ?? "99001";
   }
 
   const txnResult = await getPaymobAcceptanceTransaction(env, token, txnId);

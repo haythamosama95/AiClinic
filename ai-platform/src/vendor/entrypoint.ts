@@ -4564,10 +4564,13 @@ export class VendorEntrypoint extends WorkerEntrypoint<VendorEnv> {
       return rejected(version, "coverage_unknown");
     }
 
+    const nowIso = await clockNowIso(this.env);
     const doResponse = await callCoverageDo(this.env, installationId, {
       kind: "read_coverage",
       orgId,
       vendorContractVersion: version,
+      durationScale: durationScaleFromEnv(this.env),
+      nowIso,
     });
     if (doResponse === null) {
       return rejected(version, "coverage_unknown");

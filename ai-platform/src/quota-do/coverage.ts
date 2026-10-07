@@ -148,6 +148,8 @@ export interface ReadCoverageRequest {
   installationId: string;
   orgId: string;
   vendorContractVersion: number;
+  durationScale?: DurationScale;
+  nowIso?: string;
 }
 
 export interface ReadCoverageResponse {
@@ -776,6 +778,8 @@ export type ApplyDueBoundariesInput = {
   orgId: string;
   vendorContractVersion: number;
   durationScale?: DurationScale;
+  /** When false, an expiring active term does not promote queued terms (read path). */
+  promoteQueued?: boolean;
 };
 
 function emitBoundaryCoverageEvent(
@@ -827,7 +831,7 @@ export function applyDueBoundaries(input: ApplyDueBoundariesInput): boolean {
         .filter((term) => term.state === "queued")
         .sort((left, right) => left.position - right.position)[0];
 
-      if (queued !== undefined) {
+      if (queued !== undefined && input.promoteQueued !== false) {
         sqlExec(
           input.storage,
           `UPDATE term SET state = 'ended', end_reason = 'expired', ended_at = ${sqlString(boundaryAt)}, used_final = ${usedFinal}
@@ -861,6 +865,8 @@ export function applyDueBoundaries(input: ApplyDueBoundariesInput): boolean {
           kind: "term_activated",
           at: input.clockNowIso,
         });
+      } else if (queued !== undefined && input.promoteQueued === false) {
+        break;
       } else {
         const graceDays = active.grace_days ?? 0;
         const graceEndsAt = addDuration(
@@ -2038,7 +2044,19 @@ export async function readCoverageRPC(
   request: ReadCoverageRequest,
 ): Promise<ReadCoverageResponse> {
   return blockConcurrencyWhile(async () => {
+    const nowIso = request.nowIso ?? new Date().toISOString();
     const hotRows = sqlSelect<HotRow>(storage, "SELECT * FROM hot LIMIT 1");
+    if (hotRows.length > 0) {
+      applyDueBoundaries({
+        storage,
+        clockNowIso: nowIso,
+        installationId: request.installationId,
+        orgId: request.orgId,
+        vendorContractVersion: request.vendorContractVersion,
+        durationScale: request.durationScale,
+        promoteQueued: false,
+      });
+    }
     const terms = loadTerms(storage);
     if (hotRows.length === 0) {
       const emptyHot: HotRow = {
