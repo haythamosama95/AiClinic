@@ -57,6 +57,30 @@ export interface OpsEnv extends ClockEnv {
       args: Record<string, unknown>,
     ): Promise<Record<string, unknown>>;
     getCoverage(args: Record<string, unknown>): Promise<Record<string, unknown>>;
+    grant(args: Record<string, unknown>): Promise<Record<string, unknown>>;
+    beginTransfer(
+      args: Record<string, unknown>,
+    ): Promise<Record<string, unknown>>;
+    transferOut(
+      args: Record<string, unknown>,
+    ): Promise<Record<string, unknown>>;
+    transferIn(
+      args: Record<string, unknown>,
+    ): Promise<Record<string, unknown>>;
+    releaseHeld(
+      args: Record<string, unknown>,
+    ): Promise<Record<string, unknown>>;
+    voidGrant(
+      args: Record<string, unknown>,
+    ): Promise<Record<string, unknown>>;
+    listGrantsForVoid(
+      args: Record<string, unknown>,
+    ): Promise<Record<string, unknown>>;
+    suspend(args: Record<string, unknown>): Promise<Record<string, unknown>>;
+    resume(args: Record<string, unknown>): Promise<Record<string, unknown>>;
+    deleteInstallation(
+      args: Record<string, unknown>,
+    ): Promise<Record<string, unknown>>;
   };
 }
 

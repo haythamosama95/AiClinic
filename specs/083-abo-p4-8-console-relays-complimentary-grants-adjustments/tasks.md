@@ -92,7 +92,7 @@ cd abo && node scripts/build-platform-for-hxw.mjs && vitest run --config vitest.
 
 **Independent Test**: E2E-P4.8-01, E2E-P4.8-02, E2E-P4.8-03, E2E-P4.8-06, E2E-P4.8-07, and E2E-P4.8-08 in harness H-XW.
 
-- [ ] T010 [US1] Add the relay methods on `PLATFORM` in `OpsEnv` in `abo/src/ops/index.ts` — produces the method types, FR-001, FR-002, FR-003, FR-004, FR-005, FR-006, FR-007, FR-008, FR-009, E2E-P4.8-01, E2E-P4.8-02, E2E-P4.8-03, E2E-P4.8-04, E2E-P4.8-05, E2E-P4.8-06, E2E-P4.8-07, E2E-P4.8-08. Depends on T009. Add `grant`, `beginTransfer`, `transferOut`, `transferIn`, `releaseHeld`, `voidGrant`, `listGrantsForVoid`, `suspend`, `resume`, and `deleteInstallation`. Leave `getCoverage` as it already is. Add no route in this task. Leave `abo/src/worker.ts` unchanged in this task.
+- [X] T010 [US1] Add the relay methods on `PLATFORM` in `OpsEnv` in `abo/src/ops/index.ts` — produces the method types, FR-001, FR-002, FR-003, FR-004, FR-005, FR-006, FR-007, FR-008, FR-009, E2E-P4.8-01, E2E-P4.8-02, E2E-P4.8-03, E2E-P4.8-04, E2E-P4.8-05, E2E-P4.8-06, E2E-P4.8-07, E2E-P4.8-08. Depends on T009. Add `grant`, `beginTransfer`, `transferOut`, `transferIn`, `releaseHeld`, `voidGrant`, `listGrantsForVoid`, `suspend`, `resume`, and `deleteInstallation`. Leave `getCoverage` as it already is. Add no route in this task. Leave `abo/src/worker.ts` unchanged in this task.
 
 **Checkpoint**: `OpsEnv` lists those methods. E2E-P4.8-01 through E2E-P4.8-08 still fail.
 
@@ -100,7 +100,7 @@ cd abo && node scripts/build-platform-for-hxw.mjs && vitest run --config vitest.
 
 **Independent Test**: E2E-P4.8-01, E2E-P4.8-02, E2E-P4.8-03, E2E-P4.8-06, E2E-P4.8-07, and E2E-P4.8-08 in harness H-XW.
 
-- [ ] T011 [US1] Add the same relay methods on `PLATFORM` in the worker `Env` in `abo/src/worker.ts` — produces the method types, FR-001, FR-002, FR-003, FR-004, FR-005, FR-006, FR-007, FR-008, FR-009, E2E-P4.8-01, E2E-P4.8-02, E2E-P4.8-03, E2E-P4.8-04, E2E-P4.8-05, E2E-P4.8-06, E2E-P4.8-07, E2E-P4.8-08. Depends on T009. Add `grant`, `beginTransfer`, `transferOut`, `transferIn`, `releaseHeld`, `voidGrant`, `listGrantsForVoid`, `suspend`, `resume`, and `deleteInstallation`. Leave the minute `scheduled()` branch unchanged in this task. Leave `abo/src/ops/index.ts` unchanged in this task.
+- [X] T011 [US1] Add the same relay methods on `PLATFORM` in the worker `Env` in `abo/src/worker.ts` — produces the method types, FR-001, FR-002, FR-003, FR-004, FR-005, FR-006, FR-007, FR-008, FR-009, E2E-P4.8-01, E2E-P4.8-02, E2E-P4.8-03, E2E-P4.8-04, E2E-P4.8-05, E2E-P4.8-06, E2E-P4.8-07, E2E-P4.8-08. Depends on T009. Add `grant`, `beginTransfer`, `transferOut`, `transferIn`, `releaseHeld`, `voidGrant`, `listGrantsForVoid`, `suspend`, `resume`, and `deleteInstallation`. Leave the minute `scheduled()` branch unchanged in this task. Leave `abo/src/ops/index.ts` unchanged in this task.
 
 **Checkpoint**: The worker `Env` lists those methods. `scheduled()` does not call `runDueTransferSteps` yet. E2E-P4.8-01 through E2E-P4.8-08 still fail.
 
