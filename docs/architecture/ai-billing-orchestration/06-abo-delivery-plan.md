@@ -816,6 +816,7 @@ frozen, and always call the real platform worker over the service binding (rules
   - E2E-P4.5-09 Lost refund callback found by the hourly tier (day 3), the 6-hour tier (live term) and the daily tier (100-day-old payment) [FR-82].
   - E2E-P4.5-10 More due inquiries than the per-minute budget → confirm and grant rows served first; none dropped.
   - E2E-P4.5-11 Inquiry contradicts a refund callback → reversal dismissed + finding.
+  - E2E-P4.5-12 FM-01: ABO crashes after receiving a callback → the callback was answered with 5xx or the work row is open; the sweep inquires within 2–20 minutes.
 
 ### P4.6 — Operator console: Access perimeter, lookup, views and class-H ABO actions
 - **Spec** 081 · **Codebase** abo · **Size** M · **Depends** P4.5, P3.6 · **Parallel** P3.9–P3.11
@@ -1201,7 +1202,7 @@ The first unit listed is the primary owner; the others own named slices of the s
 | 05 §3.2 Actions | P4.6 (H, ABO), P4.7 (HP, ABO), P4.8 (coverage relays), P4.9 (configuration relays) |
 | 05 §3.3 Reconciliation | P4.10 |
 | 05 §3.4 Digest | P4.11 |
-| 05 §4 Failure modes | FM-01/02/03/18 P4.5; FM-04/05/24 P4.4; FM-06 P3.9; FM-07/08/15/21 P4.3; FM-09/22 P4.2; FM-10/11 P5.2; FM-12/13/14 P8.2 (plus P3.5-06, P4.4-04 locally); FM-16 P3.1/P4.1; FM-17 P4.11; FM-19 P4.11; FM-20 P3.11; FM-23 P3.8; FM-25 P7.3 |
+| 05 §4 Failure modes | FM-01 P4.5-12; FM-02/03/18 P4.5; FM-04/05/24 P4.4; FM-06 P3.9; FM-07/08/15/21 P4.3; FM-09/22 P4.2; FM-10/11 P5.2; FM-12/13/14 P8.2 (plus P3.5-06, P4.4-04 locally); FM-16 P3.1/P4.1; FM-17 P4.11; FM-19 P4.11; FM-20 P3.11; FM-23 P3.8; FM-25 P7.3 |
 | 05 §5 Rebuilds | §5.1 P4.11; §5.2/§5.3 P3.11; §5.4 P5.2 |
 | 05 §6.1 Staging profile, local stubs, matrix | P8.1 (profile), P4.2/P4.3 (stub, fixture), P7.3 (matrix) |
 | 05 §6.2 Launch conditions | P8.3 (checks + checklist) |

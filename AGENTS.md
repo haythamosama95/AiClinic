@@ -5,9 +5,9 @@ This file orients AI coding agents working in this repository. Keep the
 **current active feature's** plan reference when running Spec Kit phases.
 
 <!-- SPECKIT START -->
-Active feature plan: `specs/079-abo-p4-4-grant-pipeline-to-platform-purchase/plan.md`
-Feature spec: `specs/079-abo-p4-4-grant-pipeline-to-platform-purchase/spec.md`
-Branch: `ai/079-abo-p4-4-grant-pipeline-to-platform-purchase`
+Active feature plan: `specs/080-abo-p4-5-sweeps-reversals-inquiry-budget/plan.md`
+Feature spec: `specs/080-abo-p4-5-sweeps-reversals-inquiry-budget/spec.md`
+Branch: `ai/080-abo-p4-5-sweeps-reversals-inquiry-budget`
 <!-- SPECKIT END -->
 
 ## Repo layout quick reference

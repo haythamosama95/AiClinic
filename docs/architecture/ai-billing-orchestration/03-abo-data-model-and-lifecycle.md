@@ -137,6 +137,11 @@ A payment exists only after the authenticated inquiry confirms it (01 §3.3). A 
 | `reversal_outcome` | append-only | `reversal_id`, `result`, `receipt`, `at`                                                                                                                                                                                                                                                |
 
 
+`is_full` compares two amounts the records already store. It is true when `cumulative_reversed_minor` is at least the payment's `amount_minor` (§2.6). It is false when `cumulative_reversed_minor` is below that amount. The reversal's own `amount_minor` is not the comparison: a later reversal whose cumulative reaches the payment amount is full even when that row's `amount_minor` is smaller. §5.5 reads the flag as written: true selects `tombstone`, `end_current`, `remove_queued`, or `none`; false selects `review_partial`.
+
+One provider refund is one `reversal`. Paymob delivers it twice, as the parent transaction re-sent with flags and as a child transaction, and the adapter folds both into one reversal against the parent payment (01 §3.6). The reversal dedupe key is the state-change key (SR-02, §7): `provider`, the parent transaction, normalized state `reversal`, and `cumulative_reversed_minor`. The transaction part is the parent transaction the payment was confirmed on — the same reference inside `payment_id` (§7) — never the child transaction id. A child notification is rewritten onto that parent before the key is formed, and the cumulative is the inquiry's cumulative (04 §5.3). Both notifications of the same refund therefore carry the same four parts and insert one `reversal`. A later refund of the same payment has a higher `cumulative_reversed_minor`, so it is a different key and a new row.
+
+
 ### 2.8 Grant requests
 
 
@@ -385,13 +390,15 @@ stateDiagram-v2
 ```
 
 
+Full and partial are `is_full` from §2.7. Full means `cumulative_reversed_minor` is at least the payment's `amount_minor`. Partial means `cumulative_reversed_minor` is below that amount. The lineage rows below then select the effect.
+
 | Condition (by the grant lineage, below)                              | `effect`          | Platform action                                    |
 | -------------------------------------------------------------------- | ----------------- | -------------------------------------------------- |
-| Full; the payment's grant is not yet applied                          | `tombstone`       | Void stored first; the grant is later refused (§5.2) |
-| Full; the payment funds the active or grace term                      | `end_current`     | Void: the term ends now with no grace; queued terms become held (FR-43, A15, A16) |
-| Full; the payment funds a queued or held term                         | `remove_queued`   | Void: that term is removed                          |
-| Full; the payment funds an ended term                                 | `none`            | Recorded only (A17)                                 |
-| Partial                                                               | `review_partial`  | None at launch. The call is `voidForReversal` with required boolean `partial` true (04 §1.3, X-01). The platform answers `rejected` with code `partial_void` and writes no `grant_void` row, no R2 void object, and no coverage event. The operator is alerted (X-01) |
+| Full (`is_full`); the payment's grant is not yet applied              | `tombstone`       | Void stored first; the grant is later refused (§5.2) |
+| Full (`is_full`); the payment funds the active or grace term          | `end_current`     | Void: the term ends now with no grace; queued terms become held (FR-43, A15, A16) |
+| Full (`is_full`); the payment funds a queued or held term             | `remove_queued`   | Void: that term is removed                          |
+| Full (`is_full`); the payment funds an ended term                     | `none`            | Recorded only (A17)                                 |
+| Partial (`is_full` false)                                             | `review_partial`  | None at launch. The call is `voidForReversal` with required boolean `partial` true (04 §1.3, X-01). The platform answers `rejected` with code `partial_void` and writes no `grant_void` row, no R2 void object, and no coverage event. The operator is alerted (X-01) |
 
 
 **Lineage.** `voidForReversal` names the paid `grant_id`. The platform follows `origin_grant_id` through the grant ledger to the term that now carries that value, on whichever installation holds it after any transfer. The effect is therefore the same before and after FR-72.
