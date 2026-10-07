@@ -141,7 +141,7 @@ node backend/tests/contract_versions.mjs
 
 **Independent Test**: E2E-P5.1-02 in harness H-FS.
 
-- [ ] T013 [US3] Add `issue_billing_token` in `backend/supabase/migrations/20261007180000_issuer_key_custody.sql` — produces the administrator billing mint and the per-audience limit, FR-005, FR-007, FR-009, E2E-P5.1-02, E2E-P5.1-05. Depends on T012 (same file). `public.issue_billing_token(p_contract_version integer DEFAULT NULL)` is `SECURITY DEFINER`, granted to `authenticated`, and delegates to `auth_internal` after the version check. Administrator only. Return `rpc_result` with `data` `{token, abo_base_url, expires_at}` and `contract_version` echoed. `abo_base_url` comes from `ai.abo_base_url`. `aud` is `abo`, `role` is `administrator`, `org` is `current_org_id()`, `branch` is the current branch, no `scopes`, and `exp − iat` is 300. A doctor returns `FORBIDDEN_ROLE` and inserts nothing. A missing or refused version returns `CONTRACT_VERSION_UNSUPPORTED`, `accepted_versions` in `data`, and `contract_version` 1, before authentication and before any insert. The 21st `aud = 'abo'` row in 10 minutes returns `RATE_LIMITED`. Serialize the count and the insert per user and audience.
+- [X] T013 [US3] Add `issue_billing_token` in `backend/supabase/migrations/20261007180000_issuer_key_custody.sql` — produces the administrator billing mint and the per-audience limit, FR-005, FR-007, FR-009, E2E-P5.1-02, E2E-P5.1-05. Depends on T012 (same file). `public.issue_billing_token(p_contract_version integer DEFAULT NULL)` is `SECURITY DEFINER`, granted to `authenticated`, and delegates to `auth_internal` after the version check. Administrator only. Return `rpc_result` with `data` `{token, abo_base_url, expires_at}` and `contract_version` echoed. `abo_base_url` comes from `ai.abo_base_url`. `aud` is `abo`, `role` is `administrator`, `org` is `current_org_id()`, `branch` is the current branch, no `scopes`, and `exp − iat` is 300. A doctor returns `FORBIDDEN_ROLE` and inserts nothing. A missing or refused version returns `CONTRACT_VERSION_UNSUPPORTED`, `accepted_versions` in `data`, and `contract_version` 1, before authentication and before any insert. The 21st `aud = 'abo'` row in 10 minutes returns `RATE_LIMITED`. Serialize the count and the insert per user and audience.
 
 **Checkpoint**: `issue_billing_token(1)` returns `contract_version` 1 for an administrator. E2E-P5.1-05 still fails until T021.
 
@@ -149,11 +149,11 @@ node backend/tests/contract_versions.mjs
 
 **Independent Test**: E2E-P5.1-07 in harness H-BK, and E2E-P5.1-06 in harness H-FS.
 
-- [ ] T014 [US1] Add `auth_internal.issue_feed_token` in `backend/supabase/migrations/20261007180000_issuer_key_custody.sql` — produces the feed mint, FR-011, E2E-P5.1-07. Depends on T013 (same file). It takes no `p_contract_version`. Header and `ver = "2"` match the other tokens. `aud` is `ai-platform-feed`, `sub` is `backend-feed`, `org` is absent, `role`, `branch`, and `scopes` are absent, `exp − iat` is 120, and `jti` is a UUID. It does not insert `ai_token_issuance`. `REVOKE ALL` from `PUBLIC`, `anon`, `authenticated`, and `service_role`.
+- [X] T014 [US1] Add `auth_internal.issue_feed_token` in `backend/supabase/migrations/20261007180000_issuer_key_custody.sql` — produces the feed mint, FR-011, E2E-P5.1-07. Depends on T013 (same file). It takes no `p_contract_version`. Header and `ver = "2"` match the other tokens. `aud` is `ai-platform-feed`, `sub` is `backend-feed`, `org` is absent, `role`, `branch`, and `scopes` are absent, `exp − iat` is 120, and `jti` is a UUID. It does not insert `ai_token_issuance`. `REVOKE ALL` from `PUBLIC`, `anon`, `authenticated`, and `service_role`.
 
 **Checkpoint**: The owner can mint a feed token. A clinic role cannot execute it. E2E-P5.1-07 still fails until T021.
 
-- [ ] T015 [US1] Add `auth_internal.switch_issuer_signing_kid` in `backend/supabase/migrations/20261007180000_issuer_key_custody.sql` — produces the signing switch, FR-010, E2E-P5.1-06, E2E-P5.1-07. Depends on T014 (same file). `auth_internal.switch_issuer_signing_kid(p_kid text)` moves that `next` row to `signing` and the previous `signing` row to `retired` in one transaction. Any other `p_kid` changes nothing. `REVOKE ALL` from `PUBLIC`, `anon`, `authenticated`, and `service_role`. This is not a public RPC.
+- [X] T015 [US1] Add `auth_internal.switch_issuer_signing_kid` in `backend/supabase/migrations/20261007180000_issuer_key_custody.sql` — produces the signing switch, FR-010, E2E-P5.1-06, E2E-P5.1-07. Depends on T014 (same file). `auth_internal.switch_issuer_signing_kid(p_kid text)` moves that `next` row to `signing` and the previous `signing` row to `retired` in one transaction. Any other `p_kid` changes nothing. `REVOKE ALL` from `PUBLIC`, `anon`, `authenticated`, and `service_role`. This is not a public RPC.
 
 **Checkpoint**: The migration file contains the issuer key set, both issue RPCs, the feed mint, and the signing switch. E2E-P5.1-04, E2E-P5.1-05, E2E-P5.1-07, E2E-P5.1-08, and E2E-P5.1-09 still fail until T021.
 
@@ -161,7 +161,7 @@ node backend/tests/contract_versions.mjs
 
 **Independent Test**: E2E-P5.1-01 in harness H-FS.
 
-- [ ] T016 [US2] Update `backend/tests/ai_token_issuer.sql` to `issue_ai_token(1)` and the `signing` kid — produces a suite that calls the new signature, FR-003, FR-004, E2E-P5.1-01, E2E-P5.1-08. Depends on T015. Call `issue_ai_token(1)` and the issuer-key signer. Leave the tenant assertions of other files for their own tasks.
+- [X] T016 [US2] Update `backend/tests/ai_token_issuer.sql` to `issue_ai_token(1)` and the `signing` kid — produces a suite that calls the new signature, FR-003, FR-004, E2E-P5.1-01, E2E-P5.1-08. Depends on T015. Call `issue_ai_token(1)` and the issuer-key signer. Leave the tenant assertions of other files for their own tasks.
 
 **Checkpoint**: `ai_token_issuer.sql` calls `issue_ai_token(1)`.
 
