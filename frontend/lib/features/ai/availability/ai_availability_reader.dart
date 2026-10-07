@@ -1,30 +1,50 @@
-import 'dart:convert';
-
+import 'package:ai_clinic/core/contract_versions.dart';
+import 'package:ai_clinic/core/rpc/rpc_result.dart';
 import 'package:http/http.dart' as http;
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import 'ai_availability.dart';
 
-/// Production reader for `public.get_ai_availability()` — never probes the platform
-/// to discover enrollment (FR-009).
+/// Injectable RPC callable for unit tests.
+typedef AiAvailabilityRpcInvoke = Future<dynamic> Function(
+  String functionName,
+  Map<String, dynamic> params,
+);
+
+/// Production reader for `public.get_ai_status(p_contract_version)` — never probes
+/// the platform to discover enrollment (FR-009).
 class SupabaseAiAvailabilityReader implements AiAvailabilityReader {
   SupabaseAiAvailabilityReader({SupabaseClient? client})
-      : _client = client ?? Supabase.instance.client;
+      : this.withRpc(
+          rpc: (functionName, params) async =>
+              (client ?? Supabase.instance.client).rpc(functionName, params: params),
+        );
 
-  final SupabaseClient _client;
+  /// Test / injectable seam.
+  SupabaseAiAvailabilityReader.withRpc({required AiAvailabilityRpcInvoke rpc}) : _rpc = rpc;
+
+  final AiAvailabilityRpcInvoke _rpc;
+
+  static const rpcName = 'get_ai_status';
 
   @override
   Future<AiAvailability> read() async {
-    final raw = await _client.rpc('get_ai_availability');
-    if (raw is Map<String, dynamic>) {
-      return AiAvailability.fromJson(raw);
+    final raw = await _rpc(rpcName, {'p_contract_version': backendRpc});
+    final result = RpcResult.fromDynamic(raw);
+
+    if (!result.success) {
+      if (result.errorCode == 'CONTRACT_VERSION_UNSUPPORTED') {
+        throw const ContractVersionUnsupportedException();
+      }
+      throw RpcFailure(result);
     }
-    if (raw is String) {
-      return AiAvailability.fromJson(
-        jsonDecode(raw) as Map<String, dynamic>,
-      );
+
+    final data = result.data;
+    if (data == null) {
+      return AiAvailability.nonEnrolled;
     }
-    return AiAvailability.nonEnrolled;
+
+    return AiAvailability.fromJson(data);
   }
 }
 
