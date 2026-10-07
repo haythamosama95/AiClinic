@@ -946,12 +946,12 @@ and the RPCs of 04 §3.1. The backend only pulls from the platform; it never pus
   enroll part); 03 §4 rows `issuer_key`, `ai_token_issuance`, `app_settings`, `installation_keys`; 04 §7.1 row RPCs + 04 §7.2 (constants bullet); 02 §6 row K-2.
 - **Code:** `20260905120300_fix_aat_lifetime_fallback.sql` (:67-74 installation lookup, :115-124 scopes, :159 signing), `20260801120000_ai_keystore_schema.sql`,
   `20260803140000_b1_review_resolution.sql:284-302`, `backend/tests/ai_token_issuer.sql`, `ai_keystore_rls.sql`, catalog stage-02/06 files.
-- **Implements:** R-3 spike → Vault + SQL signing, or the Edge Function signer fallback (OQ-4); `ai_internal.issuer_key` (≥ 2 `kid`s, status, validity, `secret_ref`);
+- **Implements:** R-3 spike → Vault + SQL signing, or the Edge Function signer fallback (OQ-4); `ai_internal.issuer_key` (≥ 2 `kid`s, `status` `signing` / `next` / `retired`, validity, `secret_ref`);
   `issue_ai_token(p_contract_version)` (EdDSA, `kid`, 04 §2.1 claims, `org = current_org_id()`, role from membership, scopes as today, ≤ 600 s);
   `issue_billing_token(p_contract_version)` (administrator only, 300 s, `{token, abo_base_url, expires_at}`, 20 per user per 10 min); internal feed-token minting
   (used by P5.2); `ai_token_issuance` with `aud` + org and per-audience limits; `app_settings` keys incl. `ai.contract_versions` + a contract test against the package
   vectors; `rpc_result.contract_version`; `CONTRACT_VERSION_UNSUPPORTED`; drop `installation_keys`, the single-installation trigger and the enroll/rotate/revoke RPCs
-  + `auth_internal` bodies; signing-`kid` switch procedure. **Builds H-FS** (local Supabase + `wrangler dev` platform and ABO + Paymob stub + Node runner + CI job).
+  + `auth_internal` bodies; `auth_internal.switch_issuer_signing_kid` (02 §6 switch signing: `next` becomes `signing`, the previous `signing` row becomes `retired`). **Builds H-FS** (local Supabase + `wrangler dev` platform and ABO + Paymob stub + Node runner + CI job).
 - **Out of scope:** feed puller, projection, status RPCs, availability flag (→ P5.2).
 - **E2E (H-BK + H-FS):**
   - E2E-P5.1-01 Org A member: `issue_ai_token(1)` → accepted by the local platform `/v1/capabilities`; A's binding created.
