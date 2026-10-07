@@ -4,7 +4,7 @@ import {
   grantIdPaid,
   sha256Hex,
   signCompactJws,
-  verifyCompactJws,
+  verifyReceiptSignature,
 } from "vendor-contracts";
 import { raiseAlert, type AlertEnv } from "../alert/index.js";
 import { clockNowIso, clockNowMs, type ClockEnv } from "../clock.js";
@@ -104,25 +104,6 @@ function envelopeB64(bytes: Uint8Array): string {
     binary += String.fromCharCode(byte);
   }
   return btoa(binary);
-}
-
-function jwsHeaderKid(jws: string): string | null {
-  const [headerSegment] = jws.split(".");
-  if (!headerSegment) {
-    return null;
-  }
-  const headerBytes = base64UrlDecode(headerSegment);
-  if (headerBytes === null) {
-    return null;
-  }
-  try {
-    const header = JSON.parse(new TextDecoder().decode(headerBytes)) as {
-      kid?: string;
-    };
-    return typeof header.kid === "string" ? header.kid : null;
-  } catch {
-    return null;
-  }
 }
 
 function parseAboGrantKey(json: string): AboGrantKey | null {
@@ -486,12 +467,7 @@ async function verifyGrantReceipt(
   env: GrantEnv,
   receipt: Record<string, unknown>,
 ): Promise<boolean> {
-  const signature =
-    typeof receipt.signature === "string" ? receipt.signature : null;
-  if (signature === null) {
-    return false;
-  }
-  const kid = jwsHeaderKid(signature);
+  const kid = typeof receipt.kid === "string" ? receipt.kid : null;
   if (kid === null) {
     return false;
   }
@@ -504,7 +480,7 @@ async function verifyGrantReceipt(
   if (publicKey === null) {
     return false;
   }
-  return verifyCompactJws({ jws: signature, publicKey, kid });
+  return verifyReceiptSignature({ receipt, publicKey });
 }
 
 function grantRequestCanonical(input: {

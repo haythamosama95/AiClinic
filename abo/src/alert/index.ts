@@ -205,12 +205,20 @@ export async function raiseAlert(
       .run();
     return;
   }
+
+  const unsent =
+    existing.active === 0 ||
+    existing.unsent === 1 ||
+    existing.last_sent_at === null
+      ? 1
+      : existing.unsent;
+
   await env.DB.prepare(
     `UPDATE alert
-     SET active = 1, unsent = 1, code = ?, detail_id = ?
+     SET active = 1, unsent = ?, code = ?, detail_id = ?
      WHERE alert_key = ?`,
   )
-    .bind(code, detailId, alertKey)
+    .bind(unsent, code, detailId, alertKey)
     .run();
 }
 
