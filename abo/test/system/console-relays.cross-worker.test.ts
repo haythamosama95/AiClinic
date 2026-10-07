@@ -1,6 +1,6 @@
 /**
- * P4.8 — console relays: complimentary grants, adjustments, voids, suspension (H-XW),
- * E2E-P4.8-01 through E2E-P4.8-07 (part 1).
+ * P4.8 — console relays: complimentary grants, adjustments, voids, suspension,
+ * deletion and the transfer saga (H-XW), E2E-P4.8-01 through E2E-P4.8-08.
  */
 
 import { env } from "cloudflare:test";
@@ -9,6 +9,7 @@ import {
   CHANNEL_VERSIONS,
   grantIdComp,
   grantIdPaid,
+  grantIdTransfer,
   sha256Hex,
 } from "vendor-contracts";
 import {
@@ -65,7 +66,10 @@ const ORG_CR_01 = "a4880001-0001-4001-8001-000000000001";
 const ORG_CR_02 = "a4880002-0002-4002-8002-000000000002";
 const ORG_CR_03 = "a4880003-0003-4003-8003-000000000003";
 const ORG_CR_06 = "a4880006-0006-4006-8006-000000000006";
+const ORG_CR_04 = "a4880004-0004-4004-8004-000000000004";
+const ORG_CR_05 = "a4880005-0005-4005-8005-000000000005";
 const ORG_CR_07 = "a4880007-0007-4007-8007-000000000007";
+const ORG_CR_08 = "a4880008-0008-4008-8008-000000000008";
 
 const VOID_LIST_WINDOW = {
   applied_from: "2026-06-01T00:00:00.000Z",
@@ -1366,6 +1370,192 @@ async function platformGrantVoided(grantId: string): Promise<boolean> {
   return (row?.present ?? 0) > 0;
 }
 
+async function activeInstallationId(orgId: string): Promise<string | null> {
+  const row = await env.PLATFORM_DB.prepare(
+    `SELECT installation_id FROM tenant_binding
+     WHERE org_id = ? AND status = 'active'`,
+  )
+    .bind(orgId)
+    .first<{ installation_id: string }>();
+  return row?.installation_id ?? null;
+}
+
+async function operationForBeginTransfer(input: {
+  orgId: string;
+  fromInstallationId: string;
+  accessJwt: string;
+  reason: string;
+}): Promise<HpOperation> {
+  return {
+    op: "beginTransfer",
+    params: {
+      contract_version: CONTRACT_VERSION,
+      access_jwt: input.accessJwt,
+      org_id: input.orgId,
+      from_installation_id: input.fromInstallationId,
+      reason: input.reason,
+    },
+    actor_email: VENDOR_OPERATOR_EMAIL,
+    issued_at: await currentHarnessClockIso(),
+    nonce: crypto.randomUUID(),
+    contract_version: CONTRACT_VERSION,
+  };
+}
+
+async function operationForDeleteInstallation(input: {
+  orgId: string;
+  accessJwt: string;
+  reason: string;
+}): Promise<HpOperation> {
+  return {
+    op: "deleteInstallation",
+    params: {
+      contract_version: CONTRACT_VERSION,
+      access_jwt: input.accessJwt,
+      org_id: input.orgId,
+      reason: input.reason,
+    },
+    actor_email: VENDOR_OPERATOR_EMAIL,
+    issued_at: await currentHarnessClockIso(),
+    nonce: crypto.randomUUID(),
+    contract_version: CONTRACT_VERSION,
+  };
+}
+
+async function opsBeginTransferRelay(input: {
+  orgId: string;
+  fromInstallationId: string;
+  accessJwt: string;
+  hpCredential: ActiveHpCredential;
+  reason?: string;
+  actionId?: string;
+}): Promise<{ response: Response; actionId: string }> {
+  const actionId = input.actionId ?? crypto.randomUUID();
+  const reason = input.reason ?? "clinic relocation";
+  const operation = await operationForBeginTransfer({
+    orgId: input.orgId,
+    fromInstallationId: input.fromInstallationId,
+    accessJwt: input.accessJwt,
+    reason,
+  });
+  const assertion = await signHpOperation(
+    input.hpCredential.authenticator,
+    operation,
+  );
+  const response = await opsFetch(`/ops/orgs/${input.orgId}/begin-transfer`, {
+    method: "POST",
+    headers: await opsHeaders(input.accessJwt),
+    body: JSON.stringify({
+      action_id: actionId,
+      from_installation_id: input.fromInstallationId,
+      reason,
+      operation,
+      assertion,
+      signer_credential_id: input.hpCredential.credentialId,
+    }),
+  });
+  return { response, actionId };
+}
+
+async function opsDeleteInstallationRelay(input: {
+  orgId: string;
+  accessJwt: string;
+  hpCredential: ActiveHpCredential;
+  reason?: string;
+  actionId?: string;
+}): Promise<Response> {
+  const actionId = input.actionId ?? crypto.randomUUID();
+  const reason = input.reason ?? "decommission";
+  const operation = await operationForDeleteInstallation({
+    orgId: input.orgId,
+    accessJwt: input.accessJwt,
+    reason,
+  });
+  const assertion = await signHpOperation(
+    input.hpCredential.authenticator,
+    operation,
+  );
+  return opsFetch(`/ops/orgs/${input.orgId}/delete-installation`, {
+    method: "POST",
+    headers: await opsHeaders(input.accessJwt),
+    body: JSON.stringify({
+      action_id: actionId,
+      reason,
+      operation,
+      assertion,
+      signer_credential_id: input.hpCredential.credentialId,
+    }),
+  });
+}
+
+async function transferStepWorkRow(
+  transferId: string,
+): Promise<{
+  work_id: string;
+  state: string;
+  last_error: string | null;
+  dedupe_key: string;
+} | null> {
+  return env.DB.prepare(
+    `SELECT work_id, state, last_error, dedupe_key FROM work
+     WHERE kind = 'transfer_step' AND subject_id = ?`,
+  )
+    .bind(transferId)
+    .first<{
+      work_id: string;
+      state: string;
+      last_error: string | null;
+      dedupe_key: string;
+    }>();
+}
+
+async function readTransferPackage(
+  transferId: string,
+): Promise<unknown[] | null> {
+  const row = await env.PLATFORM_DB.prepare(
+    `SELECT package FROM transfer WHERE transfer_id = ?`,
+  )
+    .bind(transferId)
+    .first<{ package: string | null }>();
+  if (row?.package === null || row?.package === undefined) {
+    return null;
+  }
+  return JSON.parse(row.package) as unknown[];
+}
+
+async function grantRequestsForTransfer(
+  transferId: string,
+): Promise<Array<{ grant_id: string; source_kind: string; source_ref: string }>> {
+  const rows = await env.DB.prepare(
+    `SELECT grant_id, source_kind, source_ref FROM grant_request WHERE source_ref = ?`,
+  )
+    .bind(transferId)
+    .all<{ grant_id: string; source_kind: string; source_ref: string }>();
+  return rows.results ?? [];
+}
+
+async function opsClinicPage(
+  orgId: string,
+  accessJwt: string,
+): Promise<Response> {
+  return opsFetch(`/ops/clinics/${orgId}`, {
+    headers: await opsHeaders(accessJwt),
+  });
+}
+
+async function runTransferSagaUntilDone(transferId: string): Promise<void> {
+  for (let attempt = 0; attempt < 12; attempt += 1) {
+    const row = await transferStepWorkRow(transferId);
+    if (row?.state === "done") {
+      return;
+    }
+    await runScheduled("* * * * *");
+    await drainPlatformDurableObjects();
+  }
+  const final = await transferStepWorkRow(transferId);
+  expect(final?.state).toBe("done");
+}
+
 beforeEach(async () => {
   await setupCrossWorkerHarness();
   await resetCrossWorkerHarness();
@@ -1679,5 +1869,163 @@ describe("console relays cross-worker", () => {
     await drainPlatformDurableObjects();
     const admittedAfter = await platformHttpInvoke(orgId);
     expect(admittedAfter.status).toBe(200);
+  });
+
+  it("E2E-P4.8-08 complimentary grant with assertion omitted is rejected by the platform", async () => {
+    const orgId = ORG_CR_08;
+    await setupConsoleRelaysHarness();
+    await setupActivePlatformCoverage(orgId);
+    const hp = await ensureActiveHpCredential();
+
+    const actionId = crypto.randomUUID();
+    const envelope = await buildComplimentaryEnvelope({
+      orgId,
+      actionId,
+      count: 14,
+    });
+    const operation = await operationForHpGrant({
+      accessJwt: hp.accessJwt,
+      envelope,
+    });
+    const response = await opsFetch(
+      `/ops/orgs/${orgId}/complimentary-grant`,
+      {
+        method: "POST",
+        headers: await opsHeaders(hp.accessJwt),
+        body: JSON.stringify({
+          action_id: actionId,
+          envelope,
+          operation,
+          signer_credential_id: hp.credentialId,
+        }),
+      },
+    );
+    expect(response.status).toBe(200);
+    const body = (await response.json()) as Record<string, unknown>;
+    expect(body.result).toBe("rejected");
+
+    const operatorRow = await operatorActionRow(actionId);
+    expect(operatorRow).not.toBeNull();
+    expect(operatorRow!.result).toBe("rejected");
+  });
+
+  it("E2E-P4.8-04 begin-transfer saga retries through transient to epoch 2", async () => {
+    const orgId = ORG_CR_04;
+    await setupConsoleRelaysHarness();
+    await setupActivePlatformCoverage(orgId);
+    const hp = await ensureActiveHpCredential();
+
+    const fromInstallationId = await activeInstallationId(orgId);
+    expect(fromInstallationId).not.toBeNull();
+
+    const bindingBefore = await env.PLATFORM_DB.prepare(
+      `SELECT epoch FROM tenant_binding
+       WHERE org_id = ? AND status = 'active'`,
+    )
+      .bind(orgId)
+      .first<{ epoch: number }>();
+    expect(bindingBefore?.epoch).toBe(1);
+
+    const begun = await opsBeginTransferRelay({
+      orgId,
+      fromInstallationId: fromInstallationId!,
+      accessJwt: hp.accessJwt,
+      hpCredential: hp,
+    });
+    expect(begun.response.status).toBe(200);
+    const beginBody = (await begun.response.json()) as Record<string, unknown>;
+    expect(beginBody.result).toBe("ok");
+    const transferDetail = JSON.parse(String(beginBody.detail)) as {
+      transfer_id: string;
+    };
+    const transferId = transferDetail.transfer_id;
+    expect(transferId).toBeTruthy();
+
+    const workRow = await transferStepWorkRow(transferId);
+    expect(workRow).not.toBeNull();
+    expect(workRow!.state).toBe("open");
+    expect(workRow!.dedupe_key).toBe(`transfer_step:${transferId}`);
+
+    await runScheduled("* * * * *");
+    await drainPlatformDurableObjects();
+    const afterFirst = await transferStepWorkRow(transferId);
+    expect(afterFirst).not.toBeNull();
+    expect(afterFirst!.last_error).toBe("awaiting_transfer_out");
+    expect(afterFirst!.state).toBe("open");
+
+    await runTransferSagaUntilDone(transferId);
+    const doneRow = await transferStepWorkRow(transferId);
+    expect(doneRow!.state).toBe("done");
+
+    const clinicPage = await opsClinicPage(orgId, hp.accessJwt);
+    expect(clinicPage.status).toBe(200);
+    const clinicBody = (await clinicPage.json()) as Record<string, unknown>;
+    expect(clinicBody.binding_epoch).toBe(2);
+
+    const packageElements = await readTransferPackage(transferId);
+    expect(packageElements).not.toBeNull();
+    expect(Array.isArray(packageElements)).toBe(true);
+
+    const transferGrants = await grantRequestsForTransfer(transferId);
+    expect(transferGrants.length).toBe(packageElements!.length);
+    for (let n = 0; n < transferGrants.length; n += 1) {
+      const row = transferGrants[n]!;
+      expect(row.source_kind).toBe("transfer");
+      expect(row.source_ref).toBe(transferId);
+      expect(row.grant_id).toBe(await grantIdTransfer(transferId, n));
+    }
+  });
+
+  it("E2E-P4.8-05 delete-installation holds binding then transfer runs from held binding", async () => {
+    const orgId = ORG_CR_05;
+    await setupConsoleRelaysHarness();
+    await setupActivePlatformCoverage(orgId);
+    const hp = await ensureActiveHpCredential();
+
+    const deleteResponse = await opsDeleteInstallationRelay({
+      orgId,
+      accessJwt: hp.accessJwt,
+      hpCredential: hp,
+    });
+    expect(deleteResponse.status).toBe(200);
+    const deleteBody = (await deleteResponse.json()) as Record<string, unknown>;
+    expect(deleteBody.result).toBe("ok");
+    const effects = JSON.parse(String(deleteBody.detail)) as {
+      installation: { status: string };
+      tenant_binding: { status: string; installation_id: string };
+    };
+    expect(effects.installation.status).toBe("deleted");
+    expect(effects.tenant_binding.status).toBe("held_for_transfer");
+
+    const heldInstallationId = effects.tenant_binding.installation_id;
+    expect(heldInstallationId).toBeTruthy();
+
+    const begun = await opsBeginTransferRelay({
+      orgId,
+      fromInstallationId: heldInstallationId,
+      accessJwt: hp.accessJwt,
+      hpCredential: hp,
+    });
+    expect(begun.response.status).toBe(200);
+    const beginBody = (await begun.response.json()) as Record<string, unknown>;
+    expect(beginBody.result).toBe("ok");
+    const transferDetail = JSON.parse(String(beginBody.detail)) as {
+      transfer_id: string;
+    };
+    const transferId = transferDetail.transfer_id;
+    expect(transferId).toBeTruthy();
+
+    const workRow = await transferStepWorkRow(transferId);
+    expect(workRow).not.toBeNull();
+    expect(workRow!.state).toBe("open");
+
+    await runTransferSagaUntilDone(transferId);
+    const doneRow = await transferStepWorkRow(transferId);
+    expect(doneRow!.state).toBe("done");
+
+    const clinicPage = await opsClinicPage(orgId, hp.accessJwt);
+    expect(clinicPage.status).toBe(200);
+    const clinicBody = (await clinicPage.json()) as Record<string, unknown>;
+    expect(clinicBody.binding_epoch).toBe(2);
   });
 });
