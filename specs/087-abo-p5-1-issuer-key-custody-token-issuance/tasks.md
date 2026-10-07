@@ -303,11 +303,11 @@ npm test
 
 **Independent Test**: E2E-P5.1-01 in harness H-FS.
 
-- [ ] T030 [US2] Register and pin the current `signing` public key in `e2e/fullstack/test/p5-1.test.mjs` — produces the kid the first tokens use, FR-004, FR-010, E2E-P5.1-01. Depends on T029 (same file). Do this before E2E-P5.1-01. Restart ABO `wrangler dev` after the pin. `registerIssuerKey` arguments match the frozen method: `contract_version` 1, `kid`, `public_key`, `not_before`, `not_after`, `access_jwt`, `signer_credential_id`, `operation`, `assertion`. `operation.issued_at` is wall-clock now. `operation.actor_email` is the JWT email. `operation.params` repeats `contract_version`, `access_jwt`, `kid`, `public_key`, `not_before`, and `not_after`. The call goes through `POST /register-issuer-key` on the harness worker.
+- [X] T030 [US2] Register and pin the current `signing` public key in `e2e/fullstack/test/p5-1.test.mjs` — produces the kid the first tokens use, FR-004, FR-010, E2E-P5.1-01. Depends on T029 (same file). Do this before E2E-P5.1-01. Restart ABO `wrangler dev` after the pin. `registerIssuerKey` arguments match the frozen method: `contract_version` 1, `kid`, `public_key`, `not_before`, `not_after`, `access_jwt`, `signer_credential_id`, `operation`, `assertion`. `operation.issued_at` is wall-clock now. `operation.actor_email` is the JWT email. `operation.params` repeats `contract_version`, `access_jwt`, `kid`, `public_key`, `not_before`, and `not_after`. The call goes through `POST /register-issuer-key` on the harness worker.
 
 **Checkpoint**: The current `signing` kid is registered and pinned, and ABO has been restarted. E2E-P5.1-01 still fails until T031.
 
-- [ ] T031 [US2] Make E2E-P5.1-01 pass in `e2e/fullstack/test/p5-1.test.mjs` — produces the accepted AI token and epoch 1, FR-004, E2E-P5.1-01. Depends on T030 (same file). The org A member calls `issue_ai_token(1)`. `GET /v1/capabilities` returns 200. Local D1 has one `tenant_binding` for that org with `epoch` 1. E2E-P5.1-02, E2E-P5.1-03, and E2E-P5.1-06 still fail.
+- [X] T031 [US2] Make E2E-P5.1-01 pass in `e2e/fullstack/test/p5-1.test.mjs` — produces the accepted AI token and epoch 1, FR-004, E2E-P5.1-01. Depends on T030 (same file). The org A member calls `issue_ai_token(1)`. `GET /v1/capabilities` returns 200. Local D1 has one `tenant_binding` for that org with `epoch` 1. E2E-P5.1-02, E2E-P5.1-03, and E2E-P5.1-06 still fail.
 
 **Checkpoint**: E2E-P5.1-01 passes.
 
@@ -315,7 +315,7 @@ npm test
 
 **Independent Test**: E2E-P5.1-02 in harness H-FS.
 
-- [ ] T032 [US3] Make E2E-P5.1-02 pass in `e2e/fullstack/test/p5-1.test.mjs` — produces the accepted billing token and the doctor refusal, FR-005, FR-009, E2E-P5.1-02. Depends on T031 (same file). The administrator call returns `contract_version` 1. `GET /v1/offers` returns 200. The doctor call returns `FORBIDDEN_ROLE`. E2E-P5.1-01 still passes. E2E-P5.1-03 and E2E-P5.1-06 still fail.
+- [X] T032 [US3] Make E2E-P5.1-02 pass in `e2e/fullstack/test/p5-1.test.mjs` — produces the accepted billing token and the doctor refusal, FR-005, FR-009, E2E-P5.1-02. Depends on T031 (same file). The administrator call returns `contract_version` 1. `GET /v1/offers` returns 200. The doctor call returns `FORBIDDEN_ROLE`. E2E-P5.1-01 still passes. E2E-P5.1-03 and E2E-P5.1-06 still fail.
 
 **Checkpoint**: E2E-P5.1-02 passes. E2E-P5.1-01 still passes.
 
@@ -323,7 +323,7 @@ npm test
 
 **Independent Test**: E2E-P5.1-01 in harness H-FS.
 
-- [ ] T033 [US2] Make E2E-P5.1-03 pass in `e2e/fullstack/test/p5-1.test.mjs` — produces the two audience refusals, FR-006, E2E-P5.1-03. Depends on T032 (same file). The billing token at the platform and the AI token at the ABO each return 401. E2E-P5.1-01 and E2E-P5.1-02 still pass. E2E-P5.1-06 still fails.
+- [X] T033 [US2] Make E2E-P5.1-03 pass in `e2e/fullstack/test/p5-1.test.mjs` — produces the two audience refusals, FR-006, E2E-P5.1-03. Depends on T032 (same file). The billing token at the platform and the AI token at the ABO each return 401. E2E-P5.1-01 and E2E-P5.1-02 still pass. E2E-P5.1-06 still fails.
 
 **Checkpoint**: E2E-P5.1-03 passes. E2E-P5.1-01 and E2E-P5.1-02 still pass.
 
@@ -331,7 +331,7 @@ npm test
 
 **Independent Test**: E2E-P5.1-07 in harness H-BK, and E2E-P5.1-06 in harness H-FS.
 
-- [ ] T034 [US1] Make E2E-P5.1-06 pass in `e2e/fullstack/test/p5-1.test.mjs` — produces the signing switch on the full stack, FR-010, FR-012, E2E-P5.1-06. Depends on T033 (same file). Owner `insert_issuer_kid` creates `next`. Pin that public key and restart ABO `wrangler dev`. `registerIssuerKey` for that `kid` returns `ok`. Owner `switch_issuer_signing_kid` with that `kid`. New AI and billing tokens are accepted on `/v1/capabilities` and `/v1/offers`. The earlier tokens are still accepted. `epoch` is unchanged. No `TEST_CLOCK`, no sleep, no `retireIssuerKey`. E2E-P5.1-01, E2E-P5.1-02, and E2E-P5.1-03 still pass.
+- [X] T034 [US1] Make E2E-P5.1-06 pass in `e2e/fullstack/test/p5-1.test.mjs` — produces the signing switch on the full stack, FR-010, FR-012, E2E-P5.1-06. Depends on T033 (same file). Owner `insert_issuer_kid` creates `next`. Pin that public key and restart ABO `wrangler dev`. `registerIssuerKey` for that `kid` returns `ok`. Owner `switch_issuer_signing_kid` with that `kid`. New AI and billing tokens are accepted on `/v1/capabilities` and `/v1/offers`. The earlier tokens are still accepted. `epoch` is unchanged. No `TEST_CLOCK`, no sleep, no `retireIssuerKey`. E2E-P5.1-01, E2E-P5.1-02, and E2E-P5.1-03 still pass.
 
 **Checkpoint**: E2E-P5.1-06 passes. E2E-P5.1-01, E2E-P5.1-02, and E2E-P5.1-03 still pass.
 
@@ -345,7 +345,7 @@ npm test
 
 **Independent Test**: E2E-P5.1-07 in harness H-BK, and E2E-P5.1-06 in harness H-FS.
 
-- [ ] T035 [US1] Run `npm test` from `e2e/fullstack/` until E2E-P5.1-01, E2E-P5.1-02, E2E-P5.1-03, and E2E-P5.1-06 pass — produces the green H-FS harness, FR-004, FR-005, FR-006, FR-009, FR-010, FR-012, E2E-P5.1-01, E2E-P5.1-02, E2E-P5.1-03, E2E-P5.1-06. Depends on T034 (and therefore on T022–T033). This task may edit only `e2e/fullstack/test/p5-1.test.mjs`. It does not add an E2E id.
+- [X] T035 [US1] Run `npm test` from `e2e/fullstack/` until E2E-P5.1-01, E2E-P5.1-02, E2E-P5.1-03, and E2E-P5.1-06 pass — produces the green H-FS harness, FR-004, FR-005, FR-006, FR-009, FR-010, FR-012, E2E-P5.1-01, E2E-P5.1-02, E2E-P5.1-03, E2E-P5.1-06. Depends on T034 (and therefore on T022–T033). This task may edit only `e2e/fullstack/test/p5-1.test.mjs`. It does not add an E2E id.
 
 ```bash
 npm test

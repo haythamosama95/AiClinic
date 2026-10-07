@@ -7,6 +7,7 @@ import assert from "node:assert/strict";
 import { createClient } from "@supabase/supabase-js";
 import { MockAgent } from "undici";
 import { unstable_startWorker as startWorker } from "wrangler";
+import { CHANNEL_VERSIONS } from "vendor-contracts";
 import {
   createAccessTeam,
   createSoftwareAuthenticator,
@@ -185,15 +186,167 @@ async function insertActiveOperatorCredential({
   ]);
 }
 
-function readSigningIssuerKeys() {
+function readIssuerKeyByStatus(status) {
   const row = psqlQuery(
-    "SELECT kid, public_key FROM ai_internal.issuer_key WHERE status = 'signing' LIMIT 1",
+    `SELECT kid, public_key, not_before::text, not_after::text FROM ai_internal.issuer_key WHERE status = '${status}' LIMIT 1`,
   );
   if (!row) {
+    return null;
+  }
+  const [kid, publicKey, notBefore, notAfter] = row.split("|");
+  return {
+    kid,
+    public_key: publicKey,
+    not_before: notBefore,
+    not_after: notAfter,
+  };
+}
+
+function readIssuerKeysForAbo(statuses) {
+  const statusList = statuses.map((status) => `'${status}'`).join(", ");
+  const rows = psqlQuery(
+    `SELECT kid, public_key FROM ai_internal.issuer_key WHERE status IN (${statusList}) ORDER BY kid`,
+  );
+  if (!rows) {
     return [];
   }
-  const [kid, publicKey] = row.split("|");
-  return [{ kid, public_key: publicKey }];
+  return rows.split("\n").filter(Boolean).map((row) => {
+    const [kid, publicKey] = row.split("|");
+    return { kid, public_key: publicKey };
+  });
+}
+
+function encodeVendorAssertion(assertion) {
+  return {
+    alg: assertion.alg,
+    authenticator_data: base64urlEncode(assertion.authenticatorData),
+    client_data_json: base64urlEncode(assertion.clientDataJSON),
+    signature: base64urlEncode(assertion.signature),
+  };
+}
+
+async function mintAccessJwt(accessTeam) {
+  const now = Math.floor(Date.now() / 1000);
+  return accessTeam.mint({
+    email: OPERATOR_EMAIL,
+    aud: ACCESS_AUD,
+    iat: now - 60,
+    exp: now + 3600,
+  });
+}
+
+function buildRegisterIssuerKeyOperation({
+  kid,
+  publicKey,
+  notBefore,
+  notAfter,
+  accessJwt,
+  issuedAt,
+}) {
+  const contractVersion = CHANNEL_VERSIONS.vendorEntrypoint;
+  return {
+    op: "registerIssuerKey",
+    params: {
+      contract_version: contractVersion,
+      access_jwt: accessJwt,
+      kid,
+      public_key: publicKey,
+      not_before: notBefore,
+      not_after: notAfter,
+    },
+    actor_email: OPERATOR_EMAIL,
+    issued_at: issuedAt,
+    nonce: crypto.randomUUID(),
+    contract_version: contractVersion,
+  };
+}
+
+async function registerIssuerKey(stack, issuerKey) {
+  const accessJwt = await mintAccessJwt(stack.accessTeam);
+  const issuedAt = new Date().toISOString();
+  const operation = buildRegisterIssuerKeyOperation({
+    kid: issuerKey.kid,
+    publicKey: issuerKey.public_key,
+    notBefore: issuerKey.not_before,
+    notAfter: issuerKey.not_after,
+    accessJwt,
+    issuedAt,
+  });
+  const assertion = encodeVendorAssertion(
+    await stack.authenticator.assert({
+      operation,
+      rpId: WEBAUTHN_RP_ID,
+      origin: WEBAUTHN_ORIGIN,
+      up: true,
+      uv: true,
+    }),
+  );
+  const response = await fetch(`${HARNESS_URL}/register-issuer-key`, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({
+      contract_version: CHANNEL_VERSIONS.vendorEntrypoint,
+      kid: issuerKey.kid,
+      public_key: issuerKey.public_key,
+      not_before: issuerKey.not_before,
+      not_after: issuerKey.not_after,
+      access_jwt: accessJwt,
+      signer_credential_id: stack.credentialId,
+      operation,
+      assertion,
+    }),
+  });
+  const envelope = await response.json();
+  if (envelope.result !== "ok") {
+    throw new Error(`registerIssuerKey failed: ${envelope.code || response.status}`);
+  }
+  return envelope;
+}
+
+function queryD1One(sql) {
+  const stdout = runWrangler([
+    "d1",
+    "execute",
+    "ai-platform-development",
+    "--local",
+    "--env",
+    "development",
+    "--config",
+    PLATFORM_CONFIG,
+    "--persist-to",
+    PLATFORM_PERSIST,
+    "--json",
+    "--command",
+    sql,
+  ]);
+  const batches = JSON.parse(stdout);
+  const results = batches[0]?.results ?? [];
+  return results[0] ?? null;
+}
+
+function getTenantBindingEpoch(orgId) {
+  const row = queryD1One(
+    `SELECT epoch FROM tenant_binding WHERE org_id = '${orgId}' LIMIT 1`,
+  );
+  return row?.epoch ?? null;
+}
+
+function ownerInsertIssuerKid() {
+  const row = psqlQuery(
+    "SELECT kid, public_key, status, not_before::text, not_after::text FROM auth_internal.insert_issuer_kid()",
+  );
+  const [kid, publicKey, status, notBefore, notAfter] = row.split("|");
+  return {
+    kid,
+    public_key: publicKey,
+    status,
+    not_before: notBefore,
+    not_after: notAfter,
+  };
+}
+
+function ownerSwitchSigningKid(kid) {
+  psqlQuery(`SELECT auth_internal.switch_issuer_signing_kid('${kid}')`);
 }
 
 async function rpc(client, fn, args = {}) {
@@ -377,7 +530,11 @@ async function startStack() {
     throw new Error("Harness register-issuer-key route is unavailable");
   }
 
-  const issuerKeys = readSigningIssuerKeys();
+  const signingKey = readIssuerKeyByStatus("signing");
+  if (!signingKey) {
+    throw new Error("No signing issuer key row found");
+  }
+  let issuerKeys = [{ kid: signingKey.kid, public_key: signingKey.public_key }];
 
   const paymob = spawnDevProcess([
     "dev",
@@ -419,7 +576,7 @@ async function startStack() {
 
   const clinic = await createClinicUsers();
 
-  return {
+  const stackRef = {
     accessTeam,
     authenticator,
     credentialId,
@@ -429,7 +586,10 @@ async function startStack() {
     paymob,
     abo,
     issuerKeys,
+    signingKey,
     clinic,
+    aiToken: null,
+    billingToken: null,
     async stop() {
       await stopChild(paymob);
       await stopChild(abo);
@@ -438,7 +598,7 @@ async function startStack() {
       await mockFetch.close();
     },
     async restartAbo(nextIssuerKeys = issuerKeys) {
-      await stopChild(abo);
+      await stopChild(stackRef.abo);
       const restarted = spawnDevProcess(
         [
           "dev",
@@ -463,9 +623,16 @@ async function startStack() {
       await waitForHttp(`${ABO_URL}/v1/offers`, {
         accept: [401, 403, 400],
       });
+      stackRef.abo = restarted;
+      stackRef.issuerKeys = nextIssuerKeys;
       return restarted;
     },
   };
+
+  await registerIssuerKey(stackRef, signingKey);
+  await stackRef.restartAbo(issuerKeys);
+
+  return stackRef;
 }
 
 before(async () => {
@@ -499,196 +666,164 @@ async function assertRunnerWired() {
 test("E2E-P5.1-01 Org A member issue_ai_token(1) is accepted by the local platform and A's binding is created", async () => {
   await assertRunnerWired();
 
+  const aiToken = await rpc(stack.clinic.member, "issue_ai_token", {
+    p_contract_version: 1,
+  });
+  assert.ok(aiToken, "issue_ai_token(1) returned no token");
+  stack.aiToken = aiToken;
+
   const capabilities = await fetch(`${PLATFORM_URL}/v1/capabilities`, {
     headers: {
-      authorization: "Bearer <ai-token-not-minted-yet>",
+      authorization: `Bearer ${aiToken}`,
+      "Aip-Contract-Version": "1",
     },
   });
 
-  assert.equal(
-    capabilities.status,
-    200,
-    "runner does not yet accept that token",
-  );
+  assert.equal(capabilities.status, 200);
+
+  const epoch = getTenantBindingEpoch(stack.clinic.orgId);
+  assert.equal(epoch, 1);
 });
 
 test("E2E-P5.1-02 Administrator issue_billing_token(1) is accepted by the local ABO and a doctor receives FORBIDDEN_ROLE", async () => {
   await assertRunnerWired();
 
+  const billing = await rpc(stack.clinic.administrator, "issue_billing_token", {
+    p_contract_version: 1,
+  });
+  assert.equal(billing.contract_version, 1);
+  assert.equal(billing.success, true);
+  const billingToken = billing.data.token;
+  assert.ok(billingToken);
+  stack.billingToken = billingToken;
+
   const offers = await fetch(`${ABO_URL}/v1/offers`, {
     headers: {
-      authorization: "Bearer <billing-token-not-minted-yet>",
+      authorization: `Bearer ${billingToken}`,
       host: BILLING_HOST,
+      "Abo-Contract-Version": "1",
     },
   });
 
-  assert.equal(offers.status, 200, "ABO does not yet accept that token");
+  assert.equal(offers.status, 200);
 
-  const doctorBilling = await stack.clinic.doctor.rpc("issue_billing_token", {
+  const doctorBilling = await rpc(stack.clinic.doctor, "issue_billing_token", {
     p_contract_version: 1,
   });
 
-  assert.equal(
-    doctorBilling?.success,
-    false,
-    "doctor FORBIDDEN_ROLE path is not wired",
-  );
-  assert.equal(doctorBilling?.error_code, "FORBIDDEN_ROLE");
+  assert.equal(doctorBilling.success, false);
+  assert.equal(doctorBilling.error_code, "FORBIDDEN_ROLE");
 });
 
 test("E2E-P5.1-03 Billing token at the platform and AI token at the ABO are 401", async () => {
   await assertRunnerWired();
 
-  assert.ok(
-    stack.wrongAudienceTokens,
-    "wrong-audience tokens are not minted yet",
-  );
-  const { billingToken, aiToken } = stack.wrongAudienceTokens;
+  assert.ok(stack.billingToken, "billing token missing from E2E-P5.1-02");
+  assert.ok(stack.aiToken, "AI token missing from E2E-P5.1-01");
 
   const billingAtPlatform = await fetch(`${PLATFORM_URL}/v1/capabilities`, {
     headers: {
-      authorization: `Bearer ${billingToken}`,
+      authorization: `Bearer ${stack.billingToken}`,
+      "Aip-Contract-Version": "1",
     },
   });
-  assert.equal(
-    billingAtPlatform.status,
-    401,
-    "billing token at the platform is not refused yet",
-  );
+  assert.equal(billingAtPlatform.status, 401);
 
   const aiAtAbo = await fetch(`${ABO_URL}/v1/offers`, {
     headers: {
-      authorization: `Bearer ${aiToken}`,
+      authorization: `Bearer ${stack.aiToken}`,
       host: BILLING_HOST,
+      "Abo-Contract-Version": "1",
     },
   });
-  assert.equal(
-    aiAtAbo.status,
-    401,
-    "AI token at the ABO is not refused yet",
-  );
+  assert.equal(aiAtAbo.status, 401);
 });
 
 test("E2E-P5.1-06 New signing kid is accepted everywhere, old tokens stay valid, and the binding is unchanged", async () => {
   await assertRunnerWired();
 
-  const epochBefore = runWrangler([
-    "d1",
-    "execute",
-    "ai-platform-development",
-    "--local",
-    "--env",
-    "development",
-    "--config",
-    PLATFORM_CONFIG,
-    "--persist-to",
-    PLATFORM_PERSIST,
-    "--json",
-    "--command",
-    "SELECT epoch FROM tenant_binding LIMIT 1",
-  ]);
+  assert.ok(stack.aiToken, "AI token missing from E2E-P5.1-01");
+  assert.ok(stack.billingToken, "billing token missing from E2E-P5.1-02");
 
-  const oldAiToken = "<ai-token-before-switch>";
-  const oldBillingToken = "<billing-token-before-switch>";
+  const epochBefore = getTenantBindingEpoch(stack.clinic.orgId);
+  assert.equal(epochBefore, 1);
+
+  const oldAiToken = stack.aiToken;
+  const oldBillingToken = stack.billingToken;
 
   const capabilitiesOld = await fetch(`${PLATFORM_URL}/v1/capabilities`, {
-    headers: { authorization: `Bearer ${oldAiToken}` },
+    headers: {
+      authorization: `Bearer ${oldAiToken}`,
+      "Aip-Contract-Version": "1",
+    },
   });
   const offersOld = await fetch(`${ABO_URL}/v1/offers`, {
     headers: {
       authorization: `Bearer ${oldBillingToken}`,
       host: BILLING_HOST,
+      "Abo-Contract-Version": "1",
     },
   });
+  assert.equal(capabilitiesOld.status, 200);
+  assert.equal(offersOld.status, 200);
 
-  const nextKidStatus = psqlQuery(
-    "SELECT status FROM auth_internal.insert_issuer_kid()",
-  );
-  assert.equal(
-    nextKidStatus,
-    "next",
-    "owner insert_issuer_kid did not create a next kid",
-  );
+  const nextKey = ownerInsertIssuerKid();
+  assert.equal(nextKey.status, "next");
 
-  stack.abo = await stack.restartAbo(stack.issuerKeys);
+  const pinnedKeys = readIssuerKeysForAbo(["signing", "next"]);
+  await stack.restartAbo(pinnedKeys);
 
-  const register = await fetch(`${HARNESS_URL}/register-issuer-key`, {
-    method: "POST",
-    headers: { "content-type": "application/json" },
-    body: JSON.stringify({
-      contract_version: 1,
-      kid: "<next-kid-not-registered-yet>",
-    }),
-  });
-  const registerBody = await register.json();
-  assert.equal(
-    registerBody.result,
-    "ok",
-    "registerIssuerKey for the next kid is not wired",
-  );
+  const registerBody = await registerIssuerKey(stack, nextKey);
+  assert.equal(registerBody.result, "ok");
 
-  psqlQuery(
-    "SELECT auth_internal.switch_issuer_signing_kid('<next-kid-not-switched-yet>')",
-  );
+  ownerSwitchSigningKid(nextKey.kid);
   const signingKid = psqlQuery(
     "SELECT kid FROM ai_internal.issuer_key WHERE status = 'signing' LIMIT 1",
   );
-  assert.equal(
-    signingKid,
-    "<next-kid-not-switched-yet>",
-    "switch_issuer_signing_kid is not wired",
-  );
+  assert.equal(signingKid, nextKey.kid);
+
+  const newAiToken = await rpc(stack.clinic.member, "issue_ai_token", {
+    p_contract_version: 1,
+  });
+  const newBilling = await rpc(stack.clinic.administrator, "issue_billing_token", {
+    p_contract_version: 1,
+  });
+  assert.equal(newBilling.success, true);
+  const newBillingToken = newBilling.data.token;
 
   const capabilitiesNew = await fetch(`${PLATFORM_URL}/v1/capabilities`, {
-    headers: { authorization: "Bearer <ai-token-after-switch>" },
+    headers: {
+      authorization: `Bearer ${newAiToken}`,
+      "Aip-Contract-Version": "1",
+    },
   });
   const offersNew = await fetch(`${ABO_URL}/v1/offers`, {
     headers: {
-      authorization: "Bearer <billing-token-after-switch>",
+      authorization: `Bearer ${newBillingToken}`,
       host: BILLING_HOST,
+      "Abo-Contract-Version": "1",
     },
   });
 
-  assert.equal(
-    capabilitiesNew.status,
-    200,
-    "new AI token is not accepted on /v1/capabilities",
-  );
-  assert.equal(
-    offersNew.status,
-    200,
-    "new billing token is not accepted on /v1/offers",
-  );
-  assert.equal(
-    capabilitiesOld.status,
-    200,
-    "old AI token is not still accepted on /v1/capabilities",
-  );
-  assert.equal(
-    offersOld.status,
-    200,
-    "old billing token is not still accepted on /v1/offers",
-  );
+  assert.equal(capabilitiesNew.status, 200);
+  assert.equal(offersNew.status, 200);
 
-  const epochAfter = runWrangler([
-    "d1",
-    "execute",
-    "ai-platform-development",
-    "--local",
-    "--env",
-    "development",
-    "--config",
-    PLATFORM_CONFIG,
-    "--persist-to",
-    PLATFORM_PERSIST,
-    "--json",
-    "--command",
-    "SELECT epoch FROM tenant_binding LIMIT 1",
-  ]);
+  const capabilitiesOldAfter = await fetch(`${PLATFORM_URL}/v1/capabilities`, {
+    headers: {
+      authorization: `Bearer ${oldAiToken}`,
+      "Aip-Contract-Version": "1",
+    },
+  });
+  const offersOldAfter = await fetch(`${ABO_URL}/v1/offers`, {
+    headers: {
+      authorization: `Bearer ${oldBillingToken}`,
+      host: BILLING_HOST,
+      "Abo-Contract-Version": "1",
+    },
+  });
+  assert.equal(capabilitiesOldAfter.status, 200);
+  assert.equal(offersOldAfter.status, 200);
 
-  assert.equal(
-    epochAfter,
-    epochBefore,
-    "tenant_binding.epoch changed after signing switch",
-  );
+  const epochAfter = getTenantBindingEpoch(stack.clinic.orgId);
+  assert.equal(epochAfter, epochBefore);
 });
