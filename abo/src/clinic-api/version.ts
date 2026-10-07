@@ -77,8 +77,8 @@ export function checkContractVersion(
   const requested = parseContractVersionHeader(request);
   const result = negotiate(current, requested);
   if (!result.ok) {
-    if (env !== undefined) {
-      void recordChannelVersionSeen(env, channel, current, true).catch(() => {
+    if (env !== undefined && requested !== null) {
+      void recordChannelVersionSeen(env, channel, requested, true).catch(() => {
         // Version-gate recording failures must not block the refusal.
       });
     }

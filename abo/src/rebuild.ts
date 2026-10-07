@@ -116,15 +116,21 @@ function ledgerInsertStatement(
 }
 
 async function listLedgerLines(env: RebuildEnv): Promise<LedgerLine[]> {
-  const listed = await env.R2.list({ prefix: "ledger/" });
   const lines: LedgerLine[] = [];
-  for (const object of listed.objects) {
-    const body = await env.R2.get(object.key);
-    if (body === null) {
-      continue;
+  let cursor: string | undefined;
+  let truncated = true;
+  while (truncated) {
+    const listed = await env.R2.list({ prefix: "ledger/", cursor });
+    for (const object of listed.objects) {
+      const body = await env.R2.get(object.key);
+      if (body === null) {
+        continue;
+      }
+      const parsed = JSON.parse(await body.text()) as LedgerLine;
+      lines.push(parsed);
     }
-    const parsed = JSON.parse(await body.text()) as LedgerLine;
-    lines.push(parsed);
+    truncated = listed.truncated;
+    cursor = listed.truncated ? listed.cursor : undefined;
   }
   lines.sort((left, right) => left.fact_seq - right.fact_seq);
   return lines;

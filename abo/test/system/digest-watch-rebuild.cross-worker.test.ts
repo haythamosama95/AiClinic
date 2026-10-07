@@ -1105,7 +1105,7 @@ async function seedDigestScenario(): Promise<DigestScenario> {
       `INSERT INTO work (
          work_id, kind, subject_id, dedupe_key, state, attempts,
          next_attempt_at, lease_until, last_error, opened_at
-       ) VALUES (?, 'confirm', ?, 'dedupe-digest-work', 'open', 0, NULL, NULL, NULL, ?)`,
+       ) VALUES (?, 'confirm', ?, 'dedupe-digest-work', 'parked', 0, NULL, NULL, NULL, ?)`,
     ).bind(parkedWorkId, checkoutId, addHours(BASE_CLOCK, -1)),
     env.DB.prepare(
       `INSERT INTO alert (
@@ -1417,8 +1417,21 @@ describe("P4.11 digest, watch, housekeeping, rebuild (H-XW)", () => {
     const ledgerListed = await env.R2.list({ prefix: "ledger/" });
     expect(ledgerListed.objects.length).toBeGreaterThan(0);
 
+    const gapOrderBefore = await env.DB.prepare(
+      `SELECT order_id FROM paymob_intention WHERE checkout_id = ?`,
+    )
+      .bind(gapCheckoutId)
+      .first<{ order_id: string }>();
+    expect(gapOrderBefore?.order_id).toBeTruthy();
+
     await wipeAboD1();
     await reapplyAboSchema();
+
+    await env.PAYMOB_STUB.fetch("http://paymob.stub/__script", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ intention_order_id: "9002" }),
+    });
 
     const { rebuildAbo } = await import("../../src/rebuild.js");
     await scriptPaymobInquiry("bound_success");
@@ -1435,6 +1448,13 @@ describe("P4.11 digest, watch, housekeeping, rebuild (H-XW)", () => {
     expect(
       await rowExists("payment", "payment_id", paid.paymentId),
     ).toBe(true);
+
+    const gapOrderAfter = await env.DB.prepare(
+      `SELECT order_id FROM paymob_intention WHERE checkout_id = ?`,
+    )
+      .bind(gapCheckoutId)
+      .first<{ order_id: string }>();
+    expect(gapOrderAfter?.order_id).toBe(gapOrderBefore?.order_id);
 
     const gapPaymentId = await paymentIdForCheckout(gapCheckoutId);
     expect(gapPaymentId).not.toBeNull();

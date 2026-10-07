@@ -5,6 +5,7 @@
 let mode = "ok";
 let inquiryScript = "bound_success";
 let inquiryAmountCents = "800";
+let intentionOrderId = "9001";
 let lastIntentionBody = null;
 
 const DEFAULT_AMOUNT_CENTS = "800";
@@ -57,6 +58,12 @@ export default {
       if (body.amount_cents !== undefined && body.amount_cents !== null) {
         inquiryAmountCents = String(body.amount_cents);
       }
+      if (
+        body.intention_order_id !== undefined &&
+        body.intention_order_id !== null
+      ) {
+        intentionOrderId = String(body.intention_order_id);
+      }
       return new Response(null, { status: 204 });
     }
 
@@ -87,7 +94,7 @@ export default {
 
       return jsonResponse({
         id: "intention-stub-id",
-        intention_order_id: Number(DEFAULT_ORDER_ID),
+        intention_order_id: Number(intentionOrderId),
         client_secret: "stub-client-secret",
       });
     }

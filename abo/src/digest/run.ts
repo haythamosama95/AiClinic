@@ -234,9 +234,16 @@ async function buildDigestBody(env: DigestEnv): Promise<string> {
   }
 
   const grantCounts = await env.DB.prepare(
-    `SELECT source_kind AS label, COUNT(*) AS count
-     FROM grant_request GROUP BY source_kind ORDER BY source_kind`,
-  ).all<CountRow>();
+    `SELECT gr.source_kind AS label, COUNT(*) AS count
+     FROM grant_request gr
+     INNER JOIN fact_log fl
+       ON fl."table" = 'grant_request' AND fl.key = gr.grant_id
+     WHERE fl.created_at >= ?
+     GROUP BY gr.source_kind
+     ORDER BY gr.source_kind`,
+  )
+    .bind(sinceIso)
+    .all<CountRow>();
   lines.push("grants_by_source_kind:");
   for (const row of grantCounts.results ?? []) {
     lines.push(`  ${row.label}=${row.count}`);
@@ -293,7 +300,7 @@ async function buildDigestBody(env: DigestEnv): Promise<string> {
   lines.push("parked_work:");
   const workRows = await env.DB.prepare(
     `SELECT work_id, kind, subject_id, state, opened_at
-     FROM work WHERE state = 'open' ORDER BY work_id`,
+     FROM work WHERE state = 'parked' ORDER BY work_id`,
   ).all<WorkRow>();
   for (const work of workRows.results ?? []) {
     lines.push(

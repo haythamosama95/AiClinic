@@ -206,7 +206,7 @@ async function handleBillingV1(
   env: Env,
   path: string,
 ): Promise<Response> {
-  const versionGate = checkContractVersion(request, "aboClinic");
+  const versionGate = checkContractVersion(request, "aboClinic", env);
   if (!versionGate.ok) {
     return versionGate.response;
   }
@@ -293,7 +293,7 @@ async function handleOps(
   env: Env,
   path: string,
 ): Promise<Response> {
-  const versionGate = checkContractVersion(request, "aboConsole");
+  const versionGate = checkContractVersion(request, "aboConsole", env);
   if (!versionGate.ok) {
     const body = (await versionGate.response.clone().json()) as Record<
       string,

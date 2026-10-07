@@ -16,6 +16,7 @@ import type {
   ProviderTxnKind,
 } from "../port.js";
 import { clockNowIso, clockNowMs, type ClockEnv } from "../../clock.js";
+import { insertFactLog } from "../../records/append.js";
 import { PAYMOB_PROVIDER_ID } from "../registry.js";
 import {
   createPaymobIntention,
@@ -139,20 +140,36 @@ async function storeIntention(
     client_secret: string;
   },
 ): Promise<void> {
-  await env.DB.prepare(
-    `INSERT INTO paymob_intention (
-       checkout_id, intention_id, order_id, client_secret, special_reference, expires_at
-     ) VALUES (?, ?, ?, ?, ?, ?)`,
-  )
-    .bind(
+  const canonicalRow = {
+    checkout_id: checkoutId,
+    intention_id: intention.id,
+    order_id: String(intention.intention_order_id),
+    client_secret: intention.client_secret,
+    special_reference: reference,
+    expires_at: expiresAt,
+  };
+  const createdAt = await clockNowIso(env);
+  await env.DB.batch([
+    env.DB.prepare(
+      `INSERT INTO paymob_intention (
+         checkout_id, intention_id, order_id, client_secret, special_reference, expires_at
+       ) VALUES (?, ?, ?, ?, ?, ?)`,
+    ).bind(
       checkoutId,
       intention.id,
-      String(intention.intention_order_id),
+      canonicalRow.order_id,
       intention.client_secret,
       reference,
       expiresAt,
-    )
-    .run();
+    ),
+    await insertFactLog(
+      env,
+      "paymob_intention",
+      checkoutId,
+      canonicalRow,
+      createdAt,
+    ),
+  ]);
 }
 
 async function createCheckoutImpl(
