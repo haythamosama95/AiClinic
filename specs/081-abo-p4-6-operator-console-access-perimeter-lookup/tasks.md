@@ -152,7 +152,7 @@ cd abo && node scripts/build-platform-for-hxw.mjs && npx vitest run --config vit
 
 ### 7.1 Quickstart
 
-- [ ] T015 [US3] Create `specs/081-abo-p4-6-operator-console-access-perimeter-lookup/quickstart.md` from the plan's quickstart outline — produces this unit's quickstart, FR-001, FR-002, FR-003, FR-004, FR-005, FR-006, FR-007, FR-008, E2E-P4.6-01, E2E-P4.6-02, E2E-P4.6-03, E2E-P4.6-04, E2E-P4.6-05, E2E-P4.6-06, E2E-P4.6-07. Depends on T014. Sections: (1) what was implemented, and the files added or modified; (2) the harness command below; (3) the entry point → module chain per E2E id below. No earlier-unit files, combined counts, or full-suite commands. No manual steps; the harness observes every scenario.
+- [X] T015 [US3] Create `specs/081-abo-p4-6-operator-console-access-perimeter-lookup/quickstart.md` from the plan's quickstart outline — produces this unit's quickstart, FR-001, FR-002, FR-003, FR-004, FR-005, FR-006, FR-007, FR-008, E2E-P4.6-01, E2E-P4.6-02, E2E-P4.6-03, E2E-P4.6-04, E2E-P4.6-05, E2E-P4.6-06, E2E-P4.6-07. Depends on T014. Sections: (1) what was implemented, and the files added or modified; (2) the harness command below; (3) the entry point → module chain per E2E id below. No earlier-unit files, combined counts, or full-suite commands. No manual steps; the harness observes every scenario.
 
 ```bash
 cd abo && node scripts/build-platform-for-hxw.mjs && npx vitest run --config vitest.cross-worker.config.ts test/system/ops.cross-worker.test.ts
