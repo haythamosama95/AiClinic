@@ -107,6 +107,22 @@ export type InquireResult = {
   transactions: ProviderTxn[];
 };
 
+export type PayoutLineKind =
+  | "payment"
+  | "refund"
+  | "chargeback"
+  | "fee"
+  | "other";
+
+export type PayoutLine = {
+  kind: PayoutLineKind;
+  payment_id: string | null;
+  gross_minor: number;
+  fee_minor: number;
+  net_minor: number;
+  settled_at: string;
+};
+
 /** Adapter surface for checkout creation in this unit. */
 export interface ProviderPort {
   capabilities(): ProviderCapabilities;
@@ -116,4 +132,5 @@ export interface ProviderPort {
     request: ProviderNotificationRequest,
   ): Promise<ParseNotificationResult>;
   inquire(input: InquireInput): Promise<InquireResult>;
+  payoutLines(file: Uint8Array): Promise<PayoutLine[]>;
 }

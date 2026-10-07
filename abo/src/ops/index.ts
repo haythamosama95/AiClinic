@@ -7,6 +7,7 @@ import {
   parseRegistrationAttestation,
   sha256Hex,
   subscriptionRef,
+  ulid,
   validateOperation,
   verifyAccessJwt,
   verifyAssertion,
@@ -19,6 +20,8 @@ import {
   clinicJsonResponse,
 } from "../clinic-api/version.js";
 import { clockNowIso, clockNowMs, type ClockEnv } from "../clock.js";
+import { PAYMOB_PROVIDER_ID, providerForId } from "../provider/registry.js";
+import { runReconciliation } from "../reconciliation/run.js";
 import {
   determineReversalEffect,
   insertReverseWorkRow,
@@ -1683,6 +1686,239 @@ async function handleGetPayoutImports(
   );
 }
 
+async function newOpsId(env: OpsEnv): Promise<string> {
+  const nowMs = await clockNowMs(env);
+  const random = new Uint8Array(10);
+  crypto.getRandomValues(random);
+  return ulid(nowMs, random);
+}
+
+function periodFromSettledAt(settledAt: string): string {
+  const parsed = Date.parse(settledAt);
+  const date = Number.isNaN(parsed) ? new Date(settledAt) : new Date(parsed);
+  const year = date.getUTCFullYear();
+  const month = String(date.getUTCMonth() + 1).padStart(2, "0");
+  return `${year}-${month}`;
+}
+
+async function handlePostPayoutImport(
+  env: OpsEnv,
+  access: VerifiedAccess,
+  request: Request,
+  contractVersion: number,
+): Promise<Response> {
+  const bytes = new Uint8Array(await request.arrayBuffer());
+  const fileSha256 = await sha256Hex(bytes);
+  const r2Key = `payouts/${fileSha256}`;
+  await env.R2.put(r2Key, bytes);
+
+  const provider = providerForId(env, PAYMOB_PROVIDER_ID);
+  if (provider === null) {
+    return clinicErrorResponse("internal_error", 500, contractVersion);
+  }
+  const lines = await provider.payoutLines(bytes);
+  const period =
+    lines.length > 0
+      ? periodFromSettledAt(lines[0]!.settled_at)
+      : (await clockNowIso(env)).slice(0, 7);
+
+  const importId = await newOpsId(env);
+  const actionId = crypto.randomUUID();
+  const createdAt = await clockNowIso(env);
+  const importCanonical = {
+    import_id: importId,
+    provider_id: PAYMOB_PROVIDER_ID,
+    file_sha256: fileSha256,
+    r2_key: r2Key,
+    imported_by: access.email,
+    period,
+  };
+  const importSha = await sha256Hex(canonicalize(importCanonical));
+  const statements: D1PreparedStatement[] = [
+    env.DB.prepare(
+      `INSERT INTO payout_import (
+         import_id, provider_id, file_sha256, r2_key, imported_by, period
+       ) VALUES (?, ?, ?, ?, ?, ?)`,
+    ).bind(
+      importId,
+      PAYMOB_PROVIDER_ID,
+      fileSha256,
+      r2Key,
+      access.email,
+      period,
+    ),
+    env.DB.prepare(
+      `INSERT INTO fact_log ("table", key, row_sha256, created_at) VALUES (?, ?, ?, ?)`,
+    ).bind("payout_import", importId, importSha, createdAt),
+  ];
+
+  for (let lineNo = 0; lineNo < lines.length; lineNo += 1) {
+    const line = lines[lineNo]!;
+    const lineCanonical = {
+      import_id: importId,
+      line_no: lineNo + 1,
+      kind: line.kind,
+      gross_minor: line.gross_minor,
+      fee_minor: line.fee_minor,
+      net_minor: line.net_minor,
+      settled_at: line.settled_at,
+      payment_id: line.payment_id,
+    };
+    const lineSha = await sha256Hex(canonicalize(lineCanonical));
+    statements.push(
+      env.DB.prepare(
+        `INSERT INTO payout_line (
+           import_id, line_no, kind, gross_minor, fee_minor, net_minor,
+           settled_at, payment_id
+         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+      ).bind(
+        importId,
+        lineNo + 1,
+        line.kind,
+        line.gross_minor,
+        line.fee_minor,
+        line.net_minor,
+        line.settled_at,
+        line.payment_id,
+      ),
+      env.DB.prepare(
+        `INSERT INTO fact_log ("table", key, row_sha256, created_at) VALUES (?, ?, ?, ?)`,
+      ).bind(
+        "payout_line",
+        `${importId}:${lineNo + 1}`,
+        lineSha,
+        createdAt,
+      ),
+    );
+  }
+  await env.DB.batch(statements);
+
+  const action = "Import a payout CSV";
+  const paramsSha256 = await sha256Hex(
+    canonicalize({ action, subject: importId }),
+  );
+  await insertOperatorAction(
+    env,
+    {
+      action_id: actionId,
+      actor_email: access.email,
+      access_jti: access.jti,
+      action,
+      subject: importId,
+      params_sha256: paramsSha256,
+      assertion_sha256: null,
+      result: "accepted",
+    },
+    createdAt,
+  );
+  await recordPlatformOperatorAction(
+    env,
+    access.jwt,
+    action,
+    importId,
+    actionId,
+  );
+
+  await runReconciliation(env);
+
+  return clinicJsonResponse(
+    {
+      contract_version: contractVersion,
+      import_id: importId,
+      action_id: actionId,
+    },
+    200,
+    contractVersion,
+  );
+}
+
+async function handlePostResolveFinding(
+  env: OpsEnv,
+  findingId: string,
+  access: VerifiedAccess,
+  request: Request,
+  contractVersion: number,
+): Promise<Response> {
+  const finding = await env.DB.prepare(
+    `SELECT finding_id FROM finding WHERE finding_id = ?`,
+  )
+    .bind(findingId)
+    .first<{ finding_id: string }>();
+  if (finding === null) {
+    return clinicErrorResponse("not_found", 404, contractVersion);
+  }
+
+  let body: Record<string, unknown> | null = null;
+  try {
+    const parsed = (await request.json()) as unknown;
+    body = isRecord(parsed) ? parsed : null;
+  } catch {
+    body = null;
+  }
+  const note = body?.note;
+  if (typeof note !== "string") {
+    return clinicErrorResponse("invalid_request", 400, contractVersion);
+  }
+
+  const existing = await env.DB.prepare(
+    `SELECT finding_id FROM finding_resolution WHERE finding_id = ?`,
+  )
+    .bind(findingId)
+    .first();
+  const createdAt = await clockNowIso(env);
+  if (existing === null) {
+    const resolutionCanonical = {
+      finding_id: findingId,
+      resolved_by: access.email,
+      note,
+      at: createdAt,
+    };
+    const resolutionSha = await sha256Hex(canonicalize(resolutionCanonical));
+    await env.DB.batch([
+      env.DB.prepare(
+        `INSERT INTO finding_resolution (finding_id, resolved_by, note, at)
+         VALUES (?, ?, ?, ?)`,
+      ).bind(findingId, access.email, note, createdAt),
+      env.DB.prepare(
+        `INSERT INTO fact_log ("table", key, row_sha256, created_at) VALUES (?, ?, ?, ?)`,
+      ).bind("finding_resolution", findingId, resolutionSha, createdAt),
+    ]);
+  }
+
+  const action = "Resolve a finding";
+  const actionId = crypto.randomUUID();
+  const paramsSha256 = await sha256Hex(
+    canonicalize({ action, subject: findingId, note }),
+  );
+  await insertOperatorAction(
+    env,
+    {
+      action_id: actionId,
+      actor_email: access.email,
+      access_jti: access.jti,
+      action,
+      subject: findingId,
+      params_sha256: paramsSha256,
+      assertion_sha256: null,
+      result: "accepted",
+    },
+    createdAt,
+  );
+  await recordPlatformOperatorAction(
+    env,
+    access.jwt,
+    action,
+    findingId,
+    actionId,
+  );
+
+  return clinicJsonResponse(
+    { contract_version: contractVersion, action_id: actionId },
+    200,
+    contractVersion,
+  );
+}
+
 async function parsePlatformList(
   envelope: Record<string, unknown>,
 ): Promise<Array<Record<string, unknown>>> {
@@ -3043,6 +3279,22 @@ export async function handleOps(
 
   if (request.method === "GET" && path === "/ops/payout-imports") {
     return handleGetPayoutImports(contractVersion);
+  }
+
+  if (request.method === "POST" && path === "/ops/payout-imports") {
+    return handlePostPayoutImport(env, access, request, contractVersion);
+  }
+
+  const resolveFindingMatch =
+    /^\/ops\/findings\/([^/]+)\/resolve$/u.exec(path);
+  if (request.method === "POST" && resolveFindingMatch !== null) {
+    return handlePostResolveFinding(
+      env,
+      resolveFindingMatch[1]!,
+      access,
+      request,
+      contractVersion,
+    );
   }
 
   if (request.method === "GET" && path === "/ops/registries") {

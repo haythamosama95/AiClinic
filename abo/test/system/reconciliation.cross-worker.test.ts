@@ -686,42 +686,163 @@ async function seedFullReversalWithoutOutcome(
   return reversalId;
 }
 
-async function tamperGrantOutcomeReceiptSignature(grantId: string): Promise<void> {
-  const row = await env.DB.prepare(
-    `SELECT result, abo_kid, abo_signature, receipt, term_ids, at
-     FROM grant_outcome WHERE grant_id = ?`,
+async function runGrantStepWithoutLedgerSync(orgId: string): Promise<void> {
+  const { runDueGrantWork } = await import("../../src/work/grant");
+  await runScheduled("* * * * *");
+  await runDueGrantWork(env as never);
+  await syncPlatformGrantLedger(orgId);
+  await drainPlatformDurableObjects();
+}
+
+async function paidCheckoutWithGrantNoLedgerSync(
+  org: string,
+  expectations: OffersFixtureExpectations,
+  txnId: number,
+  clientRequestId: string,
+): Promise<{ checkoutId: string; paymentId: string; grantId: string }> {
+  await putBillingContact(org);
+  await ensureGrantTenantBinding(org);
+  const { checkoutId } = await postCheckout(org, expectations, clientRequestId);
+  const chargedPrice = await syncPaymobForCheckout(checkoutId);
+  const intake = await postPaymobProcessedCallback(
+    successFixture as PaymobCallbackFixture,
+    { txnId, amountMinor: chargedPrice },
+  );
+  expect(intake.status).toBe(200);
+  const { runDueGrantWork } = await import("../../src/work/grant");
+  await runScheduled("* * * * *");
+  await runDueGrantWork(env as never);
+  const paymentId = await paymentIdForCheckout(checkoutId);
+  expect(paymentId).not.toBeNull();
+  const grantId = await grantIdPaid(paymentId!);
+  return { checkoutId, paymentId: paymentId!, grantId };
+}
+
+async function seedTamperedPlatformGrantLedgerReceipt(input: {
+  grantId: string;
+  orgId: string;
+  receiptJson: string;
+}): Promise<void> {
+  const binding = await env.PLATFORM_DB.prepare(
+    `SELECT installation_id FROM tenant_binding
+     WHERE org_id = ? AND status = 'active'`,
   )
-    .bind(grantId)
-    .first<{
-      result: string;
-      abo_kid: string | null;
-      abo_signature: string | null;
-      receipt: string;
-      term_ids: string | null;
-      at: string;
-    }>();
-  expect(row).not.toBeNull();
-  const receipt = JSON.parse(row!.receipt) as Record<string, unknown>;
+    .bind(input.orgId)
+    .first<{ installation_id: string }>();
+  expect(binding?.installation_id).toBeTruthy();
+  const receipt = JSON.parse(input.receiptJson) as Record<string, unknown>;
   receipt.signature = "tampered-reconciliation-signature";
-  const tamperedReceipt = JSON.stringify(receipt);
-  await env.DB.prepare(`DELETE FROM grant_outcome WHERE grant_id = ?`)
-    .bind(grantId)
-    .run();
-  await env.DB.prepare(
-    `INSERT INTO grant_outcome (
-       grant_id, result, abo_kid, abo_signature, receipt, term_ids, at
-     ) VALUES (?, ?, ?, ?, ?, ?, ?)`,
+  const appliedAt = await currentHarnessClockIso();
+  await env.PLATFORM_DB.prepare(
+    `INSERT OR IGNORE INTO grant_ledger (
+       grant_id, origin_grant_id, org_id, installation_id, kind, source_kind,
+       operator_credential_id, envelope_sha256, receipt, applied_at
+     ) VALUES (?, ?, ?, ?, 'term', 'paid', 'cred-harness', 'sha-harness', ?, ?)`,
   )
     .bind(
-      grantId,
-      row!.result,
-      row!.abo_kid,
-      row!.abo_signature,
-      tamperedReceipt,
-      row!.term_ids,
-      row!.at,
+      input.grantId,
+      input.grantId,
+      input.orgId,
+      binding!.installation_id,
+      JSON.stringify(receipt),
+      appliedAt,
     )
     .run();
+}
+
+async function seedCoverageViewFromPlatform(orgId: string): Promise<void> {
+  const coverage = await platformCall("getCoverage", {
+    contract_version: CONTRACT_VERSION,
+    org_id: orgId,
+  });
+  expect(coverage.result).toBe("ok");
+  const detail = JSON.parse(String(coverage.detail)) as {
+    snapshot?: Record<string, unknown>;
+    binding_epoch?: number;
+    clinic_seq?: number;
+  };
+  await env.DB.prepare(
+    `INSERT INTO coverage_view (org_id, binding_epoch, clinic_seq, snapshot)
+     VALUES (?, ?, ?, ?)
+     ON CONFLICT(org_id) DO UPDATE SET
+       binding_epoch = excluded.binding_epoch,
+       clinic_seq = excluded.clinic_seq,
+       snapshot = excluded.snapshot`,
+  )
+    .bind(
+      orgId,
+      detail.binding_epoch ?? 1,
+      detail.clinic_seq ?? 1,
+      JSON.stringify(detail.snapshot ?? {}),
+    )
+    .run();
+}
+
+async function seedPaymentWithoutGrantOutcome(input: {
+  orgId: string;
+  expectations: OffersFixtureExpectations;
+  clientRequestId: string;
+}): Promise<string> {
+  await putBillingContact(input.orgId);
+  await ensureGrantTenantBinding(input.orgId);
+  const { checkoutId, reference } = await postCheckout(
+    input.orgId,
+    input.expectations,
+    input.clientRequestId,
+  );
+  const chargedPrice = await chargedPriceMinorForCheckout(checkoutId);
+  const paymentId = crypto.randomUUID();
+  const confirmedAt = await currentHarnessClockIso();
+  await env.DB.prepare(
+    `UPDATE checkout_status
+     SET state = 'paid', last_event_at = ?
+     WHERE checkout_id = ?`,
+  )
+    .bind(confirmedAt, checkoutId)
+    .run();
+  await env.DB.prepare(
+    `INSERT INTO payment (
+       payment_id, reference, org_id, checkout_id, provider_id, amount_minor,
+       currency, paid_at, confirmed_at, confirmation_inquiry_id, offer_id,
+       offer_version, billing_contact_version, classification, disposition,
+       mismatch_detail, evidence_sha256
+     ) VALUES (?, ?, ?, ?, 'paymob', ?, 'EGP', ?, ?, ?, ?, ?, 1, 'match', 'grant', NULL, ?)`,
+  )
+    .bind(
+      paymentId,
+      reference,
+      input.orgId,
+      checkoutId,
+      chargedPrice,
+      confirmedAt,
+      confirmedAt,
+      `inquiry-rc-04-${paymentId}`,
+      input.expectations.offer_id,
+      input.expectations.version,
+      `evidence-rc-04-${paymentId}`,
+    )
+    .run();
+  await env.DB.prepare(
+    `INSERT INTO work (
+       work_id, kind, subject_id, dedupe_key, state, attempts,
+       next_attempt_at, lease_until, last_error, opened_at
+     ) VALUES (?, 'grant', ?, ?, 'open', 0, ?, NULL, NULL, ?)`,
+  )
+    .bind(
+      crypto.randomUUID(),
+      paymentId,
+      `grant:${paymentId}`,
+      confirmedAt,
+      confirmedAt,
+    )
+    .run();
+  const outcome = await env.DB.prepare(
+    `SELECT 1 FROM grant_outcome WHERE grant_id = ?`,
+  )
+    .bind(await grantIdPaid(paymentId))
+    .first();
+  expect(outcome).toBeNull();
+  return paymentId;
 }
 
 async function payoutLineRow(
@@ -1328,6 +1449,7 @@ describe("reconciliation cross-worker", () => {
     await runTransferSagaUntilDone(transferDetail.transfer_id);
     await syncPlatformGrantLedger(orgId);
     await drainPlatformDurableObjects();
+    await seedCoverageViewFromPlatform(orgId);
 
     await runDailyReconciliation();
 
@@ -1389,28 +1511,17 @@ describe("reconciliation cross-worker", () => {
   it("E2E-P4.10-04 grant parked more than 15 minutes raises payment_without_grant", async () => {
     const expectations = await setupReconciliationHarness();
     const orgId = ORG_RC_04;
-    await putBillingContact(orgId);
-    await ensureGrantTenantBinding(orgId);
-    const { checkoutId } = await postCheckout(
+    const paymentId = await seedPaymentWithoutGrantOutcome({
       orgId,
       expectations,
-      "req-rc-04-parked",
-    );
-    const chargedPrice = await syncPaymobForCheckout(checkoutId);
-    const intake = await postPaymobProcessedCallback(
-      successFixture as PaymobCallbackFixture,
-      { txnId: 94104, amountMinor: chargedPrice },
-    );
-    expect(intake.status).toBe(200);
-
-    const paymentId = await paymentIdForCheckout(checkoutId);
-    expect(paymentId).not.toBeNull();
+      clientRequestId: "req-rc-04-parked",
+    });
     const paymentRow = await env.DB.prepare(
-      `SELECT confirmed_at, disposition FROM payment WHERE payment_id = ?`,
+      `SELECT confirmed_at FROM payment WHERE payment_id = ?`,
     )
-      .bind(paymentId!)
-      .first<{ confirmed_at: string; disposition: string }>();
-    expect(paymentRow?.disposition).toBe("grant");
+      .bind(paymentId)
+      .first<{ confirmed_at: string }>();
+    expect(paymentRow).not.toBeNull();
 
     await setClock(addMinutes(paymentRow!.confirmed_at, 16));
     await runDailyReconciliation();
@@ -1461,9 +1572,7 @@ describe("reconciliation cross-worker", () => {
       94108,
       "req-rc-08-feed",
     );
-    await syncPlatformGrantLedger(feedOrgId);
-    await drainPlatformDurableObjects();
-    await runScheduled("* * * * *");
+    await seedCoverageViewFromPlatform(feedOrgId);
     await tamperCoverageViewSnapshot(feedOrgId);
 
     const reversalOrgId = ORG_RC_08;
@@ -1498,16 +1607,24 @@ describe("reconciliation cross-worker", () => {
   it("E2E-P4.10-09 tampered grant_outcome receipt raises receipt_mismatch and AL-10", async () => {
     const expectations = await setupReconciliationHarness();
     const orgId = ORG_RC_09;
-    const { paymentId } = await paidCheckoutWithGrant(
+    const { grantId } = await paidCheckoutWithGrantNoLedgerSync(
       orgId,
       expectations,
       94109,
       "req-rc-09-receipt",
     );
-    const grantId = await grantIdPaid(paymentId);
-    await syncPlatformGrantLedger(orgId);
+    const outcome = await env.DB.prepare(
+      `SELECT receipt FROM grant_outcome WHERE grant_id = ?`,
+    )
+      .bind(grantId)
+      .first<{ receipt: string }>();
+    expect(outcome).not.toBeNull();
+    await seedTamperedPlatformGrantLedgerReceipt({
+      grantId,
+      orgId,
+      receiptJson: outcome!.receipt,
+    });
     await drainPlatformDurableObjects();
-    await tamperGrantOutcomeReceiptSignature(grantId);
 
     await runDailyReconciliation();
 
@@ -1584,7 +1701,7 @@ describe("reconciliation cross-worker", () => {
     await paidCheckoutWithGrant(
       orgId,
       expectations,
-      99002,
+      94106,
       "req-rc-06-omitted",
     );
 

@@ -8,12 +8,14 @@ import type {
   ParseNotificationResult,
   ProviderCapabilities,
   ProviderNotificationRequest,
+  PayoutLine,
+  PayoutLineKind,
   ProviderPort,
   type ProviderReversal,
   ProviderTxn,
   ProviderTxnKind,
 } from "../port.js";
-import { clockNowMs, type ClockEnv } from "../../clock.js";
+import { clockNowIso, clockNowMs, type ClockEnv } from "../../clock.js";
 import { PAYMOB_PROVIDER_ID } from "../registry.js";
 import {
   createPaymobIntention,
@@ -566,6 +568,7 @@ async function providerTxnFromCallback(
 }
 
 async function providerTxnFromAcceptanceAsync(
+  env: PaymobAdapterEnv,
   txn: PaymobAcceptanceTransaction,
   checkoutId: string,
 ): Promise<ProviderTxn> {
@@ -579,7 +582,7 @@ async function providerTxnFromAcceptanceAsync(
     payment_id: resolvedPaymentId,
     amount_minor: amountMinorFromCents(txn.amount_cents),
     currency: txn.currency,
-    occurred_at: new Date().toISOString(),
+    occurred_at: await clockNowIso(env),
     dedupe_key: `paymob:txn:${txnId}:${kind}`,
     reversal: reversalFromTxn(txn),
     provider_txn_id: txnId,
@@ -740,6 +743,7 @@ async function inquireImpl(
   }
 
   const txn = await providerTxnFromAcceptanceAsync(
+    env,
     txnResult.data,
     checkoutId,
   );
@@ -751,6 +755,109 @@ export function paymobParentTxnId(
 ): string | null {
   const parentId = txn.parent_transaction?.id;
   return parentId === undefined ? null : String(parentId);
+}
+
+const PAYOUT_CSV_HEADER =
+  "transaction_id,type,gross_minor,fee_minor,net_minor,settled_at";
+
+const PAYOUT_LINE_KINDS = new Set<PayoutLineKind>([
+  "payment",
+  "refund",
+  "chargeback",
+  "fee",
+  "other",
+]);
+
+function parsePayoutLineKind(value: string): PayoutLineKind | null {
+  if (PAYOUT_LINE_KINDS.has(value as PayoutLineKind)) {
+    return value as PayoutLineKind;
+  }
+  return null;
+}
+
+function parsePayoutCsv(text: string): Array<{
+  txnId: string;
+  kind: PayoutLineKind;
+  grossMinor: number;
+  feeMinor: number;
+  netMinor: number;
+  settledAt: string;
+}> {
+  const lines = text
+    .replace(/\r\n/gu, "\n")
+    .replace(/\r/gu, "\n")
+    .split("\n")
+    .map((line) => line.trim())
+    .filter((line) => line.length > 0);
+  if (lines.length === 0) {
+    return [];
+  }
+  const header = lines[0]!;
+  if (header !== PAYOUT_CSV_HEADER) {
+    return [];
+  }
+  const rows: Array<{
+    txnId: string;
+    kind: PayoutLineKind;
+    grossMinor: number;
+    feeMinor: number;
+    netMinor: number;
+    settledAt: string;
+  }> = [];
+  for (let index = 1; index < lines.length; index += 1) {
+    const parts = lines[index]!.split(",");
+    if (parts.length !== 6) {
+      continue;
+    }
+    const kind = parsePayoutLineKind(parts[1]!);
+    if (kind === null) {
+      continue;
+    }
+    const grossMinor = Number.parseInt(parts[2]!, 10);
+    const feeMinor = Number.parseInt(parts[3]!, 10);
+    const netMinor = Number.parseInt(parts[4]!, 10);
+    if (
+      !Number.isFinite(grossMinor) ||
+      !Number.isFinite(feeMinor) ||
+      !Number.isFinite(netMinor)
+    ) {
+      continue;
+    }
+    rows.push({
+      txnId: parts[0]!,
+      kind,
+      grossMinor,
+      feeMinor,
+      netMinor,
+      settledAt: parts[5]!,
+    });
+  }
+  return rows;
+}
+
+async function payoutLinesImpl(
+  env: PaymobAdapterEnv,
+  file: Uint8Array,
+): Promise<PayoutLine[]> {
+  const text = new TextDecoder().decode(file);
+  const parsed = parsePayoutCsv(text);
+  const lines: PayoutLine[] = [];
+  for (const row of parsed) {
+    const txnRow = await env.DB.prepare(
+      `SELECT payment_id FROM paymob_txn WHERE txn_id = ?`,
+    )
+      .bind(row.txnId)
+      .first<{ payment_id: string | null }>();
+    lines.push({
+      kind: row.kind,
+      payment_id: txnRow?.payment_id ?? null,
+      gross_minor: row.grossMinor,
+      fee_minor: row.feeMinor,
+      net_minor: row.netMinor,
+      settled_at: row.settledAt,
+    });
+  }
+  return lines;
 }
 
 async function parseNotificationImpl(
@@ -782,6 +889,26 @@ async function parseNotificationImpl(
   };
 }
 
+export async function parseStoredPaymobNotification(
+  env: PaymobAdapterEnv,
+  body: string,
+): Promise<ParseNotificationResult> {
+  const obj = paymobObjFromProcessedBody(body);
+  if (obj === null) {
+    return { authentic: false, events: [] };
+  }
+  const hmac = await computeHmacHex(
+    env.PAYMOB_HMAC_SECRET,
+    hmacConcatenation(obj),
+  );
+  return parseNotificationImpl(env, {
+    method: "POST",
+    query: `?hmac=${hmac}`,
+    headers: new Headers(),
+    body,
+  });
+}
+
 export function createPaymobAdapter(env: PaymobAdapterEnv): ProviderPort {
   return {
     capabilities(): ProviderCapabilities {
@@ -807,6 +934,9 @@ export function createPaymobAdapter(env: PaymobAdapterEnv): ProviderPort {
     },
     inquire(input: InquireInput): Promise<InquireResult> {
       return inquireImpl(env, input);
+    },
+    payoutLines(file: Uint8Array): Promise<PayoutLine[]> {
+      return payoutLinesImpl(env, file);
     },
   };
 }

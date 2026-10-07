@@ -24,6 +24,7 @@ import {
   handleGetReturnPaymob,
   handlePostNotifyPaymob,
 } from "./notify/intake.js";
+import { runReconciliation } from "./reconciliation/run.js";
 import { exportFacts } from "./records/export.js";
 import { refreshSigningKeyCheck } from "./work/grant.js";
 import { runMinuteInquiryBudget } from "./work/inquiry-budget.js";
@@ -379,6 +380,11 @@ export default {
     }
     if (cron === "0 6 * * *") {
       await checkR2BucketLock(env);
+      try {
+        await runReconciliation(env);
+      } catch {
+        // Reconciliation failures must not block the 06:00 cron.
+      }
       await sendDueAlerts(env);
       try {
         await enqueueDailyReversalPopulation(env);
