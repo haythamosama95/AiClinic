@@ -324,6 +324,38 @@ jobs:
       - name: Run catalog SQL tests
         run: backend/tests/catalog/run.sh
 
+  frontend-fullstack:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    defaults:
+      run:
+        working-directory: frontend
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+
+      - name: Install Supabase CLI
+        uses: supabase/setup-cli@v1
+        with:
+          version: latest
+
+      - name: Start Supabase
+        working-directory: backend
+        run: supabase start
+
+      - name: Install dependencies
+        run: flutter pub get
+
+      - name: Run fullstack-tagged Flutter tests
+        run: flutter test --tags fullstack
+
   fullstack:
     runs-on: ubuntu-latest
     timeout-minutes: 45
