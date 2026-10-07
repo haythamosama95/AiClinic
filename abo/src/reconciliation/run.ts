@@ -86,12 +86,12 @@ async function insertFinding(
 
 async function parsePlatformGrants(
   env: ReconciliationEnv,
-): Promise<PlatformGrant[]> {
+): Promise<PlatformGrant[] | null> {
   const envelope = await env.PLATFORM.listGrants({
     contract_version: CHANNEL_VERSIONS.vendorEntrypoint,
   });
   if (envelope.result !== "ok" || typeof envelope.detail !== "string") {
-    return [];
+    return null;
   }
   const parsed = JSON.parse(envelope.detail) as unknown;
   return Array.isArray(parsed) ? (parsed as PlatformGrant[]) : [];
@@ -173,6 +173,9 @@ async function checkPaymentWithoutGrant(env: ReconciliationEnv): Promise<void> {
 async function checkGrantWithoutPayment(env: ReconciliationEnv): Promise<void> {
   const paidGrantIds = await paidGrantIdsFromPayments(env);
   const grants = await parsePlatformGrants(env);
+  if (grants === null) {
+    return;
+  }
   for (const grant of grants) {
     if (grant.source_kind !== "paid") {
       continue;
@@ -190,6 +193,9 @@ async function checkGrantWithoutOperatorAction(
 ): Promise<void> {
   const authorisedGrantIds = await complimentaryActionGrantIds(env);
   const grants = await parsePlatformGrants(env);
+  if (grants === null) {
+    return;
+  }
   for (const grant of grants) {
     if (grant.source_kind !== "complimentary") {
       continue;
@@ -206,6 +212,9 @@ async function checkTransferWithoutAuthorisation(
   env: ReconciliationEnv,
 ): Promise<void> {
   const grants = await parsePlatformGrants(env);
+  if (grants === null) {
+    return;
+  }
   for (const grant of grants) {
     if (grant.source_kind !== "transfer") {
       continue;
@@ -298,25 +307,21 @@ async function checkPayoutUnmatched(env: ReconciliationEnv): Promise<void> {
   }>();
 
   for (const row of rows.results ?? []) {
-    if (row.payment_id === null) {
-      continue;
-    }
-    const payment = await env.DB.prepare(
-      `SELECT amount_minor FROM payment WHERE payment_id = ?`,
-    )
-      .bind(row.payment_id)
-      .first<{ amount_minor: number }>();
-    if (payment === null) {
-      continue;
-    }
-    if (row.gross_minor === payment.amount_minor) {
-      continue;
+    if (row.payment_id !== null) {
+      const payment = await env.DB.prepare(
+        `SELECT amount_minor FROM payment WHERE payment_id = ?`,
+      )
+        .bind(row.payment_id)
+        .first<{ amount_minor: number }>();
+      if (payment !== null && row.gross_minor === payment.amount_minor) {
+        continue;
+      }
     }
     await insertFinding(
       env,
       "payout_unmatched",
       `${row.import_id}:${row.line_no}`,
-      row.payment_id,
+      row.payment_id ?? "",
     );
   }
 }
@@ -338,6 +343,7 @@ async function checkPaymentNotInPayout(env: ReconciliationEnv): Promise<void> {
   }
 
   const payoutPayments = new Set<string>();
+  const paymentPayoutPeriods = new Map<string, Set<string>>();
   const payoutRows = await env.DB.prepare(
     `SELECT pl.payment_id, pi.period
      FROM payout_line pl
@@ -346,6 +352,9 @@ async function checkPaymentNotInPayout(env: ReconciliationEnv): Promise<void> {
   ).all<{ payment_id: string; period: string }>();
   for (const row of payoutRows.results ?? []) {
     payoutPayments.add(`${row.period}:${row.payment_id}`);
+    const periods = paymentPayoutPeriods.get(row.payment_id) ?? new Set<string>();
+    periods.add(row.period);
+    paymentPayoutPeriods.set(row.payment_id, periods);
   }
 
   const payments = await env.DB.prepare(
@@ -364,6 +373,19 @@ async function checkPaymentNotInPayout(env: ReconciliationEnv): Promise<void> {
       }
       if (payoutPayments.has(`${period}:${payment.payment_id}`)) {
         continue;
+      }
+      const earlierPeriods = paymentPayoutPeriods.get(payment.payment_id);
+      if (earlierPeriods !== undefined) {
+        let appearedInEarlierPeriod = false;
+        for (const earlierPeriod of earlierPeriods) {
+          if (earlierPeriod < period) {
+            appearedInEarlierPeriod = true;
+            break;
+          }
+        }
+        if (appearedInEarlierPeriod) {
+          continue;
+        }
       }
       await insertFinding(
         env,
@@ -387,22 +409,21 @@ async function checkUnrecordedReversal(env: ReconciliationEnv): Promise<void> {
   }>();
 
   for (const row of rows.results ?? []) {
-    if (row.payment_id === null) {
-      continue;
-    }
-    const reversal = await env.DB.prepare(
-      `SELECT 1 FROM reversal WHERE payment_id = ?`,
-    )
-      .bind(row.payment_id)
-      .first();
-    if (reversal !== null) {
-      continue;
+    if (row.payment_id !== null) {
+      const reversal = await env.DB.prepare(
+        `SELECT 1 FROM reversal WHERE payment_id = ?`,
+      )
+        .bind(row.payment_id)
+        .first();
+      if (reversal !== null) {
+        continue;
+      }
     }
     await insertFinding(
       env,
       "unrecorded_reversal",
       `${row.import_id}:${row.line_no}`,
-      row.payment_id,
+      row.payment_id ?? "",
     );
   }
 }
@@ -579,6 +600,9 @@ async function checkFeedDivergence(env: ReconciliationEnv): Promise<void> {
 
 async function checkReceiptMismatch(env: ReconciliationEnv): Promise<void> {
   const grants = await parsePlatformGrants(env);
+  if (grants === null) {
+    return;
+  }
   const grantsById = new Map<string, PlatformGrant>();
   for (const grant of grants) {
     const grantId = String(grant.grant_id ?? "");
