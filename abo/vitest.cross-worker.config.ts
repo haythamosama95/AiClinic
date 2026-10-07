@@ -69,6 +69,7 @@ export default defineWorkersConfig({
       "test/system/sweeps.cross-worker.test.ts",
       "test/system/console-relays.cross-worker.test.ts",
       "test/system/configuration-relays.cross-worker.test.ts",
+      "test/system/digest-watch-rebuild.cross-worker.test.ts",
     ],
     fileParallelism: false,
     testTimeout: 120_000,
