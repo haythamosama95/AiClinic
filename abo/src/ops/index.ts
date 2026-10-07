@@ -83,8 +83,98 @@ export interface OpsEnv extends ClockEnv {
     deleteInstallation(
       args: Record<string, unknown>,
     ): Promise<Record<string, unknown>>;
+    registerOperatorCredential(
+      args: Record<string, unknown>,
+    ): Promise<Record<string, unknown>>;
+    revokeOperatorCredential(
+      args: Record<string, unknown>,
+    ): Promise<Record<string, unknown>>;
+    registerIssuerKey(
+      args: Record<string, unknown>,
+    ): Promise<Record<string, unknown>>;
+    retireIssuerKey(
+      args: Record<string, unknown>,
+    ): Promise<Record<string, unknown>>;
+    revokeIssuerKey(
+      args: Record<string, unknown>,
+    ): Promise<Record<string, unknown>>;
+    registerServiceKey(
+      args: Record<string, unknown>,
+    ): Promise<Record<string, unknown>>;
+    revokeServiceKey(
+      args: Record<string, unknown>,
+    ): Promise<Record<string, unknown>>;
+    publishPlanVersion(
+      args: Record<string, unknown>,
+    ): Promise<Record<string, unknown>>;
+    retirePlanVersion(
+      args: Record<string, unknown>,
+    ): Promise<Record<string, unknown>>;
+    setCeilingPolicy(
+      args: Record<string, unknown>,
+    ): Promise<Record<string, unknown>>;
+    publishRoutingPolicy(
+      args: Record<string, unknown>,
+    ): Promise<Record<string, unknown>>;
+    canaryRoutingPolicy(
+      args: Record<string, unknown>,
+    ): Promise<Record<string, unknown>>;
+    promoteRoutingPolicy(
+      args: Record<string, unknown>,
+    ): Promise<Record<string, unknown>>;
+    rollbackRoutingPolicy(
+      args: Record<string, unknown>,
+    ): Promise<Record<string, unknown>>;
+    armKillSwitch(
+      args: Record<string, unknown>,
+    ): Promise<Record<string, unknown>>;
+    activateCohort(
+      args: Record<string, unknown>,
+    ): Promise<Record<string, unknown>>;
+    promoteCohort(
+      args: Record<string, unknown>,
+    ): Promise<Record<string, unknown>>;
+    deprecateCapability(
+      args: Record<string, unknown>,
+    ): Promise<Record<string, unknown>>;
+    retireCapability(
+      args: Record<string, unknown>,
+    ): Promise<Record<string, unknown>>;
+    beginTokenContractRotation(
+      args: Record<string, unknown>,
+    ): Promise<Record<string, unknown>>;
+    retireTokenContract(
+      args: Record<string, unknown>,
+    ): Promise<Record<string, unknown>>;
+    supportLookup(
+      args: Record<string, unknown>,
+    ): Promise<Record<string, unknown>>;
   };
 }
+
+type RelayPlatformMethod =
+  | "registerOperatorCredential"
+  | "revokeOperatorCredential"
+  | "registerIssuerKey"
+  | "retireIssuerKey"
+  | "revokeIssuerKey"
+  | "registerServiceKey"
+  | "revokeServiceKey"
+  | "publishPlanVersion"
+  | "retirePlanVersion"
+  | "setCeilingPolicy"
+  | "publishRoutingPolicy"
+  | "canaryRoutingPolicy"
+  | "promoteRoutingPolicy"
+  | "rollbackRoutingPolicy"
+  | "armKillSwitch"
+  | "activateCohort"
+  | "promoteCohort"
+  | "deprecateCapability"
+  | "retireCapability"
+  | "beginTokenContractRotation"
+  | "retireTokenContract"
+  | "supportLookup";
 
 type HpCredential = {
   credential_id: string;
@@ -1981,6 +2071,123 @@ async function recordComplimentaryGrantRows(
   await env.DB.batch(statements);
 }
 
+async function forwardPlatformRelay(
+  env: OpsEnv,
+  access: VerifiedAccess,
+  contractVersion: number,
+  input: {
+    method: RelayPlatformMethod;
+    subject: string;
+    actionId: string;
+    platformArgs: Record<string, unknown>;
+    params: Record<string, unknown>;
+  },
+): Promise<Response> {
+  const platformResult = await env.PLATFORM[input.method](input.platformArgs);
+  const result = String(platformResult.result ?? "");
+  const paramsSha256 = await sha256Hex(canonicalize(input.params));
+  const operation = input.platformArgs.operation;
+  const assertionSha256 =
+    input.platformArgs.assertion !== undefined && isRecord(operation)
+      ? await sha256Hex(canonicalize(operation))
+      : null;
+
+  await insertRelayOperatorAction(env, {
+    action_id: input.actionId,
+    actor_email: access.email,
+    access_jti: access.jti,
+    action: input.method,
+    subject: input.subject,
+    params_sha256: paramsSha256,
+    assertion_sha256: assertionSha256,
+    result,
+  });
+
+  return platformResponseJson(platformResult, contractVersion);
+}
+
+async function handlePostRegisterOperatorCredential(
+  env: OpsEnv,
+  access: VerifiedAccess,
+  request: Request,
+  contractVersion: number,
+): Promise<Response> {
+  const body = await parseHpRequestBody(request);
+  if (body === null) {
+    return clinicErrorResponse("assertion_invalid", 400, contractVersion);
+  }
+
+  const actionId = body.action_id;
+  const credentialId = body.credential_id;
+  if (typeof actionId !== "string" || typeof credentialId !== "string") {
+    return clinicErrorResponse("assertion_invalid", 400, contractVersion);
+  }
+
+  const platformArgs: Record<string, unknown> = {
+    contract_version: CHANNEL_VERSIONS.vendorEntrypoint,
+    access_jwt: access.jwt,
+    credential_id: credentialId,
+    attestation: body.attestation,
+  };
+  if (body.operation !== undefined) {
+    platformArgs.operation = body.operation;
+  }
+  if (body.assertion !== undefined) {
+    platformArgs.assertion = body.assertion;
+  }
+  if (body.signer_credential_id !== undefined) {
+    platformArgs.signer_credential_id = body.signer_credential_id;
+  }
+
+  const params: Record<string, unknown> = { credential_id: credentialId };
+  if (body.attestation !== undefined) {
+    params.attestation = body.attestation;
+  }
+
+  return forwardPlatformRelay(env, access, contractVersion, {
+    method: "registerOperatorCredential",
+    subject: credentialId,
+    actionId,
+    platformArgs,
+    params,
+  });
+}
+
+async function handlePostRevokeOperatorCredential(
+  env: OpsEnv,
+  access: VerifiedAccess,
+  credentialId: string,
+  request: Request,
+  contractVersion: number,
+): Promise<Response> {
+  const body = await parseHpRequestBody(request);
+  if (body === null) {
+    return clinicErrorResponse("assertion_invalid", 400, contractVersion);
+  }
+
+  const actionId = body.action_id;
+  if (typeof actionId !== "string") {
+    return clinicErrorResponse("assertion_invalid", 400, contractVersion);
+  }
+
+  const platformArgs: Record<string, unknown> = {
+    contract_version: CHANNEL_VERSIONS.vendorEntrypoint,
+    access_jwt: access.jwt,
+    credential_id: credentialId,
+    operation: body.operation,
+    assertion: body.assertion,
+    signer_credential_id: body.signer_credential_id,
+  };
+
+  return forwardPlatformRelay(env, access, contractVersion, {
+    method: "revokeOperatorCredential",
+    subject: credentialId,
+    actionId,
+    platformArgs,
+    params: { credential_id: credentialId },
+  });
+}
+
 function platformResponseJson(
   platformResult: Record<string, unknown>,
   contractVersion: number,
@@ -2857,6 +3064,27 @@ export async function handleOps(
       releaseHeldMatch[1]!,
       "releaseHeld",
       access,
+      request,
+      contractVersion,
+    );
+  }
+
+  if (request.method === "POST" && path === "/ops/operator-credentials") {
+    return handlePostRegisterOperatorCredential(
+      env,
+      access,
+      request,
+      contractVersion,
+    );
+  }
+
+  const revokeCredentialMatch =
+    /^\/ops\/operator-credentials\/([^/]+)\/revoke$/u.exec(path);
+  if (request.method === "POST" && revokeCredentialMatch !== null) {
+    return handlePostRevokeOperatorCredential(
+      env,
+      access,
+      revokeCredentialMatch[1]!,
       request,
       contractVersion,
     );

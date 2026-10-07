@@ -60,8 +60,23 @@ const POLICY_ID = "standard";
 const POLICY_VERSION = "1";
 const GATEWAY_ORIGIN = "https://ai-gateway.test";
 
+const ORG_CFG_02 = "a4890002-0002-4002-8002-000000000002";
 const ORG_CFG_03 = "a4890003-0003-4003-8003-000000000003";
 const ORG_CFG_04 = "a4890004-0004-4004-8004-000000000004";
+const ORG_CFG_05 = "a4890005-0005-4005-8005-000000000005";
+const ORG_CFG_06 = "a4890006-0006-4006-8006-000000000006";
+const ORG_CFG_07 = "a4890007-0007-4007-8007-000000000007";
+const ROUTING_POLICY_VERSION_2 = "2";
+const COHORT_NAME = "relay-probe-cohort";
+const LAUNCH_CEILING_POLICY = {
+  per_grant_max_days: 31,
+  per_grant_max_allowance_months: 1,
+  window_days: 90,
+  window_max_days: 62,
+  window_max_allowance_months: 2,
+  max_paid_grace_days: 7,
+  paid_cap_rule: "proportional",
+};
 
 type OffersFixtureExpectations = {
   offer_id: string;
@@ -222,11 +237,13 @@ function fakePolicyTarget(modelId = "fake-v1"): Record<string, unknown> {
   };
 }
 
-function fakePolicyDocument(): Record<string, unknown> {
+function fakePolicyDocument(
+  policyVersion: string = POLICY_VERSION,
+): Record<string, unknown> {
   return {
     schema_version: 1,
     policy_id: POLICY_ID,
-    policy_version: Number(POLICY_VERSION),
+    policy_version: Number(policyVersion),
     defaults: { cost_class: "standard", max_parallel_attempts: 1 },
     rules: [
       {
@@ -789,6 +806,191 @@ async function opsRegisterServiceKey(input: {
   });
 }
 
+async function operationForPublishPlanVersion(input: {
+  accessJwt: string;
+  issuedAt?: string;
+}): Promise<HpOperation> {
+  return {
+    op: "publishPlanVersion",
+    params: {
+      contract_version: CONTRACT_VERSION,
+      access_jwt: input.accessJwt,
+      plan_id: PLAN_ID,
+      version: PLAN_VERSION,
+      display_name: "Clinic Pro",
+      capabilities: [CAPABILITY_ID],
+      max_cost_class: 2,
+      concurrency_limit: 4,
+      max_allowance_per_month: ALLOWANCE_CREDITS,
+    },
+    actor_email: VENDOR_OPERATOR_EMAIL,
+    issued_at: input.issuedAt ?? (await currentHarnessClockIso()),
+    nonce: crypto.randomUUID(),
+    contract_version: CONTRACT_VERSION,
+  };
+}
+
+async function operationForSetCeilingPolicy(input: {
+  accessJwt: string;
+  issuedAt?: string;
+}): Promise<HpOperation> {
+  return {
+    op: "setCeilingPolicy",
+    params: {
+      contract_version: CONTRACT_VERSION,
+      access_jwt: input.accessJwt,
+      ...LAUNCH_CEILING_POLICY,
+    },
+    actor_email: VENDOR_OPERATOR_EMAIL,
+    issued_at: input.issuedAt ?? (await currentHarnessClockIso()),
+    nonce: crypto.randomUUID(),
+    contract_version: CONTRACT_VERSION,
+  };
+}
+
+async function operationForRetirePlanVersion(input: {
+  accessJwt: string;
+  issuedAt?: string;
+}): Promise<HpOperation> {
+  return {
+    op: "retirePlanVersion",
+    params: {
+      contract_version: CONTRACT_VERSION,
+      access_jwt: input.accessJwt,
+      plan_id: PLAN_ID,
+      version: PLAN_VERSION,
+    },
+    actor_email: VENDOR_OPERATOR_EMAIL,
+    issued_at: input.issuedAt ?? (await currentHarnessClockIso()),
+    nonce: crypto.randomUUID(),
+    contract_version: CONTRACT_VERSION,
+  };
+}
+
+async function opsHpRelay(input: {
+  path: string;
+  hp: ActiveHpCredential;
+  signerCredentialId: string;
+  signerAuthenticator: SoftwareAuthenticator;
+  operation: HpOperation;
+  bodyFields: Record<string, unknown>;
+  actionId?: string;
+}): Promise<Response> {
+  const assertion = await signHpOperation(input.signerAuthenticator, input.operation);
+  return opsFetch(input.path, {
+    method: "POST",
+    headers: await opsHeaders(input.hp.accessJwt),
+    body: JSON.stringify({
+      action_id: input.actionId ?? crypto.randomUUID(),
+      ...input.bodyFields,
+      operation: input.operation,
+      assertion,
+      signer_credential_id: input.signerCredentialId,
+    }),
+  });
+}
+
+async function opsClassHRelay(input: {
+  path: string;
+  accessJwt: string;
+  bodyFields: Record<string, unknown>;
+  actionId?: string;
+}): Promise<Response> {
+  return opsFetch(input.path, {
+    method: "POST",
+    headers: await opsHeaders(input.accessJwt),
+    body: JSON.stringify({
+      action_id: input.actionId ?? crypto.randomUUID(),
+      ...input.bodyFields,
+    }),
+  });
+}
+
+async function installationIdForOrg(orgId: string): Promise<string> {
+  const row = await env.PLATFORM_DB.prepare(
+    `SELECT installation_id FROM tenant_binding
+     WHERE org_id = ? AND status = 'active'`,
+  )
+    .bind(orgId)
+    .first<{ installation_id: string }>();
+  expect(row?.installation_id).toBeTruthy();
+  return row!.installation_id;
+}
+
+async function latestRoutingProviderId(orgId: string): Promise<string | null> {
+  const installationId = await installationIdForOrg(orgId);
+  const row = await env.PLATFORM_DB.prepare(
+    `SELECT routing_decision FROM ai_request
+     WHERE installation_id = ? ORDER BY created_at DESC LIMIT 1`,
+  )
+    .bind(installationId)
+    .first<{ routing_decision: string | null }>();
+  if (row?.routing_decision === null || row?.routing_decision === undefined) {
+    return null;
+  }
+  const decision = JSON.parse(row.routing_decision) as {
+    chain?: Array<{ provider_id?: string }>;
+  };
+  return decision.chain?.[0]?.provider_id ?? null;
+}
+
+async function latestRequestReference(orgId: string): Promise<string> {
+  const installationId = await installationIdForOrg(orgId);
+  const row = await env.PLATFORM_DB.prepare(
+    `SELECT request_reference FROM ai_request
+     WHERE installation_id = ? ORDER BY created_at DESC LIMIT 1`,
+  )
+    .bind(installationId)
+    .first<{ request_reference: string }>();
+  expect(row?.request_reference).toBeTruthy();
+  return row!.request_reference;
+}
+
+async function seedSupportLookupRequest(
+  orgId: string,
+  reference: string,
+): Promise<void> {
+  const installationId = await installationIdForOrg(orgId);
+  const requestId = crypto.randomUUID();
+  const now = await currentHarnessClockIso();
+  const payloadPointer = `request/${requestId}/envelope`;
+  await env.PLATFORM_DB.prepare(
+    `INSERT INTO ai_request (
+       request_id, request_reference, installation_id, actor_id, branch_id,
+       capability_id, capability_version, prompt_artifact_hash, idempotency_key,
+       trace_id, state, created_at, updated_at, completed_at, terminal_error_code,
+       payload_pointer, conversation_id, turn_ordinal
+     ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, ?, NULL, NULL)`,
+  )
+    .bind(
+      requestId,
+      reference,
+      installationId,
+      "actor-cfg-07",
+      "branch-test",
+      CAPABILITY_ID,
+      CAPABILITY_VERSION,
+      "prompt-harness@v1",
+      crypto.randomUUID(),
+      crypto.randomUUID(),
+      "Completed",
+      now,
+      now,
+      now,
+      payloadPointer,
+    )
+    .run();
+  await env.R2.put(
+    payloadPointer,
+    JSON.stringify({
+      context: { org: orgId },
+      prompt: { system: "harness" },
+      attempts: [],
+      result: { finalContent: { text: "ok" } },
+    }),
+  );
+}
+
 async function opsRevokeServiceKey(input: {
   kid: string;
   hp: ActiveHpCredential;
@@ -1105,6 +1307,26 @@ async function runDueGrantWorkUntilApplied(
   expect(await grantOutcomeResult(grantId)).toBe("applied");
 }
 
+async function setupPaidPlatformCoverage(
+  orgId: string,
+  expectations: OffersFixtureExpectations,
+  clientRequestId: string,
+  txnId: number,
+): Promise<void> {
+  await putBillingContact(orgId);
+  const { checkoutId } = await postCheckout(orgId, expectations, clientRequestId);
+  const chargedPrice = await syncPaymobForCheckout(checkoutId);
+  const intake = await postPaymobProcessedCallback(
+    successFixture as PaymobCallbackFixture,
+    { txnId, amountMinor: chargedPrice },
+  );
+  expect(intake.status).toBe(200);
+  const paymentId = await paymentIdForCheckout(checkoutId);
+  expect(paymentId).not.toBeNull();
+  await runDueGrantWorkUntilApplied(paymentId!, orgId);
+  await drainPlatformDurableObjects();
+}
+
 beforeEach(async () => {
   await setupCrossWorkerHarness();
   await resetCrossWorkerHarness();
@@ -1381,6 +1603,299 @@ describe("configuration relays cross-worker", () => {
     expect(await alertCountByCode("AL-23")).toBe(0);
 
     expect(await operatorActionCount()).toBe(operatorActionBefore + 2);
+    for (const email of await operatorActionActorEmails()) {
+      expect(email).toBe(VENDOR_OPERATOR_EMAIL);
+    }
+  });
+
+  it("E2E-P4.9-02 plan publish, paid grant, ceiling policy, retire", async () => {
+    const expectations = await setupConfigurationRelaysHarness();
+    const orgId = ORG_CFG_02;
+    await putBillingContact(orgId);
+    await setupActivePlatformCoverage(orgId);
+
+    const hp = await seedActiveHpCredential();
+    const operatorActionBefore = await operatorActionCount();
+
+    const publishOperation = await operationForPublishPlanVersion({
+      accessJwt: hp.accessJwt,
+    });
+    const publishActionId = crypto.randomUUID();
+    const publish = await opsHpRelay({
+      path: "/ops/plan-versions",
+      hp,
+      signerCredentialId: hp.credentialId,
+      signerAuthenticator: hp.authenticator,
+      operation: publishOperation,
+      bodyFields: {
+        plan_id: PLAN_ID,
+        version: PLAN_VERSION,
+        display_name: "Clinic Pro",
+        capabilities: [CAPABILITY_ID],
+        max_cost_class: 2,
+        concurrency_limit: 4,
+        max_allowance_per_month: ALLOWANCE_CREDITS,
+      },
+      actionId: publishActionId,
+    });
+    expect(publish.status).toBe(200);
+    const publishBody = (await publish.json()) as Record<string, unknown>;
+    expect(publishBody.result).toBe("ok");
+
+    const { checkoutId } = await postCheckout(
+      orgId,
+      expectations,
+      "req-cfg-02-paid",
+    );
+    const chargedPrice = await syncPaymobForCheckout(checkoutId);
+    const intake = await postPaymobProcessedCallback(
+      successFixture as PaymobCallbackFixture,
+      { txnId: 94902, amountMinor: chargedPrice },
+    );
+    expect(intake.status).toBe(200);
+    const paymentId = await paymentIdForCheckout(checkoutId);
+    expect(paymentId).not.toBeNull();
+    await runDueGrantWorkUntilApplied(paymentId!, orgId);
+    await drainPlatformDurableObjects();
+
+    const ceilingOperation = await operationForSetCeilingPolicy({
+      accessJwt: hp.accessJwt,
+    });
+    const ceilingActionId = crypto.randomUUID();
+    const ceiling = await opsHpRelay({
+      path: "/ops/ceiling-policy",
+      hp,
+      signerCredentialId: hp.credentialId,
+      signerAuthenticator: hp.authenticator,
+      operation: ceilingOperation,
+      bodyFields: LAUNCH_CEILING_POLICY,
+      actionId: ceilingActionId,
+    });
+    expect(ceiling.status).toBe(200);
+    const ceilingBody = (await ceiling.json()) as Record<string, unknown>;
+    expect(ceilingBody.result).toBe("ok");
+
+    const retireOperation = await operationForRetirePlanVersion({
+      accessJwt: hp.accessJwt,
+    });
+    const retireActionId = crypto.randomUUID();
+    const retire = await opsHpRelay({
+      path: "/ops/plan-versions/retire",
+      hp,
+      signerCredentialId: hp.credentialId,
+      signerAuthenticator: hp.authenticator,
+      operation: retireOperation,
+      bodyFields: {
+        plan_id: PLAN_ID,
+        version: PLAN_VERSION,
+      },
+      actionId: retireActionId,
+    });
+    expect(retire.status).toBe(200);
+    const retireBody = (await retire.json()) as Record<string, unknown>;
+    expect(retireBody.result).toBe("ok");
+
+    expect(await operatorActionCount()).toBe(operatorActionBefore + 3);
+    for (const email of await operatorActionActorEmails()) {
+      expect(email).toBe(VENDOR_OPERATOR_EMAIL);
+    }
+  });
+
+  it("E2E-P4.9-05 routing publish, canary, fake provider, promote, rollback", async () => {
+    const expectations = await setupConfigurationRelaysHarness();
+    const orgId = ORG_CFG_05;
+    await setupPaidPlatformCoverage(
+      orgId,
+      expectations,
+      "req-cfg-05-paid",
+      94905,
+    );
+    const installationId = await installationIdForOrg(orgId);
+    const accessJwt = await mintVendorAccessJwt();
+    const operatorActionBefore = await operatorActionCount();
+
+    const publishActionId = crypto.randomUUID();
+    const publish = await opsClassHRelay({
+      path: "/ops/routing-policy",
+      accessJwt,
+      bodyFields: {
+        document: fakePolicyDocument(ROUTING_POLICY_VERSION_2),
+      },
+      actionId: publishActionId,
+    });
+    expect(publish.status).toBe(200);
+    const publishBody = (await publish.json()) as Record<string, unknown>;
+    expect(publishBody.result).toBe("ok");
+
+    const canaryActionId = crypto.randomUUID();
+    const canary = await opsClassHRelay({
+      path: "/ops/routing-policy/canary",
+      accessJwt,
+      bodyFields: {
+        policy_id: POLICY_ID,
+        version: ROUTING_POLICY_VERSION_2,
+        installation_ids: [installationId],
+      },
+      actionId: canaryActionId,
+    });
+    expect(canary.status).toBe(200);
+    const canaryBody = (await canary.json()) as Record<string, unknown>;
+    expect(canaryBody.result).toBe("ok");
+
+    const accepted = await platformHttpInvoke(orgId, clinicIssuer!);
+    expect(accepted.status).toBe(200);
+    await drainPlatformDurableObjects();
+    expect(await latestRoutingProviderId(orgId)).toBe("fake");
+
+    const promoteActionId = crypto.randomUUID();
+    const promote = await opsClassHRelay({
+      path: "/ops/routing-policy/promote",
+      accessJwt,
+      bodyFields: {
+        policy_id: POLICY_ID,
+        version: ROUTING_POLICY_VERSION_2,
+      },
+      actionId: promoteActionId,
+    });
+    expect(promote.status).toBe(200);
+    const promoteBody = (await promote.json()) as Record<string, unknown>;
+    expect(promoteBody.result).toBe("ok");
+
+    const rollbackActionId = crypto.randomUUID();
+    const rollback = await opsClassHRelay({
+      path: "/ops/routing-policy/rollback",
+      accessJwt,
+      bodyFields: {
+        policy_id: POLICY_ID,
+        version: ROUTING_POLICY_VERSION_2,
+      },
+      actionId: rollbackActionId,
+    });
+    expect(rollback.status).toBe(200);
+    const rollbackBody = (await rollback.json()) as Record<string, unknown>;
+    expect(rollbackBody.result).toBe("ok");
+
+    expect(await operatorActionCount()).toBe(operatorActionBefore + 4);
+    for (const email of await operatorActionActorEmails()) {
+      expect(email).toBe(VENDOR_OPERATOR_EMAIL);
+    }
+  });
+
+  it("E2E-P4.9-06 kill switch capability_disabled, AL-19, class-H catalogue", async () => {
+    const expectations = await setupConfigurationRelaysHarness();
+    const orgId = ORG_CFG_06;
+    await setupPaidPlatformCoverage(
+      orgId,
+      expectations,
+      "req-cfg-06-paid",
+      94906,
+    );
+    const installationId = await installationIdForOrg(orgId);
+    const accessJwt = await mintVendorAccessJwt();
+    const operatorActionBefore = await operatorActionCount();
+
+    const killActionId = crypto.randomUUID();
+    const kill = await opsClassHRelay({
+      path: "/ops/kill-switches",
+      accessJwt,
+      bodyFields: {
+        scope: "capability",
+        target: CAPABILITY_ID,
+      },
+      actionId: killActionId,
+    });
+    expect(kill.status).toBe(200);
+    const killBody = (await kill.json()) as Record<string, unknown>;
+    expect(killBody.result).toBe("ok");
+
+    const refused = await platformHttpInvoke(orgId, clinicIssuer!);
+    expect(refused.status).toBe(503);
+    const refusedBody = (await refused.json()) as Record<string, unknown>;
+    expect(refusedBody.code).toBe("capability_disabled");
+    expect(await platformAlertCount("AL-19")).toBeGreaterThan(0);
+
+    const classHCalls = [
+      {
+        path: "/ops/cohorts/activate",
+        body: {
+          capability_id: CAPABILITY_ID,
+          capability_version: CAPABILITY_VERSION,
+          installation_ids: [installationId],
+          cohort_name: COHORT_NAME,
+        },
+      },
+      {
+        path: "/ops/cohorts/promote",
+        body: {
+          capability_id: CAPABILITY_ID,
+          capability_version: CAPABILITY_VERSION,
+          cohort_name: COHORT_NAME,
+        },
+      },
+      {
+        path: "/ops/capabilities/deprecate",
+        body: {
+          capability_id: CAPABILITY_ID,
+          capability_version: CAPABILITY_VERSION,
+          successor_id: CAPABILITY_ID,
+        },
+      },
+      {
+        path: "/ops/capabilities/retire",
+        body: {
+          capability_id: CAPABILITY_ID,
+          capability_version: CAPABILITY_VERSION,
+        },
+      },
+      {
+        path: "/ops/token-contracts/begin-rotation",
+        body: {},
+      },
+      {
+        path: "/ops/token-contracts/retire",
+        body: { ver: "2" },
+      },
+    ];
+
+    for (const call of classHCalls) {
+      const response = await opsClassHRelay({
+        path: call.path,
+        accessJwt,
+        bodyFields: call.body,
+      });
+      expect(response.status).toBe(200);
+      const body = (await response.json()) as Record<string, unknown>;
+      expect(body.result).toBe("ok");
+    }
+
+    expect(await operatorActionCount()).toBe(operatorActionBefore + 7);
+    for (const email of await operatorActionActorEmails()) {
+      expect(email).toBe(VENDOR_OPERATOR_EMAIL);
+    }
+  });
+
+  it("E2E-P4.9-07 support lookup by request reference", async () => {
+    await setupConfigurationRelaysHarness();
+    const orgId = ORG_CFG_07;
+    await setupActivePlatformCoverage(orgId);
+    const reference = "HXW-LOOKUP-007";
+    await seedSupportLookupRequest(orgId, reference);
+    const accessJwt = await mintVendorAccessJwt();
+    const operatorActionBefore = await operatorActionCount();
+
+    const lookup = await opsFetch(
+      `/ops/support-lookup?reference=${encodeURIComponent(reference)}`,
+      {
+        method: "GET",
+        headers: await opsHeaders(accessJwt),
+      },
+    );
+    expect(lookup.status).toBe(200);
+    const lookupBody = (await lookup.json()) as Record<string, unknown>;
+    expect(lookupBody.result).toBe("ok");
+    expect(lookupBody.detail).toBeTruthy();
+
+    expect(await operatorActionCount()).toBe(operatorActionBefore + 1);
     for (const email of await operatorActionActorEmails()) {
       expect(email).toBe(VENDOR_OPERATOR_EMAIL);
     }
