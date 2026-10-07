@@ -921,15 +921,15 @@ frozen, and always call the real platform worker over the service binding (rules
   listIssuerKeys, listOperatorCredentials, feedConsumerHealth; 02 §4.2 row AD-9 ("Noticed by" column).
 - **Implements:** daily digest (24 h counts, every grant with operator/reason/length/allowance, open findings, parked work and alerts, last run of each job including the
   backend's last pull, R2 lock + export lag, keys expiring in 30 days, per-channel version counts for the channels the ABO observes); AL-14 (issuer keys via
-  `listIssuerKeys` validity, ABO service keys); AL-15 (`feedConsumerHealth` > 5 min); AL-22 (hourly: issuer keys vs `ISSUER_KEYS`, credentials vs the AL-13-announced list);
-  housekeeping (done work rows and sent alerts 90 days; invalid-HMAC samples 30 days); daily heartbeat ping; ABO rebuild procedure (replay `ledger/` into an empty D1,
+  `listIssuerKeys` validity, ABO service keys); AL-15 (`feedConsumerHealth` > 5 min); AL-22 (hourly: `listIssuerKeys` vs `ISSUER_KEYS`; `listOperatorCredentials` vs the last-seen list of `{credential_id, public_key_cose, alg}` stored from the `detail` of the ABO's own `ok` `registerOperatorCredential`, including bootstrap — the operation AL-13 announces);
+  housekeeping on the ABO daily 06:00 UTC `scheduled()` cron `0 6 * * *` (done work rows and sent alerts older than 90 days; invalid-HMAC samples older than 30 days; commercial facts not deleted); daily heartbeat ping; ABO rebuild procedure (replay `ledger/` into an empty D1,
   recompute status, re-inquire the gap, compare with `listGrants`) as a script + runbook.
 - **E2E (H-XW):**
   - E2E-P4.11-01 Digest after a scripted day lists the counts, every grant, open findings, job last-runs, export lag and version counts [NFR-04, SR-23].
   - E2E-P4.11-02 A25/FM-17: issuer key `not_after` within 29 days → AL-14 daily.
   - E2E-P4.11-03 FM-10: `feed_consumer` stale for 6 min → AL-15 hourly.
-  - E2E-P4.11-04 AD-9: an extra issuer `kid` on the platform not in the pins → AL-22; an unannounced operator credential → AL-22.
-  - E2E-P4.11-05 Housekeeping deletes 91-day-old done work rows and sent alerts; facts untouched.
+  - E2E-P4.11-04 AD-9: an extra issuer `kid` on the platform not in the pins → AL-22; an active operator credential in `listOperatorCredentials` whose `{credential_id, public_key_cose, alg}` is absent from the last-seen list stored from the ABO's own `ok` register/bootstrap `detail` → AL-22.
+  - E2E-P4.11-05 The ABO daily 06:00 UTC `scheduled()` cron (`0 6 * * *`) deletes 91-day-old done work rows and sent alerts; facts untouched.
   - E2E-P4.11-06 FM-19: wipe the ABO D1 → replay `ledger/` → facts and status restored; gap re-inquired; a payment with no grant gets one → `already_applied`; reconciliation clean [RC-04].
   - E2E-P4.11-07 Digest send failure retried; daily heartbeat ping sent.
 

@@ -5,9 +5,9 @@ This file orients AI coding agents working in this repository. Keep the
 **current active feature's** plan reference when running Spec Kit phases.
 
 <!-- SPECKIT START -->
-Active feature plan: `specs/085-abo-p4-10-reconciliation-payout-import-findings/plan.md`
-Feature spec: `specs/085-abo-p4-10-reconciliation-payout-import-findings/spec.md`
-Branch: `ai/085-abo-p4-10-reconciliation-payout-import-findings`
+Active feature plan: `specs/086-abo-p4-11-daily-digest-platform-watch-housekeeping/plan.md`
+Feature spec: `specs/086-abo-p4-11-daily-digest-platform-watch-housekeeping/spec.md`
+Branch: `ai/086-abo-p4-11-daily-digest-platform-watch-housekeeping`
 <!-- SPECKIT END -->
 
 ## Repo layout quick reference
