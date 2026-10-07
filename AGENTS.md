@@ -5,9 +5,9 @@ This file orients AI coding agents working in this repository. Keep the
 **current active feature's** plan reference when running Spec Kit phases.
 
 <!-- SPECKIT START -->
-Active feature plan: `specs/083-abo-p4-8-console-relays-complimentary-grants-adjustments/plan.md`
-Feature spec: `specs/083-abo-p4-8-console-relays-complimentary-grants-adjustments/spec.md`
-Branch: `ai/083-abo-p4-8-console-relays-complimentary-grants-adjustments`
+Active feature plan: `specs/084-abo-p4-9-console-relays-configuration-registries-bootstrap/plan.md`
+Feature spec: `specs/084-abo-p4-9-console-relays-configuration-registries-bootstrap/spec.md`
+Branch: `ai/084-abo-p4-9-console-relays-configuration-registries-bootstrap`
 <!-- SPECKIT END -->
 
 ## Repo layout quick reference
