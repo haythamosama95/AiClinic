@@ -13,6 +13,7 @@ import offersFixture from "../../fixtures/offers.json";
 import successFixture from "../fixtures/paymob/success.json";
 import checkoutMigrationSql from "../../migrations/0002_checkout.sql?raw";
 import notifyWorkMigrationSql from "../../migrations/0003_notify_work.sql?raw";
+import grantMigrationSql from "../../migrations/0004_grant.sql?raw";
 import { loadOffersFixture } from "../../src/records/append";
 import {
   applySql,
@@ -23,13 +24,13 @@ import {
   pinIssuer,
   runScheduled,
   scriptPaymobInquiry,
-  setClock,
   setD1BatchThrows,
 } from "./harness";
 import {
   platformCall,
   resetCrossWorkerHarness,
   scriptPaymobStub,
+  setClock,
   setupCrossWorkerHarness,
 } from "./cross-worker-harness";
 
@@ -43,6 +44,19 @@ const POLICY_VERSION = "1";
 const ALLOWANCE_CREDITS = 100;
 const VENDOR_OPERATOR_EMAIL = "operator@vendor.test";
 const GATEWAY_ORIGIN = "https://ai-gateway.test";
+
+const ORG_GRANT_01_1M = "a4440001-0001-4001-8001-000000000001";
+const ORG_GRANT_01_3M = "a4440001-0003-4001-8001-000000000003";
+const ORG_GRANT_01_12M = "a4440001-0012-4001-8001-000000000012";
+const ORG_GRANT_02 = "a4440002-0000-4002-8002-000000000002";
+const ORG_GRANT_03 = "a4440003-0000-4003-8003-000000000003";
+const ORG_GRANT_04 = "a4440004-0000-4004-8004-000000000004";
+const ORG_GRANT_05 = "a4440005-0000-4005-8005-000000000005";
+const ORG_GRANT_06 = "a4440006-0000-4006-8006-000000000006";
+const ORG_GRANT_07 = "a4440007-0000-4007-8007-000000000007";
+const ORG_GRANT_08 = "a4440008-0000-4008-8008-000000000008";
+const ORG_GRANT_09_A = "a4440009-0000-4009-8009-000000000009";
+const ORG_GRANT_09_B = "a4440009-0000-4009-8009-00000000000b";
 
 type AboGrantKey = {
   kid: string;
@@ -129,6 +143,7 @@ const PAYMOB_HMAC_FIELDS = [
 
 let operatorBootstrap: OperatorBootstrap | null = null;
 let registeredIssuerKid: string | null = null;
+let clinicIssuer: Awaited<ReturnType<typeof newIssuer>> | null = null;
 
 function parseAboGrantKey(): AboGrantKey {
   return JSON.parse(env.ABO_GRANT_KEY) as AboGrantKey;
@@ -214,6 +229,7 @@ function fakePolicyDocument(): Record<string, unknown> {
 function visitSummaryInvokeBody(
   org: string,
   branch = "branch-test",
+  recordedAt?: string,
 ): Record<string, unknown> {
   return {
     capability_id: CAPABILITY_ID,
@@ -225,10 +241,75 @@ function visitSummaryInvokeBody(
       "visit.chief_complaint@v1": {
         visit_id: crypto.randomUUID(),
         complaint: "Headache for three days.",
-        recorded_at: new Date().toISOString(),
+        recorded_at: recordedAt ?? new Date().toISOString(),
       },
     },
   };
+}
+
+async function aboHarnessNowIso(): Promise<string> {
+  const row = await env.DB.prepare(
+    `SELECT now_iso FROM harness_test_clock WHERE id = 'default'`,
+  ).first<{ now_iso: string }>();
+  return row?.now_iso ?? new Date().toISOString();
+}
+
+async function aboHarnessNowSeconds(): Promise<number> {
+  const iso = await aboHarnessNowIso();
+  const parsed = Date.parse(iso);
+  return Number.isNaN(parsed) ? Math.floor(Date.now() / 1000) : Math.floor(parsed / 1000);
+}
+
+async function ensureCoverageMirrorForOrg(orgId: string): Promise<void> {
+  const binding = await env.PLATFORM_DB.prepare(
+    `SELECT installation_id, epoch FROM tenant_binding
+     WHERE org_id = ? AND status = 'active'`,
+  )
+    .bind(orgId)
+    .first<{ installation_id: string; epoch: number }>();
+  if (binding === null) {
+    return;
+  }
+
+  const coverage = await platformCall("getCoverage", {
+    contract_version: CONTRACT_VERSION,
+    org_id: orgId,
+  });
+  if (coverage.result !== "ok") {
+    return;
+  }
+  const parsed = JSON.parse(String(coverage.detail)) as {
+    snapshot?: Record<string, unknown>;
+  };
+  const snapshot = parsed.snapshot;
+  if (snapshot === undefined) {
+    return;
+  }
+
+  const term = snapshot.term as Record<string, unknown> | undefined;
+  const hardStopAt =
+    typeof term?.ends_at === "string"
+      ? term.ends_at
+      : typeof term?.grace_ends_at === "string"
+        ? term.grace_ends_at
+        : null;
+
+  await env.PLATFORM_DB.prepare(
+    `INSERT OR REPLACE INTO coverage_mirror (
+       installation_id, org_id, binding_epoch, clinic_seq, state, suspended,
+       hard_stop_at, term_snapshot
+     ) VALUES (?, ?, ?, ?, ?, 0, ?, ?)`,
+  )
+    .bind(
+      binding.installation_id,
+      orgId,
+      binding.epoch,
+      typeof snapshot.clinic_seq === "number" ? snapshot.clinic_seq : 1,
+      typeof snapshot.state === "string" ? snapshot.state : "active",
+      hardStopAt,
+      JSON.stringify(snapshot),
+    )
+    .run();
 }
 
 function hmacFieldValue(obj: PaymobCallbackObj, field: string): string {
@@ -283,6 +364,60 @@ function successFixtureWithTxnId(txnId: number): PaymobCallbackFixture {
   };
 }
 
+function successFixtureWithAmount(
+  amountMinor: number,
+  txnId?: number,
+): PaymobCallbackFixture {
+  const base =
+    txnId !== undefined
+      ? successFixtureWithTxnId(txnId)
+      : (successFixture as PaymobCallbackFixture);
+  return {
+    type: base.type,
+    obj: { ...base.obj, amount_cents: String(amountMinor) },
+  };
+}
+
+async function scriptPaymobAmount(amountMinor: number): Promise<void> {
+  await env.PAYMOB_STUB.fetch("http://paymob.stub/__script", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ amount_cents: String(amountMinor) }),
+  });
+}
+
+async function chargedPriceMinorForCheckout(checkoutId: string): Promise<number> {
+  const row = await env.DB.prepare(
+    `SELECT charged_price_minor FROM checkout WHERE checkout_id = ?`,
+  )
+    .bind(checkoutId)
+    .first<{ charged_price_minor: number }>();
+  expect(row).not.toBeNull();
+  return row!.charged_price_minor;
+}
+
+async function syncPaymobForCheckout(checkoutId: string): Promise<number> {
+  const chargedPrice = await chargedPriceMinorForCheckout(checkoutId);
+  await scriptPaymobAmount(chargedPrice);
+  await scriptPaymobInquiry("bound_success");
+  return chargedPrice;
+}
+
+async function pauseSigningKeyGate(): Promise<void> {
+  await env.DB.prepare(
+    `INSERT INTO signing_key_gate (id, paused, checked_at)
+     VALUES (1, 1, ?)
+     ON CONFLICT(id) DO UPDATE SET paused = 1, checked_at = excluded.checked_at`,
+  )
+    .bind(new Date().toISOString())
+    .run();
+}
+
+async function refreshSigningKeyGate(): Promise<void> {
+  const { refreshSigningKeyCheck } = await import("../../src/work/grant");
+  await refreshSigningKeyCheck(env as never);
+}
+
 async function ensureMigrations(): Promise<void> {
   try {
     await applySql(checkoutMigrationSql);
@@ -291,6 +426,11 @@ async function ensureMigrations(): Promise<void> {
   }
   try {
     await applySql(notifyWorkMigrationSql);
+  } catch {
+    // Migration not present yet.
+  }
+  try {
+    await applySql(grantMigrationSql);
   } catch {
     // Migration not present yet.
   }
@@ -415,6 +555,11 @@ async function publishPlanProOnPlatform(): Promise<void> {
     .bind(PLAN_ID, PLAN_VERSION)
     .first<{ present: number }>();
   if (existing?.present) {
+    await env.PLATFORM_DB.prepare(
+      `UPDATE plan_version SET status = 'published' WHERE plan_id = ? AND version = ?`,
+    )
+      .bind(PLAN_ID, PLAN_VERSION)
+      .run();
     return;
   }
   await env.PLATFORM_DB.prepare(
@@ -459,27 +604,35 @@ async function mintHarnessAccessJwt(): Promise<string> {
   );
 }
 
+async function ensureRoutingPolicyDocumentInR2(
+  contentPointer: string,
+  document: Record<string, unknown>,
+): Promise<void> {
+  await env.R2.put(contentPointer, JSON.stringify(document), {
+    httpMetadata: { contentType: "application/json" },
+  });
+}
+
 async function setupPromotedRoutingPolicy(): Promise<void> {
+  const document = fakePolicyDocument();
+  const contentPointer = `control/routing-policy/${POLICY_ID}/${POLICY_VERSION}.json`;
   const existing = await env.PLATFORM_DB.prepare(
-    `SELECT status FROM routing_policy WHERE policy_id = ? AND version = ?`,
+    `SELECT status, content_pointer FROM routing_policy
+     WHERE policy_id = ? AND version = ?`,
   )
     .bind(POLICY_ID, POLICY_VERSION)
-    .first<{ status: string }>();
-  if (existing?.status === "promoted") {
+    .first<{ status: string; content_pointer: string | null }>();
+
+  if (existing?.status === "active") {
+    await ensureRoutingPolicyDocumentInR2(
+      existing.content_pointer ?? contentPointer,
+      document,
+    );
     return;
   }
 
   const accessJwt = await mintHarnessAccessJwt();
-  const document = fakePolicyDocument();
-  const published = await platformCall(
-    "publishRoutingPolicy",
-    {
-      contract_version: CONTRACT_VERSION,
-      document,
-    },
-    { accessJwt },
-  );
-  if (published.result === "ok") {
+  if (existing?.status === "published") {
     const promoted = await platformCall(
       "promoteRoutingPolicy",
       {
@@ -490,27 +643,55 @@ async function setupPromotedRoutingPolicy(): Promise<void> {
       { accessJwt },
     );
     if (promoted.result === "ok") {
+      await ensureRoutingPolicyDocumentInR2(contentPointer, document);
+      return;
+    }
+  }
+
+  const published = await platformCall(
+    "publishRoutingPolicy",
+    {
+      contract_version: CONTRACT_VERSION,
+      document,
+    },
+    { accessJwt },
+  );
+  if (published.result === "ok" || published.error === "already_published") {
+    const promoted = await platformCall(
+      "promoteRoutingPolicy",
+      {
+        contract_version: CONTRACT_VERSION,
+        policy_id: POLICY_ID,
+        version: POLICY_VERSION,
+      },
+      { accessJwt },
+    );
+    if (
+      promoted.result === "ok" ||
+      promoted.error === "illegal_policy_transition"
+    ) {
+      await ensureRoutingPolicyDocumentInR2(contentPointer, document);
       return;
     }
   }
 
   const now = "2026-06-01T12:00:00.000Z";
-  const pointer = `routing/${POLICY_ID}/${POLICY_VERSION}.json`;
+  await ensureRoutingPolicyDocumentInR2(contentPointer, document);
   await env.PLATFORM_DB.prepare(
     `INSERT OR REPLACE INTO routing_policy (
        policy_id, version, content_pointer, active_from, activated_by, status
-     ) VALUES (?, ?, ?, ?, ?, 'promoted')`,
+     ) VALUES (?, ?, ?, ?, ?, 'active')`,
   )
-    .bind(POLICY_ID, POLICY_VERSION, pointer, now, VENDOR_OPERATOR_EMAIL)
+    .bind(POLICY_ID, POLICY_VERSION, contentPointer, now, VENDOR_OPERATOR_EMAIL)
     .run();
 }
 
 async function registerClinicIssuerKey(): Promise<void> {
-  const issuer = await newIssuer();
-  await pinIssuer(issuer.kid, issuer.publicKey);
-  if (registeredIssuerKid === issuer.kid) {
+  if (clinicIssuer !== null) {
     return;
   }
+  const issuer = await newIssuer();
+  await pinIssuer(issuer.kid, issuer.publicKey);
   const rawPublicKey = await crypto.subtle.exportKey("raw", issuer.publicKey);
   const publicKeyB64 = base64urlEncode(new Uint8Array(rawPublicKey));
   const notBefore = "2020-01-01T00:00:00.000Z";
@@ -522,6 +703,7 @@ async function registerClinicIssuerKey(): Promise<void> {
   )
     .bind(issuer.kid, env.ISSUER_ID, publicKeyB64, notBefore, notAfter, VENDOR_OPERATOR_EMAIL)
     .run();
+  clinicIssuer = issuer;
   registeredIssuerKid = issuer.kid;
 }
 
@@ -564,12 +746,18 @@ async function putBillingContact(org: string): Promise<void> {
 
 async function postPaymobProcessedCallback(
   fixture: PaymobCallbackFixture,
-  options?: { txnId?: number; connectingIp?: string },
+  options?: {
+    txnId?: number;
+    connectingIp?: string;
+    amountMinor?: number;
+  },
 ): Promise<Response> {
   const bodyFixture =
-    options?.txnId !== undefined
-      ? successFixtureWithTxnId(options.txnId)
-      : fixture;
+    options?.amountMinor !== undefined
+      ? successFixtureWithAmount(options.amountMinor, options.txnId)
+      : options?.txnId !== undefined
+        ? successFixtureWithTxnId(options.txnId)
+        : fixture;
   const body = JSON.stringify({
     type: bodyFixture.type,
     obj: bodyFixture.obj,
@@ -694,9 +882,12 @@ async function platformCoverageSnapshot(
 }
 
 async function mintIssuerAiToken(org: string): Promise<string> {
-  const issuer = await newIssuer();
+  if (clinicIssuer === null) {
+    await registerClinicIssuerKey();
+  }
+  const issuer = clinicIssuer!;
   await pinIssuer(issuer.kid, issuer.publicKey);
-  const now = Math.floor(Date.now() / 1000);
+  const now = await aboHarnessNowSeconds();
   return mintAi(issuer, {
     sub: "clinician-sub",
     org,
@@ -710,8 +901,10 @@ async function mintIssuerAiToken(org: string): Promise<string> {
 }
 
 async function platformHttpInvoke(org: string): Promise<Response> {
+  await ensureCoverageMirrorForOrg(org);
   const token = await mintIssuerAiToken(org);
-  return env.PLATFORM_HTTP.fetch(`${GATEWAY_ORIGIN}/v1/requests`, {
+  const nowIso = await aboHarnessNowIso();
+  const response = await env.PLATFORM_HTTP.fetch(`${GATEWAY_ORIGIN}/v1/requests`, {
     method: "POST",
     headers: {
       authorization: `Bearer ${token}`,
@@ -720,8 +913,14 @@ async function platformHttpInvoke(org: string): Promise<Response> {
       "x-idempotency-key": crypto.randomUUID(),
       "x-capability-version": CAPABILITY_VERSION,
     },
-    body: JSON.stringify(visitSummaryInvokeBody(org)),
+    body: JSON.stringify(visitSummaryInvokeBody(org, "branch-test", nowIso)),
   });
+  try {
+    await response.clone().text();
+  } catch {
+    // Best-effort drain so platform SSE work settles before isolated storage pop.
+  }
+  return response;
 }
 
 async function seedHeldForTransferBinding(orgId: string): Promise<void> {
@@ -809,10 +1008,14 @@ async function paidCheckoutFlow(
     expectations,
     `req-grant-${org}-${offer.offerId}-${offer.version}-${txnId}`,
   );
-  await scriptPaymobInquiry("bound_success");
+  const chargedPrice = await syncPaymobForCheckout(checkout.checkoutId);
   const intake = await postPaymobProcessedCallback(
     successFixture as PaymobCallbackFixture,
-    { txnId, connectingIp: `203.0.113.${txnId % 200}` },
+    {
+      txnId,
+      connectingIp: `203.0.113.${txnId % 200}`,
+      amountMinor: chargedPrice,
+    },
   );
   expect(intake.status).toBe(200);
   await runGrantStep();
@@ -971,6 +1174,7 @@ async function seedHarnessPayment(
 beforeEach(async () => {
   operatorBootstrap = null;
   registeredIssuerKid = null;
+  clinicIssuer = null;
   await resetCrossWorkerHarness();
   await setupCrossWorkerHarness();
   await ensureMigrations();
@@ -984,8 +1188,13 @@ describe("grant cross-worker", () => {
   it("E2E-P4.4-01 paid grant activates the term and completes an issuer request", async () => {
     const { expectations, offerVersions } = await setupGrantHarness();
 
+    const orgByTermCount: Record<number, string> = {
+      1: ORG_GRANT_01_1M,
+      3: ORG_GRANT_01_3M,
+      12: ORG_GRANT_01_12M,
+    };
     for (const termCount of [1, 3, 12] as const) {
-      const org = `org-grant-01-${termCount}m`;
+      const org = orgByTermCount[termCount];
       const offer = offerVersions[termCount];
       const txnId = 94000 + termCount;
       const { checkoutId } = await paidCheckoutFlow(
@@ -1022,7 +1231,7 @@ describe("grant cross-worker", () => {
 
   it("E2E-P4.4-02 transient for 4 days then applied starts at activation", async () => {
     const { expectations, offerVersions } = await setupGrantHarness();
-    const org = "org-grant-02-transient";
+    const org = ORG_GRANT_02;
     const txnId = 94020;
     await putBillingContact(org);
     const { checkoutId } = await postCheckout(
@@ -1031,41 +1240,42 @@ describe("grant cross-worker", () => {
       expectations,
       `req-grant-02-${txnId}`,
     );
+    await seedHeldForTransferBinding(org);
+    const chargedPrice = await syncPaymobForCheckout(checkoutId);
     await postPaymobProcessedCallback(successFixture as PaymobCallbackFixture, {
       txnId,
+      amountMinor: chargedPrice,
     });
-    await seedHeldForTransferBinding(org);
+
+    const paymentId = await paymentIdForCheckout(checkoutId);
+    expect(paymentId).not.toBeNull();
 
     let activationIso = "2026-06-01T12:15:00.000Z";
     await setClock(activationIso);
     await runGrantStep();
     expect(await grantOutcomeCount()).toBe(0);
+    expect(await grantWorkState(paymentId!)).toBe("open");
 
     const paidAt = await paymentPaidAt(checkoutId);
     expect(paidAt).not.toBeNull();
 
-    const fourDaysLater = new Date(
-      Date.parse("2026-06-01T12:00:00.000Z") + 4 * 24 * 60 * 60 * 1000,
-    ).toISOString();
-    let cursor = Date.parse(activationIso);
-    const endMs = Date.parse(fourDaysLater);
-    let sawAl04 = false;
-    while (cursor < endMs) {
-      cursor += 15 * 60 * 1000;
-      await setClock(new Date(cursor).toISOString());
+    await setClock("2026-06-01T12:21:00.000Z");
+    await runGrantStep();
+    expect(await grantWorkState(paymentId!)).toBe("open");
+    await runScheduled("0 * * * *");
+    expect(await alertCountByCode("AL-04")).toBeGreaterThan(0);
+
+    const holdStartMs = Date.parse("2026-06-01T12:00:00.000Z");
+    const holdEndMs = holdStartMs + 4 * 24 * 60 * 60 * 1000;
+    for (let day = 1; day <= 4; day += 1) {
+      const cursorMs = Math.min(holdStartMs + day * 24 * 60 * 60 * 1000, holdEndMs);
+      await setClock(new Date(cursorMs).toISOString());
       await runGrantStep();
-      const paymentId = await paymentIdForCheckout(checkoutId);
-      if (paymentId !== null) {
-        expect(await grantWorkState(paymentId)).toBe("open");
-      }
-      if ((await alertCountByCode("AL-04")) > 0) {
-        sawAl04 = true;
-      }
+      expect(await grantWorkState(paymentId!)).toBe("open");
       await runScheduled("0 * * * *");
     }
-    expect(sawAl04).toBe(true);
 
-    activationIso = new Date(cursor).toISOString();
+    activationIso = new Date(holdEndMs).toISOString();
     await activateTenantBinding(org);
     await setClock(activationIso);
     await runScheduled("0 * * * *");
@@ -1082,7 +1292,7 @@ describe("grant cross-worker", () => {
     const { expectations, offerVersions } = await setupGrantHarness();
     await retirePlanProOnPlatform();
 
-    const org = "org-grant-03-rejected";
+    const org = ORG_GRANT_03;
     const txnId = 94030;
     const { checkoutId } = await paidCheckoutFlow(
       org,
@@ -1102,7 +1312,7 @@ describe("grant cross-worker", () => {
 
   it("E2E-P4.4-04 lost outcome retries as already_applied with one term", async () => {
     const { expectations, offerVersions } = await setupGrantHarness();
-    const org = "org-grant-04-lost";
+    const org = ORG_GRANT_04;
     const txnId = 94040;
     await putBillingContact(org);
     const { checkoutId } = await postCheckout(
@@ -1111,12 +1321,16 @@ describe("grant cross-worker", () => {
       expectations,
       `req-grant-04-${txnId}`,
     );
+    await pauseSigningKeyGate();
+    const chargedPrice = await syncPaymobForCheckout(checkoutId);
     await postPaymobProcessedCallback(successFixture as PaymobCallbackFixture, {
       txnId,
+      amountMinor: chargedPrice,
     });
     expect(await paymentIdForCheckout(checkoutId)).not.toBeNull();
     expect(await grantOutcomeCount()).toBe(0);
 
+    await refreshSigningKeyGate();
     setD1BatchThrows(true);
     await runGrantStep();
     expect(await grantOutcomeCount()).toBe(0);
@@ -1144,7 +1358,7 @@ describe("grant cross-worker", () => {
 
   it("E2E-P4.4-06 unregistered ABO kid pauses grant work and raises AL-23", async () => {
     const { expectations, offerVersions } = await setupGrantHarnessWithoutAboKey();
-    const org = "org-grant-06-pause";
+    const org = ORG_GRANT_06;
     const txnId = 94060;
     await putBillingContact(org);
     const { checkoutId } = await postCheckout(
@@ -1153,8 +1367,10 @@ describe("grant cross-worker", () => {
       expectations,
       `req-grant-06-${txnId}`,
     );
+    const chargedPrice = await syncPaymobForCheckout(checkoutId);
     await postPaymobProcessedCallback(successFixture as PaymobCallbackFixture, {
       txnId,
+      amountMinor: chargedPrice,
     });
 
     await runScheduled("0 * * * *");
@@ -1177,7 +1393,7 @@ describe("grant cross-worker", () => {
 
   it("E2E-P4.4-07 second configured platform kid receipts still verify", async () => {
     const { expectations, offerVersions } = await setupGrantHarness();
-    const org = "org-grant-07-receipt";
+    const org = ORG_GRANT_07;
     const firstTxnId = 94071;
     const secondTxnId = 94072;
 
@@ -1198,10 +1414,11 @@ describe("grant cross-worker", () => {
 
   it("E2E-P4.4-05 second payment queues a term and subscription shows duplicate_payment", async () => {
     const { expectations, offerVersions } = await setupGrantHarness();
-    const org = "org-grant-05-dup";
+    const org = ORG_GRANT_05;
     const firstTxnId = 94051;
     const secondTxnId = 94052;
     await putBillingContact(org);
+    await paidCheckoutFlow(org, offerVersions[1], expectations, 94050);
 
     const firstCheckout = await postCheckout(
       org,
@@ -1216,13 +1433,19 @@ describe("grant cross-worker", () => {
       `req-grant-05-b-${secondTxnId}`,
     );
 
+    const firstChargedPrice = await syncPaymobForCheckout(firstCheckout.checkoutId);
     await postPaymobProcessedCallback(successFixture as PaymobCallbackFixture, {
       txnId: firstTxnId,
+      amountMinor: firstChargedPrice,
     });
     await runGrantStep();
+    const secondChargedPrice = await syncPaymobForCheckout(
+      secondCheckout.checkoutId,
+    );
     await postPaymobProcessedCallback(successFixture as PaymobCallbackFixture, {
       txnId: secondTxnId,
       connectingIp: "203.0.113.52",
+      amountMinor: secondChargedPrice,
     });
     await runGrantStep();
 
@@ -1254,17 +1477,19 @@ describe("grant cross-worker", () => {
 
   it("E2E-P4.4-08 no clinic GET after create still shows Active on open checkouts", async () => {
     const { expectations, offerVersions } = await setupGrantHarness();
-    const org = "org-grant-08-open";
+    const org = ORG_GRANT_08;
     const txnId = 94080;
     await putBillingContact(org);
-    const { reference } = await postCheckout(
+    const { checkoutId, reference } = await postCheckout(
       org,
       offerVersions[1],
       expectations,
       `req-grant-08-${txnId}`,
     );
+    const chargedPrice = await syncPaymobForCheckout(checkoutId);
     await postPaymobProcessedCallback(successFixture as PaymobCallbackFixture, {
       txnId,
+      amountMinor: chargedPrice,
     });
     await runGrantStep();
 
@@ -1283,8 +1508,8 @@ describe("grant cross-worker", () => {
   it("E2E-P4.4-09 payment cursor pages stay inside the tenant", async () => {
     const expectations = await seedOffersCatalogueFixture();
     expect(expectations).not.toBeNull();
-    const orgA = "org-grant-09-a";
-    const orgB = "org-grant-09-b";
+    const orgA = ORG_GRANT_09_A;
+    const orgB = ORG_GRANT_09_B;
     const seededA: Array<{ paymentId: string; reference: string }> = [];
     for (let index = 0; index < 21; index += 1) {
       seededA.push(

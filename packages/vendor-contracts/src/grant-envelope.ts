@@ -1,5 +1,6 @@
 import { canonicalize, sha256Hex } from "./canonical.js";
 import { verifyCompactJws } from "./jws.js";
+import { validateOperation } from "./operation.js";
 
 const UUID_RE =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/u;
@@ -72,9 +73,16 @@ function validateGrace(
   return true;
 }
 
-function validateApproval(value: unknown): boolean {
+function isPaidOperationApproval(value: Record<string, unknown>): boolean {
+  return value.op === "grant" && validateOperation(value).ok;
+}
+
+function validateApproval(value: unknown, sourceKind: string): boolean {
   if (!isRecord(value)) {
     return false;
+  }
+  if (sourceKind === "paid" && isPaidOperationApproval(value)) {
+    return true;
   }
   return (
     typeof value.credential_id === "string" &&
@@ -82,7 +90,7 @@ function validateApproval(value: unknown): boolean {
   );
 }
 
-function validateEvidence(value: unknown): boolean {
+function validateEvidence(value: unknown, sourceKind: string): boolean {
   if (!isRecord(value)) {
     return false;
   }
@@ -95,7 +103,7 @@ function validateEvidence(value: unknown): boolean {
   if (!Array.isArray(value.approvals) || value.approvals.length < 1) {
     return false;
   }
-  return value.approvals.every((item) => validateApproval(item));
+  return value.approvals.every((item) => validateApproval(item, sourceKind));
 }
 
 function validateSource(value: unknown): string | null {
@@ -282,7 +290,7 @@ export function validateGrantEnvelope(
   if (!validateGrace(value.grace, sourceKind)) {
     return fail();
   }
-  if (!validateEvidence(value.evidence)) {
+  if (!validateEvidence(value.evidence, sourceKind)) {
     return fail();
   }
 

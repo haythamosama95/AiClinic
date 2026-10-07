@@ -4,6 +4,7 @@
 
 let mode = "ok";
 let inquiryScript = "bound_success";
+let inquiryAmountCents = "800";
 let lastIntentionBody = null;
 
 const DEFAULT_AMOUNT_CENTS = "800";
@@ -26,7 +27,7 @@ function transactionPayload(orderId, overrides = {}) {
     is_refunded: false,
     is_voided: false,
     has_parent_transaction: false,
-    amount_cents: DEFAULT_AMOUNT_CENTS,
+    amount_cents: inquiryAmountCents,
     currency: "EGP",
     order: { id: orderId },
     ...overrides,
@@ -36,7 +37,7 @@ function transactionPayload(orderId, overrides = {}) {
 function inquiryOrderBody(orderId) {
   return {
     id: orderId,
-    amount_cents: DEFAULT_AMOUNT_CENTS,
+    amount_cents: inquiryAmountCents,
     currency: "EGP",
   };
 }
@@ -52,6 +53,9 @@ export default {
       }
       if (typeof body.inquiry === "string" && body.inquiry.length > 0) {
         inquiryScript = body.inquiry;
+      }
+      if (body.amount_cents !== undefined && body.amount_cents !== null) {
+        inquiryAmountCents = String(body.amount_cents);
       }
       return new Response(null, { status: 204 });
     }

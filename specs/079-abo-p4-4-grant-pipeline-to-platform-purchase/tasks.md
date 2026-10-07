@@ -150,7 +150,7 @@ cd abo && node scripts/build-platform-for-hxw.mjs && npx vitest run --config vit
 
 **Independent Test**: E2E-P4.4-05, E2E-P4.4-08, and E2E-P4.4-09 in harnesses H-XW and H-PAY. Earlier H-ABO, H-PAY, and H-XW suites stay green, and E2E-P4.4-01 through E2E-P4.4-04, E2E-P4.4-06, and E2E-P4.4-07 still pass.
 
-- [ ] T019 [US3] Run `node scripts/build-platform-for-hxw.mjs && npx vitest run --config vitest.cross-worker.config.ts test/system/grant.cross-worker.test.ts` from `abo/` until E2E-P4.4-01 through E2E-P4.4-09 pass — produces the green unit harness, FR-001, FR-002, FR-003, FR-004, FR-005, FR-006, FR-007, FR-008, FR-009, E2E-P4.4-01, E2E-P4.4-02, E2E-P4.4-03, E2E-P4.4-04, E2E-P4.4-05, E2E-P4.4-06, E2E-P4.4-07, E2E-P4.4-08, E2E-P4.4-09. Depends on T015, T017, and T018 (and therefore on T001–T014 and T016). This task may edit only files under `abo/test/`.
+- [X] T019 [US3] Run `node scripts/build-platform-for-hxw.mjs && npx vitest run --config vitest.cross-worker.config.ts test/system/grant.cross-worker.test.ts` from `abo/` until E2E-P4.4-01 through E2E-P4.4-09 pass — produces the green unit harness, FR-001, FR-002, FR-003, FR-004, FR-005, FR-006, FR-007, FR-008, FR-009, E2E-P4.4-01, E2E-P4.4-02, E2E-P4.4-03, E2E-P4.4-04, E2E-P4.4-05, E2E-P4.4-06, E2E-P4.4-07, E2E-P4.4-08, E2E-P4.4-09. Depends on T015, T017, and T018 (and therefore on T001–T014 and T016). This task may edit only files under `abo/test/`.
 
 ```bash
 cd abo && node scripts/build-platform-for-hxw.mjs && npx vitest run --config vitest.cross-worker.config.ts test/system/grant.cross-worker.test.ts
@@ -166,7 +166,7 @@ cd abo && node scripts/build-platform-for-hxw.mjs && npx vitest run --config vit
 
 ### 6.1 Quickstart
 
-- [ ] T020 Create `specs/079-abo-p4-4-grant-pipeline-to-platform-purchase/quickstart.md` from the plan's quickstart outline — produces this unit's quickstart, FR-001, FR-002, FR-003, FR-004, FR-005, FR-006, FR-007, FR-008, FR-009, FR-010, E2E-P4.4-01, E2E-P4.4-02, E2E-P4.4-03, E2E-P4.4-04, E2E-P4.4-05, E2E-P4.4-06, E2E-P4.4-07, E2E-P4.4-08, E2E-P4.4-09. Depends on T019. Sections: (1) what was implemented, and the files added or modified; (2) the harness command below; (3) the entry point → module chain per E2E id below. No earlier-unit files, combined counts, or full-suite commands. No manual steps; the harness observes every scenario.
+- [X] T020 Create `specs/079-abo-p4-4-grant-pipeline-to-platform-purchase/quickstart.md` from the plan's quickstart outline — produces this unit's quickstart, FR-001, FR-002, FR-003, FR-004, FR-005, FR-006, FR-007, FR-008, FR-009, FR-010, E2E-P4.4-01, E2E-P4.4-02, E2E-P4.4-03, E2E-P4.4-04, E2E-P4.4-05, E2E-P4.4-06, E2E-P4.4-07, E2E-P4.4-08, E2E-P4.4-09. Depends on T019. Sections: (1) what was implemented, and the files added or modified; (2) the harness command below; (3) the entry point → module chain per E2E id below. No earlier-unit files, combined counts, or full-suite commands. No manual steps; the harness observes every scenario.
 
 ```bash
 cd abo && node scripts/build-platform-for-hxw.mjs && npx vitest run --config vitest.cross-worker.config.ts test/system/grant.cross-worker.test.ts
