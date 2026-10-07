@@ -106,7 +106,7 @@ cd abo && node scripts/build-platform-for-hxw.mjs && vitest run --config vitest.
 
 **Independent Test**: E2E-P4.7-01 and E2E-P4.7-02 in harness H-XW.
 
-- [ ] T011 [US2] Teach `sellableOfferVersion` in `abo/src/clinic-api/checkouts.ts` to follow the latest `offer_event` — produces `offer_unavailable` for a retired offer, FR-006, E2E-P4.7-02. Depends on T010. Return null when the latest `offer_event` for the offer is not `published`, so checkout keeps returning `offer_unavailable`. When the latest event is `published`, return the latest published version. Leave `abo/src/ops/index.ts` unchanged in this task. Leave `abo/src/work/grant.ts` unchanged in this task.
+- [X] T011 [US2] Teach `sellableOfferVersion` in `abo/src/clinic-api/checkouts.ts` to follow the latest `offer_event` — produces `offer_unavailable` for a retired offer, FR-006, E2E-P4.7-02. Depends on T010. Return null when the latest `offer_event` for the offer is not `published`, so checkout keeps returning `offer_unavailable`. When the latest event is `published`, return the latest published version. Leave `abo/src/ops/index.ts` unchanged in this task. Leave `abo/src/work/grant.ts` unchanged in this task.
 
 **Checkpoint**: E2E-P4.7-02’s checkout on a retired offer is `offer_unavailable`. E2E-P4.7-01’s open v1 checkout still uses its snapshot.
 
@@ -114,7 +114,7 @@ cd abo && node scripts/build-platform-for-hxw.mjs && vitest run --config vitest.
 
 **Independent Test**: E2E-P4.7-04, E2E-P4.7-05, and E2E-P4.7-06 in harness H-XW. Earlier suites stay green, and E2E-P4.7-01, E2E-P4.7-02, E2E-P4.7-03, and E2E-P4.7-07 still pass.
 
-- [ ] T012 [US3] Run the existing grant work when `payment_release` exists in `abo/src/work/grant.ts` — produces the applied grant for a withheld release, FR-008, E2E-P4.7-04. Depends on T010. `runDueGrantWork` and the payment’s `grant:${paymentId}` row also run when a `payment_release` row exists for that payment. Disposition `grant` stays the paid path’s gate. A withheld payment is not updated. Leave `abo/src/ops/index.ts` unchanged in this task. Leave `abo/src/clinic-api/checkouts.ts` unchanged in this task.
+- [X] T012 [US3] Run the existing grant work when `payment_release` exists in `abo/src/work/grant.ts` — produces the applied grant for a withheld release, FR-008, E2E-P4.7-04. Depends on T010. `runDueGrantWork` and the payment’s `grant:${paymentId}` row also run when a `payment_release` row exists for that payment. Disposition `grant` stays the paid path’s gate. A withheld payment is not updated. Leave `abo/src/ops/index.ts` unchanged in this task. Leave `abo/src/clinic-api/checkouts.ts` unchanged in this task.
 
 **Checkpoint**: E2E-P4.7-04’s withheld release can apply the grant. The fully reversed release still writes no `payment_release` and starts no grant.
 

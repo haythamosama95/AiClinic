@@ -135,6 +135,22 @@ async function sellableOfferVersion(
   env: CheckoutsEnv,
   offerId: string,
 ): Promise<number | null> {
+  const latest = await env.DB.prepare(
+    `SELECT oe.kind
+     FROM offer_event oe
+     INNER JOIN (
+       SELECT offer_id, MAX(at) AS max_at
+       FROM offer_event
+       WHERE offer_id = ?
+       GROUP BY offer_id
+     ) latest ON oe.offer_id = latest.offer_id AND oe.at = latest.max_at
+     WHERE oe.offer_id = ?`,
+  )
+    .bind(offerId, offerId)
+    .first<{ kind: string }>();
+  if (latest?.kind !== "published") {
+    return null;
+  }
   const row = await env.DB.prepare(
     `SELECT MAX(version) AS version
      FROM offer_event

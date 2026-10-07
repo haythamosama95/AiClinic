@@ -387,6 +387,18 @@ async function grantRequestExists(
   return row !== null;
 }
 
+async function paymentReleaseExists(
+  env: GrantEnv,
+  paymentId: string,
+): Promise<boolean> {
+  const row = await env.DB.prepare(
+    `SELECT 1 FROM payment_release WHERE payment_id = ?`,
+  )
+    .bind(paymentId)
+    .first();
+  return row !== null;
+}
+
 function buildEnvelopeWithoutApprovals(input: {
   contractVersion: number;
   grantId: string;
@@ -587,7 +599,18 @@ async function processGrantWork(env: GrantEnv, work: WorkRow): Promise<void> {
   }
 
   const payment = await loadPayment(env, work.subject_id);
-  if (payment === null || payment.disposition !== "grant") {
+  if (payment === null) {
+    await env.DB.prepare(
+      `UPDATE work SET state = 'done', lease_until = NULL, last_error = NULL
+       WHERE work_id = ? AND lease_until = ?`,
+    )
+      .bind(work.work_id, leaseUntil)
+      .run();
+    return;
+  }
+
+  const released = await paymentReleaseExists(env, payment.payment_id);
+  if (payment.disposition !== "grant" && !released) {
     await env.DB.prepare(
       `UPDATE work SET state = 'done', lease_until = NULL, last_error = NULL
        WHERE work_id = ? AND lease_until = ?`,
