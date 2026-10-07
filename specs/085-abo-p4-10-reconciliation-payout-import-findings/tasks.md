@@ -200,7 +200,7 @@ cd abo && node scripts/build-platform-for-hxw.mjs && vitest run --config vitest.
 
 ### 7.1 Quickstart
 
-- [ ] T021 [US2] Create `specs/085-abo-p4-10-reconciliation-payout-import-findings/quickstart.md` from the plan's quickstart outline — produces this unit's quickstart, FR-001, FR-002, FR-003, FR-004, FR-005, FR-006, FR-007, FR-008, FR-009, FR-010, FR-011, FR-012, FR-013, FR-014, FR-015, FR-016, E2E-P4.10-01, E2E-P4.10-02, E2E-P4.10-03, E2E-P4.10-04, E2E-P4.10-05, E2E-P4.10-06, E2E-P4.10-07, E2E-P4.10-08, E2E-P4.10-09. Depends on T020. Sections: (1) what was implemented, and the files added or modified; (2) the harness command below; (3) the entry point → module chain per E2E id below. Manual steps: none. The harness can see every behaviour in the test plan.
+- [X] T021 [US2] Create `specs/085-abo-p4-10-reconciliation-payout-import-findings/quickstart.md` from the plan's quickstart outline — produces this unit's quickstart, FR-001, FR-002, FR-003, FR-004, FR-005, FR-006, FR-007, FR-008, FR-009, FR-010, FR-011, FR-012, FR-013, FR-014, FR-015, FR-016, E2E-P4.10-01, E2E-P4.10-02, E2E-P4.10-03, E2E-P4.10-04, E2E-P4.10-05, E2E-P4.10-06, E2E-P4.10-07, E2E-P4.10-08, E2E-P4.10-09. Depends on T020. Sections: (1) what was implemented, and the files added or modified; (2) the harness command below; (3) the entry point → module chain per E2E id below. Manual steps: none. The harness can see every behaviour in the test plan.
 
 ```bash
 cd abo && node scripts/build-platform-for-hxw.mjs && vitest run --config vitest.cross-worker.config.ts test/system/reconciliation.cross-worker.test.ts
