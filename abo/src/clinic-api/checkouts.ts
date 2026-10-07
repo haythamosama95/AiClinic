@@ -9,6 +9,7 @@ import {
 import type { BillingClaims } from "./auth.js";
 import { clinicErrorResponse, clinicJsonResponse } from "./version.js";
 import { clockNowIso, clockNowMs, type ClockEnv } from "../clock.js";
+import { insertFactLog } from "../records/append.js";
 import { PAYMOB_PROVIDER_ID, providerForId } from "../provider/registry.js";
 
 const CHECKOUT_EXPIRES_MINUTES = 30;
@@ -355,12 +356,7 @@ async function appendCheckoutFact(
   checkoutId: string,
   createdAt: string,
 ): Promise<void> {
-  const rowSha256 = await sha256Hex(canonicalize(canonicalRow));
-  await env.DB.prepare(
-    `INSERT INTO fact_log ("table", key, row_sha256, created_at) VALUES (?, ?, ?, ?)`,
-  )
-    .bind("checkout", checkoutId, rowSha256, createdAt)
-    .run();
+  await (await insertFactLog(env, "checkout", checkoutId, canonicalRow, createdAt)).run();
 }
 
 async function appendCheckoutEvent(
@@ -385,7 +381,6 @@ async function appendCheckoutEvent(
     at: row.at,
     contract_version: row.contract_version,
   };
-  const rowSha256 = await sha256Hex(canonicalize(canonicalRow));
   await env.DB.batch([
     env.DB.prepare(
       `INSERT INTO checkout_event (
@@ -400,12 +395,11 @@ async function appendCheckoutEvent(
       row.at,
       row.contract_version,
     ),
-    env.DB.prepare(
-      `INSERT INTO fact_log ("table", key, row_sha256, created_at) VALUES (?, ?, ?, ?)`,
-    ).bind(
+    await insertFactLog(
+      env,
       "checkout_event",
       `${row.checkout_id}:${row.kind}:${row.at}`,
-      rowSha256,
+      canonicalRow,
       createdAt,
     ),
   ]);

@@ -11,6 +11,7 @@ import {
 } from "vendor-contracts";
 import { raiseAlert, type AlertEnv } from "../alert/index.js";
 import { clockNowIso, clockNowMs, type ClockEnv } from "../clock.js";
+import { insertFactLog } from "../records/append.js";
 import { PAYMOB_PROVIDER_ID, providerForId } from "../provider/registry.js";
 import type { PaymobAdapterEnv } from "../provider/paymob/adapter.js";
 import type { ProviderTxn } from "../provider/port.js";
@@ -483,7 +484,6 @@ async function insertReversalRow(
     effect: input.effect,
     dedupe_key: input.dedupeKey,
   };
-  const rowSha = await sha256Hex(canonicalize(canonical));
   const result = await env.DB.batch([
     env.DB.prepare(
       `INSERT INTO reversal (
@@ -503,9 +503,7 @@ async function insertReversalRow(
       input.effect,
       input.dedupeKey,
     ),
-    env.DB.prepare(
-      `INSERT INTO fact_log ("table", key, row_sha256, created_at) VALUES (?, ?, ?, ?)`,
-    ).bind("reversal", input.reversalId, rowSha, nowIso),
+    await insertFactLog(env, "reversal", input.reversalId, canonical, nowIso),
   ]);
   return (result[0]?.meta.changes ?? 0) > 0;
 }

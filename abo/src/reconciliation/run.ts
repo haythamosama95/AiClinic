@@ -8,6 +8,7 @@ import {
 } from "vendor-contracts";
 import { raiseAlert, type AlertEnv } from "../alert/index.js";
 import { clockNowIso, clockNowMs, type ClockEnv } from "../clock.js";
+import { insertFactLog } from "../records/append.js";
 import type { PaymobAdapterEnv } from "../provider/paymob/adapter.js";
 import { parseStoredPaymobNotification } from "../provider/paymob/adapter.js";
 
@@ -71,15 +72,12 @@ async function insertFinding(
     detail,
     detected_at: detectedAt,
   };
-  const rowSha256 = await sha256Hex(canonicalize(canonicalRow));
   await env.DB.batch([
     env.DB.prepare(
       `INSERT INTO finding (finding_id, kind, subject, detail, detected_at)
        VALUES (?, ?, ?, ?, ?)`,
     ).bind(findingId, kind, subject, detail, detectedAt),
-    env.DB.prepare(
-      `INSERT INTO fact_log ("table", key, row_sha256, created_at) VALUES (?, ?, ?, ?)`,
-    ).bind("finding", findingId, rowSha256, detectedAt),
+    await insertFactLog(env, "finding", findingId, canonicalRow, detectedAt),
   ]);
   await raiseAlert(env, "AL-10", `AL-10:${findingId}`, findingId);
 }

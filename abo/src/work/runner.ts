@@ -1,6 +1,7 @@
 import { canonicalize, humanRef, sha256Hex, ulid } from "vendor-contracts";
 import { clockNowIso, clockNowMs, type ClockEnv } from "../clock.js";
 import { raiseAlert } from "../alert/index.js";
+import { insertFactLog } from "../records/append.js";
 import { PAYMOB_PROVIDER_ID, providerForId } from "../provider/registry.js";
 import type { PaymobAdapterEnv } from "../provider/paymob/adapter.js";
 import type { ProviderTxn } from "../provider/port.js";
@@ -236,7 +237,6 @@ async function appendCheckoutEvent(
     at: row.at,
     contract_version: row.contract_version,
   };
-  const rowSha256 = await sha256Hex(canonicalize(canonicalRow));
   return [
     env.DB.prepare(
       `INSERT INTO checkout_event (
@@ -249,12 +249,11 @@ async function appendCheckoutEvent(
       row.at,
       row.contract_version,
     ),
-    env.DB.prepare(
-      `INSERT INTO fact_log ("table", key, row_sha256, created_at) VALUES (?, ?, ?, ?)`,
-    ).bind(
+    await insertFactLog(
+      env,
       "checkout_event",
       `${row.checkout_id}:${row.kind}:${row.at}`,
-      rowSha256,
+      canonicalRow,
       createdAt,
     ),
   ];
@@ -362,6 +361,155 @@ async function confirmAttemptDeclined(
   if ((results[workIdx]?.meta.changes ?? 0) === 0) {
     throw new Error("lease_lost");
   }
+}
+
+export async function recordPaidConfirmation(
+  env: WorkRunnerEnv,
+  input: {
+    checkout: CheckoutRow;
+    confirmedTxn: ProviderTxn;
+    inquiryId: string;
+    evidenceSha256: string;
+    nowIso: string;
+    paymobTxnId?: string | null;
+  },
+): Promise<boolean> {
+  const paymentId = input.confirmedTxn.payment_id;
+  const existing = await env.DB.prepare(
+    `SELECT 1 FROM payment WHERE payment_id = ?`,
+  )
+    .bind(paymentId)
+    .first();
+  if (existing !== null) {
+    return false;
+  }
+
+  const reference = humanRef("PAY", paymentId);
+  const classification = await classificationForPayment(env, input.checkout);
+  if (classification === "likely_duplicate") {
+    await raiseAlert(
+      env,
+      "AL-09",
+      `AL-09:${input.checkout.checkout_id}`,
+      input.checkout.checkout_id,
+    );
+  }
+  if (classification === "late") {
+    await raiseAlert(
+      env,
+      "AL-08",
+      `AL-08:${input.checkout.checkout_id}`,
+      input.checkout.checkout_id,
+    );
+  }
+  const paidCheckoutState =
+    classification === "late" ? "paid_late" : "paid";
+
+  const paymentCanonical = {
+    payment_id: paymentId,
+    reference,
+    org_id: input.checkout.org_id,
+    checkout_id: input.checkout.checkout_id,
+    provider_id: PAYMOB_PROVIDER_ID,
+    amount_minor: input.confirmedTxn.amount_minor,
+    currency: input.confirmedTxn.currency,
+    paid_at: input.confirmedTxn.occurred_at,
+    confirmed_at: input.nowIso,
+    confirmation_inquiry_id: input.inquiryId,
+    offer_id: input.checkout.offer_id,
+    offer_version: input.checkout.offer_version,
+    billing_contact_version: input.checkout.billing_contact_version,
+    classification,
+    disposition: "grant",
+    mismatch_detail: null,
+    evidence_sha256: input.evidenceSha256,
+  };
+  const grantWorkId = await newId(env);
+  const statements: D1PreparedStatement[] = [
+    env.DB.prepare(
+      `INSERT INTO payment (
+         payment_id, reference, org_id, checkout_id, provider_id, amount_minor,
+         currency, paid_at, confirmed_at, confirmation_inquiry_id, offer_id,
+         offer_version, billing_contact_version, classification, disposition,
+         mismatch_detail, evidence_sha256
+       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    ).bind(
+      paymentId,
+      reference,
+      input.checkout.org_id,
+      input.checkout.checkout_id,
+      PAYMOB_PROVIDER_ID,
+      input.confirmedTxn.amount_minor,
+      input.confirmedTxn.currency,
+      input.confirmedTxn.occurred_at,
+      input.nowIso,
+      input.inquiryId,
+      input.checkout.offer_id,
+      input.checkout.offer_version,
+      input.checkout.billing_contact_version,
+      classification,
+      "grant",
+      null,
+      input.evidenceSha256,
+    ),
+    await insertFactLog(env, "payment", paymentId, paymentCanonical, input.nowIso),
+    ...(await appendCheckoutEvent(
+      env,
+      {
+        checkout_id: input.checkout.checkout_id,
+        kind: "paid",
+        ref: reference,
+        at: input.nowIso,
+        contract_version: input.checkout.contract_version,
+      },
+      input.nowIso,
+    )),
+    env.DB.prepare(
+      `UPDATE checkout_status SET state = ?, last_event_at = ? WHERE checkout_id = ?`,
+    ).bind(paidCheckoutState, input.nowIso, input.checkout.checkout_id),
+    env.DB.prepare(
+      `INSERT INTO work (
+         work_id, kind, subject_id, dedupe_key, state, attempts,
+         next_attempt_at, lease_until, last_error, opened_at
+       ) VALUES (?, 'grant', ?, ?, 'open', 0, ?, NULL, NULL, ?)`,
+    ).bind(
+      grantWorkId,
+      paymentId,
+      `grant:${paymentId}`,
+      input.nowIso,
+      input.nowIso,
+    ),
+  ];
+
+  const txnId = input.confirmedTxn.provider_txn_id ?? input.paymobTxnId;
+  if (txnId !== null && txnId !== undefined) {
+    const intention = await env.DB.prepare(
+      `SELECT order_id FROM paymob_intention WHERE checkout_id = ?`,
+    )
+      .bind(input.checkout.checkout_id)
+      .first<{ order_id: string }>();
+    statements.push(
+      env.DB.prepare(
+        `INSERT INTO paymob_txn (
+           txn_id, order_id, checkout_id, payment_id, parent_txn_id, last_state_key
+         ) VALUES (?, ?, ?, ?, ?, ?)
+         ON CONFLICT(txn_id) DO UPDATE SET
+           payment_id = excluded.payment_id,
+           parent_txn_id = excluded.parent_txn_id,
+           last_state_key = excluded.last_state_key`,
+      ).bind(
+        txnId,
+        intention?.order_id ?? "",
+        input.checkout.checkout_id,
+        paymentId,
+        input.confirmedTxn.provider_parent_txn_id ?? null,
+        input.confirmedTxn.dedupe_key,
+      ),
+    );
+  }
+
+  await env.DB.batch(statements);
+  return true;
 }
 
 async function confirmSuccessBatch(
@@ -531,7 +679,6 @@ async function confirmSuccessBatch(
       mismatch_detail: null,
       evidence_sha256: notification.body_sha256,
     };
-    const paymentSha = await sha256Hex(canonicalize(paymentCanonical));
     statements.push(
       env.DB.prepare(
         `INSERT INTO payment (
@@ -559,9 +706,7 @@ async function confirmSuccessBatch(
         null,
         notification.body_sha256,
       ),
-      env.DB.prepare(
-        `INSERT INTO fact_log ("table", key, row_sha256, created_at) VALUES (?, ?, ?, ?)`,
-      ).bind("payment", paymentId, paymentSha, nowIso),
+      await insertFactLog(env, "payment", paymentId, paymentCanonical, nowIso),
     );
     statements.push(
       env.DB.prepare(
@@ -616,7 +761,6 @@ async function confirmSuccessBatch(
       mismatch_detail: mismatchDetail,
       evidence_sha256: notification.body_sha256,
     };
-    const paymentSha = await sha256Hex(canonicalize(paymentCanonical));
     statements.push(
       env.DB.prepare(
         `INSERT INTO payment (
@@ -644,9 +788,7 @@ async function confirmSuccessBatch(
         mismatchDetail,
         notification.body_sha256,
       ),
-      env.DB.prepare(
-        `INSERT INTO fact_log ("table", key, row_sha256, created_at) VALUES (?, ?, ?, ?)`,
-      ).bind("payment", paymentId, paymentSha, nowIso),
+      await insertFactLog(env, "payment", paymentId, paymentCanonical, nowIso),
     );
     await raiseAlert(
       env,
@@ -668,144 +810,19 @@ async function confirmSuccessBatch(
     return;
   }
 
-  const paymentId = confirmedTxn.payment_id;
-  const reference = humanRef("PAY", paymentId);
-  const classification = await classificationForPayment(env, checkout);
-  if (classification === "likely_duplicate") {
-    await raiseAlert(
-      env,
-      "AL-09",
-      `AL-09:${checkout.checkout_id}`,
-      checkout.checkout_id,
-    );
+  if (statements.length > 0) {
+    await env.DB.batch(statements);
   }
-  if (classification === "late") {
-    await raiseAlert(env, "AL-08", `AL-08:${checkout.checkout_id}`, checkout.checkout_id);
-  }
-  const paidCheckoutState =
-    classification === "late" ? "paid_late" : "paid";
-
-  const paymentCanonical = {
-    payment_id: paymentId,
-    reference,
-    org_id: checkout.org_id,
-    checkout_id: checkout.checkout_id,
-    provider_id: PAYMOB_PROVIDER_ID,
-    amount_minor: confirmedTxn.amount_minor,
-    currency: confirmedTxn.currency,
-    paid_at: confirmedTxn.occurred_at,
-    confirmed_at: nowIso,
-    confirmation_inquiry_id: inquiryId,
-    offer_id: checkout.offer_id,
-    offer_version: checkout.offer_version,
-    billing_contact_version: checkout.billing_contact_version,
-    classification,
-    disposition: "grant",
-    mismatch_detail: null,
-    evidence_sha256: notification.body_sha256,
-  };
-  const paymentSha = await sha256Hex(canonicalize(paymentCanonical));
-  const grantWorkId = await newId(env);
-
-  statements.push(
-    env.DB.prepare(
-      `INSERT INTO payment (
-         payment_id, reference, org_id, checkout_id, provider_id, amount_minor,
-         currency, paid_at, confirmed_at, confirmation_inquiry_id, offer_id,
-         offer_version, billing_contact_version, classification, disposition,
-         mismatch_detail, evidence_sha256
-       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-    ).bind(
-      paymentId,
-      reference,
-      checkout.org_id,
-      checkout.checkout_id,
-      PAYMOB_PROVIDER_ID,
-      confirmedTxn.amount_minor,
-      confirmedTxn.currency,
-      confirmedTxn.occurred_at,
-      nowIso,
-      inquiryId,
-      checkout.offer_id,
-      checkout.offer_version,
-      checkout.billing_contact_version,
-      classification,
-      "grant",
-      null,
-      notification.body_sha256,
-    ),
-    env.DB.prepare(
-      `INSERT INTO fact_log ("table", key, row_sha256, created_at) VALUES (?, ?, ?, ?)`,
-    ).bind("payment", paymentId, paymentSha, nowIso),
-  );
-  statements.push(
-    ...(await appendCheckoutEvent(
-      env,
-      {
-        checkout_id: checkout.checkout_id,
-        kind: "paid",
-        ref: reference,
-        at: nowIso,
-        contract_version: checkout.contract_version,
-      },
-      nowIso,
-    )),
-  );
-  statements.push(
-    env.DB.prepare(
-      `UPDATE checkout_status SET state = ?, last_event_at = ? WHERE checkout_id = ?`,
-    ).bind(paidCheckoutState, nowIso, checkout.checkout_id),
-  );
-  statements.push(
-    env.DB.prepare(
-      `INSERT INTO work (
-         work_id, kind, subject_id, dedupe_key, state, attempts,
-         next_attempt_at, lease_until, last_error, opened_at
-       ) VALUES (?, 'grant', ?, ?, 'open', 0, ?, NULL, NULL, ?)`,
-    ).bind(
-      grantWorkId,
-      paymentId,
-      `grant:${paymentId}`,
-      nowIso,
-      nowIso,
-    ),
-  );
-  const txnId = confirmedTxn.provider_txn_id ?? paymobTxnId;
-  if (txnId !== null && txnId !== undefined) {
-    const intention = await env.DB.prepare(
-      `SELECT order_id FROM paymob_intention WHERE checkout_id = ?`,
-    )
-      .bind(checkout.checkout_id)
-      .first<{ order_id: string }>();
-    statements.push(
-      env.DB.prepare(
-        `INSERT INTO paymob_txn (
-           txn_id, order_id, checkout_id, payment_id, parent_txn_id, last_state_key
-         ) VALUES (?, ?, ?, ?, ?, ?)
-         ON CONFLICT(txn_id) DO UPDATE SET
-           payment_id = excluded.payment_id,
-           parent_txn_id = excluded.parent_txn_id,
-           last_state_key = excluded.last_state_key`,
-      ).bind(
-        txnId,
-        intention?.order_id ?? "",
-        checkout.checkout_id,
-        paymentId,
-        confirmedTxn.provider_parent_txn_id ?? null,
-        confirmedTxn.dedupe_key,
-      ),
-    );
-  }
-  statements.push(
-    env.DB.prepare(
-      `UPDATE work SET state = 'done', lease_until = NULL, last_error = NULL
-       WHERE work_id = ? AND lease_until = ?`,
-    ).bind(work.work_id, leaseUntil),
-  );
-
-  const grantResults = await env.DB.batch(statements);
-  const grantWorkIdx = statements.length - 1;
-  if ((grantResults[grantWorkIdx]?.meta.changes ?? 0) === 0) {
+  await recordPaidConfirmation(env, {
+    checkout,
+    confirmedTxn,
+    inquiryId,
+    evidenceSha256: notification.body_sha256,
+    nowIso,
+    paymobTxnId,
+  });
+  const done = await markWorkDone(env, work.work_id, leaseUntil);
+  if (!done) {
     throw new Error("lease_lost");
   }
 }

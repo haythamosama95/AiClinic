@@ -20,6 +20,7 @@ import {
   clinicJsonResponse,
 } from "../clinic-api/version.js";
 import { clockNowIso, clockNowMs, type ClockEnv } from "../clock.js";
+import { insertFactLog } from "../records/append.js";
 import { PAYMOB_PROVIDER_ID, providerForId } from "../provider/registry.js";
 import { runReconciliation } from "../reconciliation/run.js";
 import { rememberOperatorCredential } from "../watch/hourly.js";
@@ -543,7 +544,6 @@ async function insertOperatorAction(
     assertion_sha256: row.assertion_sha256,
     result: row.result,
   };
-  const rowSha256 = await sha256Hex(canonicalize(canonicalRow));
   await env.DB.batch([
     env.DB.prepare(
       `INSERT INTO operator_action (
@@ -560,9 +560,7 @@ async function insertOperatorAction(
       row.assertion_sha256,
       row.result,
     ),
-    env.DB.prepare(
-      `INSERT INTO fact_log ("table", key, row_sha256, created_at) VALUES (?, ?, ?, ?)`,
-    ).bind("operator_action", row.action_id, rowSha256, createdAt),
+    await insertFactLog(env, "operator_action", row.action_id, canonicalRow, createdAt),
   ]);
 }
 
@@ -828,7 +826,6 @@ async function appendOfferEvent(
     at: row.at,
     contract_version: row.contract_version,
   };
-  const rowSha256 = await sha256Hex(canonicalize(canonicalRow));
   await env.DB.batch([
     env.DB.prepare(
       `INSERT INTO offer_event (
@@ -842,12 +839,11 @@ async function appendOfferEvent(
       row.at,
       row.contract_version,
     ),
-    env.DB.prepare(
-      `INSERT INTO fact_log ("table", key, row_sha256, created_at) VALUES (?, ?, ?, ?)`,
-    ).bind(
+    await insertFactLog(
+      env,
       "offer_event",
       `${row.offer_id}:${row.kind}:${row.version}:${row.at}`,
-      rowSha256,
+      canonicalRow,
       row.at,
     ),
   ]);
@@ -938,7 +934,6 @@ async function handleHpCatalogueAction(
       published_by: hp.access.email,
       contract_version: contractVersion,
     };
-    const termsSha = await sha256Hex(canonicalize(termsCanonical));
     await env.DB.batch([
       env.DB.prepare(
         `INSERT INTO terms_version (
@@ -951,12 +946,11 @@ async function handleHpCatalogueAction(
         hp.access.email,
         contractVersion,
       ),
-      env.DB.prepare(
-        `INSERT INTO fact_log ("table", key, row_sha256, created_at) VALUES (?, ?, ?, ?)`,
-      ).bind(
+      await insertFactLog(
+        env,
         "terms_version",
         `${termsVersion}:en`,
-        termsSha,
+        termsCanonical,
         nowIso,
       ),
     ]);
@@ -980,7 +974,6 @@ async function handleHpCatalogueAction(
       assertion_sha256: hp.challengeSha256,
       contract_version: contractVersion,
     };
-    const offerSha = await sha256Hex(canonicalize(offerCanonical));
     await env.DB.batch([
       env.DB.prepare(
         `INSERT INTO offer_version (
@@ -1006,9 +999,13 @@ async function handleHpCatalogueAction(
         hp.challengeSha256,
         contractVersion,
       ),
-      env.DB.prepare(
-        `INSERT INTO fact_log ("table", key, row_sha256, created_at) VALUES (?, ?, ?, ?)`,
-      ).bind("offer_version", `${offerId}:${version}`, offerSha, nowIso),
+      await insertFactLog(
+        env,
+        "offer_version",
+        `${offerId}:${version}`,
+        offerCanonical,
+        nowIso,
+      ),
     ]);
     await appendOfferEvent(env, {
       offer_id: offerId,
@@ -1104,21 +1101,23 @@ async function handleHpReleasePayment(
   await commitAcceptedHp(env, hp, paymentId);
   const nowIso = await clockNowIso(env);
   const grantWorkId = crypto.randomUUID();
-  const paymentReleaseSha = await sha256Hex(
-    canonicalize({
-      payment_id: paymentId,
-      operator_action_id: hp.actionId,
-      at: nowIso,
-    }),
-  );
+  const paymentReleaseCanonical = {
+    payment_id: paymentId,
+    operator_action_id: hp.actionId,
+    at: nowIso,
+  };
   await env.DB.batch([
     env.DB.prepare(
       `INSERT INTO payment_release (payment_id, operator_action_id, at)
        VALUES (?, ?, ?)`,
     ).bind(paymentId, hp.actionId, nowIso),
-    env.DB.prepare(
-      `INSERT INTO fact_log ("table", key, row_sha256, created_at) VALUES (?, ?, ?, ?)`,
-    ).bind("payment_release", paymentId, paymentReleaseSha, nowIso),
+    await insertFactLog(
+      env,
+      "payment_release",
+      paymentId,
+      paymentReleaseCanonical,
+      nowIso,
+    ),
     env.DB.prepare(
       `INSERT INTO work (
          work_id, kind, subject_id, dedupe_key, state, attempts,
@@ -1222,7 +1221,6 @@ async function handleHpManualChargeback(
     effect,
     dedupe_key: dedupeKey,
   };
-  const reversalSha = await sha256Hex(canonicalize(reversalCanonical));
   await env.DB.batch([
     env.DB.prepare(
       `INSERT INTO reversal (
@@ -1241,9 +1239,7 @@ async function handleHpManualChargeback(
       effect,
       dedupeKey,
     ),
-    env.DB.prepare(
-      `INSERT INTO fact_log ("table", key, row_sha256, created_at) VALUES (?, ?, ?, ?)`,
-    ).bind("reversal", reversalId, reversalSha, nowIso),
+    await insertFactLog(env, "reversal", reversalId, reversalCanonical, nowIso),
   ]);
 
   await raiseAlert(env, "AL-06", `AL-06:${reversalId}`, reversalId);
@@ -1734,7 +1730,6 @@ async function handlePostPayoutImport(
     imported_by: access.email,
     period,
   };
-  const importSha = await sha256Hex(canonicalize(importCanonical));
   const statements: D1PreparedStatement[] = [
     env.DB.prepare(
       `INSERT INTO payout_import (
@@ -1748,9 +1743,7 @@ async function handlePostPayoutImport(
       access.email,
       period,
     ),
-    env.DB.prepare(
-      `INSERT INTO fact_log ("table", key, row_sha256, created_at) VALUES (?, ?, ?, ?)`,
-    ).bind("payout_import", importId, importSha, createdAt),
+    await insertFactLog(env, "payout_import", importId, importCanonical, createdAt),
   ];
 
   for (let lineNo = 0; lineNo < lines.length; lineNo += 1) {
@@ -1765,7 +1758,6 @@ async function handlePostPayoutImport(
       settled_at: line.settled_at,
       payment_id: line.payment_id,
     };
-    const lineSha = await sha256Hex(canonicalize(lineCanonical));
     statements.push(
       env.DB.prepare(
         `INSERT INTO payout_line (
@@ -1782,12 +1774,11 @@ async function handlePostPayoutImport(
         line.settled_at,
         line.payment_id,
       ),
-      env.DB.prepare(
-        `INSERT INTO fact_log ("table", key, row_sha256, created_at) VALUES (?, ?, ?, ?)`,
-      ).bind(
+      await insertFactLog(
+        env,
         "payout_line",
         `${importId}:${lineNo + 1}`,
-        lineSha,
+        lineCanonical,
         createdAt,
       ),
     );
@@ -1874,15 +1865,18 @@ async function handlePostResolveFinding(
       note,
       at: createdAt,
     };
-    const resolutionSha = await sha256Hex(canonicalize(resolutionCanonical));
     await env.DB.batch([
       env.DB.prepare(
         `INSERT INTO finding_resolution (finding_id, resolved_by, note, at)
          VALUES (?, ?, ?, ?)`,
       ).bind(findingId, access.email, note, createdAt),
-      env.DB.prepare(
-        `INSERT INTO fact_log ("table", key, row_sha256, created_at) VALUES (?, ?, ?, ?)`,
-      ).bind("finding_resolution", findingId, resolutionSha, createdAt),
+      await insertFactLog(
+        env,
+        "finding_resolution",
+        findingId,
+        resolutionCanonical,
+        createdAt,
+      ),
     ]);
   }
 
@@ -2125,16 +2119,14 @@ async function grantRequestExists(
   return row !== null;
 }
 
-function relayFactLogStatement(
+async function relayFactLogStatement(
   env: OpsEnv,
   table: string,
   key: string,
-  rowSha256: string,
+  canonicalRow: Record<string, unknown>,
   createdAt: string,
-): D1PreparedStatement {
-  return env.DB.prepare(
-    `INSERT INTO fact_log ("table", key, row_sha256, created_at) VALUES (?, ?, ?, ?)`,
-  ).bind(table, key, rowSha256, createdAt);
+): Promise<D1PreparedStatement> {
+  return insertFactLog(env, table, key, canonicalRow, createdAt);
 }
 
 function complimentaryGrantRequestCanonical(input: {
@@ -2269,9 +2261,6 @@ async function recordComplimentaryGrantRows(
     termIds,
     at: nowIso,
   });
-  const requestSha = await sha256Hex(canonicalize(requestCanonical));
-  const outcomeSha = await sha256Hex(canonicalize(outcomeCanonical));
-
   const statements: D1PreparedStatement[] = [];
   if (!(await grantRequestExists(env, input.grantId))) {
     statements.push(
@@ -2301,8 +2290,20 @@ async function recordComplimentaryGrantRows(
       termIds === null ? null : JSON.stringify(termIds),
       nowIso,
     ),
-    relayFactLogStatement(env, "grant_request", input.grantId, requestSha, nowIso),
-    relayFactLogStatement(env, "grant_outcome", input.grantId, outcomeSha, nowIso),
+    await relayFactLogStatement(
+      env,
+      "grant_request",
+      input.grantId,
+      requestCanonical,
+      nowIso,
+    ),
+    await relayFactLogStatement(
+      env,
+      "grant_outcome",
+      input.grantId,
+      outcomeCanonical,
+      nowIso,
+    ),
   );
   await env.DB.batch(statements);
 }
@@ -3109,7 +3110,6 @@ async function writeTransferGrantRequests(
       envelopeText,
       envelopeSha256,
     });
-    const requestSha = await sha256Hex(canonicalize(requestCanonical));
     await env.DB.batch([
       env.DB.prepare(
         `INSERT OR IGNORE INTO grant_request (
@@ -3122,7 +3122,13 @@ async function writeTransferGrantRequests(
         envelopeText,
         envelopeSha256,
       ),
-      relayFactLogStatement(env, "grant_request", grantId, requestSha, nowIso),
+      await relayFactLogStatement(
+        env,
+        "grant_request",
+        grantId,
+        requestCanonical,
+        nowIso,
+      ),
     ]);
   }
 }

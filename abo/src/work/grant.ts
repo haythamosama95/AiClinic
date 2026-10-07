@@ -8,6 +8,7 @@ import {
 } from "vendor-contracts";
 import { raiseAlert, type AlertEnv } from "../alert/index.js";
 import { clockNowIso, clockNowMs, type ClockEnv } from "../clock.js";
+import { insertFactLog } from "../records/append.js";
 
 const LEASE_MS = 60_000;
 const MIN_BACKOFF_MS = 60_000;
@@ -533,16 +534,14 @@ function grantOutcomeCanonical(input: {
   };
 }
 
-function factLogStatement(
+async function factLogStatement(
   env: GrantEnv,
   table: string,
   key: string,
-  rowSha256: string,
+  canonicalRow: Record<string, unknown>,
   createdAt: string,
-): D1PreparedStatement {
-  return env.DB.prepare(
-    `INSERT INTO fact_log ("table", key, row_sha256, created_at) VALUES (?, ?, ?, ?)`,
-  ).bind(table, key, rowSha256, createdAt);
+): Promise<D1PreparedStatement> {
+  return insertFactLog(env, table, key, canonicalRow, createdAt);
 }
 
 function insertGrantRequestIfAbsent(
@@ -741,9 +740,6 @@ async function processGrantWork(env: GrantEnv, work: WorkRow): Promise<void> {
       termIds,
       at: nowIso,
     });
-    const requestSha = await sha256Hex(canonicalize(requestCanonical));
-    const outcomeSha = await sha256Hex(canonicalize(outcomeCanonical));
-
     const statements: D1PreparedStatement[] = [
       insertGrantRequestIfAbsent(
         env,
@@ -766,8 +762,8 @@ async function processGrantWork(env: GrantEnv, work: WorkRow): Promise<void> {
         JSON.stringify(termIds),
         nowIso,
       ),
-      factLogStatement(env, "grant_request", grantId, requestSha, nowIso),
-      factLogStatement(env, "grant_outcome", grantId, outcomeSha, nowIso),
+      await factLogStatement(env, "grant_request", grantId, requestCanonical, nowIso),
+      await factLogStatement(env, "grant_outcome", grantId, outcomeCanonical, nowIso),
       env.DB.prepare(
         `UPDATE work SET state = 'done', lease_until = NULL, last_error = NULL
          WHERE work_id = ? AND lease_until = ?`,
@@ -804,9 +800,6 @@ async function processGrantWork(env: GrantEnv, work: WorkRow): Promise<void> {
       termIds: null,
       at: nowIso,
     });
-    const requestSha = await sha256Hex(canonicalize(requestCanonical));
-    const outcomeSha = await sha256Hex(canonicalize(outcomeCanonical));
-
     const statements: D1PreparedStatement[] = [
       insertGrantRequestIfAbsent(
         env,
@@ -821,8 +814,8 @@ async function processGrantWork(env: GrantEnv, work: WorkRow): Promise<void> {
            grant_id, result, abo_kid, abo_signature, receipt, term_ids, at
          ) VALUES (?, ?, NULL, NULL, NULL, NULL, ?)`,
       ).bind(grantId, "rejected", nowIso),
-      factLogStatement(env, "grant_request", grantId, requestSha, nowIso),
-      factLogStatement(env, "grant_outcome", grantId, outcomeSha, nowIso),
+      await factLogStatement(env, "grant_request", grantId, requestCanonical, nowIso),
+      await factLogStatement(env, "grant_outcome", grantId, outcomeCanonical, nowIso),
       env.DB.prepare(
         `UPDATE work SET state = 'done', lease_until = NULL, last_error = NULL
          WHERE work_id = ? AND lease_until = ?`,
@@ -858,9 +851,6 @@ async function processGrantWork(env: GrantEnv, work: WorkRow): Promise<void> {
       termIds: null,
       at: nowIso,
     });
-    const requestSha = await sha256Hex(canonicalize(requestCanonical));
-    const outcomeSha = await sha256Hex(canonicalize(outcomeCanonical));
-
     const statements: D1PreparedStatement[] = [
       insertGrantRequestIfAbsent(
         env,
@@ -875,8 +865,8 @@ async function processGrantWork(env: GrantEnv, work: WorkRow): Promise<void> {
            grant_id, result, abo_kid, abo_signature, receipt, term_ids, at
          ) VALUES (?, ?, NULL, NULL, NULL, NULL, ?)`,
       ).bind(grantId, result, nowIso),
-      factLogStatement(env, "grant_request", grantId, requestSha, nowIso),
-      factLogStatement(env, "grant_outcome", grantId, outcomeSha, nowIso),
+      await factLogStatement(env, "grant_request", grantId, requestCanonical, nowIso),
+      await factLogStatement(env, "grant_outcome", grantId, outcomeCanonical, nowIso),
       env.DB.prepare(
         `UPDATE work
          SET state = 'parked', lease_until = NULL, last_error = ?
