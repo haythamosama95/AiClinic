@@ -1043,8 +1043,8 @@ and the RPCs of 04 §3.1. The backend only pulls from the platform; it never pus
 - **Read:** 04 §2.2 (rows offers, billing contact, the three checkout rows, Rules); 04 §2.3; 04 §3.1 rows `issue_billing_token`, `request_ai_status_refresh`;
   03 §5.1 (shown-state table); 04 §3.5 row "Frontend billing"; 05 §8 rows A1, A2, A12, A30.
 - **Implements:** billing-token client (minted per use, renewed before 300 s); ABO client with `Abo-Contract-Version`; offers screen (localised copy, terms
-  acceptance); billing-contact form; checkout → system browser via `url_launcher`; progress polling (Waiting/Failed/Paid/Active/Abandoned); `starts after_current`
-  shown before paying; resume open checkouts from any desktop; on Active, call `request_ai_status_refresh`; error handling (`offer_unavailable`,
+  acceptance); billing-contact form; checkout → system browser via `url_launcher`; progress polling of `GET /v1/checkouts/{id}` (`shown_state` is `Waiting`, `Failed`, `Paid`, `Active`, or `Abandoned`; `offer` is `{offer_id, version, term_unit, term_count, charged_price_minor, currency}`; `payment_reference` and `term_ref` are JSON null; `updated_at` is `checkout_status.last_event_at`; the path `{id}` is the POST `checkout_id`); `starts after_current`
+  shown before paying; resume from `GET /v1/checkouts?open=1` (`{contract_version, checkouts}` of those objects for states `open`, `paid`, and `paid_late`, identified by `reference`); on Active, call `request_ai_status_refresh`; error handling (`offer_unavailable`,
   `billing_contact_required`, `terms_not_accepted`, `provider_unavailable`, `rate_limited`); en/ar strings; administrator-only entry point.
 - **Outputs:** CP-E.
 - **E2E (H-FL on H-FS, payment via the H-PAY fixture):**
