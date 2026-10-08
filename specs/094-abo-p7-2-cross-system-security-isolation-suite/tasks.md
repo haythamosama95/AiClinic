@@ -36,7 +36,7 @@ node --import tsx --test test/p7-2-untrusted-callers.test.mjs test/p7-2-vendor-e
 
 **Independent Test**: E2E-P7.2-05, E2E-P7.2-06, and E2E-P7.2-09 in harness H-FS.
 
-- [ ] T001 [US2] Add `POST /vendor-call` on `e2e/fullstack/src/register-issuer.ts` — harness route, FR-005, FR-006, FR-007, E2E-P7.2-05, E2E-P7.2-06, E2E-P7.2-09. Depends on nothing. The body is `{ method, args }`. `args` is the `vendorCall` payload (`access_jwt`, and `assertion` when present). The worker calls `env.PLATFORM[method](args)` only for `grant`, `suspend`, `resume`, `armKillSwitch`, `setCeilingPolicy`, `beginTransfer`, `releaseHeld`, and `voidGrant`. Any other method answers 404. Leave `POST /register-issuer-key` in place. The Node runner is the only caller. Do not boot wrangler. Do not start the H-FS stack.
+- [X] T001 [US2] Add `POST /vendor-call` on `e2e/fullstack/src/register-issuer.ts` — harness route, FR-005, FR-006, FR-007, E2E-P7.2-05, E2E-P7.2-06, E2E-P7.2-09. Depends on nothing. The body is `{ method, args }`. `args` is the `vendorCall` payload (`access_jwt`, and `assertion` when present). The worker calls `env.PLATFORM[method](args)` only for `grant`, `suspend`, `resume`, `armKillSwitch`, `setCeilingPolicy`, `beginTransfer`, `releaseHeld`, and `voidGrant`. Any other method answers 404. Leave `POST /register-issuer-key` in place. The Node runner is the only caller. Do not boot wrangler. Do not start the H-FS stack.
 
 **Checkpoint**: E2E-P7.2-05, E2E-P7.2-06, and E2E-P7.2-09 have a harness route. The route is not called.
 
