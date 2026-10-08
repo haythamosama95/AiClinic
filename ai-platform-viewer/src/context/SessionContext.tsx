@@ -22,7 +22,7 @@ import {
   pathForSection,
   sectionFromPath,
 } from '@/lib/routes'
-import type { NavSection } from '@/types'
+import type { DevConfig, NavSection } from '@/types'
 
 interface SessionContextValue {
   activeSection: NavSection
@@ -131,7 +131,10 @@ export function SessionProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     loadDevConfig()
       .then((config) => {
-        setOperatorBearer(config.operatorBearerToken)
+        setOperatorBearer(
+          (config as DevConfig & { operatorBearerToken?: string }).operatorBearerToken ??
+            '',
+        )
         setOperatorSource(config.devVarsPath)
         const admin = resolveSupabaseAdminFromDevConfig(config)
         setSupabaseAdminUsername(admin.username)

@@ -356,6 +356,31 @@ jobs:
       - name: Run fullstack-tagged Flutter tests
         run: flutter test --tags fullstack
 
+  control-residue-guard:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Run residue guard on dependent-path trees
+        run: >-
+          bash .github/scripts/control-residue-guard.sh
+          ai-platform-viewer
+          ai-platform/scripts
+          docs/architecture/ai-platform
+          docs/testing/catalog
+
+      - name: Negative fixture must fail the guard
+        run: |
+          FIXTURE="$(mktemp)"
+          printf '%s\n' 'fixture contains /control/ residue' > "$FIXTURE"
+          if bash .github/scripts/control-residue-guard.sh "$FIXTURE"; then
+            echo "Expected fixture scan to exit non-zero"
+            exit 1
+          fi
+          rm -f "$FIXTURE"
+
   fullstack:
     runs-on: ubuntu-latest
     timeout-minutes: 45

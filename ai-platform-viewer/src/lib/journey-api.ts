@@ -7,6 +7,12 @@ import { buildVisitSummaryContextJson } from '@/catalog/stage-8-ingress'
 import { buildRawRequest, buildRawResponse } from '@/lib/raw-http'
 import { prettyJsonValue } from '@/lib/json-format'
 import { isSseText, parseSseResponseBody, extractRequestReferenceFromSse } from '@/lib/sse-format'
+import {
+  type IssuerKeyMaterial,
+  type IssuerTokenClaims,
+  issuerContractVersionHeader,
+  mintIssuerToken,
+} from '@/lib/issuer-token'
 import { sendStage2SupabaseRequest, sendSupabaseRpcRequest } from '@/lib/supabase-api'
 import type { ClinicEnrollmentMaterial, FieldRow, HttpExchange } from '@/types'
 import type { Stage2OperationId } from '@/catalog/stage-2-clinic-keypair'
@@ -270,22 +276,31 @@ function buildJsonBody(
   return body
 }
 
-function authHeaderRows(auth: JourneyAuth, operatorBearer: string, aat: string): FieldRow[] {
+function authHeaderRows(
+  auth: JourneyAuth,
+  issuerToken: string,
+  operatorBearer: string,
+): FieldRow[] {
   switch (auth) {
     case 'operator':
       return [
         {
           name: 'Authorization',
-          value: maskBearer(operatorBearer, '(not loaded — open Secrets)'),
-          meaning: 'OPERATOR_BEARER_TOKEN from ai-platform/.dev.vars',
+          value: maskBearer(operatorBearer, '(not loaded)'),
+          meaning: 'Operator credential for control-plane requests',
         },
       ]
     case 'aat':
       return [
         {
           name: 'Authorization',
-          value: maskBearer(aat, '(not minted — open Secrets)'),
-          meaning: 'Clinic AAT from issue_ai_token',
+          value: maskBearer(issuerToken, '(issuer token not minted)'),
+          meaning: 'Issuer token signed by the test issuer key',
+        },
+        {
+          name: 'Aip-Contract-Version',
+          value: issuerContractVersionHeader(),
+          meaning: 'Clinic contract version accepted by the platform',
         },
       ]
     default:
@@ -297,7 +312,7 @@ function buildRequestHeaders(
   operation: JourneyOperationDefinition,
   params: Record<string, string>,
   operatorBearer: string,
-  aat: string,
+  issuerToken: string,
 ): Record<string, string> {
   const headers: Record<string, string> = {}
 
@@ -308,7 +323,8 @@ function buildRequestHeaders(
       }
       break
     case 'aat':
-      headers.Authorization = `Bearer ${aat}`
+      headers.Authorization = `Bearer ${issuerToken}`
+      headers['Aip-Contract-Version'] = issuerContractVersionHeader()
       break
     default:
       break
@@ -348,7 +364,9 @@ export async function sendJourneyRequest(
   params: Record<string, string>,
   credentials: {
     operatorBearer: string
-    aat: string
+    issuerKey?: IssuerKeyMaterial
+    issuerClaims?: IssuerTokenClaims
+    aat?: string
     supabaseAdmin?: { username: string; password: string }
   },
 ): Promise<HttpExchange> {
@@ -393,8 +411,15 @@ export async function sendJourneyRequest(
     throw new Error(validationError)
   }
 
-  if (operation.auth === 'aat' && !credentials.aat) {
-    throw new Error('Clinic AAT not loaded. Mint one from Secrets first.')
+  let issuerToken = ''
+  if (operation.auth === 'aat') {
+    if (!credentials.issuerKey) {
+      throw new Error('Test issuer key not loaded.')
+    }
+    issuerToken = await mintIssuerToken(
+      credentials.issuerKey,
+      credentials.issuerClaims,
+    )
   }
 
   const querySuffix = buildQueryString(operation.fields, params)
@@ -406,7 +431,7 @@ export async function sendJourneyRequest(
     operation,
     params,
     credentials.operatorBearer,
-    credentials.aat,
+    issuerToken,
   )
 
   let body: Record<string, unknown> | undefined
@@ -449,7 +474,7 @@ export async function sendJourneyRequest(
         : []
 
   const headerRows: FieldRow[] = [
-    ...authHeaderRows(operation.auth, credentials.operatorBearer, credentials.aat),
+    ...authHeaderRows(operation.auth, issuerToken, credentials.operatorBearer),
     ...operation.fields
       .filter((field) => field.scope === 'header')
       .map((field) => ({
@@ -480,7 +505,7 @@ export async function sendJourneyRequest(
   if (operation.auth === 'operator' && credentials.operatorBearer) {
     rawRequestHeaders.Authorization = `Bearer ${credentials.operatorBearer}`
   } else if (operation.auth === 'aat') {
-    rawRequestHeaders.Authorization = `Bearer ${credentials.aat}`
+    rawRequestHeaders.Authorization = `Bearer ${issuerToken}`
   }
 
   return {

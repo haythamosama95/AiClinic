@@ -1,45 +1,20 @@
 import type { FieldRow, HttpExchange } from '@/types'
 import { buildRawRequest, buildRawResponse } from '@/lib/raw-http'
 import { prettyJsonValue } from '@/lib/json-format'
-import { ensurePlatformEnrollment } from '@/lib/platform-enroll'
+import {
+  type IssuerKeyMaterial,
+  type IssuerTokenClaims,
+  issuerContractVersionHeader,
+  mintIssuerToken,
+} from '@/lib/issuer-token'
 
 const GATEWAY_PREFIX = '/gateway'
+const GATEWAY_ORIGIN = 'http://127.0.0.1:8787'
 
-function maskBearer(token: string): string {
-  if (!token) return '(not loaded — open Secrets)'
+function maskToken(token: string, emptyLabel: string): string {
+  if (!token) return emptyLabel
   if (token.length <= 12) return 'Bearer ••••••••'
   return `Bearer ${token.slice(0, 6)}…${token.slice(-4)}`
-}
-
-function maskAat(token: string): string {
-  if (!token) return '(not minted — open Secrets)'
-  if (token.length <= 12) return 'Bearer ••••••••'
-  return `Bearer ${token.slice(0, 6)}…${token.slice(-4)}`
-}
-
-function headerRows(operatorBearer: string): FieldRow[] {
-  return [
-    {
-      name: 'Authorization',
-      value: maskBearer(operatorBearer),
-      meaning: 'OPERATOR_BEARER_TOKEN from ai-platform/.dev.vars',
-    },
-    {
-      name: 'Content-Type',
-      value: 'application/json',
-      meaning: 'JSON request body',
-    },
-  ]
-}
-
-function bodyVerRow(ver: string): FieldRow[] {
-  return [
-    {
-      name: 'ver',
-      value: ver,
-      meaning: 'AAT version string; must match the JWT ver claim at verify time',
-    },
-  ]
 }
 
 function parseResponseBody(rawBody: string): FieldRow[] {
@@ -81,85 +56,21 @@ function responseFieldMeaning(name: string): string | undefined {
   }
 }
 
-export async function sendTokenContractRequest(
-  path: '/control/token-contract/begin-rotation' | '/control/token-contract/retire',
-  ver: string,
-  operatorBearer: string,
-): Promise<HttpExchange> {
-  if (!operatorBearer) {
-    throw new Error('Operator bearer not loaded. Open Secrets or check ai-platform/.dev.vars.')
-  }
-
-  const url = `${GATEWAY_PREFIX}${path}`
-  const body = { ver: ver.trim() }
-  const sentAt = new Date().toISOString()
-
-  const response = await fetch(url, {
-    method: 'POST',
-    headers: {
-      Authorization: `Bearer ${operatorBearer}`,
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify(body),
-  })
-
-  const rawBody = await response.text()
-  const responseHeaders: Record<string, string> = {
-    'content-type': response.headers.get('content-type') ?? '(none)',
-  }
-  const requestHeaders: Record<string, string> = {
-    Authorization: `Bearer ${operatorBearer}`,
-    'Content-Type': 'application/json',
-  }
-
-  return {
-    request: {
-      method: 'POST',
-      url: `http://127.0.0.1:8787${path}`,
-      headers: headerRows(operatorBearer),
-      body: bodyVerRow(body.ver),
-      raw: buildRawRequest('POST', `http://127.0.0.1:8787${path}`, requestHeaders, body),
-    },
-    response: {
-      status: response.status,
-      statusText: response.statusText,
-      headers: [
-        {
-          name: 'content-type',
-          value: responseHeaders['content-type'],
-        },
-      ],
-      body: parseResponseBody(rawBody),
-      rawBody,
-      raw: buildRawResponse(
-        response.status,
-        response.statusText,
-        responseHeaders,
-        rawBody,
-      ),
-    },
-    sentAt,
-  }
-}
-
 export async function sendCapabilitiesRequest(
-  aat: string,
-  operatorBearer: string,
+  issuerKey: IssuerKeyMaterial,
+  claims: IssuerTokenClaims = {},
 ): Promise<HttpExchange> {
-  if (!aat) {
-    throw new Error('Clinic AAT not loaded. Mint one from Secrets first.')
-  }
-
-  await ensurePlatformEnrollment(operatorBearer)
-
+  const token = await mintIssuerToken(issuerKey, claims)
   const path = '/v1/capabilities'
   const url = `${GATEWAY_PREFIX}${path}`
   const sentAt = new Date().toISOString()
+  const contractVersion = issuerContractVersionHeader()
 
   const response = await fetch(url, {
     method: 'GET',
     headers: {
-      Authorization: `Bearer ${aat}`,
+      Authorization: `Bearer ${token}`,
+      'Aip-Contract-Version': contractVersion,
     },
   })
 
@@ -170,22 +81,28 @@ export async function sendCapabilitiesRequest(
     etag: response.headers.get('etag') ?? '(none)',
   }
   const requestHeaders: Record<string, string> = {
-    Authorization: `Bearer ${aat}`,
+    Authorization: `Bearer ${token}`,
+    'Aip-Contract-Version': contractVersion,
   }
 
   return {
     request: {
       method: 'GET',
-      url: `http://127.0.0.1:8787${path}`,
+      url: `${GATEWAY_ORIGIN}${path}`,
       headers: [
         {
           name: 'Authorization',
-          value: maskAat(aat),
-          meaning: 'Clinic AAT minted from Supabase issue_ai_token',
+          value: maskToken(token, '(issuer token not minted)'),
+          meaning: 'Issuer token signed by the test issuer key',
+        },
+        {
+          name: 'Aip-Contract-Version',
+          value: contractVersion,
+          meaning: 'Clinic contract version accepted by the platform',
         },
       ],
       body: [],
-      raw: buildRawRequest('GET', `http://127.0.0.1:8787${path}`, requestHeaders),
+      raw: buildRawRequest('GET', `${GATEWAY_ORIGIN}${path}`, requestHeaders),
     },
     response: {
       status: response.status,

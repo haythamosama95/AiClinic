@@ -1,27 +1,14 @@
 import type { NavSection } from '@/types'
 
-export const DEFAULT_SECTION: NavSection = 'stage-1'
+export const DEFAULT_SECTION: NavSection = 'stage-7'
 
 const SECTION_PATHS: Record<NavSection, string> = {
-  'stage-0': '/stage-0',
-  'stage-1': '/stage-1',
-  'stage-2': '/stage-2',
-  'stage-3': '/stage-3',
-  'stage-4': '/stage-4',
-  'stage-5': '/stage-5',
-  'stage-6': '/stage-6',
   'stage-7': '/stage-7',
   'stage-8': '/stage-8',
   'stage-9': '/stage-9',
   'stage-10': '/stage-10',
   'stage-11': '/stage-11',
   'stage-12': '/stage-12',
-  'guard-pipeline': '/guard-pipeline',
-  plans: '/plans',
-  usage: '/usage',
-  invoices: '/invoices',
-  'stage-x': '/stage-x',
-  secrets: '/secrets',
 }
 
 const PATH_TO_SECTION = new Map<string, NavSection>(

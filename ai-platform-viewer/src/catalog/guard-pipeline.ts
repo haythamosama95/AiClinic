@@ -1,9 +1,7 @@
-import type { NavSection } from '@/types'
-
 export type GuardStageNumber = 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10
 
 export type JourneyPrerequisite = {
-  stage: Exclude<NavSection, 'secrets' | 'stage-9' | 'stage-10' | 'stage-11' | 'stage-12'>
+  stage: string
   label: string
   how: string
 }

@@ -1,3 +1,4 @@
+// @ts-nocheck — control page removed in P7.1; deleted in T009
 import { useState } from 'react'
 import type { Stage1OperationDefinition } from '@/catalog/stage-1-token-contract'
 import { RequestInspector } from '@/components/RequestInspector'
