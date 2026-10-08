@@ -5,9 +5,9 @@ This file orients AI coding agents working in this repository. Keep the
 **current active feature's** plan reference when running Spec Kit phases.
 
 <!-- SPECKIT START -->
-Active feature plan: `specs/092-abo-p6-4-administrator-subscription-payment-history-notices/plan.md`
-Feature spec: `specs/092-abo-p6-4-administrator-subscription-payment-history-notices/spec.md`
-Branch: `ai/092-abo-p6-4-administrator-subscription-payment-history-notices`
+Active feature plan: `specs/093-abo-p7-1-clean-up-dependent-paths-control-residue/plan.md`
+Feature spec: `specs/093-abo-p7-1-clean-up-dependent-paths-control-residue/spec.md`
+Branch: `ai/093-abo-p7-1-clean-up-dependent-paths-control-residue`
 <!-- SPECKIT END -->
 
 ## Repo layout quick reference
