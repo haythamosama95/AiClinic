@@ -4,7 +4,10 @@ import 'package:ai_clinic/features/ai/billing/abo_client.dart';
 import 'package:ai_clinic/features/ai/billing/billing_contact_form.dart';
 import 'package:ai_clinic/features/ai/billing/billing_token_client.dart';
 import 'package:ai_clinic/features/ai/billing/checkout_screen.dart';
+import 'package:ai_clinic/features/ai/billing/commercial_notices.dart';
 import 'package:ai_clinic/features/ai/billing/offers_screen.dart';
+import 'package:ai_clinic/features/ai/billing/payment_history.dart';
+import 'package:ai_clinic/features/ai/billing/subscription_summary.dart';
 import 'package:ai_clinic/features/ai/degraded/ai_degraded_mode.dart';
 import 'package:ai_clinic/features/ai/degraded/ai_degraded_view.dart';
 import 'package:ai_clinic/l10n/app_localizations.dart';
@@ -115,29 +118,48 @@ class _AdministratorBillingPageState extends State<AdministratorBillingPage> {
     return Scaffold(
       appBar: AppBar(title: Text(l10n.aiBillingOffersTitle)),
       body: switch (_step) {
-        _BillingStep.loading => const Center(child: CircularProgressIndicator()),
         _BillingStep.appUpdate => const AiDegradedView(mode: AiDegradedMode.appUpdate),
-        _BillingStep.offers => OffersScreen(
-            client: _aboClient,
-            onContinue: _onOffersContinue,
-            onContractVersionUnsupported: _onContractVersionUnsupported,
-            loadError: _loadError,
-          ),
-        _BillingStep.contact => BillingContactForm(
-            client: _aboClient,
-            onSaved: _onContactSaved,
-            onContractVersionUnsupported: _onContractVersionUnsupported,
-          ),
-        _BillingStep.checkout => CheckoutScreen(
-            client: _aboClient,
-            offer: _selection?.offer,
-            termsVersion: _selection?.termsVersion,
-            initialCheckout: _resumedCheckout,
-            reference: _resumedCheckout?.reference,
-            supabaseClient: widget.supabaseClient,
-            onTermsNotAccepted: _onTermsNotAccepted,
-            onBillingContactRequired: _onBillingContactRequired,
-            onContractVersionUnsupported: _onContractVersionUnsupported,
+        _ => SingleChildScrollView(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                SubscriptionSummary(
+                  client: _aboClient,
+                  supabaseClient: widget.supabaseClient,
+                ),
+                CommercialNotices(client: _aboClient),
+                PaymentHistory(client: _aboClient),
+                switch (_step) {
+                  _BillingStep.loading => const Padding(
+                      padding: EdgeInsets.all(24),
+                      child: Center(child: CircularProgressIndicator()),
+                    ),
+                  _BillingStep.offers => OffersScreen(
+                      client: _aboClient,
+                      onContinue: _onOffersContinue,
+                      onContractVersionUnsupported: _onContractVersionUnsupported,
+                      loadError: _loadError,
+                    ),
+                  _BillingStep.contact => BillingContactForm(
+                      client: _aboClient,
+                      onSaved: _onContactSaved,
+                      onContractVersionUnsupported: _onContractVersionUnsupported,
+                    ),
+                  _BillingStep.checkout => CheckoutScreen(
+                      client: _aboClient,
+                      offer: _selection?.offer,
+                      termsVersion: _selection?.termsVersion,
+                      initialCheckout: _resumedCheckout,
+                      reference: _resumedCheckout?.reference,
+                      supabaseClient: widget.supabaseClient,
+                      onTermsNotAccepted: _onTermsNotAccepted,
+                      onBillingContactRequired: _onBillingContactRequired,
+                      onContractVersionUnsupported: _onContractVersionUnsupported,
+                    ),
+                  _ => const SizedBox.shrink(),
+                },
+              ],
+            ),
           ),
       },
     );

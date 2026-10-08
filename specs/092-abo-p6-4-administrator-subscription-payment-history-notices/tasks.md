@@ -141,7 +141,7 @@ That command is the unit harness. `npm test` in `e2e/fullstack` is not the harne
 
 **Independent Test**: E2E-P6.4-04 and E2E-P6.4-05 in harness H-FL on H-FS. Every earlier suite stays green (rule S2).
 
-- [ ] T017 [US2] Add the next-page control in `frontend/lib/features/ai/billing/payment_history.dart` — append when `has_more` is true, FR-004, E2E-P6.4-04. Depends on T016 (same file). An explicit next-page control is shown when `has_more` is true. It requests `GET /v1/payments` with `cursor` set to `next_cursor` and appends that page.
+- [X] T017 [US2] Add the next-page control in `frontend/lib/features/ai/billing/payment_history.dart` — append when `has_more` is true, FR-004, E2E-P6.4-04. Depends on T016 (same file). An explicit next-page control is shown when `has_more` is true. It requests `GET /v1/payments` with `cursor` set to `next_cursor` and appends that page.
 
 **Checkpoint**: The next-page control appends the following page. E2E-P6.4-04 still fails.
 
@@ -149,7 +149,7 @@ That command is the unit harness. `npm test` in `e2e/fullstack` is not the harne
 
 **Independent Test**: E2E-P6.4-04 and E2E-P6.4-05 in harness H-FL on H-FS. Every earlier suite stays green (rule S2).
 
-- [ ] T018 [US2] Give the summary and the history no organisation argument in `frontend/lib/features/ai/billing/subscription_summary.dart` and `frontend/lib/features/ai/billing/payment_history.dart` — signed-in session only, FR-005, E2E-P6.4-05. Depends on T014 and T017. Neither widget takes an organisation id. Both use the signed-in session only.
+- [X] T018 [US2] Give the summary and the history no organisation argument in `frontend/lib/features/ai/billing/subscription_summary.dart` and `frontend/lib/features/ai/billing/payment_history.dart` — signed-in session only, FR-005, E2E-P6.4-05. Depends on T014 and T017. Neither widget takes an organisation id. Both use the signed-in session only.
 
 **Checkpoint**: The summary and the history take no organisation argument. E2E-P6.4-05 still fails.
 
@@ -157,7 +157,7 @@ That command is the unit harness. `npm test` in `e2e/fullstack` is not the harne
 
 **Independent Test**: E2E-P6.4-01, E2E-P6.4-02, and E2E-P6.4-03 in harness H-FL on H-FS.
 
-- [ ] T019 [US1] Compose the summary, the notices, and the history on `frontend/lib/features/ai/billing/administrator_billing_page.dart` — existing page, FR-001, FR-002, FR-003, FR-004, FR-005, E2E-P6.4-01, E2E-P6.4-02, E2E-P6.4-03, E2E-P6.4-04, E2E-P6.4-05. Depends on T015 and T018. Compose `subscription_summary.dart`, `commercial_notices.dart`, and `payment_history.dart` on the existing page. Leave the offers, contact, and checkout steps, the token client, and the open-checkout resume as they are.
+- [X] T019 [US1] Compose the summary, the notices, and the history on `frontend/lib/features/ai/billing/administrator_billing_page.dart` — existing page, FR-001, FR-002, FR-003, FR-004, FR-005, E2E-P6.4-01, E2E-P6.4-02, E2E-P6.4-03, E2E-P6.4-04, E2E-P6.4-05. Depends on T015 and T018. Compose `subscription_summary.dart`, `commercial_notices.dart`, and `payment_history.dart` on the existing page. Leave the offers, contact, and checkout steps, the token client, and the open-checkout resume as they are.
 
 **Checkpoint**: The administrator billing page shows the summary, the notices, and the history. E2E-P6.4-01 through E2E-P6.4-05 are ready for the harness.
 
@@ -171,7 +171,7 @@ That command is the unit harness. `npm test` in `e2e/fullstack` is not the harne
 
 **Independent Test**: E2E-P6.4-04 and E2E-P6.4-05 in harness H-FL on H-FS. Every earlier suite stays green (rule S2).
 
-- [ ] T020 [US2] Re-run the fullstack file until E2E-P6.4-01 through E2E-P6.4-05 pass, and confirm the P6.3 billing page still reaches offers, contact, and checkout — green harness, FR-001, FR-002, FR-003, FR-004, FR-005, E2E-P6.4-01, E2E-P6.4-02, E2E-P6.4-03, E2E-P6.4-04, E2E-P6.4-05. Depends on T019. From `frontend/`, against the running H-FS stack, run `flutter test test/integration/administrator_subscription_fullstack_test.dart --tags fullstack` until E2E-P6.4-01 through E2E-P6.4-05 pass. Confirm the P6.3 billing page still reaches offers, contact, and checkout on that same route. Fixes stay in the files this unit's **Files** table lists under `frontend/`. Do not run `npm test` in `e2e/fullstack`. Do not start wrangler.
+- [X] T020 [US2] Re-run the fullstack file until E2E-P6.4-01 through E2E-P6.4-05 pass, and confirm the P6.3 billing page still reaches offers, contact, and checkout — green harness, FR-001, FR-002, FR-003, FR-004, FR-005, E2E-P6.4-01, E2E-P6.4-02, E2E-P6.4-03, E2E-P6.4-04, E2E-P6.4-05. Depends on T019. From `frontend/`, against the running H-FS stack, run `flutter test test/integration/administrator_subscription_fullstack_test.dart --tags fullstack` until E2E-P6.4-01 through E2E-P6.4-05 pass. Confirm the P6.3 billing page still reaches offers, contact, and checkout on that same route. Fixes stay in the files this unit's **Files** table lists under `frontend/`. Do not run `npm test` in `e2e/fullstack`. Do not start wrangler.
 
 **Checkpoint**: E2E-P6.4-01, E2E-P6.4-02, E2E-P6.4-03, E2E-P6.4-04, and E2E-P6.4-05 pass in H-FL. Offers, contact, and checkout remain on the same route.
 
@@ -185,7 +185,7 @@ That command is the unit harness. `npm test` in `e2e/fullstack` is not the harne
 
 **Independent Test**: E2E-P6.4-04 and E2E-P6.4-05 in harness H-FL on H-FS. Every earlier suite stays green (rule S2).
 
-- [ ] T021 [US2] Write `specs/092-abo-p6-4-administrator-subscription-payment-history-notices/quickstart.md` — unit quickstart, FR-001, FR-003, FR-004, E2E-P6.4-01, E2E-P6.4-02, E2E-P6.4-03, E2E-P6.4-04, E2E-P6.4-05. Depends on T020. Fill only these sections: what was implemented and the files added or modified; the harness command for this unit's tests only, from `frontend/`, `flutter test test/integration/administrator_subscription_fullstack_test.dart --tags fullstack`; the entry point → module chain per E2E id. Do not list earlier-unit files, combined counts, or full-suite commands. Manual steps are omitted: the harness sees this behaviour.
+- [X] T021 [US2] Write `specs/092-abo-p6-4-administrator-subscription-payment-history-notices/quickstart.md` — unit quickstart, FR-001, FR-003, FR-004, E2E-P6.4-01, E2E-P6.4-02, E2E-P6.4-03, E2E-P6.4-04, E2E-P6.4-05. Depends on T020. Fill only these sections: what was implemented and the files added or modified; the harness command for this unit's tests only, from `frontend/`, `flutter test test/integration/administrator_subscription_fullstack_test.dart --tags fullstack`; the entry point → module chain per E2E id. Do not list earlier-unit files, combined counts, or full-suite commands. Manual steps are omitted: the harness sees this behaviour.
 
 **Checkpoint**: `quickstart.md` names the five H-FL ids, the unit command, and the entry chain.
 

@@ -16,7 +16,10 @@ class PaymentHistory extends StatefulWidget {
 
 class _PaymentHistoryState extends State<PaymentHistory> {
   var _loading = true;
+  var _loadingNextPage = false;
   List<PaymentRecord> _payments = const [];
+  String _nextCursor = '';
+  var _hasMore = false;
   Object? _error;
 
   @override
@@ -37,6 +40,8 @@ class _PaymentHistoryState extends State<PaymentHistory> {
       }
       setState(() {
         _payments = response.payments;
+        _nextCursor = response.nextCursor;
+        _hasMore = response.hasMore;
         _loading = false;
       });
     } catch (error) {
@@ -46,6 +51,36 @@ class _PaymentHistoryState extends State<PaymentHistory> {
       setState(() {
         _error = error;
         _loading = false;
+      });
+    }
+  }
+
+  Future<void> _loadNextPage() async {
+    if (!_hasMore || _loadingNextPage) {
+      return;
+    }
+    setState(() {
+      _loadingNextPage = true;
+      _error = null;
+    });
+    try {
+      final response = await widget.client.getPayments(cursor: _nextCursor);
+      if (!mounted) {
+        return;
+      }
+      setState(() {
+        _payments = [..._payments, ...response.payments];
+        _nextCursor = response.nextCursor;
+        _hasMore = response.hasMore;
+        _loadingNextPage = false;
+      });
+    } catch (error) {
+      if (!mounted) {
+        return;
+      }
+      setState(() {
+        _error = error;
+        _loadingNextPage = false;
       });
     }
   }
@@ -94,6 +129,20 @@ class _PaymentHistoryState extends State<PaymentHistory> {
             Text('${reversal.isFull}'),
           ],
           const SizedBox(height: 12),
+        ],
+        if (_hasMore) ...[
+          const SizedBox(height: 8),
+          TextButton(
+            key: const Key('billing_payment_history_next'),
+            onPressed: _loadingNextPage ? null : _loadNextPage,
+            child: _loadingNextPage
+                ? const SizedBox(
+                    width: 16,
+                    height: 16,
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  )
+                : const Text('Next page'),
+          ),
         ],
       ],
     );
