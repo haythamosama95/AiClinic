@@ -160,6 +160,9 @@ abstract final class AppRoutes {
   /// Clinic AI hub — surfaces implemented AI features and design-system widgets.
   static const ai = '/ai';
 
+  /// Administrator AI billing (offers, contact, checkout).
+  static const aiAdministratorBilling = '/ai/administrator-billing';
+
   /// Standalone AI feature host for widget tests and CP3 entry (E4).
   static const aiFeatureHost = '/ai/feature-host';
 }

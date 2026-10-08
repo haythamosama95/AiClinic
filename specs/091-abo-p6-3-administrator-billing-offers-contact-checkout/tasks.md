@@ -113,7 +113,7 @@ That command is the unit harness. `npm test` in `e2e/fullstack` is not the harne
 
 **Independent Test**: E2E-P6.3-01 in harness H-FL on H-FS, payment via the H-PAY fixture.
 
-- [ ] T012 [US1] Add the administrator billing path in `frontend/lib/app/app_routes.dart` and register it in `frontend/lib/app/router.dart` — administrator route, FR-001, FR-008, E2E-P6.3-01, E2E-P6.3-06. Depends on T011. In `frontend/lib/app/app_routes.dart`, add the administrator billing path next to the existing AI routes. In `frontend/lib/app/router.dart`, register that path. The builder opens `administrator_billing_page.dart` for an administrator and does not mint a token for anyone else. `frontend/lib/features/ai/billing/administrator_billing_page.dart` is created in T026. Do not change `frontend/lib/features/ai/presentation/pages/ai_page.dart`.
+- [X] T012 [US1] Add the administrator billing path in `frontend/lib/app/app_routes.dart` and register it in `frontend/lib/app/router.dart` — administrator route, FR-001, FR-008, E2E-P6.3-01, E2E-P6.3-06. Depends on T011. In `frontend/lib/app/app_routes.dart`, add the administrator billing path next to the existing AI routes. In `frontend/lib/app/router.dart`, register that path. The builder opens `administrator_billing_page.dart` for an administrator and does not mint a token for anyone else. `frontend/lib/features/ai/billing/administrator_billing_page.dart` is created in T026. Do not change `frontend/lib/features/ai/presentation/pages/ai_page.dart`.
 
 **Checkpoint**: The billing path is registered for an administrator. E2E-P6.3-01 and E2E-P6.3-06 still fail.
 

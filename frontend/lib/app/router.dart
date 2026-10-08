@@ -40,7 +40,9 @@ import 'package:ai_clinic/features/visits/presentation/pages/visit_detail_page.d
 import 'package:ai_clinic/features/visits/presentation/pages/visit_document_page.dart';
 import 'package:ai_clinic/features/settings/presentation/models/settings_screen.dart';
 import 'package:ai_clinic/features/settings/presentation/pages/settings_page.dart';
+import 'package:ai_clinic/features/ai/billing/administrator_billing_page.dart';
 import 'package:ai_clinic/features/ai/host/ai_feature_host_page.dart';
+import 'package:ai_clinic/features/auth/domain/auth_session.dart';
 
 String _redirectToClinicManagement(BuildContext context, GoRouterState state) => AppRoutes.clinicManagement;
 
@@ -114,6 +116,17 @@ final appRouterProvider = Provider<GoRouter>((ref) {
           ),
           GoRoute(path: AppRoutes.home, builder: (context, state) => const HomePage()),
           GoRoute(path: AppRoutes.ai, builder: (context, state) => const AiPage()),
+          GoRoute(
+            path: AppRoutes.aiAdministratorBilling,
+            redirect: (context, state) {
+              final auth = ref.read(authSessionProvider);
+              if (auth.context?.staffProfile.role != StaffRole.administrator) {
+                return AppRoutes.home;
+              }
+              return null;
+            },
+            builder: (context, state) => const AdministratorBillingPage(),
+          ),
           GoRoute(path: AppRoutes.dashboard, builder: shellPlaceholderPage),
           GoRoute(path: AppRoutes.encounters, builder: shellPlaceholderPage),
           GoRoute(path: AppRoutes.workspace, builder: shellPlaceholderPage),
