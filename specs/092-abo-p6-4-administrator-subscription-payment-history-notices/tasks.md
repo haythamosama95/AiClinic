@@ -125,7 +125,7 @@ That command is the unit harness. `npm test` in `e2e/fullstack` is not the harne
 
 **Independent Test**: E2E-P6.4-01, E2E-P6.4-02, and E2E-P6.4-03 in harness H-FL on H-FS.
 
-- [ ] T015 [US1] Build the commercial-notices widget in `frontend/lib/features/ai/billing/commercial_notices.dart` — notices array, FR-002, E2E-P6.4-01, E2E-P6.4-02, E2E-P6.4-03. Depends on T014. Create the file. Show the `notices` code strings from `GET /v1/subscription`, including `duplicate_payment`, `late_payment_honoured`, `payment_withheld`, `reversal_recorded`, and `terms_held` when that array contains them. Do not add `terms_held` when the array omits it.
+- [X] T015 [US1] Build the commercial-notices widget in `frontend/lib/features/ai/billing/commercial_notices.dart` — notices array, FR-002, E2E-P6.4-01, E2E-P6.4-02, E2E-P6.4-03. Depends on T014. Create the file. Show the `notices` code strings from `GET /v1/subscription`, including `duplicate_payment`, `late_payment_honoured`, `payment_withheld`, `reversal_recorded`, and `terms_held` when that array contains them. Do not add `terms_held` when the array omits it.
 
 **Checkpoint**: Commercial notices render the subscription `notices` array. E2E-P6.4-01, E2E-P6.4-02, and E2E-P6.4-03 still fail.
 
@@ -133,7 +133,7 @@ That command is the unit harness. `npm test` in `e2e/fullstack` is not the harne
 
 **Independent Test**: E2E-P6.4-01, E2E-P6.4-02, and E2E-P6.4-03 in harness H-FL on H-FS.
 
-- [ ] T016 [US1] Build the payment-history widget in `frontend/lib/features/ai/billing/payment_history.dart` — payment fields, classification, and reversals, FR-003, E2E-P6.4-01, E2E-P6.4-02. Depends on T008. Create the file. Show each payment's `reference`, `paid_at`, `amount_minor`, `currency`, `plan_display_name`, `offer_version`, `term_unit`, `term_count`, `classification`, and `reversals` (`reference`, `amount_minor`, `kind`, `is_full`). Keep the response order. The first load omits `cursor`.
+- [X] T016 [US1] Build the payment-history widget in `frontend/lib/features/ai/billing/payment_history.dart` — payment fields, classification, and reversals, FR-003, E2E-P6.4-01, E2E-P6.4-02. Depends on T008. Create the file. Show each payment's `reference`, `paid_at`, `amount_minor`, `currency`, `plan_display_name`, `offer_version`, `term_unit`, `term_count`, `classification`, and `reversals` (`reference`, `amount_minor`, `kind`, `is_full`). Keep the response order. The first load omits `cursor`.
 
 **Checkpoint**: Payment history shows the payment fields, classification, and reversals in response order. E2E-P6.4-01 and E2E-P6.4-02 still fail.
 
