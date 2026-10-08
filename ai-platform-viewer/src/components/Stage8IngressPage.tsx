@@ -13,7 +13,6 @@ export function Stage8IngressPage() {
     <JourneyStagePage
       meta={STAGE8_META}
       operations={STAGE8_OPERATIONS}
-      mintAatBeforeEachRequest
       syncAction={{
         label: 'Sync clinic context',
         title: 'Reload org/branch into context defaults?',
@@ -23,7 +22,7 @@ export function Stage8IngressPage() {
         onConfirm: async () => {
           if (!clinicMaterial?.org_id || !clinicMaterial.branch_id) {
             throw new Error(
-              'Could not resolve org_id and branch_id from clinic Postgres — run Stage 2 enroll first.',
+              'Could not resolve org_id and branch_id from clinic Postgres — sync clinic context first.',
             )
           }
           return `Synced context.org=${clinicMaterial.org_id} and context.branch=${clinicMaterial.branch_id}.`
@@ -36,7 +35,7 @@ export function Stage8IngressPage() {
             <dl className="stage-page__seed-grid">
               <div>
                 <dt>Authorization</dt>
-                <dd>Bearer AAT (Secrets session)</dd>
+                <dd>Issuer token (minted per send)</dd>
               </div>
               <div>
                 <dt>x-idempotency-key</dt>
@@ -90,7 +89,7 @@ export function Stage8IngressPage() {
               </dl>
             ) : (
               <p className="operation-card__hint">
-                No clinic key in Supabase — run Stage 2 enroll_installation_keypair first.
+                No clinic tenant defaults in Supabase — sync clinic context first.
               </p>
             )}
           </div>

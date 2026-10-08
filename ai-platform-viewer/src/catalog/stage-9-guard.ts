@@ -32,7 +32,7 @@ export const STAGE9_META: JourneyStageMeta = {
   eyebrow: 'Stage 9 · The guard',
   title: 'Ten checkpoints before SSE opens',
   lede:
-    'Every POST /v1/requests runs ten sequential guard checks before the SSE stream opens. Failures return HTTP JSON — never accepted. Use these probes to target each stage: edit Authorization, capability_id, context, and headers to force the expected taxonomy code.',
+    'Every POST /v1/requests runs ten sequential guard checks before the SSE stream opens. Failures return HTTP JSON — never accepted. Use these probes to target each stage: edit the issuer token override, capability_id, context, and headers to force the expected taxonomy code.',
   accentClass: 'stage-accent--guard',
   cardClass: 'operation-card--guard',
   buttonClass: 'guard-button',
@@ -65,13 +65,13 @@ export const STAGE9_OPERATIONS: JourneyOperationDefinition[] = [
     summary:
       'Valid plain-object JSON within size limits. Ingress extracts capability_id, user_intent, context, and optional conversational fields. Later guard stages may still reject.',
     successNote:
-      'Passes stage 1. With a minted clinician AAT, entitled installation, and matching context.org/branch, the request may reach SSE accepted (Stage 10 boundary).',
+      'Passes stage 1. With a valid issuer token, entitled installation, and matching context.org/branch, the request may reach SSE accepted (Stage 10 boundary).',
     failures: POST_FAILURES,
     fields: visitSummaryPostFields(),
   },
   {
     id: 'guard-s2-missing-auth',
-    section: 'Stage 2 — Identity (AAT)',
+    section: 'Stage 2 — Identity',
     title: 'Missing Authorization header',
     method: 'POST',
     path: '/v1/requests',
@@ -80,12 +80,12 @@ export const STAGE9_OPERATIONS: JourneyOperationDefinition[] = [
     summary:
       'Adapter does not reject missing Authorization at ingress — stage 2 identity fails with unauthenticated when the wire token is absent.',
     successNote: '401 unauthenticated — no SSE body.',
-    failures: [{ status: 401, error: 'unauthenticated', trigger: 'No Bearer token on wire' }],
+    failures: [{ status: 401, error: 'unauthenticated', trigger: 'No issuer token on wire' }],
     fields: visitSummaryPostFields(),
   },
   {
     id: 'guard-s2-malformed-jwt',
-    section: 'Stage 2 — Identity (AAT)',
+    section: 'Stage 2 — Identity',
     title: 'Malformed wire token (not 3 JWS segments)',
     method: 'POST',
     path: '/v1/requests',
@@ -100,24 +100,25 @@ export const STAGE9_OPERATIONS: JourneyOperationDefinition[] = [
     }),
   },
   {
-    id: 'guard-s2-wrong-bearer-kind',
-    section: 'Stage 2 — Identity (AAT)',
-    title: 'Operator bearer instead of clinic AAT',
+    id: 'guard-s2-wrong-signature',
+    section: 'Stage 2 — Identity',
+    title: 'Invalid issuer token signature',
     method: 'POST',
     path: '/v1/requests',
     auth: 'none',
     bodyKind: 'json',
     summary:
-      'Control-plane operator tokens are not valid clinic AATs. Paste OPERATOR_BEARER_TOKEN into Authorization (or load from Secrets and copy).',
-    successNote: '401 unauthenticated — operator JWT is not an installation AAT.',
+      'Stage 2 verifies Ed25519 signature on the issuer token. Paste a syntactically valid JWT with a bad signature into Authorization to override the auto-minted token.',
+    successNote: '401 unauthenticated — signature or claim checks fail.',
     failures: [{ status: 401, error: 'unauthenticated', trigger: 'Wire token fails Ed25519 / claim checks' }],
     fields: visitSummaryPostFields({
-      authorization: 'Bearer <paste OPERATOR_BEARER_TOKEN>',
+      authorization:
+        'Bearer eyJhbGciOiJFZERTQSIsInR5cCI6IkpXVCIsImtpZCI6InRlc3QifQ.eyJpc3MiOiJpc3N1ZXItdGVzdCJ9.invalid',
     }),
   },
   {
     id: 'guard-s2-empty-cap-version',
-    section: 'Stage 2 — Identity (AAT)',
+    section: 'Stage 2 — Identity',
     title: 'Empty x-capability-version header',
     method: 'POST',
     path: '/v1/requests',
@@ -220,17 +221,17 @@ export const STAGE9_OPERATIONS: JourneyOperationDefinition[] = [
   {
     id: 'guard-s5-forbidden-scope',
     section: 'Stage 5 — Capability resolve',
-    title: 'Missing requiredCapabilityScope (doctor AAT)',
+    title: 'Missing requiredCapabilityScope',
     method: 'POST',
     path: '/v1/requests',
     auth: 'aat',
     bodyKind: 'json',
     summary:
-      'Visit summary requires scope ai.visit_summary and role clinician|nurse. Mint a stock doctor token (issue_ai_token as doctor) and paste it into Authorization to override the Secrets AAT.',
+      'Visit summary requires scope ai.visit_summary and role clinician|nurse. Paste an issuer token with insufficient scopes into Authorization to override the auto-minted token.',
     successNote: '403 forbidden_capability — scope or role check before SSE.',
     failures: [{ status: 403, error: 'forbidden_capability', trigger: 'requiredCapabilityScope or allowedStaffRoles' }],
     fields: visitSummaryPostFields({
-      authorization: 'Bearer <paste DOCTOR_AAT from issue_ai_token()>',
+      authorization: 'Bearer <issuer token with scopes: ["ai.other"]>',
     }),
   },
   {
@@ -248,8 +249,8 @@ export const STAGE9_OPERATIONS: JourneyOperationDefinition[] = [
     fields: visitSummaryPostFields({
       body: {
         context: `{
-  "org": "<match AAT org claim>",
-  "branch": "<match AAT branch claim>"
+  "org": "<match issuer token org claim>",
+  "branch": "<match issuer token branch claim>"
 }`,
       },
     }),
@@ -263,9 +264,9 @@ export const STAGE9_OPERATIONS: JourneyOperationDefinition[] = [
     auth: 'aat',
     bodyKind: 'json',
     summary:
-      'Tenant binding: context.org and context.branch must equal principal.organizationId and principal.branchId from the AAT.',
+      'Tenant binding: context.org and context.branch must equal principal.organizationId and principal.branchId from the issuer token.',
     successNote: '422 context_invalid.',
-    failures: [{ status: 422, error: 'context_invalid', trigger: 'org or branch does not match AAT' }],
+    failures: [{ status: 422, error: 'context_invalid', trigger: 'org or branch does not match issuer token' }],
     fields: visitSummaryPostFields({
       body: {
         context: `{
@@ -291,8 +292,8 @@ export const STAGE9_OPERATIONS: JourneyOperationDefinition[] = [
     fields: visitSummaryPostFields({
       body: {
         context: `{
-  "org": "<match AAT org claim>",
-  "branch": "<match AAT branch claim>",
+  "org": "<match issuer token org claim>",
+  "branch": "<match issuer token branch claim>",
   "visit.chief_complaint@v1": "Patient reports headache for 3 days."
 }`,
       },

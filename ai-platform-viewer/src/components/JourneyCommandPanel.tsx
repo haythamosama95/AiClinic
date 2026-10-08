@@ -8,14 +8,40 @@ import {
   journeyAuthLine,
   journeyCommandTone,
 } from '@/components/containers'
-import { clinicMaterialFingerprint } from '@/hooks/useClinicEnrollmentMaterial'
 import { useSession } from '@/context/SessionContext'
+import { clinicMaterialFingerprint } from '@/hooks/useClinicEnrollmentMaterial'
+import {
+  importIssuerPrivateKey,
+  type IssuerKeyMaterial,
+  type IssuerTokenClaims,
+} from '@/lib/issuer-token'
 import {
   buildJourneyDefaultParams,
   journeyUsesClinicMaterial,
   sendJourneyRequest,
 } from '@/lib/journey-api'
 import type { ClinicEnrollmentMaterial, HttpExchange } from '@/types'
+
+type DevConfigWithIssuer = {
+  testIssuerKid?: string
+  testIssuerPrivateKeyPkcs8?: string
+}
+
+export async function loadIssuerKeyFromDevConfig(): Promise<IssuerKeyMaterial | null> {
+  const response = await fetch('/api/dev/config')
+  if (!response.ok) {
+    return null
+  }
+
+  const config = (await response.json()) as DevConfigWithIssuer
+  const kid = config.testIssuerKid?.trim()
+  const pkcs8 = config.testIssuerPrivateKeyPkcs8?.trim()
+  if (!kid || !pkcs8) {
+    return null
+  }
+
+  return importIssuerPrivateKey(kid, pkcs8)
+}
 
 interface JourneyCommandPanelProps {
   operation: JourneyOperationDefinition
@@ -36,16 +62,9 @@ export function JourneyCommandPanel({
   onReloadClinicDefaults,
   onClose,
   buttonClass,
-  mintAatBeforeEachRequest = false,
 }: JourneyCommandPanelProps) {
-  const {
-    operatorBearer,
-    aat,
-    supabaseAdminUsername,
-    supabaseAdminPassword,
-    storeClinicAat,
-    mintAatForRequest,
-  } = useSession()
+  const { supabaseAdminUsername, supabaseAdminPassword } = useSession()
+  const [issuerKey, setIssuerKey] = useState<IssuerKeyMaterial | null>(null)
   const needsClinicMaterial = journeyUsesClinicMaterial(operation.fields)
   const materialFingerprint = clinicMaterialFingerprint(clinicMaterial)
   const [params, setParams] = useState<Record<string, string>>(() =>
@@ -57,6 +76,16 @@ export function JourneyCommandPanel({
   const [sendError, setSendError] = useState<string | null>(null)
 
   useEffect(() => {
+    void loadIssuerKeyFromDevConfig()
+      .then((key) => {
+        setIssuerKey(key)
+      })
+      .catch(() => {
+        setIssuerKey(null)
+      })
+  }, [])
+
+  useEffect(() => {
     if (clinicMaterialLoading) {
       return
     }
@@ -66,17 +95,15 @@ export function JourneyCommandPanel({
     setSendError(null)
   }, [operation.id, operation.fields, clinicMaterial, materialFingerprint, clinicMaterialLoading])
 
+  const issuerClaims: IssuerTokenClaims | undefined =
+    clinicMaterial?.org_id && clinicMaterial.branch_id
+      ? { org: clinicMaterial.org_id, branch: clinicMaterial.branch_id }
+      : undefined
+
   const authReady = (() => {
     switch (operation.auth) {
-      case 'operator':
-        return Boolean(operatorBearer)
       case 'aat':
-        if (mintAatBeforeEachRequest) {
-          return Boolean(
-            operatorBearer && supabaseAdminUsername && supabaseAdminPassword,
-          )
-        }
-        return Boolean(aat)
+        return Boolean(issuerKey)
       case 'supabase-admin':
         return Boolean(supabaseAdminUsername && supabaseAdminPassword)
       default:
@@ -98,7 +125,7 @@ export function JourneyCommandPanel({
       return `Could not load clinic defaults — ${clinicMaterialError}`
     }
     if (!clinicMaterial) {
-      return 'No clinic key found in Supabase — run Stage 2 enroll_installation_keypair first.'
+      return 'No clinic tenant defaults in Supabase — sync clinic context first.'
     }
     return `Defaults synced from clinic Postgres (installation_id ${clinicMaterial.installation_id}).`
   })()
@@ -110,9 +137,6 @@ export function JourneyCommandPanel({
 
   const authLine = [
     journeyAuthLine(operation.auth, authReady),
-    operation.auth === 'aat' && mintAatBeforeEachRequest
-      ? 'mints fresh AAT before send'
-      : null,
     operation.bodyKind === 'empty' ? 'body is {}' : null,
     operation.bodyKind === 'sse' ? 'SSE stream response' : null,
     needsClinicMaterial && !clinicDefaultsReady ? 'waiting for clinic defaults' : null,
@@ -133,28 +157,15 @@ export function JourneyCommandPanel({
     setSendError(null)
     setBusy(true)
     try {
-      let requestAat = aat
-      if (mintAatBeforeEachRequest && operation.auth === 'aat') {
-        requestAat = await mintAatForRequest()
-      }
-
       const result = await sendJourneyRequest(operation, params, {
-        operatorBearer,
-        aat: requestAat,
+        operatorBearer: '',
+        issuerKey: operation.auth === 'aat' ? issuerKey ?? undefined : undefined,
+        issuerClaims,
         supabaseAdmin:
           supabaseAdminUsername && supabaseAdminPassword
             ? { username: supabaseAdminUsername, password: supabaseAdminPassword }
             : undefined,
       })
-      if (
-        operation.rpcName === 'issue_ai_token' &&
-        result.response.status === 200
-      ) {
-        const tokenRow = result.response.body.find((row) => row.name === 'token')
-        if (tokenRow?.value) {
-          storeClinicAat(tokenRow.value)
-        }
-      }
       setExchange(result)
       setInspectorOpen(true)
     } catch (error) {
@@ -219,11 +230,7 @@ export function JourneyCommandPanel({
             onClick={() => void handleSend()}
             disabled={busy || !authReady || !clinicDefaultsReady}
           >
-            {busy
-              ? mintAatBeforeEachRequest && operation.auth === 'aat'
-                ? 'Minting & sending…'
-                : 'Sending…'
-              : 'Send request'}
+            {busy ? 'Sending…' : 'Send request'}
           </button>
         </>
       }

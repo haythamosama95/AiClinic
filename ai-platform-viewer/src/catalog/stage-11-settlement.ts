@@ -27,7 +27,7 @@ export const STAGE11_OPERATIONS: JourneyOperationDefinition[] = [
     successNote:
       '200 when Completed — result matches SSE completed frame. Compare with wrangler: SELECT state, completed_at, terminal_error_code, payload_pointer FROM ai_request WHERE request_reference = …',
     failures: [
-      { status: 401, error: 'unauthenticated', trigger: 'Invalid AAT' },
+      { status: 401, error: 'unauthenticated', trigger: 'Invalid issuer token' },
       { status: 404, error: 'request_not_found', trigger: 'Unknown reference or wrong installation' },
     ],
     fields: [

@@ -1,8 +1,15 @@
 import { useEffect, useState } from 'react'
 import type { JourneyOperationDefinition } from '@/catalog/journey-types'
 import { RequestInspector } from '@/components/RequestInspector'
-import { clinicMaterialFingerprint } from '@/hooks/useClinicEnrollmentMaterial'
 import { useSession } from '@/context/SessionContext'
+import { clinicMaterialFingerprint } from '@/hooks/useClinicEnrollmentMaterial'
+import {
+  loadIssuerKeyFromDevConfig,
+} from '@/components/JourneyCommandPanel'
+import {
+  type IssuerKeyMaterial,
+  type IssuerTokenClaims,
+} from '@/lib/issuer-token'
 import {
   buildJourneyDefaultParams,
   journeyUsesClinicMaterial,
@@ -35,13 +42,8 @@ export function JourneyOperationCard({
   cardClass,
   buttonClass,
 }: JourneyOperationCardProps) {
-  const {
-    operatorBearer,
-    aat,
-    supabaseAdminUsername,
-    supabaseAdminPassword,
-    storeClinicAat,
-  } = useSession()
+  const { supabaseAdminUsername, supabaseAdminPassword } = useSession()
+  const [issuerKey, setIssuerKey] = useState<IssuerKeyMaterial | null>(null)
   const needsClinicMaterial = journeyUsesClinicMaterial(operation.fields)
   const materialFingerprint = clinicMaterialFingerprint(clinicMaterial)
   const [params, setParams] = useState<Record<string, string>>(() =>
@@ -53,15 +55,28 @@ export function JourneyOperationCard({
   const [sendError, setSendError] = useState<string | null>(null)
 
   useEffect(() => {
+    void loadIssuerKeyFromDevConfig()
+      .then((key) => {
+        setIssuerKey(key)
+      })
+      .catch(() => {
+        setIssuerKey(null)
+      })
+  }, [])
+
+  useEffect(() => {
     setParams(buildJourneyDefaultParams(operation.fields, clinicMaterial))
   }, [operation.id, clinicMaterial, materialFingerprint])
 
+  const issuerClaims: IssuerTokenClaims | undefined =
+    clinicMaterial?.org_id && clinicMaterial.branch_id
+      ? { org: clinicMaterial.org_id, branch: clinicMaterial.branch_id }
+      : undefined
+
   const authReady = (() => {
     switch (operation.auth) {
-      case 'operator':
-        return Boolean(operatorBearer)
       case 'aat':
-        return Boolean(aat)
+        return Boolean(issuerKey)
       case 'supabase-admin':
         return Boolean(supabaseAdminUsername && supabaseAdminPassword)
       default:
@@ -83,7 +98,7 @@ export function JourneyOperationCard({
       return `Could not load clinic defaults — ${clinicMaterialError}`
     }
     if (!clinicMaterial) {
-      return 'No clinic key found in Supabase — run Stage 2 enroll_installation_keypair first.'
+      return 'No clinic tenant defaults in Supabase — sync clinic context first.'
     }
     return `Defaults synced from clinic Postgres (installation_id ${clinicMaterial.installation_id}).`
   })()
@@ -102,22 +117,14 @@ export function JourneyOperationCard({
     setBusy(true)
     try {
       const result = await sendJourneyRequest(operation, params, {
-        operatorBearer,
-        aat,
+        operatorBearer: '',
+        issuerKey: operation.auth === 'aat' ? issuerKey ?? undefined : undefined,
+        issuerClaims,
         supabaseAdmin:
           supabaseAdminUsername && supabaseAdminPassword
             ? { username: supabaseAdminUsername, password: supabaseAdminPassword }
             : undefined,
       })
-      if (
-        operation.rpcName === 'issue_ai_token' &&
-        result.response.status === 200
-      ) {
-        const tokenRow = result.response.body.find((row) => row.name === 'token')
-        if (tokenRow?.value) {
-          storeClinicAat(tokenRow.value)
-        }
-      }
       setExchange(result)
       setOpen(true)
     } catch (error) {
@@ -195,14 +202,12 @@ export function JourneyOperationCard({
 
       <div className="operation-card__controls operation-card__controls--send">
         <p className="operation-card__auth-hint">
-          {operation.auth === 'operator'
-            ? 'Operator bearer from Secrets'
-            : operation.auth === 'aat'
-              ? 'Clinic AAT from Secrets'
-              : operation.auth === 'supabase-admin'
-                ? 'Supabase admin session from Secrets'
-                : 'No auth required'}
-          {authReady ? '' : ' — load credentials first'}
+          {operation.auth === 'aat'
+            ? 'Issuer token (minted per send)'
+            : operation.auth === 'supabase-admin'
+              ? 'Supabase admin session'
+              : 'No auth required'}
+          {authReady ? '' : ' — load test issuer key first'}
           {operation.bodyKind === 'empty' ? ' · body is {}' : ''}
           {operation.bodyKind === 'sse' ? ' · SSE stream response' : ''}
           {needsClinicMaterial && !clinicDefaultsReady ? ' · waiting for clinic defaults' : ''}

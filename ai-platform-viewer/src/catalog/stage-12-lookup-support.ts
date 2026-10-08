@@ -5,9 +5,9 @@ export const STAGE12_META: JourneyStageMeta = {
   navLabel: 'Stage 12',
   navNote: 'Lookup and support',
   eyebrow: 'Stage 12 · Lookup and support',
-  title: 'Poll results and operator diagnostics',
+  title: 'Poll results and clinic acceptance',
   lede:
-    'After SSE completed (or a missed stream), clinics poll GET /v1/requests/{request_reference} with the same AAT that admitted the job — scoped to the token installation_id. Operators use POST /control/support/lookup?reference= for a cross-installation diagnostic dump (request trace, attempts, R2 envelope). Staff record acceptance in clinic Postgres via record_ai_acceptance — not on the gateway.',
+    'After SSE completed (or a missed stream), clinics poll GET /v1/requests/{request_reference} with the same issuer token that admitted the job — scoped to the token installation_id. Staff record acceptance in clinic Postgres via record_ai_acceptance — not on the gateway.',
   accentClass: 'stage-accent--lookup',
   cardClass: 'operation-card--lookup',
   buttonClass: 'lookup-button',
@@ -23,11 +23,11 @@ export const STAGE12_OPERATIONS: JourneyOperationDefinition[] = [
     auth: 'aat',
     bodyKind: 'none',
     summary:
-      'authenticateGetRequest verifies the AAT (same enrolled-key verifier as POST /v1/requests). Returns journal state and, when Completed with payload_pointer, the CanonicalResult from R2. Wrong installation returns empty 404 — no cross-tenant leak.',
+      'authenticateGetRequest verifies the issuer token (same enrolled-key verifier as POST /v1/requests). Returns journal state and, when Completed with payload_pointer, the CanonicalResult from R2. Wrong installation returns empty 404 — no cross-tenant leak.',
     successNote:
       '200 — { state, result? }. Completed + pointer → full CanonicalResult (finalContent, usage, providerModel, finishReason, providerRequestId, timing). Completed without envelope → { state: "Completed" } only. In-flight → { state, pending: true }.',
     failures: [
-      { status: 401, error: 'unauthenticated', trigger: 'Missing or invalid AAT' },
+      { status: 401, error: 'unauthenticated', trigger: 'Missing or invalid issuer token' },
       { status: 403, error: 'installation_suspended', trigger: 'Installation suspended' },
       { status: 404, error: '(empty body)', trigger: 'Unknown reference, wrong installation, or non-pollable state' },
     ],
@@ -36,35 +36,6 @@ export const STAGE12_OPERATIONS: JourneyOperationDefinition[] = [
         name: 'request_reference',
         scope: 'path',
         hint: 'Crockford XXXX-XXXX ticket from SSE accepted event',
-        required: true,
-        wide: true,
-      },
-    ],
-  },
-  {
-    id: 'support-lookup',
-    section: 'Support lookup',
-    title: 'Operator diagnostic dump',
-    method: 'POST',
-    path: '/control/support/lookup',
-    auth: 'operator',
-    bodyKind: 'none',
-    summary:
-      'requireOperator + supportLookup. Cross-installation read by request_reference — returns D1 request trace, provider attempts[], and R2 envelope when still within retention. Does not write control_audit.',
-    successNote:
-      '200 — { request, attempts[], envelope }. request has requestId, requestReference, installationId, actorId, branchId, capabilityId, capabilityVersion, promptArtifactHash, state, timestamps, terminalErrorCode, traceId, payloadPointer.',
-    failures: [
-      { status: 401, error: 'unauthorized', trigger: 'Missing or wrong OPERATOR_BEARER_TOKEN' },
-      { status: 400, error: 'missing_reference', trigger: 'Query param absent or blank' },
-      { status: 400, error: 'invalid_reference', trigger: 'Not valid XXXX-XXXX Crockford' },
-      { status: 404, error: 'not_found', trigger: 'No journal row for reference' },
-      { status: 500, error: 'missing_r2_binding', trigger: 'Worker misconfiguration' },
-    ],
-    fields: [
-      {
-        name: 'reference',
-        scope: 'query',
-        hint: 'Same XXXX-XXXX ticket — query string, not JSON body',
         required: true,
         wide: true,
       },

@@ -90,7 +90,7 @@ function rpcFieldMeaning(name: string): string | undefined {
     case 'success':
       return 'PostgREST rpc_result success flag'
     case 'kid':
-      return 'Key ID — copied to AAT header kid and platform installation_key.key_id'
+      return 'Key ID — copied to issuer token header kid'
     case 'installation_id':
       return 'Platform installation id; becomes AAT iss and enroll path parameter'
     case 'public_jwk.x':

@@ -34,14 +34,14 @@ export const STAGE8_META: JourneyStageMeta = {
   eyebrow: 'Stage 8 · Request ingress',
   title: 'Checking in at the gate',
   lede:
-    'POST /v1/requests submits an AI job. The adapter validates body size and required headers before the guard runs. Visit summary is single-shot — conversational fields are optional probes. context.org and context.branch must match the AAT org and branch claims. Each POST mints a fresh AAT first (JTI is one-time per admit).',
+    'POST /v1/requests submits an AI job. The adapter validates body size and required headers before the guard runs. Visit summary is single-shot — conversational fields are optional probes. context.org and context.branch must match the issuer token org and branch claims. Each POST mints a fresh issuer token (JTI is one-time per admit).',
   accentClass: 'stage-accent--ingress',
   cardClass: 'operation-card--ingress',
   buttonClass: 'ingress-button',
 }
 
 const INGRESS_FAILURES: JourneyOperationDefinition['failures'] = [
-  { status: 401, error: 'unauthenticated', trigger: 'Missing/invalid AAT or installation_suspended' },
+  { status: 401, error: 'unauthenticated', trigger: 'Missing/invalid issuer token or installation_suspended' },
   { status: 403, error: 'forbidden_capability', trigger: 'Enrolled but entitlement pending (ai_disabled)' },
   { status: 413, error: 'request_too_large', trigger: 'Content-Length or body > 1 MiB' },
   { status: 422, error: 'invalid_request', trigger: 'Missing/empty x-idempotency-key or x-capability-version' },
@@ -85,7 +85,7 @@ export const STAGE8_OPERATIONS: JourneyOperationDefinition[] = [
     auth: 'aat',
     bodyKind: 'sse',
     summary:
-      'Minimal body with all adapter-required headers. x-idempotency-key and x-capability-version must be non-empty after trim. x-trace-id is optional. Authorization is implicit from the clinic AAT in Secrets.',
+      'Minimal body with all adapter-required headers. x-idempotency-key and x-capability-version must be non-empty after trim. x-trace-id is optional. Authorization is the issuer token minted for each send.',
     successNote:
       'Passes ingress when headers are valid. May return 401 unauthenticated, 403 forbidden_capability (pending entitle), or SSE accepted when entitled.',
     failures: INGRESS_FAILURES,
@@ -127,7 +127,7 @@ export const STAGE8_OPERATIONS: JourneyOperationDefinition[] = [
       {
         name: 'context',
         scope: 'body',
-        hint: 'JSON object — tenant keys org/branch must match AAT',
+        hint: 'JSON object — tenant keys org/branch must match issuer token',
         defaultValue: '{}',
         json: true,
         wide: true,
@@ -255,7 +255,7 @@ export const STAGE8_OPERATIONS: JourneyOperationDefinition[] = [
       {
         name: 'context',
         scope: 'body',
-        hint: 'org and branch must match AAT — synced from clinic Postgres',
+        hint: 'org and branch must match issuer token — synced from clinic Postgres',
         defaultValue: buildVisitSummaryContextJson('<org>', '<branch>'),
         json: true,
         wide: true,

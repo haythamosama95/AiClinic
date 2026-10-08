@@ -7,7 +7,7 @@ export const STAGE7_META: JourneyStageMeta = {
   eyebrow: 'Stage 7 · Discovery',
   title: 'What AI features can I use?',
   lede:
-    'GET /v1/capabilities lists capability manifests the installation may invoke — filtered to entitled, granted, non-retired capabilities. Kill switches are not applied on discovery (they apply on invoke). Auth is the clinic AAT only; no extra required headers.',
+    'GET /v1/capabilities lists capability manifests the installation may invoke — filtered to entitled, granted, non-retired capabilities. Kill switches are not applied on discovery (they apply on invoke). Auth is the issuer token only; send Aip-Contract-Version: 1 with Authorization.',
   accentClass: 'stage-accent--discovery',
   cardClass: 'operation-card--discovery',
   buttonClass: 'discovery-button',
@@ -30,7 +30,7 @@ export const STAGE7_OPERATIONS: JourneyOperationDefinition[] = [
       {
         status: 401,
         error: 'unauthenticated',
-        trigger: 'Missing/invalid AAT, unknown ver on token_contract, or retired ver claim',
+        trigger: 'Missing/invalid issuer token or retired contract version',
       },
       {
         status: 403,
@@ -56,7 +56,7 @@ export const STAGE7_OPERATIONS: JourneyOperationDefinition[] = [
       {
         status: 401,
         error: 'unauthenticated',
-        trigger: 'Missing/invalid AAT',
+        trigger: 'Missing/invalid issuer token',
       },
     ],
     fields: [
