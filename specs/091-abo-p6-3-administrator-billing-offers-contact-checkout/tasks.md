@@ -121,7 +121,7 @@ That command is the unit harness. `npm test` in `e2e/fullstack` is not the harne
 
 **Independent Test**: E2E-P6.3-01 in harness H-FL on H-FS, payment via the H-PAY fixture.
 
-- [ ] T013 [US1] Push the billing route from the host renew control in `frontend/lib/features/ai/host/ai_feature_host_page.dart` — `ai_notice_renew`, FR-001, FR-008, E2E-P6.3-01, E2E-P6.3-06. Depends on T012. The administrator renew control (`ai_notice_renew`) pushes the billing route. The staff notice stays the text with no purchase control.
+- [X] T013 [US1] Push the billing route from the host renew control in `frontend/lib/features/ai/host/ai_feature_host_page.dart` — `ai_notice_renew`, FR-001, FR-008, E2E-P6.3-01, E2E-P6.3-06. Depends on T012. The administrator renew control (`ai_notice_renew`) pushes the billing route. The staff notice stays the text with no purchase control.
 
 **Checkpoint**: The administrator renew control opens the billing route. E2E-P6.3-01 still fails.
 
@@ -129,7 +129,7 @@ That command is the unit harness. `npm test` in `e2e/fullstack` is not the harne
 
 **Independent Test**: E2E-P6.3-01 in harness H-FL on H-FS, payment via the H-PAY fixture.
 
-- [ ] T014 [US1] Push the billing route from the degraded renew or buy control in `frontend/lib/features/ai/degraded/ai_degraded_view.dart` — `kAiDegradedRenewOrBuyKey`, FR-001, FR-008, E2E-P6.3-01, E2E-P6.3-06. Depends on T012. The administrator renew or buy control (`kAiDegradedRenewOrBuyKey`) pushes the billing route. Staff still do not see that control.
+- [X] T014 [US1] Push the billing route from the degraded renew or buy control in `frontend/lib/features/ai/degraded/ai_degraded_view.dart` — `kAiDegradedRenewOrBuyKey`, FR-001, FR-008, E2E-P6.3-01, E2E-P6.3-06. Depends on T012. The administrator renew or buy control (`kAiDegradedRenewOrBuyKey`) pushes the billing route. Staff still do not see that control.
 
 **Checkpoint**: The administrator renew or buy control opens the billing route. E2E-P6.3-01 still fails.
 

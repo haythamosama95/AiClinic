@@ -2,9 +2,11 @@ import 'dart:async';
 import 'dart:convert';
 
 import 'package:flutter/material.dart';
+import 'package:go_router/go_router.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
 
+import 'package:ai_clinic/app/app_routes.dart';
 import 'package:ai_clinic/core/ai/ai_client_sdk.dart';
 import 'package:ai_clinic/core/ai/context_provider_port.dart';
 import 'package:ai_clinic/core/ai/context_required_self_heal.dart';
@@ -538,7 +540,7 @@ class _AiStatusNoticeBanner extends StatelessWidget {
             ),
             AppButton(
               key: const Key('ai_notice_renew'),
-              onPressed: () {},
+              onPressed: () => context.push(AppRoutes.aiAdministratorBilling),
               child: const Text('Renew'),
             ),
           ],

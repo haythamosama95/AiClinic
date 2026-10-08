@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
+import 'package:go_router/go_router.dart';
 
+import 'package:ai_clinic/app/app_routes.dart';
 import 'package:ai_clinic/core/ui/components/app_button.dart';
 import 'package:ai_clinic/core/ui/theme/app_semantic_colors.dart';
 import 'package:ai_clinic/core/ui/theme/app_typography.dart';
@@ -91,7 +93,7 @@ class AiDegradedView extends StatelessWidget {
           const SizedBox(height: 12),
           AppButton(
             key: kAiDegradedRenewOrBuyKey,
-            onPressed: () {},
+            onPressed: () => context.push(AppRoutes.aiAdministratorBilling),
             child: const Text('Renew or buy'),
           ),
         ],
