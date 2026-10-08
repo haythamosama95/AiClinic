@@ -87,15 +87,15 @@ Each `vendor-contracts-*.ts` file imports `packages/vendor-contracts/src/index.t
 
 **Independent Test**: E2E-P7.3-01, E2E-P7.3-05, E2E-P7.3-06, and E2E-P7.3-07.
 
-- [ ] T012 [US1] Create `e2e/fullstack/test/variant/vendor-contracts-n-plus-1.ts` — N+1 module, FR-001, E2E-P7.3-01. Depends on T011. Every channel current is published + 1, so the accepted pair is `1` and `2`. Do not edit `packages/vendor-contracts/`. Do not boot wrangler.
+- [X] T012 [US1] Create `e2e/fullstack/test/variant/vendor-contracts-n-plus-1.ts` — N+1 module, FR-001, E2E-P7.3-01. Depends on T011. Every channel current is published + 1, so the accepted pair is `1` and `2`. Do not edit `packages/vendor-contracts/`. Do not boot wrangler.
 
-- [ ] T013 [US1] Create `e2e/fullstack/test/variant/vendor-contracts-do-receiver.ts` — DO receiver module, FR-002, E2E-P7.3-05. Depends on T012. Only `platformDo` is published + 1. Every other channel stays at the published constant. Do not boot wrangler.
+- [X] T013 [US1] Create `e2e/fullstack/test/variant/vendor-contracts-do-receiver.ts` — DO receiver module, FR-002, E2E-P7.3-05. Depends on T012. Only `platformDo` is published + 1. Every other channel stays at the published constant. Do not boot wrangler.
 
-- [ ] T014 [US1] Create `e2e/fullstack/test/variant/vendor-contracts-desktop-window.ts` — desktop-window module, FR-003, E2E-P7.3-06. Depends on T013. Only `aboClinic` and `platformClinic` are published + 2 (`3`), so the accepted pair is `2` and `3` and a desktop sending `1` is below the minimum. Do not boot wrangler.
+- [X] T014 [US1] Create `e2e/fullstack/test/variant/vendor-contracts-desktop-window.ts` — desktop-window module, FR-003, E2E-P7.3-06. Depends on T013. Only `aboClinic` and `platformClinic` are published + 2 (`3`), so the accepted pair is `2` and `3` and a desktop sending `1` is below the minimum. Do not boot wrangler.
 
-- [ ] T015 [US1] Create `e2e/fullstack/test/variant/abo-n-plus-1.toml` — ABO N+1 wrangler config, FR-001, FR-005, E2E-P7.3-01, E2E-P7.3-02. Depends on T014. ABO development bindings plus the alias to `vendor-contracts-n-plus-1.ts`. Do not edit `abo/wrangler.toml`. Do not boot wrangler.
+- [X] T015 [US1] Create `e2e/fullstack/test/variant/abo-n-plus-1.toml` — ABO N+1 wrangler config, FR-001, FR-005, E2E-P7.3-01, E2E-P7.3-02. Depends on T014. ABO development bindings plus the alias to `vendor-contracts-n-plus-1.ts`. Do not edit `abo/wrangler.toml`. Do not boot wrangler.
 
-- [ ] T016 [US1] Create `e2e/fullstack/test/variant/platform-n-plus-1.toml` — platform N+1 wrangler config, FR-001, FR-005, E2E-P7.3-01, E2E-P7.3-02. Depends on T015. Platform development bindings plus the alias to `vendor-contracts-n-plus-1.ts`. Do not edit `ai-platform/wrangler.toml`. Do not boot wrangler.
+- [X] T016 [US1] Create `e2e/fullstack/test/variant/platform-n-plus-1.toml` — platform N+1 wrangler config, FR-001, FR-005, E2E-P7.3-01, E2E-P7.3-02. Depends on T015. Platform development bindings plus the alias to `vendor-contracts-n-plus-1.ts`. Do not edit `ai-platform/wrangler.toml`. Do not boot wrangler.
 
 **Checkpoint**: E2E-P7.3-01 and E2E-P7.3-02 have the N+1 module and both N+1 configs on disk. E2E-P7.3-05 has the DO receiver module. E2E-P7.3-06 has the desktop-window module. Nothing was started.
 
@@ -133,9 +133,9 @@ Each `vendor-contracts-*.ts` file imports `packages/vendor-contracts/src/index.t
 
 **Independent Test**: E2E-P7.3-02, E2E-P7.3-03, and E2E-P7.3-04 in their harnesses. Earlier suites stay green, and E2E-P7.3-01, E2E-P7.3-05, E2E-P7.3-06, and E2E-P7.3-07 still pass.
 
-- [ ] T026 [US2] Create `e2e/fullstack/test/variant/vendor-contracts-feed-window.ts` — feed-window module, FR-006, E2E-P7.3-03. Depends on T011. Only `platformFeed` is published + 2 (`3`), so `negotiate(3, 1)` refuses because the accepted pair is `2` and `3`. Every other channel stays at the published constant. Do not update `ai.contract_versions`. Do not boot wrangler.
+- [X] T026 [US2] Create `e2e/fullstack/test/variant/vendor-contracts-feed-window.ts` — feed-window module, FR-006, E2E-P7.3-03. Depends on T011. Only `platformFeed` is published + 2 (`3`), so `negotiate(3, 1)` refuses because the accepted pair is `2` and `3`. Every other channel stays at the published constant. Do not update `ai.contract_versions`. Do not boot wrangler.
 
-- [ ] T027 [US2] Create `e2e/fullstack/test/variant/platform-feed-window.toml` — feed-window wrangler config, FR-006, E2E-P7.3-03. Depends on T026. Platform development bindings plus the alias to `vendor-contracts-feed-window.ts`. Do not edit `ai-platform/wrangler.toml`. Do not boot wrangler.
+- [X] T027 [US2] Create `e2e/fullstack/test/variant/platform-feed-window.toml` — feed-window wrangler config, FR-006, E2E-P7.3-03. Depends on T026. Platform development bindings plus the alias to `vendor-contracts-feed-window.ts`. Do not edit `ai-platform/wrangler.toml`. Do not boot wrangler.
 
 **Checkpoint**: E2E-P7.3-03 has the feed-window module and config on disk. The platform was not started.
 
