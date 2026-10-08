@@ -1,0 +1,21 @@
+{
+  "control_route": false,
+  "operator_bearer_token": false,
+  "set_ai_availability": false,
+  "manual_entitle_path": false,
+  "workers_dev": true,
+  "preview_urls": false,
+  "channels_version": 1,
+  "backend_contract_versions_match": true,
+  "al_23_clear": true,
+  "key_self_check_passes": true,
+  "active_operator_credentials": 2,
+  "issuer_keys_registered": true,
+  "service_keys_registered": true,
+  "issuer_keys_pinned": true,
+  "platform_signing_key_set": true,
+  "platform_d1_terms": 0,
+  "platform_d1_grants": 0,
+  "audit_watcher_live": true,
+  "heartbeat_monitor_live": true
+}
