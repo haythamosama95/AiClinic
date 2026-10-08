@@ -112,7 +112,7 @@ bash .github/scripts/control-residue-guard.sh ai-platform-viewer ai-platform/scr
 
 **Independent Test**: E2E-P7.1-01 and E2E-P7.1-03. Viewer catalog smoke tests against the local platform (`ai-platform-viewer/`, rule V2).
 
-- [ ] T009 [US1] Delete the control pages, control catalogs, control smokes, reset SQL, and control-only libraries — control routes gone, FR-001, E2E-P7.1-03. Depends on T007 and T008. Delete these files:
+- [X] T009 [US1] Delete the control pages, control catalogs, control smokes, reset SQL, and control-only libraries — control routes gone, FR-001, E2E-P7.1-03. Depends on T007 and T008. Delete these files:
 
   - `ai-platform-viewer/test/commercial-pages.smoke.test.ts`
   - `ai-platform-viewer/test/stage-x.smoke.test.ts`
@@ -163,7 +163,7 @@ bash .github/scripts/control-residue-guard.sh ai-platform-viewer ai-platform/scr
 
 **Independent Test**: E2E-P7.1-01 and E2E-P7.1-03. Viewer catalog smoke tests against the local platform (`ai-platform-viewer/`, rule V2).
 
-- [ ] T010 [US1] Stop the dev plugin and the session from using a bearer — test issuer key on `/api/dev/config`, FR-001, FR-002, E2E-P7.1-01, E2E-P7.1-03. Depends on T009. In `ai-platform-viewer/server/dev-plugin.ts`, `/api/dev/config` returns the test issuer key (kid and private key) from `ai-platform/.dev.vars` and does not return a bearer. Remove the reset routes that run the SQL files deleted in T009. In `ai-platform-viewer/src/lib/dev-api.ts`, stop calling the installation reset route. In `ai-platform-viewer/src/context/SessionContext.tsx`, mint the issuer token for clinic sends. Do not mint through the installation-keypair RPC and do not require a bearer. Those files contain none of the five needles. `ai-platform/.dev.vars` is outside the scanned trees and is not edited.
+- [X] T010 [US1] Stop the dev plugin and the session from using a bearer — test issuer key on `/api/dev/config`, FR-001, FR-002, E2E-P7.1-01, E2E-P7.1-03. Depends on T009. In `ai-platform-viewer/server/dev-plugin.ts`, `/api/dev/config` returns the test issuer key (kid and private key) from `ai-platform/.dev.vars` and does not return a bearer. Remove the reset routes that run the SQL files deleted in T009. In `ai-platform-viewer/src/lib/dev-api.ts`, stop calling the installation reset route. In `ai-platform-viewer/src/context/SessionContext.tsx`, mint the issuer token for clinic sends. Do not mint through the installation-keypair RPC and do not require a bearer. Those files contain none of the five needles. `ai-platform/.dev.vars` is outside the scanned trees and is not edited.
 
 **Checkpoint**: `/api/dev/config` returns the test issuer key and no bearer. The session mints the issuer token. E2E-P7.1-03 is ready to re-run after the dependent-path docs are clean.
 
@@ -171,7 +171,7 @@ bash .github/scripts/control-residue-guard.sh ai-platform-viewer ai-platform/scr
 
 **Independent Test**: E2E-P7.1-02 in the CI residue guard (rule V7). Every earlier suite stays green (rule S2).
 
-- [ ] T011 [US2] Delete `ai-platform/scripts/bootstrap-routing-policy.sh` — script removed, FR-003, E2E-P7.1-02. Depends on T010. Delete that file. The console's class-H routing-policy action replaces it and is not built here.
+- [X] T011 [US2] Delete `ai-platform/scripts/bootstrap-routing-policy.sh` — script removed, FR-003, E2E-P7.1-02. Depends on T010. Delete that file. The console's class-H routing-policy action replaces it and is not built here.
 
 **Checkpoint**: `bootstrap-routing-policy.sh` is deleted. The four-tree guard still fails until the superseded docs are rewritten.
 
@@ -179,7 +179,7 @@ bash .github/scripts/control-residue-guard.sh ai-platform-viewer ai-platform/scr
 
 **Independent Test**: E2E-P7.1-02 in the CI residue guard (rule V7). Every earlier suite stays green (rule S2).
 
-- [ ] T012 [US2] Rewrite the listed `docs/architecture/ai-platform/` pages — superseded note, FR-004, E2E-P7.1-02. Depends on T011. Replace each listed page with a superseded note in entrypoint terms, with links to `docs/architecture/ai-billing-orchestration/04-abo-contracts.md` and `docs/architecture/ai-billing-orchestration/05-abo-operations-and-traceability.md`. None of the five needles remain in these pages. Leave `docs/architecture/ai-platform/02-ai-platform-overview.md` unchanged. Pages in this tree that are not listed and do not contain the five needles stay as they are. Rewrite:
+- [X] T012 [US2] Rewrite the listed `docs/architecture/ai-platform/` pages — superseded note, FR-004, E2E-P7.1-02. Depends on T011. Replace each listed page with a superseded note in entrypoint terms, with links to `docs/architecture/ai-billing-orchestration/04-abo-contracts.md` and `docs/architecture/ai-billing-orchestration/05-abo-operations-and-traceability.md`. None of the five needles remain in these pages. Leave `docs/architecture/ai-platform/02-ai-platform-overview.md` unchanged. Pages in this tree that are not listed and do not contain the five needles stay as they are. Rewrite:
 
   - `docs/architecture/ai-platform/01-ai-platform.md`
   - `docs/architecture/ai-platform/03-ai-platform-delivery-plan.md`
@@ -225,7 +225,7 @@ bash .github/scripts/control-residue-guard.sh ai-platform-viewer ai-platform/scr
 
 **Independent Test**: E2E-P7.1-02 in the CI residue guard (rule V7). Every earlier suite stays green (rule S2).
 
-- [ ] T013 [US2] Rewrite the listed `docs/testing/catalog/` pages — superseded note, including stage pages that describe `/control/*` probes, FR-004, E2E-P7.1-02. Depends on T012. Use the same superseded note as T012, with the same two v2 links. None of the five needles remain in these pages. Pages in this tree that are not listed and do not contain the five needles stay as they are. Rewrite:
+- [X] T013 [US2] Rewrite the listed `docs/testing/catalog/` pages — superseded note, including stage pages that describe `/control/*` probes, FR-004, E2E-P7.1-02. Depends on T012. Use the same superseded note as T012, with the same two v2 links. None of the five needles remain in these pages. Pages in this tree that are not listed and do not contain the five needles stay as they are. Rewrite:
 
   - `docs/testing/catalog/FIX-WORKLIST.md`
   - `docs/testing/catalog/README.md`
@@ -265,7 +265,7 @@ bash .github/scripts/control-residue-guard.sh ai-platform-viewer ai-platform/scr
 
 **Independent Test**: E2E-P7.1-02 in the CI residue guard (rule V7). Every earlier suite stays green (rule S2).
 
-- [ ] T014 [US2] Re-run the residue guard and `E2E-P7.1-03` until they match the harness, and confirm the clinic shell — green harness, FR-001, FR-002, FR-003, FR-004, FR-005, E2E-P7.1-01, E2E-P7.1-02, E2E-P7.1-03. Depends on T013. From the repo root, run `bash .github/scripts/control-residue-guard.sh ai-platform-viewer ai-platform/scripts docs/architecture/ai-platform docs/testing/catalog` until it exits 0. Run the same script on a temporary fixture that contains `/control/` and confirm that run exits non-zero. Do not commit the fixture. From `ai-platform-viewer/`, run `npx vitest run test/viewer-builds.test.ts -t "E2E-P7.1-03"` until that test passes. Confirm `ai-platform-viewer/src/components/AppShell.tsx` still composes only stages 7–12, and confirm `ai-platform-viewer/test/clinic-pages.smoke.test.ts` does not read a bearer. Do not run `ai-platform-viewer/test/clinic-pages.smoke.test.ts`. Do not boot wrangler. Do not run `npm test` in `e2e/fullstack`. Fixes stay in the files this unit's **Files** table lists.
+- [X] T014 [US2] Re-run the residue guard and `E2E-P7.1-03` until they match the harness, and confirm the clinic shell — green harness, FR-001, FR-002, FR-003, FR-004, FR-005, E2E-P7.1-01, E2E-P7.1-02, E2E-P7.1-03. Depends on T013. From the repo root, run `bash .github/scripts/control-residue-guard.sh ai-platform-viewer ai-platform/scripts docs/architecture/ai-platform docs/testing/catalog` until it exits 0. Run the same script on a temporary fixture that contains `/control/` and confirm that run exits non-zero. Do not commit the fixture. From `ai-platform-viewer/`, run `npx vitest run test/viewer-builds.test.ts -t "E2E-P7.1-03"` until that test passes. Confirm `ai-platform-viewer/src/components/AppShell.tsx` still composes only stages 7–12, and confirm `ai-platform-viewer/test/clinic-pages.smoke.test.ts` does not read a bearer. Do not run `ai-platform-viewer/test/clinic-pages.smoke.test.ts`. Do not boot wrangler. Do not run `npm test` in `e2e/fullstack`. Fixes stay in the files this unit's **Files** table lists.
 
 **Checkpoint**: E2E-P7.1-02 passes on the four trees and fails the fixture. E2E-P7.1-03 passes. E2E-P7.1-01 is not executed. `AppShell` still composes only stages 7–12.
 

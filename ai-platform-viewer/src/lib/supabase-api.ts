@@ -1,6 +1,4 @@
 import type { JourneyParamField } from '@/catalog/journey-types'
-import type { Stage2OperationId } from '@/catalog/stage-2-clinic-keypair'
-import { STAGE2_OPERATIONS } from '@/catalog/stage-2-clinic-keypair'
 import { buildRawRequest, buildRawResponse } from '@/lib/raw-http'
 import { prettyJsonValue } from '@/lib/json-format'
 import {
@@ -248,33 +246,3 @@ export async function sendSupabaseRpcRequest(
   }
 }
 
-export async function sendStage2SupabaseRequest(
-  operationId: Stage2OperationId,
-  adminCredentials: SupabaseAdminCredentials,
-  params?: Record<string, string>,
-): Promise<HttpExchange> {
-  const operation = STAGE2_OPERATIONS.find((item) => item.id === operationId)
-  if (!operation) {
-    throw new Error(`Unknown Stage 2 operation: ${operationId}`)
-  }
-
-  const fields: JourneyParamField[] =
-    operation.paramName !== undefined
-      ? [
-          {
-            name: operation.paramName,
-            scope: 'body',
-            hint: operation.paramHint,
-          },
-        ]
-      : []
-
-  return sendSupabaseRpcRequest(
-    {
-      rpcName: operation.rpcName,
-      fields,
-      params,
-    },
-    adminCredentials,
-  )
-}

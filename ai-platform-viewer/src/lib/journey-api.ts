@@ -13,9 +13,8 @@ import {
   issuerContractVersionHeader,
   mintIssuerToken,
 } from '@/lib/issuer-token'
-import { sendStage2SupabaseRequest, sendSupabaseRpcRequest } from '@/lib/supabase-api'
+import { sendSupabaseRpcRequest } from '@/lib/supabase-api'
 import type { ClinicEnrollmentMaterial, FieldRow, HttpExchange } from '@/types'
-import type { Stage2OperationId } from '@/catalog/stage-2-clinic-keypair'
 
 const GATEWAY_PREFIX = '/gateway'
 const GATEWAY_ORIGIN = 'http://127.0.0.1:8787'
@@ -376,24 +375,6 @@ export async function sendJourneyRequest(
     }
     if (!operation.rpcName) {
       throw new Error('RPC operation is missing rpcName.')
-    }
-
-    if (operation.id.startsWith('stage2-')) {
-      const rpcParams: Record<string, string> = {}
-      for (const field of operation.fields) {
-        if (field.scope !== 'body') {
-          continue
-        }
-        const value = params[field.name]?.trim()
-        if (value) {
-          rpcParams[field.name] = value
-        }
-      }
-      return sendStage2SupabaseRequest(
-        operation.id.replace(/^stage2-/, '') as Stage2OperationId,
-        credentials.supabaseAdmin,
-        Object.keys(rpcParams).length > 0 ? rpcParams : undefined,
-      )
     }
 
     return sendSupabaseRpcRequest(

@@ -4,12 +4,17 @@ import {
   useContext,
   useEffect,
   useMemo,
-  useRef,
   useState,
   type ReactNode,
 } from 'react'
 import type { ToastItem } from '@/components/ToastStack'
-import { loadDevConfig, resetPlatform } from '@/lib/dev-api'
+import { loadDevConfig } from '@/lib/dev-api'
+import {
+  importIssuerPrivateKey,
+  mintIssuerToken,
+  type IssuerKeyMaterial,
+  type IssuerTokenClaims,
+} from '@/lib/issuer-token'
 import { resolveSupabaseAdminFromDevConfig } from '@/lib/supabase-admin'
 import {
   canDecreaseTextScale,
@@ -17,18 +22,15 @@ import {
   rootFontSizePx,
   TEXT_SCALE_DEFAULT_LEVEL,
 } from '@/lib/text-scale'
-import { mintAatFromSupabase } from '@/lib/mint-aat'
-import {
-  pathForSection,
-  sectionFromPath,
-} from '@/lib/routes'
-import type { DevConfig, NavSection } from '@/types'
+import { pathForSection, sectionFromPath } from '@/lib/routes'
+import type { NavSection } from '@/types'
 
 interface SessionContextValue {
   activeSection: NavSection
   setActiveSection: (section: NavSection) => void
-  operatorBearer: string
-  operatorSource: string
+  issuerKey: IssuerKeyMaterial | null
+  issuerKeySource: string
+  mintIssuerTokenForRequest: (claims?: IssuerTokenClaims) => Promise<string>
   supabaseAdminUsername: string
   supabaseAdminPassword: string
   supabaseAdminSource: string
@@ -36,21 +38,10 @@ interface SessionContextValue {
   supabaseAdminPasswordRevealed: boolean
   setSupabaseAdminUsernameRevealed: (revealed: boolean) => void
   setSupabaseAdminPasswordRevealed: (revealed: boolean) => void
-  aat: string
-  operatorRevealed: boolean
-  aatRevealed: boolean
-  setOperatorRevealed: (revealed: boolean) => void
-  setAatRevealed: (revealed: boolean) => void
   toasts: ToastItem[]
   dismissToast: (id: string) => void
   notifySuccess: (message: string) => void
   notifyError: (message: string) => void
-  busyAction: 'reset' | 'mint' | null
-  mintAat: () => Promise<void>
-  /** Fresh clinic AAT for a gateway invoke (no success toast). */
-  mintAatForRequest: () => Promise<string>
-  storeClinicAat: (token: string) => void
-  resetAll: () => Promise<void>
   textScaleLevel: number
   increaseTextSize: () => void
   decreaseTextSize: () => void
@@ -68,8 +59,8 @@ export function SessionProvider({ children }: { children: ReactNode }) {
   const [activeSection, setActiveSectionState] = useState<NavSection>(() =>
     sectionFromPath(window.location.pathname),
   )
-  const [operatorBearer, setOperatorBearer] = useState('')
-  const [operatorSource, setOperatorSource] = useState('')
+  const [issuerKey, setIssuerKey] = useState<IssuerKeyMaterial | null>(null)
+  const [issuerKeySource, setIssuerKeySource] = useState('')
   const [supabaseAdminUsername, setSupabaseAdminUsername] = useState('')
   const [supabaseAdminPassword, setSupabaseAdminPassword] = useState('')
   const [supabaseAdminSource, setSupabaseAdminSource] = useState('')
@@ -77,14 +68,8 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     useState(false)
   const [supabaseAdminPasswordRevealed, setSupabaseAdminPasswordRevealed] =
     useState(false)
-  const [aat, setAat] = useState('')
-  const [operatorRevealed, setOperatorRevealed] = useState(false)
-  const [aatRevealed, setAatRevealed] = useState(false)
   const [toasts, setToasts] = useState<ToastItem[]>([])
-  const [busyAction, setBusyAction] = useState<'reset' | 'mint' | null>(null)
   const [textScaleLevel, setTextScaleLevel] = useState(TEXT_SCALE_DEFAULT_LEVEL)
-  const startupMintDone = useRef(false)
-  const operationLock = useRef(false)
 
   const setActiveSection = useCallback((section: NavSection) => {
     const path = pathForSection(section)
@@ -130,12 +115,16 @@ export function SessionProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     loadDevConfig()
-      .then((config) => {
-        setOperatorBearer(
-          (config as DevConfig & { operatorBearerToken?: string }).operatorBearerToken ??
-            '',
-        )
-        setOperatorSource(config.devVarsPath)
+      .then(async (config) => {
+        setIssuerKeySource(config.devVarsPath)
+        const kid = config.testIssuerKid?.trim()
+        const pkcs8 = config.testIssuerPrivateKeyPkcs8?.trim()
+        if (kid && pkcs8) {
+          setIssuerKey(await importIssuerPrivateKey(kid, pkcs8))
+        } else {
+          setIssuerKey(null)
+        }
+
         const admin = resolveSupabaseAdminFromDevConfig(config)
         setSupabaseAdminUsername(admin.username)
         setSupabaseAdminPassword(admin.password)
@@ -167,153 +156,25 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     ])
   }, [])
 
-  const runMint = useCallback(
-    async (
-      source: 'manual' | 'auto' | 'reset',
-      options?: { manageBusy?: boolean },
-    ): Promise<boolean> => {
-      const manageBusy = options?.manageBusy ?? true
-
-      if (!operatorBearer) {
-        if (source === 'manual') {
-          notifyError(
-            'Operator bearer not loaded. Open Secrets or check ai-platform/.dev.vars.',
-          )
-        }
-        return false
+  const mintIssuerTokenForRequest = useCallback(
+    async (claims: IssuerTokenClaims = {}): Promise<string> => {
+      if (!issuerKey) {
+        throw new Error(
+          'Test issuer key not loaded. Check TEST_ISSUER_KID and TEST_ISSUER_PRIVATE_KEY_PKCS8 in ai-platform/.dev.vars.',
+        )
       }
-
-      if (!supabaseAdminUsername || !supabaseAdminPassword) {
-        if (source === 'manual') {
-          notifyError(
-            'Supabase admin credentials not loaded. Open Secrets or set VITE_BOOTSTRAP_ADMIN_* in .env.local.',
-          )
-        }
-        return false
-      }
-
-      if (manageBusy) {
-        if (operationLock.current) {
-          if (source === 'manual') {
-            notifyError('Another operation is already in progress.')
-          }
-          return false
-        }
-        operationLock.current = true
-        setBusyAction('mint')
-      }
-
-      try {
-        const { token, aatVer } = await mintAatFromSupabase(operatorBearer, {
-          username: supabaseAdminUsername,
-          password: supabaseAdminPassword,
-        })
-        setAat(token)
-        setAatRevealed(true)
-        if (source === 'manual') {
-          notifySuccess(
-            `Minted AAT (ver=${aatVer}) and synced platform enrollment + token_contract.`,
-          )
-        } else if (source === 'auto') {
-          notifySuccess(`Minted clinic AAT (ver=${aatVer}).`)
-        }
-        return true
-      } catch (error) {
-        const message = error instanceof Error ? error.message : 'Mint failed'
-        if (source !== 'reset') {
-          notifyError(message)
-        }
-        return false
-      } finally {
-        if (manageBusy) {
-          operationLock.current = false
-          setBusyAction(null)
-        }
-      }
+      return mintIssuerToken(issuerKey, claims)
     },
-    [operatorBearer, supabaseAdminUsername, supabaseAdminPassword, notifyError, notifySuccess],
+    [issuerKey],
   )
-
-  const mintAat = useCallback(async () => {
-    await runMint('manual')
-  }, [runMint])
-
-  const mintAatForRequest = useCallback(async (): Promise<string> => {
-    if (!operatorBearer) {
-      throw new Error(
-        'Operator bearer not loaded. Open Secrets or check ai-platform/.dev.vars.',
-      )
-    }
-    if (!supabaseAdminUsername || !supabaseAdminPassword) {
-      throw new Error(
-        'Supabase admin credentials not loaded. Open Secrets or set VITE_BOOTSTRAP_ADMIN_* in .env.local.',
-      )
-    }
-
-    const { token } = await mintAatFromSupabase(operatorBearer, {
-      username: supabaseAdminUsername,
-      password: supabaseAdminPassword,
-    })
-    setAat(token)
-    setAatRevealed(true)
-    return token
-  }, [operatorBearer, supabaseAdminUsername, supabaseAdminPassword])
-
-  const storeClinicAat = useCallback((token: string) => {
-    setAat(token)
-    setAatRevealed(true)
-  }, [])
-
-  const resetAll = useCallback(async () => {
-    if (operationLock.current) {
-      notifyError('Another operation is already in progress.')
-      return
-    }
-
-    operationLock.current = true
-    setBusyAction('reset')
-    try {
-      const result = await resetPlatform()
-      setAat('')
-      const minted = await runMint('reset', { manageBusy: false })
-      if (minted) {
-        notifySuccess(
-          `${result.steps.join(' · ')} · Minted fresh clinic AAT after reset.`,
-        )
-      } else {
-        notifyError(
-          'Platform reset completed, but clinic AAT mint failed. Use Secrets to retry.',
-        )
-        notifySuccess(result.steps.join(' · '))
-      }
-    } catch (error) {
-      notifyError(error instanceof Error ? error.message : 'Reset failed')
-    } finally {
-      operationLock.current = false
-      setBusyAction(null)
-    }
-  }, [notifyError, notifySuccess, runMint])
-
-  useEffect(() => {
-    if (
-      !operatorBearer ||
-      !supabaseAdminUsername ||
-      !supabaseAdminPassword ||
-      startupMintDone.current
-    ) {
-      return
-    }
-
-    startupMintDone.current = true
-    void runMint('auto')
-  }, [operatorBearer, supabaseAdminUsername, supabaseAdminPassword, runMint])
 
   const value = useMemo<SessionContextValue>(
     () => ({
       activeSection,
       setActiveSection,
-      operatorBearer,
-      operatorSource,
+      issuerKey,
+      issuerKeySource,
+      mintIssuerTokenForRequest,
       supabaseAdminUsername,
       supabaseAdminPassword,
       supabaseAdminSource,
@@ -321,20 +182,10 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       supabaseAdminPasswordRevealed,
       setSupabaseAdminUsernameRevealed,
       setSupabaseAdminPasswordRevealed,
-      aat,
-      operatorRevealed,
-      aatRevealed,
-      setOperatorRevealed,
-      setAatRevealed,
       toasts,
       dismissToast,
       notifySuccess,
       notifyError,
-      busyAction,
-      mintAat,
-      mintAatForRequest,
-      storeClinicAat,
-      resetAll,
       textScaleLevel,
       increaseTextSize,
       decreaseTextSize,
@@ -343,28 +194,22 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     }),
     [
       activeSection,
-      operatorBearer,
-      operatorSource,
+      issuerKey,
+      issuerKeySource,
+      mintIssuerTokenForRequest,
       supabaseAdminUsername,
       supabaseAdminPassword,
       supabaseAdminSource,
       supabaseAdminUsernameRevealed,
       supabaseAdminPasswordRevealed,
-      aat,
-      operatorRevealed,
-      aatRevealed,
       toasts,
-      busyAction,
-      mintAat,
-      mintAatForRequest,
-      storeClinicAat,
-      resetAll,
       dismissToast,
       notifySuccess,
       notifyError,
       textScaleLevel,
       increaseTextSize,
       decreaseTextSize,
+      setActiveSection,
     ],
   )
 

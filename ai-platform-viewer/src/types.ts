@@ -7,6 +7,8 @@ export type NavSection =
   | 'stage-12'
 
 export interface DevConfig {
+  testIssuerKid: string
+  testIssuerPrivateKeyPkcs8: string
   devVarsPath: string
   supabaseUrl: string
   supabaseAnonKey: string
@@ -19,14 +21,6 @@ export interface DevConfig {
 export interface SupabaseAdminCredentials {
   username: string
   password: string
-}
-
-export interface ResetResult {
-  steps: string[]
-}
-
-export interface ResetError {
-  error: string
 }
 
 export interface ClinicEnrollmentMaterial {
