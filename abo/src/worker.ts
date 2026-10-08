@@ -411,6 +411,7 @@ export default {
         // Transfer saga failures must not block the minute cron.
       }
       await markExportLagIfDue(env);
+      await pingHeartbeat(env);
       return;
     }
     if (cron === "0 6 * * *") {

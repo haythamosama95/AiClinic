@@ -85,15 +85,15 @@
 
 **Independent Test**: E2E-P8.1-01 and E2E-P8.1-02 in H-STG. Earlier suites stay green (rule S2).
 
-- [ ] T008 [US3] Call `pingHeartbeat` from the minute cron in `abo/src/worker.ts` — minute branch, FR-008, E2E-P8.1-01. Depends on T003 and T007. The `* * * * *` branch calls `pingHeartbeat`. The `0 6 * * *` branch keeps its existing `pingHeartbeat` call. Do not add a binding. Do not run the runner. Do not boot wrangler.
+- [X] T008 [US3] Call `pingHeartbeat` from the minute cron in `abo/src/worker.ts` — minute branch, FR-008, E2E-P8.1-01. Depends on T003 and T007. The `* * * * *` branch calls `pingHeartbeat`. The `0 6 * * *` branch keeps its existing `pingHeartbeat` call. Do not add a binding. Do not run the runner. Do not boot wrangler.
 
-- [ ] T009 [US3] Add `ops/staging/heartbeat-monitor.mjs` — external monitor, FR-008, E2E-P8.1-01. Depends on T008. Configured as code, outside Cloudflare and Supabase. Expected pings: ABO minute, platform 5-minute, and ABO daily digest, named at `HEARTBEAT_URL`. A missing ping prints `AL-21` on stdout and nothing else. No vendor SDK. No miss window, no HTTP status, and no alert body field. Do not run the script against a live URL. Do not deploy.
+- [X] T009 [US3] Add `ops/staging/heartbeat-monitor.mjs` — external monitor, FR-008, E2E-P8.1-01. Depends on T008. Configured as code, outside Cloudflare and Supabase. Expected pings: ABO minute, platform 5-minute, and ABO daily digest, named at `HEARTBEAT_URL`. A missing ping prints `AL-21` on stdout and nothing else. No vendor SDK. No miss window, no HTTP status, and no alert body field. Do not run the script against a live URL. Do not deploy.
 
-- [ ] T010 [US3] Add `ops/staging/fixtures/abo-cron-disabled.json` — ABO minute ping absent, FR-008, E2E-P8.1-01. Depends on T009. The fixture records the platform 5-minute ping and the ABO daily digest ping, and omits the ABO minute ping. No secret value. Do not run the monitor.
+- [X] T010 [US3] Add `ops/staging/fixtures/abo-cron-disabled.json` — ABO minute ping absent, FR-008, E2E-P8.1-01. Depends on T009. The fixture records the platform 5-minute ping and the ABO daily digest ping, and omits the ABO minute ping. No secret value. Do not run the monitor.
 
-- [ ] T011 [US3] Add `ops/staging/audit-watcher.mjs` — hourly watcher, FR-009, E2E-P8.1-02. Depends on T010. Configured as code on the same external scheduler. It does not call a provider API. It classifies checklist-supplied entries: `deploy` (production deploy; a staging deploy uses this class), `secret` (secret change), `d1_export` (D1 export), `access_policy` (Access policy edit). Any of the four prints `AL-21` on stdout, repeated per event. Fixture mode does not read the token. The token is an environment value, not a git file. No vendor SDK, no token field, and no API event name. Do not deploy.
+- [X] T011 [US3] Add `ops/staging/audit-watcher.mjs` — hourly watcher, FR-009, E2E-P8.1-02. Depends on T010. Configured as code on the same external scheduler. It does not call a provider API. It classifies checklist-supplied entries: `deploy` (production deploy; a staging deploy uses this class), `secret` (secret change), `d1_export` (D1 export), `access_policy` (Access policy edit). Any of the four prints `AL-21` on stdout, repeated per event. Fixture mode does not read the token. The token is an environment value, not a git file. No vendor SDK, no token field, and no API event name. Do not deploy.
 
-- [ ] T012 [US3] Add `ops/staging/fixtures/deploy-and-secret.json` — classes `deploy` and `secret`, FR-009, E2E-P8.1-02. Depends on T011. The fixture supplies those two classes and no token. No secret value. Do not run the watcher.
+- [X] T012 [US3] Add `ops/staging/fixtures/deploy-and-secret.json` — classes `deploy` and `secret`, FR-009, E2E-P8.1-02. Depends on T011. The fixture supplies those two classes and no token. No secret value. Do not run the watcher.
 
 **Checkpoint**: E2E-P8.1-01 reaches `heartbeat-monitor.mjs` and the minute `pingHeartbeat` call. E2E-P8.1-02 reaches `audit-watcher.mjs`. Neither script was executed.
 
@@ -101,7 +101,7 @@
 
 **Independent Test**: E2E-P8.1-03 in H-STG.
 
-- [ ] T013 [US1] Add `ops/staging/nfr-08.md` — NFR-08 record, FR-007, E2E-P8.1-03. Depends on T001 and T012. Copy the steady-load figures: about 1,440 ABO cron runs, 288 platform cron runs, 2,880 backend pulls, about 2,250 reversal inquiries a day at the stated o/L/P example, and about two DO row writes per AI request. State that this load stays inside the included allowances of the Cloudflare Workers Paid plan and the Supabase project. Do not call a billing API. Do not deploy.
+- [X] T013 [US1] Add `ops/staging/nfr-08.md` — NFR-08 record, FR-007, E2E-P8.1-03. Depends on T001 and T012. Copy the steady-load figures: about 1,440 ABO cron runs, 288 platform cron runs, 2,880 backend pulls, about 2,250 reversal inquiries a day at the stated o/L/P example, and about two DO row writes per AI request. State that this load stays inside the included allowances of the Cloudflare Workers Paid plan and the Supabase project. Do not call a billing API. Do not deploy.
 
 **Checkpoint**: E2E-P8.1-03 names `ops/staging/nfr-08.md`. The checklist runner was not executed.
 
