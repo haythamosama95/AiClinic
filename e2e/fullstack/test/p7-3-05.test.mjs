@@ -15,6 +15,7 @@ const PLATFORM_WORKER_N = "test/variant/platform-worker-n.toml";
 const PLATFORM_DO_RECEIVER = "test/variant/platform-do-receiver.toml";
 
 const WORKER_VERSION = 1;
+const CLINIC_ACCEPTED_VERSIONS = [0, 1];
 const DO_RECEIVER_CURRENT = 2;
 const ACCEPTED_VERSIONS = [1, 2];
 
@@ -84,18 +85,20 @@ test("E2E-P7.3-05", async () => {
     contractVersion: undefined,
     idempotencyKey: crypto.randomUUID(),
   });
-  assert.equal(missingVersion.status, 503);
+  assert.equal(missingVersion.status, 400);
   const missingBody = await missingVersion.json();
-  assert.equal(missingBody.code, "coverage_unknown");
+  assert.equal(missingBody.code, "contract_version_unsupported");
+  assert.deepEqual(missingBody.accepted_versions, CLINIC_ACCEPTED_VERSIONS);
 
   const unsupported = await postAdmissionRequest({
     token,
     contractVersion: 3,
     idempotencyKey: crypto.randomUUID(),
   });
-  assert.equal(unsupported.status, 503);
+  assert.equal(unsupported.status, 400);
   const unsupportedBody = await unsupported.json();
-  assert.equal(unsupportedBody.code, "coverage_unknown");
+  assert.equal(unsupportedBody.code, "contract_version_unsupported");
+  assert.deepEqual(unsupportedBody.accepted_versions, CLINIC_ACCEPTED_VERSIONS);
 
   const doRefused = await platformProxy.env.DO.get(
     platformProxy.env.DO.idFromName(boundInstallationId),

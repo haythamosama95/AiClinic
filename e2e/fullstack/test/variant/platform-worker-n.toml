@@ -56,7 +56,7 @@ bucket_name = "ai-platform-development"
 [[env.development.durable_objects.bindings]]
 name = "DO"
 class_name = "GatewayObject"
-script_name = "ai-platform-do-receiver"
+script_name = "ai-platform-do-receiver-development"
 
 [[env.development.ratelimits]]
 name = "RATE_LIMITER_INSTALLATION"

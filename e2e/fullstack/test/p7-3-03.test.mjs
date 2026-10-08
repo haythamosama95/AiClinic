@@ -115,6 +115,8 @@ test("E2E-P7.3-03", async () => {
   const projectionBefore = readClinicAiCoverage(orgId);
   assert.ok(projectionBefore, "baseline projection should exist");
 
+  setFeedStateLastSuccessAgo(121);
+
   const feedStateBefore = readFeedState();
   assert.ok(feedStateBefore, "feed_state should exist");
   const cursorBefore = feedStateBefore.cursor;
@@ -142,15 +144,23 @@ test("E2E-P7.3-03", async () => {
     feedStateAfter.consecutive_failures > failuresBefore,
     "unsupported feed version should increment consecutive_failures",
   );
+  assert.ok(
+    feedStateAfter.last_success_at === feedStateBefore.last_success_at,
+    "feed refusal should not refresh last_success_at",
+  );
 
   assert.deepEqual(readClinicAiCoverage(orgId), projectionBefore);
   assert.equal(readPlatformFeedCurrent(), PUBLISHED_FEED_VERSION);
   assert.equal(countHttpResponses(), httpResponsesBefore + 1);
 
-  setFeedStateLastSuccessAgo(121);
   const status = await rpc(administrator, "get_ai_status", {
     p_contract_version: 1,
   });
   assert.equal(status.success, true);
-  assert.equal(status.data.stale, true, "stale alert should fire after feed refusal");
+  assert.equal(status.data.stale, true, "stale alert should follow feed refusal");
+  const noticeCodes = (status.data.notices ?? []).map((notice) => notice.code);
+  assert.ok(
+    noticeCodes.includes("status_stale"),
+    "feed refusal with stale last_success_at should surface status_stale",
+  );
 });

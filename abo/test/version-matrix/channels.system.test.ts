@@ -23,6 +23,13 @@ import {
 const RECEIVER_CURRENT = CHANNEL_VERSIONS.aboClinic;
 const ACCEPTED_VERSIONS = [RECEIVER_CURRENT - 1, RECEIVER_CURRENT];
 const PAYMOB_ADAPTER_VERSION = CHANNEL_VERSIONS.paymobAdapter;
+const PAYMOB_RETURN_VERSION = CHANNEL_VERSIONS.paymobReturn;
+const HARNESS_OFFER_ID = "01JHARNESSOFFERPUBLISH001";
+const HARNESS_OFFER_VERSION = 2;
+const HARNESS_TERMS_VERSION = 1;
+const HARNESS_PLAN_ID = "plan-pro";
+const HARNESS_PLAN_VERSION = 1;
+const HARNESS_ALLOWANCE_CREDITS = 100;
 
 type PaymobCallbackObj = {
   amount_cents: string | number;
@@ -117,6 +124,49 @@ async function ensureCheckoutSchema(): Promise<void> {
   await applySql(notifyWorkMigrationSql);
 }
 
+async function seedHarnessOffer(): Promise<void> {
+  await env.DB.prepare(
+    `INSERT OR IGNORE INTO terms_version (
+       terms_version, locale, text_r2_key, text_sha256, published_by, contract_version
+     ) VALUES (?, 'en', 'terms/en/1.txt',
+       'dbb6d8870e5636c8da062789e912326c66eacd68838980a81bf6ad9484677753',
+       'fixture', 1)`,
+  )
+    .bind(HARNESS_TERMS_VERSION)
+    .run();
+  await env.DB.prepare(
+    `INSERT OR IGNORE INTO offer (offer_id, code, contract_version)
+     VALUES (?, 'harness-pro-monthly', 1)`,
+  )
+    .bind(HARNESS_OFFER_ID)
+    .run();
+  await env.DB.prepare(
+    `INSERT OR REPLACE INTO offer_version (
+       offer_id, version, plan_id, plan_version, term_unit, term_count,
+       price_minor, currency, allowance_credits, grace_days, grace_cap_rule,
+       copy, terms_version, published_by, assertion_sha256, contract_version
+     ) VALUES (?, ?, ?, ?, 'month', 1, 1000, 'EGP', ?, 7, 'proportional',
+       '{"en":{"name":"Clinic Pro Monthly","summary":"Monthly clinic subscription"}}',
+       ?, 'fixture', 'fixture-assertion-v2', 1)`,
+  )
+    .bind(
+      HARNESS_OFFER_ID,
+      HARNESS_OFFER_VERSION,
+      HARNESS_PLAN_ID,
+      HARNESS_PLAN_VERSION,
+      HARNESS_ALLOWANCE_CREDITS,
+      HARNESS_TERMS_VERSION,
+    )
+    .run();
+  await env.DB.prepare(
+    `INSERT OR IGNORE INTO offer_event (
+       offer_id, kind, version, actor, at, contract_version
+     ) VALUES (?, 'published', ?, 'fixture', '2026-02-01T00:00:00.000Z', 1)`,
+  )
+    .bind(HARNESS_OFFER_ID, HARNESS_OFFER_VERSION)
+    .run();
+}
+
 async function alertCountByCode(code: string): Promise<number> {
   try {
     const row = await env.DB.prepare(
@@ -197,6 +247,7 @@ beforeEach(async () => {
   await resetHarnessState();
   await setupHarness();
   await ensureCheckoutSchema();
+  await seedHarnessOffer();
 });
 
 describe("E2E-P7.3-01", () => {
@@ -254,36 +305,25 @@ describe("E2E-P7.3-01", () => {
       },
       body: JSON.stringify({
         client_request_id: crypto.randomUUID(),
-        offer_id: "missing-offer",
-        offer_version: 1,
-        terms_version: 1,
+        offer_id: HARNESS_OFFER_ID,
+        offer_version: HARNESS_OFFER_VERSION,
+        terms_version: HARNESS_TERMS_VERSION,
       }),
     });
+    expect(checkout.status).toBe(201);
     expect(checkout.headers.get("Abo-Contract-Version")).toBe(
       String(RECEIVER_CURRENT),
     );
-    if (checkout.status === 201) {
-      const checkoutBody = (await checkout.json()) as Record<string, unknown>;
-      const returnUrl = String(checkoutBody.return_url ?? "");
-      expect(returnUrl).toContain(`v=${CHANNEL_VERSIONS.paymobReturn}`);
-    }
+    const checkoutBody = (await checkout.json()) as Record<string, unknown>;
+    const returnUrl = String(checkoutBody.return_url ?? "");
+    expect(returnUrl).toContain(`v=${PAYMOB_RETURN_VERSION}`);
 
-    const badVerToken = await mintBilling(issuer, {
+    const badVerJwt = await mintBilling(issuer, {
       ...baseClaims(),
       role: "administrator",
       jti: crypto.randomUUID(),
+      ver: "1",
     });
-    const badVerParts = badVerToken.split(".");
-    const badVerPayloadJson = atob(
-      badVerParts[1]!.replace(/-/g, "+").replace(/_/g, "/"),
-    );
-    const badVerPayload = JSON.parse(badVerPayloadJson) as Record<string, unknown>;
-    badVerPayload.ver = "1";
-    const badVerPayloadEncoded = btoa(JSON.stringify(badVerPayload))
-      .replace(/\+/g, "-")
-      .replace(/\//g, "_")
-      .replace(/=+$/u, "");
-    const badVerJwt = `${badVerParts[0]}.${badVerPayloadEncoded}.${badVerParts[2]}`;
     const unauthenticated = await billingFetch("/v1/offers", {
       headers: {
         authorization: `Bearer ${badVerJwt}`,

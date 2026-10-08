@@ -17,6 +17,7 @@ import {
 } from "../system/harness";
 
 const WORKER_VERSION = 1;
+const CLINIC_ACCEPTED_VERSIONS = [0, 1];
 const DO_RECEIVER_CURRENT = 2;
 const ACCEPTED_VERSIONS = [1, 2];
 
@@ -84,18 +85,20 @@ describe("E2E-P7.3-05", () => {
       contractVersion: undefined,
       idempotencyKey: crypto.randomUUID(),
     });
-    expect(missingVersion.status).toBe(503);
+    expect(missingVersion.status).toBe(400);
     const missingBody = (await missingVersion.json()) as Record<string, unknown>;
-    expect(missingBody.code).toBe("coverage_unknown");
+    expect(missingBody.code).toBe("contract_version_unsupported");
+    expect(missingBody.accepted_versions).toEqual(CLINIC_ACCEPTED_VERSIONS);
 
     const unsupported = await postAdmissionRequest({
       token,
       contractVersion: 3,
       idempotencyKey: crypto.randomUUID(),
     });
-    expect(unsupported.status).toBe(503);
+    expect(unsupported.status).toBe(400);
     const unsupportedBody = (await unsupported.json()) as Record<string, unknown>;
-    expect(unsupportedBody.code).toBe("coverage_unknown");
+    expect(unsupportedBody.code).toBe("contract_version_unsupported");
+    expect(unsupportedBody.accepted_versions).toEqual(CLINIC_ACCEPTED_VERSIONS);
 
     const doRefused = await quotaDoStub(scenario.installationId).fetch(
       DO_RPC_URL,

@@ -1,5 +1,6 @@
 import test, { after, before } from "node:test";
 import assert from "node:assert/strict";
+import { sha256Hex } from "vendor-contracts";
 import {
   ensurePlatformGrantPrerequisites,
   mintAccessJwt,
@@ -7,6 +8,7 @@ import {
   opsFetch,
   putBillingContact,
   queryAboD1One,
+  queryPlatformD1One,
   rpc,
   runAboD1Command,
   sqlLiteral,
@@ -50,6 +52,12 @@ function grantWorkForPayment(paymentId) {
   );
 }
 
+function platformGrantLedger(grantId) {
+  return queryPlatformD1One(
+    `SELECT envelope_sha256 FROM grant_ledger WHERE grant_id = ${sqlLiteral(grantId)} LIMIT 1`,
+  );
+}
+
 test("E2E-P7.3-04", async () => {
   const { orgId, installationId, administrator } = stack.clinics.orgA;
   ensurePlatformGrantPrerequisites(orgId, installationId);
@@ -75,16 +83,24 @@ test("E2E-P7.3-04", async () => {
   assert.ok(envelopeText, "grant_request should store the envelope after the first attempt");
   const envelope = JSON.parse(envelopeText);
   assert.equal(envelope.contract_version, STORED_CONTRACT_VERSION);
+  const envelopeSha256 = await sha256Hex(new TextEncoder().encode(envelopeText));
+
+  const platformGrant = platformGrantLedger(envelope.grant_id);
+  assert.ok(platformGrant, "platform should record the first grant envelope");
+  assert.equal(
+    platformGrant.envelope_sha256,
+    envelopeSha256,
+    "first grant should use the stored envelope bytes",
+  );
 
   const work = grantWorkForPayment(paymentId);
   assert.ok(work, "grant work should exist");
+  assert.equal(work.state, "done", "published pair should apply the first grant attempt");
   const workId = work.work_id;
 
-  if (work.state !== "parked") {
-    runAboD1Command(
-      `UPDATE work SET state = 'parked', lease_until = NULL, last_error = 'contract_version_unsupported' WHERE work_id = ${sqlLiteral(workId)}`,
-    );
-  }
+  runAboD1Command(
+    `UPDATE work SET state = 'parked', lease_until = NULL, last_error = 'contract_version_unsupported' WHERE work_id = ${sqlLiteral(workId)}`,
+  );
 
   const envelopeBeforeRetry = grantRequestEnvelope(paymentId);
   assert.ok(envelopeBeforeRetry);
@@ -104,4 +120,12 @@ test("E2E-P7.3-04", async () => {
   assert.equal(parsedAfter.contract_version, STORED_CONTRACT_VERSION);
   assert.equal(parsedAfter.contract_version, parsedBefore.contract_version);
   assert.equal(envelopeAfterRetry, envelopeBeforeRetry);
+
+  const platformGrantAfterRetry = platformGrantLedger(parsedAfter.grant_id);
+  assert.ok(platformGrantAfterRetry, "platform grant ledger should still exist after retry");
+  assert.equal(
+    platformGrantAfterRetry.envelope_sha256,
+    envelopeSha256,
+    "retry should resend the stored envelope at its original contract_version",
+  );
 });

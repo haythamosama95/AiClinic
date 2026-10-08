@@ -333,6 +333,38 @@ export async function mintAccessJwt(accessTeam) {
   });
 }
 
+function base64urlFromBytes(bytes) {
+  return Buffer.from(bytes).toString("base64url");
+}
+
+export async function mintHarnessBillingToken(stack, claimsOverrides = {}) {
+  const { createIssuer } = await import("vendor-contracts/testkit");
+  const issuer = await createIssuer({ issuerId: "issuer-test" });
+  const publicKeyBytes = new Uint8Array(
+    await crypto.subtle.exportKey("raw", issuer.publicKey),
+  );
+  const harnessIssuerKeys = [
+    {
+      kid: issuer.kid,
+      public_key: base64urlFromBytes(publicKeyBytes),
+    },
+  ];
+  await stack.restartAbo(harnessIssuerKeys);
+  const clinic = stack.clinics.orgA;
+  const now = Math.floor(Date.now() / 1000);
+  const token = await issuer.mintBilling({
+    sub: "p73-ver-matrix",
+    org: clinic.orgId,
+    role: "administrator",
+    branch: clinic.branchId,
+    iat: now - 60,
+    exp: now + 300,
+    jti: crypto.randomUUID(),
+    ...claimsOverrides,
+  });
+  return { token, harnessIssuerKeys };
+}
+
 function buildRegisterIssuerKeyOperation({
   kid,
   publicKey,

@@ -9,14 +9,23 @@ import {
   HARNESS_URL,
   issueFeedToken,
   mintAccessJwt,
+  mintHarnessBillingToken,
+  OFFER_ID,
+  OFFER_VERSION,
   opsFetch,
+  PLATFORM_CONFIG,
   platformFetch,
+  putBillingContact,
   queryAboD1One,
   queryPlatformD1One,
   rpc,
+  seedAboOffers,
   sqlLiteral,
   startStack,
+  syncPaymobForCheckout,
+  TERMS_VERSION,
   triggerAboScheduled,
+  openCheckout,
 } from "./p7-3-stack.mjs";
 
 // H-FS unit harness (P7.3 US1): node --import tsx --test test/p7-3-01.test.mjs
@@ -27,6 +36,7 @@ const PLATFORM_N_PLUS_1 = "test/variant/platform-n-plus-1.toml";
 const RECEIVER_CURRENT = 2;
 const ACCEPTED_VERSIONS = [1, 2];
 const PAYMOB_ADAPTER_VERSION = 2;
+const PAYMOB_RETURN_VERSION = 2;
 
 let stack = null;
 let platformProxy = null;
@@ -123,6 +133,7 @@ async function expectPlatformClinicRefusal(pathname, init = {}) {
 test("E2E-P7.3-01", async () => {
   const { administrator, orgId, installationId } = stack.clinics.orgA;
   ensurePlatformGrantPrerequisites(orgId, installationId);
+  seedAboOffers();
 
   for (const version of [undefined, 0, 3]) {
     await expectAboClinicRefusal("/v1/offers", version);
@@ -157,7 +168,7 @@ test("E2E-P7.3-01", async () => {
   }
 
   const aiToken = await rpc(administrator, "issue_ai_token", {
-    p_contract_version: RECEIVER_CURRENT,
+    p_contract_version: 1,
   });
   assert.ok(aiToken);
 
@@ -232,21 +243,46 @@ test("E2E-P7.3-01", async () => {
   const returnHtml = (await returnResponse.text()).toLowerCase();
   assert.equal(returnHtml.includes("contract_version_unsupported"), false);
 
-  const billingV2 = await rpc(administrator, "issue_billing_token", {
-    p_contract_version: 2,
+  const billing = await rpc(administrator, "issue_billing_token", {
+    p_contract_version: 1,
   });
-  assert.equal(billingV2.success, true);
-  assert.equal(billingV2.contract_version, 2);
+  assert.equal(billing.success, true);
+  await putBillingContact(billing.data.token);
+  const checkoutResponse = await billingFetch("/v1/checkouts", {
+    method: "POST",
+    headers: {
+      authorization: `Bearer ${billing.data.token}`,
+      "content-type": "application/json",
+      "Abo-Contract-Version": String(RECEIVER_CURRENT),
+    },
+    body: JSON.stringify({
+      client_request_id: crypto.randomUUID(),
+      offer_id: OFFER_ID,
+      offer_version: OFFER_VERSION,
+      terms_version: TERMS_VERSION,
+    }),
+  });
+  assert.equal(checkoutResponse.status, 201);
+  const checkoutBody = await checkoutResponse.json();
+  assert.ok(
+    String(checkoutBody.return_url ?? "").includes(`v=${PAYMOB_RETURN_VERSION}`),
+    "paymobReturnUrl should put the variant current in v",
+  );
 
+  const { token: badVerToken } = await mintHarnessBillingToken(
+    stack,
+    { ver: "1", jti: crypto.randomUUID() },
+  );
   const billingBadVer = await billingFetch("/v1/offers", {
     headers: {
-      authorization: "Bearer invalid-token",
-      "Abo-Contract-Version": "2",
+      authorization: `Bearer ${badVerToken}`,
+      "Abo-Contract-Version": String(RECEIVER_CURRENT),
     },
   });
   assert.equal(billingBadVer.status, 401);
   const billingBadVerBody = await billingBadVer.json();
   assert.equal(billingBadVerBody.code, "unauthenticated");
+  await stack.restartAbo(stack.issuerKeys);
 
   const notificationsBefore = countAboTable("notification");
   const unparseable = await billingFetch("/notify/paymob?hmac=deadbeef", {
@@ -268,23 +304,38 @@ test("E2E-P7.3-01", async () => {
   );
   assert.equal(alertRow?.code, "AL-23");
 
-  const accessJwt = await mintAccessJwt(stack.accessTeam);
-  const unknownAnswer = await vendorCall("grant", {
-    contract_version: RECEIVER_CURRENT,
-    abo_kid: "missing-kid",
-    abo_signature: "missing-signature",
-    envelope_b64: "e30=",
-    access_jwt: accessJwt,
-    answer_contract_version: RECEIVER_CURRENT + 1,
+  const billingForGrant = await rpc(administrator, "issue_billing_token", {
+    p_contract_version: 1,
   });
-  assert.equal(unknownAnswer.result, "rejected");
-  assert.equal(unknownAnswer.code, "contract_version_unsupported");
+  assert.equal(billingForGrant.success, true);
+  await putBillingContact(billingForGrant.data.token);
+  const grantCheckout = await openCheckout(
+    billingForGrant.data.token,
+    "p73-grant-vendor",
+  );
+  await syncPaymobForCheckout(grantCheckout.checkoutId);
+  const grantPaymentId = queryAboD1One(
+    `SELECT payment_id FROM payment WHERE checkout_id = ${sqlLiteral(grantCheckout.checkoutId)} LIMIT 1`,
+  )?.payment_id;
+  assert.ok(grantPaymentId, "paid checkout should create a payment row");
+
+  await stack.restartPlatform({ platformConfig: PLATFORM_CONFIG });
 
   await triggerAboScheduled("0 * * * *");
+
   const parkedGrant = queryAboD1One(
-    `SELECT state, last_error FROM work WHERE kind = 'grant' ORDER BY opened_at DESC LIMIT 1`,
+    `SELECT state, last_error FROM work WHERE kind = 'grant' AND subject_id = ${sqlLiteral(grantPaymentId)}`,
   );
-  if (parkedGrant) {
-    assert.match(String(parkedGrant.last_error ?? ""), /contract_version_unsupported/);
-  }
+  assert.ok(parkedGrant, "runDueGrantWork should create grant work");
+  assert.equal(parkedGrant.state, "parked");
+  assert.match(
+    String(parkedGrant.last_error ?? ""),
+    /contract_version_unsupported|rejected/,
+  );
+  const storedGrantRequest = queryAboD1One(
+    `SELECT envelope FROM grant_request WHERE source_ref = ${sqlLiteral(grantPaymentId)} LIMIT 1`,
+  );
+  assert.ok(storedGrantRequest?.envelope, "grant_request should store the envelope");
+  const storedEnvelope = JSON.parse(storedGrantRequest.envelope);
+  assert.equal(storedEnvelope.contract_version, RECEIVER_CURRENT);
 });
