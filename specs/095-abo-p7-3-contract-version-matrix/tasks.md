@@ -103,15 +103,15 @@ Each `vendor-contracts-*.ts` file imports `packages/vendor-contracts/src/index.t
 
 **Independent Test**: E2E-P7.3-01, E2E-P7.3-05, E2E-P7.3-06, and E2E-P7.3-07.
 
-- [ ] T017 [US1] Create `e2e/fullstack/test/variant/platform-worker-n.toml` — published platform worker config, FR-002, E2E-P7.3-05. Depends on T016. Published platform constants. The `DO` binding `script_name` points at the receiver worker from `e2e/fullstack/test/variant/platform-do-receiver.toml`. Do not boot wrangler.
+- [X] T017 [US1] Create `e2e/fullstack/test/variant/platform-worker-n.toml` — published platform worker config, FR-002, E2E-P7.3-05. Depends on T016. Published platform constants. The `DO` binding `script_name` points at the receiver worker from `e2e/fullstack/test/variant/platform-do-receiver.toml`. Do not boot wrangler.
 
-- [ ] T018 [US1] Create `e2e/fullstack/test/variant/platform-do-receiver.toml` — DO receiver wrangler config, FR-002, E2E-P7.3-05. Depends on T017. Platform development bindings plus the alias to `vendor-contracts-do-receiver.ts`. Do not boot wrangler.
+- [X] T018 [US1] Create `e2e/fullstack/test/variant/platform-do-receiver.toml` — DO receiver wrangler config, FR-002, E2E-P7.3-05. Depends on T017. Platform development bindings plus the alias to `vendor-contracts-do-receiver.ts`. Do not boot wrangler.
 
-- [ ] T019 [US1] Create `e2e/fullstack/test/variant/abo-desktop-window.toml` — ABO desktop-window config, FR-003, E2E-P7.3-06. Depends on T018. ABO development bindings plus the alias to `vendor-contracts-desktop-window.ts`. Do not boot wrangler.
+- [X] T019 [US1] Create `e2e/fullstack/test/variant/abo-desktop-window.toml` — ABO desktop-window config, FR-003, E2E-P7.3-06. Depends on T018. ABO development bindings plus the alias to `vendor-contracts-desktop-window.ts`. Do not boot wrangler.
 
-- [ ] T020 [US1] Create `e2e/fullstack/test/variant/platform-desktop-window.toml` — platform desktop-window config, FR-003, E2E-P7.3-06. Depends on T019. Platform development bindings plus the alias to `vendor-contracts-desktop-window.ts`. Do not boot wrangler.
+- [X] T020 [US1] Create `e2e/fullstack/test/variant/platform-desktop-window.toml` — platform desktop-window config, FR-003, E2E-P7.3-06. Depends on T019. Platform development bindings plus the alias to `vendor-contracts-desktop-window.ts`. Do not boot wrangler.
 
-- [ ] T021 [US1] Create `e2e/fullstack/test/p7-3-stack.mjs` — H-FS boot helper, FR-001, FR-002, FR-004, FR-005, FR-006, FR-007, E2E-P7.3-01, E2E-P7.3-02, E2E-P7.3-03, E2E-P7.3-04, E2E-P7.3-05, E2E-P7.3-07. Depends on T020. Start the worker pair a scenario names, on the existing H-FS registry and ports. This task writes the module and does not import it. Do not boot wrangler. Do not start the H-FS stack. Do not run `npm test` in `e2e/fullstack`.
+- [X] T021 [US1] Create `e2e/fullstack/test/p7-3-stack.mjs` — H-FS boot helper, FR-001, FR-002, FR-004, FR-005, FR-006, FR-007, E2E-P7.3-01, E2E-P7.3-02, E2E-P7.3-03, E2E-P7.3-04, E2E-P7.3-05, E2E-P7.3-07. Depends on T020. Start the worker pair a scenario names, on the existing H-FS registry and ports. This task writes the module and does not import it. Do not boot wrangler. Do not start the H-FS stack. Do not run `npm test` in `e2e/fullstack`.
 
 **Checkpoint**: E2E-P7.3-05 has both platform worker configs. E2E-P7.3-06 has both desktop-window configs. The H-FS tests have a boot module on disk. The stack is not started.
 
