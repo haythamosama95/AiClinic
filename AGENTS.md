@@ -5,9 +5,9 @@ This file orients AI coding agents working in this repository. Keep the
 **current active feature's** plan reference when running Spec Kit phases.
 
 <!-- SPECKIT START -->
-Active feature plan: `specs/093-abo-p7-1-clean-up-dependent-paths-control-residue/plan.md`
-Feature spec: `specs/093-abo-p7-1-clean-up-dependent-paths-control-residue/spec.md`
-Branch: `ai/093-abo-p7-1-clean-up-dependent-paths-control-residue`
+Active feature plan: `specs/094-abo-p7-2-cross-system-security-isolation-suite/plan.md`
+Feature spec: `specs/094-abo-p7-2-cross-system-security-isolation-suite/spec.md`
+Branch: `ai/094-abo-p7-2-cross-system-security-isolation-suite`
 <!-- SPECKIT END -->
 
 ## Repo layout quick reference

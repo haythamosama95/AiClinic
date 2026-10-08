@@ -1084,6 +1084,10 @@ and the RPCs of 04 §3.1. The backend only pulls from the platform; it never pus
 ### P7.2 — Cross-system security and isolation suite
 - **Spec** 094 · **Codebase** `e2e/fullstack/` (tests; defect fixes only, with no contract change) · **Size** M · **Depends** P6.4, P4.11 · **Parallel** P7.3
 - **Read:** 02 §2; 02 §4.2; 02 §4.3; 05 §8 rows A22, A26, A27, A35, A36.
+- **Implements:**
+  - Untrusted clinic and payment callers, one story: junk `/notify` and `/return` (E2E-P7.2-01); staff cannot mint a billing token, `/v1/coverage` is 403, and no RPC writes status (E2E-P7.2-02); org A's administrator replays B's ids on every ABO route, every RPC, and the platform routes (E2E-P7.2-03); a forged callback with a leaked HMAC secret does not confirm and creates no payment (E2E-P7.2-04).
+  - `VendorEntrypoint` paid grant and class H/HP, one story: a simulated compromised ABO, a paid grant beyond the plan bound rejected and one within the bound applied with AL-11, AL-17, and `grant_without_payment`, HP without an assertion rejected, and a substituted operation shown in the AL-11 body (E2E-P7.2-05); Access JWT alone allows H and rejects HP, and passkey plus session still enforces ceilings (E2E-P7.2-06); a stored CI/staging token cannot reach any HP method (E2E-P7.2-09).
+  - Credential isolation, one story: neither Worker's config holds a Supabase credential, and billing, AI, and feed tokens are rejected by PostgREST (E2E-P7.2-07); the Supabase session JWT never leaves for the ABO or platform (E2E-P7.2-08).
 - **E2E (H-FS):**
   - E2E-P7.2-01 AD-1: junk to `/notify` is rate-limited and not stored; `/return` cannot create service [SR-01].
   - E2E-P7.2-02 AD-2: staff cannot mint a billing token; `/v1/coverage` → 403; no RPC writes status [SR-07].
