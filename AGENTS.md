@@ -5,9 +5,9 @@ This file orients AI coding agents working in this repository. Keep the
 **current active feature's** plan reference when running Spec Kit phases.
 
 <!-- SPECKIT START -->
-Active feature plan: `specs/095-abo-p7-3-contract-version-matrix/plan.md`
-Feature spec: `specs/095-abo-p7-3-contract-version-matrix/spec.md`
-Branch: `ai/095-abo-p7-3-contract-version-matrix`
+Active feature plan: `specs/096-abo-p8-1-staging-environment-external-monitors-profile/plan.md`
+Feature spec: `specs/096-abo-p8-1-staging-environment-external-monitors-profile/spec.md`
+Branch: `ai/096-abo-p8-1-staging-environment-external-monitors-profile`
 <!-- SPECKIT END -->
 
 ## Repo layout quick reference
