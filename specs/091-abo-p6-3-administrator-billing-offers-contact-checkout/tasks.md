@@ -161,11 +161,11 @@ That command is the unit harness. `npm test` in `e2e/fullstack` is not the harne
 
 **Independent Test**: E2E-P6.3-01 in harness H-FL on H-FS, payment via the H-PAY fixture.
 
-- [ ] T020 [US1] Build the offers screen in `frontend/lib/features/ai/billing/offers_screen.dart` — show offers and accept the current terms, FR-001, FR-003, E2E-P6.3-01. Depends on T019. Create the file. Show the offers and the terms text. The administrator accepts the current terms on this screen before checkout. Offer `copy` stays the localized text from the response.
+- [X] T020 [US1] Build the offers screen in `frontend/lib/features/ai/billing/offers_screen.dart` — show offers and accept the current terms, FR-001, FR-003, E2E-P6.3-01. Depends on T019. Create the file. Show the offers and the terms text. The administrator accepts the current terms on this screen before checkout. Offer `copy` stays the localized text from the response.
 
 **Checkpoint**: The offers screen shows offers and terms, and accepts the current terms. E2E-P6.3-01 still fails.
 
-- [ ] T021 [US1] Build the billing-contact form in `frontend/lib/features/ai/billing/billing_contact_form.dart` — read, save, and stay on `billing_contact_required`, FR-001, FR-004, FR-007, E2E-P6.3-01. Depends on T020. Create the file. Show the saved contact or an empty form when the read is `not_found`. Save with the PUT. A checkout that returns `billing_contact_required` stays on this form.
+- [X] T021 [US1] Build the billing-contact form in `frontend/lib/features/ai/billing/billing_contact_form.dart` — read, save, and stay on `billing_contact_required`, FR-001, FR-004, FR-007, E2E-P6.3-01. Depends on T020. Create the file. Show the saved contact or an empty form when the read is `not_found`. Save with the PUT. A checkout that returns `billing_contact_required` stays on this form.
 
 **Checkpoint**: The contact form reads and saves a billing contact. E2E-P6.3-01 still fails.
 
@@ -173,7 +173,7 @@ That command is the unit harness. `npm test` in `e2e/fullstack` is not the harne
 
 **Independent Test**: E2E-P6.3-01 in harness H-FL on H-FS, payment via the H-PAY fixture.
 
-- [ ] T022 [US1] Build the checkout screen and show `shown_state` in `frontend/lib/features/ai/billing/checkout_screen.dart` — open `redirect_url` and show Waiting, Failed, Paid, Active, or Abandoned, FR-001, FR-004, FR-006, E2E-P6.3-01. Depends on T021. Create the file. Open `redirect_url` with `launchUrl` and `LaunchMode.externalApplication`. Show the derived progress state Waiting, Failed, Paid, Active, or Abandoned from `GET /v1/checkouts/{id}`.
+- [X] T022 [US1] Build the checkout screen and show `shown_state` in `frontend/lib/features/ai/billing/checkout_screen.dart` — open `redirect_url` and show Waiting, Failed, Paid, Active, or Abandoned, FR-001, FR-004, FR-006, E2E-P6.3-01. Depends on T021. Create the file. Open `redirect_url` with `launchUrl` and `LaunchMode.externalApplication`. Show the derived progress state Waiting, Failed, Paid, Active, or Abandoned from `GET /v1/checkouts/{id}`.
 
 **Checkpoint**: The checkout screen launches `redirect_url` and shows `shown_state`. E2E-P6.3-01 still fails.
 
@@ -181,7 +181,7 @@ That command is the unit harness. `npm test` in `e2e/fullstack` is not the harne
 
 **Independent Test**: E2E-P6.3-03, E2E-P6.3-04, and E2E-P6.3-05 in harness H-FL on H-FS, payment via the H-PAY fixture.
 
-- [ ] T023 [US3] Show "starts after the current term" before `launchUrl` in `frontend/lib/features/ai/billing/checkout_screen.dart` — `starts` `after_current`, FR-004, E2E-P6.3-03. Depends on T022 (same file). Before `url_launcher`, show whether the term queues. `starts` `after_current` shows "starts after the current term". Nothing changes now.
+- [X] T023 [US3] Show "starts after the current term" before `launchUrl` in `frontend/lib/features/ai/billing/checkout_screen.dart` — `starts` `after_current`, FR-004, E2E-P6.3-03. Depends on T022 (same file). Before `url_launcher`, show whether the term queues. `starts` `after_current` shows "starts after the current term". Nothing changes now.
 
 **Checkpoint**: E2E-P6.3-03 can show the queued-term sentence before launch. E2E-P6.3-01 still fails.
 
@@ -189,11 +189,11 @@ That command is the unit harness. `npm test` in `e2e/fullstack` is not the harne
 
 **Independent Test**: E2E-P6.3-01 in harness H-FL on H-FS, payment via the H-PAY fixture.
 
-- [ ] T024 [US1] Poll by `checkout_id` while the shown state is Waiting or Paid in `frontend/lib/features/ai/billing/checkout_screen.dart` — one-second timer, FR-006, E2E-P6.3-01, E2E-P6.3-05. Depends on T023 (same file). Poll `GET /v1/checkouts/{id}` on a one-second timer while `shown_state` is Waiting or Paid, and stop on Failed, Active, or Abandoned.
+- [X] T024 [US1] Poll by `checkout_id` while the shown state is Waiting or Paid in `frontend/lib/features/ai/billing/checkout_screen.dart` — one-second timer, FR-006, E2E-P6.3-01, E2E-P6.3-05. Depends on T023 (same file). Poll `GET /v1/checkouts/{id}` on a one-second timer while `shown_state` is Waiting or Paid, and stop on Failed, Active, or Abandoned.
 
 **Checkpoint**: Checkout polling repeats only while the shown state is Waiting or Paid. E2E-P6.3-01 still fails.
 
-- [ ] T025 [US1] On Active, call `request_ai_status_refresh` once from `frontend/lib/features/ai/billing/checkout_screen.dart` — `p_contract_version` `backendRpc`, FR-006, E2E-P6.3-01. Depends on T024 (same file). When `shown_state` is Active, call `request_ai_status_refresh` with `p_contract_version` set to `backendRpc` once. Do not modify `frontend/lib/core/contract_versions.dart`.
+- [X] T025 [US1] On Active, call `request_ai_status_refresh` once from `frontend/lib/features/ai/billing/checkout_screen.dart` — `p_contract_version` `backendRpc`, FR-006, E2E-P6.3-01. Depends on T024 (same file). When `shown_state` is Active, call `request_ai_status_refresh` with `p_contract_version` set to `backendRpc` once. Do not modify `frontend/lib/core/contract_versions.dart`.
 
 **Checkpoint**: Active triggers one `request_ai_status_refresh` call. E2E-P6.3-01 still fails until the page composes this screen.
 
