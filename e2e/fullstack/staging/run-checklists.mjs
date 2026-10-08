@@ -41,15 +41,12 @@ async function assertReadable(filePath, label) {
   return true;
 }
 
-function parseEnvStagingBlock(tomlText, label) {
-  const lines = tomlText.split("\n");
-  const start = lines.findIndex((line) => line.trim() === "[env.staging]");
-  if (start === -1) {
-    fail(label, `${label} must declare [env.staging]`);
-    return null;
-  }
-
+function parseTomlSection(lines, sectionHeader) {
   const props = {};
+  const start = lines.findIndex((line) => line.trim() === sectionHeader);
+  if (start === -1) {
+    return props;
+  }
   for (let i = start + 1; i < lines.length; i += 1) {
     const trimmed = lines[i].trim();
     if (!trimmed || trimmed.startsWith("#")) {
@@ -64,6 +61,18 @@ function parseEnvStagingBlock(tomlText, label) {
     }
   }
   return props;
+}
+
+function parseEnvStagingBlock(tomlText, label) {
+  const lines = tomlText.split("\n");
+  if (!lines.some((line) => line.trim() === "[env.staging]")) {
+    fail(label, `${label} must declare [env.staging]`);
+    return null;
+  }
+  return {
+    ...parseTomlSection(lines, "[env.staging]"),
+    ...parseTomlSection(lines, "[env.staging.vars]"),
+  };
 }
 
 function assertMinuteBranchCallsPingHeartbeat(workerSource, id) {
