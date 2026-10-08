@@ -101,23 +101,23 @@ That command is the unit harness. `npm test` in `e2e/fullstack` is not the harne
 
 **Independent Test**: E2E-P6.4-01, E2E-P6.4-02, and E2E-P6.4-03 in harness H-FL on H-FS.
 
-- [ ] T010 [US1] Call `get_ai_billing_status` and `GET /v1/subscription` from `frontend/lib/features/ai/billing/subscription_summary.dart` — flat `data` fields, null stays null, FR-001, E2E-P6.4-01, E2E-P6.4-02. Depends on T009. Create the file. Call `get_ai_billing_status` with `p_contract_version` set to `backendRpc` through the existing `RpcResult`, and `GET /v1/subscription` through `AboClient`. Read `plan_display_name`, `starts_at`, `ends_at`, `grace_ends_at`, `allowance`, `used`, `queued_count`, `held_count`, and `subscription_ref`. A null copied field stays null. Do not add a `remaining` figure.
+- [X] T010 [US1] Call `get_ai_billing_status` and `GET /v1/subscription` from `frontend/lib/features/ai/billing/subscription_summary.dart` — flat `data` fields, null stays null, FR-001, E2E-P6.4-01, E2E-P6.4-02. Depends on T009. Create the file. Call `get_ai_billing_status` with `p_contract_version` set to `backendRpc` through the existing `RpcResult`, and `GET /v1/subscription` through `AboClient`. Read `plan_display_name`, `starts_at`, `ends_at`, `grace_ends_at`, `allowance`, `used`, `queued_count`, `held_count`, and `subscription_ref`. A null copied field stays null. Do not add a `remaining` figure.
 
 **Checkpoint**: The summary loads the status RPC and the subscription read. E2E-P6.4-01 still fails.
 
-- [ ] T011 [US1] Show plan, dates, allowance, used, queued count, held count, and `subscription_ref` in `frontend/lib/features/ai/billing/subscription_summary.dart` — summary fields, FR-001, E2E-P6.4-01. Depends on T010 (same file). Show `plan_display_name`, `starts_at`, `ends_at`, `grace_ends_at`, `allowance`, `used`, `queued_count`, `held_count`, and `subscription_ref`.
+- [X] T011 [US1] Show plan, dates, allowance, used, queued count, held count, and `subscription_ref` in `frontend/lib/features/ai/billing/subscription_summary.dart` — summary fields, FR-001, E2E-P6.4-01. Depends on T010 (same file). Show `plan_display_name`, `starts_at`, `ends_at`, `grace_ends_at`, `allowance`, `used`, `queued_count`, `held_count`, and `subscription_ref`.
 
 **Checkpoint**: Those summary fields are on screen. E2E-P6.4-01 still fails.
 
-- [ ] T012 [US1] Show "contact support" with `subscription_ref` in `frontend/lib/features/ai/billing/subscription_summary.dart` — support line, FR-001, E2E-P6.4-01. Depends on T011 (same file). Show "contact support" with that `subscription_ref`.
+- [X] T012 [US1] Show "contact support" with `subscription_ref` in `frontend/lib/features/ai/billing/subscription_summary.dart` — support line, FR-001, E2E-P6.4-01. Depends on T011 (same file). Show "contact support" with that `subscription_ref`.
 
 **Checkpoint**: "contact support" shows the subscription reference. E2E-P6.4-01 still fails.
 
-- [ ] T013 [US1] Show `ended_reversed` in `frontend/lib/features/ai/billing/subscription_summary.dart` — status-view notice, FR-002, E2E-P6.4-02. Depends on T012 (same file). Show `ended_reversed` when the status-view notices include that code.
+- [X] T013 [US1] Show `ended_reversed` in `frontend/lib/features/ai/billing/subscription_summary.dart` — status-view notice, FR-002, E2E-P6.4-02. Depends on T012 (same file). Show `ended_reversed` when the status-view notices include that code.
 
 **Checkpoint**: Status `ended_reversed` is shown when that notice is present. E2E-P6.4-02 still fails.
 
-- [ ] T014 [US1] Keep the summary on screen when `snapshot` is null in `frontend/lib/features/ai/billing/subscription_summary.dart` — null snapshot, FR-001, E2E-P6.4-01. Depends on T013 (same file). A null `snapshot` still leaves the subscription object on screen.
+- [X] T014 [US1] Keep the summary on screen when `snapshot` is null in `frontend/lib/features/ai/billing/subscription_summary.dart` — null snapshot, FR-001, E2E-P6.4-01. Depends on T013 (same file). A null `snapshot` still leaves the subscription object on screen.
 
 **Checkpoint**: A null `snapshot` still leaves the subscription summary on screen. E2E-P6.4-01 still fails.
 
