@@ -15,6 +15,7 @@ import 'package:ai_clinic/core/ai/taxonomy.dart';
 import 'package:ai_clinic/core/config/supabase_config.dart';
 import 'package:ai_clinic/core/contract_versions.dart';
 import 'package:ai_clinic/core/ui/theme/app_theme.dart';
+import 'package:ai_clinic/features/ai/billing/abo_client.dart';
 import 'package:ai_clinic/features/ai/degraded/ai_degraded_view.dart';
 import 'package:ai_clinic/features/ai/presentation/pages/ai_page.dart';
 import 'package:ai_clinic/features/auth/domain/auth_session.dart';
@@ -52,7 +53,6 @@ const _billingCheckoutKey = Key('billing_checkout_screen');
 const _queuedTermText = 'starts after the current term';
 const _appUpdateCopy = 'Update the app to use AI';
 const _unsupportedAboContractVersion = aboClinic + 1;
-const _aboContractVersionOverrideKey = 'ABO_CONTRACT_VERSION_OVERRIDE';
 
 /// Fullstack billing tests call live Supabase and ABO over real HTTP.
 class _FullstackBillingTestBinding extends AutomatedTestWidgetsFlutterBinding {
@@ -207,7 +207,6 @@ void main() {
 
       final firstSession = _BillingDesktopSession(
         tester: tester,
-        router: _billingRouter(),
         branchId: clinic.branchId,
         organizationId: clinic.organizationId,
         urlLauncher: urlLauncher,
@@ -224,7 +223,6 @@ void main() {
 
       final secondSession = _BillingDesktopSession(
         tester: tester,
-        router: _billingRouter(),
         branchId: secondBranchId,
         organizationId: clinic.organizationId,
         urlLauncher: urlLauncher,
@@ -329,10 +327,11 @@ void main() {
 
       final heldPriceMinor = await _readCurrentSellablePriceMinor();
       await _bumpSellableOfferVersion();
+      final newPriceMinor = heldPriceMinor + 100;
 
       await _submitCheckout(tester);
 
-      expect(find.textContaining('$heldPriceMinor'), findsOneWidget, reason: 'offer_unavailable should show the new price before launch');
+      expect(find.textContaining('$newPriceMinor'), findsOneWidget, reason: 'offer_unavailable should show the new price before launch');
       expect(urlLauncher.launchedUrls, isEmpty, reason: 'checkout should not launch until the new price is shown');
     });
   });
@@ -471,16 +470,11 @@ void main() {
       final unsupportedBody = jsonDecode(unsupportedProbe.body) as Map<String, dynamic>;
       expect(unsupportedBody['code'], 'contract_version_unsupported');
 
-      final previousOverride = Platform.environment[_aboContractVersionOverrideKey];
-      Platform.environment[_aboContractVersionOverrideKey] = '$_unsupportedAboContractVersion';
+      debugAboContractVersionOverride = _unsupportedAboContractVersion;
       try {
         await _pumpAdministratorBillingRoute(tester, router: _billingRouter());
       } finally {
-        if (previousOverride == null) {
-          Platform.environment.remove(_aboContractVersionOverrideKey);
-        } else {
-          Platform.environment[_aboContractVersionOverrideKey] = previousOverride;
-        }
+        debugAboContractVersionOverride = null;
       }
 
       expect(find.byType(AlertDialog), findsNothing, reason: 'contract_version_unsupported should not open a dialog');
@@ -490,7 +484,11 @@ void main() {
   });
 }
 
-GoRouter _billingRouter({StaffRole role = StaffRole.administrator}) {
+GoRouter _billingRouter({
+  StaffRole role = StaffRole.administrator,
+  List<String>? branchIds,
+  String? activeBranchId,
+}) {
   final container = ProviderContainer(
     overrides: [
       supabaseClientProvider.overrideWithValue(LiveSupabaseHarness.client),
@@ -498,7 +496,11 @@ GoRouter _billingRouter({StaffRole role = StaffRole.administrator}) {
         () => MutableAuthSessionNotifier(
           AuthSessionState(
             status: AuthSessionStatus.authenticated,
-            context: sampleAuthSessionContext(role: role),
+            context: sampleAuthSessionContext(
+              role: role,
+              branchIds: branchIds ?? const ['00000000-0000-4000-8000-000000000001'],
+              activeBranchId: activeBranchId,
+            ),
           ),
         ),
       ),
@@ -839,7 +841,31 @@ Future<void> _bumpSellableOfferVersion() async {
     'sqlite3',
     [
       dbFile,
-      "UPDATE offer_version SET version = version + 1, price_minor = price_minor + 100 WHERE offer_id = (SELECT offer_id FROM offer LIMIT 1);",
+      '''
+INSERT INTO offer_version (
+  offer_id, version, plan_id, plan_version, term_unit, term_count,
+  price_minor, currency, allowance_credits, grace_days, grace_cap_rule,
+  copy, terms_version, published_by, assertion_sha256, contract_version
+)
+SELECT
+  offer_id, version + 1, plan_id, plan_version, term_unit, term_count,
+  price_minor + 100, currency, allowance_credits, grace_days, grace_cap_rule,
+  copy, terms_version, published_by, assertion_sha256, contract_version
+FROM offer_version
+WHERE offer_id = (SELECT offer_id FROM offer LIMIT 1)
+ORDER BY version DESC
+LIMIT 1;
+
+INSERT INTO offer_event (
+  offer_id, kind, version, actor, at, contract_version
+)
+SELECT
+  offer_id, 'published', version, 'fixture', datetime('now'), contract_version
+FROM offer_version
+WHERE offer_id = (SELECT offer_id FROM offer LIMIT 1)
+ORDER BY version DESC
+LIMIT 1;
+''',
     ],
   );
 }
@@ -1004,7 +1030,6 @@ class RecordingUrlLauncher extends UrlLauncherPlatform {
   @override
   Future<bool> launchUrl(String url, LaunchOptions options) async {
     launchedUrls.add(url);
-    didOpenBrowser = options.mode == PreferredLaunchMode.externalApplication;
     return true;
   }
 }
@@ -1038,11 +1063,13 @@ Future<String?> _readStatusRefreshRequestedAt(String orgId) async {
 class _BillingDesktopSession {
   _BillingDesktopSession({
     required this.tester,
-    required GoRouter router,
     required this.branchId,
     required this.organizationId,
     required this.urlLauncher,
-  }) : _router = router;
+  }) : _router = _billingRouter(
+         branchIds: [branchId],
+         activeBranchId: branchId,
+       );
 
   final WidgetTester tester;
   final String branchId;
@@ -1051,6 +1078,33 @@ class _BillingDesktopSession {
   final GoRouter _router;
 
   String? openCheckoutReference;
+
+  Future<void> _pumpShell() async {
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          supabaseClientProvider.overrideWithValue(LiveSupabaseHarness.client),
+          authSessionProvider.overrideWith(
+            () => MutableAuthSessionNotifier(
+              AuthSessionState(
+                status: AuthSessionStatus.authenticated,
+                context: sampleAuthSessionContext(
+                  role: StaffRole.administrator,
+                  branchIds: [branchId],
+                  activeBranchId: branchId,
+                ),
+              ),
+            ),
+          ),
+        ],
+        child: MaterialApp.router(
+          theme: AppTheme.light(),
+          routerConfig: _router,
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+  }
 
   Future<void> openBillingFromRenew() async {
     final composition = buildLiveVisitSummaryComposition(
@@ -1065,6 +1119,7 @@ class _BillingDesktopSession {
   }
 
   Future<void> openBillingRouteDirectly() async {
+    await _pumpShell();
     _router.go(kAdministratorBillingPath);
     await tester.pumpAndSettle();
   }
@@ -1075,11 +1130,14 @@ class _BillingDesktopSession {
   }
 
   Future<void> submitCheckout() async {
-    final referenceFinder = find.byKey(const Key('billing_checkout_reference'));
-    if (referenceFinder.evaluate().isNotEmpty) {
-      openCheckoutReference = tester.widget<Text>(referenceFinder).data;
-    }
     await _submitCheckout(tester);
+    final referenceFinder = find.byKey(const Key('billing_checkout_reference'));
+    await _pumpUntilFound(
+      tester,
+      referenceFinder,
+      reason: 'checkout should show reference after POST /v1/checkouts',
+    );
+    openCheckoutReference = tester.widget<Text>(referenceFinder).data;
   }
 
   Future<void> dispose() async {

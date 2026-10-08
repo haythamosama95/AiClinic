@@ -2,12 +2,17 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'package:ai_clinic/core/contract_versions.dart';
+import 'package:meta/meta.dart';
 import 'package:ai_clinic/features/ai/billing/billing_token_client.dart';
 import 'package:http/http.dart' as http;
 
 const _contractVersionOverrideKey = 'ABO_CONTRACT_VERSION_OVERRIDE';
 const _billingHostOverrideKey = 'ABO_BILLING_HOST';
 const _localBillingHost = 'billing.vendor.test';
+
+/// Test hook for E2E-P6.3-07; [Platform.environment] is not mutable in Dart tests.
+@visibleForTesting
+int? debugAboContractVersionOverride;
 
 /// Localized marketing copy for one offer locale.
 class BillingOfferCopyLocale {
@@ -502,6 +507,9 @@ class AboClient {
   }
 
   int _contractVersionHeaderValue() {
+    if (debugAboContractVersionOverride != null) {
+      return debugAboContractVersionOverride!;
+    }
     final override = Platform.environment[_contractVersionOverrideKey];
     if (override != null && override.isNotEmpty) {
       return int.parse(override);
