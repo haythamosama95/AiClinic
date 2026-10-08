@@ -255,7 +255,7 @@ That command is the unit harness. `npm test` in `e2e/fullstack` is not the harne
 
 **Independent Test**: E2E-P6.3-01 in harness H-FL on H-FS, payment via the H-PAY fixture.
 
-- [ ] T032 [US1] Re-run the fullstack file until E2E-P6.3-01 through E2E-P6.3-07 pass — green harness, FR-001, FR-002, FR-003, FR-004, FR-005, FR-006, FR-007, FR-008, FR-009, E2E-P6.3-01, E2E-P6.3-02, E2E-P6.3-03, E2E-P6.3-04, E2E-P6.3-05, E2E-P6.3-06, E2E-P6.3-07. Depends on T031. From `frontend/`, against the running H-FS stack, run `flutter test test/integration/administrator_billing_fullstack_test.dart --tags fullstack` until E2E-P6.3-01 through E2E-P6.3-07 pass. Fixes stay in the files this unit's **Files** table lists under `frontend/`. Do not run `npm test` in `e2e/fullstack`. Do not start wrangler. Do not edit `frontend/lib/core/contract_versions.dart`, `frontend/lib/features/ai/presentation/pages/ai_page.dart`, or `frontend/pubspec.yaml`.
+- [X] T032 [US1] Re-run the fullstack file until E2E-P6.3-01 through E2E-P6.3-07 pass — green harness, FR-001, FR-002, FR-003, FR-004, FR-005, FR-006, FR-007, FR-008, FR-009, E2E-P6.3-01, E2E-P6.3-02, E2E-P6.3-03, E2E-P6.3-04, E2E-P6.3-05, E2E-P6.3-06, E2E-P6.3-07. Depends on T031. From `frontend/`, against the running H-FS stack, run `flutter test test/integration/administrator_billing_fullstack_test.dart --tags fullstack` until E2E-P6.3-01 through E2E-P6.3-07 pass. Fixes stay in the files this unit's **Files** table lists under `frontend/`. Do not run `npm test` in `e2e/fullstack`. Do not start wrangler. Do not edit `frontend/lib/core/contract_versions.dart`, `frontend/lib/features/ai/presentation/pages/ai_page.dart`, or `frontend/pubspec.yaml`.
 
 **Checkpoint**: E2E-P6.3-01, E2E-P6.3-02, E2E-P6.3-03, E2E-P6.3-04, E2E-P6.3-05, E2E-P6.3-06, and E2E-P6.3-07 pass in H-FL.
 
@@ -269,7 +269,7 @@ That command is the unit harness. `npm test` in `e2e/fullstack` is not the harne
 
 **Independent Test**: E2E-P6.3-01 in harness H-FL on H-FS, payment via the H-PAY fixture.
 
-- [ ] T033 [US1] Write `specs/091-abo-p6-3-administrator-billing-offers-contact-checkout/quickstart.md` — unit quickstart, FR-001, FR-006, E2E-P6.3-01, E2E-P6.3-02, E2E-P6.3-03, E2E-P6.3-04, E2E-P6.3-05, E2E-P6.3-06, E2E-P6.3-07. Depends on T032. Fill only these sections: what was implemented and the files added or modified; the harness command for this unit's tests only, from `frontend/`, `flutter test test/integration/administrator_billing_fullstack_test.dart --tags fullstack`; the entry point → module chain per E2E id. Do not list earlier-unit files, combined counts, or full-suite commands. Manual steps are omitted: the harness sees this behaviour.
+- [X] T033 [US1] Write `specs/091-abo-p6-3-administrator-billing-offers-contact-checkout/quickstart.md` — unit quickstart, FR-001, FR-006, E2E-P6.3-01, E2E-P6.3-02, E2E-P6.3-03, E2E-P6.3-04, E2E-P6.3-05, E2E-P6.3-06, E2E-P6.3-07. Depends on T032. Fill only these sections: what was implemented and the files added or modified; the harness command for this unit's tests only, from `frontend/`, `flutter test test/integration/administrator_billing_fullstack_test.dart --tags fullstack`; the entry point → module chain per E2E id. Do not list earlier-unit files, combined counts, or full-suite commands. Manual steps are omitted: the harness sees this behaviour.
 
 **Checkpoint**: `quickstart.md` names the seven H-FL ids, the unit command, and the entry chain.
 

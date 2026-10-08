@@ -41,6 +41,7 @@ import '../widget/ai/ai_surface_test_harness.dart';
 const kAdministratorBillingPath = '/ai/administrator-billing';
 
 final _aboUrl = Platform.environment['ABO_URL'] ?? 'http://127.0.0.1:8788';
+var _hfsStackReady = false;
 const _billingHost = 'billing.vendor.test';
 const _paymobHmacSecret = 'paymob-hmac-unconfigured';
 
@@ -52,6 +53,12 @@ const _queuedTermText = 'starts after the current term';
 const _appUpdateCopy = 'Update the app to use AI';
 const _unsupportedAboContractVersion = aboClinic + 1;
 const _aboContractVersionOverrideKey = 'ABO_CONTRACT_VERSION_OVERRIDE';
+
+/// Fullstack billing tests call live Supabase and ABO over real HTTP.
+class _FullstackBillingTestBinding extends AutomatedTestWidgetsFlutterBinding {
+  @override
+  bool get overrideHttpClient => false;
+}
 
 const _paymobHmacFields = <String>[
   'amount_cents',
@@ -77,15 +84,22 @@ const _paymobHmacFields = <String>[
 ];
 
 void main() {
+  _FullstackBillingTestBinding();
+
   late BoundaryTestContext ctx;
   late RecordingUrlLauncher urlLauncher;
 
   setUpAll(() async {
-    await LiveSupabaseHarness.ensureReady();
-    await _ensureHfsReady();
+    _hfsStackReady = await _probeHfsReady();
+    if (_hfsStackReady) {
+      await LiveSupabaseHarness.ensureReady();
+    }
   });
 
   setUp(() async {
+    if (!_hfsStackReady) {
+      return;
+    }
     ctx = await BoundaryTestContext.create();
     await ctx.resetInstallation();
     urlLauncher = RecordingUrlLauncher();
@@ -94,6 +108,12 @@ void main() {
 
   group('E2E-P6.3-01', () {
     testWidgets('E2E-P6.3-01', (tester) async {
+      if (!_hfsStackReady) {
+        fail(
+          'H-FS stack unavailable (ABO at $_aboUrl). Start the H-FS stack before running fullstack billing tests.',
+        );
+      }
+
       final clinic = await ctx.ensureClinic(label: 'p63_purchase');
       final installationId = _deterministicUuid('b63', clinic.suffix);
       await _seedEndsSoonCoverage(
@@ -116,18 +136,29 @@ void main() {
         tester,
         router: _billingRouter(),
         composition: composition,
+        boundedPumping: true,
       );
 
       await tester.tap(find.byKey(const Key('ai_notice_renew')));
-      await tester.pumpAndSettle();
+      await _pumpUntilFound(
+        tester,
+        find.byKey(_billingOffersKey),
+        reason: 'renew should open the offers screen',
+      );
 
-      expect(find.byKey(_billingOffersKey), findsOneWidget, reason: 'renew should open the offers screen');
+      await _acceptTermsAndContinue(tester, boundedPumping: true);
+      await _pumpUntilFound(
+        tester,
+        find.byKey(_billingContactKey),
+        reason: 'offers should advance to the contact form',
+      );
 
-      await _acceptTermsAndContinue(tester);
-      expect(find.byKey(_billingContactKey), findsOneWidget);
-
-      await _fillAndSaveBillingContact(tester);
-      expect(find.byKey(_billingCheckoutKey), findsOneWidget);
+      await _fillAndSaveBillingContact(tester, boundedPumping: true);
+      await _pumpUntilFound(
+        tester,
+        find.byKey(_billingCheckoutKey),
+        reason: 'contact save should advance to checkout',
+      );
 
       await _submitCheckout(tester);
 
@@ -480,6 +511,7 @@ Future<void> _pumpAdministratorShell(
   WidgetTester tester, {
   required GoRouter router,
   required LiveVisitSummaryComposition composition,
+  bool boundedPumping = false,
 }) async {
   await tester.pumpWidget(
     ProviderScope(
@@ -500,9 +532,17 @@ Future<void> _pumpAdministratorShell(
       ),
     ),
   );
-  await tester.pumpAndSettle();
+  if (boundedPumping) {
+    await _pumpBillingFrames(tester);
+  } else {
+    await tester.pumpAndSettle();
+  }
   router.go(AppRoutes.ai);
-  await tester.pumpAndSettle();
+  if (boundedPumping) {
+    await _pumpBillingFrames(tester);
+  } else {
+    await tester.pumpAndSettle();
+  }
   await tester.pumpWidget(
     ProviderScope(
       overrides: [
@@ -516,8 +556,16 @@ Future<void> _pumpAdministratorShell(
       ),
     ),
   );
-  await tester.pumpAndSettle();
-  expect(find.byKey(const Key('ai_notice_renew')), findsOneWidget);
+  if (boundedPumping) {
+    await _pumpUntilFound(
+      tester,
+      find.byKey(const Key('ai_notice_renew')),
+      reason: 'administrator shell should show the renew control',
+    );
+  } else {
+    await tester.pumpAndSettle();
+    expect(find.byKey(const Key('ai_notice_renew')), findsOneWidget);
+  }
 }
 
 Future<void> _pumpStaffShell(
@@ -592,30 +640,43 @@ Future<void> _pumpAdministratorBillingRoute(
   await tester.pumpAndSettle();
 }
 
-Future<void> _acceptTermsAndContinue(WidgetTester tester) async {
+Future<void> _acceptTermsAndContinue(WidgetTester tester, {bool boundedPumping = false}) async {
   final acceptTerms = find.byKey(const Key('billing_accept_terms'));
   if (acceptTerms.evaluate().isNotEmpty) {
     await tester.tap(acceptTerms);
-    await tester.pumpAndSettle();
+    if (boundedPumping) {
+      await _pumpBillingFrames(tester);
+    } else {
+      await tester.pumpAndSettle();
+    }
   }
   final continueButton = find.byKey(const Key('billing_continue'));
   if (continueButton.evaluate().isNotEmpty) {
     await tester.tap(continueButton);
-    await tester.pumpAndSettle();
+    if (boundedPumping) {
+      await _pumpBillingFrames(tester);
+    } else {
+      await tester.pumpAndSettle();
+    }
   }
 }
 
-Future<void> _fillAndSaveBillingContact(WidgetTester tester) async {
+Future<void> _fillAndSaveBillingContact(WidgetTester tester, {bool boundedPumping = false}) async {
   await tester.enterText(find.byKey(const Key('billing_contact_name')), 'P6.3 Administrator');
   await tester.enterText(find.byKey(const Key('billing_contact_email')), 'p63-admin@clinic.test');
   await tester.enterText(find.byKey(const Key('billing_contact_phone')), '+201001234567');
   await tester.tap(find.byKey(const Key('billing_contact_save')));
-  await tester.pumpAndSettle();
+  if (boundedPumping) {
+    await _pumpBillingFrames(tester);
+  } else {
+    await tester.pumpAndSettle();
+  }
 }
 
 Future<void> _submitCheckout(WidgetTester tester) async {
   await tester.tap(find.byKey(const Key('billing_checkout_submit')));
-  await tester.pumpAndSettle();
+  // Checkout polling uses Timer.periodic; pumpAndSettle would wait until timeout.
+  await _pumpBillingFrames(tester, iterations: 60);
 }
 
 Future<void> _pumpUntilCheckoutShownState(WidgetTester tester, String shownState, {int maxSeconds = 30}) async {
@@ -641,7 +702,7 @@ Future<void> _expectAiRequestSucceeds(LiveVisitSummaryComposition composition) a
   expect(terminal, isA<CompletedTerminal>(), reason: 'an AI request should succeed after billing completes');
 }
 
-Future<void> _ensureHfsReady() async {
+Future<bool> _probeHfsReady() async {
   try {
     final response = await http
         .get(
@@ -649,12 +710,36 @@ Future<void> _ensureHfsReady() async {
           headers: {'Host': _billingHost},
         )
         .timeout(const Duration(seconds: 3));
-    if (response.statusCode >= 500) {
-      markTestSkipped('H-FS ABO unavailable at $_aboUrl (status ${response.statusCode}).');
-    }
+    return response.statusCode < 500;
   } on Exception {
-    markTestSkipped('H-FS stack unavailable (ABO at $_aboUrl). Start the H-FS stack before running fullstack billing tests.');
+    return false;
   }
+}
+
+Future<void> _pumpBillingFrames(
+  WidgetTester tester, {
+  int iterations = 10,
+  Duration step = const Duration(milliseconds: 100),
+}) async {
+  for (var i = 0; i < iterations; i++) {
+    await tester.pump(step);
+  }
+}
+
+Future<void> _pumpUntilFound(
+  WidgetTester tester,
+  Finder finder, {
+  String? reason,
+  int maxIterations = 120,
+  Duration step = const Duration(milliseconds: 500),
+}) async {
+  for (var i = 0; i < maxIterations; i++) {
+    await tester.pump(step);
+    if (finder.evaluate().isNotEmpty) {
+      return;
+    }
+  }
+  fail(reason ?? 'Timed out waiting for $finder');
 }
 
 Future<void> _replayPaymobFixture(String fixtureName, {required String redirectUrl}) async {
