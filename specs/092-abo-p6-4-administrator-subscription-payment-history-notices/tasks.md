@@ -81,11 +81,11 @@ That command is the unit harness. `npm test` in `e2e/fullstack` is not the harne
 
 **Independent Test**: E2E-P6.4-01, E2E-P6.4-02, and E2E-P6.4-03 in harness H-FL on H-FS.
 
-- [ ] T007 [US1] Add `GET /v1/subscription` parsing on `frontend/lib/features/ai/billing/abo_client.dart` — subscription body, FR-001, FR-002, E2E-P6.4-01, E2E-P6.4-02, E2E-P6.4-03. Depends on T006. Parse `{contract_version, subscription_ref, snapshot, notices}`. `notices` is the closed set of code strings the response returns. Leave `getOffers`, billing contact, checkout create, checkout read, and the open list unchanged.
+- [X] T007 [US1] Add `GET /v1/subscription` parsing on `frontend/lib/features/ai/billing/abo_client.dart` — subscription body, FR-001, FR-002, E2E-P6.4-01, E2E-P6.4-02, E2E-P6.4-03. Depends on T006. Parse `{contract_version, subscription_ref, snapshot, notices}`. `notices` is the closed set of code strings the response returns. Leave `getOffers`, billing contact, checkout create, checkout read, and the open list unchanged.
 
 **Checkpoint**: The client parses `GET /v1/subscription`. E2E-P6.4-01 still fails.
 
-- [ ] T008 [US1] Add `GET /v1/payments` parsing on `frontend/lib/features/ai/billing/abo_client.dart` — payments body, first call omits `cursor`, FR-003, E2E-P6.4-01, E2E-P6.4-02. Depends on T007 (same file). Parse `{contract_version, payments, next_cursor, has_more}`. Each payment is `{reference, paid_at, amount_minor, currency, plan_display_name, offer_version, term_unit, term_count, classification, reversals}`. `classification` is `normal`, `likely_duplicate`, or `late`. Each reversal is `{reference, amount_minor, kind, is_full}` and `kind` is `refund`, `void`, `chargeback`, or `unknown`. The first call omits `cursor`. Leave the existing methods unchanged.
+- [X] T008 [US1] Add `GET /v1/payments` parsing on `frontend/lib/features/ai/billing/abo_client.dart` — payments body, first call omits `cursor`, FR-003, E2E-P6.4-01, E2E-P6.4-02. Depends on T007 (same file). Parse `{contract_version, payments, next_cursor, has_more}`. Each payment is `{reference, paid_at, amount_minor, currency, plan_display_name, offer_version, term_unit, term_count, classification, reversals}`. `classification` is `normal`, `likely_duplicate`, or `late`. Each reversal is `{reference, amount_minor, kind, is_full}` and `kind` is `refund`, `void`, `chargeback`, or `unknown`. The first call omits `cursor`. Leave the existing methods unchanged.
 
 **Checkpoint**: The client parses the first payments page with no `cursor`. E2E-P6.4-01 still fails.
 
@@ -93,7 +93,7 @@ That command is the unit harness. `npm test` in `e2e/fullstack` is not the harne
 
 **Independent Test**: E2E-P6.4-04 and E2E-P6.4-05 in harness H-FL on H-FS. Every earlier suite stays green (rule S2).
 
-- [ ] T009 [US2] Pass `cursor` as the previous `next_cursor` on `frontend/lib/features/ai/billing/abo_client.dart` — unchanged cursor, surface `invalid_request`, FR-004, E2E-P6.4-04. Depends on T008 (same file). A later `GET /v1/payments` sets `cursor` to the previous `next_cursor`, that string unchanged. A response code `invalid_request` is surfaced on that call. Leave the existing methods unchanged.
+- [X] T009 [US2] Pass `cursor` as the previous `next_cursor` on `frontend/lib/features/ai/billing/abo_client.dart` — unchanged cursor, surface `invalid_request`, FR-004, E2E-P6.4-04. Depends on T008 (same file). A later `GET /v1/payments` sets `cursor` to the previous `next_cursor`, that string unchanged. A response code `invalid_request` is surfaced on that call. Leave the existing methods unchanged.
 
 **Checkpoint**: The client sends the previous `next_cursor` and surfaces `invalid_request`. E2E-P6.4-04 still fails.
 

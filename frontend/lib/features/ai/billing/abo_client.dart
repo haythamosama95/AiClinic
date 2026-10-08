@@ -335,6 +335,184 @@ class OpenCheckoutsResponse {
   }
 }
 
+/// Payment classification from `GET /v1/payments`.
+enum PaymentClassification {
+  normal,
+  likelyDuplicate,
+  late;
+
+  static PaymentClassification parse(String? raw) {
+    return switch (raw) {
+      'likely_duplicate' => PaymentClassification.likelyDuplicate,
+      'late' => PaymentClassification.late,
+      'normal' => PaymentClassification.normal,
+      _ => throw FormatException('payment classification is invalid: $raw'),
+    };
+  }
+
+  String get wireValue => switch (this) {
+        PaymentClassification.normal => 'normal',
+        PaymentClassification.likelyDuplicate => 'likely_duplicate',
+        PaymentClassification.late => 'late',
+      };
+}
+
+/// Reversal kind from `GET /v1/payments`.
+enum ReversalKind {
+  refund,
+  void_,
+  chargeback,
+  unknown;
+
+  static ReversalKind parse(String? raw) {
+    return switch (raw) {
+      'refund' => ReversalKind.refund,
+      'void' => ReversalKind.void_,
+      'chargeback' => ReversalKind.chargeback,
+      'unknown' => ReversalKind.unknown,
+      _ => throw FormatException('reversal kind is invalid: $raw'),
+    };
+  }
+
+  String get wireValue => switch (this) {
+        ReversalKind.refund => 'refund',
+        ReversalKind.void_ => 'void',
+        ReversalKind.chargeback => 'chargeback',
+        ReversalKind.unknown => 'unknown',
+      };
+}
+
+/// One reversal on a payment from `GET /v1/payments`.
+class PaymentReversal {
+  const PaymentReversal({
+    required this.reference,
+    required this.amountMinor,
+    required this.kind,
+    required this.isFull,
+  });
+
+  final String reference;
+  final int amountMinor;
+  final ReversalKind kind;
+  final bool isFull;
+
+  factory PaymentReversal.fromJson(Map<String, dynamic> json) {
+    return PaymentReversal(
+      reference: json['reference']?.toString() ?? '',
+      amountMinor: _readInt(json['amount_minor']),
+      kind: ReversalKind.parse(json['kind']?.toString()),
+      isFull: json['is_full'] == true,
+    );
+  }
+}
+
+/// One payment from `GET /v1/payments`.
+class PaymentRecord {
+  const PaymentRecord({
+    required this.reference,
+    required this.paidAt,
+    required this.amountMinor,
+    required this.currency,
+    required this.planDisplayName,
+    required this.offerVersion,
+    required this.termUnit,
+    required this.termCount,
+    required this.classification,
+    required this.reversals,
+  });
+
+  final String reference;
+  final DateTime paidAt;
+  final int amountMinor;
+  final String currency;
+  final String planDisplayName;
+  final int offerVersion;
+  final String termUnit;
+  final int termCount;
+  final PaymentClassification classification;
+  final List<PaymentReversal> reversals;
+
+  factory PaymentRecord.fromJson(Map<String, dynamic> json) {
+    final reversalsRaw = json['reversals'];
+    final reversals = reversalsRaw is List
+        ? reversalsRaw
+            .map((entry) => PaymentReversal.fromJson(Map<String, dynamic>.from(entry as Map)))
+            .toList(growable: false)
+        : const <PaymentReversal>[];
+    return PaymentRecord(
+      reference: json['reference']?.toString() ?? '',
+      paidAt: _parseDateTime(json['paid_at']),
+      amountMinor: _readInt(json['amount_minor']),
+      currency: json['currency']?.toString() ?? '',
+      planDisplayName: json['plan_display_name']?.toString() ?? '',
+      offerVersion: _readInt(json['offer_version']),
+      termUnit: json['term_unit']?.toString() ?? '',
+      termCount: _readInt(json['term_count']),
+      classification: PaymentClassification.parse(json['classification']?.toString()),
+      reversals: reversals,
+    );
+  }
+}
+
+/// `GET /v1/payments` payload.
+class PaymentsResponse {
+  const PaymentsResponse({
+    required this.contractVersion,
+    required this.payments,
+    required this.nextCursor,
+    required this.hasMore,
+  });
+
+  final int contractVersion;
+  final List<PaymentRecord> payments;
+  final String nextCursor;
+  final bool hasMore;
+
+  factory PaymentsResponse.fromJson(Map<String, dynamic> json) {
+    final paymentsRaw = json['payments'];
+    final payments = paymentsRaw is List
+        ? paymentsRaw
+            .map((entry) => PaymentRecord.fromJson(Map<String, dynamic>.from(entry as Map)))
+            .toList(growable: false)
+        : const <PaymentRecord>[];
+    return PaymentsResponse(
+      contractVersion: _readInt(json['contract_version']),
+      payments: payments,
+      nextCursor: json['next_cursor']?.toString() ?? '',
+      hasMore: json['has_more'] == true,
+    );
+  }
+}
+
+/// `GET /v1/subscription` payload.
+class SubscriptionResponse {
+  const SubscriptionResponse({
+    required this.contractVersion,
+    required this.subscriptionRef,
+    this.snapshot,
+    required this.notices,
+  });
+
+  final int contractVersion;
+  final String subscriptionRef;
+  final Map<String, dynamic>? snapshot;
+  final List<String> notices;
+
+  factory SubscriptionResponse.fromJson(Map<String, dynamic> json) {
+    final snapshotRaw = json['snapshot'];
+    final noticesRaw = json['notices'];
+    final notices = noticesRaw is List
+        ? noticesRaw.map((entry) => entry.toString()).toList(growable: false)
+        : const <String>[];
+    return SubscriptionResponse(
+      contractVersion: _readInt(json['contract_version']),
+      subscriptionRef: json['subscription_ref']?.toString() ?? '',
+      snapshot: snapshotRaw is Map ? Map<String, dynamic>.from(snapshotRaw) : null,
+      notices: notices,
+    );
+  }
+}
+
 /// Base for ABO error responses mapped from §2.3.
 abstract class AboApiException implements Exception {
   const AboApiException({required this.code, required this.contractVersion});
@@ -389,6 +567,11 @@ final class AboContractVersionUnsupportedException extends AboApiException {
   }) : super(code: 'contract_version_unsupported');
 
   final List<int> acceptedVersions;
+}
+
+final class AboInvalidRequestException extends AboApiException {
+  const AboInvalidRequestException({required super.contractVersion})
+      : super(code: 'invalid_request');
 }
 
 /// ABO clinic API client over the billing token session.
@@ -470,6 +653,21 @@ class AboClient {
     final response = await _request('GET', '/v1/checkouts?open=1');
     _throwOnError(response);
     return OpenCheckoutsResponse.fromJson(_decodeObject(response.body));
+  }
+
+  Future<SubscriptionResponse> getSubscription() async {
+    final response = await _request('GET', '/v1/subscription');
+    _throwOnError(response);
+    return SubscriptionResponse.fromJson(_decodeObject(response.body));
+  }
+
+  Future<PaymentsResponse> getPayments({String? cursor}) async {
+    final path = cursor == null || cursor.isEmpty
+        ? '/v1/payments'
+        : '/v1/payments?cursor=${Uri.encodeComponent(cursor)}';
+    final response = await _request('GET', path);
+    _throwOnError(response);
+    return PaymentsResponse.fromJson(_decodeObject(response.body));
   }
 
   Future<http.Response> _request(
@@ -564,6 +762,8 @@ class AboClient {
           contractVersion: contractVersion,
           acceptedVersions: _readAcceptedVersions(body['accepted_versions']),
         );
+      case 'invalid_request':
+        throw AboInvalidRequestException(contractVersion: contractVersion);
       default:
         throw AboUnknownException(code: code ?? 'abo_error', contractVersion: contractVersion);
     }
