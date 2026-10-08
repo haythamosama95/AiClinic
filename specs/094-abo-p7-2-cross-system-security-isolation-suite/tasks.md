@@ -44,7 +44,7 @@ node --import tsx --test test/p7-2-untrusted-callers.test.mjs test/p7-2-vendor-e
 
 **Independent Test**: E2E-P7.2-07 and E2E-P7.2-08 in harness H-FS. Earlier suites stay green, and E2E-P7.2-01, E2E-P7.2-02, E2E-P7.2-03, E2E-P7.2-04, E2E-P7.2-05, E2E-P7.2-06, and E2E-P7.2-09 still pass.
 
-- [ ] T002 [US3] Create `e2e/fullstack/dart/pubspec.yaml` — Dart package, FR-009, E2E-P7.2-08. Depends on T001. Package name `abo_p7_2_session_capture`, `publish_to: none`, SDK ^3.11.5, path dependency `ai_clinic` → `../../../frontend`. Do not run `dart`. Do not boot wrangler.
+- [X] T002 [US3] Create `e2e/fullstack/dart/pubspec.yaml` — Dart package, FR-009, E2E-P7.2-08. Depends on T001. Package name `abo_p7_2_session_capture`, `publish_to: none`, SDK ^3.11.5, path dependency `ai_clinic` → `../../../frontend`. Do not run `dart`. Do not boot wrangler.
 
 **Checkpoint**: E2E-P7.2-08 has a package manifest. The driver is not started.
 
@@ -52,7 +52,7 @@ node --import tsx --test test/p7-2-untrusted-callers.test.mjs test/p7-2-vendor-e
 
 **Independent Test**: E2E-P7.2-07 and E2E-P7.2-08 in harness H-FS. Earlier suites stay green, and E2E-P7.2-01, E2E-P7.2-02, E2E-P7.2-03, E2E-P7.2-04, E2E-P7.2-05, E2E-P7.2-06, and E2E-P7.2-09 still pass.
 
-- [ ] T003 [US3] Create `e2e/fullstack/dart/bin/session_jwt_capture.dart` — Dart driver, FR-009, E2E-P7.2-08. Depends on T001. Construct `DiscoveryClient`, `PlatformHttpsSubmitPort` (the `HttpsSubmitPort` in `frontend/lib/core/ai/https_submit_port.dart`), `UsageSummaryClient`, and `AboClient` with a recording `http.Client`. Print one JSON object `{url, authorization}` for each outbound call. The Supabase session JWT stays in the driver process and is not the AI token or the billing token those clients send. Do not run `dart`. Do not boot wrangler. Do not add a file under `frontend/test/`.
+- [X] T003 [US3] Create `e2e/fullstack/dart/bin/session_jwt_capture.dart` — Dart driver, FR-009, E2E-P7.2-08. Depends on T001. Construct `DiscoveryClient`, `PlatformHttpsSubmitPort` (the `HttpsSubmitPort` in `frontend/lib/core/ai/https_submit_port.dart`), `UsageSummaryClient`, and `AboClient` with a recording `http.Client`. Print one JSON object `{url, authorization}` for each outbound call. The Supabase session JWT stays in the driver process and is not the AI token or the billing token those clients send. Do not run `dart`. Do not boot wrangler. Do not add a file under `frontend/test/`.
 
 **Checkpoint**: E2E-P7.2-08 has a driver file. The driver is not started.
 
