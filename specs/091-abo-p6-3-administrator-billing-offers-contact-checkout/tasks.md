@@ -71,11 +71,11 @@ That command is the unit harness. `npm test` in `e2e/fullstack` is not the harne
 
 **Independent Test**: E2E-P6.3-06 and E2E-P6.3-07 in harness H-FL on H-FS. Every earlier suite stays green (rule S2).
 
-- [ ] T006 [US4] Add the failing test `E2E-P6.3-06` in `frontend/test/integration/administrator_billing_fullstack_test.dart` — red test, FR-008, E2E-P6.3-06. Depends on T005 (same file). Title `E2E-P6.3-06`. Tag the test `fullstack`. Entry is a staff session of `AiFeatureHostPage` in the app shell. The renew control and the renew or buy control are absent. The recording session client sees no `issue_billing_token` call. The harness command fails because that absence is not held. E2E-P6.3-01 through E2E-P6.3-05 still fail.
+- [X] T006 [US4] Add the failing test `E2E-P6.3-06` in `frontend/test/integration/administrator_billing_fullstack_test.dart` — red test, FR-008, E2E-P6.3-06. Depends on T005 (same file). Title `E2E-P6.3-06`. Tag the test `fullstack`. Entry is a staff session of `AiFeatureHostPage` in the app shell. The renew control and the renew or buy control are absent. The recording session client sees no `issue_billing_token` call. The harness command fails because that absence is not held. E2E-P6.3-01 through E2E-P6.3-05 still fail.
 
 **Checkpoint**: E2E-P6.3-06 exists and fails.
 
-- [ ] T007 [US4] Add the failing test `E2E-P6.3-07` in `frontend/test/integration/administrator_billing_fullstack_test.dart` — red test, FR-009, E2E-P6.3-07. Depends on T006 (same file). Title `E2E-P6.3-07`. Tag the test `fullstack`. Entry is the administrator billing screens, with `Abo-Contract-Version` outside the accepted pair. The ABO answers `contract_version_unsupported`. The billing screens show the app-update state and no dialog. The harness command fails because that update state is absent. E2E-P6.3-01 through E2E-P6.3-06 still fail.
+- [X] T007 [US4] Add the failing test `E2E-P6.3-07` in `frontend/test/integration/administrator_billing_fullstack_test.dart` — red test, FR-009, E2E-P6.3-07. Depends on T006 (same file). Title `E2E-P6.3-07`. Tag the test `fullstack`. Entry is the administrator billing screens, with `Abo-Contract-Version` outside the accepted pair. The ABO answers `contract_version_unsupported`. The billing screens show the app-update state and no dialog. The harness command fails because that update state is absent. E2E-P6.3-01 through E2E-P6.3-06 still fail.
 
 **Checkpoint**: E2E-P6.3-06 and E2E-P6.3-07 exist and fail.
 
@@ -83,7 +83,7 @@ That command is the unit harness. `npm test` in `e2e/fullstack` is not the harne
 
 **Independent Test**: E2E-P6.3-06 and E2E-P6.3-07 in harness H-FL on H-FS. Every earlier suite stays green (rule S2).
 
-- [ ] T008 [US4] Run the H-FL command and confirm E2E-P6.3-01 through E2E-P6.3-07 fail — red run, FR-001, FR-002, FR-003, FR-004, FR-005, FR-006, FR-007, FR-008, FR-009, E2E-P6.3-01, E2E-P6.3-02, E2E-P6.3-03, E2E-P6.3-04, E2E-P6.3-05, E2E-P6.3-06, E2E-P6.3-07. Depends on T007. From `frontend/`, against the running H-FS stack, run `flutter test test/integration/administrator_billing_fullstack_test.dart --tags fullstack` and confirm E2E-P6.3-01 through E2E-P6.3-07 fail. Leave the production files unchanged. Do not edit `frontend/test/integration/administrator_billing_fullstack_test.dart` in this task. Do not run `npm test` in `e2e/fullstack`. Do not start wrangler.
+- [X] T008 [US4] Run the H-FL command and confirm E2E-P6.3-01 through E2E-P6.3-07 fail — red run, FR-001, FR-002, FR-003, FR-004, FR-005, FR-006, FR-007, FR-008, FR-009, E2E-P6.3-01, E2E-P6.3-02, E2E-P6.3-03, E2E-P6.3-04, E2E-P6.3-05, E2E-P6.3-06, E2E-P6.3-07. Depends on T007. From `frontend/`, against the running H-FS stack, run `flutter test test/integration/administrator_billing_fullstack_test.dart --tags fullstack` and confirm E2E-P6.3-01 through E2E-P6.3-07 fail. Leave the production files unchanged. Do not edit `frontend/test/integration/administrator_billing_fullstack_test.dart` in this task. Do not run `npm test` in `e2e/fullstack`. Do not start wrangler.
 
 **Checkpoint**: E2E-P6.3-01 through E2E-P6.3-07 fail. The billing screens do not exist yet.
 
@@ -97,15 +97,15 @@ That command is the unit harness. `npm test` in `e2e/fullstack` is not the harne
 
 **Independent Test**: E2E-P6.3-01 in harness H-FL on H-FS, payment via the H-PAY fixture.
 
-- [ ] T009 [US1] Add the English billing strings to `frontend/lib/l10n/app_en.arb` — offers, contact, shown states, queued term, and ABO errors, FR-001, E2E-P6.3-01, E2E-P6.3-03, E2E-P6.3-04, E2E-P6.3-05. Depends on T008. English strings for the offers screen, the contact form, the checkout shown states Waiting, Failed, Paid, Active, and Abandoned, "starts after the current term", and the five ABO errors `offer_unavailable`, `billing_contact_required`, `terms_not_accepted`, `provider_unavailable`, and `rate_limited`.
+- [X] T009 [US1] Add the English billing strings to `frontend/lib/l10n/app_en.arb` — offers, contact, shown states, queued term, and ABO errors, FR-001, E2E-P6.3-01, E2E-P6.3-03, E2E-P6.3-04, E2E-P6.3-05. Depends on T008. English strings for the offers screen, the contact form, the checkout shown states Waiting, Failed, Paid, Active, and Abandoned, "starts after the current term", and the five ABO errors `offer_unavailable`, `billing_contact_required`, `terms_not_accepted`, `provider_unavailable`, and `rate_limited`.
 
 **Checkpoint**: English keys for those billing strings exist. E2E-P6.3-01 still fails.
 
-- [ ] T010 [US1] Add the Arabic strings for those keys to `frontend/lib/l10n/app_ar.arb` — the same billing keys, FR-001, E2E-P6.3-01, E2E-P6.3-03, E2E-P6.3-04, E2E-P6.3-05. Depends on T009. Arabic strings for the keys added in `frontend/lib/l10n/app_en.arb`.
+- [X] T010 [US1] Add the Arabic strings for those keys to `frontend/lib/l10n/app_ar.arb` — the same billing keys, FR-001, E2E-P6.3-01, E2E-P6.3-03, E2E-P6.3-04, E2E-P6.3-05. Depends on T009. Arabic strings for the keys added in `frontend/lib/l10n/app_en.arb`.
 
 **Checkpoint**: Arabic keys match the English billing keys. E2E-P6.3-01 still fails.
 
-- [ ] T011 [US1] Regenerate `frontend/lib/l10n/app_localizations.dart`, `frontend/lib/l10n/app_localizations_en.dart`, and `frontend/lib/l10n/app_localizations_ar.dart` — generated from the arb files, FR-001, E2E-P6.3-01, E2E-P6.3-03, E2E-P6.3-04, E2E-P6.3-05. Depends on T010. Regenerate those three files from `frontend/lib/l10n/app_en.arb` and `frontend/lib/l10n/app_ar.arb` with the project's existing l10n generation so the new keys are on the localizations class.
+- [X] T011 [US1] Regenerate `frontend/lib/l10n/app_localizations.dart`, `frontend/lib/l10n/app_localizations_en.dart`, and `frontend/lib/l10n/app_localizations_ar.dart` — generated from the arb files, FR-001, E2E-P6.3-01, E2E-P6.3-03, E2E-P6.3-04, E2E-P6.3-05. Depends on T010. Regenerate those three files from `frontend/lib/l10n/app_en.arb` and `frontend/lib/l10n/app_ar.arb` with the project's existing l10n generation so the new keys are on the localizations class.
 
 **Checkpoint**: The generated localizations expose the billing keys. E2E-P6.3-01 still fails.
 

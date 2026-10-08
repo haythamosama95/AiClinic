@@ -11,9 +11,11 @@ import 'package:ai_clinic/app/providers/auth_session_provider.dart';
 import 'package:ai_clinic/app/router.dart';
 import 'package:ai_clinic/core/ai/ports.dart';
 import 'package:ai_clinic/core/ai/sse_events.dart';
+import 'package:ai_clinic/core/ai/taxonomy.dart';
 import 'package:ai_clinic/core/config/supabase_config.dart';
 import 'package:ai_clinic/core/contract_versions.dart';
 import 'package:ai_clinic/core/ui/theme/app_theme.dart';
+import 'package:ai_clinic/features/ai/degraded/ai_degraded_view.dart';
 import 'package:ai_clinic/features/ai/presentation/pages/ai_page.dart';
 import 'package:ai_clinic/features/auth/domain/auth_session.dart';
 import 'package:ai_clinic/features/clinic-management/domain/branch_working_schedule.dart';
@@ -24,6 +26,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:go_router/go_router.dart';
 import 'package:http/http.dart' as http;
+import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:url_launcher_platform_interface/link.dart';
 import 'package:url_launcher_platform_interface/url_launcher_platform_interface.dart';
 
@@ -46,6 +49,9 @@ const _billingContactKey = Key('billing_contact_form');
 const _billingCheckoutKey = Key('billing_checkout_screen');
 
 const _queuedTermText = 'starts after the current term';
+const _appUpdateCopy = 'Update the app to use AI';
+const _unsupportedAboContractVersion = aboClinic + 1;
+const _aboContractVersionOverrideKey = 'ABO_CONTRACT_VERSION_OVERRIDE';
 
 const _paymobHmacFields = <String>[
   'amount_cents',
@@ -343,9 +349,117 @@ void main() {
       expect(find.byKey(_billingCheckoutKey), findsOneWidget, reason: 'Failed should stay on the same checkout page');
     });
   });
+
+  group('E2E-P6.3-06', () {
+    testWidgets('E2E-P6.3-06', (tester) async {
+      final clinic = await ctx.ensureClinic(label: 'p63_staff_gate');
+      final installationId = _deterministicUuid('b636', clinic.suffix);
+      await _seedEndsSoonCoverage(
+        ctx: ctx,
+        orgId: clinic.organizationId,
+        installationId: installationId,
+      );
+
+      final sessions = RoleSessions(ctx, clinic);
+      await sessions.signInAs(StaffRole.doctor);
+
+      final recordingClient = _RecordingSessionSupabaseClient(LiveSupabaseHarness.client);
+      final composition = buildLiveVisitSummaryComposition(
+        client: recordingClient,
+        visitId: testVisitId,
+        staffIsAdministrator: false,
+        reachabilityPort: FakePlatformReachabilityPort(reachable: false),
+        autoInvoke: false,
+      );
+
+      await _pumpStaffShell(
+        tester,
+        router: _billingRouter(role: StaffRole.doctor),
+        composition: composition,
+        role: StaffRole.doctor,
+      );
+
+      expect(find.byKey(const Key('ai_notice_renew')), findsNothing, reason: 'staff should not see the renew control');
+      expect(find.byKey(kAiDegradedRenewOrBuyKey), findsNothing, reason: 'staff should not see the renew or buy control');
+
+      final degradedComposition = buildLiveVisitSummaryComposition(
+        client: recordingClient,
+        visitId: testVisitId,
+        staffIsAdministrator: false,
+        reachabilityPort: FakePlatformReachabilityPort(reachable: true),
+        submitPortOverride: _WireDenialSubmitPort(wireCode: 'coverage_lapsed'),
+        autoInvoke: true,
+      );
+
+      await _pumpStaffShell(
+        tester,
+        router: _billingRouter(role: StaffRole.doctor),
+        composition: degradedComposition,
+        role: StaffRole.doctor,
+      );
+
+      expect(find.byKey(kAiDegradedRenewOrBuyKey), findsNothing, reason: 'staff degraded state should not offer renew or buy');
+      expect(
+        recordingClient.rpcCalls.where((call) => call == 'issue_billing_token'),
+        isEmpty,
+        reason: 'staff session should never call issue_billing_token',
+      );
+    });
+  });
+
+  group('E2E-P6.3-07', () {
+    testWidgets('E2E-P6.3-07', (tester) async {
+      final clinic = await ctx.ensureClinic(label: 'p63_contract');
+      final installationId = _deterministicUuid('b637', clinic.suffix);
+      await _seedEndsSoonCoverage(
+        ctx: ctx,
+        orgId: clinic.organizationId,
+        installationId: installationId,
+      );
+
+      final sessions = RoleSessions(ctx, clinic);
+      await sessions.signInAs(StaffRole.administrator);
+
+      final tokenResponse = await LiveSupabaseHarness.client.rpc(
+        'issue_billing_token',
+        params: {'p_contract_version': backendRpc},
+      );
+      final tokenMap = Map<String, dynamic>.from(tokenResponse as Map);
+      final data = Map<String, dynamic>.from(tokenMap['data'] as Map);
+      final billingToken = data['token'] as String;
+
+      final unsupportedProbe = await http.get(
+        Uri.parse('$_aboUrl/v1/offers'),
+        headers: {
+          'Authorization': 'Bearer $billingToken',
+          'Host': _billingHost,
+          'Abo-Contract-Version': '$_unsupportedAboContractVersion',
+        },
+      );
+      expect(unsupportedProbe.statusCode, 400, reason: 'unsupported Abo-Contract-Version should be refused before auth');
+      final unsupportedBody = jsonDecode(unsupportedProbe.body) as Map<String, dynamic>;
+      expect(unsupportedBody['code'], 'contract_version_unsupported');
+
+      final previousOverride = Platform.environment[_aboContractVersionOverrideKey];
+      Platform.environment[_aboContractVersionOverrideKey] = '$_unsupportedAboContractVersion';
+      try {
+        await _pumpAdministratorBillingRoute(tester, router: _billingRouter());
+      } finally {
+        if (previousOverride == null) {
+          Platform.environment.remove(_aboContractVersionOverrideKey);
+        } else {
+          Platform.environment[_aboContractVersionOverrideKey] = previousOverride;
+        }
+      }
+
+      expect(find.byType(AlertDialog), findsNothing, reason: 'contract_version_unsupported should not open a dialog');
+      expect(find.byKey(kAiDegradedAppUpdateKey), findsOneWidget, reason: 'billing screens should show the inline app-update state');
+      expect(find.text(_appUpdateCopy), findsOneWidget);
+    });
+  });
 }
 
-GoRouter _billingRouter() {
+GoRouter _billingRouter({StaffRole role = StaffRole.administrator}) {
   final container = ProviderContainer(
     overrides: [
       supabaseClientProvider.overrideWithValue(LiveSupabaseHarness.client),
@@ -353,7 +467,7 @@ GoRouter _billingRouter() {
         () => MutableAuthSessionNotifier(
           AuthSessionState(
             status: AuthSessionStatus.authenticated,
-            context: sampleAuthSessionContext(role: StaffRole.administrator),
+            context: sampleAuthSessionContext(role: role),
           ),
         ),
       ),
@@ -404,6 +518,78 @@ Future<void> _pumpAdministratorShell(
   );
   await tester.pumpAndSettle();
   expect(find.byKey(const Key('ai_notice_renew')), findsOneWidget);
+}
+
+Future<void> _pumpStaffShell(
+  WidgetTester tester, {
+  required GoRouter router,
+  required LiveVisitSummaryComposition composition,
+  required StaffRole role,
+}) async {
+  await tester.pumpWidget(
+    ProviderScope(
+      overrides: [
+        supabaseClientProvider.overrideWithValue(LiveSupabaseHarness.client),
+        authSessionProvider.overrideWith(
+          () => MutableAuthSessionNotifier(
+            AuthSessionState(
+              status: AuthSessionStatus.authenticated,
+              context: sampleAuthSessionContext(role: role),
+            ),
+          ),
+        ),
+      ],
+      child: MaterialApp.router(
+        theme: AppTheme.light(),
+        routerConfig: router,
+      ),
+    ),
+  );
+  await tester.pumpAndSettle();
+  router.go(AppRoutes.ai);
+  await tester.pumpAndSettle();
+  await tester.pumpWidget(
+    ProviderScope(
+      overrides: [
+        supabaseClientProvider.overrideWithValue(LiveSupabaseHarness.client),
+      ],
+      child: MaterialApp(
+        theme: AppTheme.light(),
+        home: Scaffold(
+          body: liveVisitSummaryHostBody(visitId: testVisitId, composition: composition),
+        ),
+      ),
+    ),
+  );
+  await tester.pumpAndSettle();
+}
+
+Future<void> _pumpAdministratorBillingRoute(
+  WidgetTester tester, {
+  required GoRouter router,
+}) async {
+  await tester.pumpWidget(
+    ProviderScope(
+      overrides: [
+        supabaseClientProvider.overrideWithValue(LiveSupabaseHarness.client),
+        authSessionProvider.overrideWith(
+          () => MutableAuthSessionNotifier(
+            AuthSessionState(
+              status: AuthSessionStatus.authenticated,
+              context: sampleAuthSessionContext(role: StaffRole.administrator),
+            ),
+          ),
+        ),
+      ],
+      child: MaterialApp.router(
+        theme: AppTheme.light(),
+        routerConfig: router,
+      ),
+    ),
+  );
+  await tester.pumpAndSettle();
+  router.go(kAdministratorBillingPath);
+  await tester.pumpAndSettle();
 }
 
 Future<void> _acceptTermsAndContinue(WidgetTester tester) async {
@@ -665,6 +851,44 @@ SET ends_at = now() + interval '3 days',
     grace_ends_at = now() + interval '10 days'
 WHERE organization_id = '$orgId'::uuid;
 ''');
+}
+
+class _RecordingSessionSupabaseClient extends Fake implements SupabaseClient {
+  _RecordingSessionSupabaseClient(this._inner);
+
+  final SupabaseClient _inner;
+  final List<String> rpcCalls = [];
+
+  @override
+  GoTrueClient get auth => _inner.auth;
+
+  @override
+  PostgrestClient get rest => _inner.rest;
+
+  @override
+  PostgrestFilterBuilder<T> rpc<T>(String fn, {Map<String, dynamic>? params, dynamic get = false}) {
+    rpcCalls.add(fn);
+    return _inner.rpc<T>(fn, params: params, get: get);
+  }
+}
+
+class _WireDenialSubmitPort implements HttpsSubmitPort {
+  _WireDenialSubmitPort({required this.wireCode});
+
+  final String wireCode;
+
+  @override
+  Future<SseConnection> submit({
+    required CapabilityInvokeInput input,
+    required SubmitRequestHeaders headers,
+  }) async {
+    throw PlatformHttpException(
+      code: classifyTaxonomyCode(wireCode),
+      wireCode: wireCode,
+      requestReference: 'req-$wireCode',
+      traceId: 'trace-$wireCode',
+    );
+  }
 }
 
 class RecordingUrlLauncher extends UrlLauncherPlatform {
