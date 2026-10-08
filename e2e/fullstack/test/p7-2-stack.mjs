@@ -818,6 +818,17 @@ export function readStatusRefreshRequestedAt(orgId) {
   `);
 }
 
+export function issueFeedToken() {
+  return psqlQuery("SELECT auth_internal.issue_feed_token()");
+}
+
+export function countAboFindings(kind) {
+  const row = queryAboD1One(
+    `SELECT COUNT(*) AS n FROM finding WHERE kind = ${sqlLiteral(kind)}`,
+  );
+  return Number(row?.n ?? 0);
+}
+
 export function seedAboOffers() {
   runAboD1Command(`
     INSERT OR IGNORE INTO terms_version (

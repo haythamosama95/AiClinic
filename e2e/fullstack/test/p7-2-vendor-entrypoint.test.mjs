@@ -15,6 +15,7 @@ import {
   ALLOWANCE_CREDITS,
   CAPABILITY_ID,
   clearPlatformLogBuffer,
+  countAboFindings,
   encodeVendorAssertion,
   ensurePlatformGrantPrerequisites,
   HARNESS_URL,
@@ -341,11 +342,13 @@ test("E2E-P7.2-05", async () => {
     "fourth paid grant within 24 hours should raise AL-17",
   );
 
+  const grantWithoutPaymentBefore = countAboFindings("grant_without_payment");
   await triggerAboScheduled("0 6 * * *");
-  const finding = queryAboD1One(
-    `SELECT kind FROM finding WHERE kind = 'grant_without_payment' ORDER BY rowid DESC LIMIT 1`,
+  assert.equal(
+    countAboFindings("grant_without_payment"),
+    grantWithoutPaymentBefore + 1,
+    "reconciliation should raise grant_without_payment for the within-bound grants",
   );
-  assert.equal(finding?.kind, "grant_without_payment");
 
   const accessJwt = await mintAccessJwt(stack.accessTeam);
   const hpEnvelope = await buildComplimentaryEnvelope({
@@ -381,10 +384,19 @@ test("E2E-P7.2-05", async () => {
       reason: "shown to the operator",
     },
   };
+  const shownOperation = operationForHpGrant({
+    accessJwt,
+    envelope: shownEnvelope,
+  });
   const signedOperation = operationForHpGrant({
     accessJwt,
     envelope: realEnvelope,
   });
+  assert.notDeepEqual(
+    signedOperation.params?.envelope,
+    shownOperation.params?.envelope,
+    "passkey must sign a different operation than the one shown to the operator",
+  );
   const assertion = encodeVendorAssertion(
     await stack.authenticator.assert({
       operation: signedOperation,
@@ -414,7 +426,10 @@ test("E2E-P7.2-05", async () => {
   assert.equal(latestAlert.code, "AL-11");
   const signedParams = latestAlert.operation?.params;
   assert.deepEqual(signedParams?.source, realEnvelope.source);
-  assert.notEqual(signedParams?.source, shownEnvelope.source);
+  assert.deepEqual(signedParams?.grant_id, realEnvelope.grant_id);
+  assert.notDeepEqual(signedParams?.source, shownEnvelope.source);
+  assert.notEqual(signedParams?.source?.reason, shownEnvelope.source.reason);
+  assert.notEqual(signedParams?.grant_id, shownEnvelope.grant_id);
 });
 
 test("E2E-P7.2-06", async () => {
@@ -521,6 +536,113 @@ test("E2E-P7.2-06", async () => {
   );
   assert.equal(ceilingJwtOnly.result, "rejected");
   assert.equal(ceilingJwtOnly.code, "assertion_required");
+
+  const transferJwtOnly = await vendorCall(
+    "beginTransfer",
+    {
+      contract_version: CONTRACT_VERSION,
+      org_id: orgId,
+      from_installation_id: installationId,
+      reason: "class hp jwt-only probe",
+      signer_credential_id: stack.credentialId,
+      operation: {
+        op: "beginTransfer",
+        params: {
+          contract_version: CONTRACT_VERSION,
+          access_jwt: accessJwt,
+          org_id: orgId,
+          from_installation_id: installationId,
+          reason: "class hp jwt-only probe",
+        },
+        actor_email: OPERATOR_EMAIL,
+        issued_at: new Date().toISOString(),
+        nonce: crypto.randomUUID(),
+        contract_version: CONTRACT_VERSION,
+      },
+    },
+    { accessJwt },
+  );
+  assert.equal(transferJwtOnly.result, "rejected");
+  assert.equal(transferJwtOnly.code, "assertion_required");
+
+  const releaseJwtOnly = await vendorCall(
+    "releaseHeld",
+    {
+      contract_version: CONTRACT_VERSION,
+      org_id: orgId,
+      payment_id: crypto.randomUUID(),
+      signer_credential_id: stack.credentialId,
+      operation: {
+        op: "releaseHeld",
+        params: {
+          contract_version: CONTRACT_VERSION,
+          access_jwt: accessJwt,
+          org_id: orgId,
+          payment_id: crypto.randomUUID(),
+        },
+        actor_email: OPERATOR_EMAIL,
+        issued_at: new Date().toISOString(),
+        nonce: crypto.randomUUID(),
+        contract_version: CONTRACT_VERSION,
+      },
+    },
+    { accessJwt },
+  );
+  assert.equal(releaseJwtOnly.result, "rejected");
+  assert.equal(releaseJwtOnly.code, "assertion_required");
+
+  const voidJwtOnly = await vendorCall(
+    "voidGrant",
+    {
+      contract_version: CONTRACT_VERSION,
+      grant_id: crypto.randomUUID(),
+      reason: "class hp jwt-only probe",
+      signer_credential_id: stack.credentialId,
+      operation: {
+        op: "voidGrant",
+        params: {
+          contract_version: CONTRACT_VERSION,
+          access_jwt: accessJwt,
+          grant_id: crypto.randomUUID(),
+          reason: "class hp jwt-only probe",
+        },
+        actor_email: OPERATOR_EMAIL,
+        issued_at: new Date().toISOString(),
+        nonce: crypto.randomUUID(),
+        contract_version: CONTRACT_VERSION,
+      },
+    },
+    { accessJwt },
+  );
+  assert.equal(voidJwtOnly.result, "rejected");
+  assert.equal(voidJwtOnly.code, "assertion_required");
+
+  for (let index = 0; index < 2; index += 1) {
+    const windowEnvelope = await buildComplimentaryEnvelope({
+      orgId,
+      grantId: await grantIdComp(crypto.randomUUID().replace(/-/g, "")),
+      count: 31,
+      reason: `window grant ${index + 1}`,
+    });
+    const applied = await hpComplimentaryGrant({
+      envelope: windowEnvelope,
+      accessJwt,
+    });
+    assert.equal(applied.result, "applied", `31-day window grant ${index + 1}`);
+  }
+
+  const extraDayEnvelope = await buildComplimentaryEnvelope({
+    orgId,
+    grantId: await grantIdComp(crypto.randomUUID().replace(/-/g, "")),
+    count: 1,
+    reason: "window overflow day",
+  });
+  const windowBlocked = await hpComplimentaryGrant({
+    envelope: extraDayEnvelope,
+    accessJwt,
+  });
+  assert.equal(windowBlocked.result, "rejected");
+  assert.equal(windowBlocked.code, "exceeds_ceiling");
 
   const yearEnvelope = await buildComplimentaryEnvelope({
     orgId,

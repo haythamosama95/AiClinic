@@ -14,20 +14,37 @@ const _defaultSupabaseUrl = 'http://127.0.0.1:54321';
 const _defaultAnonKey =
     'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZS1kZW1vIiwicm9sZSI6ImFub24iLCJleHAiOjE5ODM4MTI5OTZ9.CRXP1A7WOeoJeXxjNni43kdQwgnWNReilDMblYTn_I0';
 const _defaultPlatformUrl = 'http://127.0.0.1:8787';
+const _defaultAboUrl = 'http://127.0.0.1:8788';
 
 /// Records outbound URL and Authorization for E2E-P7.2-08.
 class _RecordingHttpClient extends http.BaseClient {
-  _RecordingHttpClient(this._inner);
-
   final http.Client _inner;
+  final String _platformUrl;
+  final String _aboUrl;
+
+  _RecordingHttpClient(
+    this._inner, {
+    required String platformUrl,
+    required String aboUrl,
+  })  : _platformUrl = platformUrl,
+        _aboUrl = aboUrl;
 
   @override
   Future<http.StreamedResponse> send(http.BaseRequest request) async {
     final authorization = _authorizationHeader(request.headers);
-    stdout.writeln(jsonEncode({
-      'url': request.url.toString(),
-      'authorization': authorization,
-    }));
+    final url = request.url.toString();
+    final service = url.startsWith(_platformUrl)
+        ? 'platform'
+        : url.startsWith(_aboUrl)
+            ? 'abo'
+            : null;
+    if (service != null) {
+      stdout.writeln(jsonEncode({
+        'service': service,
+        'url': url,
+        'authorization': authorization,
+      }));
+    }
     return _inner.send(request);
   }
 
@@ -46,6 +63,7 @@ Future<void> main() async {
   final anonKey =
       Platform.environment['SUPABASE_ANON_KEY'] ?? Platform.environment['ANON_KEY'] ?? _defaultAnonKey;
   final platformUrl = Platform.environment['PLATFORM_URL'] ?? _defaultPlatformUrl;
+  final aboUrl = Platform.environment['ABO_URL'] ?? _defaultAboUrl;
   final email = Platform.environment['P7_2_SESSION_EMAIL'] ?? 'admin';
   final password = Platform.environment['P7_2_SESSION_PASSWORD'] ?? 'admin';
 
@@ -65,7 +83,13 @@ Future<void> main() async {
   final aatMintPort = SupabaseAatMintPort.withRpc(rpc: rpc.call);
   final billingTokenClient = BillingTokenClient.withRpc(rpc: rpc.call);
 
-  final recordingClient = _RecordingHttpClient(http.Client());
+  stdout.writeln(jsonEncode({'session_jwt': sessionJwt}));
+
+  final recordingClient = _RecordingHttpClient(
+    http.Client(),
+    platformUrl: platformUrl,
+    aboUrl: aboUrl,
+  );
   final discoveryClient = DiscoveryClient(httpClient: recordingClient);
   final usageSummaryClient = UsageSummaryClient(httpClient: recordingClient);
   final submitPort = PlatformHttpsSubmitPort(

@@ -4,12 +4,13 @@ import { spawnSync } from "node:child_process";
 import path from "node:path";
 import test, { after, before } from "node:test";
 import assert from "node:assert/strict";
-import { createClient } from "@supabase/supabase-js";
 import {
   ABO_CONFIG,
+  ABO_URL,
   DB_URL,
   FULLSTACK_ROOT,
   PLATFORM_CONFIG,
+  PLATFORM_URL,
   SUPABASE_ANON_KEY,
   SUPABASE_URL,
   rpc,
@@ -84,26 +85,18 @@ async function postgrestRpc(token, functionName, body = { p_contract_version: 1 
   });
 }
 
-async function signInSessionJwt(email, password) {
-  const client = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
-    auth: { persistSession: false, autoRefreshToken: false },
-  });
-  const { data, error } = await client.auth.signInWithPassword({
-    email,
-    password,
-  });
-  if (error) {
-    throw new Error(`sign in ${email} failed: ${error.message}`);
-  }
-  return data.session.access_token;
-}
-
 function parseCaptureLines(stdout) {
-  return stdout
+  const lines = stdout
     .split("\n")
     .map((line) => line.trim())
     .filter((line) => line.startsWith("{"))
     .map((line) => JSON.parse(line));
+  const sessionLine = lines.find((entry) => typeof entry.session_jwt === "string");
+  const captures = lines.filter((entry) => typeof entry.url === "string");
+  return {
+    sessionJwt: sessionLine?.session_jwt ?? null,
+    captures,
+  };
 }
 
 function bearerToken(authorization) {
@@ -169,39 +162,41 @@ test("E2E-P7.2-07", async () => {
 });
 
 test("E2E-P7.2-08", async () => {
-  const sessionJwt = await signInSessionJwt("p7-2-a-admin", "P72AdminPass!");
   const stdout = await runDartSessionCapture({
     SUPABASE_URL,
     SUPABASE_ANON_KEY,
+    PLATFORM_URL,
+    ABO_URL,
     P7_2_SESSION_EMAIL: "p7-2-a-admin",
     P7_2_SESSION_PASSWORD: "P72AdminPass!",
   });
-  const captures = parseCaptureLines(stdout);
+  const { sessionJwt, captures } = parseCaptureLines(stdout);
+  assert.ok(sessionJwt, "dart driver should publish the desktop session JWT");
   assert.ok(captures.length > 0, "dart driver should record outbound calls");
 
-  const externalCalls = captures.filter((entry) => {
-    const url = String(entry.url ?? "");
-    return (
-      url.startsWith("http://127.0.0.1:8787") ||
-      url.startsWith("http://127.0.0.1:8788")
-    );
-  });
-  assert.ok(
-    externalCalls.length > 0,
-    "dart driver should call the platform and/or ABO",
-  );
+  const platformCalls = captures.filter((entry) => entry.service === "platform");
+  const aboCalls = captures.filter((entry) => entry.service === "abo");
+  assert.ok(platformCalls.length > 0, "dart driver should call the platform");
+  assert.ok(aboCalls.length > 0, "dart driver should call the ABO");
 
-  for (const entry of externalCalls) {
+  for (const entry of [...platformCalls, ...aboCalls]) {
+    const url = String(entry.url ?? "");
+    assert.ok(
+      entry.service === "platform"
+        ? url.startsWith(PLATFORM_URL)
+        : url.startsWith(ABO_URL),
+      `${entry.service} capture must target the expected service base URL`,
+    );
     const token = bearerToken(entry.authorization);
-    assert.ok(token, `${entry.url} should include Authorization`);
+    assert.ok(token, `${url} should include Authorization`);
     assert.notEqual(
       token,
       sessionJwt,
-      "ABO and platform Authorization must not be the Supabase session JWT",
+      `${entry.service} Authorization must not be the Supabase session JWT`,
     );
     assert.ok(
       !token.includes(sessionJwt),
-      "Authorization must not embed the Supabase session JWT",
+      `${entry.service} Authorization must not embed the Supabase session JWT`,
     );
   }
 });

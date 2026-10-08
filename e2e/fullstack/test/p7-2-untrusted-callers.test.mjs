@@ -1,5 +1,6 @@
 import test, { after, before } from "node:test";
 import assert from "node:assert/strict";
+import { CHANNEL_VERSIONS } from "vendor-contracts";
 import {
   PAYMOB_HMAC_SECRET,
   PAYMOB_URL,
@@ -7,6 +8,7 @@ import {
   countAboTable,
   countAboWork,
   ensurePlatformGrantPrerequisites,
+  issueFeedToken,
   openCheckout,
   platformFetch,
   putBillingContact,
@@ -173,7 +175,7 @@ test("E2E-P7.2-02", async () => {
     p_contract_version: 1,
   });
   assert.equal(refresh.success, false);
-  assert.notEqual(refresh.error_code, "FORBIDDEN_ROLE");
+  assert.equal(refresh.error_code, "FORBIDDEN_ROLE");
 
   assert.deepEqual(readClinicAiCoverage(orgId), coverageBefore);
   assert.equal(readStatusRefreshRequestedAt(orgId), refreshBefore);
@@ -183,6 +185,15 @@ function tokenOrgClaim(token) {
   const payload = token.split(".")[1];
   const decoded = JSON.parse(Buffer.from(payload, "base64url").toString("utf8"));
   return decoded.org;
+}
+
+async function assertAboNotFound(pathname, billingToken, label) {
+  const response = await billingFetch(pathname, {
+    headers: { authorization: `Bearer ${billingToken}` },
+  });
+  assert.equal(response.status, 404, `${label} should answer not_found`);
+  const body = await response.json();
+  assert.equal(body.code, "not_found");
 }
 
 test("E2E-P7.2-03", async () => {
@@ -218,12 +229,17 @@ test("E2E-P7.2-03", async () => {
     `SELECT state FROM checkout_status WHERE checkout_id = ${sqlLiteral(checkoutB.checkoutId)}`,
   );
 
-  const foreignCheckout = await billingFetch(`/v1/checkouts/${checkoutB.checkoutId}`, {
-    headers: { authorization: `Bearer ${billingTokenA}` },
-  });
-  assert.equal(foreignCheckout.status, 404);
-  const foreignBody = await foreignCheckout.json();
-  assert.equal(foreignBody.code, "not_found");
+  await assertAboNotFound(
+    `/v1/checkouts/${checkoutB.checkoutId}`,
+    billingTokenA,
+    "GET /v1/checkouts/{id}",
+  );
+  await assertAboNotFound(
+    `/v1/checkouts/${checkoutB.reference}`,
+    billingTokenA,
+    "GET /v1/checkouts/{reference}",
+  );
+  await assertAboNotFound("/v1/checkouts", billingTokenA, "GET /v1/checkouts");
 
   for (const route of [
     "/v1/offers",
@@ -243,26 +259,72 @@ test("E2E-P7.2-03", async () => {
     );
   }
 
+  const switchOrg = await rpc(orgA.administrator, "set_active_organization", {
+    p_organization_id: orgB.orgId,
+  });
+  assert.equal(switchOrg.success, false);
+  assert.equal(switchOrg.error_code, "FORBIDDEN");
+
+  for (const [functionName, args, label] of [
+    [
+      "get_ai_status",
+      { p_contract_version: 1 },
+      "get_ai_status",
+    ],
+    [
+      "get_ai_billing_status",
+      { p_contract_version: 1 },
+      "get_ai_billing_status",
+    ],
+    [
+      "request_ai_status_refresh",
+      { p_contract_version: 1 },
+      "request_ai_status_refresh",
+    ],
+  ]) {
+    const result = await rpc(orgA.administrator, functionName, args);
+    if (functionName === "request_ai_status_refresh") {
+      assert.equal(result.success, true, `${label} should stay on org A`);
+      continue;
+    }
+    assert.equal(result.success, true, `${label} should stay scoped to org A`);
+    const payload = JSON.stringify(result.data ?? {});
+    assert.ok(
+      !payload.includes(orgB.orgId) &&
+        !payload.includes(checkoutB.checkoutId) &&
+        !payload.includes(checkoutB.reference),
+      `${label} must not expose org B ids`,
+    );
+  }
+
   const aiTokenA = await rpc(orgA.administrator, "issue_ai_token", {
     p_contract_version: 1,
   });
   assert.equal(tokenOrgClaim(aiTokenA), orgA.orgId);
 
-  const capabilities = await platformFetch("/v1/capabilities", {
-    headers: { authorization: `Bearer ${aiTokenA}` },
-  });
-  assert.equal(capabilities.status, 200);
+  const capabilities = await platformFetch(
+    `/v1/capabilities/${orgB.installationId}`,
+    {
+      headers: { authorization: `Bearer ${aiTokenA}` },
+    },
+  );
+  assert.equal(capabilities.status, 404);
 
-  const coverage = await platformFetch("/v1/coverage", {
+  const coverage = await platformFetch(`/v1/coverage/${orgB.orgId}`, {
     headers: { authorization: `Bearer ${aiTokenA}` },
   });
-  assert.equal(coverage.status, 200);
-  const coverageBody = await coverage.json();
-  assert.notEqual(coverageBody.subscription_ref, checkoutB.reference);
+  assert.equal(coverage.status, 404);
 
-  const feed = await platformFetch("/v1/feed/coverage", {
-    headers: { authorization: `Bearer ${aiTokenA}` },
-  });
+  const feedToken = issueFeedToken();
+  const feed = await platformFetch(
+    `/v1/feed/coverage/${orgB.installationId}`,
+    {
+      headers: {
+        authorization: `Bearer ${feedToken}`,
+        "Aip-Contract-Version": String(CHANNEL_VERSIONS.platformFeed),
+      },
+    },
+  );
   assert.equal(feed.status, 404);
 
   const requestBody = {
@@ -281,10 +343,30 @@ test("E2E-P7.2-03", async () => {
       authorization: `Bearer ${aiTokenA}`,
       "content-type": "application/json",
       "x-idempotency-key": requestBody.idempotency_key,
+      "x-trace-id": requestBody.trace_id,
+      "x-capability-version": requestBody.capability_version,
     },
     body: JSON.stringify(requestBody),
   });
   assert.notEqual(request.status, 201);
+  if (request.status < 500) {
+    const requestBodyText = await request.text();
+    assert.ok(
+      requestBodyText.length === 0 ||
+        /not_found|context_invalid|forbidden|unauthenticated/i.test(
+          requestBodyText,
+        ),
+      "POST /v1/requests must not create service for org B ids",
+    );
+  }
+
+  const foreignRequest = await platformFetch(
+    `/v1/requests/${encodeURIComponent(checkoutB.reference)}`,
+    {
+      headers: { authorization: `Bearer ${aiTokenA}` },
+    },
+  );
+  assert.equal(foreignRequest.status, 404);
 
   const checkoutBStatusAfter = queryAboD1One(
     `SELECT state FROM checkout_status WHERE checkout_id = ${sqlLiteral(checkoutB.checkoutId)}`,
@@ -332,6 +414,7 @@ test("E2E-P7.2-04", async () => {
   assert.ok(checkoutRow?.order_id, "checkout should have a stored Paymob order id");
 
   const paymentsBefore = countAboTable("payment");
+  const notificationsBefore = countAboTable("notification");
   const forgedObj = {
     amount_cents: String(checkoutRow.charged_price_minor),
     created_at: new Date().toISOString(),
@@ -346,13 +429,24 @@ test("E2E-P7.2-04", async () => {
     is_refunded: false,
     is_standalone_payment: true,
     is_voided: false,
-    order: { id: Number(checkoutRow.order_id) + 9999 },
+    order: { id: Number(checkoutRow.order_id) },
     owner: 0,
     pending: false,
     source_data: { pan: "2346", sub_type: "MasterCard", type: "card" },
     success: true,
   };
   const hmac = await signPaymobObj(forgedObj, PAYMOB_HMAC_SECRET);
+  const inquiryScript = await fetch(`${PAYMOB_URL}/__script`, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({
+      inquiry: "unbound",
+      amount_cents: String(checkoutRow.charged_price_minor),
+      intention_order_id: String(checkoutRow.order_id),
+    }),
+  });
+  assert.equal(inquiryScript.status, 204);
+
   const notify = await billingFetch(
     `/notify/paymob?hmac=${encodeURIComponent(hmac)}`,
     {
@@ -366,26 +460,49 @@ test("E2E-P7.2-04", async () => {
   );
   assert.equal(notify.status, 200);
 
-  await triggerAboScheduled("* * * * *");
-  await triggerAboScheduled("0 6 * * *");
+  assert.equal(
+    countAboTable("notification"),
+    notificationsBefore + 1,
+    "HMAC-valid forged callback should be stored as evidence",
+  );
+  const notification = queryAboD1One(
+    `SELECT checkout_id, hmac_valid
+     FROM notification
+     WHERE checkout_id = ${sqlLiteral(checkout.checkoutId)}
+     ORDER BY rowid DESC
+     LIMIT 1`,
+  );
+  assert.equal(notification?.checkout_id, checkout.checkoutId);
+  assert.equal(Number(notification?.hmac_valid ?? 0), 1);
+  assert.equal(String(forgedObj.order.id), String(checkoutRow.order_id));
+  assert.equal(forgedObj.amount_cents, String(checkoutRow.charged_price_minor));
+  assert.equal(forgedObj.currency, checkoutRow.currency);
 
+  await triggerAboScheduled("* * * * *");
+
+  const confirmWork = queryAboD1One(
+    `SELECT state
+     FROM work
+     WHERE kind = 'confirm'
+       AND subject_id = ${sqlLiteral(checkout.checkoutId)}
+     ORDER BY rowid DESC
+     LIMIT 1`,
+  );
+  assert.equal(
+    confirmWork?.state,
+    "done",
+    "confirm work should run the Paymob inquiry for the stored checkout order",
+  );
   assert.equal(
     countAboTable("payment"),
     paymentsBefore,
-    "forged callback with leaked HMAC must not create a payment",
+    "unbound inquiry must not create a confirming payment",
   );
 
-  const inquiryScript = await fetch(`${PAYMOB_URL}/__script`, {
-    method: "POST",
-    headers: { "content-type": "application/json" },
-    body: JSON.stringify({ inquiry: "bound_success" }),
-  });
-  assert.equal(inquiryScript.status, 200);
-
-  await triggerAboScheduled("* * * * *");
+  await triggerAboScheduled("0 6 * * *");
   assert.equal(
     countAboTable("payment"),
     paymentsBefore,
-    "inquiry must not confirm a forged callback",
+    "reconciliation must not confirm a forged callback",
   );
 });
