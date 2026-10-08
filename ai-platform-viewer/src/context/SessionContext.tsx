@@ -116,7 +116,9 @@ export function SessionProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     loadDevConfig()
       .then(async (config) => {
-        setIssuerKeySource(config.devVarsPath)
+        setIssuerKeySource(
+          config.testIssuerSource?.trim() || config.devVarsPath,
+        )
         const kid = config.testIssuerKid?.trim()
         const pkcs8 = config.testIssuerPrivateKeyPkcs8?.trim()
         if (kid && pkcs8) {
@@ -160,7 +162,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     async (claims: IssuerTokenClaims = {}): Promise<string> => {
       if (!issuerKey) {
         throw new Error(
-          'Test issuer key not loaded. Check TEST_ISSUER_KID and TEST_ISSUER_PRIVATE_KEY_PKCS8 in ai-platform/.dev.vars.',
+          'Test issuer key not loaded. Set TEST_ISSUER_KID and TEST_ISSUER_PRIVATE_KEY_PKCS8 in ai-platform/.dev.vars or seed ai_internal.issuer_key in local Supabase.',
         )
       }
       return mintIssuerToken(issuerKey, claims)

@@ -9,6 +9,7 @@ export type NavSection =
 export interface DevConfig {
   testIssuerKid: string
   testIssuerPrivateKeyPkcs8: string
+  testIssuerSource?: string
   devVarsPath: string
   supabaseUrl: string
   supabaseAnonKey: string

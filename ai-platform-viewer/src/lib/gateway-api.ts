@@ -11,6 +11,13 @@ import {
 const GATEWAY_PREFIX = '/gateway'
 const GATEWAY_ORIGIN = 'http://127.0.0.1:8787'
 
+function gatewayFetchUrl(pathWithQuery: string): string {
+  if (typeof window === 'undefined') {
+    return `${GATEWAY_ORIGIN}${pathWithQuery}`
+  }
+  return `${GATEWAY_PREFIX}${pathWithQuery}`
+}
+
 function maskToken(token: string, emptyLabel: string): string {
   if (!token) return emptyLabel
   if (token.length <= 12) return 'Bearer ••••••••'
@@ -62,7 +69,7 @@ export async function sendCapabilitiesRequest(
 ): Promise<HttpExchange> {
   const token = await mintIssuerToken(issuerKey, claims)
   const path = '/v1/capabilities'
-  const url = `${GATEWAY_PREFIX}${path}`
+  const url = gatewayFetchUrl(path)
   const sentAt = new Date().toISOString()
   const contractVersion = issuerContractVersionHeader()
 
