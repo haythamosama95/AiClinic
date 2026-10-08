@@ -4,6 +4,8 @@ import 'package:ai_clinic/core/contract_versions.dart';
 import 'package:ai_clinic/core/rpc/rpc_result.dart';
 import 'package:ai_clinic/core/ui/components/app_button.dart';
 import 'package:ai_clinic/features/ai/billing/abo_client.dart';
+import 'package:ai_clinic/features/ai/degraded/ai_degraded_mode.dart';
+import 'package:ai_clinic/features/ai/degraded/ai_degraded_view.dart';
 import 'package:ai_clinic/l10n/app_localizations.dart';
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
@@ -18,7 +20,11 @@ class CheckoutScreen extends StatefulWidget {
     this.termsVersion,
     this.checkoutId,
     this.reference,
+    this.initialCheckout,
     this.supabaseClient,
+    this.onTermsNotAccepted,
+    this.onBillingContactRequired,
+    this.onContractVersionUnsupported,
   });
 
   final AboClient client;
@@ -26,7 +32,11 @@ class CheckoutScreen extends StatefulWidget {
   final int? termsVersion;
   final String? checkoutId;
   final String? reference;
+  final CheckoutRead? initialCheckout;
   final SupabaseClient? supabaseClient;
+  final VoidCallback? onTermsNotAccepted;
+  final VoidCallback? onBillingContactRequired;
+  final VoidCallback? onContractVersionUnsupported;
 
   @override
   State<CheckoutScreen> createState() => _CheckoutScreenState();
@@ -39,20 +49,32 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
   var _pendingLaunch = false;
   var _launched = false;
   var _refreshRequested = false;
+  var _showAppUpdate = false;
   Timer? _pollTimer;
-  Object? _error;
+  String? _errorMessage;
   String? _checkoutRequestId;
   int? _displayPriceMinor;
+  int? _offerVersionOverride;
+  String? _resolvedCheckoutId;
 
-  String? get _checkoutId => widget.checkoutId ?? _createdCheckout?.checkoutId;
+  BillingOffer? get _offer => widget.offer;
 
-  String? get _reference => widget.reference ?? _createdCheckout?.reference ?? _checkoutRead?.reference;
+  int? get _termsVersion => widget.termsVersion;
+
+  String? get _checkoutId => _resolvedCheckoutId ?? widget.checkoutId ?? _createdCheckout?.checkoutId;
+
+  String? get _reference =>
+      widget.reference ?? _createdCheckout?.reference ?? _checkoutRead?.reference;
 
   @override
   void initState() {
     super.initState();
-    if (widget.checkoutId != null) {
-      _refreshCheckout();
+    if (widget.initialCheckout != null) {
+      _checkoutRead = widget.initialCheckout;
+      _displayPriceMinor = widget.initialCheckout!.offer.chargedPriceMinor;
+      _syncPolling(widget.initialCheckout!.shownState);
+    } else if (widget.checkoutId != null) {
+      unawaited(_refreshCheckout());
     }
   }
 
@@ -63,29 +85,50 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
   }
 
   Future<void> _refreshCheckout() async {
-    final checkoutId = _checkoutId;
-    if (checkoutId == null) {
-      return;
-    }
     try {
-      final read = await widget.client.getCheckout(checkoutId);
-      if (!mounted) {
+      final read = await _readCheckoutState();
+      if (!mounted || read == null) {
         return;
       }
       _applyCheckoutRead(read);
+    } on AboContractVersionUnsupportedException {
+      if (!mounted) {
+        return;
+      }
+      _showContractVersionUnsupported();
     } catch (error) {
       if (!mounted) {
         return;
       }
-      setState(() => _error = error);
+      setState(() => _errorMessage = '$error');
     }
+  }
+
+  Future<CheckoutRead?> _readCheckoutState() async {
+    final checkoutId = _checkoutId;
+    if (checkoutId != null) {
+      return widget.client.getCheckout(checkoutId);
+    }
+
+    final reference = _reference;
+    if (reference == null) {
+      return null;
+    }
+
+    final open = await widget.client.listOpenCheckouts();
+    for (final checkout in open.checkouts) {
+      if (checkout.reference == reference) {
+        return checkout;
+      }
+    }
+    return null;
   }
 
   void _applyCheckoutRead(CheckoutRead read) {
     setState(() {
       _checkoutRead = read;
       _displayPriceMinor = read.offer.chargedPriceMinor;
-      _error = null;
+      _errorMessage = null;
     });
     _syncPolling(read.shownState);
     if (read.shownState == CheckoutShownState.active) {
@@ -94,7 +137,9 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
   }
 
   void _syncPolling(CheckoutShownState state) {
-    final shouldPoll = state == CheckoutShownState.waiting || state == CheckoutShownState.paid;
+    final shouldPoll = state == CheckoutShownState.waiting ||
+        state == CheckoutShownState.paid ||
+        state == CheckoutShownState.failed;
     if (shouldPoll) {
       _startPolling();
     } else {
@@ -108,6 +153,11 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
       return;
     }
     _pollTimer = Timer.periodic(const Duration(seconds: 1), (_) => _refreshCheckout());
+  }
+
+  void _showContractVersionUnsupported() {
+    widget.onContractVersionUnsupported?.call();
+    setState(() => _showAppUpdate = true);
   }
 
   Future<void> _submitCheckout() async {
@@ -124,8 +174,8 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
       return;
     }
 
-    final offer = widget.offer;
-    final termsVersion = widget.termsVersion;
+    final offer = _offer;
+    final termsVersion = _termsVersion;
     if (offer == null || termsVersion == null) {
       return;
     }
@@ -133,14 +183,14 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
     _checkoutRequestId ??= _newClientRequestId('billing-checkout');
     setState(() {
       _submitting = true;
-      _error = null;
+      _errorMessage = null;
     });
 
     try {
       final created = await widget.client.createCheckout(
         clientRequestId: _checkoutRequestId!,
         offerId: offer.offerId,
-        offerVersion: offer.version,
+        offerVersion: _offerVersionOverride ?? offer.version,
         termsVersion: termsVersion,
       );
       if (!mounted) {
@@ -148,6 +198,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
       }
       setState(() {
         _createdCheckout = created;
+        _resolvedCheckoutId = created.checkoutId;
         _displayPriceMinor = offer.priceMinor;
         _submitting = false;
       });
@@ -158,12 +209,89 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
       }
 
       await _launchPayment();
+    } on AboOfferUnavailableException {
+      await _handleOfferUnavailable(offer);
+    } on AboBillingContactRequiredException {
+      if (!mounted) {
+        return;
+      }
+      setState(() => _submitting = false);
+      widget.onBillingContactRequired?.call();
+    } on AboTermsNotAcceptedException {
+      if (!mounted) {
+        return;
+      }
+      setState(() => _submitting = false);
+      widget.onTermsNotAccepted?.call();
+    } on AboProviderUnavailableException catch (error) {
+      if (!mounted) {
+        return;
+      }
+      final l10n = AppLocalizations.of(context)!;
+      setState(() {
+        _resolvedCheckoutId = error.checkoutId ?? _resolvedCheckoutId;
+        _errorMessage = l10n.aiBillingErrorProviderUnavailable;
+        _submitting = false;
+      });
+    } on AboRateLimitedException {
+      if (!mounted) {
+        return;
+      }
+      final l10n = AppLocalizations.of(context)!;
+      setState(() {
+        _errorMessage = l10n.aiBillingErrorRateLimited;
+        _submitting = false;
+      });
+    } on AboContractVersionUnsupportedException {
+      if (!mounted) {
+        return;
+      }
+      setState(() => _submitting = false);
+      _showContractVersionUnsupported();
     } catch (error) {
       if (!mounted) {
         return;
       }
       setState(() {
-        _error = error;
+        _errorMessage = '$error';
+        _submitting = false;
+      });
+    }
+  }
+
+  Future<void> _handleOfferUnavailable(BillingOffer offer) async {
+    final l10n = AppLocalizations.of(context)!;
+    try {
+      final offers = await widget.client.getOffers();
+      if (!mounted) {
+        return;
+      }
+      BillingOffer? updated;
+      for (final entry in offers.offers) {
+        if (entry.offerId == offer.offerId) {
+          updated = entry;
+          break;
+        }
+      }
+      updated ??= offers.offers.isNotEmpty ? offers.offers.first : null;
+      setState(() {
+        _errorMessage = l10n.aiBillingErrorOfferUnavailable;
+        _displayPriceMinor = updated?.priceMinor ?? offer.priceMinor;
+        _offerVersionOverride = updated?.version ?? offer.version;
+        _submitting = false;
+      });
+    } on AboContractVersionUnsupportedException {
+      if (!mounted) {
+        return;
+      }
+      setState(() => _submitting = false);
+      _showContractVersionUnsupported();
+    } catch (error) {
+      if (!mounted) {
+        return;
+      }
+      setState(() {
+        _errorMessage = l10n.aiBillingErrorOfferUnavailable;
         _submitting = false;
       });
     }
@@ -183,13 +311,14 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
       if (!mounted) {
         return;
       }
-      setState(() => _error = StateError('Could not open payment page'));
+      setState(() => _errorMessage = 'Could not open payment page');
       return;
     }
 
     if (!mounted) {
       return;
     }
+    final offer = _offer;
     setState(() {
       _pendingLaunch = false;
       _launched = true;
@@ -198,12 +327,12 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
         reference: _createdCheckout!.reference,
         shownState: CheckoutShownState.waiting,
         offer: CheckoutOfferSummary(
-          offerId: widget.offer!.offerId,
-          version: widget.offer!.version,
-          termUnit: widget.offer!.termUnit,
-          termCount: widget.offer!.termCount,
-          chargedPriceMinor: _displayPriceMinor ?? widget.offer!.priceMinor,
-          currency: widget.offer!.currency,
+          offerId: offer?.offerId ?? _checkoutRead?.offer.offerId ?? '',
+          version: _offerVersionOverride ?? offer?.version ?? _checkoutRead?.offer.version ?? 0,
+          termUnit: offer?.termUnit ?? _checkoutRead?.offer.termUnit ?? '',
+          termCount: offer?.termCount ?? _checkoutRead?.offer.termCount ?? 0,
+          chargedPriceMinor: _displayPriceMinor ?? offer?.priceMinor ?? _checkoutRead?.offer.chargedPriceMinor ?? 0,
+          currency: offer?.currency ?? _checkoutRead?.offer.currency ?? '',
         ),
         updatedAt: DateTime.now().toUtc(),
       );
@@ -240,10 +369,15 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
 
   @override
   Widget build(BuildContext context) {
+    if (_showAppUpdate) {
+      return const AiDegradedView(mode: AiDegradedMode.appUpdate);
+    }
+
     final l10n = AppLocalizations.of(context)!;
     final shownState = _checkoutRead?.shownState;
     final showQueuedTerm =
         _pendingLaunch && _createdCheckout?.starts == CheckoutStarts.afterCurrent;
+    final currency = _offer?.currency ?? _checkoutRead?.offer.currency ?? '';
 
     return KeyedSubtree(
       key: const Key('billing_checkout_screen'),
@@ -262,7 +396,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
               ),
             if (_displayPriceMinor != null) ...[
               const SizedBox(height: 8),
-              Text('$_displayPriceMinor ${widget.offer?.currency ?? _checkoutRead?.offer.currency ?? ''}'),
+              Text('$_displayPriceMinor $currency'),
             ],
             if (showQueuedTerm) ...[
               const SizedBox(height: 16),
@@ -272,10 +406,10 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
               const SizedBox(height: 16),
               Text(_shownStateLabel(l10n, shownState)),
             ],
-            if (_error != null) ...[
+            if (_errorMessage != null) ...[
               const SizedBox(height: 12),
               Text(
-                '$_error',
+                _errorMessage!,
                 style: TextStyle(color: Theme.of(context).colorScheme.error),
               ),
             ],

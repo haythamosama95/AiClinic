@@ -20,10 +20,14 @@ class OffersScreen extends StatefulWidget {
     super.key,
     required this.client,
     required this.onContinue,
+    this.onContractVersionUnsupported,
+    this.loadError,
   });
 
   final AboClient client;
   final ValueChanged<BillingOffersSelection> onContinue;
+  final VoidCallback? onContractVersionUnsupported;
+  final Object? loadError;
 
   @override
   State<OffersScreen> createState() => _OffersScreenState();
@@ -39,7 +43,12 @@ class _OffersScreenState extends State<OffersScreen> {
   @override
   void initState() {
     super.initState();
-    _loadOffers();
+    if (widget.loadError != null) {
+      _error = widget.loadError;
+      _loading = false;
+    } else {
+      _loadOffers();
+    }
   }
 
   Future<void> _loadOffers() async {
@@ -55,6 +64,20 @@ class _OffersScreenState extends State<OffersScreen> {
       setState(() {
         _response = response;
         _selectedOffer = response.offers.isNotEmpty ? response.offers.first : null;
+        _loading = false;
+      });
+    } on AboContractVersionUnsupportedException {
+      if (!mounted) {
+        return;
+      }
+      widget.onContractVersionUnsupported?.call();
+      setState(() => _loading = false);
+    } on AboTermsNotAcceptedException {
+      if (!mounted) {
+        return;
+      }
+      setState(() {
+        _termsAccepted = false;
         _loading = false;
       });
     } catch (error) {

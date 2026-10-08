@@ -201,7 +201,7 @@ That command is the unit harness. `npm test` in `e2e/fullstack` is not the harne
 
 **Independent Test**: E2E-P6.3-02 in harness H-FL on H-FS, payment via the H-PAY fixture.
 
-- [ ] T026 [US2] Resume a listed checkout by `reference` in `frontend/lib/features/ai/billing/administrator_billing_page.dart` — open list, no tenant argument, FR-005, E2E-P6.3-02. Depends on T025. Create the file. It takes no tenant argument. It loads `GET /v1/checkouts?open=1` and, when a checkout is listed, shows that checkout by `reference` instead of starting another one. Another desktop resumes by `reference`.
+- [X] T026 [US2] Resume a listed checkout by `reference` in `frontend/lib/features/ai/billing/administrator_billing_page.dart` — open list, no tenant argument, FR-005, E2E-P6.3-02. Depends on T025. Create the file. It takes no tenant argument. It loads `GET /v1/checkouts?open=1` and, when a checkout is listed, shows that checkout by `reference` instead of starting another one. Another desktop resumes by `reference`.
 
 **Checkpoint**: A second desktop can open a listed checkout by `reference`. E2E-P6.3-02 still fails until the route builds this page for that session.
 
@@ -209,7 +209,7 @@ That command is the unit harness. `npm test` in `e2e/fullstack` is not the harne
 
 **Independent Test**: E2E-P6.3-03, E2E-P6.3-04, and E2E-P6.3-05 in harness H-FL on H-FS, payment via the H-PAY fixture.
 
-- [ ] T027 [US3] Handle the five ABO errors and show the new price after `offer_unavailable` in `frontend/lib/features/ai/billing/checkout_screen.dart`, `frontend/lib/features/ai/billing/offers_screen.dart`, and `frontend/lib/features/ai/billing/billing_contact_form.dart` — 409, 503, and 429, FR-007, E2E-P6.3-04, E2E-P6.3-05. Depends on T026. `offer_unavailable` loads offers again and shows the new price before a launch. `terms_not_accepted` returns to the offers screen. `billing_contact_required` stays on the contact form. `provider_unavailable` is shown on the checkout screen; a later read of Abandoned is that shown state. `rate_limited` is shown on the checkout screen.
+- [X] T027 [US3] Handle the five ABO errors and show the new price after `offer_unavailable` in `frontend/lib/features/ai/billing/checkout_screen.dart`, `frontend/lib/features/ai/billing/offers_screen.dart`, and `frontend/lib/features/ai/billing/billing_contact_form.dart` — 409, 503, and 429, FR-007, E2E-P6.3-04, E2E-P6.3-05. Depends on T026. `offer_unavailable` loads offers again and shows the new price before a launch. `terms_not_accepted` returns to the offers screen. `billing_contact_required` stays on the contact form. `provider_unavailable` is shown on the checkout screen; a later read of Abandoned is that shown state. `rate_limited` is shown on the checkout screen.
 
 **Checkpoint**: E2E-P6.3-04 can show the new price before paying. The other four ABO errors stay on the screen the plan names.
 
@@ -217,7 +217,7 @@ That command is the unit harness. `npm test` in `e2e/fullstack` is not the harne
 
 **Independent Test**: E2E-P6.3-06 and E2E-P6.3-07 in harness H-FL on H-FS. Every earlier suite stays green (rule S2).
 
-- [ ] T028 [US4] Show the app-update state when the ABO answers `contract_version_unsupported` in `frontend/lib/features/ai/billing/checkout_screen.dart` — inline `AiDegradedView`, no dialog, FR-009, E2E-P6.3-07. Depends on T027 (checkout screen). `contract_version_unsupported` shows `AiDegradedView` in the existing app-update mode ("Update the app to use AI"), inline, with no dialog.
+- [X] T028 [US4] Show the app-update state when the ABO answers `contract_version_unsupported` in `frontend/lib/features/ai/billing/checkout_screen.dart` — inline `AiDegradedView`, no dialog, FR-009, E2E-P6.3-07. Depends on T027 (checkout screen). `contract_version_unsupported` shows `AiDegradedView` in the existing app-update mode ("Update the app to use AI"), inline, with no dialog.
 
 **Checkpoint**: E2E-P6.3-07 can show the update state with no dialog.
 
@@ -225,7 +225,7 @@ That command is the unit harness. `npm test` in `e2e/fullstack` is not the harne
 
 **Independent Test**: E2E-P6.3-03, E2E-P6.3-04, and E2E-P6.3-05 in harness H-FL on H-FS, payment via the H-PAY fixture.
 
-- [ ] T029 [US3] Keep Failed on the same checkout page so a later success shows Active in `frontend/lib/features/ai/billing/checkout_screen.dart` — decline then retry, FR-006, FR-007, E2E-P6.3-05. Depends on T028 (same file). Failed stays on this page. A later success on this page shows Active.
+- [X] T029 [US3] Keep Failed on the same checkout page so a later success shows Active in `frontend/lib/features/ai/billing/checkout_screen.dart` — decline then retry, FR-006, FR-007, E2E-P6.3-05. Depends on T028 (same file). Failed stays on this page. A later success on this page shows Active.
 
 **Checkpoint**: E2E-P6.3-05 can move from Failed to Active on the same page.
 
@@ -233,7 +233,7 @@ That command is the unit harness. `npm test` in `e2e/fullstack` is not the harne
 
 **Independent Test**: E2E-P6.3-06 and E2E-P6.3-07 in harness H-FL on H-FS. Every earlier suite stays green (rule S2).
 
-- [ ] T030 [US4] Keep the staff host free of a billing control and of a token mint in `frontend/lib/features/ai/host/ai_feature_host_page.dart` and `frontend/lib/features/ai/degraded/ai_degraded_view.dart` — no purchase control, no `issue_billing_token`, FR-008, E2E-P6.3-06. Depends on T029. The staff notice on `AiFeatureHostPage` stays the text with no purchase control. Staff still do not see `kAiDegradedRenewOrBuyKey`. Neither staff surface constructs `frontend/lib/features/ai/billing/billing_token_client.dart`.
+- [X] T030 [US4] Keep the staff host free of a billing control and of a token mint in `frontend/lib/features/ai/host/ai_feature_host_page.dart` and `frontend/lib/features/ai/degraded/ai_degraded_view.dart` — no purchase control, no `issue_billing_token`, FR-008, E2E-P6.3-06. Depends on T029. The staff notice on `AiFeatureHostPage` stays the text with no purchase control. Staff still do not see `kAiDegradedRenewOrBuyKey`. Neither staff surface constructs `frontend/lib/features/ai/billing/billing_token_client.dart`.
 
 **Checkpoint**: E2E-P6.3-06 sees no billing entry and no `issue_billing_token` call.
 
@@ -241,7 +241,7 @@ That command is the unit harness. `npm test` in `e2e/fullstack` is not the harne
 
 **Independent Test**: E2E-P6.3-01 in harness H-FL on H-FS, payment via the H-PAY fixture.
 
-- [ ] T031 [US1] Compose offers, contact, and checkout on `frontend/lib/features/ai/billing/administrator_billing_page.dart`, including the open-list resume — route page, FR-001, FR-005, FR-008, FR-009, E2E-P6.3-01, E2E-P6.3-02. Depends on T030. The route builds this page for an administrator. When `GET /v1/checkouts?open=1` lists a checkout, show that checkout by `reference` instead of starting another one. Otherwise sequence offers, then contact, then checkout. It takes no tenant argument. A staff session does not build it and does not construct the token client.
+- [X] T031 [US1] Compose offers, contact, and checkout on `frontend/lib/features/ai/billing/administrator_billing_page.dart`, including the open-list resume — route page, FR-001, FR-005, FR-008, FR-009, E2E-P6.3-01, E2E-P6.3-02. Depends on T030. The route builds this page for an administrator. When `GET /v1/checkouts?open=1` lists a checkout, show that checkout by `reference` instead of starting another one. Otherwise sequence offers, then contact, then checkout. It takes no tenant argument. A staff session does not build it and does not construct the token client.
 
 **Checkpoint**: The administrator route runs offers, contact, and checkout, and resumes a listed checkout by `reference`. E2E-P6.3-01 through E2E-P6.3-07 are ready for the harness.
 

@@ -9,10 +9,12 @@ class BillingContactForm extends StatefulWidget {
     super.key,
     required this.client,
     required this.onSaved,
+    this.onContractVersionUnsupported,
   });
 
   final AboClient client;
   final ValueChanged<BillingContact> onSaved;
+  final VoidCallback? onContractVersionUnsupported;
 
   @override
   State<BillingContactForm> createState() => _BillingContactFormState();
@@ -63,6 +65,12 @@ class _BillingContactFormState extends State<BillingContactForm> {
           _phoneController.clear();
       }
       setState(() => _loading = false);
+    } on AboContractVersionUnsupportedException {
+      if (!mounted) {
+        return;
+      }
+      widget.onContractVersionUnsupported?.call();
+      setState(() => _loading = false);
     } catch (error) {
       if (!mounted) {
         return;
@@ -92,6 +100,21 @@ class _BillingContactFormState extends State<BillingContactForm> {
       }
       setState(() => _saving = false);
       widget.onSaved(contact);
+    } on AboBillingContactRequiredException {
+      if (!mounted) {
+        return;
+      }
+      final l10n = AppLocalizations.of(context)!;
+      setState(() {
+        _error = l10n.aiBillingErrorBillingContactRequired;
+        _saving = false;
+      });
+    } on AboContractVersionUnsupportedException {
+      if (!mounted) {
+        return;
+      }
+      widget.onContractVersionUnsupported?.call();
+      setState(() => _saving = false);
     } catch (error) {
       if (!mounted) {
         return;
