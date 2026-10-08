@@ -37,6 +37,7 @@ const _subscriptionSummaryKey = Key('billing_subscription_summary');
 const _commercialNoticesKey = Key('billing_commercial_notices');
 const _paymentHistoryKey = Key('billing_payment_history');
 const _paymentHistoryNextKey = Key('billing_payment_history_next');
+const _renewNoticeKey = Key('ai_notice_renew');
 
 class _FullstackSubscriptionTestBinding extends AutomatedTestWidgetsFlutterBinding {
   @override
@@ -96,7 +97,7 @@ void main() {
 
       final clinic = await ctx.ensureClinic(label: 'p64_dup');
       final installationId = _deterministicUuid('b641', clinic.suffix);
-      await _seedActiveCoverage(
+      await _seedAllowanceLowCoverage(
         ctx: ctx,
         orgId: clinic.organizationId,
         installationId: installationId,
@@ -187,12 +188,14 @@ void main() {
       );
       await _waitForPayments(billingToken, count: 1);
 
+      await _scriptPaymobInquiry('reversed');
       await _replayPaymobFixtureForCheckout(
         'refund-parent.json',
         checkoutId: checkout.checkoutId,
-        transactionId: txnId + 2,
+        transactionId: txnId,
+        inquiry: 'reversed',
       );
-      await _waitForReversal(billingToken);
+      final reversalReference = await _waitForReversal(billingToken);
 
       final subscription = await _fetchSubscription(billingToken);
       expect(subscription['notices'], containsAll(['reversal_recorded', 'terms_held']));
@@ -209,6 +212,7 @@ void main() {
       expect(find.text('reversal_recorded'), findsOneWidget);
       expect(find.text('terms_held'), findsOneWidget);
       expect(find.text('ended_reversed'), findsOneWidget);
+      expect(find.text(reversalReference), findsOneWidget);
     });
   });
 
@@ -244,7 +248,6 @@ void main() {
       await _replayPaymobFixtureForCheckout('success.json', checkoutId: lateCheckout.checkoutId);
       await _waitForPayments(billingToken, count: 1);
 
-      await _scriptPaymobInquiry('amount_mismatch');
       final withheldCheckout = await _createCheckout(
         billingToken: billingToken,
         offer: offer,
@@ -253,8 +256,8 @@ void main() {
       await _replayPaymobFixtureForCheckout(
         'success.json',
         checkoutId: withheldCheckout.checkoutId,
+        inquiry: 'amount_mismatch',
       );
-      await _scriptPaymobInquiry('bound_success');
 
       final subscription = await _fetchSubscription(billingToken);
       expect(subscription['notices'], containsAll(['late_payment_honoured', 'payment_withheld']));
@@ -455,24 +458,12 @@ Future<void> _openSubscriptionPageFromRenew(
     ),
   );
   await tester.pumpAndSettle();
-  router.go(AppRoutes.ai);
+  router.go(AppRoutes.aiFeatureHost, extra: composition.dependencies);
   await tester.pumpAndSettle();
-  await tester.pumpWidget(
-    ProviderScope(
-      overrides: [
-        supabaseClientProvider.overrideWithValue(LiveSupabaseHarness.client),
-      ],
-      child: MaterialApp(
-        theme: AppTheme.light(),
-        home: Scaffold(
-          body: liveVisitSummaryHostBody(visitId: testVisitId, composition: composition),
-        ),
-      ),
-    ),
-  );
+  expect(find.byKey(_renewNoticeKey), findsOneWidget);
+  await tester.tap(find.byKey(_renewNoticeKey));
   await tester.pumpAndSettle();
-  await tester.tap(find.byKey(const Key('ai_notice_renew')));
-  await tester.pumpAndSettle();
+  expect(find.byKey(_subscriptionSummaryKey), findsOneWidget);
 }
 
 GoRouter _billingRouter({
@@ -637,14 +628,17 @@ Future<List<Map<String, dynamic>>> _waitForPayments(
   fail('Timed out waiting for $count payments');
 }
 
-Future<void> _waitForReversal(String billingToken) async {
+Future<String> _waitForReversal(String billingToken) async {
   for (var attempt = 0; attempt < 120; attempt++) {
     final page = await _fetchPayments(billingToken);
     final payments = (page['payments'] as List?)?.cast<Map<String, dynamic>>() ?? const [];
     if (payments.isNotEmpty) {
       final reversals = payments.first['reversals'];
       if (reversals is List && reversals.isNotEmpty) {
-        return;
+        final reference = reversals.first['reference']?.toString();
+        if (reference != null && reference.isNotEmpty) {
+          return reference;
+        }
       }
     }
     await Future<void>.delayed(const Duration(milliseconds: 500));
@@ -656,11 +650,12 @@ Future<void> _replayPaymobFixtureForCheckout(
   String fixtureName, {
   required String checkoutId,
   int? transactionId,
+  String inquiry = 'bound_success',
 }) async {
   final orderId = await _readPaymobOrderId(checkoutId);
   final txnId = transactionId ?? _transactionIdForCheckout(checkoutId);
   final amountMinor = await _readCheckoutAmountMinor(checkoutId);
-  await _scriptPaymobStub(orderId: orderId, amountMinor: amountMinor);
+  await _scriptPaymobStub(orderId: orderId, amountMinor: amountMinor, inquiry: inquiry);
 
   final repoRoot = File('pubspec.yaml').existsSync() ? Directory.current.parent.path : Directory.current.path;
   final fixturePath = '$repoRoot/abo/test/fixtures/paymob/$fixtureName';
@@ -691,14 +686,18 @@ Future<void> _scriptPaymobInquiry(String inquiry) async {
   expect(response.statusCode, 204);
 }
 
-Future<void> _scriptPaymobStub({required String orderId, required int amountMinor}) async {
+Future<void> _scriptPaymobStub({
+  required String orderId,
+  required int amountMinor,
+  String inquiry = 'bound_success',
+}) async {
   final response = await http.post(
     Uri.parse('$_paymobUrl/__script'),
     headers: {'content-type': 'application/json'},
     body: jsonEncode({
       'amount_cents': '$amountMinor',
       'intention_order_id': orderId,
-      'inquiry': 'bound_success',
+      'inquiry': inquiry,
     }),
   );
   expect(response.statusCode, 204);
@@ -772,11 +771,12 @@ Future<String?> _aboSqlitePath() async {
   final files = dbDir
       .listSync()
       .whereType<File>()
-      .where((file) => file.path.endsWith('.sqlite'))
+      .where((file) => file.path.endsWith('.sqlite') && !file.path.endsWith('metadata.sqlite'))
       .toList();
   if (files.isEmpty) {
     return null;
   }
+  files.sort((a, b) => a.path.compareTo(b.path));
   return files.first.path;
 }
 
@@ -891,6 +891,19 @@ WHERE singleton;
 ''');
 }
 
+Future<void> _seedAllowanceLowCoverage({
+  required BoundaryTestContext ctx,
+  required String orgId,
+  required String installationId,
+}) async {
+  await _seedActiveCoverage(ctx: ctx, orgId: orgId, installationId: installationId);
+  await ctx.sql.execute('''
+UPDATE ai_internal.clinic_ai_coverage
+SET band = '75'
+WHERE organization_id = '$orgId'::uuid;
+''');
+}
+
 Future<void> _seedEndsSoonCoverage({
   required BoundaryTestContext ctx,
   required String orgId,
@@ -899,8 +912,9 @@ Future<void> _seedEndsSoonCoverage({
   await _seedActiveCoverage(ctx: ctx, orgId: orgId, installationId: installationId);
   await ctx.sql.execute('''
 UPDATE ai_internal.clinic_ai_coverage
-SET ends_at = now() + interval '3 days',
-    grace_ends_at = now() + interval '10 days'
+SET ends_at = now() + interval '7 days',
+    grace_ends_at = now() + interval '14 days',
+    band = '75'
 WHERE organization_id = '$orgId'::uuid;
 ''');
 }
