@@ -1178,6 +1178,7 @@ on hosted Supabase; NFR-08 cost check recorded.
 - **Implements:** STG-A01…STG-A36 as runner scripts, with scripted manual steps (dashboard refund, test cards, blocked notify URL, disabled platform route); an evidence report per scenario
 citing the earlier E2E IDs (section 5, D2); FM drills STG-FM-12 (catch-up after an outage window), STG-FM-13/14 (bad deploy, rollback, retry parked).
 - **E2E:** STG-A01 … STG-A36 (one each, all three term lengths for A1), STG-FM-12, STG-FM-13, STG-FM-14. **CP-G = launch gate (FR-90).**
+- **Excluded local noise:** Untracked `.wrangler/`, `abo/.hxw-platform/`, `abo/.wrangler/`, `abo/node_modules/`, `e2e/fullstack/.wrangler/`, `e2e/fullstack/node_modules/`, `e2e/fullstack/test/_flow-test.mjs`, and `e2e/fullstack/test/_startworker-smoke.mjs` are pre-existing local noise (wrangler cache, node_modules, smoke files). They are not part of P8.2. They do not block P8.2 Spec Kit.
 
 ### P8.3 — Launch readiness checks
 
