@@ -5,9 +5,9 @@ This file orients AI coding agents working in this repository. Keep the
 **current active feature's** plan reference when running Spec Kit phases.
 
 <!-- SPECKIT START -->
-Active feature plan: `specs/094-abo-p7-2-cross-system-security-isolation-suite/plan.md`
-Feature spec: `specs/094-abo-p7-2-cross-system-security-isolation-suite/spec.md`
-Branch: `ai/094-abo-p7-2-cross-system-security-isolation-suite`
+Active feature plan: `specs/095-abo-p7-3-contract-version-matrix/plan.md`
+Feature spec: `specs/095-abo-p7-3-contract-version-matrix/spec.md`
+Branch: `ai/095-abo-p7-3-contract-version-matrix`
 <!-- SPECKIT END -->
 
 ## Repo layout quick reference
