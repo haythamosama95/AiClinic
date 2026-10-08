@@ -74,6 +74,8 @@ simple = { limit = 300, period = 60 }
 
 [env.staging]
 name = "ai-platform-gateway-staging"
+workers_dev = false
+preview_urls = false
 
 [env.staging.vars]
 BUILD_SHA = "local"

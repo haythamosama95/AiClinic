@@ -61,7 +61,7 @@
 
 **Independent Test**: E2E-P8.1-01 and E2E-P8.1-02 in H-STG. Earlier suites stay green (rule S2).
 
-- [ ] T005 [US3] Add the failing runner in `e2e/fullstack/staging/run-checklists.mjs` — red runner, FR-001, FR-002, FR-003, FR-004, FR-005, FR-006, FR-007, FR-008, FR-009, E2E-P8.1-01, E2E-P8.1-02, E2E-P8.1-03. Depends on T001, T003, and T004. Run the three checklist items against the ops scripts and fixtures: `p8-1-01.checklist.md` via `ops/staging/heartbeat-monitor.mjs` on `ops/staging/fixtures/abo-cron-disabled.json`; `p8-1-02.checklist.md` via `ops/staging/audit-watcher.mjs` on `ops/staging/fixtures/deploy-and-secret.json`; `p8-1-03.checklist.md` against the account text, platform `[env.staging]` `DURATION_SCALE = "staging"`, the minute-branch `pingHeartbeat` requirement recorded on the 01 item, and `ops/staging/nfr-08.md`. The runner fails while those scripts, fixtures, flags, the minute ping, or `nfr-08.md` are absent. It adds no miss window, no HTTP status, and no alert body field. It does not shell out to wrangler, Cloudflare, Supabase, or Paymob. Do not create the ops files in this task. Do not run the runner. Do not run `npm test` in `e2e/fullstack`.
+- [X] T005 [US3] Add the failing runner in `e2e/fullstack/staging/run-checklists.mjs` — red runner, FR-001, FR-002, FR-003, FR-004, FR-005, FR-006, FR-007, FR-008, FR-009, E2E-P8.1-01, E2E-P8.1-02, E2E-P8.1-03. Depends on T001, T003, and T004. Run the three checklist items against the ops scripts and fixtures: `p8-1-01.checklist.md` via `ops/staging/heartbeat-monitor.mjs` on `ops/staging/fixtures/abo-cron-disabled.json`; `p8-1-02.checklist.md` via `ops/staging/audit-watcher.mjs` on `ops/staging/fixtures/deploy-and-secret.json`; `p8-1-03.checklist.md` against the account text, platform `[env.staging]` `DURATION_SCALE = "staging"`, the minute-branch `pingHeartbeat` requirement recorded on the 01 item, and `ops/staging/nfr-08.md`. The runner fails while those scripts, fixtures, flags, the minute ping, or `nfr-08.md` are absent. It adds no miss window, no HTTP status, and no alert body field. It does not shell out to wrangler, Cloudflare, Supabase, or Paymob. Do not create the ops files in this task. Do not run the runner. Do not run `npm test` in `e2e/fullstack`.
 
 **Checkpoint**: E2E-P8.1-01, E2E-P8.1-02, and E2E-P8.1-03 have a runner on disk. It was not executed.
 
@@ -75,9 +75,9 @@
 
 **Independent Test**: E2E-P8.1-04 in H-STG.
 
-- [ ] T006 [US2] Set the staging flags in `ai-platform/wrangler.toml` — `[env.staging]` only, FR-002, FR-010, E2E-P8.1-04. Depends on T002 and T005. On that block set `workers_dev = false` and `preview_urls = false`. Keep `DURATION_SCALE = "staging"` and `HEARTBEAT_URL`. Do not edit the top-level block or any other env. Do not add a secret. Do not run the Node test. Do not deploy.
+- [X] T006 [US2] Set the staging flags in `ai-platform/wrangler.toml` — `[env.staging]` only, FR-002, FR-010, E2E-P8.1-04. Depends on T002 and T005. On that block set `workers_dev = false` and `preview_urls = false`. Keep `DURATION_SCALE = "staging"` and `HEARTBEAT_URL`. Do not edit the top-level block or any other env. Do not add a secret. Do not run the Node test. Do not deploy.
 
-- [ ] T007 [US2] Set the staging flags in `abo/wrangler.toml` — `[env.staging]` only, FR-002, FR-010, E2E-P8.1-04. Depends on T006. On that block set `workers_dev = false` and `preview_urls = false`. Keep `HEARTBEAT_URL`. Do not edit the top-level block or any other env. Do not add a secret. Do not run the Node test. Do not deploy.
+- [X] T007 [US2] Set the staging flags in `abo/wrangler.toml` — `[env.staging]` only, FR-002, FR-010, E2E-P8.1-04. Depends on T006. On that block set `workers_dev = false` and `preview_urls = false`. Keep `HEARTBEAT_URL`. Do not edit the top-level block or any other env. Do not add a secret. Do not run the Node test. Do not deploy.
 
 **Checkpoint**: E2E-P8.1-04's two `[env.staging]` blocks carry `workers_dev = false` and `preview_urls = false`. The test was not executed.
 

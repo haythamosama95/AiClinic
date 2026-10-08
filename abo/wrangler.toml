@@ -51,6 +51,8 @@ entrypoint = "VendorEntrypoint"
 
 [env.staging]
 name = "abo-staging"
+workers_dev = false
+preview_urls = false
 
 [env.staging.vars]
 BILLING_HOST = "billing.vendor.test"
