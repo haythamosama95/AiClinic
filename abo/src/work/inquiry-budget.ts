@@ -1,6 +1,10 @@
 import { clockNowIso, clockNowMs, type ClockEnv } from "../clock.js";
 import { runDueGrantWork, type GrantEnv } from "./grant.js";
-import { runConfirmForWorkId, type WorkRunnerEnv } from "./runner.js";
+import {
+  raiseStaleConfirmAlerts,
+  runConfirmForWorkId,
+  type WorkRunnerEnv,
+} from "./runner.js";
 import {
   processPendingNotificationReversals,
   processReverseWork,
@@ -138,6 +142,7 @@ async function dueReverseWork(
 export async function runMinuteInquiryBudget(
   env: InquiryBudgetEnv,
 ): Promise<void> {
+  await raiseStaleConfirmAlerts(env);
   await materializeCheckoutSweepSchedules(env);
 
   const nowMs = await clockNowMs(env);
@@ -178,15 +183,15 @@ export async function runMinuteInquiryBudget(
 
   let grantsProcessed = 0;
   const grantRows = await dueOpenWork(env, "grant", nowIso, WORK_BATCH_LIMIT);
-  for (const row of grantRows) {
-    if (spent >= INQUIRY_CAP) {
-      break;
-    }
+  for (const _row of grantRows) {
+    const withinCap = spent < INQUIRY_CAP;
     try {
       const processed = await runDueGrantWork(env, 1);
-      if (processed > 0) {
+      if (processed > 0 && withinCap) {
         spent += 1;
         await incrementInquirySpend(env, minuteKey);
+        grantsProcessed += 1;
+      } else if (processed > 0) {
         grantsProcessed += 1;
       }
     } catch {

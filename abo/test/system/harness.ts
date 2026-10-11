@@ -5,6 +5,26 @@
 import { env, SELF } from "cloudflare:test";
 import { createIssuer } from "vendor-contracts/testkit";
 import recordsMigrationSql from "../../migrations/0001_records.sql?raw";
+import checkoutMigrationSql from "../../migrations/0002_checkout.sql?raw";
+import notifyWorkMigrationSql from "../../migrations/0003_notify_work.sql?raw";
+import grantMigrationSql from "../../migrations/0004_grant.sql?raw";
+import reversalMigrationSql from "../../migrations/0005_reversal.sql?raw";
+import operatorActionMigrationSql from "../../migrations/0006_operator_action.sql?raw";
+import hpActionsMigrationSql from "../../migrations/0007_hp_actions.sql?raw";
+import reconciliationMigrationSql from "../../migrations/0008_reconciliation.sql?raw";
+import digestWatchMigrationSql from "../../migrations/0009_digest_watch.sql?raw";
+
+const ABO_MIGRATION_SQL: string[] = [
+  recordsMigrationSql,
+  checkoutMigrationSql,
+  notifyWorkMigrationSql,
+  grantMigrationSql,
+  reversalMigrationSql,
+  operatorActionMigrationSql,
+  hpActionsMigrationSql,
+  reconciliationMigrationSql,
+  digestWatchMigrationSql,
+];
 
 function base64UrlEncode(bytes: Uint8Array): string {
   let binary = "";
@@ -152,12 +172,18 @@ export async function applySql(sql: string): Promise<void> {
   }
 }
 
-export async function applyRecordsMigration(): Promise<void> {
-  try {
-    await applySql(recordsMigrationSql);
-  } catch {
-    // Migration not added yet.
+export async function applyAllAboMigrations(): Promise<void> {
+  for (const sql of ABO_MIGRATION_SQL) {
+    try {
+      await applySql(sql);
+    } catch {
+      // Migration not added yet.
+    }
   }
+}
+
+export async function applyRecordsMigration(): Promise<void> {
+  await applyAllAboMigrations();
 }
 
 async function ensureHarnessSchema(): Promise<void> {
@@ -458,7 +484,7 @@ export async function runScheduled(cron: string): Promise<void> {
   await ensureHeartbeatFetchMock();
   const workerModule = await import("../../src/worker");
   await workerModule.default.scheduled(
-    { cron, scheduledTime: Date.now(), noRetry() {} },
+    { cron, scheduledTime: Date.now(), noRetry() { } },
     env as never,
     {} as ExecutionContext,
   );

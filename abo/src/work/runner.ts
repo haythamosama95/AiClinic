@@ -965,7 +965,7 @@ export async function runConfirmForWorkId(
   }
 }
 
-async function raiseStaleConfirmAlerts(env: WorkRunnerEnv): Promise<void> {
+export async function raiseStaleConfirmAlerts(env: WorkRunnerEnv): Promise<void> {
   const nowMs = await clockNowMs(env);
   const rows = await env.DB.prepare(
     `SELECT work_id, opened_at FROM work WHERE kind = 'confirm' AND state = 'open'`,

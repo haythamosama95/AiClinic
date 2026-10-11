@@ -334,7 +334,23 @@ export async function handlePostNotifyPaymob(
     return emptyResponse(500);
   }
 
-  if (event !== null && event.kind === "reversal") {
+  const existingPayment =
+    checkoutId === null
+      ? null
+      : await env.DB.prepare(
+          `SELECT payment_id FROM payment WHERE checkout_id = ?`,
+        )
+          .bind(checkoutId)
+          .first<{ payment_id: string }>();
+
+  // A reversal callback before any payment is the first inquiry: confirm it
+  // so the payment is recorded as reversed_before_grant. Later reversals of
+  // an existing payment stay on the reversal recorder.
+  if (
+    event !== null &&
+    event.kind === "reversal" &&
+    (checkoutId === null || existingPayment !== null)
+  ) {
     try {
       if (checkoutId !== null) {
         await env.DB.prepare(

@@ -212,7 +212,10 @@ async function applySqlOnDb(db: D1Database, sql: string): Promise<void> {
       await db.prepare(statement).run();
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
-      if (!/already exists/i.test(message)) {
+      if (
+        !/already exists/i.test(message) &&
+        !/duplicate column name/i.test(message)
+      ) {
         throw error;
       }
     }
