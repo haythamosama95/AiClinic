@@ -64,6 +64,7 @@ Thumbs.db
 
 # Python
 __pycache__/
+.pytest_cache/
 *.py[cod]
 *.egg-info/
 .venv/
@@ -76,6 +77,21 @@ web-reference/node_modules
 # Shared packages (monorepo)
 packages/**/node_modules/
 
-# AI platform (Cloudflare Workers)
+# Cloudflare Wrangler / local worker harness caches
+.wrangler/
+**/.wrangler/
+.hxw-platform/
+**/.hxw-platform/
+
+# Node dependencies (packages not published from these trees)
 ai-platform/node_modules/
-ai-platform/.wrangler/
+abo/node_modules/
+e2e/fullstack/node_modules/
+
+# Test campaign governor / local run logs
+test-results/
+.test-run-reports/
+
+# Ad-hoc e2e wrangler smoke scripts (local debugging only)
+e2e/fullstack/test/_flow-test.mjs
+e2e/fullstack/test/_startworker-smoke.mjs
