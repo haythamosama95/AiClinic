@@ -102,29 +102,6 @@ CREATE TABLE coverage_mirror (
   term_snapshot TEXT NOT NULL
 );
 
-CREATE TABLE credit_price (
-  version TEXT PRIMARY KEY NOT NULL,
-  price_per_credit REAL NOT NULL,
-  currency TEXT NOT NULL,
-  active_from TEXT NOT NULL,
-  activated_by TEXT NOT NULL
-);
-
-CREATE TABLE entitlement (
-  entitlement_id TEXT PRIMARY KEY NOT NULL,
-  installation_id TEXT NOT NULL,
-  plan TEXT NOT NULL,
-  period_start TEXT NOT NULL,
-  period_end TEXT NOT NULL,
-  request_quota INTEGER NOT NULL,
-  token_budget INTEGER NOT NULL,
-  cost_budget REAL NOT NULL,
-  allowed_capabilities TEXT NOT NULL,
-  soft_threshold REAL NOT NULL,
-  status TEXT NOT NULL, credit_budget INTEGER NOT NULL DEFAULT 0, max_cost_class TEXT NOT NULL DEFAULT '',
-  FOREIGN KEY (installation_id) REFERENCES installation (installation_id)
-);
-
 CREATE TABLE fallback_admission (
   installation_id TEXT NOT NULL,
   idempotency_key TEXT NOT NULL,
@@ -173,17 +150,6 @@ CREATE TABLE installation (
   enrolled_at TEXT NOT NULL
 );
 
-CREATE TABLE invoice (
-  installation_id TEXT NOT NULL,
-  period TEXT NOT NULL,
-  credits_consumed INTEGER NOT NULL,
-  credit_price_version TEXT NOT NULL,
-  total REAL NOT NULL,
-  status TEXT NOT NULL,
-  issued_at TEXT NOT NULL,
-  PRIMARY KEY (installation_id, period)
-);
-
 CREATE TABLE issuer_key (
   kid TEXT PRIMARY KEY NOT NULL,
   issuer TEXT NOT NULL,
@@ -213,16 +179,6 @@ CREATE TABLE operator_credential (
   activates_at TEXT NOT NULL,
   approved_by TEXT,
   revoked_by TEXT
-);
-
-CREATE TABLE plan (
-  name TEXT PRIMARY KEY NOT NULL,
-  credit_budget INTEGER NOT NULL,
-  request_quota INTEGER NOT NULL,
-  max_cost_class TEXT NOT NULL,
-  soft_threshold REAL NOT NULL,
-  allowed_capabilities TEXT NOT NULL,
-  status TEXT NOT NULL
 );
 
 CREATE TABLE plan_version (

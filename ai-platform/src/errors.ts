@@ -3,6 +3,7 @@ export type TaxonomyCode =
   | "installation_suspended"
   | "forbidden_capability"
   | "rate_limited"
+  | "quota_exhausted"
   | "allowance_exhausted"
   | "coverage_lapsed"
   | "concurrency_limited"
@@ -51,6 +52,12 @@ const TAXONOMY: Record<TaxonomyCode, TaxonomyEntry> = {
     code: "rate_limited",
     httpStatus: 429,
     retryable: "Yes, after `retry_after`",
+    consumesQuota: "No",
+  },
+  quota_exhausted: {
+    code: "quota_exhausted",
+    httpStatus: 429,
+    retryable: "Not until period reset",
     consumesQuota: "No",
   },
   allowance_exhausted: {
@@ -202,6 +209,7 @@ export type CoverageLapseReason =
 
 export interface SupplementaryFieldInput {
   retryAfter?: number;
+  periodReset?: string;
   coverageReason?: CoverageLapseReason;
 }
 
@@ -229,6 +237,12 @@ export function supplementaryFieldsForCode(
   }
   if (code === "coverage_lapsed" && input.coverageReason !== undefined) {
     return { coverage_reason: input.coverageReason };
+  }
+  if (code === "quota_exhausted") {
+    const periodReset = input.periodReset?.trim();
+    if (periodReset) {
+      return { period_reset: periodReset };
+    }
   }
   return {};
 }

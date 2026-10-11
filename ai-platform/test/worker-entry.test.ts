@@ -16,7 +16,6 @@ const mockCreateManifestRetentionClassResolver = vi.fn(() => vi.fn());
 const mockRunRollupAndReconciliation = vi.fn();
 const mockAdmissionRPC = vi.fn();
 const mockCreditRPC = vi.fn();
-const mockDispatchControlRequest = vi.fn();
 const mockRunFiveMinuteCron = vi.fn();
 const mockLiveHttpStatusForCode = vi.fn(
   (code: string) => (code === "unauthenticated" ? 401 : 403),
@@ -59,14 +58,6 @@ vi.mock("cloudflare:workers", () => {
 
 vi.mock("../src/adapter", () => ({
   handleAdapterRequest: (...args: unknown[]) => mockHandleAdapterRequest(...args),
-}));
-
-vi.mock("../src/control", () => ({
-  createSecretOperatorAuth: vi.fn(() => ({ resolve: () => ({ operatorId: "op-id" }) })),
-  dispatchControlRequest: (...args: unknown[]) => mockDispatchControlRequest(...args),
-  isControlRoute: (pathname: string) => pathname.startsWith("/control/"),
-  isQuotaInspectRoute: (pathname: string) =>
-    /^\/control\/installations\/[^/]+\/quota$/.test(pathname),
 }));
 
 vi.mock("../src/credit", () => ({
@@ -167,13 +158,8 @@ beforeEach(async () => {
   mockRunRollupAndReconciliation.mockReset();
   mockAdmissionRPC.mockReset();
   mockCreditRPC.mockReset();
-  mockDispatchControlRequest.mockReset();
   mockRunFiveMinuteCron.mockReset();
   mockLiveHttpStatusForCode.mockClear();
-
-  mockDispatchControlRequest.mockResolvedValue(
-    new Response(JSON.stringify({ ok: true }), { status: 200 }),
-  );
 
   mockFlushRejectionCounters.mockResolvedValue(undefined);
   mockReconcileGraceUsage.mockResolvedValue(undefined);
@@ -596,8 +582,8 @@ describe("GatewayObject.fetch negatives and §3.1.7", () => {
   });
 });
 
-describe("control route GET gating for quota inspect", () => {
-  it("dispatches GET /control/installations/:id/quota to control", async () => {
+describe("control route removal (P3.10)", () => {
+  it("returns 404 for GET /control/installations/:id/quota", async () => {
     const response = await workerModule.default.fetch(
       new Request(
         "https://ai-gateway.test/control/installations/inst-1/quota",
@@ -607,16 +593,10 @@ describe("control route GET gating for quota inspect", () => {
       { waitUntil: vi.fn() } as never,
     );
 
-    expect(response.status).toBe(200);
-    expect(mockDispatchControlRequest).toHaveBeenCalledTimes(1);
-    const dispatchedRequest = mockDispatchControlRequest.mock.calls[0]?.[0] as Request;
-    expect(dispatchedRequest.method).toBe("GET");
-    expect(new URL(dispatchedRequest.url).pathname).toBe(
-      "/control/installations/inst-1/quota",
-    );
+    expect(response.status).toBe(404);
   });
 
-  it("does not dispatch GET on other control routes", async () => {
+  it("returns 404 for GET on other control routes", async () => {
     const response = await workerModule.default.fetch(
       new Request(
         "https://ai-gateway.test/control/installations/inst-1/enroll",
@@ -626,7 +606,6 @@ describe("control route GET gating for quota inspect", () => {
       { waitUntil: vi.fn() } as never,
     );
 
-    expect(mockDispatchControlRequest).not.toHaveBeenCalled();
     expect(response.status).toBe(404);
   });
 });

@@ -4191,6 +4191,7 @@ export type RefreshCoverageSnapshotResponse = {
   kind: "refresh_coverage_snapshot";
   result: "ok" | "not_found";
   event_id?: string;
+  shipped_alerts?: ShippedCoverageAlert[];
 };
 
 export async function refreshCoverageSnapshotRPC(
@@ -4216,7 +4217,7 @@ export async function refreshCoverageSnapshotRPC(
     });
     const eventId = coverageEventId(request.installationId, clinicSeq);
     await scheduleCoverageAlarm(state, storage, request.nowIso);
-    await shipCoverageOutboxInLock(
+    const shippedAlerts = await shipCoverageOutboxInLock(
       state,
       storage,
       { DB: request.db, R2: request.r2 },
@@ -4230,6 +4231,7 @@ export async function refreshCoverageSnapshotRPC(
       kind: "refresh_coverage_snapshot",
       result: "ok",
       event_id: eventId,
+      shipped_alerts: shippedAlerts,
     };
   });
 }

@@ -25,7 +25,6 @@ export const PLATFORM_ENTITIES = [
   "installation",
   "issuer_key",
   "tenant_binding",
-  "entitlement",
   "capability_grant",
   "routing_policy",
   "ai_request",
@@ -43,6 +42,13 @@ export const PLATFORM_ENTITIES = [
   "coverage_mirror",
   "transfer",
   "transfer_step",
+  "operator_credential",
+  "assertion_used",
+  "platform_alert",
+  "ceiling_policy",
+  "grant_void",
+  "kill_switch",
+  "token_contract",
 ] as const;
 
 export type PlatformEntity = (typeof PLATFORM_ENTITIES)[number];
@@ -291,55 +297,30 @@ describe("T-A5-15b idempotency_key_not_uniquely_indexed_on_d1", () => {
   });
 });
 
-describe("entitlement_installation_id_is_unique", () => {
-  it("has a unique index on entitlement.installation_id and rejects a second row", async () => {
+describe("plan_version_primary_key_is_unique", () => {
+  it("rejects a second row for the same (plan_id, version)", async () => {
     await applyMigrations();
 
-    const indexes = await query<{ name: string; sql: string }>(
-      `SELECT name, sql
-       FROM sqlite_master
-       WHERE type = 'index'
-         AND tbl_name = 'entitlement'
-         AND sql IS NOT NULL`,
-    );
-
-    const uniqueInstallationIndexes = indexes.filter(
-      (index) =>
-        /installation_id/i.test(index.sql) && /UNIQUE/i.test(index.sql),
-    );
-    expect(uniqueInstallationIndexes.length).toBeGreaterThan(0);
-
     await query(
-      `INSERT INTO installation (
-        installation_id, org_id, display_name, status, region, enrolled_at
+      `INSERT INTO plan_version (
+        plan_id, version, display_name, capabilities, max_cost_class,
+        concurrency_limit, max_allowance_per_month, status, published_by,
+        assertion_sha256
       ) VALUES (
-        'inst-entitlement-unique', 'org-entitlement-unique', 'Unique Entitlement Clinic',
-        'active', 'eeur', '2026-08-01T00:00:00.000Z'
-      )`,
-    );
-
-    await query(
-      `INSERT INTO entitlement (
-        entitlement_id, installation_id, plan, period_start, period_end,
-        request_quota, token_budget, cost_budget, allowed_capabilities,
-        soft_threshold, status
-      ) VALUES (
-        'ent-unique-1', 'inst-entitlement-unique', 'professional',
-        '2026-08-01T00:00:00.000Z', '2026-09-01T00:00:00.000Z',
-        0, 0, 0, '[]', 0, 'pending'
+        'plan-unique-a5', 1, 'Unique Plan', '[]', '1', 1, 100, 'published',
+        'operator-a5', 'assertion-sha256-a5'
       )`,
     );
 
     await expect(
       query(
-        `INSERT INTO entitlement (
-          entitlement_id, installation_id, plan, period_start, period_end,
-          request_quota, token_budget, cost_budget, allowed_capabilities,
-          soft_threshold, status
+        `INSERT INTO plan_version (
+          plan_id, version, display_name, capabilities, max_cost_class,
+          concurrency_limit, max_allowance_per_month, status, published_by,
+          assertion_sha256
         ) VALUES (
-          'ent-unique-2', 'inst-entitlement-unique', 'professional',
-          '2026-08-01T00:00:00.000Z', '2026-09-01T00:00:00.000Z',
-          0, 0, 0, '[]', 0, 'pending'
+          'plan-unique-a5', 1, 'Duplicate Plan', '[]', '1', 1, 100, 'published',
+          'operator-a5', 'assertion-sha256-a5-dup'
         )`,
       ),
     ).rejects.toThrow();
@@ -370,8 +351,8 @@ describe("T-A5-16 conversation_id_and_turn_ordinal_nullable", () => {
   });
 });
 
-/** G1 catalogue entities — tables and entitlement columns the forward-only migration must add. */
-const G1_CATALOGUE_TABLES = ["plan", "credit_price"] as const;
+/** G1 catalogue entities — paid-grant coverage tables the forward-only migration must add. */
+const G1_CATALOGUE_TABLES = ["plan_version", "service_key", "grant_ledger"] as const;
 
 async function tableColumnNames(table: string): Promise<Set<string>> {
   const rows = await query<{ name: string }>(`PRAGMA table_info(${table})`);
@@ -388,8 +369,9 @@ describe("migrations_apply_cleanly_empty_database", () => {
       expect(tables.has(entity)).toBe(true);
     }
 
-    const entitlementColumns = await tableColumnNames("entitlement");
-    expect(entitlementColumns.has("credit_budget")).toBe(true);
+    const planVersionColumns = await tableColumnNames("plan_version");
+    expect(planVersionColumns.has("max_allowance_per_month")).toBe(true);
+    expect(planVersionColumns.has("max_cost_class")).toBe(true);
   });
 });
 
@@ -398,9 +380,9 @@ describe("schema_snapshot_matches", () => {
     await applyMigrations();
 
     const expectedDdl = await readFile(SCHEMA_SNAPSHOT_PATH, "utf8");
-    expect(expectedDdl).toMatch(/CREATE TABLE\s+plan\b/i);
-    expect(expectedDdl).toMatch(/CREATE TABLE\s+credit_price\b/i);
-    expect(expectedDdl).toMatch(/\bcredit_budget\b/i);
+    expect(expectedDdl).toMatch(/CREATE TABLE\s+plan_version\b/i);
+    expect(expectedDdl).toMatch(/CREATE TABLE\s+service_key\b/i);
+    expect(expectedDdl).toMatch(/\bmax_allowance_per_month\b/i);
     expect(expectedDdl).toMatch(/\bmax_cost_class\b/i);
 
     const actualDdl = await dumpCreateTableDdl();

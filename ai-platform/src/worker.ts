@@ -1972,7 +1972,15 @@ export class GatewayObject extends DurableObject {
             nowIso,
           },
         );
-        return Response.json({ ...result, contract_version: contractVersion });
+        await persistShippedCoverageAlerts(
+          runtimeEnv,
+          result.shipped_alerts ?? [],
+        );
+        const { shipped_alerts: _shippedAlerts, ...publicResult } = result;
+        return Response.json({
+          ...publicResult,
+          contract_version: contractVersion,
+        });
       }
     } catch (error) {
       if (isArgValidationError(error)) {
@@ -2006,24 +2014,35 @@ export class GatewayObject extends DurableObject {
       log,
       durationScale,
     );
-    for (const alert of shippedAlerts) {
-      if (alert.code === "AL-11") {
-        await raiseAl11GrantFromOutbox(
-          runtimeEnv,
-          alert.alert_key,
-          alert.body,
-        );
-      } else if (alert.code === "AL-12") {
-        await raiseAl12GrantFromOutbox(
-          runtimeEnv,
-          alert.alert_key,
-          alert.body,
-        );
-      } else if (alert.code === "AL-19") {
-        await raiseAl19FromOutbox(runtimeEnv, alert.alert_key, alert.body);
-      } else if (alert.code === "AL-17") {
-        await raiseAl17FromOutbox(runtimeEnv, alert.alert_key, alert.body);
-      }
+    await persistShippedCoverageAlerts(runtimeEnv, shippedAlerts);
+  }
+}
+
+async function persistShippedCoverageAlerts(
+  runtimeEnv: Env,
+  shippedAlerts: Array<{
+    alert_key: string;
+    code: string;
+    body: Record<string, unknown>;
+  }>,
+): Promise<void> {
+  for (const alert of shippedAlerts) {
+    if (alert.code === "AL-11") {
+      await raiseAl11GrantFromOutbox(
+        runtimeEnv,
+        alert.alert_key,
+        alert.body,
+      );
+    } else if (alert.code === "AL-12") {
+      await raiseAl12GrantFromOutbox(
+        runtimeEnv,
+        alert.alert_key,
+        alert.body,
+      );
+    } else if (alert.code === "AL-19") {
+      await raiseAl19FromOutbox(runtimeEnv, alert.alert_key, alert.body);
+    } else if (alert.code === "AL-17") {
+      await raiseAl17FromOutbox(runtimeEnv, alert.alert_key, alert.body);
     }
   }
 }

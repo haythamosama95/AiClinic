@@ -50,6 +50,8 @@ export default defineConfig({
       "test/period-close.test.ts",
       "test/price-list-activation.test.ts",
       "test/system/**/*.system.test.ts",
+      "test/version-matrix/**",
+      "test/vendor-entrypoint.test.ts",
       "test/e2e/**",
     ],
     testTimeout: 120_000,
