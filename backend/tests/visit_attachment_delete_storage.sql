@@ -149,7 +149,7 @@ BEGIN
   PERFORM set_config('role', 'postgres', true);
   INSERT INTO storage.objects (bucket_id, name, owner, metadata)
   VALUES ('visit-attachments', v_file_path, v_owner_user, jsonb_build_object('mimetype', 'application/pdf'))
-  ON CONFLICT (bucket_id, name) DO NOTHING;
+  ON CONFLICT (bucket_id, name) WHERE archived_at IS NULL DO NOTHING;
   PERFORM set_config('role', 'authenticated', true);
 
   v_result := public.register_visit_attachment(v_visit_id, v_file_path, 'pdf', 2048, 'Delete me');
