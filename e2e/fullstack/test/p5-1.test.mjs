@@ -12,6 +12,17 @@ import {
   createAccessTeam,
   createSoftwareAuthenticator,
 } from "vendor-contracts/testkit";
+import {
+  ABO_PERSIST,
+  HARNESS_PERSIST,
+  PLATFORM_PERSIST,
+  REGISTRY_DIR,
+  preparePlatformD1,
+  execPlatformD1Sql,
+  queryPlatformD1One,
+  runWranglerSync,
+  wranglerLocalEnv,
+} from "./wrangler-persist.mjs";
 
 const REPO_ROOT = path.resolve(
   path.dirname(fileURLToPath(import.meta.url)),
@@ -22,9 +33,6 @@ const PLATFORM_CONFIG = path.join(REPO_ROOT, "ai-platform/wrangler.toml");
 const HARNESS_CONFIG = path.join(FULLSTACK_ROOT, "wrangler.toml");
 const ABO_CONFIG = path.join(REPO_ROOT, "abo/wrangler.toml");
 const PAYMOB_WORKER = path.join(REPO_ROOT, "abo/test/stubs/paymob/worker.ts");
-const PLATFORM_PERSIST = path.join(FULLSTACK_ROOT, ".wrangler/platform");
-const REGISTRY_DIR = path.join(FULLSTACK_ROOT, ".wrangler/registry");
-const ABO_PERSIST = path.join(FULLSTACK_ROOT, ".wrangler/abo");
 
 const SUPABASE_URL = process.env.SUPABASE_URL ?? "http://127.0.0.1:54321";
 const SUPABASE_ANON_KEY =
@@ -53,17 +61,7 @@ function base64urlEncode(bytes) {
 }
 
 function runWrangler(args, { cwd = REPO_ROOT, env = {} } = {}) {
-  const result = spawnSync("npx", ["wrangler", ...args], {
-    cwd,
-    env: { ...process.env, ...env },
-    encoding: "utf8",
-  });
-  if (result.status !== 0) {
-    throw new Error(
-      `wrangler ${args.join(" ")} failed (${result.status}): ${result.stderr || result.stdout}`,
-    );
-  }
-  return result.stdout;
+  return runWranglerSync(args, { cwd, env });
 }
 
 function psqlQuery(sql) {
@@ -97,7 +95,7 @@ async function waitForHttp(url, { timeoutMs = 120_000, accept = [200] } = {}) {
 function spawnDevProcess(args, env = {}) {
   const child = spawn("npx", ["wrangler", ...args], {
     cwd: REPO_ROOT,
-    env: { ...process.env, ...env },
+    env: wranglerLocalEnv(env),
     stdio: ["ignore", "pipe", "pipe"],
   });
   return child;
@@ -118,22 +116,6 @@ async function stopChild(child) {
       resolve();
     });
   });
-}
-
-async function applyPlatformMigrations() {
-  runWrangler([
-    "d1",
-    "migrations",
-    "apply",
-    "ai-platform-development",
-    "--local",
-    "--env",
-    "development",
-    "--config",
-    PLATFORM_CONFIG,
-    "--persist-to",
-    PLATFORM_PERSIST,
-  ]);
 }
 
 async function applyAboMigrations() {
@@ -170,20 +152,7 @@ async function insertActiveOperatorCredential({
       NULL,
       NULL
     )`;
-  runWrangler([
-    "d1",
-    "execute",
-    "ai-platform-development",
-    "--local",
-    "--env",
-    "development",
-    "--config",
-    PLATFORM_CONFIG,
-    "--persist-to",
-    PLATFORM_PERSIST,
-    "--command",
-    sql,
-  ]);
+  execPlatformD1Sql(sql);
 }
 
 function readIssuerKeyByStatus(status) {
@@ -304,24 +273,7 @@ async function registerIssuerKey(stack, issuerKey) {
 }
 
 function queryD1One(sql) {
-  const stdout = runWrangler([
-    "d1",
-    "execute",
-    "ai-platform-development",
-    "--local",
-    "--env",
-    "development",
-    "--config",
-    PLATFORM_CONFIG,
-    "--persist-to",
-    PLATFORM_PERSIST,
-    "--json",
-    "--command",
-    sql,
-  ]);
-  const batches = JSON.parse(stdout);
-  const results = batches[0]?.results ?? [];
-  return results[0] ?? null;
+  return queryPlatformD1One(sql);
 }
 
 function getTenantBindingEpoch(orgId) {
@@ -467,9 +419,10 @@ async function createClinicUsers() {
 
 async function startStack() {
   await mkdir(PLATFORM_PERSIST, { recursive: true });
+  await mkdir(HARNESS_PERSIST, { recursive: true });
   await mkdir(REGISTRY_DIR, { recursive: true });
   await mkdir(ABO_PERSIST, { recursive: true });
-  await applyPlatformMigrations();
+  await preparePlatformD1({ platformConfig: PLATFORM_CONFIG });
 
   const accessTeam = await createAccessTeam({
     issuer: `https://${ACCESS_TEAM_DOMAIN}`,
@@ -491,6 +444,12 @@ async function startStack() {
     })
     .persist();
 
+  await insertActiveOperatorCredential({
+    credentialId,
+    operatorEmail: OPERATOR_EMAIL,
+    publicKeyCose,
+  });
+
   const platformWorker = await startWorker({
     config: PLATFORM_CONFIG,
     env: "development",
@@ -503,11 +462,6 @@ async function startStack() {
     },
   });
   await platformWorker.ready;
-  await insertActiveOperatorCredential({
-    credentialId,
-    operatorEmail: OPERATOR_EMAIL,
-    publicKeyCose,
-  });
 
   const harnessWorker = await startWorker({
     config: HARNESS_CONFIG,
@@ -515,6 +469,7 @@ async function startStack() {
     dev: {
       server: { hostname: "127.0.0.1", port: 8790 },
       inspector: false,
+      persist: HARNESS_PERSIST,
       registry: REGISTRY_DIR,
     },
   });

@@ -11,8 +11,21 @@ import {
   createAccessTeam,
   createSoftwareAuthenticator,
 } from "vendor-contracts/testkit";
+import {
+  ABO_PERSIST,
+  HARNESS_PERSIST,
+  PLATFORM_PERSIST,
+  REGISTRY_DIR,
+  preparePlatformD1,
+  execPlatformD1Sql,
+  queryPlatformD1One as queryPlatformD1Row,
+  runWranglerSync,
+  wranglerLocalEnv,
+} from "./wrangler-persist.mjs";
 
 // H-FS shared boot for P7.3: imported by p7-3-*.test.mjs
+
+export { ABO_PERSIST, HARNESS_PERSIST, PLATFORM_PERSIST, REGISTRY_DIR };
 
 export const REPO_ROOT = path.resolve(
   path.dirname(fileURLToPath(import.meta.url)),
@@ -23,9 +36,6 @@ export const PLATFORM_CONFIG = path.join(REPO_ROOT, "ai-platform/wrangler.toml")
 export const HARNESS_CONFIG = path.join(FULLSTACK_ROOT, "wrangler.toml");
 export const ABO_CONFIG = path.join(REPO_ROOT, "abo/wrangler.toml");
 export const PAYMOB_WORKER = path.join(REPO_ROOT, "abo/test/stubs/paymob/worker.ts");
-export const PLATFORM_PERSIST = path.join(FULLSTACK_ROOT, ".wrangler/platform");
-export const REGISTRY_DIR = path.join(FULLSTACK_ROOT, ".wrangler/registry");
-export const ABO_PERSIST = path.join(FULLSTACK_ROOT, ".wrangler/abo");
 
 export const SUPABASE_URL = process.env.SUPABASE_URL ?? "http://127.0.0.1:54321";
 export const SUPABASE_ANON_KEY =
@@ -163,17 +173,7 @@ export function resolveHarnessConfig(configPath) {
 }
 
 export function runWrangler(args, { cwd = REPO_ROOT, env = {} } = {}) {
-  const result = spawnSync("npx", ["wrangler", ...args], {
-    cwd,
-    env: { ...process.env, ...env },
-    encoding: "utf8",
-  });
-  if (result.status !== 0) {
-    throw new Error(
-      `wrangler ${args.join(" ")} failed (${result.status}): ${result.stderr || result.stdout}`,
-    );
-  }
-  return result.stdout;
+  return runWranglerSync(args, { cwd, env });
 }
 
 export function psqlQuery(sql) {
@@ -207,7 +207,7 @@ export async function waitForHttp(url, { timeoutMs = 120_000, accept = [200] } =
 function spawnDevProcess(args, env = {}) {
   const child = spawn("npx", ["wrangler", ...args], {
     cwd: REPO_ROOT,
-    env: { ...process.env, ...env },
+    env: wranglerLocalEnv(env),
     stdio: ["ignore", "pipe", "pipe"],
   });
   child.stdout.on("data", captureLogChunk);
@@ -230,22 +230,6 @@ async function stopChild(child) {
       resolve();
     });
   });
-}
-
-async function applyPlatformMigrations(platformConfig = activePlatformConfig) {
-  runWrangler([
-    "d1",
-    "migrations",
-    "apply",
-    "ai-platform-development",
-    "--local",
-    "--env",
-    "development",
-    "--config",
-    platformConfig,
-    "--persist-to",
-    PLATFORM_PERSIST,
-  ]);
 }
 
 async function applyAboMigrations(aboConfig = activeAboConfig) {
@@ -282,20 +266,7 @@ async function insertActiveOperatorCredential({
       NULL,
       NULL
     )`;
-  runWrangler([
-    "d1",
-    "execute",
-    "ai-platform-development",
-    "--local",
-    "--env",
-    "development",
-    "--config",
-    activePlatformConfig,
-    "--persist-to",
-    PLATFORM_PERSIST,
-    "--command",
-    sql,
-  ]);
+  execPlatformD1Sql(sql);
 }
 
 function readIssuerKeyByStatus(status) {
@@ -434,41 +405,11 @@ async function registerIssuerKey(stackRef, issuerKey) {
 }
 
 export function queryPlatformD1One(sql) {
-  const stdout = runWrangler([
-    "d1",
-    "execute",
-    "ai-platform-development",
-    "--local",
-    "--env",
-    "development",
-    "--config",
-    activePlatformConfig,
-    "--persist-to",
-    PLATFORM_PERSIST,
-    "--json",
-    "--command",
-    sql,
-  ]);
-  const batches = JSON.parse(stdout);
-  const results = batches[0]?.results ?? [];
-  return results[0] ?? null;
+  return queryPlatformD1Row(sql);
 }
 
 export function runPlatformD1Command(sql) {
-  runWrangler([
-    "d1",
-    "execute",
-    "ai-platform-development",
-    "--local",
-    "--env",
-    "development",
-    "--config",
-    activePlatformConfig,
-    "--persist-to",
-    PLATFORM_PERSIST,
-    "--command",
-    sql,
-  ]);
+  execPlatformD1Sql(sql);
 }
 
 export function queryAboD1One(sql) {
@@ -734,9 +675,10 @@ export async function startStack({
   const platformDoReceiverConfigPath = resolveHarnessConfig(platformDoReceiverConfig);
 
   await mkdir(PLATFORM_PERSIST, { recursive: true });
+  await mkdir(HARNESS_PERSIST, { recursive: true });
   await mkdir(REGISTRY_DIR, { recursive: true });
   await mkdir(ABO_PERSIST, { recursive: true });
-  await applyPlatformMigrations(activePlatformConfig);
+  await preparePlatformD1({ platformConfig: activePlatformConfig });
 
   const accessTeam = await createAccessTeam({
     issuer: `https://${ACCESS_TEAM_DOMAIN}`,
@@ -758,6 +700,12 @@ export async function startStack({
     })
     .persist();
 
+  await insertActiveOperatorCredential({
+    credentialId,
+    operatorEmail: OPERATOR_EMAIL,
+    publicKeyCose,
+  });
+
   let platformDoReceiverWorker = null;
   if (platformDoReceiverConfigPath) {
     platformDoReceiverWorker = await startPlatformDoReceiverWorker(
@@ -770,11 +718,6 @@ export async function startStack({
     activePlatformConfig,
     mockFetch,
   );
-  await insertActiveOperatorCredential({
-    credentialId,
-    operatorEmail: OPERATOR_EMAIL,
-    publicKeyCose,
-  });
 
   const harnessWorker = await startWorker({
     config: HARNESS_CONFIG,
@@ -782,6 +725,7 @@ export async function startStack({
     dev: {
       server: { hostname: "127.0.0.1", port: 8790 },
       inspector: false,
+      persist: HARNESS_PERSIST,
       registry: REGISTRY_DIR,
     },
   });

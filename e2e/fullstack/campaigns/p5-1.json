@@ -1,0 +1,6 @@
+{
+  "kind": "node-test",
+  "test_concurrency": null,
+  "test_timeout_ms": 180000,
+  "shard": null
+}

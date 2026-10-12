@@ -20,17 +20,24 @@ from test_run_artifacts import (
     refresh_latest,
     resolve_suite_artifact_dir,
 )
+from campaign_governor_echo import echo_stdout_line, governor_live_progress
 from test_run_progress import LiveTestDisplay
 
 ROOT = Path(__file__).resolve().parent.parent
-os.chdir(ROOT)
 REPO_ROOT = ROOT.parent
+REPO_TEST = REPO_ROOT / "test"
+if str(REPO_TEST) not in sys.path:
+    sys.path.insert(0, str(REPO_TEST))
+os.chdir(ROOT)
+
+from harness.campaign_config import apply_flutter_args  # noqa: E402
 COMPOSE_FILE = REPO_ROOT / "backend" / "local" / "docker-compose.yml"
 DEPLOYMENT_PROFILE = ROOT / "config/local/deployment-profile.json"
 DB_RESET_SQL = ROOT / "tool/boundary/boundary_force_db_reset.sql"
 VERIFY_MANIFEST = ROOT / "tool/boundary/verify_boundary_manifest.sh"
 
 CONCURRENCY = 1
+DEFAULT_CONFIG = {"kind": "flutter", "parallel_tests": CONCURRENCY, "coverage": True}
 
 FAILURES = []
 CURRENT_TEST = None
@@ -87,7 +94,7 @@ def boundary_force_db_reset():
     )
 
 
-def run_tests(test_files: list[str]) -> int:
+def run_tests(test_files: list[str], config: dict) -> int:
     if not test_files:
         print("ERROR: no boundary test files found.", file=sys.stderr)
         return 1
@@ -98,18 +105,19 @@ def run_tests(test_files: list[str]) -> int:
         "AICLINIC_DEPLOYMENT_PROFILE_PATH": "config/local/deployment-profile.json",
     }
 
-    cmd = [
-        "flutter",
-        "test",
-        *test_files,
-        "--tags",
-        "boundary",
-        "--concurrency",
-        str(CONCURRENCY),
-        "--timeout",
-        "3m",
-        "--machine",
-    ]
+    cmd = apply_flutter_args(
+        [
+            "flutter",
+            "test",
+            *test_files,
+            "--tags",
+            "boundary",
+            "--timeout",
+            "3m",
+            "--machine",
+        ],
+        config,
+    )
 
     global RECORDER
     if RECORDER is not None:
@@ -127,6 +135,7 @@ def run_tests(test_files: list[str]) -> int:
     )
 
     for line in process.stdout:
+        echo_stdout_line(line)
         line = line.strip()
         if not line:
             continue
@@ -266,7 +275,19 @@ def main():
         action="store_true",
         help="Skip writing log artifacts to disk.",
     )
+    parser.add_argument(
+        "--campaign-config",
+        type=Path,
+        help="JSON campaign runner config (parallelism, coverage).",
+    )
     args = parser.parse_args()
+
+    config = (
+        json.loads(args.campaign_config.read_text(encoding="utf-8"))
+        if args.campaign_config and args.campaign_config.is_file()
+        else dict(DEFAULT_CONFIG)
+    )
+    parallel = int(config.get("parallel_tests", CONCURRENCY))
 
     ensure_stack_running()
     ensure_deployment_profile()
@@ -302,17 +323,22 @@ def main():
             stdout="executed before test run (stdout discarded)",
         )
 
-    DISPLAY = LiveTestDisplay(
-        "🧪 Running boundary tests...",
-        concurrency=CONCURRENCY,
-        total_tests=total_tests,
-    )
-    DISPLAY.start()
+    if not governor_live_progress():
+        DISPLAY = LiveTestDisplay(
+            "🧪 Running boundary tests...",
+            concurrency=parallel,
+            total_tests=total_tests,
+        )
+        DISPLAY.start()
+    else:
+        DISPLAY = None
 
-    exit_code = run_tests(test_files)
+    exit_code = run_tests(test_files, config)
 
-    DISPLAY.stop()
-    print_summary()
+    if DISPLAY is not None:
+        DISPLAY.stop()
+    if not governor_live_progress():
+        print_summary()
 
     if exit_code == 0:
         exit_code = verify_manifest_with_logging() if RECORDER else verify_manifest()

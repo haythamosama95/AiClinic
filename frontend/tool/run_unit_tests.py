@@ -14,12 +14,19 @@ from test_run_artifacts import (
     refresh_latest,
     resolve_suite_artifact_dir,
 )
+from campaign_governor_echo import echo_stdout_line, governor_live_progress
 from test_run_progress import LiveTestDisplay
 
 ROOT = Path(__file__).resolve().parent.parent
+REPO_TEST = ROOT.parent / "test"
+if str(REPO_TEST) not in sys.path:
+    sys.path.insert(0, str(REPO_TEST))
 os.chdir(ROOT)
 
+from harness.campaign_config import apply_flutter_args  # noqa: E402
+
 CONCURRENCY = 15
+DEFAULT_CONFIG = {"kind": "flutter", "parallel_tests": CONCURRENCY, "coverage": True}
 
 FAILURES = []
 CURRENT_TEST = None
@@ -30,19 +37,20 @@ RECORDER: MachineEventRecorder | None = None
 
 # ---------------- Runner ----------------
 
-def run_tests(test_files: list[str]) -> int:
+def run_tests(test_files: list[str], config: dict) -> int:
     if not test_files:
         print("ERROR: no unit/widget/integration test files found.", file=sys.stderr)
         return 1
 
-    cmd = [
-        "flutter",
-        "test",
-        *test_files,
-        "--concurrency",
-        str(CONCURRENCY),
-        "--machine",
-    ]
+    cmd = apply_flutter_args(
+        [
+            "flutter",
+            "test",
+            *test_files,
+            "--machine",
+        ],
+        config,
+    )
 
     global RECORDER
     if RECORDER is not None:
@@ -58,6 +66,7 @@ def run_tests(test_files: list[str]) -> int:
     )
 
     for line in process.stdout:
+        echo_stdout_line(line)
         line = line.strip()
         if not line:
             continue
@@ -160,13 +169,26 @@ def parse_args() -> argparse.Namespace:
         action="store_true",
         help="Skip writing log artifacts to disk.",
     )
+    parser.add_argument(
+        "--campaign-config",
+        type=Path,
+        help="JSON campaign runner config (parallelism, coverage).",
+    )
     return parser.parse_args()
+
+
+def _read_config(path: Path | None) -> dict:
+    if path is not None and path.is_file():
+        return json.loads(path.read_text(encoding="utf-8"))
+    return dict(DEFAULT_CONFIG)
 
 
 # ---------------- Main ----------------
 
 def main():
     args = parse_args()
+    config = _read_config(args.campaign_config)
+    parallel = int(config.get("parallel_tests", CONCURRENCY))
     artifacts_enabled = not args.no_artifacts
     campaign_dir = args.campaign_dir
     artifact_dir = None
@@ -191,17 +213,22 @@ def main():
             artifact_dir=artifact_dir,
         )
 
-    DISPLAY = LiveTestDisplay(
-        "🧪 Running Flutter tests...",
-        concurrency=CONCURRENCY,
-        total_tests=total_tests,
-    )
-    DISPLAY.start()
+    if not governor_live_progress():
+        DISPLAY = LiveTestDisplay(
+            "🧪 Running Flutter tests...",
+            concurrency=parallel,
+            total_tests=total_tests,
+        )
+        DISPLAY.start()
+    else:
+        DISPLAY = None
 
-    exit_code = run_tests(test_files)
+    exit_code = run_tests(test_files, config)
 
-    DISPLAY.stop()
-    print_summary()
+    if DISPLAY is not None:
+        DISPLAY.stop()
+    if not governor_live_progress():
+        print_summary()
 
     if RECORDER is not None:
         RECORDER.finalize(exit_code)

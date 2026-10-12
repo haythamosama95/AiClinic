@@ -18,18 +18,24 @@ Flutter desktop client for the clinic LAN deployment.
 
 ```bash
 cd frontend
-./tool/run_all_tests.py         # unit + boundary (boundary needs local stack)
+python3 tool/run_campaigns.py --list
+python3 tool/run_campaigns.py all          # unit then boundary (stack required for boundary)
+python3 tool/run_campaigns.py unit
+python3 tool/run_campaigns.py boundary     # live Supabase stack required
+python3 tool/run_campaigns.py boundary-auth   # or boundary-settings, boundary-patients, …
+./tool/run_all_tests.py         # legacy combined runner (campaigns/ layout)
 ./tool/run_unit_tests.py
-./tool/run_boundary_tests.py    # live Supabase stack required
+./tool/run_boundary_tests.py
 flutter analyze
 ```
 
-Test campaigns write machine-readable artifacts under `test-results/latest/` (and
-`test-results/campaigns/<timestamp>/`): `raw.jsonl`, `summary.json`, `failures.json`,
-plus Markdown companions. Use these for triage without re-running tests. Pass
-`--no-artifacts` to skip file output.
+Campaign orchestration logs live under `test-results/frontend/<subcampaign>/<run_id>/`
+(`combined.log`, `meta.json`). Child runners also write Flutter machine artifacts
+(`summary.json`, `failures.json`, …) under the passed `--campaign-dir` (e.g.
+`<run_id>/unit` or `<run_id>/boundary`). The legacy `run_all_tests.py` path still
+uses `test-results/campaigns/` and `test-results/latest/`.
 
-Boundary subsets: `./tool/boundary/run_boundary_auth.sh`, `run_boundary_settings.sh`, `run_boundary_patients.sh`.
+Pass `--no-artifacts` on `run_unit_tests.py` / `run_boundary_tests.py` to skip suite file output.
 
 ## Configuration
 

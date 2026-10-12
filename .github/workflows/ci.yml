@@ -319,10 +319,10 @@ jobs:
         run: supabase start
 
       - name: Run backend SQL tests
-        run: backend/tests/run_all_backend_tests.sh
+        run: python3 backend/tests/run_campaigns.py all
 
       - name: Run catalog SQL tests
-        run: backend/tests/catalog/run.sh
+        run: python3 backend/tests/run_campaigns.py catalog
 
   frontend-fullstack:
     runs-on: ubuntu-latest
@@ -409,5 +409,4 @@ jobs:
         working-directory: e2e/fullstack
         run: |
           npm ci
-          npm test
-          node --import tsx --test test/p5-2.test.mjs
+          python3 run_campaigns.py all-ci

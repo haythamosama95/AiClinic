@@ -1,0 +1,5 @@
+{
+  "kind": "flutter",
+  "parallel_tests": 15,
+  "coverage": true
+}
