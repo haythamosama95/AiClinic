@@ -154,7 +154,11 @@ def run_batch_with_dashboard(
             run_log_root=run_root,
             run_manifest_path=plan_path,
         )
-        display.begin(clear_screen=sys.stderr.isatty())
+        from harness.common import campaign_interactive_ui_enabled
+
+        display.begin(
+            clear_screen=campaign_interactive_ui_enabled() and sys.stderr.isatty()
+        )
         _prefetch_queue_totals_async(queue, count_keys, display)
 
         try:

@@ -573,7 +573,10 @@ class CampaignProgressDisplay:
         self._failures = _FailureTree()
         self._lines_drawn = 0
         self._lock = threading.RLock()
-        self._tty = sys.stderr.isatty()
+        from harness.common import campaign_interactive_ui_enabled
+
+        self._interactive_ui = campaign_interactive_ui_enabled()
+        self._tty = self._interactive_ui and sys.stderr.isatty()
         self._use_rich = self._tty and _rich_available()
         self._live: Live | None = None
         self._console: Console | None = None
@@ -1270,6 +1273,8 @@ class CampaignProgressDisplay:
         return lines
 
     def _render_all(self) -> None:
+        if not self._interactive_ui:
+            return
         if self._use_rich and self._live is not None:
             try:
                 self._live.update(self._build_rich_renderable(), refresh=True)

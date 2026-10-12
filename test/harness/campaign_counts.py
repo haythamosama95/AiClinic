@@ -173,6 +173,7 @@ def _frontend_counts() -> dict[str, int]:
         BOUNDARY_SUBSET_ROOTS,
         boundary_test_files,
         count_expected_tests,
+        fullstack_test_files,
         unit_test_files,
     )
 
@@ -186,10 +187,9 @@ def _frontend_counts() -> dict[str, int]:
         counts[f"boundary-{sub_key}"] = count_expected_tests(
             frontend_root, boundary_test_files(frontend_root, sub_key)
         )
-    fullstack_files = list(
-        (frontend_root / "test" / "integration").glob("*fullstack*_test.dart")
+    counts["fullstack"] = count_expected_tests(
+        frontend_root, fullstack_test_files(frontend_root)
     )
-    counts["fullstack"] = _count_dart(fullstack_files)
     counts["all"] = counts["unit"] + counts["boundary"]
     return counts
 

@@ -26,6 +26,8 @@ UNIT_TEST_ROOTS = ("test/unit", "test/widget", "test/integration")
 
 BOUNDARY_DEFAULT_ROOT = "test/boundary"
 
+FULLSTACK_INTEGRATION_DIR = "test/integration"
+
 BOUNDARY_SUBSET_ROOTS: dict[str, tuple[str, ...]] = {
     "auth": ("test/boundary/auth",),
     "settings": ("test/boundary/settings",),
@@ -163,3 +165,15 @@ def boundary_test_files(cwd: Path, subset: str | None) -> list[str]:
             raise ValueError(f"unknown boundary subset: {subset}")
         return discover_test_files(cwd, *roots)
     return discover_test_files(cwd, BOUNDARY_DEFAULT_ROOT)
+
+
+def fullstack_test_files(cwd: Path) -> list[str]:
+    """Integration suites named *fullstack*_test.dart (H-FL / @Tags fullstack)."""
+    integration = cwd / FULLSTACK_INTEGRATION_DIR
+    if not integration.is_dir():
+        return []
+    return sorted(
+        path.relative_to(cwd).as_posix()
+        for path in integration.glob("*fullstack*_test.dart")
+        if path.is_file()
+    )

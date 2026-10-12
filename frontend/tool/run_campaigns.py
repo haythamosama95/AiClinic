@@ -10,8 +10,12 @@ from pathlib import Path
 TOOL_DIR = Path(__file__).resolve().parent
 FRONTEND_ROOT = TOOL_DIR.parent
 REPO_TEST = FRONTEND_ROOT.parent / "test"
+if str(TOOL_DIR) not in sys.path:
+    sys.path.insert(0, str(TOOL_DIR))
 if str(REPO_TEST) not in sys.path:
     sys.path.insert(0, str(REPO_TEST))
+
+from discover_tests import FULLSTACK_INTEGRATION_DIR, fullstack_test_files  # noqa: E402
 
 from harness.campaign_config import (  # noqa: E402
     apply_campaign_args,
@@ -143,8 +147,16 @@ def _run_fullstack(_subcampaign: str) -> int:
     run_id = resolve_governor_run_id()
     log_dir = resolve_campaign_log_dir(AREA, "fullstack", run_id)
     config = load_campaign_config(AREA, "fullstack")
+    test_files = fullstack_test_files(FRONTEND_ROOT)
+    if not test_files:
+        print(
+            "ERROR: no fullstack integration test files found under "
+            f"{FULLSTACK_INTEGRATION_DIR}.",
+            file=sys.stderr,
+        )
+        return 1
     cmd = apply_campaign_args(
-        ["flutter", "test", "--tags", "fullstack"],
+        ["flutter", "test", *test_files, "--tags", "fullstack"],
         config,
     )
     return _run_live("fullstack", cmd, log_dir, FRONTEND_ROOT)

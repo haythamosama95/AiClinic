@@ -101,6 +101,7 @@ def _frontend_count(subcampaign: str) -> int | None:
         BOUNDARY_SUBSET_ROOTS,
         boundary_test_files,
         count_expected_tests,
+        fullstack_test_files,
         unit_test_files,
     )
 
@@ -117,13 +118,7 @@ def _frontend_count(subcampaign: str) -> int | None:
                 frontend_root, boundary_test_files(frontend_root, key)
             )
     if subcampaign == "fullstack":
-        files = list(
-            (frontend_root / "test" / "integration").glob("*fullstack*_test.dart")
-        )
-        total = 0
-        for path in files:
-            total += len(_DART_CASE.findall(path.read_text(encoding="utf-8")))
-        return total
+        return count_expected_tests(frontend_root, fullstack_test_files(frontend_root))
     if subcampaign == "all":
         with ThreadPoolExecutor(max_workers=2) as pool:
             unit_future = pool.submit(_frontend_count, "unit")

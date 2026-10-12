@@ -44,6 +44,8 @@ python3 test/report_campaign_ci.py --area <area> --run latest --github-summary
 
 Download **campaign-&lt;area&gt;-&lt;run_id&gt;** artifacts for governor logs (`console.log`, per-test `tests/*.log`, `summary.json`, `stats.json`).
 
+On CI (`CI` / `GITHUB_ACTIONS`), the Rich batch dashboard is disabled so logs stay readable; use `AICLINIC_PLAIN_CAMPAIGN_LOG=1` locally for the same behavior.
+
 Full-machine setup (all areas on one runner):
 
 ```bash

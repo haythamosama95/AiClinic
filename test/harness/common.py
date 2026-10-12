@@ -64,6 +64,22 @@ def live_progress_child_enabled() -> bool:
     return os.environ.get("AICLINIC_LIVE_PROGRESS") == "1"
 
 
+def campaign_interactive_ui_enabled() -> bool:
+    """Rich / in-place batch dashboard (off in CI log streams)."""
+    if os.environ.get("AICLINIC_PLAIN_CAMPAIGN_LOG", "").strip().lower() in (
+        "1",
+        "true",
+        "yes",
+        "on",
+    ):
+        return False
+    if os.environ.get("GITHUB_ACTIONS", "").strip().lower() == "true":
+        return False
+    if os.environ.get("CI", "").strip().lower() in ("1", "true", "yes"):
+        return False
+    return True
+
+
 def _subprocess_env_for_child(
     *,
     campaign_log_dir: Path | None = None,
