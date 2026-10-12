@@ -20,3 +20,18 @@ Areas: `frontend`, `backend`, `ai-platform`, `abo`, `e2e-fullstack`, `vendor-con
 Logs: `test-results/<area>/<subcampaign>/<run_id>/tests/*.log` (one file per test case) and `summary.json` (run state; `meta.json` is a copy).
 
 Shared helpers: `test/harness/common.py`.
+
+## CI
+
+GitHub Actions job `test-campaigns-all` runs the same default batch as locally:
+
+```bash
+python3 test/run_campaigns.py all
+python3 backend/tests/run_campaigns.py catalog
+```
+
+Environment setup (Node packages, Flutter, Supabase, harness pip deps):
+
+```bash
+bash .github/scripts/setup-test-campaign-environment.sh
+```

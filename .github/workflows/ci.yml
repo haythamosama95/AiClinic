@@ -133,9 +133,9 @@ jobs:
           path: frontend/build/windows/x64/runner/Release/
           retention-days: 7
 
-  ai-platform-tests:
+  ai-platform-load:
     runs-on: ubuntu-latest
-    timeout-minutes: 45
+    timeout-minutes: 30
     defaults:
       run:
         working-directory: ai-platform
@@ -154,35 +154,8 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
-      - name: Run unit and workers-pool tests
-        run: npm test
-
       - name: Run load and cost suite
         run: npm run test:load
-
-  abo-system:
-    runs-on: ubuntu-latest
-    timeout-minutes: 30
-    defaults:
-      run:
-        working-directory: abo
-
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Set up Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: "22"
-          cache: npm
-          cache-dependency-path: abo/package-lock.json
-
-      - name: Install dependencies
-        run: npm ci
-
-      - name: Run ABO system harness
-        run: npm test
 
   abo-cross-worker:
     runs-on: ubuntu-latest
@@ -238,30 +211,6 @@ jobs:
       - name: Run import-boundary check
         run: npm run test:import-boundary
 
-  vendor-contracts:
-    runs-on: ubuntu-latest
-    timeout-minutes: 30
-    defaults:
-      run:
-        working-directory: packages/vendor-contracts
-
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Set up Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: "22"
-          cache: npm
-          cache-dependency-path: packages/vendor-contracts/package-lock.json
-
-      - name: Install dependencies
-        run: npm ci
-
-      - name: Run package tests
-        run: npm test
-
   ai-platform-eval-golden:
     runs-on: ubuntu-latest
     timeout-minutes: 30
@@ -295,8 +244,11 @@ jobs:
           if-no-files-found: ignore
           retention-days: 7
 
-  backend-sql:
+  test-campaigns-all:
     runs-on: ubuntu-latest
+    timeout-minutes: 120
+    env:
+      CI: "true"
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -306,6 +258,12 @@ jobs:
         with:
           node-version: "22"
 
+      - name: Set up Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+
       - name: Install Supabase CLI
         uses: supabase/setup-cli@v1
         with:
@@ -314,15 +272,23 @@ jobs:
       - name: Install PostgreSQL client
         run: sudo apt-get update && sudo apt-get install -y postgresql-client
 
-      - name: Start Supabase
-        working-directory: backend
-        run: supabase start
+      - name: Set up test campaign environment
+        run: bash .github/scripts/setup-test-campaign-environment.sh
 
-      - name: Run backend SQL tests
-        run: python3 backend/tests/run_campaigns.py all
+      - name: Run root test campaign governor (all areas)
+        run: python3 test/run_campaigns.py all
 
-      - name: Run catalog SQL tests
+      - name: Run backend catalog SQL tests
         run: python3 backend/tests/run_campaigns.py catalog
+
+      - name: Upload governor logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-campaign-governor-logs
+          path: test-results/governor/
+          if-no-files-found: ignore
+          retention-days: 7
 
   frontend-fullstack:
     runs-on: ubuntu-latest
@@ -381,32 +347,3 @@ jobs:
           fi
           rm -f "$FIXTURE"
 
-  fullstack:
-    runs-on: ubuntu-latest
-    timeout-minutes: 45
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Set up Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: "22"
-
-      - name: Install Supabase CLI
-        uses: supabase/setup-cli@v1
-        with:
-          version: latest
-
-      - name: Install PostgreSQL client
-        run: sudo apt-get update && sudo apt-get install -y postgresql-client
-
-      - name: Start Supabase
-        working-directory: backend
-        run: supabase start
-
-      - name: Run full-stack harness
-        working-directory: e2e/fullstack
-        run: |
-          npm ci
-          python3 run_campaigns.py all-ci
