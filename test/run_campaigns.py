@@ -12,6 +12,7 @@ REPO_ROOT = SCRIPT_DIR.parent
 sys.path.insert(0, str(SCRIPT_DIR))
 
 from harness.campaign_catalog import CATALOG, print_full_table  # noqa: E402
+from harness.campaign_selection import full_area_minimal_picks  # noqa: E402
 from harness.interactive_campaign_picker import pick_campaigns  # noqa: E402
 from harness.batch_queue_display import BatchQueueState  # noqa: E402
 from harness.interactive_run_dashboard import run_batch_with_dashboard  # noqa: E402
@@ -267,6 +268,15 @@ def main(argv: list[str] | None = None) -> int:
             "directory, or run.json."
         ),
     )
+    parser.add_argument(
+        "--full-area",
+        metavar="AREA",
+        choices=sorted(AREA_SCRIPTS.keys()),
+        help=(
+            "Run every subcampaign in one area (same rollups as selecting the "
+            "whole area in --interactive)."
+        ),
+    )
     args = parser.parse_args(argv)
 
     if args.stats:
@@ -276,6 +286,7 @@ def main(argv: list[str] | None = None) -> int:
             or args.interactive
             or args.list
             or args.continue_run
+            or args.full_area
         ):
             print(
                 "error: --stats cannot be combined with area, --list, "
@@ -290,7 +301,7 @@ def main(argv: list[str] | None = None) -> int:
             return 2
 
     if args.continue_run:
-        if args.area or args.subcampaign or args.interactive or args.list:
+        if args.area or args.subcampaign or args.interactive or args.list or args.full_area:
             print(
                 "error: --continue cannot be combined with area, --list, or --interactive",
                 file=sys.stderr,
@@ -306,6 +317,20 @@ def main(argv: list[str] | None = None) -> int:
         except FileNotFoundError as exc:
             print(f"error: {exc}", file=sys.stderr)
             return 2
+
+    if args.full_area:
+        if args.area or args.subcampaign or args.interactive or args.list:
+            print(
+                "error: --full-area cannot be combined with area, --list, or --interactive",
+                file=sys.stderr,
+            )
+            return 2
+        area_subs = area_subcampaign_map()
+        picked = full_area_minimal_picks(args.full_area, area_subs)
+        if not picked:
+            print(f"error: no subcampaigns for {args.full_area}", file=sys.stderr)
+            return 2
+        return _run_batch(picked)
 
     if args.interactive:
         if args.area:
@@ -341,6 +366,7 @@ def main(argv: list[str] | None = None) -> int:
         print_full_table()
         print()
         print("Run: python3 test/run_campaigns.py <area> <subcampaign>")
+        print("     python3 test/run_campaigns.py --full-area <area>")
         print("     python3 test/run_campaigns.py all")
         print(
             "Logs: test-results/governor/<run_id>/run.json, console.log "

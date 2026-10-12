@@ -23,15 +23,22 @@ Shared helpers: `test/harness/common.py`.
 
 ## CI
 
-GitHub Actions job `test-campaigns-all` runs the same default batch as locally:
+GitHub Actions runs **one job per root campaign area** (`campaign-frontend`, `campaign-backend`, …).
+Each job runs every subcampaign in that area (same as selecting the whole area in `-i`):
 
 ```bash
-python3 test/run_campaigns.py all
-python3 backend/tests/run_campaigns.py catalog
+python3 test/run_campaigns.py --full-area <area>
 ```
 
-Environment setup (Node packages, Flutter, Supabase, harness pip deps):
+Per-area setup on Linux CI:
+
+```bash
+bash .github/scripts/setup-campaign-area.sh <area>
+```
+
+Full-machine setup (all areas on one runner):
 
 ```bash
 bash .github/scripts/setup-test-campaign-environment.sh
+python3 test/run_campaigns.py all
 ```

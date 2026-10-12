@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from harness.campaign_selection import (
+    full_area_minimal_picks,
     minimal_run_picks,
     sub_ids,
     toggle_area,
@@ -48,3 +49,27 @@ def test_minimal_run_picks_drops_children_when_parent_selected() -> None:
 def test_minimal_run_picks_keeps_sibling_leaves() -> None:
     picked = [("ai-platform", "unit"), ("ai-platform", "workers")]
     assert minimal_run_picks(picked) == picked
+
+
+def test_full_area_minimal_picks_matches_toggle_area() -> None:
+    area_subs = {
+        "abo": [
+            "cross-worker",
+            "cross-worker-main",
+            "platform-throw",
+            "system",
+            "import-boundary",
+            "version-matrix",
+        ],
+        "backend": ["all", "patients", "catalog"],
+    }
+    abo_selected: set[tuple[str, str]] = set()
+    toggle_area("abo", abo_selected, area_subs)
+    assert full_area_minimal_picks("abo", area_subs) == minimal_run_picks(
+        sorted(abo_selected)
+    )
+    backend_selected: set[tuple[str, str]] = set()
+    toggle_area("backend", backend_selected, area_subs)
+    assert full_area_minimal_picks("backend", area_subs) == minimal_run_picks(
+        sorted(backend_selected)
+    )

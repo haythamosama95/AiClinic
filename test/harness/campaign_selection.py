@@ -53,6 +53,18 @@ def has_picked_ancestor(
     return False
 
 
+def full_area_minimal_picks(
+    area: str,
+    area_subcampaigns: dict[str, list[str]],
+) -> list[tuple[str, str]]:
+    """Like selecting every subcampaign for ``area`` in the interactive picker."""
+    ids = sub_ids(area, area_subcampaigns)
+    if not ids:
+        return []
+    selected = {(area, sub_id) for sub_id in ids}
+    return minimal_run_picks(sorted(selected))
+
+
 def minimal_run_picks(
     picked: list[tuple[str, str]],
 ) -> list[tuple[str, str]]:

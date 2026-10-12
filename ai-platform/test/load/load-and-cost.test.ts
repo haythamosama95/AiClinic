@@ -233,9 +233,10 @@ describe("no_prompt_provider_model_in_flutter_from_load_suite", () => {
 });
 
 describe("load_suite_joins_ci_permanently", () => {
-  it("wires test:load into .github/workflows/ci.yml as an ai-platform job", () => {
-    expect(ciWorkflowSource).toMatch(/ai-platform-load:/);
-    expect(ciWorkflowSource).toContain("npm run test:load");
+  it("wires load into CI via the ai-platform root campaign job", () => {
+    expect(ciWorkflowSource).toMatch(/test-campaign:/);
+    expect(ciWorkflowSource).toContain("--full-area");
+    expect(ciWorkflowSource).toContain("area: ai-platform");
     expect(packageJson.scripts["test:load"]).toMatch(/load-and-cost\.test/);
   });
 });

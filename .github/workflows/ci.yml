@@ -133,122 +133,52 @@ jobs:
           path: frontend/build/windows/x64/runner/Release/
           retention-days: 7
 
-  ai-platform-load:
+  test-campaign:
+    name: campaign-${{ matrix.area }}
     runs-on: ubuntu-latest
-    timeout-minutes: 30
-    defaults:
-      run:
-        working-directory: ai-platform
-
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Set up Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: "22"
-          cache: npm
-          cache-dependency-path: ai-platform/package-lock.json
-
-      - name: Install dependencies
-        run: npm ci
-
-      - name: Run load and cost suite
-        run: npm run test:load
-
-  abo-cross-worker:
-    runs-on: ubuntu-latest
-    timeout-minutes: 45
-    defaults:
-      run:
-        working-directory: abo
-
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Set up Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: "22"
-          cache: npm
-          cache-dependency-path: |
-            abo/package-lock.json
-            ai-platform/package-lock.json
-
-      - name: Install ABO dependencies
-        run: npm ci
-
-      - name: Install ai-platform dependencies
-        working-directory: ai-platform
-        run: npm ci
-
-      - name: Run cross-worker harness
-        run: npm run test:cross-worker
-
-  abo-import-boundary:
-    runs-on: ubuntu-latest
-    timeout-minutes: 15
-    defaults:
-      run:
-        working-directory: abo
-
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Set up Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: "22"
-          cache: npm
-          cache-dependency-path: abo/package-lock.json
-
-      - name: Install dependencies
-        run: npm ci
-
-      - name: Run import-boundary check
-        run: npm run test:import-boundary
-
-  ai-platform-eval-golden:
-    runs-on: ubuntu-latest
-    timeout-minutes: 30
-    defaults:
-      run:
-        working-directory: ai-platform
-
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Set up Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: "22"
-          cache: npm
-          cache-dependency-path: ai-platform/package-lock.json
-
-      - name: Install dependencies
-        run: npm ci
-
-      - name: Run golden eval suite
-        run: npx vitest run test/eval/golden.test.ts test/eval/conversation.test.ts test/eval/prohibitions.test.ts
-
-      - name: Upload score report artifacts
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: ai-platform-golden-eval-reports
-          path: ai-platform/test/eval/reports/*.json
-          if-no-files-found: ignore
-          retention-days: 7
-
-  test-campaigns-all:
-    runs-on: ubuntu-latest
-    timeout-minutes: 120
+    timeout-minutes: ${{ matrix.timeout_minutes }}
     env:
       CI: "true"
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - area: frontend
+            timeout_minutes: 90
+            flutter: true
+            supabase: true
+            postgresql_client: false
+          - area: backend
+            timeout_minutes: 45
+            flutter: false
+            supabase: true
+            postgresql_client: true
+          - area: ai-platform
+            timeout_minutes: 60
+            flutter: false
+            supabase: false
+            postgresql_client: false
+          - area: abo
+            timeout_minutes: 60
+            flutter: false
+            supabase: false
+            postgresql_client: false
+          - area: e2e-fullstack
+            timeout_minutes: 45
+            flutter: false
+            supabase: true
+            postgresql_client: true
+          - area: vendor-contracts
+            timeout_minutes: 30
+            flutter: false
+            supabase: false
+            postgresql_client: false
+          - area: ops-launch
+            timeout_minutes: 15
+            flutter: false
+            supabase: false
+            postgresql_client: false
+
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -259,68 +189,36 @@ jobs:
           node-version: "22"
 
       - name: Set up Flutter
+        if: matrix.flutter
         uses: subosito/flutter-action@v2
         with:
           channel: stable
           cache: true
 
       - name: Install Supabase CLI
+        if: matrix.supabase
         uses: supabase/setup-cli@v1
         with:
           version: latest
 
       - name: Install PostgreSQL client
+        if: matrix.postgresql_client
         run: sudo apt-get update && sudo apt-get install -y postgresql-client
 
-      - name: Set up test campaign environment
-        run: bash .github/scripts/setup-test-campaign-environment.sh
+      - name: Set up campaign area
+        run: bash .github/scripts/setup-campaign-area.sh ${{ matrix.area }}
 
-      - name: Run root test campaign governor (all areas)
-        run: python3 test/run_campaigns.py all
-
-      - name: Run backend catalog SQL tests
-        run: python3 backend/tests/run_campaigns.py catalog
+      - name: Run full root campaign
+        run: python3 test/run_campaigns.py --full-area ${{ matrix.area }}
 
       - name: Upload governor logs
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: test-campaign-governor-logs
+          name: campaign-${{ matrix.area }}-logs
           path: test-results/governor/
           if-no-files-found: ignore
           retention-days: 7
-
-  frontend-fullstack:
-    runs-on: ubuntu-latest
-    timeout-minutes: 45
-    defaults:
-      run:
-        working-directory: frontend
-
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Set up Flutter
-        uses: subosito/flutter-action@v2
-        with:
-          channel: stable
-          cache: true
-
-      - name: Install Supabase CLI
-        uses: supabase/setup-cli@v1
-        with:
-          version: latest
-
-      - name: Start Supabase
-        working-directory: backend
-        run: supabase start
-
-      - name: Install dependencies
-        run: flutter pub get
-
-      - name: Run fullstack-tagged Flutter tests
-        run: flutter test --tags fullstack
 
   control-residue-guard:
     runs-on: ubuntu-latest
