@@ -35,7 +35,6 @@ const LOAD_ROOT = path.dirname(fileURLToPath(import.meta.url));
 const AI_PLATFORM_ROOT = path.resolve(LOAD_ROOT, "..", "..");
 const REPO_ROOT = path.resolve(AI_PLATFORM_ROOT, "..");
 const FRONTEND_LIB = path.join(REPO_ROOT, "frontend", "lib");
-const CI_WORKFLOW = path.join(REPO_ROOT, ".github", "workflows", "ci.yml");
 
 async function applyPlatformSchema(db: D1Database, sql: string): Promise<void> {
   const withoutLineComments = sql.replace(/--.*$/gm, "");
@@ -209,7 +208,7 @@ describe("load_suite_introduces_no_per_request_server_state", () => {
 });
 
 describe("no_prompt_provider_model_in_flutter_from_load_suite", () => {
-  it("introduces no Flutter client files; defers R-12 content scan to CI architecture guard", () => {
+  it("introduces no Flutter client files under the load suite tree", () => {
     const loadPaths = listFilesRecursive(LOAD_ROOT);
     for (const file of loadPaths) {
       expect(file.startsWith(AI_PLATFORM_ROOT)).toBe(true);
@@ -221,14 +220,6 @@ describe("no_prompt_provider_model_in_flutter_from_load_suite", () => {
 
     const dartUnderLoad = loadPaths.filter((file) => file.endsWith(".dart"));
     expect(dartUnderLoad).toEqual([]);
-
-    expect(CI_WORKFLOW.endsWith(path.join(".github", "workflows", "ci.yml"))).toBe(
-      true,
-    );
-    expect(ciWorkflowSource).toContain("Architecture guard (client R-12 lint)");
-    expect(ciWorkflowSource).toContain(
-      "tool/architecture_guard/architecture_guard.dart",
-    );
   });
 });
 

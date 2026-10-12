@@ -255,12 +255,9 @@ describe("extends_f1_harness_without_redefining_capability_evals", () => {
     );
 
     const ciWorkflow = readFileSync(CI_WORKFLOW_PATH, "utf8");
-    expect(ciWorkflow).toMatch(/ai-platform-eval-golden/);
-    const goldenJobMatch = ciWorkflow.match(
-      /ai-platform-eval-golden:[\s\S]*?(?=\n  [a-z]|\n\S|$)/,
-    );
-    expect(goldenJobMatch?.[0]).toContain("test/eval/conversation.test.ts");
-    expect(goldenJobMatch?.[0]).toContain("test/eval/golden.test.ts");
+    expect(ciWorkflow).toMatch(/test-campaign:/);
+    expect(ciWorkflow).toContain("area: ai-platform");
+    expect(ciWorkflow).toContain("--full-area");
   });
 });
 

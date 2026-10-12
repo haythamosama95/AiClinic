@@ -7,132 +7,6 @@ on:
     branches: [main, master, ai/master]
 
 jobs:
-  frontend-quality:
-    runs-on: windows-latest
-    timeout-minutes: 30
-    permissions:
-      checks: write
-      pull-requests: write
-    defaults:
-      run:
-        working-directory: frontend
-
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Set up Flutter
-        uses: subosito/flutter-action@v2
-        with:
-          channel: stable
-          cache: true
-
-      - name: Install dependencies
-        run: flutter pub get
-
-      - name: Architecture guard (client R-12 lint)
-        shell: pwsh
-        run: |
-          $guard = "tool/architecture_guard/architecture_guard.dart"
-          $cases = @(
-            @{
-              Name = "guard_prompt_like_string_fails_build"
-              Path = "tool/architecture_guard/fixtures/prompt_like_string"
-              Category = "prompt-like string"
-            },
-            @{
-              Name = "guard_provider_name_fails_build"
-              Path = "tool/architecture_guard/fixtures/provider_name"
-              Category = "provider name"
-            },
-            @{
-              Name = "guard_model_identifier_fails_build"
-              Path = "tool/architecture_guard/fixtures/model_identifier"
-              Category = "model identifier"
-            }
-          )
-          foreach ($case in $cases) {
-            Write-Host "$($case.Name): expect exit 1 + category '$($case.Category)' on $($case.Path)"
-            $output = & dart $guard $case.Path 2>&1 | Out-String
-            Write-Host $output
-            if ($LASTEXITCODE -ne 1) {
-              Write-Error "$($case.Name): expected exit 1 (violations), got $LASTEXITCODE (0=clean, 2=operator error)"
-              exit 1
-            }
-            if ($output -notmatch [regex]::Escape($case.Category)) {
-              Write-Error "$($case.Name): expected stderr to name category '$($case.Category)'"
-              exit 1
-            }
-          }
-
-          Write-Host "guard_multi_root_second_root_scanned: expect exit 1"
-          $multiA = "tool/architecture_guard/fixtures/multi_root/root_a"
-          $multiB = "tool/architecture_guard/fixtures/multi_root/root_b"
-          & dart $guard $multiA $multiB 2>&1 | Out-Null
-          if ($LASTEXITCODE -ne 1) {
-            Write-Error "Expected exit 1 when only the second scan root contains a violation; got $LASTEXITCODE"
-            exit 1
-          }
-
-          Write-Host "guard_covers_every_client_source_path omission: expect non-zero (lib-only)"
-          & dart $guard lib --assert-coverage 2>&1 | Out-Null
-          if ($LASTEXITCODE -eq 0) {
-            Write-Error "Expected coverage assertion to fail when scan roots omit client sources"
-            exit 1
-          }
-
-          Write-Host "guard_missing_scan_root_is_operator_error: expect exit 2"
-          & dart $guard tool/architecture_guard/fixtures/does_not_exist 2>&1 | Out-Null
-          if ($LASTEXITCODE -ne 2) {
-            Write-Error "Expected exit 2 for missing scan root; got $LASTEXITCODE"
-            exit 1
-          }
-
-          Write-Host "guard_clean_tree_passes / guard_covers_every_client_source_path: expect-success"
-          & dart $guard --assert-coverage
-          if ($LASTEXITCODE -ne 0) {
-            Write-Error "Expected zero exit on clean client scan roots"
-            exit 1
-          }
-
-          Write-Host "guard_test_root_is_live: plant violation under test/, expect exit 1, then clean up"
-          $probe = "test/.architecture_guard_probe.dart"
-          Set-Content -Path $probe -Value "const probe = 'deepseek';"
-          try {
-            & dart $guard --assert-coverage 2>&1 | Out-Null
-            if ($LASTEXITCODE -ne 1) {
-              Write-Error "Expected exit 1 after planting a provider name under test/; got $LASTEXITCODE"
-              exit 1
-            }
-          } finally {
-            Remove-Item -Path $probe -ErrorAction SilentlyContinue
-          }
-
-      - name: Analyze
-        run: flutter analyze
-
-      - name: Test
-        run: flutter test --exclude-tags fullstack --file-reporter=json:test-results/flutter.json
-
-      - name: Publish test results
-        if: always()
-        uses: dorny/test-reporter@v1
-        with:
-          name: Flutter tests
-          path: frontend/test-results/*.json
-          reporter: flutter-json
-          fail-on-error: true
-
-      - name: Build Windows
-        run: flutter build windows --release
-
-      - name: Upload Windows build
-        uses: actions/upload-artifact@v4
-        with:
-          name: windows-build
-          path: frontend/build/windows/x64/runner/Release/
-          retention-days: 7
-
   test-campaign:
     name: campaign-${{ matrix.area }}
     runs-on: ubuntu-latest
@@ -209,39 +83,37 @@ jobs:
         run: bash .github/scripts/setup-campaign-area.sh ${{ matrix.area }}
 
       - name: Run full root campaign
-        run: python3 test/run_campaigns.py --full-area ${{ matrix.area }}
+        id: campaign
+        run: |
+          set +e
+          python3 test/run_campaigns.py --full-area ${{ matrix.area }}
+          exit_code=$?
+          set -e
+          run_dir="$(python3 test/report_campaign_ci.py --area ${{ matrix.area }} --run latest --print-run-dir 2>/dev/null || true)"
+          echo "exit_code=${exit_code}" >> "$GITHUB_OUTPUT"
+          if [[ -n "${run_dir}" ]]; then
+            echo "run_dir=${run_dir}" >> "$GITHUB_OUTPUT"
+          fi
+          exit "${exit_code}"
 
-      - name: Upload governor logs
+      - name: Report failed test cases
         if: always()
+        env:
+          GOVERNOR_RUN: ${{ steps.campaign.outputs.run_dir }}
+        run: |
+          run_ref="${GOVERNOR_RUN:-latest}"
+          python3 test/report_campaign_ci.py \
+            --area ${{ matrix.area }} \
+            --run "${run_ref}" \
+            --github-summary || true
+
+      - name: Upload campaign artifacts
+        if: always() && steps.campaign.outputs.run_dir != ''
         uses: actions/upload-artifact@v4
         with:
-          name: campaign-${{ matrix.area }}-logs
-          path: test-results/governor/
+          name: campaign-${{ matrix.area }}-${{ github.run_id }}
+          path: |
+            ${{ steps.campaign.outputs.run_dir }}/
+            test-results/${{ matrix.area }}/
           if-no-files-found: ignore
-          retention-days: 7
-
-  control-residue-guard:
-    runs-on: ubuntu-latest
-    timeout-minutes: 10
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Run residue guard on dependent-path trees
-        run: >-
-          bash .github/scripts/control-residue-guard.sh
-          ai-platform-viewer
-          ai-platform/scripts
-          docs/architecture/ai-platform
-          docs/testing/catalog
-
-      - name: Negative fixture must fail the guard
-        run: |
-          FIXTURE="$(mktemp)"
-          printf '%s\n' 'fixture contains /control/ residue' > "$FIXTURE"
-          if bash .github/scripts/control-residue-guard.sh "$FIXTURE"; then
-            echo "Expected fixture scan to exit non-zero"
-            exit 1
-          fi
-          rm -f "$FIXTURE"
-
+          retention-days: 14

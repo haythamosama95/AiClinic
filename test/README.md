@@ -36,6 +36,14 @@ Per-area setup on Linux CI:
 bash .github/scripts/setup-campaign-area.sh <area>
 ```
 
+Failed cases are listed in the job log, GitHub **Step summary**, and `::error` annotations via:
+
+```bash
+python3 test/report_campaign_ci.py --area <area> --run latest --github-summary
+```
+
+Download **campaign-&lt;area&gt;-&lt;run_id&gt;** artifacts for governor logs (`console.log`, per-test `tests/*.log`, `summary.json`, `stats.json`).
+
 Full-machine setup (all areas on one runner):
 
 ```bash
