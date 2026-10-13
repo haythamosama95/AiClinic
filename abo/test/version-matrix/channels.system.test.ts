@@ -335,8 +335,16 @@ describe("E2E-P7.3-01", () => {
       String(RECEIVER_CURRENT),
     );
     const checkoutBody = (await checkout.json()) as Record<string, unknown>;
-    const returnUrl = String(checkoutBody.return_url ?? "");
-    expect(returnUrl).toContain(`v=${PAYMOB_RETURN_VERSION}`);
+    expect(String(checkoutBody.redirect_url ?? "")).not.toBe("");
+    // The paymob RETURN channel version is carried in the return_url the ABO
+    // sends to paymob with the intention, not in the client redirect_url.
+    // The paymob stub records the last intention body at GET /__last.
+    const lastIntention = (await (
+      await env.PAYMOB_STUB.fetch("http://paymob.stub/__last")
+    ).json()) as Record<string, unknown>;
+    const paymobReturnUrl = String(lastIntention.return_url ?? "");
+    expect(paymobReturnUrl).toContain(`v=${PAYMOB_RETURN_VERSION}`);
+    expect(paymobReturnUrl).toContain("/return/paymob");
 
     const badVerJwt = await mintBilling(issuer, {
       ...baseClaims(),
