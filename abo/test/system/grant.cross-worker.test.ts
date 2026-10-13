@@ -27,10 +27,12 @@ import {
   setD1BatchThrows,
 } from "./harness";
 import {
+  drainPlatformDurableObjects,
   platformCall,
   resetCrossWorkerHarness,
   scriptPaymobStub,
   setClock,
+  settlePlatformDurableObjectAlarms,
   setupCrossWorkerHarness,
 } from "./cross-worker-harness";
 
@@ -802,6 +804,20 @@ async function runGrantStep(): Promise<void> {
   await runScheduled("* * * * *");
 }
 
+/**
+ * Paid grants arm GatewayObject outbox alarms ~5s in the future (wall clock).
+ * Drain and settle them inside this test's storage frame so they cannot fire
+ * during a later test, collide with that test's GatewayObject requests, and
+ * leave the DO SQLite WAL mid-write (leftover .sqlite-shm), which breaks the
+ * isolated-storage pop and aborts the whole vitest worker. This is the same
+ * teardown guard the other cross-worker files (sweeps, hp-actions,
+ * console-relays, ...) run after grant/void DO activity.
+ */
+async function settleGrantPlatformAlarms(): Promise<void> {
+  await drainPlatformDurableObjects();
+  await settlePlatformDurableObjectAlarms();
+}
+
 async function grantWorkState(paymentId: string): Promise<string | null> {
   try {
     const row = await env.DB.prepare(
@@ -1227,6 +1243,8 @@ describe("grant cross-worker", () => {
       };
       expect(paymentsBody.payments.length).toBeGreaterThan(0);
     }
+
+    await settleGrantPlatformAlarms();
   });
 
   it("E2E-P4.4-02 transient for 4 days then applied starts at activation", async () => {
@@ -1286,6 +1304,8 @@ describe("grant cross-worker", () => {
     const term = snapshot?.term as { starts_at?: string } | undefined;
     expect(term?.starts_at).toBe(activationIso);
     expect(term?.starts_at).not.toBe(paidAt);
+
+    await settleGrantPlatformAlarms();
   });
 
   it("E2E-P4.4-03 rejected parks the grant row and raises AL-07", async () => {
@@ -1354,6 +1374,8 @@ describe("grant cross-worker", () => {
     expect((snapshot?.term as { allowance?: number } | undefined)?.allowance).toBe(
       ALLOWANCE_CREDITS,
     );
+
+    await settleGrantPlatformAlarms();
   });
 
   it("E2E-P4.4-06 unregistered ABO kid pauses grant work and raises AL-23", async () => {
@@ -1389,6 +1411,8 @@ describe("grant cross-worker", () => {
 
     expect(await grantOutcomeCount()).toBeGreaterThan(0);
     expect(await grantWorkState(paymentId!)).toBe("done");
+
+    await settleGrantPlatformAlarms();
   });
 
   it("E2E-P4.4-07 second configured platform kid receipts still verify", async () => {
@@ -1410,6 +1434,8 @@ describe("grant cross-worker", () => {
 
     await paidCheckoutFlow(org, offerVersions[1], expectations, secondTxnId);
     expect(await grantOutcomeCount()).toBe(2);
+
+    await settleGrantPlatformAlarms();
   });
 
   it("E2E-P4.4-05 second payment queues a term and subscription shows duplicate_payment", async () => {
@@ -1473,6 +1499,8 @@ describe("grant cross-worker", () => {
     expect(secondCoverageThrough?.opened_with_coverage_through).toBe(
       firstCoverageThrough?.opened_with_coverage_through,
     );
+
+    await settleGrantPlatformAlarms();
   });
 
   it("E2E-P4.4-08 no clinic GET after create still shows Active on open checkouts", async () => {
@@ -1503,6 +1531,8 @@ describe("grant cross-worker", () => {
       (entry) => entry.reference === reference,
     );
     expect(activeCheckout?.shown_state).toBe("Active");
+
+    await settleGrantPlatformAlarms();
   });
 
   it("E2E-P4.4-09 payment cursor pages stay inside the tenant", async () => {
