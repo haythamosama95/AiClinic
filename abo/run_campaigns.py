@@ -69,6 +69,11 @@ def _run_steps(subcampaign: str, steps: list[tuple[str, list[str]]]) -> int:
         status_label=_status_label(subcampaign),
         campaign_config=config,
         config_area=AREA,
+        # A failing earlier step (e.g. cross-worker-main vitest) must not skip
+        # later steps (platform-throw vitest) — a skipped step otherwise gets
+        # reconciled as a phantom "no result recorded" FAIL for tests that
+        # never ran. The worst exit code still fails the subcampaign.
+        continue_on_step_failure=True,
     )
 
 
