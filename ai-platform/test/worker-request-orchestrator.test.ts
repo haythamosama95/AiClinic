@@ -1155,6 +1155,14 @@ describe("exactly_two_do_round_trips_admit_and_credit", () => {
       const token = await mintAat();
       const response = await SELF.fetch(buildPostRequest({ token }));
       await parseSseEvents(response);
+      // Happy-path credit settles via ctx.waitUntil only after the SSE stream
+      // closes; under CI contention one flushBackgroundWork yield is not
+      // always enough, so poll briefly for the background settlement to land
+      // before asserting. The assertion below still fails if credit never runs.
+      const creditDeadline = Date.now() + 5_000;
+      while (creditSpy.mock.calls.length === 0 && Date.now() < creditDeadline) {
+        await flushBackgroundWork();
+      }
       expect(admitSpy).toHaveBeenCalledTimes(1);
       expect(creditSpy).toHaveBeenCalledTimes(1);
     } finally {
@@ -1785,7 +1793,9 @@ describe("guard_reject_suspended_no_journal_no_provider", () => {
     const token = await mintAat();
     const response = await SELF.fetch(buildPostRequest({ token }));
     expect(response.status).toBe(liveHttpStatusForCode("suspended"));
-    expect(((await response.json()) as { code: string }).code).toBe("suspended");
+    expect(((await response.json()) as { code: string }).code).toBe(
+      "installation_suspended",
+    );
     expect(response.headers.get("content-type")).toContain("application/json");
     expect(await countAiRequests()).toBe(before);
     expect(await countAiAttempts()).toBe(0);

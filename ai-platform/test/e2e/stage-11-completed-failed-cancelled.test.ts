@@ -774,7 +774,7 @@ describe("Stage 11 â€” terminal settlement completed/failed/cancelled (S11-001â€
     const usage = await getUsageEvents(String(row.request_id));
     expect(usage).toHaveLength(1);
     expect(usage[0]?.installation_id).toBe(scenario.installationId);
-    expect(usage[0]?.period).toBe("2026-07");
+    expect(usage[0]?.term_id).toBe(`term-${scenario.installationId.slice(0, 8)}`);
     expect(usage[0]?.request_id).toBe(row.request_id);
     expect(usage[0]?.quota_weight).toBe(1);
     expect(usage[0]?.tokens).toBe(30);
@@ -962,7 +962,9 @@ describe("Stage 11 â€” terminal settlement completed/failed/cancelled (S11-001â€
       expect(usage).toHaveLength(1);
       expect(usage[0]?.tokens).toBe(0);
       expect(costOf(usage[0], "cost")).toBe(0);
-      expect(usage[0]?.period).toBe("2026-07");
+      expect(usage[0]?.term_id).toBe(
+        `term-${scenario.installationId.slice(0, 8)}`,
+      );
       expect(usage[0]?.quota_weight).toBe(1);
 
       const envelope = await getR2Json(String(row.payload_pointer));

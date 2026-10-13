@@ -1062,7 +1062,9 @@ describe("Stage 11 — replay, envelope, grace (S11-012…S11-021)", () => {
       expect(heavyUsage[0]?.quota_weight).toBe(3);
       expect(heavyUsage[0]?.tokens).toBe(30);
       expect(costOf(heavyUsage[0], "cost")).toBeCloseTo(0.005, 5);
-      expect(heavyUsage[0]?.period).toBe("2026-07");
+      expect(heavyUsage[0]?.term_id).toBe(
+        `term-${scenario.installationId.slice(0, 8)}`,
+      );
 
       const afterHeavy = await inspectState(scenario.installationId);
       expect(afterHeavy.periodCounters?.requestsUsed).toBe(1);
@@ -1079,7 +1081,9 @@ describe("Stage 11 — replay, envelope, grace (S11-012…S11-021)", () => {
       expect(zeroUsage[0]?.quota_weight).toBe(1);
       expect(zeroUsage[0]?.tokens).toBe(30);
       expect(costOf(zeroUsage[0], "cost")).toBeCloseTo(0.005, 5);
-      expect(zeroUsage[0]?.period).toBe("2026-07");
+      expect(zeroUsage[0]?.term_id).toBe(
+        `term-${scenario.installationId.slice(0, 8)}`,
+      );
 
       const afterZero = await inspectState(scenario.installationId);
       expect(afterZero.periodCounters?.requestsUsed).toBe(2);
@@ -1089,7 +1093,7 @@ describe("Stage 11 — replay, envelope, grace (S11-012…S11-021)", () => {
     }
   });
 
-  it("S11-017 — usage_event period from admission; DO reset on credit", async () => {
+  it("S11-017 — usage_event term from admission; DO reset on credit", async () => {
     const scenario = await setupFresh();
     const { requestId: httpRequestId } = await completeHappyRequest(
       scenario,
@@ -1097,8 +1101,9 @@ describe("Stage 11 — replay, envelope, grace (S11-012…S11-021)", () => {
     );
     const httpUsage = await getUsageEvents(httpRequestId);
     expect(httpUsage).toHaveLength(1);
-    expect(httpUsage[0]?.period).toBe("2026-07");
-    expect(String(httpUsage[0]?.period).length).toBeLessThanOrEqual(7);
+    expect(httpUsage[0]?.term_id).toBe(
+      `term-${scenario.installationId.slice(0, 8)}`,
+    );
 
     const now = Date.now();
     const doRef = "7K2M-9XQD";
@@ -1159,7 +1164,9 @@ describe("Stage 11 — replay, envelope, grace (S11-012…S11-021)", () => {
 
     const stillHttp = await getUsageEvents(httpRequestId);
     expect(stillHttp).toHaveLength(1);
-    expect(stillHttp[0]?.period).toBe("2026-07");
+    expect(stillHttp[0]?.term_id).toBe(
+      `term-${scenario.installationId.slice(0, 8)}`,
+    );
     expect(await count("usage_event", "request_id = ?", [doRequestId])).toBe(0);
   });
 

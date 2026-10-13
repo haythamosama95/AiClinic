@@ -882,7 +882,7 @@ async function replayIdempotentTerminal(
   sink: AdapterEventSink,
   traceId: string,
   guard: GuardIdempotentSuccess,
-  runtimeEnv: Env,
+  _runtimeEnv: Env,
 ): Promise<void> {
   const prior = guard.priorState;
   const replayTraceId = prior.traceId ?? traceId;
@@ -897,37 +897,9 @@ async function replayIdempotentTerminal(
     signal: new AbortController().signal,
   };
   if (prior.state === "completed") {
-    const loaded = await getRequest(prior.requestReference, {
-      db: runtimeEnv.DB,
-      r2: runtimeEnv.R2,
-    });
-    if (
-      loaded.found &&
-      loaded.state === "Completed" &&
-      "result" in loaded &&
-      loaded.result
-    ) {
-      const text =
-        loaded.result.finalContent?.type === "text"
-          ? loaded.result.finalContent.text
-          : "";
-      if (text.length > 0) {
-        sink.push({
-          type: "text_delta",
-          data: { text, sequence: 0, provisional: true },
-          trace_id: replayTraceId,
-        });
-      }
-      pushTerminalEvent(sink, streamCtx, "completed", "single_shot", {
-        result: {
-          finalContent: {
-            text,
-            authoritative: true,
-          },
-        },
-      });
-      return;
-    }
+    // Idempotent replay emits only the prior terminal event (§5.5): accepted
+    // then `completed` — never interim `text_delta` chunks from the stored
+    // envelope, and never the live provider text (frozen replay contract).
     pushTerminalEvent(sink, streamCtx, "completed", "single_shot", {
       result: {
         finalContent: { text: "Prior request completed.", authoritative: true },

@@ -1395,11 +1395,11 @@ function hotRowInstallationMismatch(
   return false;
 }
 
-function settleReservationOnHot(
+async function settleReservationOnHot(
   storage: DurableObjectStorage,
   request: CreditRequest,
   now: number,
-): CreditResponse {
+): Promise<CreditResponse> {
   const hotRows = sqlSelect<HotRow>(storage, "SELECT * FROM hot LIMIT 1");
   if (hotRows.length === 0) {
     return { kind: "credit", ok: false, code: "unknown_request" };
@@ -1440,9 +1440,11 @@ function settleReservationOnHot(
   }
   hot.row.reserved = Math.max(0, hot.row.reserved - reservation.weight);
   hot.reservations.splice(index, 1);
+  const settledIdempotencyKeys: string[] = [];
   for (const [key, entry] of Object.entries(hot.idempotency)) {
     if (admittedRequestIdFromAnswer(entry.answer) === reservationId) {
       delete hot.idempotency[key];
+      settledIdempotencyKeys.push(key);
     }
   }
   for (const [key, entry] of Object.entries(hot.replay)) {
@@ -1469,6 +1471,30 @@ function settleReservationOnHot(
   recordHotWrites(storage, request.requestId, () =>
     persistParsedHot(storage, hot),
   );
+
+  // Mirror the terminal idempotency state into the legacy state surface so
+  // `inspectRPC` (and legacy-path replay) reports completed/failed/cancelled
+  // after hot-row settlement — parity with `markIdempotencyOnCredit` on the
+  // legacy credit path. Without this, settled hot reservations lose their
+  // idempotency entry entirely (§4 idempotent replay contract).
+  if (settledIdempotencyKeys.length > 0) {
+    const nextState: IdempotencyRequestState =
+      request.idempotencyState ?? (request.partial ? "cancelled" : "completed");
+    const legacyState = await loadState(storage);
+    for (const key of settledIdempotencyKeys) {
+      legacyState.idempotency[key] = {
+        expiresAt: now + EPHEMERAL_HORIZON_MS,
+        requestReference: request.requestReference,
+        state: nextState,
+        requestId: reservationId,
+        ...(nextState === "failed" && request.terminalErrorCode !== undefined
+          ? { terminalErrorCode: request.terminalErrorCode }
+          : {}),
+      };
+    }
+    await storage.put(STATE_KEY, legacyState);
+  }
+
   return {
     kind: "credit",
     ok: true,
@@ -1600,7 +1626,7 @@ export async function creditRPC(
       return { kind: "credit", ok: false, code: "unknown_request" };
     }
 
-    const hotResult = settleReservationOnHot(storage, request, timestamp);
+    const hotResult = await settleReservationOnHot(storage, request, timestamp);
     if (!hotResult.ok) {
       return hotResult;
     }

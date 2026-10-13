@@ -127,6 +127,26 @@ describe("capability lifecycle", () => {
     const scenario = await newScenario();
     await prepareEntitled(scenario);
 
+    // coverClinic entitles the installation via the coverage mirror only —
+    // capability_grant rows are written exclusively by control-plane actions —
+    // so seed the pre-activation grant that the cohort_activate audit's
+    // before_pointer is expected to record.
+    await env.DB.prepare(
+      `INSERT INTO capability_grant (
+         grant_id, scope, capability_id, capability_version,
+         granted_at, revoked_at, changed_at, changed_by
+       ) VALUES (?, ?, ?, ?, ?, NULL, ?, 'seed')`,
+    )
+      .bind(
+        crypto.randomUUID(),
+        `installation:${scenario.installationId}`,
+        CAPABILITY_ID,
+        CAPABILITY_VERSION,
+        new Date().toISOString(),
+        new Date().toISOString(),
+      )
+      .run();
+
     const auditsBefore = await env.DB.prepare(
       "SELECT COUNT(*) AS c FROM control_audit WHERE action = 'cohort_activate'",
     ).first<{ c: number }>();

@@ -303,10 +303,16 @@ describe("admission settlement against terms", () => {
       [scenario.installationId],
     );
     expect(mirror).toBeTruthy();
+    // The DO mirror writer stores the FULL coverage snapshot (Phase 4,
+    // 553b16bf) — capabilities live under `term`; older term-only mirrors put
+    // them at the top level. Accept both shapes like mirrorTermViewFromSnapshot.
     const termSnapshot = JSON.parse(String(mirror!.term_snapshot)) as {
+      term?: { capabilities?: string[] };
       capabilities?: string[];
     };
-    expect(termSnapshot.capabilities).toContain(CAPABILITY_ID);
+    const mirrorCapabilities =
+      termSnapshot.term?.capabilities ?? termSnapshot.capabilities ?? [];
+    expect(mirrorCapabilities).toContain(CAPABILITY_ID);
 
     const caps = await getCapabilities(token);
     expect(caps.status).toBe(200);

@@ -3,6 +3,7 @@ import { beforeAll, beforeEach, describe, expect, it } from "vitest";
 import migrationSql from "../migrations/20260731120000_platform_schema.sql?raw";
 import retentionIndexesSql from "../migrations/20260805120000_f3_retention_indexes.sql?raw";
 import quotaWeightMigrationSql from "../migrations/20260911180000_usage_rollup_quota_weight.sql?raw";
+import usageTermMigrationSql from "../migrations/20261006120000_usage_term.sql?raw";
 import {
   logReconciliationReport,
   runReconciliation,
@@ -58,7 +59,7 @@ async function seedTerminalRequest(
   options?: {
     state?: string;
     completedAt?: string;
-    period?: string;
+    termId?: string;
     recordedAt?: string;
     tokens?: number;
     cost?: number;
@@ -118,13 +119,13 @@ async function seedTerminalRequest(
   if (withUsage) {
     await env.DB.prepare(
       `INSERT INTO usage_event (
-        usage_event_id, installation_id, period, request_id, quota_weight, tokens, cost, recorded_at
+        usage_event_id, installation_id, term_id, request_id, quota_weight, tokens, cost, recorded_at
       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
     )
       .bind(
         `usage-${requestId}`,
         FIXTURE_INSTALLATION,
-        options?.period ?? "2026-08",
+        options?.termId ?? "term-aug",
         requestId,
         1,
         options?.tokens ?? 150,
@@ -149,6 +150,8 @@ beforeAll(async () => {
   await applyPlatformSchema(env.DB, migrationSql);
   await applyPlatformSchema(env.DB, retentionIndexesSql);
   await applyPlatformSchema(env.DB, quotaWeightMigrationSql);
+  // P3.4 rebuilds usage_event with term_id; the rollup queries select ue.term_id.
+  await applyPlatformSchema(env.DB, usageTermMigrationSql);
 });
 
 beforeEach(async () => {
@@ -181,18 +184,18 @@ describe("rollup_totals_equal_ledger", () => {
   });
 });
 
-describe("rollup_period_aligned_advanced_window", () => {
-  it("keeps full period ledger sums when a later window no longer covers earlier recorded_at", async () => {
+describe("rollup_term_aligned_advanced_window", () => {
+  it("keeps full term ledger sums when a later window no longer covers earlier recorded_at", async () => {
     await seedTerminalRequest("req-july", "REF-JUL", true, true, {
       completedAt: "2026-07-15T12:00:00.000Z",
-      period: "2026-07",
+      termId: "term-july",
       recordedAt: "2026-07-15T12:00:00.000Z",
       tokens: 100,
       cost: 0.01,
     });
     await seedTerminalRequest("req-aug", "REF-AUG", true, true, {
       completedAt: "2026-08-15T12:00:00.000Z",
-      period: "2026-08",
+      termId: "term-aug",
       recordedAt: "2026-08-15T12:00:00.000Z",
       tokens: 200,
       cost: 0.02,
@@ -200,10 +203,10 @@ describe("rollup_period_aligned_advanced_window", () => {
 
     const julyFull = await env.DB.prepare(
       `SELECT SUM(tokens) AS tokens, SUM(cost) AS cost, COUNT(*) AS cnt
-       FROM usage_event WHERE period = '2026-07'`,
+       FROM usage_event WHERE term_id = 'term-july'`,
     ).first<{ tokens: number; cost: number; cnt: number }>();
 
-    // Aug window touches Aug period; period-aligned re-read still writes full period sums.
+    // Aug window touches Aug term; term-aligned re-read still writes full term sums.
     // Cover July first so a prior July rollup exists to prove Sep does not corrupt it.
     await runRollup({
       db: env.DB,
@@ -232,7 +235,7 @@ describe("rollup_period_aligned_advanced_window", () => {
 
     const julyAfterSep = await env.DB.prepare(
       `SELECT request_count, tokens, cost FROM usage_rollup
-       WHERE dimensions LIKE '%2026-07%'`,
+       WHERE json_extract(dimensions, '$.term_id') = 'term-july'`,
     ).first<{ request_count: number; tokens: number; cost: number }>();
 
     expect(julyAfterSep?.tokens).toBe(julyFull?.tokens);

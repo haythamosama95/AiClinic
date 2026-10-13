@@ -475,7 +475,12 @@ describe("settlement integrity", () => {
 
     const other = await newScenario();
     await newClinic(other);
-    await coverClinic(other);
+    // setupPromotedFakePolicy already published the cover plan v1 with the
+    // entitlement payload's allowance; republishing with the default
+    // (10_000) would be plan_version_mismatch, so match that content.
+    await coverClinic(other, {
+      max_allowance_per_month: DEFAULT_ENTITLE_PAYLOAD.request_quota,
+    });
     const otherToken = await mintAat(other);
 
     const clientGet = await getRequest(token, ref);

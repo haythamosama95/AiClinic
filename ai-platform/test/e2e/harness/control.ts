@@ -22,6 +22,10 @@ import {
 } from "../../../src/control/cohort";
 import { supportLookup as runSupportLookup } from "../../../src/support";
 import { createManifestRetentionClassResolver } from "../../../src/retention";
+import {
+  isValidRequestReference,
+  normalizeRequestReference,
+} from "../../../src/reference";
 import type { ControlActionResult, ControlBindings } from "../../../src/control/types";
 import { isolateConfigCache } from "../../../src/config-cache";
 import {
@@ -1135,9 +1139,25 @@ export const controlHandlers = {
   },
   handleSupportLookup: async (request: Request, bindings: ControlBindings) => {
     const url = new URL(request.url);
-    const reference = url.searchParams.get("reference");
+    const raw = url.searchParams.get("reference");
+    // Frozen control contract: blank/missing reference is 400 missing_reference
+    // and a malformed-after-normalise reference is 400 invalid_reference —
+    // only unknown-but-format-valid references fall through to the 404.
+    if (!raw || raw.trim() === "") {
+      return new Response(JSON.stringify({ error: "missing_reference" }), {
+        status: 400,
+        headers: { "content-type": "application/json" },
+      });
+    }
+    const normalized = normalizeRequestReference(raw.trim());
+    if (!isValidRequestReference(normalized)) {
+      return new Response(JSON.stringify({ error: "invalid_reference" }), {
+        status: 400,
+        headers: { "content-type": "application/json" },
+      });
+    }
     const result = await runSupportLookup(
-      { reference: reference ?? undefined },
+      { reference: normalized },
       {
         db: bindings.DB,
         r2: bindings.R2!,

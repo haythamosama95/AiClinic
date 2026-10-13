@@ -153,7 +153,7 @@ describe("entitlement-grant interplay", () => {
     });
     const suspendedInvoke = await invoke(scenario, { token: suspendedToken });
     expect(suspendedInvoke.status).toBe(403);
-    expect(suspendedInvoke.body?.code).toBe("suspended");
+    expect(suspendedInvoke.body?.code).toBe("installation_suspended");
     await vendorResume(scenario);
     await restoreEntitlementBaseline(scenario);
     await assertInvokeBaselinePasses(scenario);

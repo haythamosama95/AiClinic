@@ -42,7 +42,7 @@ import {
 } from "./harness";
 import {
   assertCreditUsage,
-  assertUsageEventPeriod,
+  assertUsageEventTerm,
   COMPLETED_CREDIT,
   NO_CREDIT,
   spyCreditUsage,
@@ -473,7 +473,7 @@ async function assertValidationFailedSettlement(ref: string): Promise<void> {
   expect(usage).toHaveLength(1);
   expect(usage[0]?.tokens).toBe(30);
   expect(costOf(usage[0], "cost")).toBeCloseTo(0.005, 5);
-  assertUsageEventPeriod(usage);
+  assertUsageEventTerm(usage);
   expect(await r2Exists(String(row.payload_pointer))).toBe(true);
 }
 
@@ -486,7 +486,7 @@ async function assertCompletedSettlement(ref: string): Promise<Record<string, un
   expect(usage).toHaveLength(1);
   expect(usage[0]?.tokens).toBe(30);
   expect(costOf(usage[0], "cost")).toBeCloseTo(0.005, 5);
-  assertUsageEventPeriod(usage);
+  assertUsageEventTerm(usage);
   expect(await r2Exists(String(row.payload_pointer))).toBe(true);
   return row;
 }
@@ -1042,7 +1042,7 @@ describe("Stage 10 — prose guards, regenerating, heartbeat (S10-018…S10-034)
       expect(usage).toHaveLength(1);
       expect(usage[0]?.tokens).toBe(30);
       expect(costOf(usage[0], "cost")).toBeCloseTo(0.005, 5);
-      assertUsageEventPeriod(usage);
+      assertUsageEventTerm(usage);
       expect(await r2Exists(String(row.payload_pointer))).toBe(true);
     } finally {
       adapterSpy.mockRestore();
@@ -1371,7 +1371,7 @@ describe("Stage 10 — prose guards, regenerating, heartbeat (S10-018…S10-034)
 
       const usage = await getUsageEvents(String(row.request_id));
       expect(usage).toHaveLength(1);
-      assertUsageEventPeriod(usage);
+      assertUsageEventTerm(usage);
 
       expect(row.payload_pointer).toBeTruthy();
       expect(await r2Exists(String(row.payload_pointer))).toBe(true);
@@ -1463,7 +1463,7 @@ describe("Stage 10 — prose guards, regenerating, heartbeat (S10-018…S10-034)
       expect(usage).toHaveLength(1);
       expect(usage[0]?.tokens).toBe(33);
       expect(costOf(usage[0], "cost")).toBeCloseTo(0.0066, 5);
-      assertUsageEventPeriod(usage);
+      assertUsageEventTerm(usage);
       expect(await count("usage_event")).toBe(1);
     } finally {
       adapterSpy.mockRestore();

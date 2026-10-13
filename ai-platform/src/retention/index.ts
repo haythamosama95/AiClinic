@@ -244,13 +244,21 @@ export async function runRetentionPurge(
     .bind(ledgerCutoff)
     .run();
 
-  const ledgerCutoffPeriod = ledgerCutoff.slice(0, 7);
+  // P3.4: usage_rollup rows are term-ledger aggregates keyed on
+  // (installation_id, term_id) inside `dimensions`. Term ids are opaque
+  // (`term-<8hex>`), so a rollup cannot be compared to the ledger-horizon
+  // cutoff date directly. The usage_event purge above already removed every
+  // event older than the horizon, so a rollup whose term has no ledger events
+  // left is a fully-aged term ledger and is purged with it.
   const ledgerRollup = await db
     .prepare(
       `DELETE FROM usage_rollup
-       WHERE json_extract(dimensions, '$.period') < ?`,
+       WHERE NOT EXISTS (
+         SELECT 1 FROM usage_event ue
+         WHERE ue.installation_id = json_extract(usage_rollup.dimensions, '$.installation_id')
+           AND ue.term_id = json_extract(usage_rollup.dimensions, '$.term_id')
+       )`,
     )
-    .bind(ledgerCutoffPeriod)
     .run();
 
   const ledgerAudit = await db

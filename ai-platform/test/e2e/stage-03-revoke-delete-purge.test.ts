@@ -337,26 +337,26 @@ async function seedI0PurgeFootprint(): Promise<void> {
     },
     {
       sql: `INSERT INTO usage_event (
-              usage_event_id, installation_id, period, request_id,
+              usage_event_id, installation_id, term_id, request_id,
               quota_weight, tokens, cost, recorded_at
             ) VALUES (?, ?, ?, ?, 1, 15, 0.001, ?)`,
       params: [
         "33333333-3333-4333-8333-333333333333",
         I0,
-        "2026-09",
+        `term-${I0.slice(0, 8)}`,
         R1,
         now,
       ],
     },
     {
       sql: `INSERT INTO usage_event (
-              usage_event_id, installation_id, period, request_id,
+              usage_event_id, installation_id, term_id, request_id,
               quota_weight, tokens, cost, recorded_at
             ) VALUES (?, ?, ?, ?, 1, 12, 0.001, ?)`,
       params: [
         "44444444-4444-4444-8444-444444444444",
         I0,
-        "2026-09",
+        `term-${I0.slice(0, 8)}`,
         R2_REQ,
         now,
       ],
@@ -366,7 +366,7 @@ async function seedI0PurgeFootprint(): Promise<void> {
             VALUES (?, ?, 2, 27, 0.002)`,
       params: [
         "55555555-5555-4555-8555-555555555555",
-        JSON.stringify({ installation_id: I0, period: "2026-09" }),
+        JSON.stringify({ installation_id: I0, term_id: `term-${I0.slice(0, 8)}` }),
       ],
     },
     {

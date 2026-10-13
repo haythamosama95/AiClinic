@@ -755,6 +755,10 @@ describe("complimentary grants, ceilings, adjustments, suspension", () => {
     expect(extended.result).toBe("applied");
 
     const afterExtendEndsAt = await readActiveTermEndsAt(scenario.installationId);
+    // The workers pool runs unscaled by default (specs 069/070: staging scale
+    // is per-test opt-in via withDurationScale, not a config-level default),
+    // so term_adjustment extends ends_at by 7 real calendar days
+    // (specs/070 data-model: addDuration(ends_at, "day", extend_days, scale?)).
     expect(afterExtendEndsAt).toBe(
       addDuration(String(beforeEndsAt), "day", 7),
     );
@@ -820,7 +824,7 @@ describe("complimentary grants, ceilings, adjustments, suspension", () => {
     let token = await mintAat(scenario);
     const blocked = await invoke(scenario, { token });
     expect(blocked.status).toBe(403);
-    expect(blocked.body?.code).toBe("suspended");
+    expect(blocked.body?.code).toBe("installation_suspended");
 
     const endsAt = await readActiveTermEndsAt(scenario.installationId);
     expect(endsAt).toBeTruthy();
@@ -833,7 +837,7 @@ describe("complimentary grants, ceilings, adjustments, suspension", () => {
 
     const stillBlocked = await invoke(scenario, { token });
     expect(stillBlocked.status).toBe(403);
-    expect(stillBlocked.body?.code).toBe("suspended");
+    expect(stillBlocked.body?.code).toBe("installation_suspended");
 
     const resumed = await extendedVendorCall(
       "resume",

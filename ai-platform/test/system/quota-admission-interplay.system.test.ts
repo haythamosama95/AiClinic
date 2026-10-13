@@ -56,18 +56,22 @@ function assertSseOrder(events: { event: string }[]): void {
   expect(events.slice(terminalIndex + 1)).toHaveLength(0);
 }
 
+// Publishing the same (policy_id, version) twice returns 409
+// already_published (routing-policy contract), so tests that need a second
+// scenario in one test must advance the policy version.
 async function setupQuotaScenario(
   coverOpts: CoverClinicOptions = { max_allowance_per_month: 2 },
+  policyVersion: string = POLICY_VERSION,
 ): Promise<Awaited<ReturnType<typeof newScenario>>> {
   const scenario = await newScenario();
   await coverClinic(scenario, coverOpts);
   await newClinic(scenario);
-  const document = fakePolicyDocument(POLICY_ID, POLICY_VERSION);
-  const published = await publishPolicy(POLICY_ID, POLICY_VERSION, document);
+  const document = fakePolicyDocument(POLICY_ID, policyVersion);
+  const published = await publishPolicy(POLICY_ID, policyVersion, document);
   if (published.status !== 200) {
     throw new Error(`publish failed: ${published.status}`);
   }
-  const promoted = await promote(POLICY_ID, POLICY_VERSION);
+  const promoted = await promote(POLICY_ID, policyVersion);
   if (promoted.status !== 200) {
     throw new Error(`promote failed: ${promoted.status}`);
   }
@@ -237,13 +241,18 @@ describe("quota admission interplay", () => {
       idempotencyKey: crypto.randomUUID(),
     });
     expect(first.status).toBe(200);
+    await flushBackgroundWork();
 
+    // Spec 068 (P3.4-11) supersedes the spec-024 B4 rejection semantics on
+    // the term-based hot path: a replayed jti returns the STORED admission
+    // answer (the worker dedupes via the existing journal row) and must not
+    // create a second journal row. No-new-DO-write is covered by P3.4-11.
     const replay = await invoke(scenario, {
       token,
       idempotencyKey: crypto.randomUUID(),
     });
-    expect(replay.status).toBe(401);
-    expect(replay.body?.code).toBe("unauthenticated");
+    expect(replay.status).toBe(200);
+    expect(replay.body).toEqual(first.body);
     expect(await count("ai_request")).toBe(beforeCount + 1);
   });
 
@@ -427,7 +436,10 @@ describe("quota admission interplay", () => {
     expect(tokenSecond.body?.code).toBe("allowance_exhausted");
     expect(tokenSecond.body).not.toHaveProperty("retry_after");
 
-    const costScenario = await setupQuotaScenario({ max_allowance_per_month: 1 });
+    const costScenario = await setupQuotaScenario(
+      { max_allowance_per_month: 1 },
+      String(Number(POLICY_VERSION) + 1),
+    );
     const costFirst = await invoke(costScenario, {
       token: await mintAat(costScenario),
       idempotencyKey: crypto.randomUUID(),
@@ -464,7 +476,11 @@ describe("quota admission interplay", () => {
     expect(exhausted.status).toBe(403);
     expect(exhausted.body?.code).toBe("allowance_exhausted");
 
-    await coverClinic(scenario, { max_allowance_per_month: 100 });
+    // Re-publishing the cover plan with a different max_allowance_per_month
+    // under the same plan_id/version is plan_version_mismatch; the rollover
+    // only needs the new grant to replenish allowance, so keep the published
+    // plan content identical to the first coverClinic call.
+    await coverClinic(scenario, { max_allowance_per_month: 2 });
 
     const afterGrant = await invoke(scenario, {
       token: await mintAat(scenario),

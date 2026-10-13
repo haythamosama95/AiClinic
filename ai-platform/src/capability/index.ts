@@ -633,6 +633,23 @@ export async function resolve(
   logger: Logger = noopLogger,
   db: D1Database,
 ): Promise<ResolveResult> {
+  // Registry membership is checked first: an unknown capability id/version is
+  // `capability_unknown` (404) regardless of the caller's plan, so the plan
+  // gate (403 forbidden_capability) must not shadow it.
+  const manifest = capabilityRegistry.get(registryKey(capabilityId, version));
+  if (manifest === undefined) {
+    logger.debug("capability_resolve_rejected", {
+      capability_id: capabilityId,
+      version,
+      code: "capability_unknown",
+    });
+    recordGuardRejection({
+      error_code: "capability_unknown",
+      installation_id: principal.installationId,
+    });
+    return { ok: false, code: "capability_unknown" };
+  }
+
   const planGate = await assertPlanIncludesCapability(
     principal,
     capabilityId,
@@ -650,20 +667,6 @@ export async function resolve(
       installation_id: principal.installationId,
     });
     return planGate;
-  }
-
-  const manifest = capabilityRegistry.get(registryKey(capabilityId, version));
-  if (manifest === undefined) {
-    logger.debug("capability_resolve_rejected", {
-      capability_id: capabilityId,
-      version,
-      code: "capability_unknown",
-    });
-    recordGuardRejection({
-      error_code: "capability_unknown",
-      installation_id: principal.installationId,
-    });
-    return { ok: false, code: "capability_unknown" };
   }
 
   const overlay = await loadLifecycleOverlay(cache, reader, capabilityId, version);

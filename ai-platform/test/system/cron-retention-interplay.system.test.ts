@@ -36,10 +36,6 @@ beforeEach(async () => {
   registerVisitSummaryCapability();
 });
 
-function periodFromEntitleStart(periodStart: string): string {
-  return periodStart.slice(0, 7);
-}
-
 describe("cron retention interplay", () => {
   it("SYS-8.1 — Retention purge keeps usage_event money row", async () => {
     const scenario = await newScenario();
@@ -109,19 +105,22 @@ describe("cron retention interplay", () => {
     await invoke(scenario);
     await flushBackgroundWork();
 
-    const usageTotals = await env.DB.prepare(
-      `SELECT COUNT(*) AS request_count, SUM(tokens) AS tokens, SUM(cost) AS cost
-       FROM usage_event WHERE installation_id = ? AND period = ?`,
+    // Since P3.4, usage_event is keyed by term_id; the scenario has a single
+    // term, so group by term_id to get the ledger totals the rollup mirrors.
+    const usageByTerm = await env.DB.prepare(
+      `SELECT term_id, COUNT(*) AS request_count, SUM(tokens) AS tokens, SUM(cost) AS cost
+       FROM usage_event WHERE installation_id = ?
+       GROUP BY term_id`,
     )
-      .bind(
-        scenario.installationId,
-        periodFromEntitleStart(DEFAULT_ENTITLE_PAYLOAD.period_start),
-      )
-      .first<{
+      .bind(scenario.installationId)
+      .all<{
+        term_id: string;
         request_count: number;
         tokens: number;
         cost: number;
       }>();
+    expect(usageByTerm.results?.length).toBe(1);
+    const usageTotals = usageByTerm.results?.[0];
 
     await runScheduled("0 4 * * *");
 
@@ -139,12 +138,11 @@ describe("cron retention interplay", () => {
     const match = (rollup.results ?? []).find((row) => {
       const dimensions = JSON.parse(row.dimensions) as {
         installation_id?: string;
-        period?: string;
+        term_id?: string;
       };
       return (
         dimensions.installation_id === scenario.installationId &&
-        dimensions.period ===
-          periodFromEntitleStart(DEFAULT_ENTITLE_PAYLOAD.period_start)
+        dimensions.term_id === usageTotals?.term_id
       );
     });
     expect(match).toBeTruthy();

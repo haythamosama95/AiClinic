@@ -7,7 +7,8 @@ import {
 
 /**
  * Catalog Setup FRESH: period_start 2026-07-01, period_end covering wall clock.
- * `usage_event.period` is `periodFromIso(period_start)` → `"2026-07"`.
+ * Since P3.4, `usage_event` carries `term_id` (not `period`); e2e seeds the
+ * active DO term as `term-<installationId.slice(0, 8)>`.
  */
 export const STAGE10_ENTITLE: EntitlePayload = {
   ...DEFAULT_ENTITLE_PAYLOAD,
@@ -15,12 +16,10 @@ export const STAGE10_ENTITLE: EntitlePayload = {
   period_end: "2027-01-01T00:00:00.000Z",
 };
 
-export const STAGE10_USAGE_PERIOD = "2026-07";
-
-export function assertUsageEventPeriod(
+export function assertUsageEventTerm(
   usage: ReadonlyArray<Record<string, unknown>>,
 ): void {
-  expect(usage[0]?.period).toBe(STAGE10_USAGE_PERIOD);
+  expect(String(usage[0]?.term_id)).toMatch(/^term-/u);
 }
 
 /**

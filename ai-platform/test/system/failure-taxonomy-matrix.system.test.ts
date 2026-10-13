@@ -395,7 +395,7 @@ describe("failure taxonomy matrix", () => {
     expect(response.status).toBe(liveHttpStatusForCode("suspended"));
     assertNotSse(response.headers);
     assertTaxonomyBody(response.json, {
-      code: "suspended",
+      code: "installation_suspended",
       retry_safe: false,
       request_reference: "non-empty",
       trace_id: "non-empty",

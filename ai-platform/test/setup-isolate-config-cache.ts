@@ -1,6 +1,7 @@
-import { beforeEach } from "vitest";
+import { afterEach, beforeEach } from "vitest";
 import { env } from "cloudflare:test";
 import { isolateConfigCache } from "../src/config-cache";
+import { drainGatewayObjects } from "./e2e/harness/do-drain";
 
 /**
  * Unit fixtures clear `issuer_key` and `tenant_binding` after their own
@@ -51,4 +52,20 @@ async function ensureIssuerBindingTables(): Promise<void> {
 beforeEach(async () => {
   isolateConfigCache.clear();
   await ensureIssuerBindingTables();
+});
+
+// Harness-only teardown guard (see ./e2e/harness/do-drain.ts): flush pending
+// GatewayObject outbox rows and disarm wall-clock DO coverage alarms before
+// the isolated-storage frame pops, so the next test's frame push cannot fail
+// with "Expected .sqlite, got ....sqlite-journal" and no canceled alarm
+// handler can wedge the actor ("SQLite alarm handler canceled with
+// requestScheduledAlarm" wedged the CI #210 workers-config run: all files ran
+// in parallel, platform-rebuild hung mid-test on the wedged DO, every other
+// file finished, and the harness was SIGINT'd with no failure summary).
+// Shared by vitest.workers / vitest.version-matrix / vitest.version-matrix-do
+// via this setup file; all writes happen inside the current test's
+// isolated-storage frame and roll back with it; no test semantics change.
+// Best-effort: never fails the test it runs after.
+afterEach(async () => {
+  await drainGatewayObjects();
 });

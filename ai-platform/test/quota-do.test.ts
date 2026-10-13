@@ -1,5 +1,6 @@
 import { env } from "cloudflare:test";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { CHANNEL_VERSIONS } from "vendor-contracts";
 import { IDEMPOTENCY_STATES } from "../src/quota-do/index";
 import quotaDoSource from "../src/quota-do/index.ts?raw";
 
@@ -33,6 +34,7 @@ type EntitlementSnapshot = {
 
 type AdmissionRequest = {
   kind: "admission";
+  contract_version: number;
   jti: string;
   installationId: string;
   idempotencyKey: string;
@@ -54,28 +56,33 @@ type IdempotencyPriorState = {
 
 type AdmissionAdmitted = {
   kind: "admission";
+  contract_version: number;
   outcome: "admitted";
   requestId: string;
 };
 
 type AdmissionReplay = {
   kind: "admission";
+  contract_version: number;
   outcome: "replay";
 };
 
 type AdmissionIdempotent = {
   kind: "admission";
+  contract_version: number;
   outcome: "idempotent";
   priorState: IdempotencyPriorState;
 };
 
 type AdmissionQuotaExhausted = {
   kind: "admission";
+  contract_version: number;
   outcome: "quota_exhausted";
 };
 
 type AdmissionConcurrencyExhausted = {
   kind: "admission";
+  contract_version: number;
   outcome: "concurrency_exhausted";
 };
 
@@ -88,6 +95,7 @@ type AdmissionResponse =
 
 type CreditRequest = {
   kind: "credit";
+  contract_version: number;
   installationId: string;
   requestId: string;
   requestReference: string;
@@ -111,12 +119,14 @@ type PeriodCounters = {
 
 type CreditAcknowledged = {
   kind: "credit";
+  contract_version: number;
   ok: true;
   periodCounters: PeriodCounters;
 };
 
 type CreditUnknownRequest = {
   kind: "credit";
+  contract_version: number;
   ok: false;
   code: "unknown_request";
 };
@@ -125,6 +135,7 @@ type CreditResponse = CreditAcknowledged | CreditUnknownRequest;
 
 type ReleaseRequest = {
   kind: "release";
+  contract_version: number;
   installationId: string;
   requestId: string;
   idempotencyKey: string;
@@ -133,11 +144,13 @@ type ReleaseRequest = {
 
 type ReleaseAcknowledged = {
   kind: "release";
+  contract_version: number;
   ok: true;
 };
 
 type ReleaseUnknownRequest = {
   kind: "release";
+  contract_version: number;
   ok: false;
   code: "unknown_request";
 };
@@ -146,6 +159,7 @@ type ReleaseResponse = ReleaseAcknowledged | ReleaseUnknownRequest;
 
 type InspectRequest = {
   kind: "inspect";
+  contract_version: number;
   now?: number;
 };
 
@@ -176,6 +190,7 @@ type QuotaDoState = {
 
 type InspectResponse = {
   kind: "inspect";
+  contract_version: number;
   state: QuotaDoState;
 };
 
@@ -286,6 +301,7 @@ async function callAdmissionRPC(
   overrides: Partial<AdmissionRequest> = {},
 ): Promise<{ response: Response; body: AdmissionResponse }> {
   const body: AdmissionRequest = {
+    contract_version: CHANNEL_VERSIONS.platformDo,
     kind: "admission",
     jti: overrides.jti ?? uniqueJti(),
     installationId,
@@ -308,6 +324,7 @@ async function callCreditRPC(
   overrides: Partial<CreditRequest> = {},
 ): Promise<{ response: Response; body: CreditResponse }> {
   const body: CreditRequest = {
+    contract_version: CHANNEL_VERSIONS.platformDo,
     kind: "credit",
     installationId,
     requestId: overrides.requestId ?? crypto.randomUUID(),
@@ -330,7 +347,11 @@ async function callInspectRPC(
   installationId: string,
   options: { now?: number } = {},
 ): Promise<{ response: Response; body: InspectResponse }> {
-  const body: InspectRequest = { kind: "inspect", ...options };
+  const body: InspectRequest = {
+    contract_version: CHANNEL_VERSIONS.platformDo,
+    kind: "inspect",
+    ...options,
+  };
   const response = await fetchRpc(installationId, body);
 
   return {
@@ -345,6 +366,7 @@ async function callReleaseRPC(
     Pick<ReleaseRequest, "requestId" | "idempotencyKey" | "jti">,
 ): Promise<{ response: Response; body: ReleaseResponse }> {
   const body: ReleaseRequest = {
+    contract_version: CHANNEL_VERSIONS.platformDo,
     kind: "release",
     installationId,
     requestId: overrides.requestId,
@@ -390,6 +412,7 @@ describe("admission_fresh_jti_accepted", () => {
 
     expect(response.ok).toBe(true);
     expect(body).toEqual({
+      contract_version: CHANNEL_VERSIONS.platformDo,
       kind: "admission",
       outcome: "admitted",
       requestId: expect.any(String),
@@ -413,6 +436,7 @@ describe("admission_repeated_jti_rejected", () => {
 
     expect(second.response.ok).toBe(true);
     expect(second.body).toEqual({
+      contract_version: CHANNEL_VERSIONS.platformDo,
       kind: "admission",
       outcome: "replay",
     });
@@ -430,6 +454,7 @@ describe("admission_new_idempotency_key_accepted", () => {
 
     expect(response.ok).toBe(true);
     expect(body).toEqual({
+      contract_version: CHANNEL_VERSIONS.platformDo,
       kind: "admission",
       outcome: "admitted",
       requestId: expect.any(String),
@@ -458,6 +483,7 @@ describe("admission_repeat_idempotency_key_returns_prior_record", () => {
 
     expect(second.response.ok).toBe(true);
     expect(second.body).toEqual({
+      contract_version: CHANNEL_VERSIONS.platformDo,
       kind: "admission",
       outcome: "idempotent",
       priorState: {
@@ -487,6 +513,7 @@ describe("admission_budget_exhaustion_rejected", () => {
 
     expect(exhausted.response.ok).toBe(true);
     expect(exhausted.body).toEqual({
+      contract_version: CHANNEL_VERSIONS.platformDo,
       kind: "admission",
       outcome: "quota_exhausted",
       period_end: entitlement.period_bounds.period_end,
@@ -564,6 +591,7 @@ describe("admission_concurrency_ceiling_rejected", () => {
 
     expect(rejected.response.ok).toBe(true);
     expect(rejected.body).toEqual({
+      contract_version: CHANNEL_VERSIONS.platformDo,
       kind: "admission",
       outcome: "concurrency_exhausted",
     });
@@ -624,6 +652,7 @@ describe("credit_adjusts_counters_with_actual_usage", () => {
 
     expect(response.ok).toBe(true);
     expect(body).toEqual({
+      contract_version: CHANNEL_VERSIONS.platformDo,
       kind: "credit",
       ok: true,
       periodCounters: {
@@ -654,6 +683,7 @@ describe("credit_adjusts_counters_with_partial_usage", () => {
 
     expect(response.ok).toBe(true);
     expect(body).toEqual({
+      contract_version: CHANNEL_VERSIONS.platformDo,
       kind: "credit",
       ok: true,
       periodCounters: {
@@ -684,6 +714,7 @@ describe("credit_evicts_admitted_request_and_expires_credited", () => {
     });
     expect(second.response.ok).toBe(true);
     expect(second.body).toEqual({
+      contract_version: CHANNEL_VERSIONS.platformDo,
       kind: "credit",
       ok: false,
       code: "unknown_request",
@@ -703,6 +734,7 @@ describe("unknown_credit_request_id_returns_unknown_request", () => {
 
     expect(response.ok).toBe(true);
     expect(body).toEqual({
+      contract_version: CHANNEL_VERSIONS.platformDo,
       kind: "credit",
       ok: false,
       code: "unknown_request",
@@ -726,6 +758,7 @@ describe("duplicate_credit_returns_unknown_request", () => {
       usage: { tokens: 5, cost: 0.002 },
     });
     expect(duplicate.body).toEqual({
+      contract_version: CHANNEL_VERSIONS.platformDo,
       kind: "credit",
       ok: false,
       code: "unknown_request",
@@ -789,6 +822,7 @@ describe("period_rollover_preserves_in_flight", () => {
     const rejected = await callAdmissionRPC(installationId, { entitlement: entC });
     expect(rejected.response.ok).toBe(true);
     expect(rejected.body).toEqual({
+      contract_version: CHANNEL_VERSIONS.platformDo,
       kind: "admission",
       outcome: "concurrency_exhausted",
     });
@@ -864,6 +898,7 @@ describe("abandoned_admission_swept_after_horizon", () => {
     });
 
     expect(replay.body).toEqual({
+      contract_version: CHANNEL_VERSIONS.platformDo,
       kind: "admission",
       outcome: "idempotent",
       priorState: {
@@ -906,6 +941,7 @@ describe("credit_slides_idempotency_expires_at", () => {
     });
 
     expect(replay.body).toEqual({
+      contract_version: CHANNEL_VERSIONS.platformDo,
       kind: "admission",
       outcome: "idempotent",
       priorState: {
@@ -962,6 +998,7 @@ describe("credit_marks_idempotency_completed", () => {
     });
 
     expect(replay.body).toEqual({
+      contract_version: CHANNEL_VERSIONS.platformDo,
       kind: "admission",
       outcome: "idempotent",
       priorState: {
@@ -997,6 +1034,7 @@ describe("credit_partial_marks_idempotency_cancelled", () => {
     });
 
     expect(replay.body).toEqual({
+      contract_version: CHANNEL_VERSIONS.platformDo,
       kind: "admission",
       outcome: "idempotent",
       priorState: {
@@ -1033,6 +1071,7 @@ describe("credit_marks_idempotency_failed", () => {
     });
 
     expect(replay.body).toEqual({
+      contract_version: CHANNEL_VERSIONS.platformDo,
       kind: "admission",
       outcome: "idempotent",
       priorState: {
@@ -1098,6 +1137,7 @@ describe("parallel_admissions_exact_final_count", () => {
     });
 
     expect(settled.body).toEqual({
+      contract_version: CHANNEL_VERSIONS.platformDo,
       kind: "credit",
       ok: true,
       periodCounters: {
@@ -1131,6 +1171,7 @@ describe("ephemeral_entries_expire_in_place", () => {
 
     expect(second.response.ok).toBe(true);
     expect(second.body).toEqual({
+      contract_version: CHANNEL_VERSIONS.platformDo,
       kind: "admission",
       outcome: "admitted",
       requestId: expect.any(String),
@@ -1236,7 +1277,11 @@ describe("release_rolls_back_admission_reservation", () => {
       jti,
     });
     expect(released.response.ok).toBe(true);
-    expect(released.body).toEqual({ kind: "release", ok: true });
+    expect(released.body).toEqual({
+      contract_version: CHANNEL_VERSIONS.platformDo,
+      kind: "release",
+      ok: true,
+    });
 
     // Same jti may admit again (replay entry cleared).
     const jtiReuse = await callAdmissionRPC(installationId, {
@@ -1272,6 +1317,7 @@ describe("release_rolls_back_admission_reservation", () => {
 
     expect(released.response.ok).toBe(true);
     expect(released.body).toEqual({
+      contract_version: CHANNEL_VERSIONS.platformDo,
       kind: "release",
       ok: false,
       code: "unknown_request",
@@ -1296,6 +1342,7 @@ describe("release_rolls_back_admission_reservation", () => {
     });
 
     expect(released.body).toEqual({
+      contract_version: CHANNEL_VERSIONS.platformDo,
       kind: "release",
       ok: false,
       code: "unknown_request",
@@ -1436,6 +1483,7 @@ describe("inspect_rpc", () => {
     });
 
     expect(replay.body).toEqual({
+      contract_version: CHANNEL_VERSIONS.platformDo,
       kind: "admission",
       outcome: "replay",
     });
@@ -1557,6 +1605,7 @@ describe("credit_budget_exhausted_quota_exhausted_with_reset_at", () => {
 
     expect(exhausted.response.ok).toBe(true);
     expect(exhausted.body).toEqual({
+      contract_version: CHANNEL_VERSIONS.platformDo,
       kind: "admission",
       outcome: "quota_exhausted",
       period_end: entitlement.period_bounds.period_end,

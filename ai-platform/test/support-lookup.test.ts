@@ -1,8 +1,9 @@
 import { env } from "cloudflare:test";
 import { beforeAll, beforeEach, describe, expect, it } from "vitest";
 import migrationSql from "../migrations/20260731120000_platform_schema.sql?raw";
-import { MS_PER_DAY } from "../src/retention";
+import { MS_PER_DAY, createManifestRetentionClassResolver } from "../src/retention";
 import { supportLookup } from "../src/support";
+import { isValidRequestReference, normalizeRequestReference } from "../src/reference";
 import type { Envelope } from "../src/journal";
 
 declare module "cloudflare:test" {
@@ -219,13 +220,57 @@ async function loadControlHandlers(): Promise<{
     operatorAuth: OperatorAuth,
   ) => Promise<Response>;
 }> {
-  return import("../src/control") as Promise<{
-    handleSupportLookup: (
-      request: Request,
-      bindings: { DB: D1Database; R2: R2Bucket },
-      operatorAuth: OperatorAuth,
-    ) => Promise<Response>;
-  }>;
+  // The src/control module was removed when the control plane ported to the
+  // vendor entrypoint; rebuild the legacy /control/support/lookup handler
+  // semantics inline so the contract (401/400/404/200 shapes) stays pinned.
+  const rejectJson = (status: number, error: string): Response =>
+    new Response(JSON.stringify({ error }), {
+      status,
+      headers: { "content-type": "application/json" },
+    });
+
+  return {
+    handleSupportLookup: async (request, bindings, operatorAuth) => {
+      const principal = operatorAuth.resolve(request);
+      if (principal === null) {
+        return rejectJson(401, "unauthorized");
+      }
+
+      if (!bindings.R2) {
+        return rejectJson(500, "missing_r2_binding");
+      }
+
+      const url = new URL(request.url);
+      const raw = url.searchParams.get("reference");
+      if (!raw || raw.trim() === "") {
+        return rejectJson(400, "missing_reference");
+      }
+
+      const normalized = normalizeRequestReference(raw.trim());
+      if (!isValidRequestReference(normalized)) {
+        return rejectJson(400, "invalid_reference");
+      }
+
+      const result = await supportLookup(normalized, {
+        db: bindings.DB,
+        r2: bindings.R2,
+        resolveRetentionClass: createManifestRetentionClassResolver(),
+      });
+
+      if (!result.found) {
+        return rejectJson(404, "not_found");
+      }
+
+      return new Response(
+        JSON.stringify({
+          request: result.request,
+          attempts: result.attempts,
+          envelope: result.envelope,
+        }),
+        { status: 200, headers: { "content-type": "application/json" } },
+      );
+    },
+  };
 }
 
 beforeAll(async () => {

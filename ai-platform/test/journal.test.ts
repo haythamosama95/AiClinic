@@ -39,7 +39,7 @@ const FIXTURE_CAPABILITY_ID = "clinic.journal-test";
 const FIXTURE_CAPABILITY_VERSION = "1.0.0";
 const FIXTURE_TRACE_ID = "01JOURNALTRACE000000000001";
 const FIXTURE_NOW = "2026-07-31T12:00:00.000Z";
-const FIXTURE_PERIOD = "2026-08";
+const FIXTURE_TERM_ID = "2026-08";
 const FIXTURE_PROMPT_HASH = "prompt/visit-summary-system@v1";
 
 const ALL_TRANSITION_STATES: TransitionState[] = [
@@ -294,7 +294,7 @@ function buildPostResponseInput(
   return {
     requestId,
     installationId: FIXTURE_INSTALLATION_ID,
-    period: FIXTURE_PERIOD,
+    termId: FIXTURE_TERM_ID,
     quotaWeight: 1,
     totalTokens,
     totalCost,
@@ -402,7 +402,10 @@ function createD1Spy(realDb: D1Database): D1Spy {
       if (normalized.startsWith("insert into ai_attempt")) {
         aiAttemptInserts += 1;
       }
-      if (normalized.startsWith("insert into usage_event")) {
+      if (
+        normalized.startsWith("insert into usage_event") ||
+        normalized.startsWith("insert or ignore into usage_event")
+      ) {
         usageEventInserts += 1;
       }
       if (

@@ -64,7 +64,12 @@ export default defineWorkersConfig({
           },
           bindings: {
             TEST_CLOCK: "1",
-            DURATION_SCALE: "staging",
+            // DURATION_SCALE is intentionally NOT set here: the default is the
+            // unscaled (live) calendar. Staging-compression suites opt in
+            // per-test via withDurationScale("staging"), which mutates the
+            // env/workerBindings at runtime (spec 069 P3.5-07). Baking
+            // "staging" in here compressed every term to 30 minutes and broke
+            // all calendar-math assertions in unscaled suites.
             ACCESS_TEAM_DOMAIN: "access.test",
             ACCESS_AUD: "vendor-access-aud",
             WEBAUTHN_RP_ID: "ops.vendor.test",

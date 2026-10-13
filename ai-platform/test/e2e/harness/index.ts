@@ -118,6 +118,16 @@ export { gatewayObjectJson, gatewayObjectRpc } from "./gateway-object";
 
 export { CRON_RETENTION, CRON_ROLLUP, invokeCron } from "./cron";
 
+/**
+ * Teardown guards for GatewayObject wall-clock alarms / pending outbox.
+ * Wired globally from `test/e2e/setup.ts` afterEach; also exported for
+ * targeted use by stage suites that drive grant/void/transfer paths.
+ */
+export {
+  drainGatewayObjects,
+  settleGatewayObjectAlarms,
+} from "./do-drain";
+
 export {
   assertSseSequence,
   parseSseEvents,

@@ -150,8 +150,9 @@ async function enrollAndEntitle(
 
 /**
  * Entitle is one-shot (`409 not_pending` while active). Re-open pending so
- * `entitleInstallation(P2)` writes the September `period_start` the same way
- * SX-051/052 roll the entitlement — do not rewrite `usage_event.period`.
+ * `entitleInstallation(P2)` re-entitles with the September `period_start` the
+ * same way SX-051/052 roll the entitlement — do not rewrite
+ * `usage_event.term_id`.
  */
 async function rollEntitlementToP2(scenario: Scenario): Promise<void> {
   await seedSql([
@@ -296,7 +297,7 @@ function expectTrailing30dWindow(window: unknown): void {
 async function seedUsageEvent(opts: {
   id: string;
   installationId: string;
-  period: string;
+  termId: string;
   requestId: string | null;
   tokens: number;
   cost: number;
@@ -305,13 +306,13 @@ async function seedUsageEvent(opts: {
   await seedSql([
     {
       sql: `INSERT INTO usage_event (
-              usage_event_id, installation_id, period, request_id,
+              usage_event_id, installation_id, term_id, request_id,
               quota_weight, tokens, cost, recorded_at
             ) VALUES (?, ?, ?, ?, 1, ?, ?, ?)`,
       params: [
         opts.id,
         opts.installationId,
-        opts.period,
+        opts.termId,
         opts.requestId,
         opts.tokens,
         opts.cost,
@@ -453,7 +454,7 @@ async function rebuildSx028EndState(): Promise<{
       params: [aged, aged, aged, oldReq.requestId],
     },
     {
-      sql: `UPDATE usage_event SET recorded_at = ?, period = '2026-08' WHERE request_id = ?`,
+      sql: `UPDATE usage_event SET recorded_at = ?, term_id = 'term-aged' WHERE request_id = ?`,
       params: [aged, oldReq.requestId],
     },
   ]);
@@ -516,7 +517,7 @@ describe("Stage X — ledger purge, rollup reconciliation, DO sweep (SX-033…SX
     await seedUsageEvent({
       id: "ue-sx033-a",
       installationId: scenario.installationId,
-      period: "2019-08",
+      termId: "term-2019-08",
       requestId: null,
       tokens: 10,
       cost: 0.001,
@@ -525,7 +526,7 @@ describe("Stage X — ledger purge, rollup reconciliation, DO sweep (SX-033…SX
     await seedUsageEvent({
       id: "ue-sx033-b",
       installationId: scenario.installationId,
-      period: "2019-09",
+      termId: "term-2019-09",
       requestId: null,
       tokens: 20,
       cost: 0.002,
@@ -551,7 +552,7 @@ describe("Stage X — ledger purge, rollup reconciliation, DO sweep (SX-033…SX
     ).not.toBeNull();
   });
 
-  it("SX-034 — Ledger horizon deletes usage_rollup by period string compare [SEED]", async () => {
+  it("SX-034 — Ledger horizon deletes rollups whose term ledger has fully aged [SEED]", async () => {
     const scenario = await enrollOnly();
     const ledgerCutoff = "2019-09-15T12:00:00.000Z";
     const now = new Date(
@@ -561,15 +562,38 @@ describe("Stage X — ledger purge, rollup reconciliation, DO sweep (SX-033…SX
       true,
     );
 
+    // Since P3.4 the rollup writer keys `dimensions` on
+    // {installation_id, term_id} and term ids are opaque (`term-<8hex>`) —
+    // not comparable to the ledger cutoff date. The purge follows the
+    // usage_event purge instead: a term whose ledger has fully aged out
+    // loses its rollup; a term with ledger rows inside the horizon keeps it.
+    await seedUsageEvent({
+      id: "ue-sx034-aged",
+      installationId: scenario.installationId,
+      termId: "term-aged-2019-08",
+      requestId: null,
+      tokens: 10,
+      cost: 0.001,
+      recordedAt: daysAgoIso(now, LEDGER_HORIZON_DAYS + 1),
+    });
+    await seedUsageEvent({
+      id: "ue-sx034-live",
+      installationId: scenario.installationId,
+      termId: "term-live-2019-09",
+      requestId: null,
+      tokens: 20,
+      cost: 0.002,
+      recordedAt: daysAgoIso(now, LEDGER_HORIZON_DAYS - 1),
+    });
     await seedSql([
       {
         sql: `INSERT INTO usage_rollup (rollup_id, dimensions, request_count, tokens, cost)
               VALUES (?, ?, 1, 10, 0.001)`,
         params: [
-          "rollup-sx034-a",
+          "rollup-sx034-aged",
           JSON.stringify({
             installation_id: scenario.installationId,
-            period: "2019-08",
+            term_id: "term-aged-2019-08",
           }),
         ],
       },
@@ -577,10 +601,10 @@ describe("Stage X — ledger purge, rollup reconciliation, DO sweep (SX-033…SX
         sql: `INSERT INTO usage_rollup (rollup_id, dimensions, request_count, tokens, cost)
               VALUES (?, ?, 1, 20, 0.002)`,
         params: [
-          "rollup-sx034-b",
+          "rollup-sx034-live",
           JSON.stringify({
             installation_id: scenario.installationId,
-            period: "2019-09",
+            term_id: "term-live-2019-09",
           }),
         ],
       },
@@ -592,15 +616,26 @@ describe("Stage X — ledger purge, rollup reconciliation, DO sweep (SX-033…SX
       now,
     });
 
-    expect(result.ledgerDeleted).toBe(1);
+    // 1 aged usage_event + 1 fully-aged term rollup.
+    expect(result.ledgerDeleted).toBe(2);
+    expect(
+      await queryOne("SELECT usage_event_id FROM usage_event WHERE usage_event_id = ?", [
+        "ue-sx034-aged",
+      ]),
+    ).toBeNull();
+    expect(
+      await queryOne("SELECT usage_event_id FROM usage_event WHERE usage_event_id = ?", [
+        "ue-sx034-live",
+      ]),
+    ).not.toBeNull();
     expect(
       await queryOne("SELECT rollup_id FROM usage_rollup WHERE rollup_id = ?", [
-        "rollup-sx034-a",
+        "rollup-sx034-aged",
       ]),
     ).toBeNull();
     expect(
       await queryOne("SELECT rollup_id FROM usage_rollup WHERE rollup_id = ?", [
-        "rollup-sx034-b",
+        "rollup-sx034-live",
       ]),
     ).not.toBeNull();
   });
@@ -774,7 +809,7 @@ describe("Stage X — ledger purge, rollup reconciliation, DO sweep (SX-033…SX
     expect(kill?.target).toBe("deepseek");
   });
 
-  it("SX-037 — Rollup aggregates full ledger per (installation, period); re-run upserts", async () => {
+  it("SX-037 — Rollup aggregates full ledger per (installation, term); re-run upserts", async () => {
     const i0 = await provisionHappyPath(undefined, AUGUST_COVERING_NOW);
     const i1 = await enrollAndEntitle(AUGUST_COVERING_NOW);
 
@@ -793,23 +828,29 @@ describe("Stage X — ledger purge, rollup reconciliation, DO sweep (SX-033…SX
     await waitForUsageEvent(i0c.requestId);
     await waitForUsageEvent(i1a.requestId);
 
+    // Since P3.4, usage_event carries `term_id`. The harness seeds the active
+    // DO term as `term-<installationId.slice(0, 8)>` and the P2 re-entitle
+    // (rollEntitlementToP2) keeps that same term, so all i0 usage rows —
+    // including i0c after the roll — share one term, and i1 has its own.
+    const i0TermId = `term-${i0.installationId.slice(0, 8)}`;
+    const i1TermId = `term-${i1.installationId.slice(0, 8)}`;
     const usage = await queryAll<{
       tokens: number;
       cost: number;
-      period: string;
+      term_id: string;
       request_id: string;
-    }>("SELECT tokens, cost, period, request_id FROM usage_event");
+    }>("SELECT tokens, cost, term_id, request_id FROM usage_event");
     const byId = Object.fromEntries(usage.map((row) => [row.request_id, row]));
-    expect(byId[i0a.requestId]?.period).toBe("2026-08");
+    expect(byId[i0a.requestId]?.term_id).toBe(i0TermId);
     expect(byId[i0a.requestId]?.tokens).toBe(FAKE_V1_SETTLEMENT_TOKENS);
     expect(Number(byId[i0a.requestId]?.cost)).toBeCloseTo(FAKE_V1_SETTLEMENT_COST, 6);
-    expect(byId[i0b.requestId]?.period).toBe("2026-08");
+    expect(byId[i0b.requestId]?.term_id).toBe(i0TermId);
     expect(byId[i0b.requestId]?.tokens).toBe(FAKE_V1_SETTLEMENT_TOKENS);
     expect(Number(byId[i0b.requestId]?.cost)).toBeCloseTo(FAKE_V1_SETTLEMENT_COST, 6);
-    expect(byId[i0c.requestId]?.period).toBe("2026-09");
+    expect(byId[i0c.requestId]?.term_id).toBe(i0TermId);
     expect(byId[i0c.requestId]?.tokens).toBe(FAKE_V1_SETTLEMENT_TOKENS);
     expect(Number(byId[i0c.requestId]?.cost)).toBeCloseTo(FAKE_V1_SETTLEMENT_COST, 6);
-    expect(byId[i1a.requestId]?.period).toBe("2026-08");
+    expect(byId[i1a.requestId]?.term_id).toBe(i1TermId);
     expect(byId[i1a.requestId]?.tokens).toBe(FAKE_V1_SETTLEMENT_TOKENS);
     expect(Number(byId[i1a.requestId]?.cost)).toBeCloseTo(FAKE_V1_SETTLEMENT_COST, 6);
 
@@ -821,26 +862,19 @@ describe("Stage X — ledger purge, rollup reconciliation, DO sweep (SX-033…SX
       tokens: number;
       cost: number;
     }>("SELECT rollup_id, dimensions, request_count, tokens, cost FROM usage_rollup");
-    expect(first).toHaveLength(3);
+    expect(first).toHaveLength(2);
 
     const expected = [
       {
         installation_id: i0.installationId,
-        period: "2026-08",
-        request_count: 2,
-        tokens: FAKE_V1_SETTLEMENT_TOKENS * 2,
-        cost: FAKE_V1_SETTLEMENT_COST * 2,
-      },
-      {
-        installation_id: i0.installationId,
-        period: "2026-09",
-        request_count: 1,
-        tokens: FAKE_V1_SETTLEMENT_TOKENS,
-        cost: FAKE_V1_SETTLEMENT_COST,
+        term_id: i0TermId,
+        request_count: 3,
+        tokens: FAKE_V1_SETTLEMENT_TOKENS * 3,
+        cost: FAKE_V1_SETTLEMENT_COST * 3,
       },
       {
         installation_id: i1.installationId,
-        period: "2026-08",
+        term_id: i1TermId,
         request_count: 1,
         tokens: FAKE_V1_SETTLEMENT_TOKENS,
         cost: FAKE_V1_SETTLEMENT_COST,
@@ -849,7 +883,7 @@ describe("Stage X — ledger purge, rollup reconciliation, DO sweep (SX-033…SX
     for (const row of expected) {
       const dims = JSON.stringify({
         installation_id: row.installation_id,
-        period: row.period,
+        term_id: row.term_id,
       });
       const found = first.find((entry) => entry.dimensions === dims);
       expect(found, dims).toBeDefined();
@@ -879,12 +913,12 @@ describe("Stage X — ledger purge, rollup reconciliation, DO sweep (SX-033…SX
     }
   });
 
-  it("SX-038 — Windowed rollup re-aggregates entire touched periods [SEED]", async () => {
+  it("SX-038 — Windowed rollup re-aggregates entire touched terms [SEED]", async () => {
     const scenario = await enrollOnly();
     await seedUsageEvent({
       id: "ue-sx038-e1",
       installationId: scenario.installationId,
-      period: "2026-08",
+      termId: "term-2026-08",
       requestId: null,
       tokens: 10,
       cost: 0.001,
@@ -893,7 +927,7 @@ describe("Stage X — ledger purge, rollup reconciliation, DO sweep (SX-033…SX
     await seedUsageEvent({
       id: "ue-sx038-e2",
       installationId: scenario.installationId,
-      period: "2026-08",
+      termId: "term-2026-08",
       requestId: null,
       tokens: 20,
       cost: 0.002,
@@ -953,7 +987,7 @@ describe("Stage X — ledger purge, rollup reconciliation, DO sweep (SX-033…SX
     await seedUsageEvent({
       id: "ue-sx040",
       installationId: scenario.installationId,
-      period: "2026-09",
+      termId: "term-2026-09",
       requestId: "req-sx040-noatt",
       tokens: 10,
       cost: 0.001,

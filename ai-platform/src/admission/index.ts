@@ -8,6 +8,7 @@ import type { Logger } from "../logger";
 import { noopLogger } from "../logger";
 import {
   DEFAULT_RATE_LIMITED_RETRY_AFTER_SECONDS,
+  isTaxonomyCode,
   type CoverageLapseReason,
   type TaxonomyCode,
 } from "../errors";
@@ -116,6 +117,7 @@ type JournaledRequestRow = {
   request_reference: string;
   state: string;
   trace_id: string;
+  terminal_error_code: string | null;
 };
 
 type AdmissionDoTransportResult =
@@ -145,14 +147,22 @@ function mapJournalState(state: string): IdempotencyPriorState["state"] {
 }
 
 function idempotentFromJournal(row: JournaledRequestRow): AdmissionResult {
+  const state = mapJournalState(row.state);
   return {
     ok: true,
     outcome: "idempotent",
     priorState: {
       requestReference: row.request_reference,
-      state: mapJournalState(row.state),
+      state,
       requestId: row.request_id,
       traceId: row.trace_id,
+      // Replay-after-failed must settle with the journaled terminal taxonomy
+      // code, not the `internal_error` fallback (worker.ts replayIdempotentTerminal).
+      ...(state === "failed" &&
+      row.terminal_error_code !== null &&
+      isTaxonomyCode(row.terminal_error_code)
+        ? { terminalErrorCode: row.terminal_error_code as TaxonomyCode }
+        : {}),
     },
   };
 }
@@ -164,7 +174,7 @@ async function selectAiRequestByKey(
 ): Promise<JournaledRequestRow | null> {
   const row = await db
     .prepare(
-      `SELECT request_id, request_reference, state, trace_id
+      `SELECT request_id, request_reference, state, trace_id, terminal_error_code
        FROM ai_request
        WHERE installation_id = ? AND idempotency_key = ?
        ORDER BY created_at ASC
@@ -182,7 +192,7 @@ async function selectAiRequestById(
 ): Promise<JournaledRequestRow | null> {
   const row = await db
     .prepare(
-      `SELECT request_id, request_reference, state, trace_id
+      `SELECT request_id, request_reference, state, trace_id, terminal_error_code
        FROM ai_request
        WHERE installation_id = ? AND request_id = ?
        LIMIT 1`,
@@ -493,7 +503,10 @@ async function tryMirrorFallbackAdmission(input: {
       .bind(input.principal.installationId, input.idempotencyKey)
       .first<{ request_id: string }>();
     if (raced) {
-      const entitlement = fallbackEntitlementSnapshot(admittedAt, capabilities);
+      const entitlement = fallbackEntitlementSnapshot(
+        admittedAt,
+        termView.capabilities,
+      );
       return {
         ok: true,
         outcome: "grace_admitted",
@@ -505,7 +518,10 @@ async function tryMirrorFallbackAdmission(input: {
     return null;
   }
 
-  const entitlement = fallbackEntitlementSnapshot(admittedAt, capabilities);
+  const entitlement = fallbackEntitlementSnapshot(
+    admittedAt,
+    termView.capabilities,
+  );
 
   return {
     ok: true,

@@ -31,6 +31,7 @@ const ISSUER_ID = "issuer-test";
 const FIXTURE_INSTALLATION_ID = "inst-disc-001";
 const FIXTURE_ORG_ID = "org-disc-001";
 const FIXTURE_GRANTED_CAPABILITY_ID = "clinic.granted";
+const FIXTURE_TERM_REF = "term-disc-001";
 const FIXTURE_DEPRECATED_CAPABILITY_ID = "clinic.deprecated";
 const FIXTURE_RETIRED_CAPABILITY_ID = "clinic.retired";
 const FIXTURE_UNGRANTED_CAPABILITY_ID = "clinic.ungranted";
@@ -272,7 +273,12 @@ async function seedEntitlement(
     .bind(
       installationId,
       FIXTURE_ORG_ID,
-      JSON.stringify({ capabilities: allowedCapabilities }),
+      // `mirrorTermViewFromSnapshot` fails closed without a term ref and a
+      // non-empty capability list, so seed both.
+      JSON.stringify({
+        ref: FIXTURE_TERM_REF,
+        capabilities: allowedCapabilities,
+      }),
     )
     .run();
 }
@@ -460,7 +466,10 @@ describe("T3 discovery_http_changed_manifest_changes_etag", () => {
        WHERE installation_id = ?`,
     )
       .bind(
-        JSON.stringify({ capabilities: [FIXTURE_GRANTED_CAPABILITY_ID] }),
+        JSON.stringify({
+          ref: FIXTURE_TERM_REF,
+          capabilities: [FIXTURE_GRANTED_CAPABILITY_ID],
+        }),
         FIXTURE_INSTALLATION_ID,
       )
       .run();

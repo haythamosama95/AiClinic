@@ -72,6 +72,13 @@ const FIXTURE_RETIRED_CAPABILITY_ID = "clinic.retired";
 const FIXTURE_UNGRANTED_CAPABILITY_ID = "clinic.ungranted";
 const FIXTURE_GATED_CAPABILITY_ID = "clinic.gated";
 const FIXTURE_ROUTING_POLICY_REF = "routing/standard";
+/**
+ * Term ref embedded in `coverage_mirror.term_snapshot` fixtures. The term-view
+ * parser (`mirrorTermViewFromSnapshot`) fails closed — a snapshot without a
+ * non-empty term ref yields no mirror plan view, which makes the resolver's
+ * plan gate and discovery both return empty/forbidden.
+ */
+const FIXTURE_TERM_REF = "term-cap-001";
 
 function quotedEtag(raw: string): string {
   return `"${raw}"`;
@@ -408,7 +415,7 @@ async function seedEntitlement(
     .bind(
       installationId,
       FIXTURE_ORG_ID,
-      JSON.stringify({ capabilities }),
+      JSON.stringify({ ref: FIXTURE_TERM_REF, capabilities }),
     )
     .run();
 }
@@ -649,7 +656,7 @@ async function seedMirrorForResolve(
     .bind(
       installationId,
       FIXTURE_ORG_ID,
-      JSON.stringify({ capabilities }),
+      JSON.stringify({ ref: FIXTURE_TERM_REF, capabilities }),
     )
     .run();
 }
@@ -1646,10 +1653,11 @@ describe("discovery_granted_version_mismatch_excluded", () => {
 
     const result = await discover(principal, cache, reader, undefined, env.DB);
 
-    expect(result.manifests).toHaveLength(2);
-    expect(
-      result.manifests.map((manifest) => manifest.Identity.version).sort(),
-    ).toEqual(["1.0.0", "2.0.0"]);
+    // Only the granted version (1.0.0) is advertised — the 2.0.0 manifest is
+    // excluded because the installation grant pins capability_version 1.0.0
+    // (discoveryGrantAllows fails version mismatches, d990883c).
+    expect(result.manifests).toHaveLength(1);
+    expect(result.manifests[0]?.Identity.version).toBe("1.0.0");
   });
 });
 
