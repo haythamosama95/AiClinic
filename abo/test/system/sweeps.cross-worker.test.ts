@@ -1165,10 +1165,12 @@ beforeEach(async () => {
   await setClock("2026-06-01T12:00:00.000Z");
 });
 
+// drain alone waits out the ~5s wall-clock outbox alarm plus flushes each
+// installation, which brushes the 10s default hook timeout under CI load.
 afterEach(async () => {
   await drainPlatformDurableObjects();
   await settlePlatformDurableObjectAlarms();
-});
+}, 30_000);
 
 describe.sequential("sweeps cross-worker", () => {
   it("E2E-P4.5-01 callback blocked, +2 min sweep confirms and grants", async () => {
@@ -1554,6 +1556,10 @@ describe.sequential("sweeps cross-worker", () => {
     await scriptPaymobInquiry("reversed");
     await runScheduled("0 * * * *");
     await runScheduled("* * * * *");
+    // The hourly grant scheduled a platform outbox alarm ~5s ahead on wall
+    // clock; let it fire while the test is idle so it cannot cancel mid-write
+    // and corrupt the isolated-storage frame.
+    await settlePlatformDurableObjectAlarms();
 
     expect(await tableCount("payment")).toBe(paymentsBeforeHourly);
     expect(await reversalCount()).toBe(reversalsBeforeHourly + 1);
@@ -1568,6 +1574,10 @@ describe.sequential("sweeps cross-worker", () => {
       sixHourTxnId,
       95093,
     );
+    // Two grants above scheduled platform outbox alarms on wall clock; settle
+    // them before the six-hour tier writes so the alarms cannot cancel
+    // mid-SQLite-write and drop the sweep_payment row or its reversal.
+    await settlePlatformDurableObjectAlarms();
     const paymentsBeforeSixHour = await tableCount("payment");
     const reversalsBeforeSixHour = await reversalCount();
 
@@ -1575,6 +1585,7 @@ describe.sequential("sweeps cross-worker", () => {
     await scriptPaymobInquiry("reversed");
     await runScheduled("0 */6 * * *");
     await runScheduled("* * * * *");
+    await settlePlatformDurableObjectAlarms();
 
     expect(await tableCount("payment")).toBe(paymentsBeforeSixHour);
     expect(await reversalCount()).toBe(reversalsBeforeSixHour + 1);
@@ -1597,6 +1608,9 @@ describe.sequential("sweeps cross-worker", () => {
     );
     const paymentsBeforeDaily = await tableCount("payment");
     const reversalsBeforeDaily = await reversalCount();
+    // Settle the daily grant's wall-clock outbox alarm before the daily tier
+    // runs, mirroring the hourly and six-hour phases above.
+    await settlePlatformDurableObjectAlarms();
 
     await setClock(dailyRunDay);
     await runScheduled("0 6 * * *");
@@ -1606,6 +1620,7 @@ describe.sequential("sweeps cross-worker", () => {
     await setClock(dailyDueAt!);
     await scriptPaymobInquiry("reversed");
     await runScheduled("* * * * *");
+    await settlePlatformDurableObjectAlarms();
 
     expect(await tableCount("payment")).toBe(paymentsBeforeDaily);
     expect(await reversalCount()).toBe(reversalsBeforeDaily + 1);
