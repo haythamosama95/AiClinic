@@ -78,10 +78,13 @@ async function listInstallationRows(): Promise<InstallationRow[]> {
 /**
  * Flush the GatewayObject outbox for one installation. `refresh_coverage_
  * snapshot` drains every pending outbox row (coverage events, grant ledger,
- * voids, usage adjustments, alerts) and re-syncs the alarm via
- * `shipCoverageOutboxInLock`, which calls `deleteAlarm()` when nothing is
- * pending. Awaiting the RPC also serializes behind any in-flight alarm
- * handler (`blockConcurrencyWhile`), so by return time the DO is quiescent.
+ * voids, usage adjustments, alerts). With `disarmAlarm: true` the DO ends
+ * the call with its alarm DELETED instead of re-armed — the plain RPC would
+ * re-arm a wall-clock alarm via `shipCoverageOutboxInLock` whenever an
+ * active/grace term exists, and that alarm would fire across a later
+ * isolated-storage frame boundary. Awaiting the RPC also serializes behind
+ * any in-flight alarm handler (`blockConcurrencyWhile`), so by return time
+ * the DO is quiescent AND disarmed.
  */
 async function flushInstallationOutbox(row: InstallationRow): Promise<void> {
   await gatewayObjectJson(row.installation_id, {
@@ -89,6 +92,7 @@ async function flushInstallationOutbox(row: InstallationRow): Promise<void> {
     installationId: row.installation_id,
     orgId: row.org_id,
     vendorContractVersion: CHANNEL_VERSIONS.platformDo,
+    disarmAlarm: true,
   });
 }
 

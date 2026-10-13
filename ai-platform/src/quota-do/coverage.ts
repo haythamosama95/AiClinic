@@ -2669,6 +2669,7 @@ async function shipCoverageOutboxInLock(
   nowIso: string,
   logger: Logger,
   durationScale?: DurationScale,
+  disarmAlarm?: boolean,
 ): Promise<ShippedCoverageAlert[]> {
     const boundInstallationId =
       resolveInstallationIdFromStorage(storage) || installationId;
@@ -2808,15 +2809,23 @@ async function shipCoverageOutboxInLock(
       sqlExec(storage, `DELETE FROM outbox WHERE seq = ${row.seq}`);
     }
 
-    const hot = loadHot(storage);
-    const terms = loadTerms(storage);
-    const outboxCount = sqlSelect<{ count: number }>(
-      storage,
-      "SELECT COUNT(*) AS count FROM outbox",
-    )[0]?.count ?? 0;
-    const nextAlarm = computeNextAlarmAt(terms, outboxCount > 0, nowIso);
-    updateHot(storage, { next_alarm_at: nextAlarm });
-    await syncAlarm(state, storage, nextAlarm, hot.next_alarm_at);
+    if (disarmAlarm === true) {
+      // Harness-only drain path: leave the DO with no pending wall-clock
+      // alarm so nothing can fire across a vitest isolated-storage frame
+      // boundary. Production callers never set this flag.
+      updateHot(storage, { next_alarm_at: null });
+      await state.storage.deleteAlarm();
+    } else {
+      const hot = loadHot(storage);
+      const terms = loadTerms(storage);
+      const outboxCount = sqlSelect<{ count: number }>(
+        storage,
+        "SELECT COUNT(*) AS count FROM outbox",
+      )[0]?.count ?? 0;
+      const nextAlarm = computeNextAlarmAt(terms, outboxCount > 0, nowIso);
+      updateHot(storage, { next_alarm_at: nextAlarm });
+      await syncAlarm(state, storage, nextAlarm, hot.next_alarm_at);
+    }
 
     logger.info("coverage outbox shipped", {
       installation_id: installationId,
@@ -4185,6 +4194,12 @@ export type RefreshCoverageSnapshotRequest = {
   db: D1Database;
   r2: R2Bucket;
   nowIso: string;
+  /**
+   * Harness-only (vitest isolated-storage drain): skip re-arming the DO
+   * alarm and end the call with the alarm deleted. Production callers
+   * never set this; behavior is unchanged when it is absent.
+   */
+  disarmAlarm?: boolean;
 };
 
 export type RefreshCoverageSnapshotResponse = {
@@ -4216,7 +4231,9 @@ export async function refreshCoverageSnapshotRPC(
       durationScale: request.durationScale,
     });
     const eventId = coverageEventId(request.installationId, clinicSeq);
-    await scheduleCoverageAlarm(state, storage, request.nowIso);
+    if (request.disarmAlarm !== true) {
+      await scheduleCoverageAlarm(state, storage, request.nowIso);
+    }
     const shippedAlerts = await shipCoverageOutboxInLock(
       state,
       storage,
@@ -4225,6 +4242,7 @@ export async function refreshCoverageSnapshotRPC(
       request.nowIso,
       logger,
       request.durationScale,
+      request.disarmAlarm,
     );
 
     return {
