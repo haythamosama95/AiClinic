@@ -5,6 +5,7 @@ on:
     branches: [main, master, "001-*", "feature/*"]
   pull_request:
     branches: [main, master]
+  workflow_dispatch:
 
 jobs:
   frontend-quality:
