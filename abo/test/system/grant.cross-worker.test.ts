@@ -14,6 +14,7 @@ import successFixture from "../fixtures/paymob/success.json";
 import checkoutMigrationSql from "../../migrations/0002_checkout.sql?raw";
 import notifyWorkMigrationSql from "../../migrations/0003_notify_work.sql?raw";
 import grantMigrationSql from "../../migrations/0004_grant.sql?raw";
+import paymobIntentionUrlsMigrationSql from "../../migrations/0010_paymob_intention_urls.sql?raw";
 import { loadOffersFixture } from "../../src/records/append";
 import {
   applySql,
@@ -433,6 +434,11 @@ async function ensureMigrations(): Promise<void> {
   }
   try {
     await applySql(grantMigrationSql);
+  } catch {
+    // Migration not present yet.
+  }
+  try {
+    await applySql(paymobIntentionUrlsMigrationSql);
   } catch {
     // Migration not present yet.
   }

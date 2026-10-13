@@ -25,6 +25,7 @@ import grantMigrationSql from "../../migrations/0004_grant.sql?raw";
 import reversalMigrationSql from "../../migrations/0005_reversal.sql?raw";
 import operatorActionMigrationSql from "../../migrations/0006_operator_action.sql?raw";
 import hpActionsMigrationSql from "../../migrations/0007_hp_actions.sql?raw";
+import paymobIntentionUrlsMigrationSql from "../../migrations/0010_paymob_intention_urls.sql?raw";
 import { loadOffersFixture } from "../../src/records/append";
 import {
   applySql,
@@ -374,6 +375,7 @@ async function ensureMigrations(): Promise<void> {
     reversalMigrationSql,
     operatorActionMigrationSql,
     hpActionsMigrationSql,
+    paymobIntentionUrlsMigrationSql,
   ]) {
     try {
       await applySql(sql);

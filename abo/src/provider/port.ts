@@ -88,6 +88,12 @@ export type ProviderNotificationRequest = {
 export type ParseNotificationResult = {
   authentic: boolean;
   events: ProviderTxn[];
+  /**
+   * The adapter could not parse the body at all (A23). The HMAC is
+   * unverifiable without a parsed object, so this is distinct from an
+   * invalid HMAC. Optional so existing implementations stay compatible.
+   */
+  unparseable?: boolean;
 };
 
 export type InquireByCheckout = {

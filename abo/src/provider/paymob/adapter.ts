@@ -147,8 +147,9 @@ async function storeIntention(
   await env.DB.batch([
     env.DB.prepare(
       `INSERT INTO paymob_intention (
-         checkout_id, intention_id, order_id, client_secret, special_reference, expires_at
-       ) VALUES (?, ?, ?, ?, ?, ?)`,
+         checkout_id, intention_id, order_id, client_secret, special_reference, expires_at,
+         return_url, notify_url
+       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
     ).bind(
       checkoutId,
       intention.id,
@@ -156,6 +157,8 @@ async function storeIntention(
       intention.client_secret,
       reference,
       expiresAt,
+      intentionBody.return_url,
+      intentionBody.notify_url,
     ),
     await insertFactLog(
       env,
@@ -887,7 +890,7 @@ async function parseNotificationImpl(
     obj = paymobObjFromQuery(url.searchParams);
   }
   if (obj === null) {
-    return { authentic: false, events: [] };
+    return { authentic: false, events: [], unparseable: true };
   }
 
   const authentic = await verifyPaymobHmac(env, obj, providedHmac);

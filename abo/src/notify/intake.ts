@@ -290,6 +290,33 @@ async function insertUnmatchedNotification(
     .run();
 }
 
+async function insertUnparseableNotification(
+  env: NotifyIntakeEnv,
+  params: {
+    notificationId: string;
+    bodySha256: string;
+    bodyR2Key: string;
+    channel: "processed" | "response";
+  },
+): Promise<void> {
+  await env.DB.prepare(
+    `INSERT INTO notification (
+       notification_id, provider_id, channel, hmac_valid, body_r2_key,
+       body_sha256, dedupe_key, checkout_id, disposition, adapter_version
+     ) VALUES (?, ?, ?, 0, ?, ?, ?, NULL, 'unmatched', ?)`,
+  )
+    .bind(
+      params.notificationId,
+      PAYMOB_PROVIDER_ID,
+      params.channel,
+      params.bodyR2Key,
+      params.bodySha256,
+      params.bodySha256,
+      NOTIFY_ADAPTER_VERSION,
+    )
+    .run();
+}
+
 export async function handlePostNotifyPaymob(
   request: Request,
   env: NotifyIntakeEnv,
@@ -319,6 +346,29 @@ export async function handlePostNotifyPaymob(
   };
   const parsed = await provider.parseNotification(parseRequest);
   if (!parsed.authentic) {
+    if (parsed.unparseable === true) {
+      // A body the adapter cannot parse is an A23 alert (E2E-P7.3-01). The
+      // HMAC is unverifiable without a parsed obj, so this is not an HMAC
+      // failure: no AL-02 counters and no hmac-invalid/ sample. Evidence is
+      // recorded with hmac_valid 0 (reconciliation filters hmac_valid = 1)
+      // under the standard erasable notification-body prefix.
+      const bodySha256 = await sha256Hex(new TextEncoder().encode(body));
+      const notificationId = await newId(env);
+      const bodyR2Key = `evidence/notification/${notificationId}`;
+      try {
+        await env.R2.put(bodyR2Key, body);
+        await insertUnparseableNotification(env, {
+          notificationId,
+          bodySha256,
+          bodyR2Key,
+          channel: "processed",
+        });
+        await raiseAlert(env, "AL-23", "AL-23:notify-shape", notificationId);
+      } catch {
+        return emptyResponse(500);
+      }
+      return emptyResponse(200);
+    }
     await recordInvalidHmac(env, body);
     return emptyResponse(401);
   }
