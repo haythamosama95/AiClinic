@@ -338,11 +338,18 @@ describe("E2E-P7.3-01", () => {
     expect(String(checkoutBody.redirect_url ?? "")).not.toBe("");
     // The paymob RETURN channel version is carried in the return_url the ABO
     // sends to paymob with the intention, not in the client redirect_url.
-    // The paymob stub records the last intention body at GET /__last.
-    const lastIntention = (await (
-      await env.PAYMOB_STUB.fetch("http://paymob.stub/__last")
-    ).json()) as Record<string, unknown>;
-    const paymobReturnUrl = String(lastIntention.return_url ?? "");
+    // The intention request body is canonically recorded in the fact_log
+    // (the paymob stub's module state is not reliable across isolates).
+    const intentionFact = await env.DB.prepare(
+      `SELECT row_json FROM fact_log WHERE "table" = 'paymob_intention' AND key = ?`,
+    )
+      .bind(String(checkoutBody.checkout_id))
+      .first<{ row_json: string }>();
+    expect(intentionFact).not.toBeNull();
+    const intentionBody = JSON.parse(
+      intentionFact!.row_json,
+    ) as Record<string, unknown>;
+    const paymobReturnUrl = String(intentionBody.return_url ?? "");
     expect(paymobReturnUrl).toContain(`v=${PAYMOB_RETURN_VERSION}`);
     expect(paymobReturnUrl).toContain("/return/paymob");
 
