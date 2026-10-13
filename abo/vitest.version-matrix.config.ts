@@ -9,6 +9,10 @@ const aboNPlus1Config = path.resolve(
   rootDir,
   "../e2e/fullstack/test/variant/abo-n-plus-1.toml",
 );
+const vendorContractsNPlus1 = path.resolve(
+  rootDir,
+  "../e2e/fullstack/test/variant/vendor-contracts-n-plus-1.ts",
+);
 const paymobStub = path.resolve(rootDir, "test/stubs/paymob/worker.ts");
 const paymobModulesRoot = path.dirname(paymobStub);
 const platformStub = path.resolve(
@@ -18,6 +22,18 @@ const platformStub = path.resolve(
 const platformModulesRoot = path.dirname(platformStub);
 
 export default defineWorkersConfig({
+  resolve: {
+    alias: [
+      // The wrangler TOML `[alias]` is an esbuild bundler feature and is
+      // ignored by vitest-pool-workers, which resolves the worker under test
+      // and the test modules through Vite. Without this, every channel runs
+      // at the published current version (1), so a sender on the previous
+      // version (`0`) passes the contract-version gate and fails
+      // authentication (401) instead of being refused (400). Exact match
+      // keeps `vendor-contracts/testkit` on the published package.
+      { find: /^vendor-contracts$/, replacement: vendorContractsNPlus1 },
+    ],
+  },
   test: {
     include: ["test/version-matrix/**"],
     fileParallelism: false,
