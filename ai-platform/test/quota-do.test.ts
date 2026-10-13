@@ -1,5 +1,6 @@
 import { env } from "cloudflare:test";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { CHANNEL_VERSIONS } from "vendor-contracts";
 import { IDEMPOTENCY_STATES } from "../src/quota-do/index";
 import quotaDoSource from "../src/quota-do/index.ts?raw";
 
@@ -257,6 +258,11 @@ function quotaStub(installationId: string) {
   return env.DO.get(id);
 }
 
+function withoutContractVersion<T>(body: T & { contract_version?: number }): T {
+  const { contract_version: _contractVersion, ...rest } = body;
+  return rest as T;
+}
+
 async function fetchRpc(
   installationId: string,
   body:
@@ -271,7 +277,10 @@ async function fetchRpc(
     return await quotaStub(installationId).fetch(RPC_URL, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(body),
+      body: JSON.stringify({
+        ...body,
+        contract_version: CHANNEL_VERSIONS.platformDo,
+      }),
     });
   } catch {
     return new Response(JSON.stringify({ error: "do_fetch_unavailable" }), {
@@ -299,7 +308,9 @@ async function callAdmissionRPC(
 
   return {
     response,
-    body: (await response.json()) as AdmissionResponse,
+    body: withoutContractVersion(
+      (await response.json()) as AdmissionResponse & { contract_version?: number },
+    ),
   };
 }
 
@@ -322,7 +333,9 @@ async function callCreditRPC(
 
   return {
     response,
-    body: (await response.json()) as CreditResponse,
+    body: withoutContractVersion(
+      (await response.json()) as CreditResponse & { contract_version?: number },
+    ),
   };
 }
 
@@ -335,7 +348,9 @@ async function callInspectRPC(
 
   return {
     response,
-    body: (await response.json()) as InspectResponse,
+    body: withoutContractVersion(
+      (await response.json()) as InspectResponse & { contract_version?: number },
+    ),
   };
 }
 
@@ -356,7 +371,9 @@ async function callReleaseRPC(
 
   return {
     response,
-    body: (await response.json()) as ReleaseResponse,
+    body: withoutContractVersion(
+      (await response.json()) as ReleaseResponse & { contract_version?: number },
+    ),
   };
 }
 
