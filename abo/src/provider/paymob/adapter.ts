@@ -131,7 +131,6 @@ async function storeIntention(
     intention_order_id: number;
     client_secret: string;
   },
-  intentionBody: { return_url: string; notify_url: string },
 ): Promise<void> {
   const canonicalRow = {
     checkout_id: checkoutId,
@@ -140,8 +139,6 @@ async function storeIntention(
     client_secret: intention.client_secret,
     special_reference: reference,
     expires_at: expiresAt,
-    return_url: intentionBody.return_url,
-    notify_url: intentionBody.notify_url,
   };
   const createdAt = await clockNowIso(env);
   await env.DB.batch([
@@ -182,15 +179,14 @@ async function createCheckoutImpl(
 
   const expiresAt = await intentionExpiresAt(env, input.expires_in_s);
 
-  const intentionBody = {
+  const intention = await createPaymobIntention(env, {
     amount_minor: input.amount_minor,
     item_name: input.item_name,
     payer: input.payer,
     reference: input.reference,
     return_url: input.return_url,
     notify_url: input.notify_url.length > 0 ? input.notify_url : notifyUrl(env),
-  };
-  const intention = await createPaymobIntention(env, intentionBody);
+  });
 
   if (!intention.ok) {
     return { ok: false };
@@ -200,7 +196,7 @@ async function createCheckoutImpl(
     id: intention.id,
     intention_order_id: intention.intention_order_id,
     client_secret: intention.client_secret,
-  }, intentionBody);
+  });
 
   return {
     ok: true,
