@@ -8,7 +8,6 @@ import { beforeEach, describe, expect, it } from "vitest";
 import successFixture from "../fixtures/paymob/success.json";
 import checkoutMigrationSql from "../../migrations/0002_checkout.sql?raw";
 import notifyWorkMigrationSql from "../../migrations/0003_notify_work.sql?raw";
-import paymobIntentionUrlsMigrationSql from "../../migrations/0010_paymob_intention_urls.sql?raw";
 import {
   applySql,
   billingFetch,
@@ -122,7 +121,6 @@ async function signPaymobObj(
 
 async function ensureCheckoutSchema(): Promise<void> {
   await applySql(checkoutMigrationSql);
-  await applySql(paymobIntentionUrlsMigrationSql);
   await applySql(notifyWorkMigrationSql);
 }
 

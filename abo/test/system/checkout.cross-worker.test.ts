@@ -24,7 +24,6 @@ import {
 } from "./cross-worker-harness";
 import { CHANNEL_VERSIONS } from "vendor-contracts";
 import checkoutMigrationSql from "../../migrations/0002_checkout.sql?raw";
-import paymobIntentionUrlsMigrationSql from "../../migrations/0010_paymob_intention_urls.sql?raw";
 
 type OffersFixtureExpectations = {
   offer_id: string;
@@ -37,11 +36,6 @@ type OffersFixtureExpectations = {
 async function ensureCheckoutMigration(): Promise<void> {
   try {
     await applySql(checkoutMigrationSql);
-  } catch {
-    // Migration not present yet.
-  }
-  try {
-    await applySql(paymobIntentionUrlsMigrationSql);
   } catch {
     // Migration not present yet.
   }

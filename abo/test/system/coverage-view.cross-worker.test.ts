@@ -5,7 +5,6 @@
 import { env } from "cloudflare:test";
 import { beforeEach, describe, expect, it } from "vitest";
 import checkoutMigrationSql from "../../migrations/0002_checkout.sql?raw";
-import paymobIntentionUrlsMigrationSql from "../../migrations/0010_paymob_intention_urls.sql?raw";
 import { applySql, runScheduled } from "./harness";
 import {
   resetCrossWorkerHarness,
@@ -16,11 +15,6 @@ import {
 async function ensureCheckoutMigration(): Promise<void> {
   try {
     await applySql(checkoutMigrationSql);
-  } catch {
-    // Migration not present yet.
-  }
-  try {
-    await applySql(paymobIntentionUrlsMigrationSql);
   } catch {
     // Migration not present yet.
   }

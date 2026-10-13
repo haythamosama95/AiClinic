@@ -10,7 +10,6 @@ import refundChildFixture from "../fixtures/paymob/refund-child.json";
 import refundParentFixture from "../fixtures/paymob/refund-parent.json";
 import successFixture from "../fixtures/paymob/success.json";
 import checkoutMigrationSql from "../../migrations/0002_checkout.sql?raw";
-import paymobIntentionUrlsMigrationSql from "../../migrations/0010_paymob_intention_urls.sql?raw";
 import notifyWorkMigrationSql from "../../migrations/0003_notify_work.sql?raw";
 import {
   applySql,
@@ -155,11 +154,6 @@ async function postPaymobProcessedCallback(
 async function ensureCheckoutMigration(): Promise<void> {
   try {
     await applySql(checkoutMigrationSql);
-  } catch {
-    // Migration not present yet.
-  }
-  try {
-    await applySql(paymobIntentionUrlsMigrationSql);
   } catch {
     // Migration not present yet.
   }

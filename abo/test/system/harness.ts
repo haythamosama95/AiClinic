@@ -13,7 +13,6 @@ import operatorActionMigrationSql from "../../migrations/0006_operator_action.sq
 import hpActionsMigrationSql from "../../migrations/0007_hp_actions.sql?raw";
 import reconciliationMigrationSql from "../../migrations/0008_reconciliation.sql?raw";
 import digestWatchMigrationSql from "../../migrations/0009_digest_watch.sql?raw";
-import paymobIntentionUrlsMigrationSql from "../../migrations/0010_paymob_intention_urls.sql?raw";
 
 const ABO_MIGRATION_SQL: string[] = [
   recordsMigrationSql,
@@ -25,7 +24,6 @@ const ABO_MIGRATION_SQL: string[] = [
   hpActionsMigrationSql,
   reconciliationMigrationSql,
   digestWatchMigrationSql,
-  paymobIntentionUrlsMigrationSql,
 ];
 
 function base64UrlEncode(bytes: Uint8Array): string {
@@ -167,7 +165,7 @@ export async function applySql(sql: string): Promise<void> {
       await env.DB.prepare(statement).run();
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
-      if (!/already exists|duplicate column/i.test(message)) {
+      if (!/already exists/i.test(message)) {
         throw error;
       }
     }
