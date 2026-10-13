@@ -40,6 +40,12 @@ export default defineWorkersConfig({
           },
           bindings: {
             DURATION_SCALE: "staging",
+            // Test-mode DO alarm gate: never physically arm GatewayObject
+            // wall-clock alarms (see configureDoAlarmGate in src/worker.ts) —
+            // an alarm firing across an isolated-storage frame swap crashes
+            // workerd's alarm scheduler (SQLITE_IOERR). Test-only binding;
+            // wrangler.toml must never set it.
+            DISABLE_DO_ALARMS: "1",
             // TTL 0: no cross-request caching. Same-request preload still
             // serves consult (`now > expiresAt`) and the worker passes the
             // preloaded policy row through so routing never re-consults.

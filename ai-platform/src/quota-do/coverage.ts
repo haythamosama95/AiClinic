@@ -1002,6 +1002,30 @@ export function updateHot(
   }
 }
 
+// Test-mode alarm gate. vitest-pool-workers swaps the DO's isolated-storage
+// SQLite frame between tests; a wall-clock alarm armed mid-test by the write
+// path (insertOutbox callers, admission flows, the ship drain) can fire while
+// workerd is swapping the frame, crashing the alarm scheduler with
+// SQLITE_IOERR and aborting suites with "Isolated storage failed". Under the
+// gate the hot-row `next_alarm_at` bookkeeping still records the intended
+// schedule (callers write it before syncing), but the physical `setAlarm` is
+// suppressed; `deleteAlarm` (disarm paths) is never suppressed. Configured
+// once at worker-module load via the runtime env — this module cannot read
+// `cloudflare:workers` env directly because plain-Node unit tests import it.
+let doAlarmGateActive = false;
+
+/**
+ * Enable/disable the test-mode DO alarm gate. Test tooling / worker init
+ * only: production never binds `DISABLE_DO_ALARMS`, so deployed environments
+ * (including staging, whose compressed terms RELY on DO alarms for term
+ * rollover) always arm alarms.
+ */
+export function configureDoAlarmGate(runtimeEnv: {
+  DISABLE_DO_ALARMS?: string;
+}): void {
+  doAlarmGateActive = runtimeEnv.DISABLE_DO_ALARMS === "1";
+}
+
 async function syncAlarm(
   state: DurableObjectState,
   _storage: DurableObjectStorage,
@@ -1013,6 +1037,12 @@ async function syncAlarm(
   }
   if (nextAlarmAt === null) {
     await state.storage.deleteAlarm();
+    return;
+  }
+  if (doAlarmGateActive) {
+    // Test gate active: never physically arm a wall-clock alarm. The
+    // `next_alarm_at` hot-row bookkeeping above is already updated by the
+    // caller, so app-level logic is unchanged; only `setAlarm` is suppressed.
     return;
   }
   const targetMs = Date.parse(nextAlarmAt);

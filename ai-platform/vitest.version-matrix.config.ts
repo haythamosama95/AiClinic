@@ -57,6 +57,12 @@ export default defineWorkersConfig({
           bindings: {
             TEST_CLOCK: "1",
             DURATION_SCALE: "staging",
+            // Test-mode DO alarm gate: never physically arm GatewayObject
+            // wall-clock alarms (see configureDoAlarmGate in src/worker.ts) —
+            // an alarm firing across an isolated-storage frame swap crashes
+            // workerd's alarm scheduler (SQLITE_IOERR). Test-only binding;
+            // wrangler.toml must never set it.
+            DISABLE_DO_ALARMS: "1",
             ACCESS_TEAM_DOMAIN: "access.test",
             ACCESS_AUD: "vendor-access-aud",
             WEBAUTHN_RP_ID: "ops.vendor.test",

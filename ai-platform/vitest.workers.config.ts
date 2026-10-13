@@ -64,6 +64,13 @@ export default defineWorkersConfig({
           },
           bindings: {
             TEST_CLOCK: "1",
+            // Test-mode DO alarm gate: never physically arm GatewayObject
+            // wall-clock alarms (see configureDoAlarmGate in src/worker.ts) —
+            // an alarm firing across an isolated-storage frame swap crashes
+            // workerd's alarm scheduler (SQLITE_IOERR). Test-only binding;
+            // wrangler.toml must never set it. This config deliberately does
+            // not set DURATION_SCALE, so the gate needs the explicit flag.
+            DISABLE_DO_ALARMS: "1",
             // DURATION_SCALE is intentionally NOT set here: the default is the
             // unscaled (live) calendar. Staging-compression suites opt in
             // per-test via withDurationScale("staging"), which mutates the

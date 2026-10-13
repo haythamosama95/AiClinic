@@ -124,7 +124,10 @@ import {
   type ReadCoverageRequest,
   type ReleaseRequest,
 } from "./quota-do/index";
-import { mirrorTermViewFromSnapshot } from "./quota-do/coverage";
+import {
+  configureDoAlarmGate,
+  mirrorTermViewFromSnapshot,
+} from "./quota-do/coverage";
 import { clockNowIso } from "./clock";
 import {
   createChunkSourceFromInvocationEvents,
@@ -163,6 +166,10 @@ interface Env extends AlertEnv {
   TEST_CLOCK?: string;
   PLATFORM_SIGNING_KEY: string;
   DURATION_SCALE?: string;
+  // Test-config-only binding: vitest isolated-storage frames must never
+  // carry an armed wall-clock DO alarm (see configureDoAlarmGate). Never
+  // bound in wrangler.toml — production must always arm alarms.
+  DISABLE_DO_ALARMS?: string;
   RATE_LIMITER_INSTALLATION: RateLimit;
   RATE_LIMITER_INSTALLATION_ACTOR: RateLimit;
   RATE_LIMITER_INSTALLATION_CAPABILITY: RateLimit;
@@ -187,6 +194,11 @@ function assertRequiredBindings(runtimeEnv: Env): void {
 }
 
 assertRequiredBindings(env as Env);
+// Test-mode DO alarm gate: when the test configs bind DISABLE_DO_ALARMS,
+// coverage syncAlarm never physically arms a DO alarm, so no wall-clock
+// alarm can fire while vitest-pool-workers swaps isolated-storage SQLite
+// frames. No-op in production deployments (binding never in wrangler.toml).
+configureDoAlarmGate(env as Env);
 configureIsolateConfigCache(
   resolveConfigCacheTtlMs((env as Env).CONFIG_CACHE_TTL_MS),
 );
