@@ -10,7 +10,7 @@ from pathlib import Path
 SCRIPT_DIR = Path(__file__).resolve().parent
 sys.path.insert(0, str(SCRIPT_DIR))
 
-from harness.github_campaign_report import report_area_to_github  # noqa: E402
+from harness.github_campaign_report import report_area_exit_code, report_area_to_github  # noqa: E402
 from harness.governor_run_manifest import resolve_governor_run_dir  # noqa: E402
 
 
@@ -49,13 +49,13 @@ def main(argv: list[str] | None = None) -> int:
         print(run_root)
         return 0
 
-    failures = report_area_to_github(
+    report_area_to_github(
         run_root,
         args.area,
         github_summary=args.github_summary,
         annotations=not args.no_annotations,
     )
-    return 1 if failures else 0
+    return report_area_exit_code(run_root, args.area)
 
 
 if __name__ == "__main__":

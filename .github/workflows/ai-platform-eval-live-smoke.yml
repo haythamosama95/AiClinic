@@ -5,6 +5,9 @@ on:
     - cron: "0 6 * * 1"
   workflow_dispatch:
 
+permissions:
+  contents: read
+
 jobs:
   live-smoke:
     runs-on: ubuntu-latest
@@ -25,19 +28,54 @@ jobs:
           cache-dependency-path: ai-platform/package-lock.json
 
       - name: Install dependencies
-        run: npm ci
+        run: |
+          echo "::group::Install AI platform dependencies"
+          npm ci
+          echo "Node: $(node --version)"
+          echo "npm: $(npm --version)"
+          echo "::endgroup::"
 
       - name: Run live-smoke eval entry
+        id: eval
         env:
           DEEPSEEK_API_KEY: ${{ secrets.DEEPSEEK_API_KEY }}
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
-        run: npx vitest run test/eval/live-smoke.test.ts
+        run: |
+          started_at="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+          started_epoch="$(date +%s)"
+          echo "started_at=${started_at}" >> "$GITHUB_OUTPUT"
+          echo "::group::AI platform live smoke evaluation"
+          echo "Commit: ${GITHUB_SHA}"
+          echo "Run: ${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
+          npx vitest run test/eval/live-smoke.test.ts --reporter=verbose
+          echo "elapsed_seconds=$(( $(date +%s) - started_epoch ))" >> "$GITHUB_OUTPUT"
+          echo "::endgroup::"
+
+      - name: Write evaluation summary
+        if: always()
+        env:
+          EVAL_STARTED_AT: ${{ steps.eval.outputs.started_at }}
+          EVAL_ELAPSED_SECONDS: ${{ steps.eval.outputs.elapsed_seconds }}
+          EVAL_OUTCOME: ${{ steps.eval.outcome }}
+        run: |
+          {
+            echo "## AI platform live smoke evaluation"
+            echo
+            echo "- Result: **${EVAL_OUTCOME}**"
+            echo "- Trigger: \`${GITHUB_EVENT_NAME}\`"
+            echo "- Branch/ref: \`${GITHUB_REF_NAME}\`"
+            echo "- Commit: [\`${GITHUB_SHA:0:7}\`](${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/commit/${GITHUB_SHA})"
+            echo "- Workflow run: [#${GITHUB_RUN_NUMBER}](${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID})"
+            echo "- Started (UTC): \`${EVAL_STARTED_AT:-not recorded}\`"
+            echo "- Evaluation wall time: \`${EVAL_ELAPSED_SECONDS:-not recorded}s\`"
+            echo
+          } >> "$GITHUB_STEP_SUMMARY"
 
       - name: Upload score report artifacts
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: ai-platform-eval-score-reports
+          name: ai-platform-eval-score-reports-${{ github.run_id }}
           path: ai-platform/test/eval/reports/*.json
           if-no-files-found: warn
           retention-days: 14

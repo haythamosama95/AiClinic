@@ -15,6 +15,7 @@ from harness.governor_run_stats import (
     campaigns_for_run_stats,
     resolve_campaign_stats,
 )
+from harness.governor_run_stats_display import format_elapsed
 
 _ANNOTATION_ESCAPE = re.compile(r"[\r\n%]")
 
@@ -84,12 +85,27 @@ def failed_tests_for_subcampaign(
 
 def collect_area_failures(run_root: Path, area: str) -> list[FailedTest]:
     run_root = run_root.resolve()
-    picked = [(a, s) for a, s in campaigns_for_run_stats(run_root) if a == area]
+    picked = (
+        [(a, s) for a, s in campaigns_for_run_stats(run_root) if a == area]
+        if run_root.is_dir()
+        else []
+    )
     failures: list[FailedTest] = []
     for sub_area, sub_id in picked:
         resolve_campaign_stats(run_root, sub_area, sub_id, refresh=True)
         failures.extend(failed_tests_for_subcampaign(run_root, sub_area, sub_id))
     return failures
+
+
+def area_has_incomplete_or_failed_campaigns(run_root: Path, area: str) -> bool:
+    picked = [(a, s) for a, s in campaigns_for_run_stats(run_root) if a == area]
+    if not picked:
+        return True
+    for sub_area, sub_id in picked:
+        row = resolve_campaign_stats(run_root, sub_area, sub_id, refresh=True)
+        if row.get("exit_code") != 0:
+            return True
+    return False
 
 
 def _escape_annotation(value: str) -> str:
@@ -101,14 +117,57 @@ def format_markdown_report(
     area: str,
     failures: list[FailedTest],
 ) -> str:
+    picked = (
+        [(a, s) for a, s in campaigns_for_run_stats(run_root) if a == area]
+        if run_root.is_dir()
+        else []
+    )
+    stats_rows = [
+        resolve_campaign_stats(run_root, sub_area, sub_id, refresh=True)
+        for sub_area, sub_id in picked
+    ]
     lines = [
         f"## Campaign `{area}`",
         "",
         f"Governor run: `{run_root.name}`",
         "",
     ]
+    if stats_rows:
+        lines.extend([
+            "| Subcampaign | Result | Passed | Failed | Progress | Duration |",
+            "| --- | --- | ---: | ---: | ---: | ---: |",
+        ])
+        for row in stats_rows:
+            code = row.get("exit_code")
+            result = "✅ Passed" if code == 0 else ("❌ Failed" if code is not None else "⏳ Incomplete")
+            attempted = int(row.get("attempted") or 0)
+            total = row.get("total")
+            progress = f"{attempted}/{total}" if isinstance(total, int) else f"{attempted}/—"
+            duration = format_elapsed(row.get("elapsed_seconds"))
+            lines.append(
+                f"| `{row.get('subcampaign', '')}` | {result} | {row.get('passed', 0)} | "
+                f"{row.get('failed', 0)} | {progress} | {duration} |"
+            )
+        total_passed = sum(int(row.get("passed") or 0) for row in stats_rows)
+        total_failed = sum(int(row.get("failed") or 0) for row in stats_rows)
+        total_attempted = sum(int(row.get("attempted") or 0) for row in stats_rows)
+        durations = [row.get("elapsed_seconds") for row in stats_rows if isinstance(row.get("elapsed_seconds"), (int, float))]
+        lines.extend([
+            "",
+            f"**Totals:** {total_passed} passed, {total_failed} failed, "
+            f"{total_attempted} attempted across {len(stats_rows)} subcampaign(s); "
+            f"recorded test time {format_elapsed(sum(durations) if durations else None)}.",
+            "",
+        ])
     if not failures:
-        lines.append("All recorded test cases passed.")
+        failed_campaigns = [row for row in stats_rows if row.get("exit_code") not in (None, 0)]
+        incomplete = [row for row in stats_rows if row.get("exit_code") is None]
+        if failed_campaigns:
+            lines.append(f"{len(failed_campaigns)} subcampaign(s) failed without recorded failing test cases.")
+        elif incomplete:
+            lines.append(f"{len(incomplete)} subcampaign(s) did not record a final exit status.")
+        else:
+            lines.append("All recorded test cases passed.")
         return "\n".join(lines) + "\n"
 
     lines.append(f"**{len(failures)} failed test case(s):**")
@@ -164,3 +223,9 @@ def report_area_to_github(
     if github_summary:
         write_github_step_summary(markdown)
     return failures
+
+
+def report_area_exit_code(run_root: Path | str, area: str) -> int:
+    """Return failure when any selected campaign failed or did not finish."""
+    root = resolve_governor_run_dir(run_root)
+    return 1 if area_has_incomplete_or_failed_campaigns(root, area) else 0

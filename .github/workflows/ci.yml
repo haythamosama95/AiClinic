@@ -14,6 +14,7 @@ jobs:
     timeout-minutes: ${{ matrix.timeout_minutes }}
     env:
       CI: "true"
+      CAMPAIGN_AREA: ${{ matrix.area }}
     strategy:
       fail-fast: false
       matrix:
@@ -81,17 +82,30 @@ jobs:
         run: sudo apt-get update && sudo apt-get install -y postgresql-client
 
       - name: Set up campaign area
-        run: bash .github/scripts/setup-campaign-area.sh ${{ matrix.area }}
+        run: |
+          echo "::group::Prepare campaign environment — ${CAMPAIGN_AREA}"
+          bash .github/scripts/setup-campaign-area.sh "${CAMPAIGN_AREA}"
+          echo "::endgroup::"
 
       - name: Run full root campaign
         id: campaign
         run: |
+          started_at="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+          started_epoch="$(date +%s)"
+          echo "::group::Run campaign — ${CAMPAIGN_AREA}"
+          echo "Area: ${CAMPAIGN_AREA}"
+          echo "Commit: ${GITHUB_SHA}"
+          echo "Run: ${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
           set +e
-          python3 test/run_campaigns.py --full-area ${{ matrix.area }}
+          python3 test/run_campaigns.py --full-area "${CAMPAIGN_AREA}"
           exit_code=$?
           set -e
-          run_dir="$(python3 test/report_campaign_ci.py --area ${{ matrix.area }} --run latest --print-run-dir 2>/dev/null || true)"
+          elapsed_seconds=$(( $(date +%s) - started_epoch ))
+          echo "::endgroup::"
+          run_dir="$(python3 test/report_campaign_ci.py --area "${CAMPAIGN_AREA}" --run latest --print-run-dir 2>/dev/null || true)"
           echo "exit_code=${exit_code}" >> "$GITHUB_OUTPUT"
+          echo "started_at=${started_at}" >> "$GITHUB_OUTPUT"
+          echo "elapsed_seconds=${elapsed_seconds}" >> "$GITHUB_OUTPUT"
           if [[ -n "${run_dir}" ]]; then
             echo "run_dir=${run_dir}" >> "$GITHUB_OUTPUT"
           fi
@@ -101,20 +115,46 @@ jobs:
         if: always()
         env:
           GOVERNOR_RUN: ${{ steps.campaign.outputs.run_dir }}
+          CAMPAIGN_EXIT_CODE: ${{ steps.campaign.outputs.exit_code }}
+          CAMPAIGN_STARTED_AT: ${{ steps.campaign.outputs.started_at }}
+          CAMPAIGN_ELAPSED_SECONDS: ${{ steps.campaign.outputs.elapsed_seconds }}
         run: |
           run_ref="${GOVERNOR_RUN:-latest}"
+          echo "::group::Campaign report — ${CAMPAIGN_AREA}"
+          {
+            echo "## CI campaign: \`${CAMPAIGN_AREA}\`"
+            echo
+            echo "- Commit: [\`${GITHUB_SHA:0:7}\`](${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/commit/${GITHUB_SHA})"
+            echo "- Branch/ref: \`${GITHUB_REF_NAME}\`"
+            echo "- Workflow run: [#${GITHUB_RUN_NUMBER}](${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID})"
+            echo "- Campaign command exit code: \`${CAMPAIGN_EXIT_CODE:-not recorded}\`"
+            echo "- Started (UTC): \`${CAMPAIGN_STARTED_AT:-not recorded}\`"
+            echo "- Campaign wall time: \`${CAMPAIGN_ELAPSED_SECONDS:-not recorded}s\`"
+            echo
+          } >> "$GITHUB_STEP_SUMMARY"
+          set +e
           python3 test/report_campaign_ci.py \
-            --area ${{ matrix.area }} \
+            --area "${CAMPAIGN_AREA}" \
             --run "${run_ref}" \
-            --github-summary || true
+            --github-summary
+          report_code=$?
+          set -e
+          echo "::endgroup::"
+          if [[ "${CAMPAIGN_EXIT_CODE:-1}" != "0" || "${report_code}" != "0" ]]; then
+            exit 1
+          fi
+
+      - name: Explain missing campaign artifacts
+        if: always() && steps.campaign.outputs.run_dir == ''
+        run: echo "No governor run directory was created; there are no campaign logs to upload."
 
       - name: Upload campaign artifacts
-        if: always() && steps.campaign.outputs.run_dir != ''
+        if: always()
         uses: actions/upload-artifact@v4
         with:
           name: campaign-${{ matrix.area }}-${{ github.run_id }}
           path: |
-            ${{ steps.campaign.outputs.run_dir }}/
+            test-results/governor/
             test-results/${{ matrix.area }}/
           if-no-files-found: ignore
           retention-days: 14
