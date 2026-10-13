@@ -296,6 +296,26 @@ describe("E2E-P7.3-01", () => {
       ...baseClaims(),
       role: "administrator",
     });
+    // resetHarnessState() clears billing_contact, so the checkout POST would
+    // otherwise be refused with 409 billing_contact_required.
+    const contact = await billingFetch("/v1/billing-contact", {
+      method: "PUT",
+      headers: {
+        authorization: `Bearer ${billingToken}`,
+        "content-type": "application/json",
+        "Abo-Contract-Version": String(RECEIVER_CURRENT),
+      },
+      body: JSON.stringify({
+        client_request_id: "req-version-matrix-billing-contact",
+        name: "Clinic Admin",
+        email: "admin@clinic.test",
+        phone: "+201001234567",
+      }),
+    });
+    expect(contact.status).toBe(200);
+    const contactBody = (await contact.json()) as Record<string, unknown>;
+    expect(contactBody.version).toBe(1);
+    expect(contactBody.contract_version).toBe(RECEIVER_CURRENT);
     const checkout = await billingFetch("/v1/checkouts", {
       method: "POST",
       headers: {
