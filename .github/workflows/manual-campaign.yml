@@ -1,0 +1,107 @@
+name: Manual campaign
+
+# Jenkins-style parameterized trigger: pick an area (and optionally a single
+# subcampaign) and run it on any branch via the Actions tab or:
+#   gh workflow run manual-campaign.yml --ref <branch> -f area=abo -f subcampaign=cross-worker
+on:
+  workflow_dispatch:
+    inputs:
+      area:
+        description: "Test area to run"
+        type: choice
+        required: true
+        default: abo
+        options:
+          - frontend
+          - backend
+          - ai-platform
+          - abo
+          - e2e-fullstack
+          - vendor-contracts
+          - ops-launch
+      subcampaign:
+        description: >
+          Optional subcampaign name (see python3 test/run_campaigns.py --list).
+          Leave empty to run the whole area. Example: cross-worker
+        required: false
+        default: ""
+
+permissions:
+  contents: read
+
+jobs:
+  campaign:
+    name: manual-${{ inputs.area }}${{ inputs.subcampaign != '' && format('-{0}', inputs.subcampaign) || '' }}
+    runs-on: ubuntu-latest
+    # Generous ceiling; most targeted runs finish in minutes.
+    timeout-minutes: 90
+    env:
+      CI: "true"
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Set up Flutter
+        if: inputs.area == 'frontend'
+        uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+
+      - name: Install Supabase CLI
+        if: contains(fromJSON('["frontend", "backend", "e2e-fullstack"]'), inputs.area)
+        uses: supabase/setup-cli@v1
+        with:
+          version: latest
+
+      - name: Install PostgreSQL client
+        if: contains(fromJSON('["backend", "e2e-fullstack"]'), inputs.area)
+        run: sudo apt-get update && sudo apt-get install -y postgresql-client
+
+      - name: Set up campaign area
+        run: bash .github/scripts/setup-campaign-area.sh ${{ inputs.area }}
+
+      - name: Run campaign
+        id: campaign
+        run: |
+          set +e
+          if [[ -n "${{ inputs.subcampaign }}" ]]; then
+            python3 test/run_campaigns.py ${{ inputs.area }} ${{ inputs.subcampaign }}
+          else
+            python3 test/run_campaigns.py --full-area ${{ inputs.area }}
+          fi
+          exit_code=$?
+          set -e
+          run_dir="$(python3 test/report_campaign_ci.py --area ${{ inputs.area }} --run latest --print-run-dir 2>/dev/null || true)"
+          echo "exit_code=${exit_code}" >> "$GITHUB_OUTPUT"
+          if [[ -n "${run_dir}" ]]; then
+            echo "run_dir=${run_dir}" >> "$GITHUB_OUTPUT"
+          fi
+          exit "${exit_code}"
+
+      - name: Report failed test cases
+        if: always()
+        env:
+          GOVERNOR_RUN: ${{ steps.campaign.outputs.run_dir }}
+        run: |
+          run_ref="${GOVERNOR_RUN:-latest}"
+          python3 test/report_campaign_ci.py \
+            --area ${{ inputs.area }} \
+            --run "${run_ref}" \
+            --github-summary || true
+
+      - name: Upload campaign artifacts
+        if: always() && steps.campaign.outputs.run_dir != ''
+        uses: actions/upload-artifact@v4
+        with:
+          name: manual-${{ inputs.area }}-${{ inputs.subcampaign || 'full' }}-${{ github.run_id }}
+          path: |
+            ${{ steps.campaign.outputs.run_dir }}/
+            test-results/${{ inputs.area }}/
+          if-no-files-found: ignore
+          retention-days: 14
