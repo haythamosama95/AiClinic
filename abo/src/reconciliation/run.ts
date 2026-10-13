@@ -9,8 +9,8 @@ import {
 import { raiseAlert, type AlertEnv } from "../alert/index.js";
 import { clockNowIso, clockNowMs, type ClockEnv } from "../clock.js";
 import { insertFactLog } from "../records/append.js";
-import type { PaymobAdapterEnv } from "../provider/paymob/adapter.js";
-import { parseStoredPaymobNotification } from "../provider/paymob/adapter.js";
+import type { PaymobAdapterEnv } from "../provider/paymob/shared.js";
+import { parseStoredPaymobNotification } from "../provider/paymob/shared.js";
 
 const FIFTEEN_MINUTES_MS = 15 * 60 * 1000;
 const ONE_DAY_MS = 24 * 60 * 60 * 1000;

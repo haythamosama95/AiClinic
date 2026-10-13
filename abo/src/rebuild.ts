@@ -8,7 +8,7 @@ import {
 } from "vendor-contracts";
 import { refreshCoverageView } from "./coverage/view.js";
 import { clockNowIso, clockNowMs, type ClockEnv } from "./clock.js";
-import type { PaymobAdapterEnv } from "./provider/paymob/adapter.js";
+import type { PaymobAdapterEnv } from "./provider/paymob/shared.js";
 import { PAYMOB_PROVIDER_ID, providerForId } from "./provider/registry.js";
 import type { ProviderTxn } from "./provider/port.js";
 import { insertFactLog } from "./records/append.js";

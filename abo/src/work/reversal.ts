@@ -13,7 +13,7 @@ import { raiseAlert, type AlertEnv } from "../alert/index.js";
 import { clockNowIso, clockNowMs, type ClockEnv } from "../clock.js";
 import { insertFactLog } from "../records/append.js";
 import { PAYMOB_PROVIDER_ID, providerForId } from "../provider/registry.js";
-import type { PaymobAdapterEnv } from "../provider/paymob/adapter.js";
+import type { PaymobAdapterEnv } from "../provider/paymob/shared.js";
 import type { ProviderTxn } from "../provider/port.js";
 
 const LEASE_MS = 60_000;

@@ -2,9 +2,10 @@ import { sha256Hex, ulid } from "vendor-contracts";
 import { clockNowIso, clockNowMs, type ClockEnv } from "../clock.js";
 import { raiseAlert } from "../alert/index.js";
 import { PAYMOB_PROVIDER_ID, providerForId } from "../provider/registry.js";
-import type { PaymobAdapterEnv } from "../provider/paymob/adapter.js";
+import type { PaymobAdapterEnv } from "../provider/paymob/shared.js";
+import { CHANNEL_VERSIONS } from "vendor-contracts";
 
-const NOTIFY_ADAPTER_VERSION = 1;
+const NOTIFY_ADAPTER_VERSION = CHANNEL_VERSIONS.paymobAdapter;
 import type { ProviderNotificationRequest } from "../provider/port.js";
 import { runMinuteInquiryBudget } from "../work/inquiry-budget.js";
 import { recordReversalFromProviderTxn } from "../work/reversal.js";

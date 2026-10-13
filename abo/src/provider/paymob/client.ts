@@ -1,15 +1,8 @@
+import type { PaymobClientEnv } from "./shared.js";
+
 const INTENTION_EXPIRATION_S = 1800;
 const PROVIDER_HTTP_ABORT_MS = 10_000;
 const TEST_CLOCK_PROVIDER_HTTP_ABORT_MS = 500;
-
-export type PaymobClientEnv = {
-  PAYMOB_BASE_URL: string;
-  PAYMOB_SECRET_KEY: string;
-  PAYMOB_API_KEY?: string;
-  PAYMOB_CARD_INTEGRATION_ID: string;
-  TEST_CLOCK?: string;
-  PAYMOB_STUB?: Fetcher;
-};
 
 export type PaymobPayer = {
   name: string;

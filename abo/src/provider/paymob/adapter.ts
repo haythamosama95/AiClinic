@@ -15,7 +15,7 @@ import type {
   ProviderTxn,
   ProviderTxnKind,
 } from "../port.js";
-import { clockNowIso, clockNowMs, type ClockEnv } from "../../clock.js";
+import { clockNowIso, clockNowMs } from "../../clock.js";
 import { insertFactLog } from "../../records/append.js";
 import { PAYMOB_PROVIDER_ID } from "../registry.js";
 import {
@@ -24,19 +24,11 @@ import {
   getPaymobAcceptanceTransaction,
   postPaymobOrderTransactionInquiry,
   type PaymobAcceptanceTransaction,
-  type PaymobClientEnv,
 } from "./client.js";
+import type { PaymobAdapterEnv } from "./shared.js";
 
-export const PAYMOB_ADAPTER_VERSION = 1;
-
-export type PaymobAdapterEnv = PaymobClientEnv &
-  ClockEnv & {
-    DB: D1Database;
-    R2: R2Bucket;
-    BILLING_HOST: string;
-    PAYMOB_PUBLIC_KEY: string;
-    PAYMOB_HMAC_SECRET: string;
-  };
+export { PAYMOB_ADAPTER_VERSION } from "./shared.js";
+export type { PaymobAdapterEnv } from "./shared.js";
 
 const PAYMOB_HMAC_FIELDS = [
   "amount_cents",
