@@ -5,6 +5,7 @@ on:
     branches: [main, master, "001-*", "feature/*", "ai/**"]
   pull_request:
     branches: [main, master, ai/master]
+  workflow_dispatch:
 
 jobs:
   test-campaign:
