@@ -1026,6 +1026,19 @@ export function configureDoAlarmGate(runtimeEnv: {
   doAlarmGateActive = runtimeEnv.DISABLE_DO_ALARMS === "1";
 }
 
+/**
+ * Probe for the test-mode DO alarm gate (see {@link configureDoAlarmGate}).
+ * The GatewayObject fetch dispatch consults this to decide whether to drain
+ * the coverage outbox inline after a mutating RPC — under the gate the
+ * suppressed wall-clock alarm would otherwise be the only drain path, so
+ * `coverage_mirror` / `coverage_event` / `grant_ledger` / `usage_event` rows
+ * would never reach D1 inside a test's isolated-storage frame. Inactive in
+ * every deployed environment, so callers no-op in production.
+ */
+export function isDoAlarmGateActive(): boolean {
+  return doAlarmGateActive;
+}
+
 async function syncAlarm(
   state: DurableObjectState,
   _storage: DurableObjectStorage,

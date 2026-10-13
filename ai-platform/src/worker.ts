@@ -126,6 +126,7 @@ import {
 } from "./quota-do/index";
 import {
   configureDoAlarmGate,
+  isDoAlarmGateActive,
   mirrorTermViewFromSnapshot,
 } from "./quota-do/coverage";
 import { clockNowIso } from "./clock";
@@ -1756,6 +1757,7 @@ export class GatewayObject extends DurableObject {
           this.ctx.storage,
           admissionNowIso,
         );
+        await this.shipOutboxInlineForTestGate();
         return Response.json({ ...result, contract_version: contractVersion });
       }
       if (kind === "settleFallback") {
@@ -1786,6 +1788,7 @@ export class GatewayObject extends DurableObject {
           now,
           quotaLog,
         );
+        await this.shipOutboxInlineForTestGate();
         return Response.json({ ...result, contract_version: contractVersion });
       }
       if (kind === "release") {
@@ -1818,6 +1821,7 @@ export class GatewayObject extends DurableObject {
           },
           quotaLog,
         );
+        await this.shipOutboxInlineForTestGate();
         return Response.json({ ...result, contract_version: contractVersion });
       }
       if (kind === "read_coverage") {
@@ -1835,6 +1839,7 @@ export class GatewayObject extends DurableObject {
           (fn) => this.ctx.blockConcurrencyWhile(fn),
           body as Parameters<typeof suspendResumeRPC>[3],
         );
+        await this.shipOutboxInlineForTestGate();
         return Response.json({ ...result, contract_version: contractVersion });
       }
       if (kind === "inspect_coverage") {
@@ -1853,6 +1858,7 @@ export class GatewayObject extends DurableObject {
           body as Parameters<typeof voidForReversalRPC>[3],
           quotaLog,
         );
+        await this.shipOutboxInlineForTestGate();
         return Response.json({ ...result, contract_version: contractVersion });
       }
       if (kind === "release_held") {
@@ -1863,6 +1869,7 @@ export class GatewayObject extends DurableObject {
           body as Parameters<typeof releaseHeldRPC>[3],
           quotaLog,
         );
+        await this.shipOutboxInlineForTestGate();
         return Response.json({ ...result, contract_version: contractVersion });
       }
       if (kind === "void_grant") {
@@ -1873,6 +1880,7 @@ export class GatewayObject extends DurableObject {
           body as Parameters<typeof voidGrantRPC>[3],
           quotaLog,
         );
+        await this.shipOutboxInlineForTestGate();
         return Response.json({ ...result, contract_version: contractVersion });
       }
       if (kind === "open_awaiting_transfer") {
@@ -1890,6 +1898,7 @@ export class GatewayObject extends DurableObject {
           (fn) => this.ctx.blockConcurrencyWhile(fn),
           body as Parameters<typeof transferOutRPC>[3],
         );
+        await this.shipOutboxInlineForTestGate();
         return Response.json({ ...result, contract_version: contractVersion });
       }
       if (kind === "transfer_in") {
@@ -1899,6 +1908,7 @@ export class GatewayObject extends DurableObject {
           (fn) => this.ctx.blockConcurrencyWhile(fn),
           body as Parameters<typeof transferInRPC>[3],
         );
+        await this.shipOutboxInlineForTestGate();
         return Response.json({ ...result, contract_version: contractVersion });
       }
       if (kind === "set_transfer_pending") {
@@ -1975,6 +1985,48 @@ export class GatewayObject extends DurableObject {
     }
     log.error("gateway_object_unknown_kind", { kind: kind ?? "unknown" });
     return Response.json({ error: "unknown_kind" }, { status: 400 });
+  }
+
+  /**
+   * Test-mode inline coverage-outbox drain. With the alarm gate active
+   * (`DISABLE_DO_ALARMS=1`, vitest configs only) the wall-clock DO alarm that
+   * normally ships `outbox` rows to D1/R2 never arms, so rows inserted by a
+   * mutating RPC would stay in DO storage and roll back with the test's
+   * isolated-storage frame — `coverage_mirror` / `coverage_event` /
+   * `grant_ledger` / `usage_event` never land in D1, and downstream
+   * entitlement precheck / capability resolution see stale state. Draining
+   * here — after the RPC's `blockConcurrencyWhile` has exited, inside a
+   * fresh `blockConcurrencyWhile` (identical to the `alarm()` handler path,
+   * so alarms and inline drains can never interleave inside one lock) —
+   * makes the D1 side effects land synchronously within the same RPC.
+   * Zero production impact: no-op unless the gate is active, and production
+   * never binds `DISABLE_DO_ALARMS`.
+   */
+  private async shipOutboxInlineForTestGate(): Promise<void> {
+    if (!isDoAlarmGateActive()) {
+      return;
+    }
+    const runtimeEnv = this.env as Env;
+    const makeLog = createWorkerLogFactory(runtimeEnv);
+    const log = makeLog("quota-do/index.ts");
+    const installationId =
+      typeof (this.ctx.id as { toString?: () => string }).toString === "function"
+        ? this.ctx.id.toString()
+        : "";
+    const nowIso = await clockNowIso(runtimeEnv);
+    const durationScale =
+      runtimeEnv.DURATION_SCALE === "staging" ? "staging" : undefined;
+    const shippedAlerts = await shipCoverageOutboxAlarm(
+      this.ctx,
+      this.ctx.storage,
+      (fn) => this.ctx.blockConcurrencyWhile(fn),
+      runtimeEnv as CoverageShipEnv,
+      installationId,
+      nowIso,
+      log,
+      durationScale,
+    );
+    await persistShippedCoverageAlerts(runtimeEnv, shippedAlerts);
   }
 
   async alarm(): Promise<void> {
