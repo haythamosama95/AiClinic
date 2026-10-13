@@ -7,6 +7,12 @@ preview_urls = false
 [observability]
 enabled = true
 
+# Wrangler's esbuild bundler cannot resolve "vendor-contracts" (a file: workspace
+# dependency exporting raw TS via package.json exports) during local dev/e2e bundling,
+# so alias it directly to its TS entrypoint. Vitest resolves it fine on its own.
+[alias]
+"vendor-contracts" = "../packages/vendor-contracts/src/index.ts"
+
 [dev]
 ip = "127.0.0.1"
 port = 8787
