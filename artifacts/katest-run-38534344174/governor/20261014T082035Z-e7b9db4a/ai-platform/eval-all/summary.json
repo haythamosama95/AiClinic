@@ -1,0 +1,415 @@
+{
+  "started_at": "2026-10-14T08:23:14.061738+00:00",
+  "finished_at": "2026-10-14T08:23:19.574391+00:00",
+  "elapsed_seconds": 5.513,
+  "log_dir": "/home/runner/work/AiClinic/AiClinic/test-results/governor/20261014T082035Z-e7b9db4a/ai-platform/eval-all",
+  "tests_dir": "/home/runner/work/AiClinic/AiClinic/test-results/governor/20261014T082035Z-e7b9db4a/ai-platform/eval-all/tests",
+  "summary_file": "/home/runner/work/AiClinic/AiClinic/test-results/governor/20261014T082035Z-e7b9db4a/ai-platform/eval-all/summary.json",
+  "tests": [
+    {
+      "name": "test/eval/conversation.test.ts > assistant_must_request_correct_key > requires the correct permitted key across a multi-leg negotiation",
+      "status": "PASS",
+      "skipped": false,
+      "log_file": "tests/002-test-eval-conversation-test-ts-assistant-must-re.log",
+      "started_at": "2026-10-14T08:23:14.958854+00:00",
+      "finished_at": "2026-10-14T08:23:14.958872+00:00",
+      "elapsed_seconds": 0.0,
+      "error": null
+    },
+    {
+      "name": "test/eval/conversation.test.ts > cannot_obtain_key_outside_permitted_set > fails permitted_set only when a forbidden key is obtained; out-of-set inject is dropped",
+      "status": "PASS",
+      "skipped": false,
+      "log_file": "tests/003-test-eval-conversation-test-ts-cannot-obtain-key.log",
+      "started_at": "2026-10-14T08:23:14.959513+00:00",
+      "finished_at": "2026-10-14T08:23:14.959530+00:00",
+      "elapsed_seconds": 0.0,
+      "error": null
+    },
+    {
+      "name": "test/eval/conversation.test.ts > conversation_eval_scores_recorded_per_conversation > writes a JSON score report with per-conversation criteria scores",
+      "status": "PASS",
+      "skipped": false,
+      "log_file": "tests/007-test-eval-conversation-test-ts-conversation-eval.log",
+      "started_at": "2026-10-14T08:23:14.961964+00:00",
+      "finished_at": "2026-10-14T08:23:14.961978+00:00",
+      "elapsed_seconds": 0.0,
+      "error": null
+    },
+    {
+      "name": "test/eval/conversation.test.ts > criteria_are_independent_on_budget_breach > does not mark permitted_set fail merely because round budget was exhausted",
+      "status": "PASS",
+      "skipped": false,
+      "log_file": "tests/012-test-eval-conversation-test-ts-criteria-are-inde.log",
+      "started_at": "2026-10-14T08:23:14.965708+00:00",
+      "finished_at": "2026-10-14T08:23:14.965730+00:00",
+      "elapsed_seconds": 0.0,
+      "error": null
+    },
+    {
+      "name": "test/eval/conversation.test.ts > extends_f1_harness_without_redefining_capability_evals > keeps F1 capability evals unchanged as a sibling under the same CI gate",
+      "status": "PASS",
+      "skipped": false,
+      "log_file": "tests/006-test-eval-conversation-test-ts-extends-f1-harnes.log",
+      "started_at": "2026-10-14T08:23:14.961344+00:00",
+      "finished_at": "2026-10-14T08:23:14.961358+00:00",
+      "elapsed_seconds": 0.0,
+      "error": null
+    },
+    {
+      "name": "test/eval/conversation.test.ts > negative_control_permitted_set > fails permitted_set when the assistant requests a key outside the set",
+      "status": "PASS",
+      "skipped": false,
+      "log_file": "tests/009-test-eval-conversation-test-ts-negative-control.log",
+      "started_at": "2026-10-14T08:23:14.963237+00:00",
+      "finished_at": "2026-10-14T08:23:14.963252+00:00",
+      "elapsed_seconds": 0.0,
+      "error": null
+    },
+    {
+      "name": "test/eval/conversation.test.ts > negative_control_right_keys > fails right_keys when the assistant requests the wrong permitted key",
+      "status": "PASS",
+      "skipped": false,
+      "log_file": "tests/008-test-eval-conversation-test-ts-negative-control.log",
+      "started_at": "2026-10-14T08:23:14.962632+00:00",
+      "finished_at": "2026-10-14T08:23:14.962648+00:00",
+      "elapsed_seconds": 0.0,
+      "error": null
+    },
+    {
+      "name": "test/eval/conversation.test.ts > negative_control_round_budget_exceeded > fails round_budget when consecutive context rounds exceed the declared budget",
+      "status": "PASS",
+      "skipped": false,
+      "log_file": "tests/011-test-eval-conversation-test-ts-negative-control.log",
+      "started_at": "2026-10-14T08:23:14.964677+00:00",
+      "finished_at": "2026-10-14T08:23:14.964699+00:00",
+      "elapsed_seconds": 0.0,
+      "error": null
+    },
+    {
+      "name": "test/eval/conversation.test.ts > negative_control_round_budget_non_convergence > fails round_budget when expect_convergence and the last assistant turn is not model",
+      "status": "PASS",
+      "skipped": false,
+      "log_file": "tests/010-test-eval-conversation-test-ts-negative-control.log",
+      "started_at": "2026-10-14T08:23:14.963866+00:00",
+      "finished_at": "2026-10-14T08:23:14.963881+00:00",
+      "elapsed_seconds": 0.0,
+      "error": null
+    },
+    {
+      "name": "test/eval/conversation.test.ts > scoring_is_per_conversation_not_per_turn > fails the whole conversation when a criterion fails on a later leg",
+      "status": "PASS",
+      "skipped": false,
+      "log_file": "tests/004-test-eval-conversation-test-ts-scoring-is-per-co.log",
+      "started_at": "2026-10-14T08:23:14.960148+00:00",
+      "finished_at": "2026-10-14T08:23:14.960163+00:00",
+      "elapsed_seconds": 0.0,
+      "error": null
+    },
+    {
+      "name": "test/eval/conversation.test.ts > scripted_conversation_converges_within_round_budget > scores convergence within the fixture capability declared round budget",
+      "status": "PASS",
+      "skipped": false,
+      "log_file": "tests/001-test-eval-conversation-test-ts-scripted-conversa.log",
+      "started_at": "2026-10-14T08:23:14.958031+00:00",
+      "finished_at": "2026-10-14T08:23:14.958053+00:00",
+      "elapsed_seconds": 0.0,
+      "error": null
+    },
+    {
+      "name": "test/eval/conversation.test.ts > scripted_multi_leg_against_fixtures > advances scripted legs against recorded fixtures without a provider path",
+      "status": "PASS",
+      "skipped": false,
+      "log_file": "tests/005-test-eval-conversation-test-ts-scripted-multi-le.log",
+      "started_at": "2026-10-14T08:23:14.960756+00:00",
+      "finished_at": "2026-10-14T08:23:14.960770+00:00",
+      "elapsed_seconds": 0.0,
+      "error": null
+    },
+    {
+      "name": "test/eval/golden.test.ts > T1 golden_set_passes_on_current_prompt > golden set passes on the current pinned production prompt",
+      "status": "PASS",
+      "skipped": false,
+      "log_file": "tests/013-test-eval-golden-test-ts-t1-golden-set-passes-on.log",
+      "started_at": "2026-10-14T08:23:15.166913+00:00",
+      "finished_at": "2026-10-14T08:23:15.166934+00:00",
+      "elapsed_seconds": 0.0,
+      "error": null
+    },
+    {
+      "name": "test/eval/golden.test.ts > T2 deliberately_regressed_prompt_fails > deliberately regressed prompt fails quality on the happy-path case",
+      "status": "PASS",
+      "skipped": false,
+      "log_file": "tests/014-test-eval-golden-test-ts-t2-deliberately-regress.log",
+      "started_at": "2026-10-14T08:23:15.167900+00:00",
+      "finished_at": "2026-10-14T08:23:15.167922+00:00",
+      "elapsed_seconds": 0.0,
+      "error": null
+    },
+    {
+      "name": "test/eval/golden.test.ts > T3 scores_recorded_per_run > writes a JSON score report with per-case quality and schema scores",
+      "status": "PASS",
+      "skipped": false,
+      "log_file": "tests/016-test-eval-golden-test-ts-t3-scores-recorded-per.log",
+      "started_at": "2026-10-14T08:23:15.227000+00:00",
+      "finished_at": "2026-10-14T08:23:15.227018+00:00",
+      "elapsed_seconds": 0.0,
+      "error": null
+    },
+    {
+      "name": "test/eval/golden.test.ts > T5 golden_cases_use_recorded_fixtures > golden execution binds to D5 recorded fixtures with no live egress",
+      "status": "PASS",
+      "skipped": false,
+      "log_file": "tests/017-test-eval-golden-test-ts-t5-golden-cases-use-rec.log",
+      "started_at": "2026-10-14T08:23:15.227787+00:00",
+      "finished_at": "2026-10-14T08:23:15.227805+00:00",
+      "elapsed_seconds": 0.0,
+      "error": null
+    },
+    {
+      "name": "test/eval/golden.test.ts > T6 evals_are_per_capability > runGoldenSuite capabilityIds reports only the evaluated capability",
+      "status": "PASS",
+      "skipped": false,
+      "log_file": "tests/019-test-eval-golden-test-ts-t6-evals-are-per-capabi.log",
+      "started_at": "2026-10-14T08:23:15.348124+00:00",
+      "finished_at": "2026-10-14T08:23:15.348141+00:00",
+      "elapsed_seconds": 0.0,
+      "error": null
+    },
+    {
+      "name": "test/eval/golden.test.ts > T6 evals_are_per_capability > scopes golden cases structurally per capability without a brittle singleton gate",
+      "status": "PASS",
+      "skipped": false,
+      "log_file": "tests/018-test-eval-golden-test-ts-t6-evals-are-per-capabi.log",
+      "started_at": "2026-10-14T08:23:15.346785+00:00",
+      "finished_at": "2026-10-14T08:23:15.346807+00:00",
+      "elapsed_seconds": 0.0,
+      "error": null
+    },
+    {
+      "name": "test/eval/golden.test.ts > composeWithPromptBuild_mock_isolation > current prompt build still resolves production system text after a regressed run",
+      "status": "PASS",
+      "skipped": false,
+      "log_file": "tests/020-test-eval-golden-test-ts-composewithpromptbuild.log",
+      "started_at": "2026-10-14T08:23:15.348865+00:00",
+      "finished_at": "2026-10-14T08:23:15.348881+00:00",
+      "elapsed_seconds": 0.0,
+      "error": null
+    },
+    {
+      "name": "test/eval/golden.test.ts > output_must_contain_participates_in_golden_failure > deliberately-regressed fixture response fails quality via output_must_contain",
+      "status": "PASS",
+      "skipped": false,
+      "log_file": "tests/015-test-eval-golden-test-ts-output-must-contain-par.log",
+      "started_at": "2026-10-14T08:23:15.226100+00:00",
+      "finished_at": "2026-10-14T08:23:15.226131+00:00",
+      "elapsed_seconds": 0.0,
+      "error": null
+    },
+    {
+      "name": "test/eval/live-smoke.test.ts > T4 scheduled_live_smoke_against_pinned_models > live smoke invokes adapters per pinned target and writes run_kind live_smoke report",
+      "status": "PASS",
+      "skipped": false,
+      "log_file": "tests/023-test-eval-live-smoke-test-ts-t4-scheduled-live-s.log",
+      "started_at": "2026-10-14T08:23:15.365791+00:00",
+      "finished_at": "2026-10-14T08:23:15.365811+00:00",
+      "elapsed_seconds": 0.0,
+      "error": null
+    },
+    {
+      "name": "test/eval/live-smoke.test.ts > T4 scheduled_live_smoke_against_pinned_models > live smoke quality floor requires advisory + chief-complaint needles beyond min_length 1",
+      "status": "PASS",
+      "skipped": false,
+      "log_file": "tests/024-test-eval-live-smoke-test-ts-t4-scheduled-live-s.log",
+      "started_at": "2026-10-14T08:23:15.366527+00:00",
+      "finished_at": "2026-10-14T08:23:15.366542+00:00",
+      "elapsed_seconds": 0.0,
+      "error": null
+    },
+    {
+      "name": "test/eval/live-smoke.test.ts > T4 scheduled_live_smoke_against_pinned_models > live smoke targets pinned model_id values from routing policy",
+      "status": "PASS",
+      "skipped": false,
+      "log_file": "tests/021-test-eval-live-smoke-test-ts-t4-scheduled-live-s.log",
+      "started_at": "2026-10-14T08:23:15.363517+00:00",
+      "finished_at": "2026-10-14T08:23:15.363535+00:00",
+      "elapsed_seconds": 0.0,
+      "error": null
+    },
+    {
+      "name": "test/eval/live-smoke.test.ts > T4 scheduled_live_smoke_against_pinned_models > scheduled workflow invokes live-smoke with provider secrets wired",
+      "status": "PASS",
+      "skipped": false,
+      "log_file": "tests/022-test-eval-live-smoke-test-ts-t4-scheduled-live-s.log",
+      "started_at": "2026-10-14T08:23:15.364372+00:00",
+      "finished_at": "2026-10-14T08:23:15.364389+00:00",
+      "elapsed_seconds": 0.0,
+      "error": null
+    },
+    {
+      "name": "test/eval/live-smoke.test.ts > T4 scheduled_live_smoke_against_pinned_models > skips live egress when provider credentials are absent",
+      "status": "PASS",
+      "skipped": false,
+      "log_file": "tests/025-test-eval-live-smoke-test-ts-t4-scheduled-live-s.log",
+      "started_at": "2026-10-14T08:23:15.367258+00:00",
+      "finished_at": "2026-10-14T08:23:15.367273+00:00",
+      "elapsed_seconds": 0.0,
+      "error": null
+    },
+    {
+      "name": "test/eval/prohibitions.test.ts > T7 no_prompt_text_in_flutter_client > introduces no Flutter client files carrying prompt text, provider names, or model identifiers",
+      "status": "PASS",
+      "skipped": false,
+      "log_file": "tests/026-test-eval-prohibitions-test-ts-t7-no-prompt-text.log",
+      "started_at": "2026-10-14T08:23:15.641330+00:00",
+      "finished_at": "2026-10-14T08:23:15.641359+00:00",
+      "elapsed_seconds": 0.0,
+      "error": null
+    },
+    {
+      "name": "test/eval/prohibitions.test.ts > T8 harness_holds_no_per_request_server_state > keeps eval tooling under test/eval with no src/eval module or request-path store",
+      "status": "PASS",
+      "skipped": false,
+      "log_file": "tests/027-test-eval-prohibitions-test-ts-t8-harness-holds.log",
+      "started_at": "2026-10-14T08:23:15.726884+00:00",
+      "finished_at": "2026-10-14T08:23:15.726906+00:00",
+      "elapsed_seconds": 0.0,
+      "error": null
+    },
+    {
+      "name": "test/eval/prohibitions.test.ts > harness_holds_no_per_request_server_state > conversation harness remains CI tooling with no per-request server-side state",
+      "status": "PASS",
+      "skipped": false,
+      "log_file": "tests/029-test-eval-prohibitions-test-ts-harness-holds-no.log",
+      "started_at": "2026-10-14T08:23:15.728576+00:00",
+      "finished_at": "2026-10-14T08:23:15.728592+00:00",
+      "elapsed_seconds": 0.0,
+      "error": null
+    },
+    {
+      "name": "test/eval/prohibitions.test.ts > no_prompt_text_in_flutter_client > conversation module files introduce no Flutter client prompt, provider, or model strings",
+      "status": "PASS",
+      "skipped": false,
+      "log_file": "tests/028-test-eval-prohibitions-test-ts-no-prompt-text-in.log",
+      "started_at": "2026-10-14T08:23:15.727701+00:00",
+      "finished_at": "2026-10-14T08:23:15.727717+00:00",
+      "elapsed_seconds": 0.0,
+      "error": null
+    },
+    {
+      "name": "test/eval/scorer.test.ts > scorer_branch_coverage > deriveOverall fails on schema alone and on empty case sets",
+      "status": "PASS",
+      "skipped": false,
+      "log_file": "tests/037-test-eval-scorer-test-ts-scorer-branch-coverage.log",
+      "started_at": "2026-10-14T08:23:15.926219+00:00",
+      "finished_at": "2026-10-14T08:23:15.926236+00:00",
+      "elapsed_seconds": 0.0,
+      "error": null
+    },
+    {
+      "name": "test/eval/scorer.test.ts > scorer_branch_coverage > fails quality for insufficient-context needles when output omits what is missing",
+      "status": "PASS",
+      "skipped": false,
+      "log_file": "tests/039-test-eval-scorer-test-ts-scorer-branch-coverage.log",
+      "started_at": "2026-10-14T08:23:15.928158+00:00",
+      "finished_at": "2026-10-14T08:23:15.928175+00:00",
+      "elapsed_seconds": 0.0,
+      "error": null
+    },
+    {
+      "name": "test/eval/scorer.test.ts > scorer_branch_coverage > fails quality when output_min_length is not met",
+      "status": "PASS",
+      "skipped": false,
+      "log_file": "tests/032-test-eval-scorer-test-ts-scorer-branch-coverage.log",
+      "started_at": "2026-10-14T08:23:15.920980+00:00",
+      "finished_at": "2026-10-14T08:23:15.920999+00:00",
+      "elapsed_seconds": 0.0,
+      "error": null
+    },
+    {
+      "name": "test/eval/scorer.test.ts > scorer_branch_coverage > fails quality when output_must_contain needle is missing",
+      "status": "PASS",
+      "skipped": false,
+      "log_file": "tests/031-test-eval-scorer-test-ts-scorer-branch-coverage.log",
+      "started_at": "2026-10-14T08:23:15.919141+00:00",
+      "finished_at": "2026-10-14T08:23:15.919163+00:00",
+      "elapsed_seconds": 0.0,
+      "error": null
+    },
+    {
+      "name": "test/eval/scorer.test.ts > scorer_branch_coverage > fails quality when system_instruction needle is missing",
+      "status": "PASS",
+      "skipped": false,
+      "log_file": "tests/030-test-eval-scorer-test-ts-scorer-branch-coverage.log",
+      "started_at": "2026-10-14T08:23:15.918207+00:00",
+      "finished_at": "2026-10-14T08:23:15.918241+00:00",
+      "elapsed_seconds": 0.0,
+      "error": null
+    },
+    {
+      "name": "test/eval/scorer.test.ts > scorer_branch_coverage > fails schema on JSON-shaped prose",
+      "status": "PASS",
+      "skipped": false,
+      "log_file": "tests/036-test-eval-scorer-test-ts-scorer-branch-coverage.log",
+      "started_at": "2026-10-14T08:23:15.924579+00:00",
+      "finished_at": "2026-10-14T08:23:15.924593+00:00",
+      "elapsed_seconds": 0.0,
+      "error": null
+    },
+    {
+      "name": "test/eval/scorer.test.ts > scorer_branch_coverage > fails schema on empty prose content",
+      "status": "PASS",
+      "skipped": false,
+      "log_file": "tests/035-test-eval-scorer-test-ts-scorer-branch-coverage.log",
+      "started_at": "2026-10-14T08:23:15.923669+00:00",
+      "finished_at": "2026-10-14T08:23:15.923687+00:00",
+      "elapsed_seconds": 0.0,
+      "error": null
+    },
+    {
+      "name": "test/eval/scorer.test.ts > scorer_branch_coverage > fails schema on non-success provider outcome",
+      "status": "PASS",
+      "skipped": false,
+      "log_file": "tests/033-test-eval-scorer-test-ts-scorer-branch-coverage.log",
+      "started_at": "2026-10-14T08:23:15.921860+00:00",
+      "finished_at": "2026-10-14T08:23:15.921879+00:00",
+      "elapsed_seconds": 0.0,
+      "error": null
+    },
+    {
+      "name": "test/eval/scorer.test.ts > scorer_branch_coverage > fails schema when canonical result fields are missing",
+      "status": "PASS",
+      "skipped": false,
+      "log_file": "tests/034-test-eval-scorer-test-ts-scorer-branch-coverage.log",
+      "started_at": "2026-10-14T08:23:15.922765+00:00",
+      "finished_at": "2026-10-14T08:23:15.922779+00:00",
+      "elapsed_seconds": 0.0,
+      "error": null
+    },
+    {
+      "name": "test/eval/scorer.test.ts > scorer_branch_coverage > passes quality and schema on a synthetic happy path",
+      "status": "PASS",
+      "skipped": false,
+      "log_file": "tests/038-test-eval-scorer-test-ts-scorer-branch-coverage.log",
+      "started_at": "2026-10-14T08:23:15.927105+00:00",
+      "finished_at": "2026-10-14T08:23:15.927121+00:00",
+      "elapsed_seconds": 0.0,
+      "error": null
+    }
+  ],
+  "resumed": false,
+  "command": [
+    "/usr/bin/python3",
+    "-u",
+    "/home/runner/work/AiClinic/AiClinic/ai-platform/run_campaigns.py",
+    "eval-all"
+  ],
+  "cwd": "/home/runner/work/AiClinic/AiClinic",
+  "exit_code": 0,
+  "status_label": "[ai-platform/eval-all]",
+  "passed": 39,
+  "failed": 0,
+  "interrupted": false,
+  "output_file": "output.log",
+  "reconciled_vitest": true
+}

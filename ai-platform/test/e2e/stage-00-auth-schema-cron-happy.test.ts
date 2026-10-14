@@ -539,12 +539,10 @@ const entitled = await entitleInstallation(scenario);
 
   it("S00-037 — Happy path configured cache TTL bounds staleness", async () => {
     // Dual registry before the warm GET: 1.0.0 lists for this installation;
-    // 2.0.0 is registered so cohort-activate is valid, but discovery filters
-    // it out (enterprise minimumPlanTier vs enroll plan "standard").
+    // 2.0.0 is registered so cohort-activate can update the installation grant.
     const published = loadManifest(cloneJson(publishedVisitSummary));
     const v2Wire = cloneJson(publishedVisitSummary);
     (v2Wire.Identity as Record<string, unknown>).version = "2.0.0";
-    (v2Wire.Access as Record<string, unknown>).minimumPlanTier = "enterprise";
     setCapabilityRegistry(
       createCapabilityRegistry([published, loadManifest(v2Wire)]),
       { replace: true },
@@ -554,8 +552,9 @@ const entitled = await entitleInstallation(scenario);
     // bump/restore TTL, so the pool's 100ms window can miss under the full
     // suite. Hold the warm rows in this test and re-stamp them for the
     // in-TTL GET; force consult eviction for the post-TTL GET. Catalog
-    // claims are unchanged: stale listing of 1.0.0, then {"manifests":[]}.
+    // claims are unchanged: stale listing of 1.0.0, then refreshed 2.0.0.
     const previousTtl = isolateConfigCache.getTtlMs();
+    isolateConfigCache.clear();
     isolateConfigCache.setTtlMs(30_000);
 
     try {
@@ -635,7 +634,7 @@ const entitled = await entitleInstallation(scenario);
         version: CAPABILITY_VERSION,
       });
 
-      // Catalog (4): after TTL, consult misses and D1 grant 2.0.0 is empty.
+      // After TTL, consult misses and D1's updated 2.0.0 grant is visible.
       // Wall-clock 150ms is not enough if a parallel file left TTL at 30s;
       // stamp expiresAt in the past so consult evicts these keys, then wait.
       const ttlMs = isolateConfigCache.getTtlMs();
@@ -658,10 +657,15 @@ const entitled = await entitleInstallation(scenario);
 
       const expired = await getCapabilities(token);
       expect(expired.status).toBe(200);
-      expect(expired.body).toEqual({ manifests: [] });
+      expect(discoveryManifests(expired.body)).toHaveLength(1);
+      expect(discoveryManifests(expired.body)[0]?.Identity).toMatchObject({
+        capabilityId: CAPABILITY_ID,
+        version: "2.0.0",
+      });
       expect(expired.etag).not.toBe(first.etag);
       expect(expired.etag).not.toBe(stale!.etag);
     } finally {
+      isolateConfigCache.clear();
       isolateConfigCache.setTtlMs(previousTtl);
       setCapabilityRegistry(createCapabilityRegistry([published]), {
         replace: true,

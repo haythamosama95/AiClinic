@@ -1,0 +1,22 @@
+{
+  "version": 1,
+  "area": "ai-platform",
+  "subcampaign": "load",
+  "log_dir": "ai-platform/load",
+  "summary_file": "ai-platform/load/summary.json",
+  "output_file": "ai-platform/load/output.log",
+  "tests_dir": "ai-platform/load/tests",
+  "has_summary": true,
+  "passed": 10,
+  "failed": 0,
+  "skipped": 0,
+  "attempted": 10,
+  "total": 10,
+  "exit_code": 0,
+  "failure_count": 0,
+  "failures": [],
+  "started_at": "2026-10-14T08:23:22.837517+00:00",
+  "finished_at": "2026-10-14T08:23:33.109766+00:00",
+  "elapsed_seconds": 10.272,
+  "resumed": false
+}

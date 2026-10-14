@@ -133,15 +133,11 @@ function testEchoWire(): Record<string, unknown> {
   return wire;
 }
 
-function visitSummaryV2EnterpriseWire(): Record<string, unknown> {
+function visitSummaryV2Wire(): Record<string, unknown> {
   const wire = publishedVisitSummaryWire();
   wire.Identity = {
     ...(wire.Identity as Record<string, unknown>),
     version: "2.0.0",
-  };
-  wire.Access = {
-    ...(wire.Access as Record<string, unknown>),
-    minimumPlanTier: "enterprise",
   };
   return wire;
 }
@@ -429,10 +425,10 @@ describe("Stage 00 — platform boot, bindings, and routing (S00-001…S00-018)"
 
   it("S00-011 — CONFIG_CACHE_TTL_MS = \"0\" disables caching", async () => {
     // Catalog: warm GET lists clinic.visit_summary@1.0.0; cohort-activate 2.0.0
-    // (enterprise minimumPlanTier); immediate re-GET is empty because pool
-    // CONFIG_CACHE_TTL_MS="0" expires cached grants before the next consult.
+    // (2.0.0 is registered); with TTL=0 the immediate re-GET reads the
+    // updated grant from D1 instead of serving the cached 1.0.0 grant.
     const published = loadManifest(publishedVisitSummaryWire());
-    const v2 = loadManifest(visitSummaryV2EnterpriseWire());
+    const v2 = loadManifest(visitSummaryV2Wire());
     setCapabilityRegistry(createCapabilityRegistry([published, v2]), {
       replace: true,
     });
@@ -453,9 +449,11 @@ describe("Stage 00 — platform boot, bindings, and routing (S00-001…S00-018)"
       );
       expect(activated.status).toBe(200);
 
-      const cold = await getCapabilities(token);
-      expect(cold.status).toBe(200);
-      expect(cold.body).toEqual({ manifests: [] });
+      const refreshed = await getCapabilities(token);
+      expect(refreshed.status).toBe(200);
+      expect(discoveryKeys(refreshed.body)).toEqual([
+        "clinic.visit_summary@2.0.0",
+      ]);
     } finally {
       restorePublishedRegistry();
     }

@@ -21,6 +21,7 @@ import {
   promoteCohortAction,
 } from "../../../src/control/cohort";
 import { supportLookup as runSupportLookup } from "../../../src/support";
+import { handleSupportLookup } from "../../../src/control";
 import { createManifestRetentionClassResolver } from "../../../src/retention";
 import type { ControlActionResult, ControlBindings } from "../../../src/control/types";
 import { isolateConfigCache } from "../../../src/config-cache";
@@ -32,6 +33,8 @@ import {
   jsonOf,
   readHttpResult,
   SELF,
+  OPERATOR_BEARER,
+  WRONG_OPERATOR_BEARER,
   type HttpResult,
 } from "./env";
 import { getCapabilities } from "./clinic";
@@ -126,9 +129,46 @@ async function routeControlPathToVendor(
   body: unknown,
   auth: ControlAuth,
 ): Promise<HttpResult | null> {
-  const accessJwt = await vendorAccessJwtForControlAuth(auth);
   const url = new URL(`https://gateway.test${path.startsWith("/") ? path : `/${path}`}`);
   const pathname = url.pathname;
+
+  if (method === "POST" && pathname === "/control/support/lookup") {
+    let authorization: string | null = null;
+    if (auth === "operator") {
+      authorization = `Bearer ${OPERATOR_BEARER}`;
+    } else if (auth === "wrong") {
+      authorization = `Bearer ${WRONG_OPERATOR_BEARER}`;
+    } else if (auth === "empty") {
+      authorization = "Bearer";
+    } else if (auth === "basic") {
+      authorization = "Basic invalid";
+    } else if (auth === "no-scheme") {
+      authorization = OPERATOR_BEARER;
+    } else if (typeof auth === "object" && "bearer" in auth) {
+      authorization = `Bearer ${auth.bearer}`;
+    } else if (typeof auth === "object" && "authorization" in auth) {
+      authorization = auth.authorization;
+    }
+
+    const headers = new Headers();
+    if (authorization !== null) {
+      headers.set("authorization", authorization);
+    }
+    const request = new Request(url, { method, headers });
+    const response = await handleSupportLookup(
+      request,
+      controlBindingsFromEnv(),
+      {
+        resolve: (candidate) =>
+          candidate.headers.get("authorization") === `Bearer ${OPERATOR_BEARER}`
+            ? { operatorId: OPERATOR_EMAIL }
+            : null,
+      },
+    );
+    return readHttpResult(response);
+  }
+
+  const accessJwt = await vendorAccessJwtForControlAuth(auth);
   let parsedBody: Record<string, unknown> | undefined;
   if (typeof body === "string") {
     try {
@@ -215,6 +255,7 @@ async function routeControlPathToVendor(
         policy_id: canaryMatch[1],
         version: canaryMatch[2],
         installation_ids: parsedBody?.installation_ids,
+        cohort_name: parsedBody?.cohort_name,
       },
       { accessJwt },
     );
@@ -688,6 +729,7 @@ export async function dispatchControlRequest(
       Array.isArray(record.installation_ids)
         ? (record.installation_ids as string[])
         : [],
+      typeof record.cohort_name === "string" ? record.cohort_name : undefined,
     );
     return controlResultToResponse(result);
   }

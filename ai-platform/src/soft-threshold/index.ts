@@ -30,6 +30,9 @@ export function routingTierFromAdmission(
 export function degradedNoticeFromAdmission(
   admission: AdmissionAllowResult,
 ): boolean | undefined {
+  if (admission.degraded !== undefined) {
+    return admission.degraded ? true : undefined;
+  }
   if (
     admission.degraded ||
     admission.band === "75" ||

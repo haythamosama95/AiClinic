@@ -1,0 +1,125 @@
+{
+  "started_at": "2026-10-14T08:23:22.837517+00:00",
+  "finished_at": "2026-10-14T08:23:33.109766+00:00",
+  "elapsed_seconds": 10.272,
+  "log_dir": "/home/runner/work/AiClinic/AiClinic/test-results/governor/20261014T082035Z-e7b9db4a/ai-platform/load",
+  "tests_dir": "/home/runner/work/AiClinic/AiClinic/test-results/governor/20261014T082035Z-e7b9db4a/ai-platform/load/tests",
+  "summary_file": "/home/runner/work/AiClinic/AiClinic/test-results/governor/20261014T082035Z-e7b9db4a/ai-platform/load/summary.json",
+  "tests": [
+    {
+      "name": "test/load/load-and-cost.test.ts > d1_write_headroom_measured > measures one hot-path ai_request INSERT per request (finite, no ceiling)",
+      "status": "PASS",
+      "skipped": false,
+      "log_file": "tests/004-test-load-load-and-cost-test-ts-d1-write-headroo.log",
+      "started_at": "2026-10-14T08:23:27.664369+00:00",
+      "finished_at": "2026-10-14T08:23:27.664384+00:00",
+      "elapsed_seconds": 0.0,
+      "error": null
+    },
+    {
+      "name": "test/load/load-and-cost.test.ts > do_throughput_per_installation_measured > measures time-dimensioned DO throughput against one pinned installation",
+      "status": "PASS",
+      "skipped": false,
+      "log_file": "tests/005-test-load-load-and-cost-test-ts-do-throughput-pe.log",
+      "started_at": "2026-10-14T08:23:27.805318+00:00",
+      "finished_at": "2026-10-14T08:23:27.805339+00:00",
+      "elapsed_seconds": 0.0,
+      "error": null
+    },
+    {
+      "name": "test/load/load-and-cost.test.ts > exactly_one_r2_class_a_per_request_under_load > counts exactly one R2 Class A operation per request (max and average)",
+      "status": "PASS",
+      "skipped": false,
+      "log_file": "tests/002-test-load-load-and-cost-test-ts-exactly-one-r2-c.log",
+      "started_at": "2026-10-14T08:23:27.662600+00:00",
+      "finished_at": "2026-10-14T08:23:27.662632+00:00",
+      "elapsed_seconds": 0.0,
+      "error": null
+    },
+    {
+      "name": "test/load/load-and-cost.test.ts > exactly_two_durable_object_requests_per_request_under_load > counts exactly two Quota DO fetches per request \u2014 admission and credit",
+      "status": "PASS",
+      "skipped": false,
+      "log_file": "tests/003-test-load-load-and-cost-test-ts-exactly-two-dura.log",
+      "started_at": "2026-10-14T08:23:27.663537+00:00",
+      "finished_at": "2026-10-14T08:23:27.663558+00:00",
+      "elapsed_seconds": 0.0,
+      "error": null
+    },
+    {
+      "name": "test/load/load-and-cost.test.ts > guard_p95_within_tens_of_ms_at_target_concurrency > drives N=20 happy-path requests via a bounded pool with real overlap",
+      "status": "PASS",
+      "skipped": false,
+      "log_file": "tests/001-test-load-load-and-cost-test-ts-guard-p95-within.log",
+      "started_at": "2026-10-14T08:23:27.661089+00:00",
+      "finished_at": "2026-10-14T08:23:27.661111+00:00",
+      "elapsed_seconds": 0.0,
+      "error": null
+    },
+    {
+      "name": "test/load/load-and-cost.test.ts > load_suite_introduces_no_per_request_server_state > keeps load tooling under test/load; composition lives in src/pipeline",
+      "status": "PASS",
+      "skipped": false,
+      "log_file": "tests/008-test-load-load-and-cost-test-ts-load-suite-intro.log",
+      "started_at": "2026-10-14T08:23:27.809196+00:00",
+      "finished_at": "2026-10-14T08:23:27.809217+00:00",
+      "elapsed_seconds": 0.0,
+      "error": null
+    },
+    {
+      "name": "test/load/load-and-cost.test.ts > load_suite_joins_ci_permanently > wires load into CI via the ai-platform root campaign job",
+      "status": "PASS",
+      "skipped": false,
+      "log_file": "tests/010-test-load-load-and-cost-test-ts-load-suite-joins.log",
+      "started_at": "2026-10-14T08:23:27.848838+00:00",
+      "finished_at": "2026-10-14T08:23:27.848865+00:00",
+      "elapsed_seconds": 0.0,
+      "error": null
+    },
+    {
+      "name": "test/load/load-and-cost.test.ts > no_prompt_provider_model_in_flutter_from_load_suite > introduces no Flutter client files under the load suite tree",
+      "status": "PASS",
+      "skipped": false,
+      "log_file": "tests/009-test-load-load-and-cost-test-ts-no-prompt-provid.log",
+      "started_at": "2026-10-14T08:23:27.837443+00:00",
+      "finished_at": "2026-10-14T08:23:27.837473+00:00",
+      "elapsed_seconds": 0.0,
+      "error": null
+    },
+    {
+      "name": "test/load/load-and-cost.test.ts > no_second_quota_do_round_trip_beyond_two > proves no third Quota DO fetch occurs per request under load",
+      "status": "PASS",
+      "skipped": false,
+      "log_file": "tests/007-test-load-load-and-cost-test-ts-no-second-quota.log",
+      "started_at": "2026-10-14T08:23:27.807821+00:00",
+      "finished_at": "2026-10-14T08:23:27.807842+00:00",
+      "elapsed_seconds": 0.0,
+      "error": null
+    },
+    {
+      "name": "test/load/load-and-cost.test.ts > no_second_r2_object_per_request > proves no second R2 Class A op is written per request under load",
+      "status": "PASS",
+      "skipped": false,
+      "log_file": "tests/006-test-load-load-and-cost-test-ts-no-second-r2-obj.log",
+      "started_at": "2026-10-14T08:23:27.806198+00:00",
+      "finished_at": "2026-10-14T08:23:27.806221+00:00",
+      "elapsed_seconds": 0.0,
+      "error": null
+    }
+  ],
+  "resumed": false,
+  "command": [
+    "/usr/bin/python3",
+    "-u",
+    "/home/runner/work/AiClinic/AiClinic/ai-platform/run_campaigns.py",
+    "load"
+  ],
+  "cwd": "/home/runner/work/AiClinic/AiClinic",
+  "exit_code": 0,
+  "status_label": "[ai-platform/load]",
+  "passed": 10,
+  "failed": 0,
+  "interrupted": false,
+  "output_file": "output.log",
+  "reconciled_vitest": true
+}

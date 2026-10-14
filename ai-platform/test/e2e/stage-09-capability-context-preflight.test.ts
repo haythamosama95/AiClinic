@@ -27,6 +27,7 @@ import {
   queryOne,
   resetE2eState,
   seedSql,
+  setMirrorCapabilities,
   serializePreflightInput,
   setCapabilityRegistry,
   visitSummaryInvokeBody,
@@ -485,6 +486,9 @@ describe("Stage 09 — capability, context, preflight (S09-044…S09-065)", () =
         ],
       };
       const { scenario, token } = await entitledJourney(entitle);
+      // The standard fixture term omits this test-only capability. Align the
+      // mirror so resolution reaches manifest access and the kill-switch.
+      await setMirrorCapabilities(scenario, [CAPABILITY_ID, KILL_CAPABILITY_ID]);
 
       const result = await postH0(scenario, token, {
         body: happyVisitBody(scenario, { capability_id: KILL_CAPABILITY_ID }),

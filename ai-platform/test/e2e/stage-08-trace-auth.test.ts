@@ -273,15 +273,15 @@ describe("Stage 08 — request ingress trace and auth (S08-021…S08-040)", () =
       }),
     });
 
-    // Catalog expected 404 capability_unknown from registry stage 5. Guard
-    // extracts capability_id first (alias ignored), then stage 3 entitlement
-    // rejects capability_not_granted before stage 5 resolve. If the alias had
-    // won, this entitled installation would reach HTTP 200 SSE.
+    // Guard extracts capability_id first (alias ignored). Stage 3 checks the
+    // installation coverage mirror; registry resolution at stage 5 then
+    // classifies the unknown id as capability_unknown before plan access.
+    // If the alias had won, this entitled installation would reach HTTP 200 SSE.
     expect(result.status).not.toBe(200);
-    expect(result.status).toBe(403);
+    expect(result.status).toBe(404);
     assertJsonTaxonomyNoSse(result);
     assertTaxonomyBody(result.body, {
-      code: "forbidden_capability",
+      code: "capability_unknown",
       retry_safe: false,
     });
     assertRequestReferenceShape(String(result.body.request_reference));
@@ -364,7 +364,7 @@ describe("Stage 08 — request ingress trace and auth (S08-021…S08-040)", () =
     expect(await count("ai_request")).toBe(0);
   });
 
-  it("S08-040 — installation_suspended maps to 403 taxonomy JSON", async () => {
+  it("S08-040 — stage-3 suspended coverage maps to 403 taxonomy JSON", async () => {
     const scenario = await provisionHappyPath();
     const token = await mintAat(scenario);
     const suspended = await controlFetch(
@@ -385,7 +385,7 @@ describe("Stage 08 — request ingress trace and auth (S08-021…S08-040)", () =
     expect(result.status).toBe(403);
     assertJsonTaxonomyNoSse(result);
     assertTaxonomyBody(result.body, {
-      code: "installation_suspended",
+      code: "suspended",
       retry_safe: false,
     });
     assertRequestReferenceShape(String(result.body.request_reference));

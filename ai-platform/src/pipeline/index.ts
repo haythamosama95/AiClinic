@@ -171,6 +171,7 @@ export type GuardFailure = {
   guardLatencyMs: number;
   retryAfter?: number;
   coverageReason?: import("../errors").CoverageLapseReason;
+  periodReset?: string;
   contextRequired?: ContextRequiredFailure;
 };
 
@@ -215,7 +216,7 @@ function fail(
   code: string,
   started: number,
   logger: Logger,
-  extras?: Pick<GuardFailure, "retryAfter" | "coverageReason" | "contextRequired">,
+  extras?: Pick<GuardFailure, "retryAfter" | "coverageReason" | "periodReset" | "contextRequired">,
 ): GuardFailure {
   const guardLatencyMs = performance.now() - started;
   const logData = { stage, code, guard_latency_ms: Math.round(guardLatencyMs) };
@@ -232,6 +233,9 @@ function fail(
     ...(extras?.retryAfter !== undefined ? { retryAfter: extras.retryAfter } : {}),
     ...(extras?.coverageReason !== undefined
       ? { coverageReason: extras.coverageReason }
+      : {}),
+    ...(extras?.periodReset !== undefined
+      ? { periodReset: extras.periodReset }
       : {}),
     ...(extras?.contextRequired !== undefined
       ? { contextRequired: extras.contextRequired }
@@ -511,6 +515,9 @@ export async function runGuard(
       ...(admission.coverageReason !== undefined
         ? { coverageReason: admission.coverageReason }
         : {}),
+      ...(admission.periodReset !== undefined
+        ? { periodReset: admission.periodReset }
+        : {}),
     });
   }
 
@@ -554,7 +561,11 @@ export async function runGuard(
   const routingTier = routingTierFromAdmission({
     outcome: "admitted",
     requestId,
-    ...(degraded ? { degraded: true } : {}),
+    ...(admission.outcome === "admitted" && admission.degraded !== undefined
+      ? { degraded: admission.degraded }
+      : degraded
+        ? { degraded: true }
+        : {}),
   });
 
   // Stage 9 — journal request row (one D1 insert); conversational grouping from wire body
@@ -636,7 +647,11 @@ export async function runGuard(
     routingTier,
     ...(termAdmission !== undefined ? { termAdmission } : {}),
     ...(entitlementSnapshot !== undefined ? { entitlementSnapshot } : {}),
-    ...(degraded ? { degraded: true } : {}),
+    ...(admission.outcome === "admitted" && admission.degraded !== undefined
+      ? { degraded: admission.degraded }
+      : degraded
+        ? { degraded: true }
+        : {}),
     ...(admission.outcome === "admitted" && admission.band !== undefined
       ? { band: admission.band }
       : {}),

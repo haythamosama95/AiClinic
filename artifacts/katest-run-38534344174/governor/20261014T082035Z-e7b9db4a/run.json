@@ -1,0 +1,110 @@
+{
+  "version": 1,
+  "run_id": "20261014T082035Z-e7b9db4a",
+  "run_root": "/home/runner/work/AiClinic/AiClinic/test-results/governor/20261014T082035Z-e7b9db4a",
+  "run_root_relative": "test-results/governor/20261014T082035Z-e7b9db4a",
+  "started_at": "2026-10-14T08:20:35.797764+00:00",
+  "continued_at": [],
+  "console_log": "console.log",
+  "stats_file": "stats.json",
+  "artifact_guide": "README.md",
+  "transcript_streams": "stdout and stderr merged in arrival order",
+  "campaigns": [
+    {
+      "area": "ai-platform",
+      "subcampaign": "e2e",
+      "config": {
+        "kind": "vitest",
+        "file_parallelism": false,
+        "test_timeout_ms": 120000,
+        "shard": null
+      },
+      "config_path": "ai-platform/campaigns/e2e.json",
+      "status": "failed",
+      "exit_code": 1,
+      "log_dir": "ai-platform/e2e",
+      "summary_file": "ai-platform/e2e/summary.json",
+      "output_file": "ai-platform/e2e/output.log"
+    },
+    {
+      "area": "ai-platform",
+      "subcampaign": "eval",
+      "config": {
+        "kind": "vitest",
+        "file_parallelism": false,
+        "test_timeout_ms": 120000,
+        "shard": null
+      },
+      "config_path": "ai-platform/campaigns/eval.json",
+      "status": "finished",
+      "exit_code": 0,
+      "log_dir": "ai-platform/eval",
+      "summary_file": "ai-platform/eval/summary.json",
+      "output_file": "ai-platform/eval/output.log"
+    },
+    {
+      "area": "ai-platform",
+      "subcampaign": "eval-all",
+      "config": {
+        "kind": "vitest",
+        "file_parallelism": false,
+        "test_timeout_ms": 120000,
+        "shard": null
+      },
+      "config_path": "ai-platform/campaigns/eval-all.json",
+      "status": "finished",
+      "exit_code": 0,
+      "log_dir": "ai-platform/eval-all",
+      "summary_file": "ai-platform/eval-all/summary.json",
+      "output_file": "ai-platform/eval-all/output.log"
+    },
+    {
+      "area": "ai-platform",
+      "subcampaign": "load",
+      "config": {
+        "kind": "vitest",
+        "file_parallelism": false,
+        "test_timeout_ms": 120000,
+        "shard": null
+      },
+      "config_path": "ai-platform/campaigns/load.json",
+      "status": "finished",
+      "exit_code": 0,
+      "log_dir": "ai-platform/load",
+      "summary_file": "ai-platform/load/summary.json",
+      "output_file": "ai-platform/load/output.log"
+    },
+    {
+      "area": "ai-platform",
+      "subcampaign": "npm-test",
+      "config": {
+        "kind": "vitest",
+        "file_parallelism": false,
+        "test_timeout_ms": 120000,
+        "shard": null
+      },
+      "config_path": "ai-platform/campaigns/npm-test.json",
+      "status": "failed",
+      "exit_code": 1,
+      "log_dir": "ai-platform/npm-test",
+      "summary_file": "ai-platform/npm-test/summary.json",
+      "output_file": "ai-platform/npm-test/output.log"
+    },
+    {
+      "area": "ai-platform",
+      "subcampaign": "version-matrix",
+      "config": {
+        "kind": "vitest",
+        "file_parallelism": false,
+        "test_timeout_ms": 120000,
+        "shard": null
+      },
+      "config_path": "ai-platform/campaigns/version-matrix.json",
+      "status": "failed",
+      "exit_code": 1,
+      "log_dir": "ai-platform/version-matrix",
+      "summary_file": "ai-platform/version-matrix/summary.json",
+      "output_file": "ai-platform/version-matrix/output.log"
+    }
+  ]
+}

@@ -736,12 +736,13 @@ export async function getGrantedCapabilityVersion(
       "grants",
       `${installationId}/${capabilityId}`,
     );
-    if (grant.revoked_at != null) {
-      return null;
+    if (grant.revoked_at == null) {
+      return typeof grant.capability_version === "string"
+        ? grant.capability_version
+        : null;
     }
-    return typeof grant.capability_version === "string"
-      ? grant.capability_version
-      : null;
+    // A revoked installation grant is equivalent to no installation grant;
+    // a live plan grant may still authorize discovery.
   } catch (error) {
     if (!(error instanceof ConfigCacheMissError)) {
       throw error;
@@ -773,7 +774,25 @@ export async function getGrantedCapabilityVersion(
       : null;
   } catch (error) {
     if (error instanceof ConfigCacheMissError) {
-      return null;
+      // The entitlement table was removed when plan state moved into the
+      // coverage mirror. The mirror already filters the capability list, so
+      // ask the config reader for the newest live plan-scoped version.
+      try {
+        const planGrant = await loadConfig(
+          cache,
+          reader,
+          "grants",
+          `plan:*/${capabilityId}`,
+        );
+        return typeof planGrant.capability_version === "string"
+          ? planGrant.capability_version
+          : null;
+      } catch (planError) {
+        if (planError instanceof ConfigCacheMissError) {
+          return null;
+        }
+        throw planError;
+      }
     }
     throw error;
   }

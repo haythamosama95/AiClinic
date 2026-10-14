@@ -1,0 +1,201 @@
+{
+  "version": 1,
+  "kind": "passed",
+  "tests": [
+    {
+      "name": "test/eval/conversation.test.ts > assistant_must_request_correct_key > requires the correct permitted key across a multi-leg negotiation",
+      "log_file": "tests/002-test-eval-conversation-test-ts-assistant-must-re.log",
+      "log_path": "/home/runner/work/AiClinic/AiClinic/test-results/governor/20261014T082035Z-e7b9db4a/ai-platform/eval-all/tests/002-test-eval-conversation-test-ts-assistant-must-re.log"
+    },
+    {
+      "name": "test/eval/conversation.test.ts > cannot_obtain_key_outside_permitted_set > fails permitted_set only when a forbidden key is obtained; out-of-set inject is dropped",
+      "log_file": "tests/003-test-eval-conversation-test-ts-cannot-obtain-key.log",
+      "log_path": "/home/runner/work/AiClinic/AiClinic/test-results/governor/20261014T082035Z-e7b9db4a/ai-platform/eval-all/tests/003-test-eval-conversation-test-ts-cannot-obtain-key.log"
+    },
+    {
+      "name": "test/eval/conversation.test.ts > conversation_eval_scores_recorded_per_conversation > writes a JSON score report with per-conversation criteria scores",
+      "log_file": "tests/007-test-eval-conversation-test-ts-conversation-eval.log",
+      "log_path": "/home/runner/work/AiClinic/AiClinic/test-results/governor/20261014T082035Z-e7b9db4a/ai-platform/eval-all/tests/007-test-eval-conversation-test-ts-conversation-eval.log"
+    },
+    {
+      "name": "test/eval/conversation.test.ts > criteria_are_independent_on_budget_breach > does not mark permitted_set fail merely because round budget was exhausted",
+      "log_file": "tests/012-test-eval-conversation-test-ts-criteria-are-inde.log",
+      "log_path": "/home/runner/work/AiClinic/AiClinic/test-results/governor/20261014T082035Z-e7b9db4a/ai-platform/eval-all/tests/012-test-eval-conversation-test-ts-criteria-are-inde.log"
+    },
+    {
+      "name": "test/eval/conversation.test.ts > extends_f1_harness_without_redefining_capability_evals > keeps F1 capability evals unchanged as a sibling under the same CI gate",
+      "log_file": "tests/006-test-eval-conversation-test-ts-extends-f1-harnes.log",
+      "log_path": "/home/runner/work/AiClinic/AiClinic/test-results/governor/20261014T082035Z-e7b9db4a/ai-platform/eval-all/tests/006-test-eval-conversation-test-ts-extends-f1-harnes.log"
+    },
+    {
+      "name": "test/eval/conversation.test.ts > negative_control_permitted_set > fails permitted_set when the assistant requests a key outside the set",
+      "log_file": "tests/009-test-eval-conversation-test-ts-negative-control.log",
+      "log_path": "/home/runner/work/AiClinic/AiClinic/test-results/governor/20261014T082035Z-e7b9db4a/ai-platform/eval-all/tests/009-test-eval-conversation-test-ts-negative-control.log"
+    },
+    {
+      "name": "test/eval/conversation.test.ts > negative_control_right_keys > fails right_keys when the assistant requests the wrong permitted key",
+      "log_file": "tests/008-test-eval-conversation-test-ts-negative-control.log",
+      "log_path": "/home/runner/work/AiClinic/AiClinic/test-results/governor/20261014T082035Z-e7b9db4a/ai-platform/eval-all/tests/008-test-eval-conversation-test-ts-negative-control.log"
+    },
+    {
+      "name": "test/eval/conversation.test.ts > negative_control_round_budget_exceeded > fails round_budget when consecutive context rounds exceed the declared budget",
+      "log_file": "tests/011-test-eval-conversation-test-ts-negative-control.log",
+      "log_path": "/home/runner/work/AiClinic/AiClinic/test-results/governor/20261014T082035Z-e7b9db4a/ai-platform/eval-all/tests/011-test-eval-conversation-test-ts-negative-control.log"
+    },
+    {
+      "name": "test/eval/conversation.test.ts > negative_control_round_budget_non_convergence > fails round_budget when expect_convergence and the last assistant turn is not model",
+      "log_file": "tests/010-test-eval-conversation-test-ts-negative-control.log",
+      "log_path": "/home/runner/work/AiClinic/AiClinic/test-results/governor/20261014T082035Z-e7b9db4a/ai-platform/eval-all/tests/010-test-eval-conversation-test-ts-negative-control.log"
+    },
+    {
+      "name": "test/eval/conversation.test.ts > scoring_is_per_conversation_not_per_turn > fails the whole conversation when a criterion fails on a later leg",
+      "log_file": "tests/004-test-eval-conversation-test-ts-scoring-is-per-co.log",
+      "log_path": "/home/runner/work/AiClinic/AiClinic/test-results/governor/20261014T082035Z-e7b9db4a/ai-platform/eval-all/tests/004-test-eval-conversation-test-ts-scoring-is-per-co.log"
+    },
+    {
+      "name": "test/eval/conversation.test.ts > scripted_conversation_converges_within_round_budget > scores convergence within the fixture capability declared round budget",
+      "log_file": "tests/001-test-eval-conversation-test-ts-scripted-conversa.log",
+      "log_path": "/home/runner/work/AiClinic/AiClinic/test-results/governor/20261014T082035Z-e7b9db4a/ai-platform/eval-all/tests/001-test-eval-conversation-test-ts-scripted-conversa.log"
+    },
+    {
+      "name": "test/eval/conversation.test.ts > scripted_multi_leg_against_fixtures > advances scripted legs against recorded fixtures without a provider path",
+      "log_file": "tests/005-test-eval-conversation-test-ts-scripted-multi-le.log",
+      "log_path": "/home/runner/work/AiClinic/AiClinic/test-results/governor/20261014T082035Z-e7b9db4a/ai-platform/eval-all/tests/005-test-eval-conversation-test-ts-scripted-multi-le.log"
+    },
+    {
+      "name": "test/eval/golden.test.ts > T1 golden_set_passes_on_current_prompt > golden set passes on the current pinned production prompt",
+      "log_file": "tests/013-test-eval-golden-test-ts-t1-golden-set-passes-on.log",
+      "log_path": "/home/runner/work/AiClinic/AiClinic/test-results/governor/20261014T082035Z-e7b9db4a/ai-platform/eval-all/tests/013-test-eval-golden-test-ts-t1-golden-set-passes-on.log"
+    },
+    {
+      "name": "test/eval/golden.test.ts > T2 deliberately_regressed_prompt_fails > deliberately regressed prompt fails quality on the happy-path case",
+      "log_file": "tests/014-test-eval-golden-test-ts-t2-deliberately-regress.log",
+      "log_path": "/home/runner/work/AiClinic/AiClinic/test-results/governor/20261014T082035Z-e7b9db4a/ai-platform/eval-all/tests/014-test-eval-golden-test-ts-t2-deliberately-regress.log"
+    },
+    {
+      "name": "test/eval/golden.test.ts > T3 scores_recorded_per_run > writes a JSON score report with per-case quality and schema scores",
+      "log_file": "tests/016-test-eval-golden-test-ts-t3-scores-recorded-per.log",
+      "log_path": "/home/runner/work/AiClinic/AiClinic/test-results/governor/20261014T082035Z-e7b9db4a/ai-platform/eval-all/tests/016-test-eval-golden-test-ts-t3-scores-recorded-per.log"
+    },
+    {
+      "name": "test/eval/golden.test.ts > T5 golden_cases_use_recorded_fixtures > golden execution binds to D5 recorded fixtures with no live egress",
+      "log_file": "tests/017-test-eval-golden-test-ts-t5-golden-cases-use-rec.log",
+      "log_path": "/home/runner/work/AiClinic/AiClinic/test-results/governor/20261014T082035Z-e7b9db4a/ai-platform/eval-all/tests/017-test-eval-golden-test-ts-t5-golden-cases-use-rec.log"
+    },
+    {
+      "name": "test/eval/golden.test.ts > T6 evals_are_per_capability > runGoldenSuite capabilityIds reports only the evaluated capability",
+      "log_file": "tests/019-test-eval-golden-test-ts-t6-evals-are-per-capabi.log",
+      "log_path": "/home/runner/work/AiClinic/AiClinic/test-results/governor/20261014T082035Z-e7b9db4a/ai-platform/eval-all/tests/019-test-eval-golden-test-ts-t6-evals-are-per-capabi.log"
+    },
+    {
+      "name": "test/eval/golden.test.ts > T6 evals_are_per_capability > scopes golden cases structurally per capability without a brittle singleton gate",
+      "log_file": "tests/018-test-eval-golden-test-ts-t6-evals-are-per-capabi.log",
+      "log_path": "/home/runner/work/AiClinic/AiClinic/test-results/governor/20261014T082035Z-e7b9db4a/ai-platform/eval-all/tests/018-test-eval-golden-test-ts-t6-evals-are-per-capabi.log"
+    },
+    {
+      "name": "test/eval/golden.test.ts > composeWithPromptBuild_mock_isolation > current prompt build still resolves production system text after a regressed run",
+      "log_file": "tests/020-test-eval-golden-test-ts-composewithpromptbuild.log",
+      "log_path": "/home/runner/work/AiClinic/AiClinic/test-results/governor/20261014T082035Z-e7b9db4a/ai-platform/eval-all/tests/020-test-eval-golden-test-ts-composewithpromptbuild.log"
+    },
+    {
+      "name": "test/eval/golden.test.ts > output_must_contain_participates_in_golden_failure > deliberately-regressed fixture response fails quality via output_must_contain",
+      "log_file": "tests/015-test-eval-golden-test-ts-output-must-contain-par.log",
+      "log_path": "/home/runner/work/AiClinic/AiClinic/test-results/governor/20261014T082035Z-e7b9db4a/ai-platform/eval-all/tests/015-test-eval-golden-test-ts-output-must-contain-par.log"
+    },
+    {
+      "name": "test/eval/live-smoke.test.ts > T4 scheduled_live_smoke_against_pinned_models > live smoke invokes adapters per pinned target and writes run_kind live_smoke report",
+      "log_file": "tests/023-test-eval-live-smoke-test-ts-t4-scheduled-live-s.log",
+      "log_path": "/home/runner/work/AiClinic/AiClinic/test-results/governor/20261014T082035Z-e7b9db4a/ai-platform/eval-all/tests/023-test-eval-live-smoke-test-ts-t4-scheduled-live-s.log"
+    },
+    {
+      "name": "test/eval/live-smoke.test.ts > T4 scheduled_live_smoke_against_pinned_models > live smoke quality floor requires advisory + chief-complaint needles beyond min_length 1",
+      "log_file": "tests/024-test-eval-live-smoke-test-ts-t4-scheduled-live-s.log",
+      "log_path": "/home/runner/work/AiClinic/AiClinic/test-results/governor/20261014T082035Z-e7b9db4a/ai-platform/eval-all/tests/024-test-eval-live-smoke-test-ts-t4-scheduled-live-s.log"
+    },
+    {
+      "name": "test/eval/live-smoke.test.ts > T4 scheduled_live_smoke_against_pinned_models > live smoke targets pinned model_id values from routing policy",
+      "log_file": "tests/021-test-eval-live-smoke-test-ts-t4-scheduled-live-s.log",
+      "log_path": "/home/runner/work/AiClinic/AiClinic/test-results/governor/20261014T082035Z-e7b9db4a/ai-platform/eval-all/tests/021-test-eval-live-smoke-test-ts-t4-scheduled-live-s.log"
+    },
+    {
+      "name": "test/eval/live-smoke.test.ts > T4 scheduled_live_smoke_against_pinned_models > scheduled workflow invokes live-smoke with provider secrets wired",
+      "log_file": "tests/022-test-eval-live-smoke-test-ts-t4-scheduled-live-s.log",
+      "log_path": "/home/runner/work/AiClinic/AiClinic/test-results/governor/20261014T082035Z-e7b9db4a/ai-platform/eval-all/tests/022-test-eval-live-smoke-test-ts-t4-scheduled-live-s.log"
+    },
+    {
+      "name": "test/eval/live-smoke.test.ts > T4 scheduled_live_smoke_against_pinned_models > skips live egress when provider credentials are absent",
+      "log_file": "tests/025-test-eval-live-smoke-test-ts-t4-scheduled-live-s.log",
+      "log_path": "/home/runner/work/AiClinic/AiClinic/test-results/governor/20261014T082035Z-e7b9db4a/ai-platform/eval-all/tests/025-test-eval-live-smoke-test-ts-t4-scheduled-live-s.log"
+    },
+    {
+      "name": "test/eval/prohibitions.test.ts > T7 no_prompt_text_in_flutter_client > introduces no Flutter client files carrying prompt text, provider names, or model identifiers",
+      "log_file": "tests/026-test-eval-prohibitions-test-ts-t7-no-prompt-text.log",
+      "log_path": "/home/runner/work/AiClinic/AiClinic/test-results/governor/20261014T082035Z-e7b9db4a/ai-platform/eval-all/tests/026-test-eval-prohibitions-test-ts-t7-no-prompt-text.log"
+    },
+    {
+      "name": "test/eval/prohibitions.test.ts > T8 harness_holds_no_per_request_server_state > keeps eval tooling under test/eval with no src/eval module or request-path store",
+      "log_file": "tests/027-test-eval-prohibitions-test-ts-t8-harness-holds.log",
+      "log_path": "/home/runner/work/AiClinic/AiClinic/test-results/governor/20261014T082035Z-e7b9db4a/ai-platform/eval-all/tests/027-test-eval-prohibitions-test-ts-t8-harness-holds.log"
+    },
+    {
+      "name": "test/eval/prohibitions.test.ts > harness_holds_no_per_request_server_state > conversation harness remains CI tooling with no per-request server-side state",
+      "log_file": "tests/029-test-eval-prohibitions-test-ts-harness-holds-no.log",
+      "log_path": "/home/runner/work/AiClinic/AiClinic/test-results/governor/20261014T082035Z-e7b9db4a/ai-platform/eval-all/tests/029-test-eval-prohibitions-test-ts-harness-holds-no.log"
+    },
+    {
+      "name": "test/eval/prohibitions.test.ts > no_prompt_text_in_flutter_client > conversation module files introduce no Flutter client prompt, provider, or model strings",
+      "log_file": "tests/028-test-eval-prohibitions-test-ts-no-prompt-text-in.log",
+      "log_path": "/home/runner/work/AiClinic/AiClinic/test-results/governor/20261014T082035Z-e7b9db4a/ai-platform/eval-all/tests/028-test-eval-prohibitions-test-ts-no-prompt-text-in.log"
+    },
+    {
+      "name": "test/eval/scorer.test.ts > scorer_branch_coverage > deriveOverall fails on schema alone and on empty case sets",
+      "log_file": "tests/037-test-eval-scorer-test-ts-scorer-branch-coverage.log",
+      "log_path": "/home/runner/work/AiClinic/AiClinic/test-results/governor/20261014T082035Z-e7b9db4a/ai-platform/eval-all/tests/037-test-eval-scorer-test-ts-scorer-branch-coverage.log"
+    },
+    {
+      "name": "test/eval/scorer.test.ts > scorer_branch_coverage > fails quality for insufficient-context needles when output omits what is missing",
+      "log_file": "tests/039-test-eval-scorer-test-ts-scorer-branch-coverage.log",
+      "log_path": "/home/runner/work/AiClinic/AiClinic/test-results/governor/20261014T082035Z-e7b9db4a/ai-platform/eval-all/tests/039-test-eval-scorer-test-ts-scorer-branch-coverage.log"
+    },
+    {
+      "name": "test/eval/scorer.test.ts > scorer_branch_coverage > fails quality when output_min_length is not met",
+      "log_file": "tests/032-test-eval-scorer-test-ts-scorer-branch-coverage.log",
+      "log_path": "/home/runner/work/AiClinic/AiClinic/test-results/governor/20261014T082035Z-e7b9db4a/ai-platform/eval-all/tests/032-test-eval-scorer-test-ts-scorer-branch-coverage.log"
+    },
+    {
+      "name": "test/eval/scorer.test.ts > scorer_branch_coverage > fails quality when output_must_contain needle is missing",
+      "log_file": "tests/031-test-eval-scorer-test-ts-scorer-branch-coverage.log",
+      "log_path": "/home/runner/work/AiClinic/AiClinic/test-results/governor/20261014T082035Z-e7b9db4a/ai-platform/eval-all/tests/031-test-eval-scorer-test-ts-scorer-branch-coverage.log"
+    },
+    {
+      "name": "test/eval/scorer.test.ts > scorer_branch_coverage > fails quality when system_instruction needle is missing",
+      "log_file": "tests/030-test-eval-scorer-test-ts-scorer-branch-coverage.log",
+      "log_path": "/home/runner/work/AiClinic/AiClinic/test-results/governor/20261014T082035Z-e7b9db4a/ai-platform/eval-all/tests/030-test-eval-scorer-test-ts-scorer-branch-coverage.log"
+    },
+    {
+      "name": "test/eval/scorer.test.ts > scorer_branch_coverage > fails schema on JSON-shaped prose",
+      "log_file": "tests/036-test-eval-scorer-test-ts-scorer-branch-coverage.log",
+      "log_path": "/home/runner/work/AiClinic/AiClinic/test-results/governor/20261014T082035Z-e7b9db4a/ai-platform/eval-all/tests/036-test-eval-scorer-test-ts-scorer-branch-coverage.log"
+    },
+    {
+      "name": "test/eval/scorer.test.ts > scorer_branch_coverage > fails schema on empty prose content",
+      "log_file": "tests/035-test-eval-scorer-test-ts-scorer-branch-coverage.log",
+      "log_path": "/home/runner/work/AiClinic/AiClinic/test-results/governor/20261014T082035Z-e7b9db4a/ai-platform/eval-all/tests/035-test-eval-scorer-test-ts-scorer-branch-coverage.log"
+    },
+    {
+      "name": "test/eval/scorer.test.ts > scorer_branch_coverage > fails schema on non-success provider outcome",
+      "log_file": "tests/033-test-eval-scorer-test-ts-scorer-branch-coverage.log",
+      "log_path": "/home/runner/work/AiClinic/AiClinic/test-results/governor/20261014T082035Z-e7b9db4a/ai-platform/eval-all/tests/033-test-eval-scorer-test-ts-scorer-branch-coverage.log"
+    },
+    {
+      "name": "test/eval/scorer.test.ts > scorer_branch_coverage > fails schema when canonical result fields are missing",
+      "log_file": "tests/034-test-eval-scorer-test-ts-scorer-branch-coverage.log",
+      "log_path": "/home/runner/work/AiClinic/AiClinic/test-results/governor/20261014T082035Z-e7b9db4a/ai-platform/eval-all/tests/034-test-eval-scorer-test-ts-scorer-branch-coverage.log"
+    },
+    {
+      "name": "test/eval/scorer.test.ts > scorer_branch_coverage > passes quality and schema on a synthetic happy path",
+      "log_file": "tests/038-test-eval-scorer-test-ts-scorer-branch-coverage.log",
+      "log_path": "/home/runner/work/AiClinic/AiClinic/test-results/governor/20261014T082035Z-e7b9db4a/ai-platform/eval-all/tests/038-test-eval-scorer-test-ts-scorer-branch-coverage.log"
+    }
+  ]
+}

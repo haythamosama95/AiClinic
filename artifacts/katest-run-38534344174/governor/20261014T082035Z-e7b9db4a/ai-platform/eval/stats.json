@@ -1,0 +1,22 @@
+{
+  "version": 1,
+  "area": "ai-platform",
+  "subcampaign": "eval",
+  "log_dir": "ai-platform/eval",
+  "summary_file": "ai-platform/eval/summary.json",
+  "output_file": "ai-platform/eval/output.log",
+  "tests_dir": "ai-platform/eval/tests",
+  "has_summary": true,
+  "passed": 24,
+  "failed": 0,
+  "skipped": 0,
+  "attempted": 24,
+  "total": 24,
+  "exit_code": 0,
+  "failure_count": 0,
+  "failures": [],
+  "started_at": "2026-10-14T08:23:07.067657+00:00",
+  "finished_at": "2026-10-14T08:23:11.578062+00:00",
+  "elapsed_seconds": 4.51,
+  "resumed": false
+}

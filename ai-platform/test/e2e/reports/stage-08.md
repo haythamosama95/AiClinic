@@ -81,11 +81,9 @@ Skipped IDs (expected Register 5 #37): S08-003, S08-005, S08-009.
 
 Recorded in `ai-platform/test/e2e/reports/stage-08-conflicts.md`. Tests follow code.
 
-### 5.1 S08-034 / S08-042 / S08-043 — entitlement stage 3 before registry stage 5
+### 5.1 S08-034 — unknown primary capability ID
 
-Catalog: unknown `capability_id` / unpublished `x-capability-version` → HTTP 404 `capability_unknown`.
-
-Code: guard stage 3 (`evaluateEntitlement` → `capability_not_granted`) runs before stage 5 registry resolve → HTTP 403 `forbidden_capability` (`retry_safe: false`). Same order as Stage 00 S00-008. Precedence of `capability_id` over alias still holds (the unknown primary key is what stage 3 evaluates).
+The string `capability_id` takes precedence over the `capability` alias. After the stage-3 coverage pre-check, stage 5 resolves the registry key before the plan-access check; the unknown primary ID therefore returns HTTP 404 `capability_unknown` (`retry_safe: false`). No SSE is opened and no Quota DO admission occurs. See `stage-08-conflicts.md` for the contract and source references.
 
 ### 5.2 S08-045 — `quota_exhausted` carries `period_reset`
 

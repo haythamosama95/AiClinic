@@ -1,4 +1,5 @@
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
+import { runInDurableObject } from "cloudflare:test";
 import {
   assertSseSequence,
   bootstrapE2e,
@@ -154,6 +155,46 @@ async function inspectState(
   const json = result.json as { kind?: string; state?: QuotaInspectState };
   expect(json.kind).toBe("inspect");
   return json.state ?? {};
+}
+
+type HotStateSnapshot = {
+  used: number;
+  reserved: number;
+  reservations: Array<{ id: string }>;
+  idempotency: Record<
+    string,
+    { expiresAt: number; answer: AdmissionJson }
+  >;
+};
+
+async function inspectHotState(installationId: string): Promise<HotStateSnapshot> {
+  return runInDurableObject(
+    env.DO.get(env.DO.idFromName(installationId)),
+    async (_instance, state) => {
+      const storage = state.storage as DurableObjectStorage & {
+        sql?: {
+          exec: (query: string) => Iterable<Record<string, unknown>>;
+        };
+      };
+      if (!storage.sql) {
+        throw new Error("quota DO sql storage unavailable for hot-state inspect");
+      }
+      const row = [...storage.sql.exec(
+        "SELECT used, reserved, reservations, idempotency FROM hot LIMIT 1",
+      )][0];
+      if (!row) {
+        throw new Error("quota DO hot row missing");
+      }
+      return {
+        used: Number(row.used),
+        reserved: Number(row.reserved),
+        reservations: JSON.parse(String(row.reservations || "[]")) as Array<{
+          id: string;
+        }>,
+        idempotency: JSON.parse(String(row.idempotency || "{}")) as HotStateSnapshot["idempotency"],
+      };
+    },
+  );
 }
 
 async function admitRpc(
@@ -1076,15 +1117,18 @@ describe("Stage X — ledger purge, rollup reconciliation, DO sweep (SX-033…SX
 
   it("SX-046 — Abandoned-admission sweep drops stale in-flight and marks idempotency failed", async () => {
     const { scenario, t1, q0 } = await rebuildSx046EndState();
-    const inspect = await inspectState(scenario.installationId);
+    const inspect = await inspectHotState(scenario.installationId);
 
-    expect(inspect.admittedRequests?.[q0]).toBeUndefined();
-    expect(inspect.periodCounters?.inFlight).toBe(1);
+    expect(inspect.reservations.some((reservation) => reservation.id === q0)).toBe(false);
+    expect(inspect.used).toBe(1);
+    expect(inspect.reserved).toBe(1);
     const idem = inspect.idempotency?.["sx046-key"];
-    expect(idem?.state).toBe("failed");
-    expect(idem?.requestId).toBe(q0);
+    expect(idem?.answer).toMatchObject({
+      outcome: "idempotent",
+      priorState: { state: "failed", requestId: q0 },
+    });
     expect(idem?.expiresAt).toBe(t1 + EPHEMERAL_HORIZON_MS);
-    expect(inspect.idempotency?.["sx046-probe"]?.state).toBe("admitted");
+    expect(inspect.idempotency?.["sx046-probe"]?.answer.outcome).toBe("admitted");
   });
 
   it("SX-047 — Slid-window replay: failed inside window; fresh admit after expiry", async () => {
@@ -1110,13 +1154,13 @@ describe("Stage X — ledger purge, rollup reconciliation, DO sweep (SX-033…SX
     expect(after.requestId).toBeTruthy();
     expect(after.requestId).not.toBe(q0);
 
-    const inspect = await inspectState(
-      scenario.installationId,
-      t1 + EPHEMERAL_HORIZON_MS + 1,
-    );
-    expect(inspect.idempotency?.["sx046-key"]?.state).toBe("admitted");
-    expect(inspect.idempotency?.["sx046-key"]?.requestId).toBe(after.requestId);
-    expect(inspect.periodCounters?.inFlight).toBeGreaterThanOrEqual(1);
+    const inspect = await inspectHotState(scenario.installationId);
+    expect(inspect.idempotency?.["sx046-key"]?.answer).toMatchObject({
+      outcome: "admitted",
+      requestId: after.requestId,
+    });
+    expect(inspect.reservations.some((reservation) => reservation.id === after.requestId)).toBe(true);
+    expect(inspect.reserved).toBe(1);
   });
 
   it("SX-048 — Expired jtiReplay allows the same jti to admit again", async () => {

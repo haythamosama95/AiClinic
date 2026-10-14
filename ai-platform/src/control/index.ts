@@ -40,5 +40,9 @@ export async function handleSupportLookup(
     return Response.json({ error: "not_found" }, { status: 404 });
   }
 
-  return Response.json(result);
+  return Response.json({
+    request: result.request,
+    attempts: result.attempts,
+    envelope: result.envelope,
+  });
 }

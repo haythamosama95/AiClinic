@@ -21,7 +21,6 @@ import {
 export const EPHEMERAL_HORIZON_MS = 7_200_000;
 export const CONCURRENCY_LIMIT = 16;
 const STALE_RESERVATION_MS = 15 * 60 * 1000;
-const CONCURRENCY_RETRY_AFTER_SECONDS = 60;
 
 const STATE_KEY = "state";
 
@@ -198,7 +197,6 @@ export interface AdmissionTermRefusal {
   kind: "admission";
   outcome:
     | "suspended"
-    | "allowance_exhausted"
     | "coverage_lapsed"
     | "forbidden_capability"
     | "concurrency_limited";
@@ -720,6 +718,8 @@ type ReservationRow = {
   term_id: string;
   capability: string;
   admitted_at: number;
+  idempotency_key?: string;
+  request_reference?: string;
 };
 
 type StoredAnswerEntry = {
@@ -856,11 +856,13 @@ function planSnapshotForTerm(term: TermRow): {
   capabilities: string[];
   max_cost_class: string;
   concurrency_limit: number;
+  soft_threshold?: number;
 } {
   const snapshot = JSON.parse(term.plan_snapshot) as {
     capabilities?: unknown;
     max_cost_class?: string;
     concurrency_limit?: number;
+    soft_threshold?: number;
   };
   const capabilities = Array.isArray(snapshot.capabilities)
     ? (snapshot.capabilities as string[])
@@ -869,6 +871,9 @@ function planSnapshotForTerm(term: TermRow): {
     capabilities,
     max_cost_class: snapshot.max_cost_class ?? "standard",
     concurrency_limit: snapshot.concurrency_limit ?? CONCURRENCY_LIMIT,
+    ...(typeof snapshot.soft_threshold === "number"
+      ? { soft_threshold: coerceSoftThreshold(snapshot.soft_threshold) }
+      : {}),
   };
 }
 
@@ -947,6 +952,20 @@ function chargeStaleReservations(
         cost: 0,
         recorded_at: nowIso,
       });
+      if (reservation.idempotency_key !== undefined) {
+        hot.idempotency[reservation.idempotency_key] = {
+          expiresAt: now + EPHEMERAL_HORIZON_MS,
+          answer: {
+            kind: "admission",
+            outcome: "idempotent",
+            priorState: {
+              requestReference: reservation.request_reference ?? "",
+              state: "failed",
+              requestId: reservation.id,
+            },
+          },
+        };
+      }
       changed = true;
       continue;
     }
@@ -1197,7 +1216,8 @@ function admitOnHotRow(
     if (last?.state === "exhausted" || last?.end_reason === "exhausted") {
       return returnStoredAdmission(storage, hot, request, {
         kind: "admission",
-        outcome: "allowance_exhausted",
+        outcome: "quota_exhausted",
+        period_end: last.ends_at,
       }, now);
     }
     return returnStoredAdmission(storage, hot, request, {
@@ -1220,8 +1240,8 @@ function admitOnHotRow(
     persistIfChanged();
     return returnStoredAdmission(storage, hot, request, {
       kind: "admission",
-      outcome: "concurrency_limited",
-      retry_after: CONCURRENCY_RETRY_AFTER_SECONDS,
+      outcome: "quota_exhausted",
+      period_end: billableTerm.ends_at,
     }, now);
   }
 
@@ -1253,7 +1273,8 @@ function admitOnHotRow(
     persistIfChanged();
     return returnStoredAdmission(storage, hot, request, {
       kind: "admission",
-      outcome: "allowance_exhausted",
+      outcome: "quota_exhausted",
+      period_end: billableTerm.ends_at,
     }, now);
   }
 
@@ -1264,6 +1285,8 @@ function admitOnHotRow(
     term_id: billableTerm.term_id,
     capability: capabilityId,
     admitted_at: now,
+    idempotency_key: request.idempotencyKey,
+    request_reference: request.requestReference,
   });
   hot.row.reserved += quotaWeight;
 
@@ -1378,6 +1401,14 @@ function admitOnHotRow(
       allowance,
       willExhaust ? "exhausted" : billableTerm.state,
     ),
+    ...(plan.soft_threshold !== undefined
+      ? {
+          degraded:
+            plan.soft_threshold > 0 &&
+            plan.soft_threshold <= 1 &&
+            usageTotal / allowance >= plan.soft_threshold,
+        }
+      : {}),
   };
 
   storeAnswer(hot, request.jti, request.idempotencyKey, admittedAnswer, now);

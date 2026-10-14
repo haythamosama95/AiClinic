@@ -80,6 +80,7 @@ type AdmissionFailure = {
   code: Extract<
     TaxonomyCode,
     | "unauthenticated"
+    | "quota_exhausted"
     | "allowance_exhausted"
     | "coverage_lapsed"
     | "forbidden_capability"
@@ -91,6 +92,7 @@ type AdmissionFailure = {
   >;
   retryAfter?: number;
   coverageReason?: CoverageLapseReason;
+  periodReset?: string;
 };
 
 export type AdmissionResult = AdmissionSuccess | AdmissionFailure;
@@ -326,7 +328,7 @@ function mapDoOutcome(
         return { ok: false, code: "internal_error" };
       }
       const reservationId = body.reservation_id ?? body.requestId;
-      const degraded = body.degraded === true || bandDegraded(body.band);
+      const degraded = body.degraded ?? bandDegraded(body.band);
       return {
         ok: true,
         outcome: "admitted",
@@ -335,7 +337,11 @@ function mapDoOutcome(
         reservationId,
         snapshot,
         ...(body.band !== undefined ? { band: body.band } : {}),
-        ...(degraded ? { degraded: true } : {}),
+        ...(body.degraded !== undefined
+          ? { degraded }
+          : degraded
+            ? { degraded: true }
+            : {}),
       };
     }
     case "replay":
@@ -346,6 +352,16 @@ function mapDoOutcome(
       return { ok: false, code: "unauthenticated" };
     case "idempotent":
       return { ok: true, outcome: "idempotent", priorState: body.priorState };
+    case "quota_exhausted":
+      recordGuardRejection({
+        error_code: "quota_exhausted",
+        installation_id: installationId,
+      });
+      return {
+        ok: false,
+        code: "quota_exhausted",
+        periodReset: body.period_end,
+      };
     case "suspended":
       recordGuardRejection({
         error_code: "suspended",

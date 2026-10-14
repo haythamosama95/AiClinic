@@ -112,6 +112,12 @@ export class ConfigCache {
     value: D1Row,
     now: number = Date.now(),
   ): void {
+    // A zero TTL is an explicit cache bypass. Do not keep an entry even for
+    // the remainder of the current millisecond: callers that need to share a
+    // cold read within one request are covered by `inflight` instead.
+    if (this.ttlMs === 0) {
+      return;
+    }
     this.storeFor(kind).set(key, {
       value: cloneRow(value),
       expiresAt: now + this.ttlMs,
@@ -318,6 +324,21 @@ export function createD1ConfigReader(
             }
             const scope = key.slice(0, slash);
             const capabilityId = key.slice(slash + 1);
+            // Discovery's coverage mirror establishes which capabilities are
+            // active for an installation. The transitional entitlement table
+            // (which used to identify the plan name) no longer exists, so this
+            // wildcard shape resolves the matching live plan grant directly.
+            if (scope === "plan:*") {
+              const row = await db
+                .prepare(
+                  `SELECT * FROM capability_grant
+                   WHERE scope LIKE 'plan:%' AND capability_id = ? AND revoked_at IS NULL
+                   ORDER BY changed_at DESC LIMIT 1`,
+                )
+                .bind(capabilityId)
+                .first<D1Row>();
+              return row ?? "miss";
+            }
             const row = await db
               .prepare(
                 `SELECT * FROM capability_grant

@@ -202,6 +202,7 @@ export async function createRequestRow(
   logger: Logger = noopLogger,
 ): Promise<CreateRequestRowResult> {
   const now = new Date().toISOString();
+  const requestReference = normalizeRequestReference(input.requestReference);
   const isSingleShot =
     input.manifest.Interaction.interactionMode === "single_shot";
 
@@ -222,7 +223,7 @@ export async function createRequestRow(
     ) {
       const body = buildErrorBody({
         code: "context_invalid",
-        requestReference: input.requestReference,
+        requestReference,
         traceId: input.traceId,
       });
       return {
@@ -248,7 +249,7 @@ export async function createRequestRow(
       )
       .bind(
         input.requestId,
-        input.requestReference,
+        requestReference,
         input.principal.installationId,
         input.principal.actorId,
         input.principal.branchId,
@@ -270,13 +271,13 @@ export async function createRequestRow(
   } catch (error) {
     logger.error("create_request_row_failed", {
       request_id: input.requestId,
-      request_reference: input.requestReference,
+      request_reference: requestReference,
       trace_id: input.traceId,
       error: error instanceof Error ? error.message : String(error),
     });
     const body = buildErrorBody({
       code: "internal_error",
-      requestReference: input.requestReference,
+      requestReference,
       traceId: input.traceId,
     });
     return {

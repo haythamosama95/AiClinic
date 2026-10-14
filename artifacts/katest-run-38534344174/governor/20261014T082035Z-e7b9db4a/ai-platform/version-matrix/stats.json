@@ -1,0 +1,24 @@
+{
+  "version": 1,
+  "area": "ai-platform",
+  "subcampaign": "version-matrix",
+  "log_dir": "ai-platform/version-matrix",
+  "summary_file": "ai-platform/version-matrix/summary.json",
+  "output_file": "ai-platform/version-matrix/output.log",
+  "tests_dir": "ai-platform/version-matrix/tests",
+  "has_summary": true,
+  "passed": 0,
+  "failed": 1,
+  "skipped": 0,
+  "attempted": 1,
+  "total": 2,
+  "exit_code": 1,
+  "failure_count": 1,
+  "failures": [
+    "test/version-matrix/channels.system.test.ts > E2E-P7.3-01 > E2E-P7.3-01"
+  ],
+  "started_at": "2026-10-14T08:33:30.486934+00:00",
+  "finished_at": "2026-10-14T08:33:37.967813+00:00",
+  "elapsed_seconds": 7.481,
+  "resumed": false
+}

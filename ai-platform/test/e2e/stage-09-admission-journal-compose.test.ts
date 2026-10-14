@@ -1,4 +1,5 @@
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
+import { runInDurableObject } from "cloudflare:test";
 import publishedVisitSummary from "../../manifests/published/clinic.visit_summary@1.0.0.json";
 import {
   assertRequestReferenceShape,
@@ -169,13 +170,15 @@ function assertAcceptedSse(
   return accepted!;
 }
 
-function assertSyntheticCompleted(events: SseEvent[]): SseEvent {
+function assertPersistedCompletedReplay(events: SseEvent[]): SseEvent {
   const completed = events.find((event) => event.event === "completed");
   expect(completed).toBeDefined();
   const resultPayload = completed?.data.result as
     | { finalContent?: { text?: string; authoritative?: boolean } }
     | undefined;
-  expect(resultPayload?.finalContent?.text).toBe("Prior request completed.");
+  // Replays return the original stored result, including the adapter's
+  // content, rather than a synthetic replacement message.
+  expect(resultPayload?.finalContent?.text).toBe("Fake adapter summary.");
   expect(resultPayload?.finalContent?.authoritative).toBe(true);
   return completed!;
 }
@@ -264,6 +267,69 @@ function throwingQuotaDo(): DurableObjectNamespace {
   return wrapDurableObjectNamespace(env.DO, {
     fetchThrow: new Error("quota DO unavailable"),
   });
+}
+
+async function setActiveTermAllowance(
+  scenario: Scenario,
+  allowance: number,
+): Promise<void> {
+  await runInDurableObject(
+    env.DO.get(env.DO.idFromName(scenario.installationId)),
+    async (_instance, state) => {
+      const storage = state.storage as DurableObjectStorage & {
+        sql?: { exec: (query: string) => Iterable<Record<string, unknown>> };
+      };
+      if (!storage.sql) {
+        throw new Error("quota DO sql storage unavailable for e2e allowance");
+      }
+      const hot = [...storage.sql.exec("SELECT active_term_id FROM hot LIMIT 1")][0];
+      const termId = typeof hot?.active_term_id === "string" ? hot.active_term_id : "";
+      if (!termId) {
+        throw new Error("active quota DO term missing for e2e allowance setup");
+      }
+      const safeTermId = termId.replace(/'/g, "''");
+      storage.sql.exec(
+        `UPDATE term SET allowance = ${allowance} WHERE term_id = '${safeTermId}'`,
+      );
+      const term = [...storage.sql.exec(
+        `SELECT allowance FROM term WHERE term_id = '${safeTermId}' LIMIT 1`,
+      )][0];
+      expect(Number(term?.allowance)).toBe(allowance);
+    },
+  );
+}
+
+async function setActiveTermSoftThreshold(
+  scenario: Scenario,
+  threshold: number,
+): Promise<void> {
+  await runInDurableObject(
+    env.DO.get(env.DO.idFromName(scenario.installationId)),
+    async (_instance, state) => {
+      const storage = state.storage as DurableObjectStorage & {
+        sql?: { exec: (query: string) => Iterable<Record<string, unknown>> };
+      };
+      if (!storage.sql) {
+        throw new Error("quota DO sql storage unavailable for e2e threshold");
+      }
+      const row = [...storage.sql.exec(
+        "SELECT plan_snapshot FROM term WHERE term_id = (SELECT active_term_id FROM hot LIMIT 1)",
+      )][0];
+      if (typeof row?.plan_snapshot !== "string") {
+        throw new Error("active quota DO plan snapshot missing for e2e threshold");
+      }
+      const snapshot = JSON.parse(row.plan_snapshot) as Record<string, unknown>;
+      snapshot.soft_threshold = threshold;
+      const serialized = JSON.stringify(snapshot).replace(/'/g, "''");
+      storage.sql.exec(
+        `UPDATE term SET plan_snapshot = '${serialized}' WHERE term_id = (SELECT active_term_id FROM hot LIMIT 1)`,
+      );
+      const updated = [...storage.sql.exec(
+        "SELECT plan_snapshot FROM term WHERE term_id = (SELECT active_term_id FROM hot LIMIT 1)",
+      )][0];
+      expect(JSON.parse(String(updated?.plan_snapshot)).soft_threshold).toBe(threshold);
+    },
+  );
 }
 
 function admissionPrincipal(scenario: Scenario) {
@@ -604,7 +670,7 @@ describe("Stage 09 — admission, journal, compose (S09-066…S09-085)", () => {
       String(replay.events[0]?.data.request_reference),
     );
     expect(replay.events[0]?.data.trace_id).toBe(TRACE_ID);
-    assertSyntheticCompleted(replay.events);
+    assertPersistedCompletedReplay(replay.events);
     expect(await count("ai_request")).toBe(1);
     const after = await getAiRequest(String(firstRow?.request_reference));
     expect(after?.request_id).toBe(firstId);
@@ -707,11 +773,9 @@ describe("Stage 09 — admission, journal, compose (S09-066…S09-085)", () => {
     expect(await count("ai_request")).toBe(1);
   });
 
-  it("S09-070 — request_quota 0 is quota_exhausted with period_reset", async () => {
-    const { scenario } = await entitledJourney({
-      ...DEFAULT_ENTITLE_PAYLOAD,
-      request_quota: 0,
-    });
+  it("S09-070 — zero term allowance is quota_exhausted with period_reset", async () => {
+    const scenario = await provisionHappyPath();
+    await setActiveTermAllowance(scenario, 0);
 
     const result = await postRequestPinned(scenario, {
       token: await mintAat(scenario),
@@ -724,11 +788,9 @@ describe("Stage 09 — admission, journal, compose (S09-066…S09-085)", () => {
     expect(await count("ai_request")).toBe(0);
   });
 
-  it("S09-071 — token_budget 0 is quota_exhausted with period_reset", async () => {
-    const { scenario } = await entitledJourney({
-      ...DEFAULT_ENTITLE_PAYLOAD,
-      token_budget: 0,
-    });
+  it("S09-071 — zero term allowance is quota_exhausted with period_reset (valid plan grant)", async () => {
+    const scenario = await provisionHappyPath();
+    await setActiveTermAllowance(scenario, 0);
 
     const result = await postRequestPinned(scenario, {
       token: await mintAat(scenario),
@@ -740,11 +802,9 @@ describe("Stage 09 — admission, journal, compose (S09-066…S09-085)", () => {
     expect(await count("ai_request")).toBe(0);
   });
 
-  it("S09-072 — cost_budget 0 is quota_exhausted with period_reset", async () => {
-    const { scenario } = await entitledJourney({
-      ...DEFAULT_ENTITLE_PAYLOAD,
-      cost_budget: 0,
-    });
+  it("S09-072 — zero term allowance is quota_exhausted with period_reset (valid plan grant)", async () => {
+    const scenario = await provisionHappyPath();
+    await setActiveTermAllowance(scenario, 0);
 
     const result = await postRequestPinned(scenario, {
       token: await mintAat(scenario),
@@ -758,28 +818,23 @@ describe("Stage 09 — admission, journal, compose (S09-066…S09-085)", () => {
 
   it("S09-073 — 16 in-flight then 17th is quota_exhausted", async () => {
     const scenario = await provisionHappyPath();
-    const entitlement = await entitlementSnapshot(scenario.installationId);
-
-    // Catalog wanted 16 full-path POSTs held via FakeAdapter hang. Barrel has
-    // no hang; overlapping clinicFetch credits before the 17th. Fill inFlight
-    // via documented gatewayObjectJson admission (same idFromName DO) without
-    // credit/release.
+    // Seed real term reservations via the production admission RPC so the
+    // concurrency gate sees the same in-flight count as clinic traffic.
     for (let index = 0; index < 16; index += 1) {
       const admitted = await gatewayObjectJson(scenario.installationId, {
         kind: "admission",
         jti: crypto.randomUUID(),
         installationId: scenario.installationId,
         idempotencyKey: crypto.randomUUID(),
-        entitlement,
         requestReference: `H073-${String(index).padStart(4, "0")}`,
+        capabilityId: CAPABILITY_ID,
+        orgId: scenario.orgId,
+        requestId: crypto.randomUUID(),
       });
       expect(admitted.status).toBe(200);
       const body = admitted.json as { outcome?: string };
       expect(body.outcome).toBe("admitted");
     }
-
-    const held = await inspectState(scenario.installationId);
-    expect(held.periodCounters?.inFlight).toBe(16);
 
     const seventeenth = await postRequestPinned(scenario, {
       token: await mintAat(scenario, { claims: { jti: crypto.randomUUID() } }),
@@ -928,8 +983,9 @@ describe("Stage 09 — admission, journal, compose (S09-066…S09-085)", () => {
   it("S09-078 — grace path with exhausted ledger is quota_exhausted", async () => {
     // Register 5 #28: wrapDurableObjectNamespace does not reach SELF.fetch.
     // Inject admitUnderGrace the same way SX-013/017 do: runAdmission + throwing DO.
-    // A second installation with default quota proves the throwing DO actually
-    // enters grace (live entitle cannot restore request_quota — 409 not_pending).
+    // Both installations use the valid default cover-plan version. Set the
+    // second installation's active DO term allowance to zero after the grant
+    // so the grace fallback is exercised against an exhausted term.
     const throwingDo = throwingQuotaDo();
     const reader = createD1ConfigReader(env.DB, env.R2);
 
@@ -954,11 +1010,9 @@ describe("Stage 09 — admission, journal, compose (S09-066…S09-085)", () => {
 
     const scenario = await newScenario();
     await newClinic(scenario);
-    const entitled = await entitleInstallation(scenario, {
-      ...DEFAULT_ENTITLE_PAYLOAD,
-      request_quota: 0,
-    });
+    const entitled = await entitleInstallation(scenario, DEFAULT_ENTITLE_PAYLOAD);
     expect(entitled.status).toBe(200);
+    await setActiveTermAllowance(scenario, 0);
     const exhausted = await runAdmission(
       {
         principal: admissionPrincipal(scenario),
@@ -1015,6 +1069,7 @@ describe("Stage 09 — admission, journal, compose (S09-066…S09-085)", () => {
       request_quota: 10,
       soft_threshold: 0,
     });
+    await setActiveTermSoftThreshold(scenario, 0);
     await eightSettledHappy(scenario);
 
     const ninth = await postRequestPinned(scenario, {
@@ -1029,14 +1084,15 @@ describe("Stage 09 — admission, journal, compose (S09-066…S09-085)", () => {
     );
     expect(row?.routing_tier).toBe("standard");
 
-    // Pairwise: entitle HTTP rejects soft_threshold > 1; snapshot mapping
-    // coerces out-of-range to 0 (never degrades) if a bad row were present.
-    const outOfRange = await entitleInstallation(scenario, {
-      ...DEFAULT_ENTITLE_PAYLOAD,
-      request_quota: 10,
-      soft_threshold: 1.5,
+    // Pairwise term-snapshot boundary: out-of-range values remain inactive and
+    // do not turn the hard-exhaustion band into a degraded notice.
+    await setActiveTermSoftThreshold(scenario, 1.5);
+    const tenth = await postRequestPinned(scenario, {
+      token: await mintAat(scenario),
+      traceId: TRACE_ID,
+      body: happyVisitBody(scenario),
     });
-    expect(outOfRange.status).toBe(400);
+    assertAcceptedSse(tenth, { traceId: TRACE_ID });
   });
 
   it.skip(

@@ -1,0 +1,35 @@
+{
+  "started_at": "2026-10-14T08:33:30.486934+00:00",
+  "finished_at": "2026-10-14T08:33:37.967813+00:00",
+  "elapsed_seconds": 7.481,
+  "log_dir": "/home/runner/work/AiClinic/AiClinic/test-results/governor/20261014T082035Z-e7b9db4a/ai-platform/version-matrix",
+  "tests_dir": "/home/runner/work/AiClinic/AiClinic/test-results/governor/20261014T082035Z-e7b9db4a/ai-platform/version-matrix/tests",
+  "summary_file": "/home/runner/work/AiClinic/AiClinic/test-results/governor/20261014T082035Z-e7b9db4a/ai-platform/version-matrix/summary.json",
+  "tests": [
+    {
+      "name": "test/version-matrix/channels.system.test.ts > E2E-P7.3-01 > E2E-P7.3-01",
+      "status": "FAIL",
+      "skipped": false,
+      "log_file": "tests/002-test-version-matrix-channels-system-test-ts-e2e.log",
+      "started_at": "2026-10-14T08:33:37.497750+00:00",
+      "finished_at": "2026-10-14T08:33:37.497790+00:00",
+      "elapsed_seconds": 0.0,
+      "error": "harness aborted: runner error without a test result ('Vitest caught 1 unhandled error during the test run.'; waited 0s for completion)"
+    }
+  ],
+  "resumed": false,
+  "command": [
+    "/usr/bin/python3",
+    "-u",
+    "/home/runner/work/AiClinic/AiClinic/ai-platform/run_campaigns.py",
+    "version-matrix"
+  ],
+  "cwd": "/home/runner/work/AiClinic/AiClinic",
+  "exit_code": 1,
+  "status_label": "[ai-platform/version-matrix]",
+  "passed": 0,
+  "failed": 1,
+  "interrupted": false,
+  "output_file": "output.log",
+  "reconciled_vitest": true
+}

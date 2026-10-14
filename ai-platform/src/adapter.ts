@@ -77,6 +77,7 @@ export type PreAcceptResult =
       code: TaxonomyCode;
       retryAfter?: number;
       coverageReason?: import("./errors").CoverageLapseReason;
+      periodReset?: string;
       contextRequired?: ContextRequiredFailure;
     };
 
@@ -231,6 +232,7 @@ function preAcceptFailureResponse(
   retryAfter?: number,
   contextRequired?: ContextRequiredFailure,
   coverageReason?: import("./errors").CoverageLapseReason,
+  periodReset?: string,
 ): Response {
   const body =
     code === "context_required" && contextRequired !== undefined
@@ -240,6 +242,7 @@ function preAcceptFailureResponse(
           ...supplementaryFieldsForCode(code, {
             retryAfter,
             coverageReason,
+            periodReset,
           }),
         };
   const status = liveHttpStatusForCode(code);
@@ -455,6 +458,7 @@ export async function handleAdapterRequest(
         gate.retryAfter,
         gate.contextRequired,
         gate.coverageReason,
+        gate.periodReset,
       );
     }
     degradedNotice = gate.degradedNotice;

@@ -1,0 +1,11 @@
+{
+  "version": 1,
+  "kind": "failed",
+  "tests": [
+    {
+      "name": "test/version-matrix/channels.system.test.ts > E2E-P7.3-01 > E2E-P7.3-01",
+      "log_file": "tests/002-test-version-matrix-channels-system-test-ts-e2e.log",
+      "log_path": "/home/runner/work/AiClinic/AiClinic/test-results/governor/20261014T082035Z-e7b9db4a/ai-platform/version-matrix/tests/002-test-version-matrix-channels-system-test-ts-e2e.log"
+    }
+  ]
+}

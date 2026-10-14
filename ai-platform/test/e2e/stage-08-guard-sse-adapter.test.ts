@@ -1,4 +1,5 @@
 import { beforeAll, beforeEach, describe, expect, it } from "vitest";
+import { runInDurableObject } from "cloudflare:test";
 import {
   assertRequestReferenceShape,
   assertSseSequence,
@@ -54,6 +55,44 @@ async function entitledJourney(
   const scenario = await provisionHappyPath(undefined, entitle);
   const token = await mintAat(scenario);
   return { scenario, token };
+}
+
+async function setActiveTermAllowance(
+  scenario: Scenario,
+  allowance: number,
+  endsAt: string,
+): Promise<void> {
+  await runInDurableObject(
+    env.DO.get(env.DO.idFromName(scenario.installationId)),
+    async (_instance, state) => {
+      const storage = state.storage as DurableObjectStorage & {
+        sql?: { exec: (query: string) => Iterable<Record<string, unknown>> };
+      };
+      if (!storage.sql) {
+        throw new Error("quota DO sql storage unavailable for e2e term allowance");
+      }
+      const hot = [...storage.sql.exec("SELECT active_term_id FROM hot LIMIT 1")][0];
+      const termId = typeof hot?.active_term_id === "string" ? hot.active_term_id : "";
+      if (!termId) {
+        throw new Error("active quota DO term missing for e2e allowance setup");
+      }
+      const safeEndsAt = endsAt.replace(/'/g, "''");
+      const safeTermId = termId.replace(/'/g, "''");
+      // The entitlement test harness can leave a grant-created term alongside
+      // its deterministic DO seed. Normalize to the active hot-row term so the
+      // admission test exercises one active allowance, as production does.
+      storage.sql.exec(
+        `UPDATE term SET state = 'ended', end_reason = 'expired', position = -1 WHERE state = 'active' AND term_id <> '${safeTermId}'`,
+      );
+      storage.sql.exec(
+        `UPDATE term SET state = 'active', end_reason = NULL, allowance = ${allowance}, ends_at = '${safeEndsAt}' WHERE term_id = '${safeTermId}'`,
+      );
+      const term = [...storage.sql.exec(
+        `SELECT allowance FROM term WHERE term_id = '${safeTermId}' LIMIT 1`,
+      )][0];
+      expect(Number(term?.allowance)).toBe(allowance);
+    },
+  );
 }
 
 function happyVisitBody(
@@ -279,6 +318,11 @@ describe("Stage 08 — guard mapping, SSE accept, disconnect, adapter contract (
       ...DEFAULT_ENTITLE_PAYLOAD,
       request_quota: 1,
     });
+    await setActiveTermAllowance(
+      scenario,
+      1,
+      DEFAULT_ENTITLE_PAYLOAD.period_end,
+    );
 
     const first = await postRequest(scenario, {
       token: await mintAat(scenario),

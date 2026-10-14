@@ -2,9 +2,15 @@
 
 ## S08-034
 
-- **Catalog claim:** With both `capability_id: "clinic.not_a_capability"` and alias `capability: "clinic.visit_summary"` present, HTTP 404 `capability_unknown` (`retry_safe: false`) because the primary key drives Stage 9 stage-5 manifest resolution and the alias is ignored. No SSE; no Quota DO admission.
-- **Code behavior:** `extractCapabilityId` still prefers the string primary key (`clinic.not_a_capability`), so precedence holds. Guard stage 3 (`evaluateEntitlement`) then runs before stage 5 (`resolve`). The unknown id is not in `allowed_capabilities` / grants (`clinic.visit_summary` only) → `capability_not_granted` → HTTP 403 `forbidden_capability` (`retry_safe: false`). Registry miss (`capability_unknown` 404) is unreachable unless stage 3 passes. Same entitlement-before-registry order as Stage 00 S00-008.
-- **File:line:** `ai-platform/src/worker.ts:259-264` (`capability_id` before `capability`); `ai-platform/src/pipeline/index.ts:359-398` (stage 3 then stage 5); `ai-platform/src/entitlement/index.ts:191-197` (`capability_not_granted` → `forbidden_capability`); `ai-platform/src/errors.ts:41-45` (HTTP 403, retryable `"No"`); `ai-platform/src/capability/index.ts:566-577` (`capability_unknown` only on stage-5 registry miss).
+- **Contract:** With both `capability_id: "clinic.not_a_capability"` and alias `capability: "clinic.visit_summary"` present, the string `capability_id` takes precedence. The unknown primary id yields HTTP 404 `capability_unknown` (`retry_safe: false`), no SSE, and no Quota DO admission.
+- **Code behavior:** `extractCapabilityId` prefers the string primary key (`clinic.not_a_capability`), so the alias is ignored. Stage 3 checks coverage and rate limits; stage 5 `resolve` looks up the registry key before plan access and returns `capability_unknown` on the miss. The request is rejected before admission.
+- **File:line:** `ai-platform/src/worker.ts:259-264` (`capability_id` before `capability`); `ai-platform/src/pipeline/index.ts:388-437` (stage 3 then stage 5 resolve); `ai-platform/src/capability/index.ts:536-552` (registry miss before plan gate); `ai-platform/src/errors.ts` (`capability_unknown` is HTTP 404 and non-retryable).
+
+## S08-040
+
+- **Contract:** A suspended installation reaches stage 3 coverage pre-check, which rejects with HTTP 403 taxonomy code `suspended` (`retry_safe: false`). This case is distinct from an identity-stage suspension, which may use `installation_suspended`.
+- **Code behavior:** `evaluateCoveragePrecheck` sees the suspended coverage mirror and returns `suspended`; `runGuard` reports the stage-3 failure and the worker passes that code to the taxonomy adapter. No request is admitted.
+- **File:line:** `ai-platform/src/entitlement/index.ts:245-264` (coverage mirror suspension); `ai-platform/src/pipeline/index.ts:388-405` (stage 3); `ai-platform/src/worker.ts:1467-1469` (only stage-2 suspension is renamed to `installation_suspended`); `ai-platform/src/errors.ts` (both codes map to HTTP 403).
 
 ## S08-042
 

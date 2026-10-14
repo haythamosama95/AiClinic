@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+import json
 import sys
 from pathlib import Path
 
@@ -37,27 +38,109 @@ def _prepare(subcampaign: str, cmd: list[str]) -> tuple[list[str], dict | None]:
 
 def _run(subcampaign: str, cmd: list[str]) -> int:
     prepared, config = _prepare(subcampaign, cmd)
-    return run_subprocess_with_live_status(
+    log_dir = _log_dir(subcampaign)
+    raw_report = log_dir / ".vitest-report-raw.json"
+    prepared = _with_json_reporter(prepared, raw_report)
+    result = run_subprocess_with_live_status(
         prepared,
         PKG_ROOT,
-        _log_dir(subcampaign),
+        log_dir,
         status_label=_status_label(subcampaign),
         campaign_config=config,
         config_area=AREA,
     )
+    _write_normalized_report(raw_report, log_dir / "vitest-report.json")
+    return result
 
 
 def _run_steps(subcampaign: str, steps: list[tuple[str, list[str]]]) -> int:
     config = load_campaign_config(AREA, subcampaign)
-    prepared = [(name, apply_campaign_args(list(cmd), config)) for name, cmd in steps]
-    return run_subprocess_sequence(
+    log_dir = _log_dir(subcampaign)
+    prepared = [
+        (name, _with_json_reporter(apply_campaign_args(list(cmd), config), log_dir / f".vitest-report-{name}.json"))
+        for name, cmd in steps
+    ]
+    result = run_subprocess_sequence(
         prepared,
         PKG_ROOT,
-        _log_dir(subcampaign),
+        log_dir,
         status_label=_status_label(subcampaign),
         campaign_config=config,
         config_area=AREA,
     )
+    _merge_step_reports(log_dir, [name for name, _ in steps])
+    return result
+
+
+def _with_json_reporter(cmd: list[str], report_path: Path) -> list[str]:
+    """Keep Vitest's normal console reporter and capture machine-readable results."""
+    return [
+        *cmd,
+        "--reporter=default",
+        "--reporter=json",
+        f"--outputFile.json={report_path}",
+    ]
+
+
+def _report_tests(payload: object) -> list[dict]:
+    """Normalize Vitest 3 JSON reporter output into stable per-case diagnostics."""
+    if not isinstance(payload, dict):
+        return []
+    normalized: list[dict] = []
+    for file_result in payload.get("testResults", []):
+        if not isinstance(file_result, dict):
+            continue
+        file_name = file_result.get("name") or file_result.get("file") or ""
+        for case in file_result.get("assertionResults", []):
+            if not isinstance(case, dict):
+                continue
+            status = case.get("status", "unknown")
+            if status != "failed":
+                continue
+            titles = case.get("ancestorTitles", [])
+            name = " > ".join([*(str(title) for title in titles), str(case.get("title", ""))]).strip(" >")
+            messages = case.get("failureMessages") or case.get("failureMessage") or []
+            if isinstance(messages, str):
+                messages = [messages]
+            error = "\n\n".join(str(message) for message in messages if message)
+            stack = next((line for line in error.splitlines() if line.startswith("    at ") or line.startswith("at ")), None)
+            entry = {
+                "name": name or str(case.get("fullName") or file_name),
+                "file": file_name,
+                "status": status,
+                "error": error,
+            }
+            if stack:
+                entry["stack"] = error[error.find(stack):]
+            for key in ("expected", "actual"):
+                if key in case:
+                    entry[key] = case[key]
+            normalized.append(entry)
+    return normalized
+
+
+def _write_normalized_report(raw_path: Path, report_path: Path) -> None:
+    tests: list[dict] = []
+    if raw_path.is_file():
+        try:
+            tests = _report_tests(json.loads(raw_path.read_text(encoding="utf-8")))
+        except (OSError, json.JSONDecodeError):
+            pass
+        raw_path.unlink(missing_ok=True)
+    report_path.write_text(json.dumps({"tests": tests}, indent=2) + "\n", encoding="utf-8")
+
+
+def _merge_step_reports(log_dir: Path, step_names: list[str]) -> None:
+    tests: list[dict] = []
+    for step in step_names:
+        raw_path = log_dir / f".vitest-report-{step}.json"
+        if raw_path.is_file():
+            try:
+                tests.extend(_report_tests(json.loads(raw_path.read_text(encoding="utf-8"))))
+            except (OSError, json.JSONDecodeError):
+                pass
+            raw_path.unlink(missing_ok=True)
+    (log_dir / "vitest-report.json").write_text(json.dumps({"tests": tests}, indent=2) + "\n", encoding="utf-8")
 
 
 def _eval_files() -> list[str]:

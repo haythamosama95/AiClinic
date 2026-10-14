@@ -235,7 +235,7 @@ function admissionAllowFromGuard(guard: GuardFreshSuccess): AdmissionAllowResult
   return {
     outcome: "admitted",
     requestId: guard.requestId,
-    ...(guard.degraded ? { degraded: true } : {}),
+    ...(guard.degraded !== undefined ? { degraded: guard.degraded } : {}),
     ...(guard.band !== undefined ? { band: guard.band } : {}),
   };
 }
@@ -1478,6 +1478,9 @@ function createProductionPreAccept(
           : {}),
         ...(guard.coverageReason !== undefined
           ? { coverageReason: guard.coverageReason }
+          : {}),
+        ...(guard.periodReset !== undefined
+          ? { periodReset: guard.periodReset }
           : {}),
         ...(code === "context_required" && guard.contextRequired !== undefined
           ? { contextRequired: guard.contextRequired }

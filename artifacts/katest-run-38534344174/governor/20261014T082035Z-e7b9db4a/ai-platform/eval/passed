@@ -1,0 +1,126 @@
+{
+  "version": 1,
+  "kind": "passed",
+  "tests": [
+    {
+      "name": "test/eval/conversation.test.ts > assistant_must_request_correct_key > requires the correct permitted key across a multi-leg negotiation",
+      "log_file": "tests/002-test-eval-conversation-test-ts-assistant-must-re.log",
+      "log_path": "/home/runner/work/AiClinic/AiClinic/test-results/governor/20261014T082035Z-e7b9db4a/ai-platform/eval/tests/002-test-eval-conversation-test-ts-assistant-must-re.log"
+    },
+    {
+      "name": "test/eval/conversation.test.ts > cannot_obtain_key_outside_permitted_set > fails permitted_set only when a forbidden key is obtained; out-of-set inject is dropped",
+      "log_file": "tests/003-test-eval-conversation-test-ts-cannot-obtain-key.log",
+      "log_path": "/home/runner/work/AiClinic/AiClinic/test-results/governor/20261014T082035Z-e7b9db4a/ai-platform/eval/tests/003-test-eval-conversation-test-ts-cannot-obtain-key.log"
+    },
+    {
+      "name": "test/eval/conversation.test.ts > conversation_eval_scores_recorded_per_conversation > writes a JSON score report with per-conversation criteria scores",
+      "log_file": "tests/007-test-eval-conversation-test-ts-conversation-eval.log",
+      "log_path": "/home/runner/work/AiClinic/AiClinic/test-results/governor/20261014T082035Z-e7b9db4a/ai-platform/eval/tests/007-test-eval-conversation-test-ts-conversation-eval.log"
+    },
+    {
+      "name": "test/eval/conversation.test.ts > criteria_are_independent_on_budget_breach > does not mark permitted_set fail merely because round budget was exhausted",
+      "log_file": "tests/012-test-eval-conversation-test-ts-criteria-are-inde.log",
+      "log_path": "/home/runner/work/AiClinic/AiClinic/test-results/governor/20261014T082035Z-e7b9db4a/ai-platform/eval/tests/012-test-eval-conversation-test-ts-criteria-are-inde.log"
+    },
+    {
+      "name": "test/eval/conversation.test.ts > extends_f1_harness_without_redefining_capability_evals > keeps F1 capability evals unchanged as a sibling under the same CI gate",
+      "log_file": "tests/006-test-eval-conversation-test-ts-extends-f1-harnes.log",
+      "log_path": "/home/runner/work/AiClinic/AiClinic/test-results/governor/20261014T082035Z-e7b9db4a/ai-platform/eval/tests/006-test-eval-conversation-test-ts-extends-f1-harnes.log"
+    },
+    {
+      "name": "test/eval/conversation.test.ts > negative_control_permitted_set > fails permitted_set when the assistant requests a key outside the set",
+      "log_file": "tests/009-test-eval-conversation-test-ts-negative-control.log",
+      "log_path": "/home/runner/work/AiClinic/AiClinic/test-results/governor/20261014T082035Z-e7b9db4a/ai-platform/eval/tests/009-test-eval-conversation-test-ts-negative-control.log"
+    },
+    {
+      "name": "test/eval/conversation.test.ts > negative_control_right_keys > fails right_keys when the assistant requests the wrong permitted key",
+      "log_file": "tests/008-test-eval-conversation-test-ts-negative-control.log",
+      "log_path": "/home/runner/work/AiClinic/AiClinic/test-results/governor/20261014T082035Z-e7b9db4a/ai-platform/eval/tests/008-test-eval-conversation-test-ts-negative-control.log"
+    },
+    {
+      "name": "test/eval/conversation.test.ts > negative_control_round_budget_exceeded > fails round_budget when consecutive context rounds exceed the declared budget",
+      "log_file": "tests/011-test-eval-conversation-test-ts-negative-control.log",
+      "log_path": "/home/runner/work/AiClinic/AiClinic/test-results/governor/20261014T082035Z-e7b9db4a/ai-platform/eval/tests/011-test-eval-conversation-test-ts-negative-control.log"
+    },
+    {
+      "name": "test/eval/conversation.test.ts > negative_control_round_budget_non_convergence > fails round_budget when expect_convergence and the last assistant turn is not model",
+      "log_file": "tests/010-test-eval-conversation-test-ts-negative-control.log",
+      "log_path": "/home/runner/work/AiClinic/AiClinic/test-results/governor/20261014T082035Z-e7b9db4a/ai-platform/eval/tests/010-test-eval-conversation-test-ts-negative-control.log"
+    },
+    {
+      "name": "test/eval/conversation.test.ts > scoring_is_per_conversation_not_per_turn > fails the whole conversation when a criterion fails on a later leg",
+      "log_file": "tests/004-test-eval-conversation-test-ts-scoring-is-per-co.log",
+      "log_path": "/home/runner/work/AiClinic/AiClinic/test-results/governor/20261014T082035Z-e7b9db4a/ai-platform/eval/tests/004-test-eval-conversation-test-ts-scoring-is-per-co.log"
+    },
+    {
+      "name": "test/eval/conversation.test.ts > scripted_conversation_converges_within_round_budget > scores convergence within the fixture capability declared round budget",
+      "log_file": "tests/001-test-eval-conversation-test-ts-scripted-conversa.log",
+      "log_path": "/home/runner/work/AiClinic/AiClinic/test-results/governor/20261014T082035Z-e7b9db4a/ai-platform/eval/tests/001-test-eval-conversation-test-ts-scripted-conversa.log"
+    },
+    {
+      "name": "test/eval/conversation.test.ts > scripted_multi_leg_against_fixtures > advances scripted legs against recorded fixtures without a provider path",
+      "log_file": "tests/005-test-eval-conversation-test-ts-scripted-multi-le.log",
+      "log_path": "/home/runner/work/AiClinic/AiClinic/test-results/governor/20261014T082035Z-e7b9db4a/ai-platform/eval/tests/005-test-eval-conversation-test-ts-scripted-multi-le.log"
+    },
+    {
+      "name": "test/eval/golden.test.ts > T1 golden_set_passes_on_current_prompt > golden set passes on the current pinned production prompt",
+      "log_file": "tests/013-test-eval-golden-test-ts-t1-golden-set-passes-on.log",
+      "log_path": "/home/runner/work/AiClinic/AiClinic/test-results/governor/20261014T082035Z-e7b9db4a/ai-platform/eval/tests/013-test-eval-golden-test-ts-t1-golden-set-passes-on.log"
+    },
+    {
+      "name": "test/eval/golden.test.ts > T2 deliberately_regressed_prompt_fails > deliberately regressed prompt fails quality on the happy-path case",
+      "log_file": "tests/014-test-eval-golden-test-ts-t2-deliberately-regress.log",
+      "log_path": "/home/runner/work/AiClinic/AiClinic/test-results/governor/20261014T082035Z-e7b9db4a/ai-platform/eval/tests/014-test-eval-golden-test-ts-t2-deliberately-regress.log"
+    },
+    {
+      "name": "test/eval/golden.test.ts > T3 scores_recorded_per_run > writes a JSON score report with per-case quality and schema scores",
+      "log_file": "tests/016-test-eval-golden-test-ts-t3-scores-recorded-per.log",
+      "log_path": "/home/runner/work/AiClinic/AiClinic/test-results/governor/20261014T082035Z-e7b9db4a/ai-platform/eval/tests/016-test-eval-golden-test-ts-t3-scores-recorded-per.log"
+    },
+    {
+      "name": "test/eval/golden.test.ts > T5 golden_cases_use_recorded_fixtures > golden execution binds to D5 recorded fixtures with no live egress",
+      "log_file": "tests/017-test-eval-golden-test-ts-t5-golden-cases-use-rec.log",
+      "log_path": "/home/runner/work/AiClinic/AiClinic/test-results/governor/20261014T082035Z-e7b9db4a/ai-platform/eval/tests/017-test-eval-golden-test-ts-t5-golden-cases-use-rec.log"
+    },
+    {
+      "name": "test/eval/golden.test.ts > T6 evals_are_per_capability > runGoldenSuite capabilityIds reports only the evaluated capability",
+      "log_file": "tests/019-test-eval-golden-test-ts-t6-evals-are-per-capabi.log",
+      "log_path": "/home/runner/work/AiClinic/AiClinic/test-results/governor/20261014T082035Z-e7b9db4a/ai-platform/eval/tests/019-test-eval-golden-test-ts-t6-evals-are-per-capabi.log"
+    },
+    {
+      "name": "test/eval/golden.test.ts > T6 evals_are_per_capability > scopes golden cases structurally per capability without a brittle singleton gate",
+      "log_file": "tests/018-test-eval-golden-test-ts-t6-evals-are-per-capabi.log",
+      "log_path": "/home/runner/work/AiClinic/AiClinic/test-results/governor/20261014T082035Z-e7b9db4a/ai-platform/eval/tests/018-test-eval-golden-test-ts-t6-evals-are-per-capabi.log"
+    },
+    {
+      "name": "test/eval/golden.test.ts > composeWithPromptBuild_mock_isolation > current prompt build still resolves production system text after a regressed run",
+      "log_file": "tests/020-test-eval-golden-test-ts-composewithpromptbuild.log",
+      "log_path": "/home/runner/work/AiClinic/AiClinic/test-results/governor/20261014T082035Z-e7b9db4a/ai-platform/eval/tests/020-test-eval-golden-test-ts-composewithpromptbuild.log"
+    },
+    {
+      "name": "test/eval/golden.test.ts > output_must_contain_participates_in_golden_failure > deliberately-regressed fixture response fails quality via output_must_contain",
+      "log_file": "tests/015-test-eval-golden-test-ts-output-must-contain-par.log",
+      "log_path": "/home/runner/work/AiClinic/AiClinic/test-results/governor/20261014T082035Z-e7b9db4a/ai-platform/eval/tests/015-test-eval-golden-test-ts-output-must-contain-par.log"
+    },
+    {
+      "name": "test/eval/prohibitions.test.ts > T7 no_prompt_text_in_flutter_client > introduces no Flutter client files carrying prompt text, provider names, or model identifiers",
+      "log_file": "tests/021-test-eval-prohibitions-test-ts-t7-no-prompt-text.log",
+      "log_path": "/home/runner/work/AiClinic/AiClinic/test-results/governor/20261014T082035Z-e7b9db4a/ai-platform/eval/tests/021-test-eval-prohibitions-test-ts-t7-no-prompt-text.log"
+    },
+    {
+      "name": "test/eval/prohibitions.test.ts > T8 harness_holds_no_per_request_server_state > keeps eval tooling under test/eval with no src/eval module or request-path store",
+      "log_file": "tests/022-test-eval-prohibitions-test-ts-t8-harness-holds.log",
+      "log_path": "/home/runner/work/AiClinic/AiClinic/test-results/governor/20261014T082035Z-e7b9db4a/ai-platform/eval/tests/022-test-eval-prohibitions-test-ts-t8-harness-holds.log"
+    },
+    {
+      "name": "test/eval/prohibitions.test.ts > harness_holds_no_per_request_server_state > conversation harness remains CI tooling with no per-request server-side state",
+      "log_file": "tests/024-test-eval-prohibitions-test-ts-harness-holds-no.log",
+      "log_path": "/home/runner/work/AiClinic/AiClinic/test-results/governor/20261014T082035Z-e7b9db4a/ai-platform/eval/tests/024-test-eval-prohibitions-test-ts-harness-holds-no.log"
+    },
+    {
+      "name": "test/eval/prohibitions.test.ts > no_prompt_text_in_flutter_client > conversation module files introduce no Flutter client prompt, provider, or model strings",
+      "log_file": "tests/023-test-eval-prohibitions-test-ts-no-prompt-text-in.log",
+      "log_path": "/home/runner/work/AiClinic/AiClinic/test-results/governor/20261014T082035Z-e7b9db4a/ai-platform/eval/tests/023-test-eval-prohibitions-test-ts-no-prompt-text-in.log"
+    }
+  ]
+}

@@ -44,6 +44,60 @@ def _runner_diagnostic_excerpt(log_dir: Path, *, limit: int = 12) -> list[str]:
     return selected
 
 
+def _report_outcomes(log_dir: Path) -> dict[str, dict[str, Any]]:
+    """Read normalized sibling output or Vitest's standard JSON report."""
+    outcomes: dict[str, dict[str, Any]] = {}
+
+    def add(name: Any, status: Any, error: Any = None, stack: Any = None, reference: str = "vitest-report.json") -> None:
+        if not isinstance(name, str) or not name.strip():
+            return
+        label = normalize_vitest_case_label(name.strip())
+        if status not in ("FAIL", "failed", "failure", "passed", "PASS", "skipped", "pending"):
+            return
+        failed = status in ("FAIL", "failed", "failure")
+        if not failed:
+            return
+        details = error if isinstance(error, (str, list)) else None
+        if isinstance(stack, str) and stack.strip():
+            details = ([details] if isinstance(details, str) else list(details or [])) + [stack]
+        outcomes[label] = {"error": details, "failure_kind": "test_failure", "report_reference": reference}
+
+    for path in sorted(log_dir.glob("vitest-report*.json")):
+        try:
+            payload = json.loads(path.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            continue
+        if not isinstance(payload, dict):
+            continue
+        tests = payload.get("tests")
+        if isinstance(tests, list):
+            for row in tests:
+                if isinstance(row, dict):
+                    add(row.get("name"), row.get("status"), row.get("error"), row.get("stack"), path.name)
+        results = payload.get("testResults")
+        if isinstance(results, list):
+            for file_result in results:
+                if not isinstance(file_result, dict):
+                    continue
+                assertions = file_result.get("assertionResults", [])
+                if not isinstance(assertions, list):
+                    continue
+                for assertion in assertions:
+                    if not isinstance(assertion, dict):
+                        continue
+                    parts = assertion.get("ancestorTitles", [])
+                    title = assertion.get("fullName") or assertion.get("title")
+                    name = " > ".join([str(x) for x in parts if x] + ([str(title)] if title else []))
+                    if not name:
+                        continue
+                    filename = str(file_result.get("name", file_result.get("testFilePath", "")))
+                    if filename and not name.startswith(filename + " > "):
+                        name = f"{filename} > {name}"
+                    errors = assertion.get("failureMessages", assertion.get("failureMessage"))
+                    add(name, assertion.get("status"), errors, reference=path.name)
+    return outcomes
+
+
 def is_harness_artifact_test_name(name: str) -> bool:
     """Names that are not real Vitest case labels (stall/stdout noise)."""
     stripped = name.strip()
@@ -111,6 +165,11 @@ def reconcile_vitest_summary_log(
         return False
 
     known = vitest_exclude_label_set(labels)
+    report = _report_outcomes(log_dir)
+    summary_exit = payload.get("exit_code")
+    summary_signal = payload.get("signal")
+    diagnostics = _runner_diagnostic_excerpt(log_dir)
+    cause = diagnostics[0] if diagnostics else None
     by_name: dict[str, dict[str, Any]] = {}
     for entry in tests:
         if not isinstance(entry, dict):
@@ -126,10 +185,33 @@ def reconcile_vitest_summary_log(
         status = entry.get("status")
         if status not in ("PASS", "FAIL"):
             continue
-        by_name[label] = {**entry, "name": label}
+        normalized = {**entry, "name": label}
+        if status == "FAIL":
+            normalized["failure_kind"] = "test_failure"
+            outcome = report.get(label)
+            if outcome:
+                normalized["error"] = outcome.get("error")
+                normalized["report_reference"] = outcome.get("report_reference")
+        by_name[label] = normalized
 
     for label in sorted(labels):
         if label not in by_name:
+            outcome = report.get(label)
+            if outcome:
+                by_name[label] = {
+                    "name": label,
+                    "status": "FAIL",
+                    "skipped": False,
+                    "log_file": None,
+                    "started_at": None,
+                    "finished_at": None,
+                    "elapsed_seconds": 0.0,
+                    "error": outcome.get("error"),
+                    "failure_kind": "test_failure",
+                    "report_reference": outcome.get("report_reference"),
+                    "reconciled": True,
+                }
+                continue
             by_name[label] = {
                 "name": label,
                 "status": "FAIL",
@@ -138,14 +220,18 @@ def reconcile_vitest_summary_log(
                 "started_at": None,
                 "finished_at": None,
                 "elapsed_seconds": 0.0,
-                "error": "no result recorded (harness reconcile)",
-                "failure_kind": "not_recorded",
+                "error": cause or "Vitest did not report an outcome for this case.",
+                "failure_kind": "runner_missing_outcome",
+                "reference": "output.log",
+                "runner_exit_code": summary_exit,
+                "runner_signal": summary_signal,
+                "runner_context": diagnostics,
                 "reconciled": True,
             }
     missing_labels = sorted(
         label
         for label, entry in by_name.items()
-        if entry.get("failure_kind") == "not_recorded"
+        if entry.get("failure_kind") == "runner_missing_outcome"
     )
 
     ordered = [by_name[label] for label in sorted(by_name)]
@@ -161,7 +247,7 @@ def reconcile_vitest_summary_log(
     if missing_labels:
         new_payload["not_recorded"] = missing_labels
         new_payload["diagnostics_file"] = "output.log"
-        new_payload["runner_diagnostics"] = _runner_diagnostic_excerpt(log_dir)
+        new_payload["runner_diagnostics"] = diagnostics
     text = json.dumps(new_payload, indent=2) + "\n"
     summary_path.write_text(text, encoding="utf-8")
     meta = log_dir / "meta.json"

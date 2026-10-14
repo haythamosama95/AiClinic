@@ -102,7 +102,37 @@ def test_format_markdown_separates_missing_results_and_shows_diagnostics(
 
     assert "1 test case(s) had no recorded result" in md
     assert "1 recorded test failure(s)" in md
-    assert "NOT RECORDED: missing-case" in md
-    assert "FAIL: assertion-case" in md
+    assert "RUNNER OUTCOME MISSING: missing-case" in md
+    assert "TEST FAILURE: assertion-case" in md
     assert "ai-platform/npm-test/output.log" in md
     assert "expected .sqlite, got .sqlite-shm" in md
+
+
+def test_report_includes_structured_vitest_reference_and_test_details(
+    tmp_path: Path,
+) -> None:
+    from harness.github_campaign_report import FailedTest
+
+    report = tmp_path / "abo" / "system" / "vitest-report.json"
+    report.parent.mkdir(parents=True)
+    report.write_text("{}", encoding="utf-8")
+    md = format_markdown_report(
+        tmp_path,
+        "abo",
+        [
+            FailedTest(
+                area="abo",
+                subcampaign="system",
+                name="patient lookup",
+                error="Expected patient record to exist",
+                log_file="tests/001.log",
+                failure_kind="test_failure",
+                test_file="src/patient.test.ts",
+                details="AssertionError: expected undefined to be defined",
+            )
+        ],
+    )
+    assert "TEST FAILURE: patient lookup" in md
+    assert "src/patient.test.ts" in md
+    assert "AssertionError: expected undefined to be defined" in md
+    assert "abo/system/vitest-report.json" in md

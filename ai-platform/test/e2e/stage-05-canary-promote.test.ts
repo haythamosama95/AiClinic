@@ -302,8 +302,6 @@ async function assertPublishedRow(
 }
 
 async function canaryInstAWithCohort(): Promise<HttpResult> {
-  // HARNESS-GAP: canaryPolicy(policyId, version, installationIds) has no
-  // cohort_name argument; catalog S05-023 persists it on after_pointer.
   return controlFetch(canaryPath(POLICY_VERSION), {
     body: { installation_ids: [INST_A], cohort_name: COHORT_NAME },
   });

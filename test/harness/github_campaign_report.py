@@ -28,6 +28,12 @@ class FailedTest:
     error: str | None
     log_file: str | None
     failure_kind: str | None = None
+    test_file: str | None = None
+    details: str | None = None
+
+
+def _is_runner_missing(item: FailedTest) -> bool:
+    return item.failure_kind in ("runner_missing_outcome", "not_recorded")
 
 
 def _load_summary_tests(log_dir: Path) -> list[dict[str, Any]]:
@@ -84,6 +90,8 @@ def failed_tests_for_subcampaign(
                     if isinstance(entry.get("failure_kind"), str)
                     else None
                 ),
+                test_file=(entry.get("file") if isinstance(entry.get("file"), str) else None),
+                details=(entry.get("details") if isinstance(entry.get("details"), str) else None),
             )
         )
     return failures
@@ -176,8 +184,8 @@ def format_markdown_report(
             lines.append("All recorded test cases passed.")
         return "\n".join(lines) + "\n"
 
-    not_recorded = [item for item in failures if item.failure_kind == "not_recorded"]
-    recorded_failures = [item for item in failures if item.failure_kind != "not_recorded"]
+    not_recorded = [item for item in failures if _is_runner_missing(item)]
+    recorded_failures = [item for item in failures if not _is_runner_missing(item)]
     if recorded_failures:
         lines.append(f"**{len(recorded_failures)} recorded test failure(s):**")
     if not_recorded:
@@ -195,6 +203,8 @@ def format_markdown_report(
                 summary = {}
             diagnostics = summary.get("runner_diagnostics", []) if isinstance(summary, dict) else []
             output_file = summary.get("diagnostics_file", "output.log") if isinstance(summary, dict) else "output.log"
+            if not isinstance(output_file, str) or not output_file:
+                output_file = "output.log"
             transcript = f"{area}/{subcampaign}/{output_file}"
             lines.append(f"Runner transcript (artifact-relative): `{transcript}`")
             if isinstance(diagnostics, list) and diagnostics:
@@ -208,13 +218,24 @@ def format_markdown_report(
     for item in failures:
         lines.append(f"### `{item.subcampaign}`")
         lines.append("")
-        kind = "NOT RECORDED" if item.failure_kind == "not_recorded" else "FAIL"
+        kind = "RUNNER OUTCOME MISSING" if _is_runner_missing(item) else "TEST FAILURE"
         lines.append(f"- **{kind}: {item.name}**")
+        if item.test_file:
+            lines.append(f"  - test file: `{item.test_file}`")
         if item.log_file:
             lines.append(f"  - log: `{item.log_file}`")
+        structured_report = governor_campaign_log_dir(run_root, area, item.subcampaign) / "vitest-report.json"
+        if structured_report.is_file():
+            ref = f"{area}/{item.subcampaign}/vitest-report.json"
+            lines.append(f"  - structured Vitest report (artifact-relative): `{ref}`")
+        if item.details:
+            lines.append("")
+            lines.append("```text")
+            lines.append(item.details.strip())
+            lines.append("```")
         if item.error:
             lines.append("")
-            lines.append("```")
+            lines.append("```text")
             lines.append(item.error.strip())
             lines.append("```")
         lines.append("")
@@ -223,7 +244,7 @@ def format_markdown_report(
 
 def emit_github_annotations(failures: list[FailedTest]) -> None:
     for item in failures:
-        kind = "NOT RECORDED" if item.failure_kind == "not_recorded" else "FAIL"
+        kind = "RUNNER OUTCOME MISSING" if _is_runner_missing(item) else "TEST FAILURE"
         title = _escape_annotation(f"{item.area}/{item.subcampaign} · {kind}")
         message = _escape_annotation(f"{kind}: {item.name}")
         if item.error:

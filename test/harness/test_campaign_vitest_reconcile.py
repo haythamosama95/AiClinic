@@ -67,6 +67,7 @@ def test_reconcile_adds_missing_fail_rows(tmp_path: Path) -> None:
                 ],
                 "passed": 0,
                 "failed": 1,
+                "exit_code": 1,
             }
         ),
         encoding="utf-8",
@@ -132,7 +133,74 @@ def test_reconcile_marks_missing_outcomes_and_keeps_runner_diagnostics(
         mod.vitest_labels_for_subcampaign = original
 
     payload = json.loads((log_dir / "summary.json").read_text(encoding="utf-8"))
-    assert payload["tests"][0]["failure_kind"] == "not_recorded"
+    assert payload["tests"][0]["failure_kind"] == "runner_missing_outcome"
     assert payload["not_recorded"] == [missing]
     assert payload["diagnostics_file"] == "output.log"
+    assert payload["tests"][0]["reference"] == "output.log"
+    assert payload["tests"][0]["runner_exit_code"] is None
     assert any("sqlite-shm" in line for line in payload["runner_diagnostics"])
+
+
+def test_reconcile_attaches_vitest_failure_detail(tmp_path: Path) -> None:
+    log_dir = tmp_path / "npm-test"
+    log_dir.mkdir()
+    failed = "test/foo.test.ts > suite > case one"
+    (log_dir / "summary.json").write_text(json.dumps({"tests": []}), encoding="utf-8")
+    (log_dir / "vitest-report.json").write_text(json.dumps({
+        "numFailedTests": 1,
+        "testResults": [{
+            "name": "test/foo.test.ts",
+            "assertionResults": [{
+                "ancestorTitles": ["suite"],
+                "title": "case one",
+                "status": "failed",
+                "failureMessages": ["expected 2 to equal 3", "at test/foo.test.ts:10"],
+            }],
+        }],
+    }), encoding="utf-8")
+
+    from harness import campaign_vitest_reconcile as mod
+
+    original = mod.vitest_labels_for_subcampaign
+    mod.vitest_labels_for_subcampaign = lambda area, sub: {failed}
+    try:
+        assert reconcile_vitest_summary_log(
+            log_dir, area="ai-platform", subcampaign="npm-test", cwd=tmp_path,
+        )
+    finally:
+        mod.vitest_labels_for_subcampaign = original
+    row = json.loads((log_dir / "summary.json").read_text(encoding="utf-8"))["tests"][0]
+    assert row["failure_kind"] == "test_failure"
+    assert row["error"] == ["expected 2 to equal 3", "at test/foo.test.ts:10"]
+    assert row["report_reference"] == "vitest-report.json"
+
+
+def test_reconcile_reads_normalized_report_and_ignores_malformed_report(tmp_path: Path) -> None:
+    log_dir = tmp_path / "npm-test"
+    log_dir.mkdir()
+    failed = "test/bar.test.ts > suite > case two"
+    (log_dir / "summary.json").write_text(json.dumps({"tests": []}), encoding="utf-8")
+    (log_dir / "vitest-report.json").write_text("{bad json", encoding="utf-8")
+    (log_dir / "vitest-report-step2.json").write_text(json.dumps({
+        "tests": [{
+            "name": failed,
+            "file": "test/bar.test.ts",
+            "status": "failed",
+            "error": ["database mismatch"],
+        }],
+    }), encoding="utf-8")
+
+    from harness import campaign_vitest_reconcile as mod
+
+    original = mod.vitest_labels_for_subcampaign
+    mod.vitest_labels_for_subcampaign = lambda area, sub: {failed}
+    try:
+        assert reconcile_vitest_summary_log(
+            log_dir, area="ai-platform", subcampaign="npm-test", cwd=tmp_path,
+        )
+    finally:
+        mod.vitest_labels_for_subcampaign = original
+    row = json.loads((log_dir / "summary.json").read_text(encoding="utf-8"))["tests"][0]
+    assert row["failure_kind"] == "test_failure"
+    assert row["error"] == ["database mismatch"]
+    assert row["report_reference"] == "vitest-report-step2.json"

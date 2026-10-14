@@ -1,0 +1,56 @@
+{
+  "version": 1,
+  "kind": "passed",
+  "tests": [
+    {
+      "name": "test/load/load-and-cost.test.ts > d1_write_headroom_measured > measures one hot-path ai_request INSERT per request (finite, no ceiling)",
+      "log_file": "tests/004-test-load-load-and-cost-test-ts-d1-write-headroo.log",
+      "log_path": "/home/runner/work/AiClinic/AiClinic/test-results/governor/20261014T082035Z-e7b9db4a/ai-platform/load/tests/004-test-load-load-and-cost-test-ts-d1-write-headroo.log"
+    },
+    {
+      "name": "test/load/load-and-cost.test.ts > do_throughput_per_installation_measured > measures time-dimensioned DO throughput against one pinned installation",
+      "log_file": "tests/005-test-load-load-and-cost-test-ts-do-throughput-pe.log",
+      "log_path": "/home/runner/work/AiClinic/AiClinic/test-results/governor/20261014T082035Z-e7b9db4a/ai-platform/load/tests/005-test-load-load-and-cost-test-ts-do-throughput-pe.log"
+    },
+    {
+      "name": "test/load/load-and-cost.test.ts > exactly_one_r2_class_a_per_request_under_load > counts exactly one R2 Class A operation per request (max and average)",
+      "log_file": "tests/002-test-load-load-and-cost-test-ts-exactly-one-r2-c.log",
+      "log_path": "/home/runner/work/AiClinic/AiClinic/test-results/governor/20261014T082035Z-e7b9db4a/ai-platform/load/tests/002-test-load-load-and-cost-test-ts-exactly-one-r2-c.log"
+    },
+    {
+      "name": "test/load/load-and-cost.test.ts > exactly_two_durable_object_requests_per_request_under_load > counts exactly two Quota DO fetches per request \u2014 admission and credit",
+      "log_file": "tests/003-test-load-load-and-cost-test-ts-exactly-two-dura.log",
+      "log_path": "/home/runner/work/AiClinic/AiClinic/test-results/governor/20261014T082035Z-e7b9db4a/ai-platform/load/tests/003-test-load-load-and-cost-test-ts-exactly-two-dura.log"
+    },
+    {
+      "name": "test/load/load-and-cost.test.ts > guard_p95_within_tens_of_ms_at_target_concurrency > drives N=20 happy-path requests via a bounded pool with real overlap",
+      "log_file": "tests/001-test-load-load-and-cost-test-ts-guard-p95-within.log",
+      "log_path": "/home/runner/work/AiClinic/AiClinic/test-results/governor/20261014T082035Z-e7b9db4a/ai-platform/load/tests/001-test-load-load-and-cost-test-ts-guard-p95-within.log"
+    },
+    {
+      "name": "test/load/load-and-cost.test.ts > load_suite_introduces_no_per_request_server_state > keeps load tooling under test/load; composition lives in src/pipeline",
+      "log_file": "tests/008-test-load-load-and-cost-test-ts-load-suite-intro.log",
+      "log_path": "/home/runner/work/AiClinic/AiClinic/test-results/governor/20261014T082035Z-e7b9db4a/ai-platform/load/tests/008-test-load-load-and-cost-test-ts-load-suite-intro.log"
+    },
+    {
+      "name": "test/load/load-and-cost.test.ts > load_suite_joins_ci_permanently > wires load into CI via the ai-platform root campaign job",
+      "log_file": "tests/010-test-load-load-and-cost-test-ts-load-suite-joins.log",
+      "log_path": "/home/runner/work/AiClinic/AiClinic/test-results/governor/20261014T082035Z-e7b9db4a/ai-platform/load/tests/010-test-load-load-and-cost-test-ts-load-suite-joins.log"
+    },
+    {
+      "name": "test/load/load-and-cost.test.ts > no_prompt_provider_model_in_flutter_from_load_suite > introduces no Flutter client files under the load suite tree",
+      "log_file": "tests/009-test-load-load-and-cost-test-ts-no-prompt-provid.log",
+      "log_path": "/home/runner/work/AiClinic/AiClinic/test-results/governor/20261014T082035Z-e7b9db4a/ai-platform/load/tests/009-test-load-load-and-cost-test-ts-no-prompt-provid.log"
+    },
+    {
+      "name": "test/load/load-and-cost.test.ts > no_second_quota_do_round_trip_beyond_two > proves no third Quota DO fetch occurs per request under load",
+      "log_file": "tests/007-test-load-load-and-cost-test-ts-no-second-quota.log",
+      "log_path": "/home/runner/work/AiClinic/AiClinic/test-results/governor/20261014T082035Z-e7b9db4a/ai-platform/load/tests/007-test-load-load-and-cost-test-ts-no-second-quota.log"
+    },
+    {
+      "name": "test/load/load-and-cost.test.ts > no_second_r2_object_per_request > proves no second R2 Class A op is written per request under load",
+      "log_file": "tests/006-test-load-load-and-cost-test-ts-no-second-r2-obj.log",
+      "log_path": "/home/runner/work/AiClinic/AiClinic/test-results/governor/20261014T082035Z-e7b9db4a/ai-platform/load/tests/006-test-load-load-and-cost-test-ts-no-second-r2-obj.log"
+    }
+  ]
+}

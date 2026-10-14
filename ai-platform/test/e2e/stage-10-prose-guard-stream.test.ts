@@ -430,8 +430,9 @@ async function requireAiRequest(ref: string): Promise<Record<string, unknown>> {
  * Missing-handoff settlement runs in waitUntil after SSE `failed`. Poll until
  * the synthetic attempt, usage_event, and R2 envelope are all present.
  */
-async function waitForMissingHandoffSettlement(
+async function waitForFailedSettlement(
   ref: string,
+  expectedAttemptCount = 1,
   timeoutMs = 8000,
 ): Promise<Record<string, unknown>> {
   const started = Date.now();
@@ -447,14 +448,18 @@ async function waitForMissingHandoffSettlement(
         typeof pointer === "string" &&
         pointer.length > 0 &&
         (await r2Exists(pointer));
-      if (attempts.length === 1 && usage.length === 1 && envelopeReady) {
+      if (
+        attempts.length === expectedAttemptCount &&
+        usage.length === 1 &&
+        envelopeReady
+      ) {
         return row;
       }
     }
     await new Promise((resolve) => setTimeout(resolve, 50));
   }
   throw new Error(
-    `timed out waiting for missing-handoff settlement of ${ref} (state=${String(row?.state)})`,
+    `timed out waiting for failed settlement of ${ref} (state=${String(row?.state)})`,
   );
 }
 
@@ -629,7 +634,7 @@ describe("Stage 10 — prose guards, regenerating, heartbeat (S10-018…S10-034)
       retrySafe: true,
       traceId: "s10-005-trace",
     });
-    const original = await requireAiRequest(originalRef);
+    const original = await waitForFailedSettlement(originalRef, 2);
     expect(original.state).toBe("Failed");
     expect(original.terminal_error_code).toBe("provider_unavailable");
 
@@ -1390,7 +1395,7 @@ describe("Stage 10 — prose guards, regenerating, heartbeat (S10-018…S10-034)
       );
       expect(missedOnce).toBe(true);
 
-      const row = await waitForMissingHandoffSettlement(ref);
+      const row = await waitForFailedSettlement(ref);
       expect(row.state).toBe("Failed");
       expect(row.terminal_error_code).toBe("internal_error");
       expect(row.routing_decision).toBeNull();

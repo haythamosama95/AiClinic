@@ -1,0 +1,79 @@
+{
+  "version": 1,
+  "kind": "failed",
+  "tests": [
+    {
+      "name": "test/admission-credit.test.ts > admission_rejection_counted_not_journaled > replays the prior DO admission for the same jti without an ai_request row",
+      "log_file": "tests/1463-test-admission-credit-test-ts-admission-rejectio.log",
+      "log_path": "/home/runner/work/AiClinic/AiClinic/test-results/governor/20261014T082035Z-e7b9db4a/ai-platform/npm-test/tests/1463-test-admission-credit-test-ts-admission-rejectio.log"
+    },
+    {
+      "name": "test/retention.test.ts > retention_expiry_ephemeral > expires jti/idempotency in place inside Quota DO with no D1/R2 prune",
+      "log_file": "tests/1464-test-retention-test-ts-retention-expiry-ephemera.log",
+      "log_path": "/home/runner/work/AiClinic/AiClinic/test-results/governor/20261014T082035Z-e7b9db4a/ai-platform/npm-test/tests/1464-test-retention-test-ts-retention-expiry-ephemera.log"
+    },
+    {
+      "name": "test/soft-threshold-routing.test.ts > quota_exhausted_only_error_code_on_hard_exhaustion > emits only quota_exhausted from hard exhaustion and no error on soft path"
+    },
+    {
+      "name": "test/soft-threshold-routing.test.ts > soft_threshold_cost_dimension_selects_degraded > crosses soft threshold on creditsUsed / credit_budget and routes degraded"
+    },
+    {
+      "name": "test/soft-threshold-routing.test.ts > soft_threshold_just_below_boundary_unaffected > keeps standard tier at 79/100 just below the >= soft boundary"
+    },
+    {
+      "name": "test/soft-threshold-routing.test.ts > soft_threshold_no_second_quota_do_round_trip > uses exactly one Quota DO fetch for soft-threshold admission",
+      "log_file": "tests/1465-test-soft-threshold-routing-test-ts-soft-thresho.log",
+      "log_path": "/home/runner/work/AiClinic/AiClinic/test-results/governor/20261014T082035Z-e7b9db4a/ai-platform/npm-test/tests/1465-test-soft-threshold-routing-test-ts-soft-thresho.log"
+    },
+    {
+      "name": "test/soft-threshold-routing.test.ts > soft_threshold_token_dimension_selects_degraded > crosses soft threshold on creditsUsed / credit_budget and routes degraded"
+    },
+    {
+      "name": "test/soft-threshold-routing.test.ts > soft_threshold_zero_budget_dimension_never_contributes > ignores a zero credit_budget dimension even when creditsUsed is large"
+    },
+    {
+      "name": "test/soft-threshold-routing.test.ts > soft_threshold_zero_never_degrades > keeps standard routing when soft_threshold is 0 with positive budgets"
+    },
+    {
+      "name": "test/system/admission-settlement.system.test.ts > admission settlement against terms > E2E-P3.4-01 CP-B paid grant then issuer token lists the plan and completes a request charged to the term",
+      "log_file": "tests/1466-test-system-admission-settlement-system-test-ts.log",
+      "log_path": "/home/runner/work/AiClinic/AiClinic/test-results/governor/20261014T082035Z-e7b9db4a/ai-platform/npm-test/tests/1466-test-system-admission-settlement-system-test-ts.log"
+    },
+    {
+      "name": "test/system/cron-retention-interplay.system.test.ts > cron retention interplay > SYS-8.1 \u2014 Retention purge keeps usage_event money row",
+      "log_file": "tests/1467-test-system-cron-retention-interplay-system-test.log",
+      "log_path": "/home/runner/work/AiClinic/AiClinic/test-results/governor/20261014T082035Z-e7b9db4a/ai-platform/npm-test/tests/1467-test-system-cron-retention-interplay-system-test.log"
+    },
+    {
+      "name": "test/system/cron-retention-interplay.system.test.ts > cron retention interplay > SYS-8.2 \u2014 Usage rollup upsert",
+      "log_file": "tests/1468-test-system-cron-retention-interplay-system-test.log",
+      "log_path": "/home/runner/work/AiClinic/AiClinic/test-results/governor/20261014T082035Z-e7b9db4a/ai-platform/npm-test/tests/1468-test-system-cron-retention-interplay-system-test.log"
+    },
+    {
+      "name": "test/system/settlement-integrity.system.test.ts > settlement integrity > SYS-7.1 \u2014 Completed settlement columns and envelope",
+      "log_file": "tests/1469-test-system-settlement-integrity-system-test-ts.log",
+      "log_path": "/home/runner/work/AiClinic/AiClinic/test-results/governor/20261014T082035Z-e7b9db4a/ai-platform/npm-test/tests/1469-test-system-settlement-integrity-system-test-ts.log"
+    },
+    {
+      "name": "test/system/settlement-integrity.system.test.ts > settlement integrity > SYS-7.3 \u2014 Cancelled settlement after accepted",
+      "log_file": "tests/1470-test-system-settlement-integrity-system-test-ts.log",
+      "log_path": "/home/runner/work/AiClinic/AiClinic/test-results/governor/20261014T082035Z-e7b9db4a/ai-platform/npm-test/tests/1470-test-system-settlement-integrity-system-test-ts.log"
+    },
+    {
+      "name": "test/system/term-boundaries-grace-renewal.system.test.ts > term boundaries, grace and renewal > E2E-P3.5-02 A10 unpaid end enters grace then lapses as expired",
+      "log_file": "tests/1471-test-system-term-boundaries-grace-renewal-system.log",
+      "log_path": "/home/runner/work/AiClinic/AiClinic/test-results/governor/20261014T082035Z-e7b9db4a/ai-platform/npm-test/tests/1471-test-system-term-boundaries-grace-renewal-system.log"
+    },
+    {
+      "name": "test/system/term-boundaries-grace-renewal.system.test.ts > term boundaries, grace and renewal > E2E-P3.5-03 The reservation that takes the last grace credit ends grace_exhausted",
+      "log_file": "tests/1472-test-system-term-boundaries-grace-renewal-system.log",
+      "log_path": "/home/runner/work/AiClinic/AiClinic/test-results/governor/20261014T082035Z-e7b9db4a/ai-platform/npm-test/tests/1472-test-system-term-boundaries-grace-renewal-system.log"
+    },
+    {
+      "name": "test/system/term-boundaries-grace-renewal.system.test.ts > term boundaries, grace and renewal > E2E-P3.5-04 A grant on day three of grace keeps the old calendar",
+      "log_file": "tests/1473-test-system-term-boundaries-grace-renewal-system.log",
+      "log_path": "/home/runner/work/AiClinic/AiClinic/test-results/governor/20261014T082035Z-e7b9db4a/ai-platform/npm-test/tests/1473-test-system-term-boundaries-grace-renewal-system.log"
+    }
+  ]
+}
