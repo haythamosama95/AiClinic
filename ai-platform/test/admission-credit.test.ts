@@ -70,7 +70,15 @@ type AdmissionSuccess =
 
 type AdmissionFailure = {
   ok: false;
-  code: "unauthenticated" | "quota_exhausted" | "rate_limited" | "internal_error";
+  code:
+    | "unauthenticated"
+    | "quota_exhausted"
+    | "allowance_exhausted"
+    | "concurrency_limited"
+    | "coverage_unknown"
+    | "coverage_lapsed"
+    | "rate_limited"
+    | "internal_error";
   periodReset?: string;
   retryAfter?: number;
 };
@@ -1121,7 +1129,7 @@ describe("fallback_reconcile_drains_pending_rows", () => {
 });
 
 describe("admission_rejection_counted_not_journaled", () => {
-  it("tallies quota_exhausted to bucketed platform_counter without an ai_request row", async () => {
+  it("tallies allowance_exhausted to bucketed platform_counter without an ai_request row", async () => {
     const admission = await loadAdmissionModule();
     const credit = await loadCreditModule();
     const installationId = freshInstallationId();
@@ -1208,7 +1216,7 @@ describe("admission_rejection_counted_not_journaled", () => {
     expect(await readAiRequestCount()).toBe(aiRequestsBefore);
   });
 
-  it("maps concurrency_exhausted onto quota_exhausted and tallies that code", async () => {
+  it("maps concurrency_exhausted onto concurrency_limited and tallies that code", async () => {
     const admission = await loadAdmissionModule();
     const installationId = freshInstallationId();
     const { cache, reader } = await seedInstallationAndEntitlement(installationId);

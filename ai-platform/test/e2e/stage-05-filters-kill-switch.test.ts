@@ -225,6 +225,7 @@ async function ensureStage05QuotaDoCoverage(
     capabilities: payload.allowed_capabilities,
     max_cost_class: "premium",
     concurrency_limit: 16,
+    soft_threshold: payload.soft_threshold,
   });
 
   await runInDurableObject(
@@ -986,7 +987,9 @@ describe("Stage 05 — routing filters, kill switch, and invoke auth (S05-063…
     await enrollAndEntitle(scenario, {
       ...DEFAULT_ENTITLE_PAYLOAD,
       request_quota: 2,
-      soft_threshold: 0.5,
+      // The term admission counter includes the current reservation. Keep the
+      // first request below threshold and cross it on the second reservation.
+      soft_threshold: 0.75,
     });
     await publishAndPromote(
       policyDocument(19, {
@@ -1016,6 +1019,22 @@ describe("Stage 05 — routing filters, kill switch, and invoke auth (S05-063…
         timeout_ms: 30000,
       },
     ]);
+
+    // The fixture provider rejects its request after acceptance and releases
+    // the reservation without consuming allowance. Seed one used unit so the
+    // next reservation crosses the configured soft threshold deterministically.
+    await runInDurableObject(
+      env.DO.get(env.DO.idFromName(scenario.installationId)),
+      async (_instance, state) => {
+        const storage = state.storage as DurableObjectStorage & {
+          sql?: { exec: (query: string) => Iterable<Record<string, unknown>> };
+        };
+        if (!storage.sql) {
+          throw new Error("quota DO sql storage unavailable for stage-05 seed");
+        }
+        storage.sql.exec("UPDATE hot SET used = 1");
+      },
+    );
 
     const degraded = await invokeAccepted(scenario, "idem-s05-077-0001");
     const { row: degradedRow, decision: degradedDecision } = await loadDecision(

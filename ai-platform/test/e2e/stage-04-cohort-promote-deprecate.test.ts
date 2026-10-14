@@ -386,6 +386,10 @@ describe("Stage 04 â€” cohort activate/promote and deprecate failures (S04-066â€
     const beforeGrant = await latestGrant(installationScope(I0));
     expect(beforeGrant?.capability_version).toBe("1.0.0");
     const grantCountBefore = await count("capability_grant");
+    const auditsBefore = await getAudits(
+      "cohort_activate",
+      "clinic.visit_summary@1.0.0",
+    );
 
     await waitForClockTick();
     const result = await controlFetch(activatePath("1.0.0"), {
@@ -410,9 +414,11 @@ describe("Stage 04 â€” cohort activate/promote and deprecate failures (S04-066â€
       "cohort_activate",
       "clinic.visit_summary@1.0.0",
     );
-    expect(audits).toHaveLength(1);
-    expect(audits[0]?.before_pointer).toBe(JSON.stringify({ [I0]: "1.0.0" }));
-    expect(audits[0]?.after_pointer).toBe("1.0.0");
+    expect(audits).toHaveLength(auditsBefore.length + 1);
+    expect(audits.at(-1)?.before_pointer).toBe(
+      JSON.stringify({ [I0]: "1.0.0" }),
+    );
+    expect(audits.at(-1)?.after_pointer).toBe("1.0.0");
   });
 
   it("S04-072 â€” Promote rejects missing operator bearer", async () => {
@@ -476,10 +482,14 @@ describe("Stage 04 â€” cohort activate/promote and deprecate failures (S04-066â€
 
       const i0GrantBefore = await latestGrant(installationScope(I0));
       expect(i0GrantBefore?.capability_version).toBe("1.0.0");
-      const planGrantBefore = await latestGrant("plan:professional");
-      expect(planGrantBefore?.capability_version).toBe("2.0.0");
+      // The shared E2E clinic fixture publishes the `live-monthly` plan.
+      const planGrantBefore = await latestGrant("plan:live-monthly");
+      expect(planGrantBefore?.capability_version).toBe("1.0.0");
       expect(planGrantBefore?.revoked_at).toBeNull();
-      expect(await getGrants(installationScope(I1))).toEqual([]);
+      const i1InstallationGrantsBefore = await getGrants(installationScope(I1));
+      expect(i1InstallationGrantsBefore).toHaveLength(1);
+      expect(i1InstallationGrantsBefore[0]?.capability_version).toBe("1.0.0");
+      expect(i1InstallationGrantsBefore[0]?.revoked_at).toBeNull();
 
       const result = await controlFetch(promotePath("2.0.0"), { body: {} });
       assertEmptySuccess(result);
@@ -534,7 +544,7 @@ describe("Stage 04 â€” cohort activate/promote and deprecate failures (S04-066â€
       );
       expect(beforePointer.plan).toEqual(
         expect.arrayContaining([
-          { scope: "plan:professional", version: "2.0.0" },
+          { scope: "plan:live-monthly", version: "1.0.0" },
         ]),
       );
       const pendingCoverage = await queryOne<{ n: number }>(
@@ -640,6 +650,10 @@ describe("Stage 04 â€” cohort activate/promote and deprecate failures (S04-066â€
     await enrollAndEntitleI0();
     const grantBefore = await latestGrant(installationScope(I0));
     expect(grantBefore?.capability_version).toBe("1.0.0");
+    const auditsBefore = await getAudits(
+      "cohort_promote",
+      "clinic.visit_summary@1.0.0",
+    );
 
     await waitForClockTick();
     const result = await controlFetch(promotePath("1.0.0"), {
@@ -663,9 +677,9 @@ describe("Stage 04 â€” cohort activate/promote and deprecate failures (S04-066â€
       "cohort_promote",
       "clinic.visit_summary@1.0.0",
     );
-    expect(audits).toHaveLength(1);
-    expect(audits[0]?.operator_id).toBe(OPERATOR_ID);
-    expect(audits[0]?.after_pointer).toBe("1.0.0");
+    expect(audits).toHaveLength(auditsBefore.length + 1);
+    expect(audits.at(-1)?.operator_id).toBe(OPERATOR_ID);
+    expect(audits.at(-1)?.after_pointer).toBe("1.0.0");
   });
 
   it("S04-080 â€” Deprecate rejects missing operator bearer", async () => {

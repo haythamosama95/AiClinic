@@ -1538,6 +1538,7 @@ export type CoverClinicOptions = {
   capabilities?: string[];
   concurrency_limit?: number;
   max_allowance_per_month?: number;
+  runAlarm?: boolean;
 };
 
 type CoverClinicBootstrap = {
@@ -1782,19 +1783,23 @@ export async function coverClinic(
     throw new Error("coverClinic: tenant_binding missing after grant");
   }
   scenario.installationId = binding.installation_id;
-  await runDurableObjectAlarm(
-    quotaDoStubForInstallation(scenario.installationId),
-  );
+  if (opts.runAlarm !== false) {
+    await runDurableObjectAlarm(
+      quotaDoStubForInstallation(scenario.installationId),
+    );
+  }
   clearConfigCache();
 }
 
 export async function setupPromotedFakePolicy(
   scenario: Scenario,
   payload: EntitlePayload = DEFAULT_ENTITLE_PAYLOAD,
+  options: { runAlarm?: boolean } = {},
 ): Promise<void> {
   await coverClinic(scenario, {
     capabilities: payload.allowed_capabilities,
     max_allowance_per_month: payload.request_quota,
+    runAlarm: options.runAlarm,
   });
   await newClinic(scenario);
   await ensureDefaultCohortGrants(scenario);

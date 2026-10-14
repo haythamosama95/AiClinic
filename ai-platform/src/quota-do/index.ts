@@ -1142,13 +1142,12 @@ function admitOnHotRow(
   let hot = parseHotRow(hotRows[0]!);
   sweepStoredAnswers(hot, now);
 
-  const replayEntry = hot.replay[request.jti];
-  if (replayEntry) {
-    return { kind: "admission", outcome: "replay" };
-  }
   const idempotencyEntry = hot.idempotency[request.idempotencyKey];
   if (idempotencyEntry) {
     return idempotencyEntry.answer;
+  }
+  if (hot.replay[request.jti]) {
+    return { kind: "admission", outcome: "replay" };
   }
 
   const nowIso =
@@ -1240,8 +1239,7 @@ function admitOnHotRow(
     persistIfChanged();
     return returnStoredAdmission(storage, hot, request, {
       kind: "admission",
-      outcome: "quota_exhausted",
-      period_end: billableTerm.ends_at,
+      outcome: "concurrency_exhausted",
     }, now);
   }
 

@@ -144,7 +144,7 @@ def reconcile_vitest_summary_log(
     cwd: Path,
 ) -> bool:
     """
-    Remove invalid rows, dedupe by test name, and record unrun list cases as SKIP.
+    Remove invalid rows, dedupe by test name, and mark missing outcomes explicitly.
 
     Returns True when ``summary.json`` was updated.
     """
@@ -180,7 +180,7 @@ def reconcile_vitest_summary_log(
         if label not in known:
             continue
         status = entry.get("status")
-        if status not in ("PASS", "FAIL"):
+        if status not in ("PASS", "FAIL", "SKIP"):
             continue
         normalized = {**entry, "name": label}
         if status == "FAIL":
@@ -211,19 +211,19 @@ def reconcile_vitest_summary_log(
                 continue
             by_name[label] = {
                 "name": label,
-                "status": "SKIP",
-                "skipped": True,
+                "status": "NOT_RECORDED",
+                "skipped": False,
                 "log_file": None,
                 "started_at": None,
                 "finished_at": None,
                 "elapsed_seconds": 0.0,
-                "failure_kind": "not_executed",
+                "failure_kind": "infrastructure_error",
                 "reconciled": True,
             }
     missing_labels = sorted(
         label
         for label, entry in by_name.items()
-        if entry.get("failure_kind") == "not_executed"
+        if entry.get("failure_kind") == "infrastructure_error"
     )
 
     ordered = [by_name[label] for label in sorted(by_name)]
@@ -240,6 +240,9 @@ def reconcile_vitest_summary_log(
         new_payload["not_recorded"] = missing_labels
         new_payload["diagnostics_file"] = "output.log"
         new_payload["runner_diagnostics"] = diagnostics
+        new_payload["campaign_infrastructure_error"] = True
+        new_payload["runner_exit_code"] = payload.get("exit_code")
+        new_payload["exit_code"] = 1
     text = json.dumps(new_payload, indent=2) + "\n"
     summary_path.write_text(text, encoding="utf-8")
     meta = log_dir / "meta.json"
@@ -258,6 +261,6 @@ def should_reconcile_vitest_campaign(
     if not area or not subcampaign:
         return False
     if campaign_config and campaign_config.get("kind") == "vitest":
-        return vitest_labels_for_subcampaign(area, subcampaign) is not None
+        return True
     joined = " ".join(cmd)
-    return "vitest" in joined and vitest_labels_for_subcampaign(area, subcampaign) is not None
+    return "vitest" in joined

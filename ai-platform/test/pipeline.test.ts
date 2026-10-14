@@ -26,6 +26,7 @@ import {
 import type { CanonicalRequest } from "../src/contracts/canonical";
 import type { Principal, TokenVerifier } from "../src/identity";
 import { INGRESS_BODY_SIZE_LIMIT } from "../src/adapter";
+import { normalizeRequestReference } from "../src/reference";
 import { load, type Manifest } from "../src/manifest";
 import { creditUsage } from "../src/credit";
 import {
@@ -1158,7 +1159,7 @@ describe("pipeline_stage_failures", () => {
       requestId: first.requestId,
       priorState: {
         requestId: first.requestId,
-        requestReference,
+        requestReference: normalizeRequestReference(requestReference),
         state: "admitted",
       },
     });

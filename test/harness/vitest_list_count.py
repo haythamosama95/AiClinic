@@ -48,19 +48,33 @@ def list_vitest_labels(
     cmd = apply_campaign_args(["npx", "vitest", "list", *list_args], config)
     try:
         with _VITEST_LIST_SEMAPHORE:
-            result = subprocess.run(
+            # Register discovery processes with the campaign SIGINT handler.
+            # subprocess.run() owns its child internally, so the harness cannot
+            # terminate and reap it when reconciliation is interrupted.
+            from harness.common import _monitored_subprocess, _terminate_process
+
+            proc = subprocess.Popen(
                 cmd,
                 cwd=str(cwd),
-                capture_output=True,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
                 text=True,
-                timeout=timeout,
-                check=False,
+                start_new_session=os.name != "nt",
             )
+            try:
+                with _monitored_subprocess(proc):
+                    stdout, _stderr = proc.communicate(timeout=timeout)
+            except KeyboardInterrupt:
+                _terminate_process(proc)
+                raise
+            except subprocess.TimeoutExpired:
+                _terminate_process(proc)
+                return None
     except (OSError, subprocess.TimeoutExpired):
         return None
-    if result.returncode != 0:
+    if proc.returncode != 0:
         return None
-    return labels_in_vitest_list_output(result.stdout)
+    return labels_in_vitest_list_output(stdout)
 
 
 def count_vitest_list(

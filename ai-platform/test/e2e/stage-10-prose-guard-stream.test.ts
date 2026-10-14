@@ -463,8 +463,11 @@ async function waitForFailedSettlement(
   );
 }
 
-async function assertValidationFailedSettlement(ref: string): Promise<void> {
-  const row = await requireAiRequest(ref);
+async function assertValidationFailedSettlement(
+  ref: string,
+  settledRow?: Record<string, unknown>,
+): Promise<void> {
+  const row = settledRow ?? (await requireAiRequest(ref));
   expect(row.state).toBe("Failed");
   expect(row.terminal_error_code).toBe("validation_failed");
 
@@ -1297,7 +1300,8 @@ describe("Stage 10 — prose guards, regenerating, heartbeat (S10-018…S10-034)
         false,
       );
       assertCreditUsage(creditSpy, VALIDATION_FAILED_SINGLE_CREDIT);
-      await assertValidationFailedSettlement(ref);
+      const settledRow = await waitForFailedSettlement(ref, 1);
+      await assertValidationFailedSettlement(ref, settledRow);
     } finally {
       adapterSpy.mockRestore();
       creditSpy.mockRestore();

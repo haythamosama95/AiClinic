@@ -143,6 +143,11 @@ def _load_summary_fields(log_dir: Path) -> dict[str, Any]:
         "failed",
         "exit_code",
         "resumed",
+        "not_recorded",
+        "campaign_infrastructure_error",
+        "runner_diagnostics",
+        "diagnostics_file",
+        "runner_exit_code",
     ):
         if key in payload:
             out[key] = payload[key]
@@ -180,6 +185,10 @@ def build_campaign_stats(
         "passed": stats.passed,
         "failed": stats.failed,
         "skipped": skipped,
+        "not_recorded": len(summary_fields.get("not_recorded", []))
+        if isinstance(summary_fields.get("not_recorded"), list)
+        else 0,
+        "campaign_infrastructure_error": summary_fields.get("campaign_infrastructure_error", False),
         "attempted": stats.attempted,
         "total": total,
         "exit_code": exit_code,

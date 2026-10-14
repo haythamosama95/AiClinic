@@ -31,10 +31,12 @@ async function postAdmissionRequest({
   token,
   contractVersion,
   idempotencyKey,
+  body,
 }: {
   token: string;
   contractVersion?: number;
   idempotencyKey: string;
+  body: Record<string, unknown>;
 }) {
   const headers: Record<string, string> = {
     authorization: `Bearer ${token}`,
@@ -49,9 +51,34 @@ async function postAdmissionRequest({
     new Request(`${GATEWAY_ORIGIN}/v1/requests`, {
       method: "POST",
       headers,
-      body: JSON.stringify({ capability_id: "clinic.visit_summary" }),
+      body: JSON.stringify(body),
     }),
   );
+}
+
+async function seedCoverageMirrorForVersionCheck(
+  installationId: string,
+  orgId: string,
+) {
+  // This test's DO runs in the v2 external worker. Its alarm can't be invoked
+  // by cloudflare:test's same-worker alarm helper, so seed only the platform
+  // mirror state this protocol-negotiation case needs.
+  await env.DB.prepare(
+    `INSERT OR REPLACE INTO coverage_mirror (
+       installation_id, org_id, binding_epoch, clinic_seq, state, suspended,
+       hard_stop_at, term_snapshot
+     ) VALUES (?, ?, 1, 1, 'active', 0, ?, ?)`,
+  )
+    .bind(
+      installationId,
+      orgId,
+      "2099-12-31T23:59:59.000Z",
+      JSON.stringify({
+        ref: `version-matrix-${installationId}`,
+        capabilities: ["clinic.visit_summary"],
+      }),
+    )
+    .run();
 }
 
 beforeAll(async () => {
@@ -67,23 +94,35 @@ beforeEach(async () => {
 describe("E2E-P7.3-05", () => {
   it("E2E-P7.3-05", async () => {
     const scenario = await newScenario();
-    await setupPromotedFakePolicy(scenario);
+    // The quota DO is intentionally hosted by the version-2 external worker;
+    // Vitest's alarm helper only supports DO stubs owned by the test worker.
+    // The grant RPC completes synchronously; seed the platform mirror below.
+    await setupPromotedFakePolicy(scenario, undefined, { runAlarm: false });
+    await seedCoverageMirrorForVersionCheck(
+      scenario.installationId,
+      scenario.orgId,
+    );
     const token = await mintAat(scenario);
 
     const accepted = await postAdmissionRequest({
       token,
       contractVersion: WORKER_VERSION,
       idempotencyKey: crypto.randomUUID(),
+      body: visitSummaryInvokeBody(scenario),
     });
     expect(accepted.status).toBe(200);
     expect(accepted.headers.get("Aip-Contract-Version")).toBe(
       String(WORKER_VERSION),
     );
+    // Drain the successful SSE response so its settlement finishes before
+    // Vitest pops the isolated D1 storage frame.
+    await accepted.text();
 
     const missingVersion = await postAdmissionRequest({
       token,
       contractVersion: undefined,
       idempotencyKey: crypto.randomUUID(),
+      body: visitSummaryInvokeBody(scenario),
     });
     expect(missingVersion.status).toBe(400);
     const missingBody = (await missingVersion.json()) as Record<string, unknown>;
@@ -94,6 +133,7 @@ describe("E2E-P7.3-05", () => {
       token,
       contractVersion: 3,
       idempotencyKey: crypto.randomUUID(),
+      body: visitSummaryInvokeBody(scenario),
     });
     expect(unsupported.status).toBe(400);
     const unsupportedBody = (await unsupported.json()) as Record<string, unknown>;

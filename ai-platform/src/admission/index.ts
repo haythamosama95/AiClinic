@@ -354,13 +354,12 @@ function mapDoOutcome(
       return { ok: true, outcome: "idempotent", priorState: body.priorState };
     case "quota_exhausted":
       recordGuardRejection({
-        error_code: "quota_exhausted",
+        error_code: "allowance_exhausted",
         installation_id: installationId,
       });
       return {
         ok: false,
-        code: "quota_exhausted",
-        periodReset: body.period_end,
+        code: "allowance_exhausted",
       };
     case "suspended":
       recordGuardRejection({
@@ -399,6 +398,16 @@ function mapDoOutcome(
         ok: false,
         code: "concurrency_limited",
         retryAfter: body.retry_after ?? DEFAULT_RATE_LIMITED_RETRY_AFTER_SECONDS,
+      };
+    case "concurrency_exhausted":
+      recordGuardRejection({
+        error_code: "concurrency_limited",
+        installation_id: installationId,
+      });
+      return {
+        ok: false,
+        code: "concurrency_limited",
+        retryAfter: DEFAULT_RATE_LIMITED_RETRY_AFTER_SECONDS,
       };
     default:
       return { ok: false, code: "internal_error" };

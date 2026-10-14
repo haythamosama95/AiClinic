@@ -1130,12 +1130,34 @@ def _maybe_reconcile_vitest_summary(
         campaign_config=campaign_config,
     ):
         return
-    reconcile_vitest_summary_log(
-        log_dir,
-        area=area,
-        subcampaign=subcampaign,
-        cwd=cwd,
-    )
+    try:
+        reconcile_vitest_summary_log(
+            log_dir,
+            area=area,
+            subcampaign=subcampaign,
+            cwd=cwd,
+        )
+    except KeyboardInterrupt:
+        # Reconciliation runs after the child test command and its summary are
+        # complete. Record this separately, preserving a prior test failure.
+        summary_path = log_dir / "summary.json"
+        try:
+            payload = json.loads(summary_path.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            payload = {}
+        prior_exit_code = payload.get("exit_code", 0)
+        try:
+            prior_exit_code = int(prior_exit_code)
+        except (TypeError, ValueError):
+            prior_exit_code = 0
+        payload["reconciliation_interrupted"] = True
+        if prior_exit_code == 0:
+            payload["exit_code"] = 130
+            payload["interrupted"] = True
+        serialized = json.dumps(payload, indent=2, ensure_ascii=False) + "\n"
+        summary_path.write_text(serialized, encoding="utf-8")
+        (log_dir / "meta.json").write_text(serialized, encoding="utf-8")
+        raise SystemExit(prior_exit_code or 130) from None
 
 
 def make_arg_parser(

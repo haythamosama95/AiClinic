@@ -178,7 +178,11 @@ async function routeControlPathToVendor(
         /^\/control\/capabilities\/[^/]+\/versions\/[^/]+\/retire$/u.test(
           pathname,
         );
-      if (retireCapEarly) {
+      const promoteCapability =
+        /^\/control\/capabilities\/[^/]+\/versions\/[^/]+\/promote$/u.test(
+          pathname,
+        );
+      if (retireCapEarly || promoteCapability) {
         parsedBody = {};
       } else {
         return {

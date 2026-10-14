@@ -527,6 +527,17 @@ async function readDoTerms(installationId: string): Promise<DoTermRow[]> {
   );
 }
 
+async function drainAndCancelAlarm(installationId: string): Promise<void> {
+  const stub = quotaDoStub(installationId);
+  await runDurableObjectAlarm(stub);
+  // Test-clock dates can be behind wall time. After the outbox is drained,
+  // the DO still schedules its next term boundary; cancel that timer so it
+  // cannot fire concurrently with the next grant or isolated-storage cleanup.
+  await runInDurableObject(stub, async (_instance, state) => {
+    await state.storage.deleteAlarm();
+  });
+}
+
 async function readActiveTermTiming(
   installationId: string,
 ): Promise<{ starts_at: string | null; ends_at: string | null } | null> {
@@ -1141,7 +1152,7 @@ describe("paid grant coverage", () => {
 
     const installationId = await installationIdForOrg(fixture.orgId);
     clearCapturedVendorEmails();
-    await runDurableObjectAlarm(quotaDoStub(installationId));
+    await drainAndCancelAlarm(installationId);
 
     const afterFirstAlarm = getCapturedVendorEmails();
     expect(afterFirstAlarm.length).toBeGreaterThanOrEqual(1);
@@ -1167,7 +1178,7 @@ describe("paid grant coverage", () => {
     const fourth = await grantPaidForOrg(fixture);
     expect(fourth.result).toBe("applied");
 
-    await runDurableObjectAlarm(quotaDoStub(installationId));
+    await drainAndCancelAlarm(installationId);
 
     const afterFourthAlarm = getCapturedVendorEmails();
     const al17Bodies = afterFourthAlarm

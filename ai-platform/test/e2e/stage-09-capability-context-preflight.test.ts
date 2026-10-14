@@ -883,7 +883,7 @@ describe("Stage 09 — capability, context, preflight (S09-044…S09-065)", () =
     await assertNoGuardWrites();
   });
 
-  it("S09-065 — jti replay is unauthenticated", async () => {
+  it("S09-065 — jti replay returns the stored admission answer", async () => {
     const scenario = await provisionHappyPath();
     const token = await mintAat(scenario, { claims: { jti: S09_065_JTI } });
 
@@ -895,13 +895,19 @@ describe("Stage 09 — capability, context, preflight (S09-044…S09-065)", () =
     expect(await count("ai_request")).toBe(1);
 
     const second = await postH0(scenario, token, { idempotencyKey: "jti-b" });
-    expect(second.status).toBe(401);
-    assertTaxonomyBody(second.body, {
-      code: "unauthenticated",
-      retry_safe: true,
-    });
-    assertRequestReferenceShape(String(second.body?.request_reference));
-    expect(second.body?.trace_id).toBe(TRACE_ID);
+    expect(second.status).toBe(first.status);
+    expect(second.headers.get("content-type")).toBe(
+      first.headers.get("content-type"),
+    );
+    assertSseSequence(second.events, ["accepted", "completed"], "exact");
+    expect(second.events[0]?.data.request_reference).toBe(firstRef);
+    expect(second.events[0]?.data.trace_id).toBe(TRACE_ID);
+    expect(second.events.filter((event) => event.event === "completed")).toEqual(
+      first.events.filter((event) => event.event === "completed"),
+    );
+    expect(second.events.some((event) => event.event === "text_delta")).toBe(
+      false,
+    );
 
     expect(await count("ai_request")).toBe(1);
     const after = await getAiRequest(firstRef);

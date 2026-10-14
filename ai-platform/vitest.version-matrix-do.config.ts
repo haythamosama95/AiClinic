@@ -1,4 +1,7 @@
 import path from "node:path";
+import { execFileSync } from "node:child_process";
+import { mkdtempSync, rmSync } from "node:fs";
+import os from "node:os";
 import { fileURLToPath } from "node:url";
 import { defineWorkersConfig } from "@cloudflare/vitest-pool-workers/config";
 import { kCurrentWorker } from "miniflare";
@@ -11,10 +14,47 @@ const variantDir = path.resolve(rootDir, "../e2e/fullstack/test/variant");
 const platformWorkerNConfig = path.join(variantDir, "platform-worker-n.toml");
 const platformDoReceiverConfig = path.join(variantDir, "platform-do-receiver.toml");
 
-const doReceiverWorker = unstable_getMiniflareWorkerOptions(
+const doReceiverConfig = unstable_getMiniflareWorkerOptions(
   platformDoReceiverConfig,
   "development",
 );
+
+// Miniflare's secondary workers consume JavaScript modules directly; unlike
+// the primary worker configured through `wrangler.configPath`, they do not go
+// through Wrangler's TypeScript bundling or TOML alias resolution. Build the
+// receiver with Wrangler so its vendor-contracts alias stays at platform DO
+// version 2, then remove the temporary bundle when the Vitest process exits.
+const doReceiverBundleDir = mkdtempSync(
+  path.join(os.tmpdir(), "ai-platform-version-matrix-do-"),
+);
+const wranglerCli = path.join(rootDir, "node_modules/wrangler/bin/wrangler.js");
+try {
+  execFileSync(
+    process.execPath,
+    [
+      wranglerCli,
+      "deploy",
+      "--dry-run",
+      "--outdir",
+      doReceiverBundleDir,
+      "--config",
+      platformDoReceiverConfig,
+      "--env",
+      "development",
+    ],
+    {
+      cwd: rootDir,
+      env: { ...process.env, WRANGLER_SEND_METRICS: "false" },
+      stdio: "ignore",
+    },
+  );
+} catch (error) {
+  rmSync(doReceiverBundleDir, { recursive: true, force: true });
+  throw error;
+}
+process.on("exit", () => {
+  rmSync(doReceiverBundleDir, { recursive: true, force: true });
+});
 
 export default defineWorkersConfig({
   test: {
@@ -31,7 +71,11 @@ export default defineWorkersConfig({
         },
         miniflare: {
           compatibilityDate,
-          d1Databases: ["DB"],
+          // Share the migration-applied test database with the DO receiver
+          // worker, whose Wrangler config uses this same stable ID.
+          d1Databases: {
+            DB: "11111111-1111-1111-1111-111111111111",
+          },
           r2Buckets: ["R2"],
           ratelimits: {
             RATE_LIMITER_INSTALLATION: {
@@ -60,7 +104,28 @@ export default defineWorkersConfig({
           serviceBindings: {
             VENDOR: { name: kCurrentWorker, entrypoint: "VendorEntrypoint" },
           },
-          workers: [doReceiverWorker],
+          workers: [
+            {
+              ...doReceiverConfig.workerOptions,
+              // Match Wrangler's env-specific script_name used by the DO
+              // binding in platform-do-receiver.toml.
+              name: "ai-platform-do-receiver-development",
+              compatibilityDate,
+              modules: true,
+              scriptPath: path.join(doReceiverBundleDir, "worker.js"),
+              modulesRoot: doReceiverBundleDir,
+              modulesRules: doReceiverConfig.workerOptions.modulesRules.map(
+                (rule) =>
+                  // Wrangler emits imported prompt markdown beside worker.js
+                  // using hashed root-level filenames. Extend its terminal
+                  // Text rule because Miniflare ignores later rules of a type
+                  // after a non-fallthrough rule.
+                  rule.type === "Text" && !rule.fallthrough
+                    ? { ...rule, include: [...rule.include, "**/*.md"] }
+                    : rule,
+              ),
+            },
+          ],
         },
       },
     },

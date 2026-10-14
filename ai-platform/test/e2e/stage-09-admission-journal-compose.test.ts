@@ -1,5 +1,5 @@
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
-import { runInDurableObject } from "cloudflare:test";
+import { runDurableObjectAlarm, runInDurableObject } from "cloudflare:test";
 import publishedVisitSummary from "../../manifests/published/clinic.visit_summary@1.0.0.json";
 import {
   assertRequestReferenceShape,
@@ -77,7 +77,6 @@ afterEach(() => {
 });
 
 const TRACE_ID = "01ARZ3NDEKTSV4RRFFQ69G5FAV";
-const PERIOD_RESET = DEFAULT_ENTITLE_PAYLOAD.period_end;
 const PROMPT_HASH = /^[0-9a-f]{8}$/;
 const THREE_HOURS_MS = 3 * 60 * 60 * 1000;
 const S09_085_KEY = "6f5e4d3c-2b1a-4098-87f6-5e4d3c2b1a09";
@@ -140,10 +139,16 @@ function assertJsonTaxonomy(
   assertRequestReferenceShape(String(result.body?.request_reference));
 }
 
-function assertQuotaExhausted(result: InvokeResult): void {
-  assertJsonTaxonomy(result, 429, "quota_exhausted", true);
+function assertAllowanceExhausted(result: InvokeResult): void {
+  assertJsonTaxonomy(result, 403, "allowance_exhausted", false);
   expect(result.body).not.toHaveProperty("retry_after");
-  expect(result.body?.period_reset).toBe(PERIOD_RESET);
+  expect(result.body).not.toHaveProperty("period_reset");
+}
+
+function assertConcurrencyLimited(result: InvokeResult): void {
+  assertJsonTaxonomy(result, 429, "concurrency_limited", true);
+  expect(Number(result.body?.retry_after)).toBeGreaterThan(0);
+  expect(result.body).not.toHaveProperty("period_reset");
 }
 
 function assertAcceptedSse(
@@ -773,7 +778,7 @@ describe("Stage 09 — admission, journal, compose (S09-066…S09-085)", () => {
     expect(await count("ai_request")).toBe(1);
   });
 
-  it("S09-070 — zero term allowance is quota_exhausted with period_reset", async () => {
+  it("S09-070 — zero term allowance is allowance_exhausted", async () => {
     const scenario = await provisionHappyPath();
     await setActiveTermAllowance(scenario, 0);
 
@@ -783,12 +788,12 @@ describe("Stage 09 — admission, journal, compose (S09-066…S09-085)", () => {
       body: happyVisitBody(scenario),
     });
 
-    assertQuotaExhausted(result);
+    assertAllowanceExhausted(result);
     expect(result.body?.trace_id).toBe(TRACE_ID);
     expect(await count("ai_request")).toBe(0);
   });
 
-  it("S09-071 — zero term allowance is quota_exhausted with period_reset (valid plan grant)", async () => {
+  it("S09-071 — zero term allowance is allowance_exhausted (valid plan grant)", async () => {
     const scenario = await provisionHappyPath();
     await setActiveTermAllowance(scenario, 0);
 
@@ -798,11 +803,11 @@ describe("Stage 09 — admission, journal, compose (S09-066…S09-085)", () => {
       body: happyVisitBody(scenario),
     });
 
-    assertQuotaExhausted(result);
+    assertAllowanceExhausted(result);
     expect(await count("ai_request")).toBe(0);
   });
 
-  it("S09-072 — zero term allowance is quota_exhausted with period_reset (valid plan grant)", async () => {
+  it("S09-072 — zero term allowance is allowance_exhausted (valid plan grant)", async () => {
     const scenario = await provisionHappyPath();
     await setActiveTermAllowance(scenario, 0);
 
@@ -812,11 +817,11 @@ describe("Stage 09 — admission, journal, compose (S09-066…S09-085)", () => {
       body: happyVisitBody(scenario),
     });
 
-    assertQuotaExhausted(result);
+    assertAllowanceExhausted(result);
     expect(await count("ai_request")).toBe(0);
   });
 
-  it("S09-073 — 16 in-flight then 17th is quota_exhausted", async () => {
+  it("S09-073 — 16 in-flight then 17th is concurrency_limited", async () => {
     const scenario = await provisionHappyPath();
     // Seed real term reservations via the production admission RPC so the
     // concurrency gate sees the same in-flight count as clinic traffic.
@@ -836,6 +841,13 @@ describe("Stage 09 — admission, journal, compose (S09-066…S09-085)", () => {
       expect(body.outcome).toBe("admitted");
     }
 
+    // Admission crossing the 75/90 percent bands can leave coverage events
+    // on the DO outbox. Drain its scheduled alarm before test isolation pops
+    // the storage frame; `flushBackgroundWork` only sleeps and does not run it.
+    await runDurableObjectAlarm(
+      env.DO.get(env.DO.idFromName(scenario.installationId)),
+    );
+
     const seventeenth = await postRequestPinned(scenario, {
       token: await mintAat(scenario, { claims: { jti: crypto.randomUUID() } }),
       idempotencyKey: crypto.randomUUID(),
@@ -843,7 +855,7 @@ describe("Stage 09 — admission, journal, compose (S09-066…S09-085)", () => {
       body: happyVisitBody(scenario),
     });
 
-    assertQuotaExhausted(seventeenth);
+    assertConcurrencyLimited(seventeenth);
     expect(seventeenth.body?.trace_id).toBe(TRACE_ID);
     expect(await count("ai_request")).toBe(0);
   });
@@ -1301,15 +1313,44 @@ describe("Stage 09 — admission, journal, compose (S09-066…S09-085)", () => {
       expect(await getUsageEvents(String(row.request_id))).toEqual([]);
     }
 
-    // Inspect applies the in-memory ephemeral sweep. Catalog S09-085 pins
-    // jtiReplay[jti] at admission; after the 2 h horizon the snapshot must
-    // no longer hold that jti.
-    const afterAdmit = await inspectState(scenario.installationId);
-    expect(afterAdmit.jtiReplay?.[jti]).toBeTruthy();
-    const afterSweep = await inspectState(
+    // P3.4 stores replay answers in the hot-row table, not the legacy `inspect`
+    // state. Probe the supported admission RPC: the same JTI returns its
+    // stored answer within the 2 h horizon, then a fresh admission after it.
+    const replayProbe = {
+      kind: "admission",
+      jti,
+      installationId: scenario.installationId,
+      idempotencyKey: `${S09_085_KEY}-jti-replay`,
+      requestReference: "S09-085-replay",
+      capabilityId: CAPABILITY_ID,
+      orgId: scenario.orgId,
+      requestId: crypto.randomUUID(),
+    };
+    const beforeExpiry = await gatewayObjectJson(
       scenario.installationId,
-      Date.now() + THREE_HOURS_MS,
+      replayProbe,
     );
-    expect(afterSweep.jtiReplay?.[jti]).toBeUndefined();
+    expect(beforeExpiry.status).toBe(200);
+    expect(beforeExpiry.json).toMatchObject({
+      outcome: "admitted",
+      requestId: row?.request_id,
+    });
+
+    const expiredRequestId = crypto.randomUUID();
+    const afterExpiry = await gatewayObjectJson(
+      scenario.installationId,
+      {
+        ...replayProbe,
+        idempotencyKey: `${S09_085_KEY}-jti-expired`,
+        requestReference: "S09-085-expired",
+        requestId: expiredRequestId,
+      },
+      { now: Date.now() + THREE_HOURS_MS },
+    );
+    expect(afterExpiry.status).toBe(200);
+    expect(afterExpiry.json).toMatchObject({
+      outcome: "admitted",
+      requestId: expiredRequestId,
+    });
   });
 });

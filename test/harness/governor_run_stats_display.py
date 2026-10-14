@@ -239,6 +239,7 @@ def _print_rich_report(
     table.add_column("", width=2, justify="center")
     table.add_column("Pass", justify="right", style="green", width=6)
     table.add_column("Fail", justify="right", width=5)
+    table.add_column("Not recorded", justify="right", style="bold red", width=12)
     progress_label_w = _progress_label_width(campaigns, totals)
     progress_col_w = _PROGRESS_BAR_WIDTH + 1 + progress_label_w
     table.add_column("Progress", justify="left", width=progress_col_w, no_wrap=True)
@@ -274,6 +275,7 @@ def _print_rich_report(
             Text(glyph, style=_status_style(status)),
             str(passed),
             Text(str(failed), style=fail_style),
+            Text(str(int(row.get("not_recorded") or 0)), style="bold red" if row.get("not_recorded") else "dim"),
             progress,
             format_elapsed(row.get("elapsed_seconds")),
             Text(exit_label, style=exit_style),
@@ -295,6 +297,7 @@ def _print_rich_report(
         "",
         Text(str(t_passed), style="bold green"),
         Text(str(t_failed), style="bold red" if t_failed else "dim"),
+        Text(str(sum(int(row.get("not_recorded") or 0) for row in campaigns)), style="bold red" if any(row.get("not_recorded") for row in campaigns) else "dim"),
         total_progress,
         format_elapsed(totals.get("elapsed_seconds")),
         Text(
@@ -331,6 +334,7 @@ def _print_plain_report(
         print(
             f"  {glyph} {area}/{sub}  "
             f"pass={row.get('passed')} fail={row.get('failed')}  "
+            f"NOT RECORDED={row.get('not_recorded', 0)}  "
             f"{_progress_label(int(row.get('attempted') or 0), row.get('total'))}  "
             f"time={format_elapsed(row.get('elapsed_seconds'))}  "
             f"exit={row.get('exit_code')}",
