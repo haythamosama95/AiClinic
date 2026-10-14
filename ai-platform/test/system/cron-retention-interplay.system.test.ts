@@ -9,7 +9,6 @@ import {
   clearConfigCache,
   count,
   coverClinic,
-  DEFAULT_ENTITLE_PAYLOAD,
   flushBackgroundWork,
   getAiRequest,
   getEntitlement,
@@ -35,10 +34,6 @@ beforeEach(async () => {
   await resetPlatformState();
   registerVisitSummaryCapability();
 });
-
-function periodFromEntitleStart(periodStart: string): string {
-  return periodStart.slice(0, 7);
-}
 
 describe("cron retention interplay", () => {
   it("SYS-8.1 — Retention purge keeps usage_event money row", async () => {
@@ -111,12 +106,9 @@ describe("cron retention interplay", () => {
 
     const usageTotals = await env.DB.prepare(
       `SELECT COUNT(*) AS request_count, SUM(tokens) AS tokens, SUM(cost) AS cost
-       FROM usage_event WHERE installation_id = ? AND period = ?`,
+       FROM usage_event WHERE installation_id = ?`,
     )
-      .bind(
-        scenario.installationId,
-        periodFromEntitleStart(DEFAULT_ENTITLE_PAYLOAD.period_start),
-      )
+      .bind(scenario.installationId)
       .first<{
         request_count: number;
         tokens: number;
@@ -139,12 +131,11 @@ describe("cron retention interplay", () => {
     const match = (rollup.results ?? []).find((row) => {
       const dimensions = JSON.parse(row.dimensions) as {
         installation_id?: string;
-        period?: string;
+        term_id?: string;
       };
       return (
         dimensions.installation_id === scenario.installationId &&
-        dimensions.period ===
-          periodFromEntitleStart(DEFAULT_ENTITLE_PAYLOAD.period_start)
+        typeof dimensions.term_id === "string" && dimensions.term_id.length > 0
       );
     });
     expect(match).toBeTruthy();
@@ -270,9 +261,12 @@ describe("cron retention interplay", () => {
     const token = await mintAat(scenario);
 
     await env.DB.prepare(
-      "UPDATE entitlement SET allowed_capabilities = '[]' WHERE installation_id = ?",
+      "UPDATE coverage_mirror SET term_snapshot = ? WHERE installation_id = ?",
     )
-      .bind(scenario.installationId)
+      .bind(
+        JSON.stringify({ ref: "sys84-no-caps", capabilities: [] }),
+        scenario.installationId,
+      )
       .run();
     clearConfigCache();
 

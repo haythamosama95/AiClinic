@@ -408,7 +408,7 @@ async function seedEntitlement(
     .bind(
       installationId,
       FIXTURE_ORG_ID,
-      JSON.stringify({ capabilities }),
+      JSON.stringify({ ref: "term-capability-test", capabilities }),
     )
     .run();
 }
@@ -649,7 +649,7 @@ async function seedMirrorForResolve(
     .bind(
       installationId,
       FIXTURE_ORG_ID,
-      JSON.stringify({ capabilities }),
+      JSON.stringify({ ref: "term-capability-test", capabilities }),
     )
     .run();
 }
@@ -1646,10 +1646,10 @@ describe("discovery_granted_version_mismatch_excluded", () => {
 
     const result = await discover(principal, cache, reader, undefined, env.DB);
 
-    expect(result.manifests).toHaveLength(2);
+    expect(result.manifests).toHaveLength(1);
     expect(
       result.manifests.map((manifest) => manifest.Identity.version).sort(),
-    ).toEqual(["1.0.0", "2.0.0"]);
+    ).toEqual(["1.0.0"]);
   });
 });
 

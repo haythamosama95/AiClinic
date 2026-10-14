@@ -1038,6 +1038,16 @@ export async function publishPolicy(
   version: string,
   document: Record<string, unknown>,
 ): Promise<{ status: number; json: Record<string, unknown> }> {
+  // System fixtures may set up multiple installations against the same
+  // immutable policy within one test. Treat an exact re-publish as successful;
+  // a different document at the same version remains a conflict.
+  const existing = await getRoutingPolicy(policyId, version);
+  if (existing !== null) {
+    const stored = await getR2Json(String(existing.content_pointer));
+    if (JSON.stringify(stored) === JSON.stringify(document)) {
+      return { status: 200, json: { status: "published", idempotent: true } };
+    }
+  }
   const accessJwt = await mintVendorAccessJwt();
   const result = vendorEnvelopeToHttp(
     await vendorCall(
@@ -1096,6 +1106,13 @@ export async function promote(
   policyId: string,
   version: string,
 ): Promise<{ status: number; json: Record<string, unknown> }> {
+  const active = await queryOne<{ version: string }>(
+    "SELECT version FROM routing_policy WHERE policy_id = ? AND status = 'active' ORDER BY active_from DESC, rowid DESC LIMIT 1",
+    [policyId],
+  );
+  if (active?.version === version) {
+    return { status: 200, json: { status: "active", idempotent: true } };
+  }
   const accessJwt = await mintVendorAccessJwt();
   const result = vendorEnvelopeToHttp(
     await vendorCall(
@@ -1504,7 +1521,10 @@ export async function entitleScenario(
   return { status: 200, json: { status: "active" } };
 }
 
-const COVER_PLAN_VERSION = 1;
+// A single test may publish several coverage plans with different contents
+// (for example, different monthly allowances). Keep their immutable plan
+// versions distinct for the lifetime of the worker test process.
+let nextCoverPlanVersion = 1;
 const COVER_PLAN_DISPLAY = "Live Monthly";
 const COVER_DEFAULT_CAPABILITIES = [CAPABILITY_ID];
 const COVER_DEFAULT_MAX_COST_CLASS = 2;
@@ -1535,6 +1555,7 @@ async function operationForCoverPublishPlan(input: {
   capabilities: string[];
   concurrencyLimit: number;
   maxAllowance: number;
+  version: number;
 }): Promise<Record<string, unknown>> {
   return {
     op: "publishPlanVersion",
@@ -1542,7 +1563,7 @@ async function operationForCoverPublishPlan(input: {
       contract_version: VENDOR_CONTRACT_VERSION,
       access_jwt: input.accessJwt,
       plan_id: COVER_PLAN_ID,
-      version: COVER_PLAN_VERSION,
+      version: input.version,
       display_name: COVER_PLAN_DISPLAY,
       capabilities: input.capabilities,
       max_cost_class: COVER_DEFAULT_MAX_COST_CLASS,
@@ -1651,6 +1672,7 @@ async function buildCoverPaidGrantEnvelope(input: {
   orgId: string;
   grantId: string;
   allowanceCredits: number;
+  planVersion: number;
 }): Promise<Record<string, unknown>> {
   const paidAt = getVendorTestClockIso() ?? new Date().toISOString();
   const paymentRef = randomUuid().replace(/-/g, "");
@@ -1662,7 +1684,7 @@ async function buildCoverPaidGrantEnvelope(input: {
     kind: "term",
     placement: "queue",
     source: { kind: "paid", ref: paymentRef },
-    plan: { plan_id: COVER_PLAN_ID, plan_version: COVER_PLAN_VERSION },
+    plan: { plan_id: COVER_PLAN_ID, plan_version: input.planVersion },
     duration: { unit: "month", count: 1 },
     allowance_credits: input.allowanceCredits,
     grace: { days: 7, cap_rule: "proportional" },
@@ -1688,6 +1710,7 @@ export async function coverClinic(
     opts.concurrency_limit ?? COVER_DEFAULT_CONCURRENCY;
   const maxAllowance =
     opts.max_allowance_per_month ?? COVER_DEFAULT_ALLOWANCE;
+  const planVersion = nextCoverPlanVersion++;
 
   const accessJwt = await mintVendorAccessJwt();
   const publishOperation = await operationForCoverPublishPlan({
@@ -1695,6 +1718,7 @@ export async function coverClinic(
     capabilities,
     concurrencyLimit,
     maxAllowance,
+    version: planVersion,
   });
   const publishAssertion = encodeVendorAssertion(
     await boot.signerAuthenticator.assert({
@@ -1710,7 +1734,7 @@ export async function coverClinic(
     {
       contract_version: VENDOR_CONTRACT_VERSION,
       plan_id: COVER_PLAN_ID,
-      version: COVER_PLAN_VERSION,
+      version: planVersion,
       display_name: COVER_PLAN_DISPLAY,
       capabilities,
       max_cost_class: COVER_DEFAULT_MAX_COST_CLASS,
@@ -1731,6 +1755,7 @@ export async function coverClinic(
     orgId: scenario.orgId,
     grantId,
     allowanceCredits: maxAllowance,
+    planVersion,
   });
   const aboSignature = await boot.aboSigner.sign(envelope);
   const granted = await vendorCall("grant", {

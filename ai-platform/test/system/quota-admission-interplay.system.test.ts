@@ -87,7 +87,7 @@ function degradedTierPolicyDocument(version: string): Record<string, unknown> {
           languages: [],
         },
         targets: [
-          fakePolicyTarget("bogus-standard", { providerId: "bogus-standard" }),
+          fakePolicyTarget("fake-v1"),
         ],
       },
       {
@@ -237,7 +237,6 @@ describe("quota admission interplay", () => {
       idempotencyKey: crypto.randomUUID(),
     });
     expect(first.status).toBe(200);
-
     const replay = await invoke(scenario, {
       token,
       idempotencyKey: crypto.randomUUID(),
@@ -277,7 +276,7 @@ describe("quota admission interplay", () => {
     const completed = replay.events[1]?.data.result as {
       finalContent?: { text?: string; authoritative?: boolean };
     };
-    expect(completed?.finalContent?.text).toBe("Prior request completed.");
+    expect(completed?.finalContent?.text).toBe("Fake adapter summary.");
     expect(completed?.finalContent?.authoritative).toBe(true);
     expect(replay.events.some((event) => event.event === "text_delta")).toBe(false);
 

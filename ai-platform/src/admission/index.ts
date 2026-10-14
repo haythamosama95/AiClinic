@@ -115,6 +115,7 @@ type JournaledRequestRow = {
   request_id: string;
   request_reference: string;
   state: string;
+  terminal_error_code: string | null;
   trace_id: string;
 };
 
@@ -153,6 +154,9 @@ function idempotentFromJournal(row: JournaledRequestRow): AdmissionResult {
       state: mapJournalState(row.state),
       requestId: row.request_id,
       traceId: row.trace_id,
+      ...(row.terminal_error_code !== null
+        ? { terminalErrorCode: row.terminal_error_code as TaxonomyCode }
+        : {}),
     },
   };
 }
@@ -164,7 +168,7 @@ async function selectAiRequestByKey(
 ): Promise<JournaledRequestRow | null> {
   const row = await db
     .prepare(
-      `SELECT request_id, request_reference, state, trace_id
+      `SELECT request_id, request_reference, state, terminal_error_code, trace_id
        FROM ai_request
        WHERE installation_id = ? AND idempotency_key = ?
        ORDER BY created_at ASC
@@ -182,7 +186,7 @@ async function selectAiRequestById(
 ): Promise<JournaledRequestRow | null> {
   const row = await db
     .prepare(
-      `SELECT request_id, request_reference, state, trace_id
+      `SELECT request_id, request_reference, state, terminal_error_code, trace_id
        FROM ai_request
        WHERE installation_id = ? AND request_id = ?
        LIMIT 1`,
@@ -493,7 +497,10 @@ async function tryMirrorFallbackAdmission(input: {
       .bind(input.principal.installationId, input.idempotencyKey)
       .first<{ request_id: string }>();
     if (raced) {
-      const entitlement = fallbackEntitlementSnapshot(admittedAt, capabilities);
+      const entitlement = fallbackEntitlementSnapshot(
+        admittedAt,
+        termView.capabilities,
+      );
       return {
         ok: true,
         outcome: "grace_admitted",
@@ -505,7 +512,10 @@ async function tryMirrorFallbackAdmission(input: {
     return null;
   }
 
-  const entitlement = fallbackEntitlementSnapshot(admittedAt, capabilities);
+  const entitlement = fallbackEntitlementSnapshot(
+    admittedAt,
+    termView.capabilities,
+  );
 
   return {
     ok: true,

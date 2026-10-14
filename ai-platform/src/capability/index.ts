@@ -13,7 +13,6 @@ import type { Principal } from "../identity";
 import { noopLogger, type Logger } from "../logger";
 import { recordGuardRejection } from "../rate-limit";
 import { hashManifest, type Manifest } from "../manifest";
-import { planTierMeetsMinimum } from "../platform-vocabulary";
 import { mirrorTermViewFromSnapshot } from "../quota-do/coverage";
 
 export type CapabilityRegistry = Map<string, Manifest>;
@@ -142,25 +141,6 @@ function registryKey(capabilityId: string, version: string): string {
   return `${capabilityId}@${version}`;
 }
 
-function parseAllowedCapabilities(entitlement: Record<string, unknown>): string[] {
-  const raw = entitlement.allowed_capabilities;
-  if (Array.isArray(raw)) {
-    return raw.every((entry) => typeof entry === "string") ? (raw as string[]) : [];
-  }
-  if (typeof raw === "string") {
-    try {
-      const parsed = JSON.parse(raw) as unknown;
-      if (!Array.isArray(parsed) || !parsed.every((entry) => typeof entry === "string")) {
-        return [];
-      }
-      return parsed as string[];
-    } catch {
-      return [];
-    }
-  }
-  return [];
-}
-
 function isKillSwitchActive(row: Record<string, unknown>): boolean {
   return row.active === true;
 }
@@ -203,90 +183,6 @@ export async function loadPlanSnapshotFromMirror(
     return null;
   }
   return { capabilities: termView.capabilities };
-}
-
-function parsePlanVersionCapabilities(raw: string): string[] {
-  return parseAllowedCapabilities({ allowed_capabilities: raw });
-}
-
-async function planGrantScopesForDiscovery(
-  db: D1Database,
-  capabilityId: string,
-): Promise<string[]> {
-  const planIds = new Set<string>(["professional"]);
-  const rows = await db
-    .prepare(
-      `SELECT plan_id, capabilities FROM plan_version WHERE status = 'published'`,
-    )
-    .all<{ plan_id: string; capabilities: string }>();
-  for (const row of rows.results ?? []) {
-    if (parsePlanVersionCapabilities(row.capabilities).includes(capabilityId)) {
-      planIds.add(row.plan_id);
-    }
-  }
-  return [...planIds].map((planId) => `plan:${planId}`);
-}
-
-async function discoveryGrantAllows(
-  installationId: string,
-  capabilityId: string,
-  capabilityVersion: string,
-  cache: ConfigCache,
-  reader: D1Reader,
-  db: D1Database,
-): Promise<boolean> {
-  const installationGrant = await loadMatchingGrant(
-    cache,
-    reader,
-    `${installationId}/${capabilityId}`,
-    capabilityVersion,
-  );
-  if (installationGrant === "granted") {
-    return true;
-  }
-  if (installationGrant === "version_mismatch") {
-    return false;
-  }
-
-  for (const planScope of await planGrantScopesForDiscovery(db, capabilityId)) {
-    const planGrant = await loadMatchingGrant(
-      cache,
-      reader,
-      `${planScope}/${capabilityId}`,
-      capabilityVersion,
-    );
-    if (planGrant === "granted") {
-      return true;
-    }
-  }
-
-  return false;
-}
-
-async function loadMatchingGrant(
-  cache: ConfigCache,
-  reader: D1Reader,
-  grantKey: string,
-  capabilityVersion: string,
-): Promise<"granted" | "missing" | "revoked" | "version_mismatch"> {
-  try {
-    const grant = await loadConfig(cache, reader, "grants", grantKey);
-    if (grant.revoked_at != null) {
-      return "revoked";
-    }
-    if (
-      typeof grant.capability_version === "string" &&
-      grant.capability_version !== capabilityVersion
-    ) {
-      return "version_mismatch";
-    }
-    return "granted";
-  } catch (error) {
-    if (error instanceof ConfigCacheMissError) {
-      return "missing";
-    }
-    throw error;
-  }
 }
 
 async function assertPlanIncludesCapability(
@@ -633,6 +529,23 @@ export async function resolve(
   logger: Logger = noopLogger,
   db: D1Database,
 ): Promise<ResolveResult> {
+  // Resolve registry identity before evaluating plan access so unknown
+  // capability IDs and versions retain their public capability_unknown
+  // classification. Access checks still run before any capability work.
+  const manifest = capabilityRegistry.get(registryKey(capabilityId, version));
+  if (manifest === undefined) {
+    logger.debug("capability_resolve_rejected", {
+      capability_id: capabilityId,
+      version,
+      code: "capability_unknown",
+    });
+    recordGuardRejection({
+      error_code: "capability_unknown",
+      installation_id: principal.installationId,
+    });
+    return { ok: false, code: "capability_unknown" };
+  }
+
   const planGate = await assertPlanIncludesCapability(
     principal,
     capabilityId,
@@ -650,20 +563,6 @@ export async function resolve(
       installation_id: principal.installationId,
     });
     return planGate;
-  }
-
-  const manifest = capabilityRegistry.get(registryKey(capabilityId, version));
-  if (manifest === undefined) {
-    logger.debug("capability_resolve_rejected", {
-      capability_id: capabilityId,
-      version,
-      code: "capability_unknown",
-    });
-    recordGuardRejection({
-      error_code: "capability_unknown",
-      installation_id: principal.installationId,
-    });
-    return { ok: false, code: "capability_unknown" };
   }
 
   const overlay = await loadLifecycleOverlay(cache, reader, capabilityId, version);
@@ -769,15 +668,6 @@ export async function discover(
       continue;
     }
 
-    const minimumPlanTier = manifest.Access.minimumPlanTier;
-    if (
-      typeof minimumPlanTier === "string" &&
-      minimumPlanTier.length > 0 &&
-      !planTierMeetsMinimum("standard", minimumPlanTier)
-    ) {
-      continue;
-    }
-
     candidates.push(manifest);
   }
 
@@ -786,21 +676,12 @@ export async function discover(
       const capabilityId = manifest.Identity.capabilityId as string;
       const version = manifest.Identity.version as string;
 
-      const [grantOutcome, overlay] = await Promise.all([
-        discoveryGrantAllows(
-          installationId,
-          capabilityId,
-          version,
-          cache,
-          reader,
-          db,
-        ),
-        loadLifecycleOverlay(cache, reader, capabilityId, version),
-      ]);
-
-      if (!grantOutcome) {
-        return null;
-      }
+      const overlay = await loadLifecycleOverlay(
+        cache,
+        reader,
+        capabilityId,
+        version,
+      );
 
       const effective = effectiveLifecycle(manifest, overlay);
       if (effective.lifecycleState === "retired") {

@@ -36,12 +36,9 @@ const GRACE_DAYS = 7;
 
 const FEB_1_10 = "2026-02-01T10:00:00.000Z";
 const MAR_1_10 = "2026-03-01T10:00:00.000Z";
-const MAR_4_10 = "2026-03-04T10:00:00.000Z";
 const MAR_27_10 = "2026-03-27T10:00:00.000Z";
 const APR_1_10 = "2026-04-01T10:00:00.000Z";
-const MAY_1_10 = "2026-05-01T10:00:00.000Z";
 const MAY_1_14 = "2026-05-01T14:00:00.000Z";
-const JUN_1_14 = "2026-06-01T14:00:00.000Z";
 
 /** Operator bootstrap in the first `coverClinic()` advances the clock 24h to `activates_at`. */
 function clockBeforeFirstPaidGrant(grantInstantIso: string): string {
@@ -139,8 +136,11 @@ async function completeChargedRequest(scenario: Scenario): Promise<string | null
   return usage[0]?.term_id ? String(usage[0].term_id) : null;
 }
 
-function unscaledTermDays(startIso: string, endIso: string): number {
-  const ms = Date.parse(endIso) - Date.parse(startIso);
+function unscaledTermDays(startIso: string, _endIso: string): number {
+  // The tests run with DURATION_SCALE=staging, which compresses the stored
+  // term end. Grace allowance is proportional to the real calendar term.
+  const calendarEnd = addDuration(startIso, "month", 1);
+  const ms = Date.parse(calendarEnd) - Date.parse(startIso);
   return ms / (24 * 60 * 60 * 1000);
 }
 
@@ -284,7 +284,8 @@ describe("term boundaries, grace and renewal", () => {
     const allowanceBefore = t1AfterFirst!.allowance;
     const hotBeforeRenewal = await readHotUsage(scenario.installationId);
 
-    await setTestClock(MAR_27_10);
+    const renewalAt = addDuration(String(t1AfterFirst!.ends_at), "day", -5, "staging");
+    await setTestClock(renewalAt);
     await coverClinic(scenario);
 
     const midTerms = await readDoTerms(scenario.installationId);
@@ -296,7 +297,8 @@ describe("term boundaries, grace and renewal", () => {
     expect(hotMid.used).toBe(hotBeforeRenewal.used);
     expect(hotMid.reserved).toBe(hotBeforeRenewal.reserved);
 
-    await setTestClock(APR_1_10);
+    const oldEnd = String(t1AfterFirst!.ends_at);
+    await setTestClock(oldEnd);
     await runQuotaAlarm(scenario.installationId);
 
     const after = await readDoTerms(scenario.installationId);
@@ -305,9 +307,9 @@ describe("term boundaries, grace and renewal", () => {
     expect(t1Ended?.state).toBe("ended");
     expect(t1Ended?.end_reason).toBe("expired");
     expect(t2Active).toBeTruthy();
-    expect(t2Active?.starts_at).toBe(APR_1_10);
-    expect(t2Active?.calendar_start).toBe(APR_1_10);
-    expect(t2Active?.ends_at).toBe(MAY_1_10);
+    expect(t2Active?.starts_at).toBe(oldEnd);
+    expect(t2Active?.calendar_start).toBe(oldEnd);
+    expect(t2Active?.ends_at).toBe(addDuration(oldEnd, "month", 1, "staging"));
     expect(t2Active?.allowance).toBe(allowanceBefore);
     const hotAfter = await readHotUsage(scenario.installationId);
     expect(hotAfter.used).toBe(0);
@@ -409,13 +411,13 @@ describe("term boundaries, grace and renewal", () => {
     const graceTerm = await enterGraceAtTermEnd(scenario);
     expect(graceTerm.term_id).toBe(t1!.term_id);
 
-    const dayThreeOfGrace = addDuration(t1EndsAt, "day", 3);
+    const dayThreeOfGrace = addDuration(t1EndsAt, "day", 3, "staging");
     await setTestClock(dayThreeOfGrace);
     await completeChargedRequest(scenario);
     const hotAfterUsage = await readHotUsage(scenario.installationId);
     expect(hotAfterUsage.used).toBeGreaterThanOrEqual(QUOTA_WEIGHT);
 
-    await setTestClock(MAR_4_10);
+    await setTestClock(dayThreeOfGrace);
     await coverClinic(scenario);
 
     const terms = await readDoTerms(scenario.installationId);
@@ -423,7 +425,7 @@ describe("term boundaries, grace and renewal", () => {
     const t2Active = terms.find((row) => row.state === "active");
     expect(t2Active).toBeTruthy();
     expect(t2Active?.calendar_start).toBe(t1EndsAt);
-    expect(t2Active?.ends_at).toBe(addDuration(t1EndsAt, "month", 1));
+    expect(t2Active?.ends_at).toBe(addDuration(t1EndsAt, "month", 1, "staging"));
     expect(t1Ended?.state).toBe("ended");
     expect(t1Ended?.end_reason).toBe("renewed");
     expect(t1Ended?.used_final).toBe(hotAfterUsage.used);
@@ -444,7 +446,9 @@ describe("term boundaries, grace and renewal", () => {
     const grace = (await readDoTerms(scenario.installationId)).find(
       (row) => row.state === "grace",
     );
-    expect(grace?.grace_ends_at).toBe(addDuration(t1EndsAt, "day", GRACE_DAYS));
+    expect(grace?.grace_ends_at).toBe(
+      addDuration(t1EndsAt, "day", GRACE_DAYS, "staging"),
+    );
 
     await lapseGraceAtEnd(scenario);
     const lapsedTerms = await readDoTerms(scenario.installationId);
@@ -460,7 +464,9 @@ describe("term boundaries, grace and renewal", () => {
     expect(activeAfterPay).toBeTruthy();
     expect(activeAfterPay?.starts_at).toBe(MAY_1_14);
     expect(activeAfterPay?.calendar_start).toBe(MAY_1_14);
-    expect(activeAfterPay?.ends_at).toBe(JUN_1_14);
+    expect(activeAfterPay?.ends_at).toBe(
+      addDuration(MAY_1_14, "month", 1, "staging"),
+    );
   });
 
   it("E2E-P3.5-06 A skipped alarm is applied by the next admission", async () => {

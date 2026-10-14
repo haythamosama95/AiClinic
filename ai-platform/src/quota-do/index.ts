@@ -727,12 +727,14 @@ type StoredAnswerEntry = {
   answer: AdmissionResponse;
 };
 
+type StoredReplayEntry = { expiresAt: number };
+
 type TermBandEmitted = Record<string, boolean>;
 
 type ParsedHot = {
   row: HotRow;
   reservations: ReservationRow[];
-  replay: Record<string, StoredAnswerEntry>;
+  replay: Record<string, StoredReplayEntry>;
   idempotency: Record<string, StoredAnswerEntry>;
   /** Per-term band flags (`term_id` → `{ "75"?, "90"? }`). */
   band_emitted: Record<string, TermBandEmitted>;
@@ -742,7 +744,7 @@ function parseHotRow(row: HotRow): ParsedHot {
   return {
     row,
     reservations: JSON.parse(row.reservations || "[]") as ReservationRow[],
-    replay: JSON.parse(row.replay || "{}") as Record<string, StoredAnswerEntry>,
+    replay: JSON.parse(row.replay || "{}") as Record<string, StoredReplayEntry>,
     idempotency: JSON.parse(row.idempotency || "{}") as Record<
       string,
       StoredAnswerEntry
@@ -813,7 +815,7 @@ function storeAnswer(
   now: number,
 ): void {
   const expiresAt = now + EPHEMERAL_HORIZON_MS;
-  hot.replay[jti] = { expiresAt, answer };
+  hot.replay[jti] = { expiresAt };
   hot.idempotency[idempotencyKey] = { expiresAt, answer };
 }
 
@@ -1119,7 +1121,10 @@ function admitOnHotRow(
 
   const replayEntry = hot.replay[request.jti];
   if (replayEntry) {
-    return replayEntry.answer;
+    return {
+      kind: "admission",
+      outcome: "replay",
+    };
   }
   const idempotencyEntry = hot.idempotency[request.idempotencyKey];
   if (idempotencyEntry) {
@@ -1445,11 +1450,9 @@ function settleReservationOnHot(
       delete hot.idempotency[key];
     }
   }
-  for (const [key, entry] of Object.entries(hot.replay)) {
-    if (admittedRequestIdFromAnswer(entry.answer) === reservationId) {
-      delete hot.replay[key];
-    }
-  }
+  // JTI replay protection is scoped to the token's ephemeral horizon, not the
+  // lifetime of its admission reservation. Keep the JTI after settlement so a
+  // completed request cannot be admitted again with the same token.
 
   const nowIso = new Date(now).toISOString();
   const terms = loadTerms(storage);
@@ -1501,11 +1504,6 @@ function admittedRequestIdFromAnswer(answer: AdmissionResponse): string | undefi
 function hotStillHoldsRequestId(hot: ParsedHot, requestId: string): boolean {
   if (hot.reservations.some((reservation) => reservation.id === requestId)) {
     return true;
-  }
-  for (const entry of Object.values(hot.replay)) {
-    if (admittedRequestIdFromAnswer(entry.answer) === requestId) {
-      return true;
-    }
   }
   for (const entry of Object.values(hot.idempotency)) {
     if (admittedRequestIdFromAnswer(entry.answer) === requestId) {

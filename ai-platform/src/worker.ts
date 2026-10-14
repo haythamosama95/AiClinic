@@ -911,13 +911,6 @@ async function replayIdempotentTerminal(
         loaded.result.finalContent?.type === "text"
           ? loaded.result.finalContent.text
           : "";
-      if (text.length > 0) {
-        sink.push({
-          type: "text_delta",
-          data: { text, sequence: 0, provisional: true },
-          trace_id: replayTraceId,
-        });
-      }
       pushTerminalEvent(sink, streamCtx, "completed", "single_shot", {
         result: {
           finalContent: {

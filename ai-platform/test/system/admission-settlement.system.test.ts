@@ -304,9 +304,9 @@ describe("admission settlement against terms", () => {
     );
     expect(mirror).toBeTruthy();
     const termSnapshot = JSON.parse(String(mirror!.term_snapshot)) as {
-      capabilities?: string[];
+      term?: { capabilities?: string[] };
     };
-    expect(termSnapshot.capabilities).toContain(CAPABILITY_ID);
+    expect(termSnapshot.term?.capabilities).toContain(CAPABILITY_ID);
 
     const caps = await getCapabilities(token);
     expect(caps.status).toBe(200);
@@ -461,7 +461,7 @@ describe("admission settlement against terms", () => {
     expect(active?.allowance).toBe(allowance);
     expect(active?.starts_at).toBeTruthy();
     expect(active?.ends_at).toBe(
-      addDuration(String(active?.starts_at), "month", 1),
+      addDuration(String(active?.starts_at), "month", 1, "staging"),
     );
 
     const hot = await readHotUsage(scenario.installationId);
@@ -706,11 +706,14 @@ describe("admission settlement against terms", () => {
     const replayIdempotency = await invoke(scenario, { token, idempotencyKey });
     expect(replayIdempotency.status).toBe(first.status);
     expect(replayIdempotency.body).toEqual(first.body);
-    expect(replayIdempotency.events).toEqual(first.events);
+    // A replay returns the persisted terminal answer. It does not replay
+    // provisional stream chunks from the original provider call.
+    expect(
+      replayIdempotency.events.filter((event) => event.event === "completed"),
+    ).toEqual(first.events.filter((event) => event.event === "completed"));
 
     const sharedJti = crypto.randomUUID();
     const tokenA = await mintAat(scenario, { jti: sharedJti });
-    const tokenB = await mintAat(scenario, { jti: sharedJti });
     const keyA = crypto.randomUUID();
     const keyB = crypto.randomUUID();
     const jtiFirst = await invoke(scenario, {
@@ -725,11 +728,13 @@ describe("admission settlement against terms", () => {
         sqlSelect<Record<string, unknown>>(state, "SELECT * FROM hot LIMIT 1"),
     );
     const jtiReplay = await invoke(scenario, {
-      token: tokenB,
+      token: tokenA,
       idempotencyKey: keyB,
     });
-    expect(jtiReplay.status).toBe(jtiFirst.status);
-    expect(jtiReplay.body).toEqual(jtiFirst.body);
+    // B4 treats a repeated token jti as an authentication replay, even though
+    // P3.4's broad replay wording also mentions jti alongside idempotency keys.
+    expect(jtiReplay.status).toBe(401);
+    expect(jtiReplay.body?.code).toBe("unauthenticated");
 
     const hotAfterReplay = await runInDurableObject(
       quotaDoStub(scenario.installationId),
