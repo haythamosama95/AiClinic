@@ -3,11 +3,45 @@
 from __future__ import annotations
 
 import json
+import re
 from pathlib import Path
 from typing import Any
 
 from harness.test_result_stats import dedupe_test_statuses, stats_from_status_map
 from harness.vitest_labels import normalize_vitest_case_label, vitest_exclude_label_set
+
+
+_RUNNER_DIAGNOSTIC = re.compile(
+    r"(?:uncaught|unhandled|worker.{0,24}(?:error|crash|exit)|"
+    r"(?:error|exception|failed).{0,32}(?:sqlite|snapshot|storage|runner)|"
+    r"sqlite|vitest.{0,24}(?:error|crash)|test runner)",
+    re.IGNORECASE,
+)
+
+
+def _runner_diagnostic_excerpt(log_dir: Path, *, limit: int = 12) -> list[str]:
+    """Extract concise infrastructure clues from the merged runner transcript."""
+    output = log_dir / "output.log"
+    if not output.is_file():
+        return []
+    try:
+        lines = output.read_text(encoding="utf-8", errors="replace").splitlines()
+    except OSError:
+        return []
+    selected: list[str] = []
+    seen: set[str] = set()
+    for line in lines:
+        stripped = line.strip()
+        if not stripped or not _RUNNER_DIAGNOSTIC.search(stripped):
+            continue
+        excerpt = stripped[:500]
+        if excerpt in seen:
+            continue
+        seen.add(excerpt)
+        selected.append(excerpt)
+        if len(selected) >= limit:
+            break
+    return selected
 
 
 def is_harness_artifact_test_name(name: str) -> bool:
@@ -105,8 +139,14 @@ def reconcile_vitest_summary_log(
                 "finished_at": None,
                 "elapsed_seconds": 0.0,
                 "error": "no result recorded (harness reconcile)",
+                "failure_kind": "not_recorded",
                 "reconciled": True,
             }
+    missing_labels = sorted(
+        label
+        for label, entry in by_name.items()
+        if entry.get("failure_kind") == "not_recorded"
+    )
 
     ordered = [by_name[label] for label in sorted(by_name)]
     statuses = dedupe_test_statuses(ordered)
@@ -118,6 +158,10 @@ def reconcile_vitest_summary_log(
         "failed": stats.failed,
         "reconciled_vitest": True,
     }
+    if missing_labels:
+        new_payload["not_recorded"] = missing_labels
+        new_payload["diagnostics_file"] = "output.log"
+        new_payload["runner_diagnostics"] = _runner_diagnostic_excerpt(log_dir)
     text = json.dumps(new_payload, indent=2) + "\n"
     summary_path.write_text(text, encoding="utf-8")
     meta = log_dir / "meta.json"

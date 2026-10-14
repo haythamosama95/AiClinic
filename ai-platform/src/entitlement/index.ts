@@ -242,7 +242,7 @@ export async function evaluateCoveragePrecheck(
     });
     return { ok: false, code: "coverage_lapsed", coverageReason: "none" };
   }
-  if (mirror.installation_status === "suspended" || mirror.suspended !== 0) {
+  if (mirror.installation_status === "suspended") {
     recordGuardRejection({
       error_code: "suspended",
       installation_id: installationId,
@@ -255,6 +255,13 @@ export async function evaluateCoveragePrecheck(
       installation_id: installationId,
     });
     return { ok: false, code: "coverage_lapsed", coverageReason: "none" };
+  }
+  if (mirror.suspended !== 0) {
+    recordGuardRejection({
+      error_code: "suspended",
+      installation_id: installationId,
+    });
+    return { ok: false, code: "suspended" };
   }
 
   const globalSwitch = await loadKillSwitchOrInactive(cache, reader, "global");

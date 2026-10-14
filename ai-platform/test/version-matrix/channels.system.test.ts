@@ -71,7 +71,7 @@ beforeEach(async () => {
 
 describe("E2E-P7.3-01", () => {
   it("E2E-P7.3-01", async () => {
-    for (const version of [undefined, "0", "3"] as const) {
+    for (const version of [undefined, "2", "3"] as const) {
       const headers: Record<string, string> = {
         authorization: "Bearer invalid-token",
       };
@@ -158,7 +158,7 @@ describe("E2E-P7.3-01", () => {
       new Request(`${GATEWAY_ORIGIN}/v1/feed/coverage?after=0&limit=1`, {
         headers: {
           authorization: `Bearer ${feedToken}`,
-          "Aip-Contract-Version": "0",
+          "Aip-Contract-Version": "2",
         },
       }),
     );

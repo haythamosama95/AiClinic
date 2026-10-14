@@ -1125,7 +1125,7 @@ function admitOnHotRow(
 
   const replayEntry = hot.replay[request.jti];
   if (replayEntry) {
-    return replayEntry.answer ?? { kind: "admission", outcome: "replay" };
+    return { kind: "admission", outcome: "replay" };
   }
   const idempotencyEntry = hot.idempotency[request.idempotencyKey];
   if (idempotencyEntry) {

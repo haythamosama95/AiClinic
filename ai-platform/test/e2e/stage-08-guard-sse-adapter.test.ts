@@ -9,6 +9,7 @@ import {
   clinicFetch,
   createRateLimiterDouble,
   DEFAULT_ENTITLE_PAYLOAD,
+  ensureE2eCoverageMirror,
   newClinic,
   env,
   GATEWAY_ORIGIN,
@@ -21,6 +22,7 @@ import {
   postRequest,
   provisionHappyPath,
   resetE2eState,
+  setMirrorCapabilities,
   SELF,
   terminalEventTypes,
   visitSummaryInvokeBody,
@@ -178,7 +180,11 @@ describe("Stage 08 — guard mapping, SSE accept, disconnect, adapter contract (
     // row. Dummy unpublished grant (Stage 07) is the fallback if that changes.
     const scenario = await newScenario();
     await newClinic(scenario);
-const token = await mintAat(scenario);
+    // Stage 3 requires an active coverage mirror before stage 5 can reject
+    // this pending installation for having no capability membership.
+    await ensureE2eCoverageMirror(scenario);
+    await setMirrorCapabilities(scenario, []);
+    const token = await mintAat(scenario);
 
     const result = await postRequest(scenario, {
       token,
@@ -381,21 +387,23 @@ const token = await mintAat(scenario);
     assertAcceptedSse(result, { traceId: TRACE_ID });
   });
 
-  it("S08-051 — soft-threshold admission sets degraded_notice on accepted", async () => {
+  it("S08-051 — 75-percent allowance band sets degraded_notice on accepted", async () => {
     const { scenario } = await entitledJourney({
       ...DEFAULT_ENTITLE_PAYLOAD,
-      // token_budget: 1 would hard-exhaust after FakeAdapter's ~30-token credit.
+      // Term admission reports fixed 75%/90% allowance bands.
       request_quota: 5,
-      token_budget: 50,
-      soft_threshold: 0.01,
     });
 
-    const warmup = await postRequest(scenario, {
-      token: await mintAat(scenario),
-      body: happyVisitBody(scenario),
-    });
-    expect(warmup.status).toBe(200);
-    assertSseSequence(warmup.events, ["accepted"]);
+    // Three settled requests leave 3/5 used; the next admission reserves the
+    // fourth unit and crosses the 75% band (4/5).
+    for (let index = 0; index < 3; index += 1) {
+      const warmup = await postRequest(scenario, {
+        token: await mintAat(scenario),
+        body: happyVisitBody(scenario),
+      });
+      expect(warmup.status).toBe(200);
+      assertSseSequence(warmup.events, ["accepted"]);
+    }
 
     const result = await postRequest(scenario, {
       token: await mintAat(scenario),
@@ -450,11 +458,19 @@ const token = await mintAat(scenario);
     expect(accepted?.data.trace_id).toBe(TRACE_ID);
     const completed = replay.events.find((event) => event.event === "completed");
     expect(completed).toBeDefined();
+    const originalCompleted = original.events.find(
+      (event) => event.event === "completed",
+    );
+    expect(originalCompleted).toBeDefined();
+    const originalPayload = originalCompleted?.data.result as
+      | { finalContent?: { text?: string } }
+      | undefined;
     const resultPayload = completed?.data.result as
       | { finalContent?: { text?: string; authoritative?: boolean } }
       | undefined;
-    expect(resultPayload?.finalContent?.text).toBe("Prior request completed.");
-    // Code nests authoritative on finalContent, not the SSE data root.
+    expect(resultPayload?.finalContent?.text).toBe(
+      originalPayload?.finalContent?.text,
+    );
     expect(resultPayload?.finalContent?.authoritative).toBe(true);
   });
 

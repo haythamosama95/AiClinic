@@ -27,6 +27,7 @@ class FailedTest:
     name: str
     error: str | None
     log_file: str | None
+    failure_kind: str | None = None
 
 
 def _load_summary_tests(log_dir: Path) -> list[dict[str, Any]]:
@@ -78,6 +79,11 @@ def failed_tests_for_subcampaign(
                 name=name,
                 error=err if isinstance(err, str) else None,
                 log_file=log_file if isinstance(log_file, str) else None,
+                failure_kind=(
+                    entry.get("failure_kind")
+                    if isinstance(entry.get("failure_kind"), str)
+                    else None
+                ),
             )
         )
     return failures
@@ -170,12 +176,40 @@ def format_markdown_report(
             lines.append("All recorded test cases passed.")
         return "\n".join(lines) + "\n"
 
-    lines.append(f"**{len(failures)} failed test case(s):**")
+    not_recorded = [item for item in failures if item.failure_kind == "not_recorded"]
+    recorded_failures = [item for item in failures if item.failure_kind != "not_recorded"]
+    if recorded_failures:
+        lines.append(f"**{len(recorded_failures)} recorded test failure(s):**")
+    if not_recorded:
+        lines.extend([
+            f"**{len(not_recorded)} test case(s) had no recorded result.** "
+            "These are incomplete runner outcomes, not recorded test failures.",
+            "",
+        ])
+        for subcampaign in sorted({item.subcampaign for item in not_recorded}):
+            log_dir = governor_campaign_log_dir(run_root, area, subcampaign)
+            summary_path = log_dir / "summary.json"
+            try:
+                summary = json.loads(summary_path.read_text(encoding="utf-8"))
+            except (OSError, json.JSONDecodeError):
+                summary = {}
+            diagnostics = summary.get("runner_diagnostics", []) if isinstance(summary, dict) else []
+            output_file = summary.get("diagnostics_file", "output.log") if isinstance(summary, dict) else "output.log"
+            transcript = f"{area}/{subcampaign}/{output_file}"
+            lines.append(f"Runner transcript (artifact-relative): `{transcript}`")
+            if isinstance(diagnostics, list) and diagnostics:
+                lines.extend(["", "```text", *[str(line) for line in diagnostics[:12]], "```"])
+            else:
+                lines.extend(["", "No matching infrastructure diagnostic was extracted; inspect the full runner transcript."])
+            lines.append("")
+    if recorded_failures:
+        lines.append("Recorded test failure details:")
     lines.append("")
     for item in failures:
         lines.append(f"### `{item.subcampaign}`")
         lines.append("")
-        lines.append(f"- **{item.name}**")
+        kind = "NOT RECORDED" if item.failure_kind == "not_recorded" else "FAIL"
+        lines.append(f"- **{kind}: {item.name}**")
         if item.log_file:
             lines.append(f"  - log: `{item.log_file}`")
         if item.error:
@@ -189,10 +223,11 @@ def format_markdown_report(
 
 def emit_github_annotations(failures: list[FailedTest]) -> None:
     for item in failures:
-        title = _escape_annotation(f"{item.area}/{item.subcampaign}")
-        message = _escape_annotation(item.name)
+        kind = "NOT RECORDED" if item.failure_kind == "not_recorded" else "FAIL"
+        title = _escape_annotation(f"{item.area}/{item.subcampaign} · {kind}")
+        message = _escape_annotation(f"{kind}: {item.name}")
         if item.error:
-            message = _escape_annotation(f"{item.name}: {item.error[:500]}")
+            message = _escape_annotation(f"{kind}: {item.name}: {item.error[:500]}")
         print(f"::error title={title}::{message}")
 
 
