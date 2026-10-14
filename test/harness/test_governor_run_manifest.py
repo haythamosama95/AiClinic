@@ -27,6 +27,12 @@ def test_write_and_load_run_manifest(tmp_path: Path) -> None:
     assert picked_from_manifest(data) == picked
     assert data["campaigns"][0]["area"] == "backend"
     assert "log_dir" in data["campaigns"][0]
+    assert data["campaigns"][0]["summary_file"] == "backend/auth-rbac/summary.json"
+    assert data["campaigns"][0]["output_file"] == "backend/auth-rbac/output.log"
+    assert data["artifact_guide"] == "README.md"
+    readme = (run_root / "README.md").read_text(encoding="utf-8")
+    assert "compact campaign start/result ledger" in readme
+    assert "backend/auth-rbac/output.log" in readme
 
 
 def test_latest_governor_run_dir_picks_newest_manifest(tmp_path: Path) -> None:

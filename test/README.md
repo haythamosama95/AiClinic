@@ -17,7 +17,17 @@ python3 -m pip install --user -r test/requirements.txt
 
 Areas: `frontend`, `backend`, `ai-platform`, `abo`, `e2e-fullstack`, `vendor-contracts`, `ops-launch`.
 
-Logs: `test-results/<area>/<subcampaign>/<run_id>/tests/*.log` (one file per test case) and `summary.json` (run state; `meta.json` is a copy).
+Logs for a governor run live under `test-results/governor/<run_id>/`. Start with
+`README.md` for the artifact index, `console.log` for the compact campaign status
+ledger, `stats.json` for run totals, and `run.json` for the selected campaigns and
+configuration. Each `<area>/<subcampaign>/` contains `summary.json` (commands,
+per-test outcomes, timings, and links), `output.log` (complete merged stdout and
+stderr, including setup and runner output), `stats.json`, and `tests/*.log` (parsed
+test-specific output where boundaries are available). Logs are flushed as output
+arrives and remain useful after a failure or interruption without rerunning tests.
+
+Standalone area runs store `summary.json`, `output.log`, and per-test logs under
+`test-results/<area>/<subcampaign>/<run_id>/`.
 
 Shared helpers: `test/harness/common.py`.
 

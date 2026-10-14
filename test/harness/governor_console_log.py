@@ -1,8 +1,8 @@
-"""Governor run console capture (``console.log`` under the run root).
+"""Governor run console summary (``console.log`` under the run root).
 
-Each new run writes a fresh log when ``console.log`` does not exist yet. A normal
-fresh governor batch truncates only on the first attach in that process tree.
-``--continue`` / resume appends a new session header to the existing log.
+Each fresh run starts a new compact log. ``--continue`` / resume appends a new
+session header to the existing log. Raw subprocess output belongs in campaign
+``output.log`` files.
 """
 
 from __future__ import annotations
@@ -45,6 +45,11 @@ def governor_console_log_line(line: str) -> None:
     with _lock:
         with open(path, "a", encoding="utf-8") as handle:
             handle.write(text)
+
+
+def governor_console_output_path(campaign_log_dir: Path) -> Path:
+    """Full merged stdout/stderr transcript for one campaign."""
+    return campaign_log_dir.resolve() / "output.log"
 
 
 def governor_console_log_note(message: str) -> None:
@@ -113,14 +118,16 @@ def attach_governor_console_log(
         if first:
             os.environ[GOVERNOR_CONSOLE_LOG_ENV] = str(path)
             _install_governor_console_exception_hooks()
-            header = f"\n{'=' * 72}\nGovernor console log started {_utc_now()}\n"
+            header = f"\n{'=' * 72}\nGovernor campaign summary started {_utc_now()}\n"
             header += f"run_root: {run_root}\n"
             if meta:
                 for key, value in meta.items():
                     header += f"{key}: {value}\n"
             header += f"{'=' * 72}\n"
-            replace = not (meta and meta.get("resume")) and not path.is_file()
-            open_mode = "w" if replace else "a"
+            open_mode = "a" if meta and meta.get("resume") else "w"
+            if open_mode == "w" and path.is_file() and path.stat().st_size > 0:
+                # Nested attaches in one process must never truncate the active session.
+                open_mode = "a"
             with path.open(open_mode, encoding="utf-8") as handle:
                 handle.write(header)
 
@@ -130,7 +137,7 @@ def attach_governor_console_log(
         with _lock:
             _depth -= 1
             if _depth == 0:
-                footer = f"{'=' * 72}\nGovernor console log ended {_utc_now()}\n{'=' * 72}\n"
+                footer = f"{'=' * 72}\nGovernor campaign summary ended {_utc_now()}\n{'=' * 72}\n"
                 with path.open("a", encoding="utf-8") as handle:
                     handle.write(footer)
                 os.environ.pop(GOVERNOR_CONSOLE_LOG_ENV, None)

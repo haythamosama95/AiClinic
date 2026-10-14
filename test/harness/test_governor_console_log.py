@@ -20,10 +20,10 @@ def test_resume_appends_to_console_log(tmp_path) -> None:
 
     text = path.read_text(encoding="utf-8")
     assert "stale output from prior session" in text
-    assert "Governor console log started" in text
+    assert "Governor campaign summary started" in text
     assert "resume: True" in text
     assert "fresh resume line" in text
-    assert "Governor console log ended" in text
+    assert "Governor campaign summary ended" in text
 
 
 def test_fresh_run_appends_when_file_already_exists(tmp_path) -> None:

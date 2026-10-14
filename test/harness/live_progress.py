@@ -1784,11 +1784,26 @@ def pump_process_output(
     forward_stdout: bool = False,
     proc: object | None = None,
 ) -> None:
-    from harness.governor_console_log import governor_console_log_active, governor_console_log_line
+    from harness.governor_console_log import (
+        governor_console_log_active,
+        governor_console_log_line,
+        governor_console_output_path,
+    )
+
+    transcript = None
+    log_dir = getattr(log_session, "log_dir", None)
+    if isinstance(log_dir, Path):
+        transcript_path = governor_console_output_path(log_dir)
+        transcript_path.parent.mkdir(parents=True, exist_ok=True)
+        transcript = transcript_path.open("a", encoding="utf-8")
 
     try:
         for line in proc_stdout:
-            if governor_console_log_active():
+            if transcript is not None:
+                transcript.write(line)
+                transcript.flush()
+            elif governor_console_log_active():
+                # Standalone callers may not have a campaign directory/session.
                 governor_console_log_line(line)
             try:
                 parser.feed(line)
@@ -1796,7 +1811,11 @@ def pump_process_output(
                 msg = f"live progress parse error: {exc}\n"
                 sys.stderr.write(msg)
                 sys.stderr.flush()
-                governor_console_log_line(msg)
+                if transcript is not None:
+                    transcript.write(msg)
+                    transcript.flush()
+                else:
+                    governor_console_log_line(msg)
             if log_session is not None and log_session.has_active():
                 log_session.append_line(line)
             if forward_stdout:
@@ -1817,6 +1836,14 @@ def pump_process_output(
         # Expected when the parent terminates the child while this thread reads stdout.
         poll = getattr(proc, "poll", None)
         if callable(poll) and poll() is None:
-            from harness.governor_console_log import governor_console_log_note
+            msg = f"harness stdout reader: {exc}\n"
+            if transcript is not None:
+                transcript.write(msg)
+                transcript.flush()
+            else:
+                from harness.governor_console_log import governor_console_log_note
 
-            governor_console_log_note(f"harness stdout reader: {exc}")
+                governor_console_log_note(msg.rstrip())
+    finally:
+        if transcript is not None:
+            transcript.close()

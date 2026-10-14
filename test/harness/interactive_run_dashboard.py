@@ -256,6 +256,9 @@ def _run_dashboard_campaigns(
             set_campaign_finished_count(queue, area, sub_id, 0)
         update_manifest_campaign(run_root, area, sub_id, status="running", exit_code=None)
         display.tick()
+        governor_console_log_line(
+            f"CAMPAIGN START {area}/{sub_id} log_dir={log_dir.relative_to(run_root).as_posix()}"
+        )
         try:
             code = run_one(area, sub_id, queue, display, index == last_index, run_root)
         except SystemExit as exc:
@@ -276,6 +279,22 @@ def _run_dashboard_campaigns(
         status = "finished" if code == 0 else "failed"
         queue.status_by_key[key] = status
         update_manifest_campaign(run_root, area, sub_id, status=status, exit_code=code)
+        summary_path = log_dir / "summary.json"
+        try:
+            import json
+
+            summary = json.loads(summary_path.read_text(encoding="utf-8"))
+            passed = int(summary.get("passed", 0))
+            failed = int(summary.get("failed", 0))
+            elapsed = summary.get("elapsed_seconds", "unknown")
+        except (OSError, ValueError, TypeError):
+            passed, failed, elapsed = 0, 0, "unknown"
+        governor_console_log_line(
+            f"CAMPAIGN {status.upper()} {area}/{sub_id} exit_code={code} "
+            f"passed={passed} failed={failed} elapsed_seconds={elapsed} "
+            f"summary={summary_path.relative_to(run_root).as_posix()} "
+            f"output={(log_dir / 'output.log').relative_to(run_root).as_posix()}"
+        )
         display.tick()
         if code != 0:
             exit_code = code

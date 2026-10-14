@@ -479,30 +479,42 @@ def run_subprocess(cmd: Sequence[str], cwd: Path, log_dir: Path) -> int:
     label = _subprocess_test_label(cmd)
     session.start_test(label)
     session.append_output(f"$ {' '.join(cmd)}\n")
+    from harness.governor_console_log import governor_console_output_path
+
+    transcript_path = governor_console_output_path(log_dir)
+    transcript_path.parent.mkdir(parents=True, exist_ok=True)
+    transcript = transcript_path.open("a", encoding="utf-8")
 
     live = live_progress_child_enabled()
-    proc = subprocess.Popen(
-        list(cmd),
-        cwd=str(cwd),
-        stdout=subprocess.PIPE,
-        stderr=subprocess.STDOUT,
-        text=True,
-        bufsize=1,
-        env=_subprocess_env(),
-        **_subprocess_popen_kwargs(),
-    )
+    try:
+        proc = subprocess.Popen(
+            list(cmd),
+            cwd=str(cwd),
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+            text=True,
+            bufsize=1,
+            env=_subprocess_env(),
+            **_subprocess_popen_kwargs(),
+        )
+    except Exception:
+        transcript.close()
+        raise
     assert proc.stdout is not None
     from harness.live_progress import should_forward_progress_stdout_line
 
     try:
         for line in proc.stdout:
             session.append_line(line)
+            transcript.write(line)
+            transcript.flush()
             if live and should_forward_progress_stdout_line(line):
                 sys.stdout.write(line)
                 sys.stdout.flush()
         exit_code = proc.wait()
     except KeyboardInterrupt:
         _terminate_process(proc)
+        transcript.close()
         session.abort_current_test()
         session.write_summary(
             command=list(cmd),
@@ -513,6 +525,9 @@ def run_subprocess(cmd: Sequence[str], cwd: Path, log_dir: Path) -> int:
             elapsed_seconds=round(time.monotonic() - start_mono, 3),
         )
         raise SystemExit(130) from None
+    finally:
+        if not transcript.closed:
+            transcript.close()
 
     status = "PASS" if exit_code == 0 else "FAIL"
     session.end_test(label, status=status)
@@ -546,10 +561,18 @@ def _log_harness_runner_test_failure(
         session.start_test(name)
         session.append_line(f"harness: {error}\n")
         session.end_test(name, status="FAIL", error=error)
-    from harness.governor_console_log import governor_console_log_line
+    from harness.governor_console_log import (
+        governor_console_log_line,
+        governor_console_output_path,
+    )
 
-    governor_console_log_line(synthetic_vitest_fail_line(name))
-    governor_console_log_line(f"harness: {error}\n")
+    output_path = governor_console_output_path(
+        getattr(session, "log_dir", Path.cwd())
+    )
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    with output_path.open("a", encoding="utf-8") as handle:
+        handle.write(synthetic_vitest_fail_line(name))
+        handle.write(f"harness: {error}\n")
     if forward_stdout:
         sys.stdout.write(synthetic_vitest_fail_line(name))
         sys.stdout.flush()
@@ -796,6 +819,7 @@ def run_subprocess_with_live_status(
         failed=failed,
         resumed=governor_resume,
         interrupted=interrupted,
+        output_file="output.log",
     )
     _maybe_reconcile_vitest_summary(
         log_dir,
@@ -1007,13 +1031,17 @@ def run_subprocess_sequence(
                         break
                 else:
                     try:
-                        for line in proc.stdout:
-                            from harness.governor_console_log import (
-                                governor_console_log_line,
-                            )
+                        from harness.governor_console_log import (
+                            governor_console_output_path,
+                        )
 
-                            governor_console_log_line(line)
+                        transcript_path = governor_console_output_path(log_dir)
+                        transcript_path.parent.mkdir(parents=True, exist_ok=True)
+                        transcript = transcript_path.open("a", encoding="utf-8")
+                        for line in proc.stdout:
                             session.append_line(line)
+                            transcript.write(line)
+                            transcript.flush()
                         batch_exit = proc.wait()
                     except KeyboardInterrupt:
                         interrupted = True
@@ -1021,6 +1049,9 @@ def run_subprocess_sequence(
                         _terminate_process(proc)
                         session.abort_current_test()
                         break
+                    finally:
+                        if "transcript" in locals() and not transcript.closed:
+                            transcript.close()
                 step_exit = max(step_exit, batch_exit)
                 if batch_exit != 0 and not (
                     campaign_resume_enabled() and len(cmd_batches) > 1
