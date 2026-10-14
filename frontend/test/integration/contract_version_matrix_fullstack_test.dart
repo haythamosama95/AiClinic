@@ -3,6 +3,7 @@ library;
 
 // ignore_for_file: depend_on_referenced_packages
 
+import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
@@ -34,6 +35,9 @@ final _aboUrl = Platform.environment['ABO_URL'] ?? 'http://127.0.0.1:8788';
 final _platformUrl = Platform.environment['PLATFORM_URL'] ?? 'http://127.0.0.1:8787';
 
 var _hfsStackReady = false;
+Process? _desktopWindowPrepareProcess;
+String _desktopWindowPrepareStdout = '';
+String _desktopWindowPrepareStderr = '';
 
 /// Fullstack contract-version matrix tests call live Supabase, ABO, and platform HTTP.
 class _FullstackContractVersionTestBinding extends AutomatedTestWidgetsFlutterBinding {
@@ -47,10 +51,27 @@ void main() {
   late BoundaryTestContext ctx;
 
   setUpAll(() async {
-    _hfsStackReady = await _probeDesktopWindowStackReady();
-    if (_hfsStackReady) {
+    await _startDesktopWindowStack();
+    try {
+      _hfsStackReady = await _probeDesktopWindowStackReady();
+      if (!_hfsStackReady) {
+        throw StateError(
+          'The P7.3 prepare process reported ready, but the desktop-window '
+          'ABO/platform probes did not pass.',
+        );
+      }
       await LiveSupabaseHarness.ensureReady();
+    } catch (error, stackTrace) {
+      await _stopDesktopWindowStack(reportFailure: true);
+      Error.throwWithStackTrace(
+        StateError('P7.3-06 stack setup failed: $error'),
+        stackTrace,
+      );
     }
+  });
+
+  tearDownAll(() async {
+    await _stopDesktopWindowStack(reportFailure: true);
   });
 
   setUp(() async {
@@ -132,6 +153,99 @@ void main() {
       expect(find.text(_appUpdateCopy), findsOneWidget);
     });
   });
+}
+
+Future<void> _startDesktopWindowStack() async {
+  final repoRoot = File('pubspec.yaml').existsSync()
+      ? Directory.current.parent.path
+      : Directory.current.path;
+  final ready = Completer<void>();
+  _desktopWindowPrepareStdout = '';
+  _desktopWindowPrepareStderr = '';
+
+  try {
+    _desktopWindowPrepareProcess = await Process.start(
+      'node',
+      [
+        '--import',
+        'tsx',
+        'test/p7-3-06-prepare.mjs',
+      ],
+      workingDirectory: '$repoRoot/e2e/fullstack',
+    );
+    final process = _desktopWindowPrepareProcess!;
+
+    process.stdout
+        .transform(utf8.decoder)
+        .transform(const LineSplitter())
+        .listen((line) {
+          _desktopWindowPrepareStdout += '$line\n';
+          if (line.contains('P7.3 desktop-window stack ready') &&
+              !ready.isCompleted) {
+            ready.complete();
+          }
+        });
+    process.stderr
+        .transform(utf8.decoder)
+        .transform(const LineSplitter())
+        .listen((line) => _desktopWindowPrepareStderr += '$line\n');
+    process.exitCode.then((code) {
+      if (!ready.isCompleted) {
+        ready.completeError(
+          StateError(
+            'prepare process exited with status $code before reporting ready.',
+          ),
+        );
+      }
+    });
+
+    await ready.future.timeout(const Duration(minutes: 2));
+  } catch (error) {
+    final details = [
+      if (_desktopWindowPrepareStderr.trim().isNotEmpty)
+        'stderr: ${_desktopWindowPrepareStderr.trim()}',
+      if (_desktopWindowPrepareStdout.trim().isNotEmpty)
+        'stdout: ${_desktopWindowPrepareStdout.trim()}',
+    ].join('\n');
+    await _stopDesktopWindowStack(reportFailure: true);
+    throw StateError(
+      'Could not start the P7.3-06 desktop-window stack: $error'
+      '${details.isEmpty ? '' : '\n$details'}',
+    );
+  }
+}
+
+Future<void> _stopDesktopWindowStack({required bool reportFailure}) async {
+  final process = _desktopWindowPrepareProcess;
+  _desktopWindowPrepareProcess = null;
+  if (process == null) {
+    return;
+  }
+
+  process.kill(ProcessSignal.sigint);
+  try {
+    final exitCode = await process.exitCode.timeout(const Duration(seconds: 30));
+    if (exitCode != 0 && reportFailure) {
+      // Keep cleanup diagnostics visible without replacing a test failure.
+      // ignore: avoid_print
+      print('P7.3-06 prepare exited with status $exitCode during cleanup.');
+    }
+  } catch (error) {
+    process.kill(ProcessSignal.sigterm);
+    try {
+      await process.exitCode.timeout(const Duration(seconds: 10));
+    } catch (forcedStopError) {
+      process.kill(ProcessSignal.sigkill);
+      if (reportFailure) {
+        // Keep cleanup diagnostics visible without replacing a test failure.
+        // ignore: avoid_print
+        print(
+          'P7.3-06 prepare cleanup failed: $error; '
+          'forced stop also failed: $forcedStopError',
+        );
+      }
+    }
+  }
 }
 
 GoRouter _billingRouter() {

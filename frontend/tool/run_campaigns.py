@@ -159,7 +159,19 @@ def _run_fullstack(_subcampaign: str) -> int:
         ["flutter", "test", *test_files, "--tags", "fullstack"],
         config,
     )
-    return _run_live("fullstack", cmd, log_dir, FRONTEND_ROOT)
+    stack_runner = FRONTEND_ROOT.parent / "e2e/fullstack/test/hfl-run-flutter.mjs"
+    tsx_loader = (
+        FRONTEND_ROOT.parent / "e2e/fullstack/node_modules/tsx/dist/loader.mjs"
+    )
+    if not tsx_loader.is_file():
+        print(
+            "ERROR: H-FS stack dependencies are missing. Run `npm ci` in "
+            "e2e/fullstack/ before the frontend fullstack campaign.",
+            file=sys.stderr,
+        )
+        return 1
+    wrapped_cmd = ["node", "--import", str(tsx_loader), str(stack_runner), "--", *cmd]
+    return _run_live("fullstack", wrapped_cmd, log_dir, FRONTEND_ROOT)
 
 
 def _run_all(_subcampaign: str) -> int:

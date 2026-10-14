@@ -1,5 +1,6 @@
 import { readFile } from "node:fs/promises";
 import { spawn, spawnSync } from "node:child_process";
+import { request as httpRequest } from "node:http";
 import { mkdir } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -188,13 +189,26 @@ export function psqlQuery(sql) {
   return result.stdout.trim();
 }
 
-export async function waitForHttp(url, { timeoutMs = 120_000, accept = [200] } = {}) {
+export async function waitForHttp(
+  url,
+  { timeoutMs = 120_000, accept = [200], headers } = {},
+) {
   const deadline = Date.now() + timeoutMs;
   while (Date.now() < deadline) {
     try {
-      const response = await fetch(url);
-      if (accept.includes(response.status)) {
-        return response;
+      const status = await new Promise((resolve, reject) => {
+        const request = httpRequest(url, { headers }, (response) => {
+          response.resume();
+          response.once("end", () => resolve(response.statusCode));
+        });
+        request.setTimeout(3_000, () => {
+          request.destroy(new Error(`Timed out connecting to ${url}`));
+        });
+        request.once("error", reject);
+        request.end();
+      });
+      if (accept.includes(status)) {
+        return { statusCode: status };
       }
     } catch {
       // worker still starting
@@ -209,6 +223,7 @@ function spawnDevProcess(args, env = {}) {
     cwd: REPO_ROOT,
     env: wranglerLocalEnv(env),
     stdio: ["ignore", "pipe", "pipe"],
+    detached: process.platform !== "win32",
   });
   child.stdout.on("data", captureLogChunk);
   child.stderr.on("data", captureLogChunk);
@@ -216,20 +231,87 @@ function spawnDevProcess(args, env = {}) {
 }
 
 async function stopChild(child) {
-  if (!child || child.killed) {
+  if (!child) return;
+
+  if (process.platform === "win32" || !child.pid) {
+    if (child.exitCode !== null || child.signalCode !== null) return;
+    child.kill("SIGTERM");
+    await new Promise((resolve) => {
+      const timer = setTimeout(() => {
+        child.kill("SIGKILL");
+        resolve();
+      }, 5_000);
+      child.once("exit", () => {
+        clearTimeout(timer);
+        resolve();
+      });
+    });
     return;
   }
-  child.kill("SIGTERM");
-  await new Promise((resolve) => {
-    const timer = setTimeout(() => {
-      child.kill("SIGKILL");
-      resolve();
-    }, 5_000);
-    child.on("exit", () => {
-      clearTimeout(timer);
-      resolve();
-    });
-  });
+
+  const signalGroup = (signal) => {
+    try {
+      process.kill(-child.pid, signal);
+      return true;
+    } catch (error) {
+      if (error.code === "ESRCH") return false;
+      throw error;
+    }
+  };
+  const groupExists = () => {
+    try {
+      process.kill(-child.pid, 0);
+      return true;
+    } catch (error) {
+      if (error.code === "ESRCH") return false;
+      throw error;
+    }
+  };
+  const waitForGroupExit = async (timeoutMs) => {
+    const deadline = Date.now() + timeoutMs;
+    while (groupExists() && Date.now() < deadline) {
+      await new Promise((resolve) => setTimeout(resolve, 100));
+    }
+    return !groupExists();
+  };
+
+  // The Wrangler leader may already have exited while workerd descendants
+  // remain in this dedicated process group, so signal the group regardless.
+  if (!signalGroup("SIGTERM")) return;
+  if (await waitForGroupExit(5_000)) return;
+  signalGroup("SIGKILL");
+  if (!(await waitForGroupExit(1_000))) {
+    throw new Error(`Process group ${child.pid} did not exit after SIGKILL`);
+  }
+}
+
+async function stopStartedResources({
+  paymob,
+  abo,
+  harnessWorker,
+  platformWorker,
+  platformDoReceiverWorker,
+  mockFetch,
+}) {
+  const cleanup = [
+    ["Paymob worker", () => stopChild(paymob)],
+    ["ABO worker", () => stopChild(abo)],
+    ["Harness worker", () => harnessWorker?.dispose()],
+    ["Platform worker", () => platformWorker?.dispose()],
+    ["Platform receiver worker", () => platformDoReceiverWorker?.dispose()],
+    ["mock fetch", () => mockFetch?.close()],
+  ];
+  const errors = [];
+  for (const [label, dispose] of cleanup) {
+    try {
+      await dispose();
+    } catch (error) {
+      errors.push(new Error(`Failed to stop ${label}`, { cause: error }));
+    }
+  }
+  if (errors.length > 0) {
+    throw new AggregateError(errors, "One or more H-FS resources failed to stop");
+  }
 }
 
 async function applyAboMigrations(aboConfig = activeAboConfig) {
@@ -283,6 +365,23 @@ function readIssuerKeyByStatus(status) {
     not_before: notBefore,
     not_after: notAfter,
   };
+}
+
+function seedLocalPlatformIssuerKey(issuerKey) {
+  execPlatformD1Sql(`
+    INSERT OR REPLACE INTO issuer_key
+      (kid, issuer, public_key, status, not_before, not_after, registered_by, assertion_sha256)
+    VALUES (
+      ${sqlLiteral(issuerKey.kid)},
+      'issuer-test',
+      ${sqlLiteral(issuerKey.public_key)},
+      'active',
+      ${sqlLiteral(issuerKey.not_before)},
+      ${sqlLiteral(issuerKey.not_after)},
+      'hfl-local-runner',
+      'hfl-local-runner'
+    )
+  `);
 }
 
 export function encodeVendorAssertion(assertion) {
@@ -668,197 +767,236 @@ export async function startStack({
   aboConfig,
   platformConfig,
   platformDoReceiverConfig,
+  createClinics = true,
+  registerIssuer = true,
 } = {}) {
   clearPlatformLogBuffer();
   activePlatformConfig = resolveHarnessConfig(platformConfig) ?? PLATFORM_CONFIG;
   activeAboConfig = resolveHarnessConfig(aboConfig) ?? ABO_CONFIG;
   const platformDoReceiverConfigPath = resolveHarnessConfig(platformDoReceiverConfig);
 
-  await mkdir(PLATFORM_PERSIST, { recursive: true });
-  await mkdir(HARNESS_PERSIST, { recursive: true });
-  await mkdir(REGISTRY_DIR, { recursive: true });
-  await mkdir(ABO_PERSIST, { recursive: true });
-  await preparePlatformD1({ platformConfig: activePlatformConfig });
-
-  const accessTeam = await createAccessTeam({
-    issuer: `https://${ACCESS_TEAM_DOMAIN}`,
-  });
-  const authenticator = await createSoftwareAuthenticator("EdDSA");
-  const attestation = await authenticator.attest();
-  const credentialId = crypto.randomUUID();
-  const publicKeyCose = base64urlEncode(attestation.publicKey);
-
-  const mockFetch = new MockAgent();
-  mockFetch
-    .get(`https://${ACCESS_TEAM_DOMAIN}`)
-    .intercept({
-      path: "/cdn-cgi/access/certs",
-      method: "GET",
-    })
-    .reply(200, JSON.stringify({ keys: accessTeam.certs.keys }), {
-      headers: { "content-type": "application/json" },
-    })
-    .persist();
-
-  await insertActiveOperatorCredential({
-    credentialId,
-    operatorEmail: OPERATOR_EMAIL,
-    publicKeyCose,
-  });
-
+  let mockFetch = null;
+  let accessTeam = null;
+  let authenticator = null;
+  let credentialId = null;
+  let publicKeyCose = null;
   let platformDoReceiverWorker = null;
-  if (platformDoReceiverConfigPath) {
-    platformDoReceiverWorker = await startPlatformDoReceiverWorker(
-      platformDoReceiverConfigPath,
-      mockFetch,
-    );
-  }
+  let platformWorker = null;
+  let harnessWorker = null;
+  let paymob = null;
+  let abo = null;
 
-  const platformWorker = await startPlatformAdmissionWorker(
-    activePlatformConfig,
-    mockFetch,
-  );
+  try {
 
-  const harnessWorker = await startWorker({
-    config: HARNESS_CONFIG,
-    env: undefined,
-    dev: {
-      server: { hostname: "127.0.0.1", port: 8790 },
-      inspector: false,
-      persist: HARNESS_PERSIST,
-      registry: REGISTRY_DIR,
-    },
-  });
-  await harnessWorker.ready;
+    await mkdir(PLATFORM_PERSIST, { recursive: true });
+    await mkdir(HARNESS_PERSIST, { recursive: true });
+    await mkdir(REGISTRY_DIR, { recursive: true });
+    await mkdir(ABO_PERSIST, { recursive: true });
+    await preparePlatformD1({ platformConfig: activePlatformConfig });
 
-  await waitForHttp(`${PLATFORM_URL}/health`);
-  const harnessProbe = await fetch(`${HARNESS_URL}/register-issuer-key`, {
-    method: "POST",
-    headers: { "content-type": "application/json" },
-    body: JSON.stringify({ contract_version: 1 }),
-  });
-  if (harnessProbe.status === 404) {
-    throw new Error("Harness register-issuer-key route is unavailable");
-  }
-
-  const signingKey = readIssuerKeyByStatus("signing");
-  if (!signingKey) {
-    throw new Error("No signing issuer key row found");
-  }
-  const issuerKeys = [{ kid: signingKey.kid, public_key: signingKey.public_key }];
-
-  const paymob = spawnDevProcess([
-    "dev",
-    PAYMOB_WORKER,
-    "--port",
-    "8789",
-    "--ip",
-    "127.0.0.1",
-    "--inspector-port",
-    "9230",
-  ]);
-  await waitForHttp(`${PAYMOB_URL}/`, { accept: [200, 404] });
-
-  await applyAboMigrations(activeAboConfig);
-  const abo = spawnAboProcess(issuerKeys, activeAboConfig);
-  await waitForHttp(`${ABO_URL}/v1/offers`, {
-    accept: [401, 403, 400],
-  });
-
-  const clinics = await createTwoOrgClinics();
-
-  const stackRef = {
-    accessTeam,
-    authenticator,
-    credentialId,
-    publicKeyCose,
-    platformWorker,
-    platformDoReceiverWorker,
-    harnessWorker,
-    paymob,
-    abo,
-    issuerKeys,
-    signingKey,
-    clinics,
-    platformConfigPath: activePlatformConfig,
-    platformPersistPath: PLATFORM_PERSIST,
-    platformDoReceiverConfigPath,
-    queryPlatformD1One,
-    async mintPlatformToken(orgId, installationId) {
-      const clinic = clinicForOrgId(clinics, orgId);
-      if (!clinic) {
-        throw new Error(`Unknown orgId ${orgId}`);
-      }
-      if (installationId !== clinic.installationId) {
-        throw new Error(
-          `installationId ${installationId} does not match org ${orgId}`,
-        );
-      }
-      return rpc(clinic.administrator, "issue_ai_token", {
-        p_contract_version: 1,
+    if (registerIssuer) {
+      accessTeam = await createAccessTeam({
+        issuer: `https://${ACCESS_TEAM_DOMAIN}`,
       });
-    },
-    async stop() {
-      await stopChild(paymob);
-      await stopChild(abo);
-      await harnessWorker.dispose();
-      await platformWorker.dispose();
-      if (platformDoReceiverWorker) {
-        await platformDoReceiverWorker.dispose();
-      }
-      await mockFetch.close();
-    },
-    async restartAbo(nextIssuerKeys = issuerKeys) {
-      await stopChild(stackRef.abo);
-      const restarted = spawnAboProcess(nextIssuerKeys, activeAboConfig);
-      await waitForHttp(`${ABO_URL}/v1/offers`, {
-        accept: [401, 403, 400],
+      authenticator = await createSoftwareAuthenticator("EdDSA");
+      const attestation = await authenticator.attest();
+      credentialId = crypto.randomUUID();
+      publicKeyCose = base64urlEncode(attestation.publicKey);
+
+      mockFetch = new MockAgent();
+      mockFetch
+        .get(`https://${ACCESS_TEAM_DOMAIN}`)
+        .intercept({
+          path: "/cdn-cgi/access/certs",
+          method: "GET",
+        })
+        .reply(200, JSON.stringify({ keys: accessTeam.certs.keys }), {
+          headers: { "content-type": "application/json" },
+        })
+        .persist();
+
+      await insertActiveOperatorCredential({
+        credentialId,
+        operatorEmail: OPERATOR_EMAIL,
+        publicKeyCose,
       });
-      stackRef.abo = restarted;
-      stackRef.issuerKeys = nextIssuerKeys;
-      return restarted;
-    },
-    async restartPlatform({
-      platformConfig: nextPlatformConfig,
-      platformDoReceiverConfig: nextPlatformDoReceiverConfig,
-    } = {}) {
-      if (nextPlatformConfig) {
-        activePlatformConfig = resolveHarnessConfig(nextPlatformConfig);
-        stackRef.platformConfigPath = activePlatformConfig;
-      }
+    }
 
-      await stackRef.platformWorker.dispose();
-      if (stackRef.platformDoReceiverWorker) {
-        await stackRef.platformDoReceiverWorker.dispose();
-        stackRef.platformDoReceiverWorker = null;
-      }
-
-      const nextDoReceiverConfigPath =
-        nextPlatformDoReceiverConfig === undefined
-          ? null
-          : resolveHarnessConfig(nextPlatformDoReceiverConfig);
-      stackRef.platformDoReceiverConfigPath = nextDoReceiverConfigPath;
-
-      if (nextDoReceiverConfigPath) {
-        stackRef.platformDoReceiverWorker = await startPlatformDoReceiverWorker(
-          nextDoReceiverConfigPath,
-          mockFetch,
-        );
-      }
-
-      stackRef.platformWorker = await startPlatformAdmissionWorker(
-        activePlatformConfig,
+    if (platformDoReceiverConfigPath) {
+      platformDoReceiverWorker = await startPlatformDoReceiverWorker(
+        platformDoReceiverConfigPath,
         mockFetch,
       );
-      await waitForHttp(`${PLATFORM_URL}/health`);
-      return stackRef.platformWorker;
-    },
-  };
+    }
 
-  await registerIssuerKey(stackRef, signingKey);
-  await stackRef.restartAbo(issuerKeys);
+    platformWorker = await startPlatformAdmissionWorker(
+      activePlatformConfig,
+      mockFetch,
+    );
 
-  return stackRef;
+    harnessWorker = await startWorker({
+      config: HARNESS_CONFIG,
+      env: undefined,
+      dev: {
+        server: { hostname: "127.0.0.1", port: 8790 },
+        inspector: false,
+        persist: HARNESS_PERSIST,
+        registry: REGISTRY_DIR,
+      },
+    });
+    await harnessWorker.ready;
+
+    await waitForHttp(`${PLATFORM_URL}/health`);
+    const harnessProbe = await fetch(`${HARNESS_URL}/register-issuer-key`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ contract_version: 1 }),
+    });
+    if (harnessProbe.status === 404) {
+      throw new Error("Harness register-issuer-key route is unavailable");
+    }
+
+    const signingKey = readIssuerKeyByStatus("signing");
+    if (!signingKey) {
+      throw new Error("No signing issuer key row found");
+    }
+    const issuerKeys = [{ kid: signingKey.kid, public_key: signingKey.public_key }];
+    if (!registerIssuer) {
+      seedLocalPlatformIssuerKey(signingKey);
+    }
+
+    paymob = spawnDevProcess([
+      "dev",
+      PAYMOB_WORKER,
+      "--port",
+      "8789",
+      "--ip",
+      "127.0.0.1",
+      "--inspector-port",
+      "9230",
+    ]);
+    await waitForHttp(`${PAYMOB_URL}/`, { accept: [200, 404] });
+
+    await applyAboMigrations(activeAboConfig);
+    abo = spawnAboProcess(issuerKeys, activeAboConfig);
+    await waitForHttp(`${ABO_URL}/v1/offers`, {
+      accept: [401, 403, 400],
+      headers: { Host: BILLING_HOST },
+    });
+
+    const clinics = createClinics ? await createTwoOrgClinics() : null;
+
+    const stackRef = {
+      accessTeam,
+      authenticator,
+      credentialId,
+      publicKeyCose,
+      platformWorker,
+      platformDoReceiverWorker,
+      harnessWorker,
+      paymob,
+      abo,
+      issuerKeys,
+      signingKey,
+      clinics,
+      platformConfigPath: activePlatformConfig,
+      platformPersistPath: PLATFORM_PERSIST,
+      platformDoReceiverConfigPath,
+      queryPlatformD1One,
+      async mintPlatformToken(orgId, installationId) {
+      const clinic = clinics ? clinicForOrgId(clinics, orgId) : null;
+        if (!clinic) {
+          throw new Error(`Unknown orgId ${orgId}`);
+        }
+        if (installationId !== clinic.installationId) {
+          throw new Error(
+            `installationId ${installationId} does not match org ${orgId}`,
+          );
+        }
+        return rpc(clinic.administrator, "issue_ai_token", {
+          p_contract_version: 1,
+        });
+      },
+      async stop() {
+        await stopStartedResources({
+          paymob: stackRef.paymob,
+          abo: stackRef.abo,
+          harnessWorker: stackRef.harnessWorker,
+          platformWorker: stackRef.platformWorker,
+          platformDoReceiverWorker: stackRef.platformDoReceiverWorker,
+          mockFetch,
+        });
+      },
+      async restartAbo(nextIssuerKeys = issuerKeys) {
+        await stopChild(stackRef.abo);
+        const restarted = spawnAboProcess(nextIssuerKeys, activeAboConfig);
+        abo = restarted;
+        await waitForHttp(`${ABO_URL}/v1/offers`, {
+          accept: [401, 403, 400],
+          headers: { Host: BILLING_HOST },
+        });
+        stackRef.abo = restarted;
+        stackRef.issuerKeys = nextIssuerKeys;
+        return restarted;
+      },
+      async restartPlatform({
+        platformConfig: nextPlatformConfig,
+        platformDoReceiverConfig: nextPlatformDoReceiverConfig,
+      } = {}) {
+        if (nextPlatformConfig) {
+          activePlatformConfig = resolveHarnessConfig(nextPlatformConfig);
+          stackRef.platformConfigPath = activePlatformConfig;
+        }
+
+        await stackRef.platformWorker.dispose();
+        if (stackRef.platformDoReceiverWorker) {
+          await stackRef.platformDoReceiverWorker.dispose();
+          stackRef.platformDoReceiverWorker = null;
+        }
+
+        const nextDoReceiverConfigPath =
+          nextPlatformDoReceiverConfig === undefined
+            ? null
+            : resolveHarnessConfig(nextPlatformDoReceiverConfig);
+        stackRef.platformDoReceiverConfigPath = nextDoReceiverConfigPath;
+
+        if (nextDoReceiverConfigPath) {
+          stackRef.platformDoReceiverWorker = await startPlatformDoReceiverWorker(
+            nextDoReceiverConfigPath,
+            mockFetch,
+          );
+        }
+
+        stackRef.platformWorker = await startPlatformAdmissionWorker(
+          activePlatformConfig,
+          mockFetch,
+        );
+        await waitForHttp(`${PLATFORM_URL}/health`);
+        return stackRef.platformWorker;
+      },
+    };
+
+    if (registerIssuer) {
+      await registerIssuerKey(stackRef, signingKey);
+      await stackRef.restartAbo(issuerKeys);
+    }
+
+    return stackRef;
+  } catch (error) {
+    try {
+      await stopStartedResources({
+        paymob,
+        abo,
+        harnessWorker,
+        platformWorker,
+        platformDoReceiverWorker,
+        mockFetch,
+      });
+    } catch (cleanupError) {
+      console.error("H-FS startup rollback encountered cleanup errors:", cleanupError);
+    }
+    throw error;
+  }
 }
 
 export async function billingFetch(pathname, init = {}) {
