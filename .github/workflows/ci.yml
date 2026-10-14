@@ -2,7 +2,7 @@ name: CI
 
 on:
   push:
-    branches: [main, master, "001-*", "feature/*", "ai/**"]
+    branches: [main, master, "001-*", "feature/*", "ai/**", "!ai/abo-master"]
   pull_request:
     branches: [main, master, ai/master]
   workflow_dispatch:
