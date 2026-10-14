@@ -99,3 +99,40 @@ def test_reconcile_adds_missing_fail_rows(tmp_path: Path) -> None:
         assert missing in recorded
     finally:
         mod.vitest_labels_for_subcampaign = original
+
+
+def test_reconcile_marks_missing_outcomes_and_keeps_runner_diagnostics(
+    tmp_path: Path,
+) -> None:
+    log_dir = tmp_path / "npm-test"
+    log_dir.mkdir()
+    missing = "test/system/example.system.test.ts > suite > case one"
+    (log_dir / "summary.json").write_text(
+        json.dumps({"tests": []}),
+        encoding="utf-8",
+    )
+    (log_dir / "output.log").write_text(
+        "WorkersTestRunner failed to pop isolated storage stack frame\n"
+        "expected .sqlite, got .sqlite-shm\n",
+        encoding="utf-8",
+    )
+
+    from harness import campaign_vitest_reconcile as mod
+
+    original = mod.vitest_labels_for_subcampaign
+    mod.vitest_labels_for_subcampaign = lambda area, sub: {missing}
+    try:
+        assert reconcile_vitest_summary_log(
+            log_dir,
+            area="ai-platform",
+            subcampaign="npm-test",
+            cwd=tmp_path,
+        )
+    finally:
+        mod.vitest_labels_for_subcampaign = original
+
+    payload = json.loads((log_dir / "summary.json").read_text(encoding="utf-8"))
+    assert payload["tests"][0]["failure_kind"] == "not_recorded"
+    assert payload["not_recorded"] == [missing]
+    assert payload["diagnostics_file"] == "output.log"
+    assert any("sqlite-shm" in line for line in payload["runner_diagnostics"])

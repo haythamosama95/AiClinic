@@ -60,3 +60,49 @@ def test_format_markdown_includes_failure_name() -> None:
     )
     assert "case-b" in md
     assert "boom" in md
+
+
+def test_format_markdown_separates_missing_results_and_shows_diagnostics(
+    tmp_path: Path,
+) -> None:
+    from harness.github_campaign_report import FailedTest
+
+    log_dir = tmp_path / "ai-platform" / "npm-test"
+    log_dir.mkdir(parents=True)
+    (log_dir / "summary.json").write_text(
+        json.dumps(
+            {
+                "diagnostics_file": "output.log",
+                "runner_diagnostics": ["expected .sqlite, got .sqlite-shm"],
+            }
+        ),
+        encoding="utf-8",
+    )
+    md = format_markdown_report(
+        tmp_path,
+        "ai-platform",
+        [
+            FailedTest(
+                area="ai-platform",
+                subcampaign="npm-test",
+                name="missing-case",
+                error="no result recorded (harness reconcile)",
+                log_file=None,
+                failure_kind="not_recorded",
+            ),
+            FailedTest(
+                area="ai-platform",
+                subcampaign="npm-test",
+                name="assertion-case",
+                error="expected 200, got 500",
+                log_file="tests/001.log",
+            ),
+        ],
+    )
+
+    assert "1 test case(s) had no recorded result" in md
+    assert "1 recorded test failure(s)" in md
+    assert "NOT RECORDED: missing-case" in md
+    assert "FAIL: assertion-case" in md
+    assert "ai-platform/npm-test/output.log" in md
+    assert "expected .sqlite, got .sqlite-shm" in md
