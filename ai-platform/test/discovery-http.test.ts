@@ -272,7 +272,10 @@ async function seedEntitlement(
     .bind(
       installationId,
       FIXTURE_ORG_ID,
-      JSON.stringify({ capabilities: allowedCapabilities }),
+      JSON.stringify({
+        ref: `term-${installationId}`,
+        capabilities: allowedCapabilities,
+      }),
     )
     .run();
 }
@@ -460,7 +463,10 @@ describe("T3 discovery_http_changed_manifest_changes_etag", () => {
        WHERE installation_id = ?`,
     )
       .bind(
-        JSON.stringify({ capabilities: [FIXTURE_GRANTED_CAPABILITY_ID] }),
+        JSON.stringify({
+          ref: `term-${FIXTURE_INSTALLATION_ID}`,
+          capabilities: [FIXTURE_GRANTED_CAPABILITY_ID],
+        }),
         FIXTURE_INSTALLATION_ID,
       )
       .run();

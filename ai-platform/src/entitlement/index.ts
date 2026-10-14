@@ -226,10 +226,15 @@ export async function evaluateCoveragePrecheck(
 
   const mirror = await db
     .prepare(
-      `SELECT suspended FROM coverage_mirror WHERE installation_id = ?`,
+      `SELECT installation.status AS installation_status,
+              coverage_mirror.suspended AS suspended
+       FROM installation
+       LEFT JOIN coverage_mirror
+         ON coverage_mirror.installation_id = installation.installation_id
+       WHERE installation.installation_id = ?`,
     )
     .bind(installationId)
-    .first<{ suspended: number }>();
+    .first<{ installation_status: string; suspended: number | null }>();
   if (mirror === null) {
     recordGuardRejection({
       error_code: "coverage_lapsed",
@@ -237,12 +242,19 @@ export async function evaluateCoveragePrecheck(
     });
     return { ok: false, code: "coverage_lapsed", coverageReason: "none" };
   }
-  if (mirror.suspended !== 0) {
+  if (mirror.installation_status === "suspended" || mirror.suspended !== 0) {
     recordGuardRejection({
       error_code: "suspended",
       installation_id: installationId,
     });
     return { ok: false, code: "suspended" };
+  }
+  if (mirror.suspended === null) {
+    recordGuardRejection({
+      error_code: "coverage_lapsed",
+      installation_id: installationId,
+    });
+    return { ok: false, code: "coverage_lapsed", coverageReason: "none" };
   }
 
   const globalSwitch = await loadKillSwitchOrInactive(cache, reader, "global");

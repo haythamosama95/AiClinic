@@ -29,6 +29,7 @@ import {
   setupVendorHarness,
   terminalEventTypes,
   coverClinic,
+  ensureDefaultCohortGrants,
   type Scenario,
 } from "./harness";
 import { addDuration } from "../../src/coverage/calendar";
@@ -296,6 +297,7 @@ describe("admission settlement against terms", () => {
     const scenario = await newScenario();
     await coverClinic(scenario);
     await newClinic(scenario);
+    await ensureDefaultCohortGrants(scenario);
     const token = await mintAat(scenario);
 
     const mirror = await queryOne<Record<string, unknown>>(

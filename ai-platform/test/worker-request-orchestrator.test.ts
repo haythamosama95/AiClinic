@@ -1155,6 +1155,7 @@ describe("exactly_two_do_round_trips_admit_and_credit", () => {
       const token = await mintAat();
       const response = await SELF.fetch(buildPostRequest({ token }));
       await parseSseEvents(response);
+      await flushBackgroundWork();
       expect(admitSpy).toHaveBeenCalledTimes(1);
       expect(creditSpy).toHaveBeenCalledTimes(1);
     } finally {

@@ -1433,6 +1433,7 @@ function createProductionPreAccept(
           issuerId: runtimeEnv.ISSUER_ID,
           db: runtimeEnv.DB,
           alertEnv: runtimeEnv,
+          allowSuspended: true,
         },
         capabilityId,
         capabilityVersion: input.headers.capabilityVersion,
@@ -1463,7 +1464,10 @@ function createProductionPreAccept(
       },
     );
     if (!guard.ok) {
-      const code = classifyErrorCode(guard.code);
+      const code =
+        guard.stage === 2 && guard.code === "suspended"
+          ? "installation_suspended"
+          : classifyErrorCode(guard.code);
       // Latent: `cancelled` maps to HTTP 500 at the adapter (no taxonomy status); unreachable for current non-conversational capabilities.
       log.info("guard_rejected", { code });
       return {

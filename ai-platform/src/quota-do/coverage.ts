@@ -4037,9 +4037,13 @@ export async function coverageMirrorMatchesSnapshot(
   } catch {
     return false;
   }
+  const normalizedMirror = normalizeCoverageSnapshotForMirrorCompare(mirrorSnapshot);
+  const normalizedSnapshot = normalizeCoverageSnapshotForMirrorCompare(snapshot);
+  const mirrorBytes = canonicalize(normalizedMirror);
+  const snapshotBytes = canonicalize(normalizedSnapshot);
   if (
-    normalizeCoverageSnapshotForMirrorCompare(mirrorSnapshot) !==
-    normalizeCoverageSnapshotForMirrorCompare(snapshot)
+    mirrorBytes.length !== snapshotBytes.length ||
+    mirrorBytes.some((byte, index) => byte !== snapshotBytes[index])
   ) {
     return false;
   }
@@ -4049,8 +4053,36 @@ export async function coverageMirrorMatchesSnapshot(
 
 function normalizeCoverageSnapshotForMirrorCompare(
   snapshot: Record<string, unknown>,
-): string {
-  return canonicalize(snapshot);
+): Record<string, unknown> {
+  // Usage is replayed from the durable ledger after a DO rebuild. The
+  // coverage mirror advances on entitlement coverage events, so it can
+  // legitimately lag those usage-only updates. Compare the mirrored
+  // entitlement state while leaving usage reconciliation to usage_event.
+  const normalized = JSON.parse(JSON.stringify(snapshot)) as Record<
+    string,
+    unknown
+  >;
+  delete normalized.grace_base_used;
+
+  const term = normalized.term;
+  if (term !== null && typeof term === "object" && !Array.isArray(term)) {
+    const termRecord = term as Record<string, unknown>;
+    delete termRecord.used;
+    delete termRecord.band;
+  }
+
+  const terms = normalized.terms;
+  if (Array.isArray(terms)) {
+    for (const entry of terms) {
+      if (entry !== null && typeof entry === "object" && !Array.isArray(entry)) {
+        const termRecord = entry as Record<string, unknown>;
+        delete termRecord.used;
+        delete termRecord.used_final;
+      }
+    }
+  }
+
+  return normalized;
 }
 
 export async function runRebuildClinicDo(

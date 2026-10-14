@@ -376,6 +376,7 @@ export async function runGuard(
       issuerId: input.verifyContext?.issuerId ?? "",
       db: input.verifyContext?.db,
       alertEnv: input.verifyContext?.alertEnv,
+      allowSuspended: input.verifyContext?.allowSuspended,
     };
     const verified = await input.verifier.verify(input.token, verifyCtx);
     if (!verified.ok) {

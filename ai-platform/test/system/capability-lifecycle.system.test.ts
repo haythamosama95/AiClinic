@@ -12,6 +12,7 @@ import {
   newClinic,
   coverClinic,
   GATEWAY_ORIGIN,
+  ensureDefaultCohortGrants,
   getAudits,
   getCapabilities,
   invoke,
@@ -126,6 +127,7 @@ describe("capability lifecycle", () => {
   it("SYS-10.1 — Cohort activate & promote", async () => {
     const scenario = await newScenario();
     await prepareEntitled(scenario);
+    await ensureDefaultCohortGrants(scenario);
 
     const auditsBefore = await env.DB.prepare(
       "SELECT COUNT(*) AS c FROM control_audit WHERE action = 'cohort_activate'",

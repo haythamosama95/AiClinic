@@ -1207,12 +1207,16 @@ describe("paid grant coverage", () => {
     }
 
     const jan31NonLeap = "2026-01-31T10:00:00.000Z";
-    const nonLeap = await grantAtClock(jan31NonLeap);
+    const nonLeap = await withDurationScale(undefined, () =>
+      grantAtClock(jan31NonLeap),
+    );
     expect(nonLeap.timing?.starts_at).toBe(jan31NonLeap);
     expect(nonLeap.timing?.ends_at).toBe("2026-02-28T10:00:00.000Z");
 
     const jan31Leap = "2024-01-31T10:00:00.000Z";
-    const leap = await grantAtClock(jan31Leap);
+    const leap = await withDurationScale(undefined, () =>
+      grantAtClock(jan31Leap),
+    );
     expect(leap.timing?.starts_at).toBe(jan31Leap);
     expect(leap.timing?.ends_at).toBe("2024-02-29T10:00:00.000Z");
 

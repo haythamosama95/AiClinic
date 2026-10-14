@@ -3,6 +3,7 @@ import { beforeAll, beforeEach, describe, expect, it } from "vitest";
 import migrationSql from "../migrations/20260731120000_platform_schema.sql?raw";
 import retentionIndexesSql from "../migrations/20260805120000_f3_retention_indexes.sql?raw";
 import quotaWeightMigrationSql from "../migrations/20260911180000_usage_rollup_quota_weight.sql?raw";
+import usageTermMigrationSql from "../migrations/20261006120000_usage_term.sql?raw";
 import {
   logReconciliationReport,
   runReconciliation,
@@ -118,7 +119,7 @@ async function seedTerminalRequest(
   if (withUsage) {
     await env.DB.prepare(
       `INSERT INTO usage_event (
-        usage_event_id, installation_id, period, request_id, quota_weight, tokens, cost, recorded_at
+        usage_event_id, installation_id, term_id, request_id, quota_weight, tokens, cost, recorded_at
       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
     )
       .bind(
@@ -149,6 +150,7 @@ beforeAll(async () => {
   await applyPlatformSchema(env.DB, migrationSql);
   await applyPlatformSchema(env.DB, retentionIndexesSql);
   await applyPlatformSchema(env.DB, quotaWeightMigrationSql);
+  await applyPlatformSchema(env.DB, usageTermMigrationSql);
 });
 
 beforeEach(async () => {
@@ -200,7 +202,7 @@ describe("rollup_period_aligned_advanced_window", () => {
 
     const julyFull = await env.DB.prepare(
       `SELECT SUM(tokens) AS tokens, SUM(cost) AS cost, COUNT(*) AS cnt
-       FROM usage_event WHERE period = '2026-07'`,
+       FROM usage_event WHERE term_id = '2026-07'`,
     ).first<{ tokens: number; cost: number; cnt: number }>();
 
     // Aug window touches Aug period; period-aligned re-read still writes full period sums.

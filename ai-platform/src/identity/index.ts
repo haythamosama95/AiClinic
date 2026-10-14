@@ -38,6 +38,8 @@ export interface VerifyContext {
   issuerId: string;
   db?: D1Database;
   alertEnv?: AlertEnv;
+  /** Let the live-request pipeline reach coverage admission to report `suspended`. */
+  allowSuspended?: boolean;
 }
 
 export type VerifyResult =
@@ -522,7 +524,7 @@ export class IssuerTokenVerifier implements TokenVerifier {
       throw error;
     }
 
-    if (installation.status === "suspended") {
+    if (installation.status === "suspended" && ctx.allowSuspended !== true) {
       return rejectSuspended(installationId);
     }
     if (installation.status === "deleted") {
@@ -539,7 +541,10 @@ export class IssuerTokenVerifier implements TokenVerifier {
       if (binding?.status !== "held_for_transfer") {
         return rejectUnauthenticated(installationId);
       }
-    } else if (installation.status !== "active") {
+    } else if (
+      installation.status !== "active" &&
+      !(installation.status === "suspended" && ctx.allowSuspended === true)
+    ) {
       return rejectUnauthenticated(installationId);
     }
 

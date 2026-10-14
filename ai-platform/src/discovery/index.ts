@@ -96,7 +96,10 @@ export async function handleDiscoveryRequest(
     const status = liveHttpStatusForCode(verifyResult.code) ?? 401;
     return Response.json(
       buildErrorBody({
-        code: verifyResult.code,
+        code:
+          verifyResult.code === "suspended"
+            ? "installation_suspended"
+            : verifyResult.code,
         requestReference: generateRequestReference(),
         traceId: generateUlid(),
       }),

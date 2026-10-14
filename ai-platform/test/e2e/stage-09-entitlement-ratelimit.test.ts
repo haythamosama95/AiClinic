@@ -228,7 +228,7 @@ function patchLiveRateLimiters(doubles: {
 }
 
 describe("Stage 09 — entitlement and rate limit (S09-023…S09-043)", () => {
-  it("S09-023 — suspended installation is installation_suspended", async () => {
+  it("S09-023 — suspended installation is suspended", async () => {
     const scenario = await provisionHappyPath();
     const suspended = await controlFetch(
       `/control/installations/${scenario.installationId}/suspend`,
@@ -239,7 +239,7 @@ describe("Stage 09 — entitlement and rate limit (S09-023…S09-043)", () => {
     clearConfigCache();
 
     const result = await invokeHappy(scenario);
-    assertJsonTaxonomy(result, 403, "installation_suspended", false);
+    assertJsonTaxonomy(result, 403, "suspended", false);
     expect(result.body).not.toHaveProperty("retry_after");
     await assertNoGuardWrites();
 

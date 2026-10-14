@@ -341,6 +341,7 @@ export async function applyAllMigrations(db: D1Database): Promise<void> {
 
 export async function resetPlatformState(): Promise<void> {
   await ensureHarnessTestClockTable();
+  nextCoverPlanVersion = 1;
   await env.DB.batch([
     env.DB.prepare("DELETE FROM platform_alert"),
     env.DB.prepare("DELETE FROM assertion_used"),
@@ -1475,7 +1476,9 @@ export async function newClinic(scenario?: Scenario): Promise<Scenario> {
   return ready;
 }
 
-async function ensureDefaultCohortGrants(scenario: Scenario): Promise<void> {
+export async function ensureDefaultCohortGrants(
+  scenario: Scenario,
+): Promise<void> {
   const activated = await vendorClassH("activateCohort", {
     capability_id: CAPABILITY_ID,
     capability_version: CAPABILITY_VERSION,

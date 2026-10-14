@@ -727,7 +727,11 @@ type StoredAnswerEntry = {
   answer: AdmissionResponse;
 };
 
-type StoredReplayEntry = { expiresAt: number };
+type StoredReplayEntry = {
+  expiresAt: number;
+  /** Preserve the accepted answer so a repeated JTI is idempotent briefly. */
+  answer?: AdmissionResponse;
+};
 
 type TermBandEmitted = Record<string, boolean>;
 
@@ -815,7 +819,7 @@ function storeAnswer(
   now: number,
 ): void {
   const expiresAt = now + EPHEMERAL_HORIZON_MS;
-  hot.replay[jti] = { expiresAt };
+  hot.replay[jti] = { expiresAt, answer };
   hot.idempotency[idempotencyKey] = { expiresAt, answer };
 }
 
@@ -1121,10 +1125,7 @@ function admitOnHotRow(
 
   const replayEntry = hot.replay[request.jti];
   if (replayEntry) {
-    return {
-      kind: "admission",
-      outcome: "replay",
-    };
+    return replayEntry.answer ?? { kind: "admission", outcome: "replay" };
   }
   const idempotencyEntry = hot.idempotency[request.idempotencyKey];
   if (idempotencyEntry) {

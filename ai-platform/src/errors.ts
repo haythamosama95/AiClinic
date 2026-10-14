@@ -1,6 +1,7 @@
 export type TaxonomyCode =
   | "unauthenticated"
   | "installation_suspended"
+  | "suspended"
   | "forbidden_capability"
   | "rate_limited"
   | "quota_exhausted"
@@ -38,6 +39,12 @@ const TAXONOMY: Record<TaxonomyCode, TaxonomyEntry> = {
   },
   installation_suspended: {
     code: "installation_suspended",
+    httpStatus: 403,
+    retryable: "No",
+    consumesQuota: "No",
+  },
+  suspended: {
+    code: "suspended",
     httpStatus: 403,
     retryable: "No",
     consumesQuota: "No",
@@ -174,9 +181,6 @@ export function isTaxonomyCode(code: string): code is TaxonomyCode {
 }
 
 export function classifyErrorCode(code: string): TaxonomyCode {
-  if (code === "suspended") {
-    return "installation_suspended";
-  }
   if (isTaxonomyCode(code)) {
     return code;
   }

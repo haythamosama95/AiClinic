@@ -4,7 +4,7 @@
 
 import { env, SELF } from "cloudflare:test";
 import wranglerToml from "../../wrangler.toml?raw";
-import { subscriptionRef } from "vendor-contracts";
+import { CHANNEL_VERSIONS, subscriptionRef } from "vendor-contracts";
 import { beforeAll, beforeEach, describe, expect, it } from "vitest";
 import {
   applyAllMigrations,
@@ -47,11 +47,23 @@ type P310VendorMethod =
   | "beginTokenContractRotation"
   | "supportLookup";
 
-const p310VendorCall = vendorCall as (
+const rawP310VendorCall = vendorCall as (
   method: P310VendorMethod,
   args: Record<string, unknown>,
   opts?: { accessJwt?: string; assertion?: Record<string, unknown> },
 ) => Promise<VendorResultEnvelope>;
+
+async function p310VendorCall(
+  method: P310VendorMethod,
+  args: Record<string, unknown>,
+  opts?: { accessJwt?: string; assertion?: Record<string, unknown> },
+): Promise<VendorResultEnvelope> {
+  return rawP310VendorCall(
+    method,
+    { contract_version: CHANNEL_VERSIONS.vendorEntrypoint, ...args },
+    opts,
+  );
+}
 
 function expectClassHOk(envelope: VendorResultEnvelope): Record<string, unknown> {
   expect(envelope.result).toBe("ok");

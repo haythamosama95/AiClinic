@@ -668,6 +668,16 @@ export async function discover(
       continue;
     }
 
+    const grantedVersion = await getGrantedCapabilityVersion(
+      installationId,
+      capabilityId,
+      cache,
+      reader,
+    );
+    if (grantedVersion !== version) {
+      continue;
+    }
+
     candidates.push(manifest);
   }
 

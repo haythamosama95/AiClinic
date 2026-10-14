@@ -19,6 +19,7 @@ import {
   applyAllMigrations,
   clearCapturedVendorEmails,
   clearConfigCache,
+  CAPABILITY_VERSION,
   coverClinic,
   coverClinicSigner,
   encodeVendorAssertion,
@@ -37,6 +38,7 @@ import {
   setupPromotedFakePolicy,
   setupVendorHarness,
   vendorCall,
+  vendorClassH,
   VENDOR_OPERATOR_EMAIL,
   type VendorResultEnvelope,
 } from "./harness";
@@ -640,7 +642,7 @@ describe("complimentary grants, ceilings, adjustments, suspension", () => {
         reason: `window grant ${index}`,
       });
       const applied = await hpComplimentaryGrant({ envelope });
-      expect(applied.result).toBe("applied");
+      expect(applied.result, JSON.stringify(applied)).toBe("applied");
     }
 
     const thirdGrantId = await grantIdComp(crypto.randomUUID().replace(/-/g, ""));
@@ -752,11 +754,11 @@ describe("complimentary grants, ceilings, adjustments, suspension", () => {
       adjustment: { extend_days: 7 },
     });
     const extended = await hpComplimentaryGrant({ envelope: extendEnvelope });
-    expect(extended.result).toBe("applied");
+    expect(extended.result, JSON.stringify(extended)).toBe("applied");
 
     const afterExtendEndsAt = await readActiveTermEndsAt(scenario.installationId);
     expect(afterExtendEndsAt).toBe(
-      addDuration(String(beforeEndsAt), "day", 7),
+      addDuration(String(beforeEndsAt), "day", 7, "staging"),
     );
 
     const shortenGrantId = await grantIdComp(crypto.randomUUID().replace(/-/g, ""));
@@ -789,6 +791,17 @@ describe("complimentary grants, ceilings, adjustments, suspension", () => {
     expect(planChanged.result).toBe("applied");
 
     await runDurableObjectAlarm(quotaDoStub(scenario.installationId));
+    const activatedPlanChanged = await vendorClassH("activateCohort", {
+      capability_id: "clinic.plan_changed",
+      capability_version: CAPABILITY_VERSION,
+      installation_ids: [scenario.installationId],
+    });
+    expect(activatedPlanChanged.status).toBe(200);
+    const promotedPlanChanged = await vendorClassH("promoteCohort", {
+      capability_id: "clinic.plan_changed",
+      capability_version: CAPABILITY_VERSION,
+    });
+    expect(promotedPlanChanged.status).toBe(200);
     clearConfigCache();
 
     const token = await mintAat(scenario);
@@ -819,7 +832,7 @@ describe("complimentary grants, ceilings, adjustments, suspension", () => {
 
     let token = await mintAat(scenario);
     const blocked = await invoke(scenario, { token });
-    expect(blocked.status).toBe(403);
+    expect(blocked.status, JSON.stringify(blocked)).toBe(403);
     expect(blocked.body?.code).toBe("suspended");
 
     const endsAt = await readActiveTermEndsAt(scenario.installationId);
@@ -881,7 +894,7 @@ describe("complimentary grants, ceilings, adjustments, suspension", () => {
     });
 
     const trial = await hpComplimentaryGrant({ envelope });
-    expect(trial.result).toBe("applied");
+    expect(trial.result, JSON.stringify(trial)).toBe("applied");
 
     const binding = await queryOne<{ installation_id: string }>(
       "SELECT installation_id FROM tenant_binding WHERE org_id = ? AND status = 'active'",
@@ -895,7 +908,7 @@ describe("complimentary grants, ceilings, adjustments, suspension", () => {
     expect(activeTrial).toBeTruthy();
     expect(activeTrial!.calendar_start).toBeTruthy();
     expect(activeTrial!.ends_at).toBe(
-      addDuration(String(activeTrial!.calendar_start), "day", 14),
+      addDuration(String(activeTrial!.calendar_start), "day", 14, "staging"),
     );
 
     await coverClinic(scenario);

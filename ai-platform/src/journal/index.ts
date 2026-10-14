@@ -595,7 +595,7 @@ export function getRequestAuthErrorBody(
   code: "unauthenticated" | "suspended" = "unauthenticated",
 ): ReturnType<typeof buildErrorBody> {
   return buildErrorBody({
-    code,
+    code: code === "suspended" ? "installation_suspended" : code,
     requestReference: generateRequestReference(),
     traceId: generateUlid(),
   });
