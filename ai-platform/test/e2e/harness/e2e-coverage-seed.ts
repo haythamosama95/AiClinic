@@ -10,7 +10,7 @@ const DEFAULT_PERIOD_START = "2026-08-01T00:00:00.000Z";
 const DEFAULT_PERIOD_END = "2026-09-01T00:00:00.000Z";
 const DEFAULT_REQUEST_QUOTA = 1000;
 
-function e2eActiveTermId(installationId: string): string {
+export function e2eActiveTermId(installationId: string): string {
   return `term-${installationId.slice(0, 8)}`;
 }
 

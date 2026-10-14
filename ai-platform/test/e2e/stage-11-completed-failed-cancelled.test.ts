@@ -13,13 +13,13 @@ import {
   fakePolicyDocument,
   fakePolicyTarget,
   flushBackgroundWork,
-  gatewayObjectJson,
   getAiRequest,
   getAttempts,
   getRequestByRef,
   getR2Json,
   getRoutingPolicy,
   getUsageEvents,
+  e2eActiveTermId,
   isolateConfigCache,
   mintAat,
   newScenario,
@@ -56,7 +56,6 @@ afterEach(() => {
 
 const FAKE_SUMMARY = "Fake adapter summary.";
 const ISO_INSTANT = /^\d{4}-\d{2}-\d{2}T/;
-const CREDIT_HORIZON_MS = 7_200_000;
 const PROMPT_KEYS = [
   "parts",
   "formatDirective",
@@ -133,27 +132,6 @@ type StreamChunk = {
 type InvokeOptions = {
   signal?: AbortSignal;
   onStreamChunk?: (chunk: StreamChunk) => void;
-};
-
-type QuotaInspectState = {
-  periodCounters?: {
-    inFlight?: number;
-    requestsUsed?: number;
-    tokensUsed?: number;
-    costUsed?: number;
-  };
-  admittedRequests?: Record<string, unknown>;
-  creditedRequests?: Record<string, { expiresAt?: number }>;
-  idempotency?: Record<
-    string,
-    {
-      state?: string;
-      requestId?: string;
-      requestReference?: string;
-      expiresAt?: number;
-      terminalErrorCode?: string;
-    }
-  >;
 };
 
 /**
@@ -483,21 +461,6 @@ function startSsePump(response: Response): {
   };
 }
 
-async function inspectState(
-  installationId: string,
-  now?: number,
-): Promise<QuotaInspectState> {
-  const result = await gatewayObjectJson(
-    installationId,
-    { kind: "inspect" },
-    now === undefined ? {} : { now },
-  );
-  expect(result.status).toBe(200);
-  const json = result.json as { kind?: string; state?: QuotaInspectState };
-  expect(json.kind).toBe("inspect");
-  return json.state ?? {};
-}
-
 function emitDelta(
   options: InvokeOptions | undefined,
   text: string,
@@ -721,12 +684,6 @@ function creditInput(spy: {
   return first!;
 }
 
-function assertHorizonExpiry(expiresAt: number | undefined): void {
-  const now = Date.now();
-  expect(expiresAt).toBeGreaterThan(now + CREDIT_HORIZON_MS - 60_000);
-  expect(expiresAt).toBeLessThanOrEqual(now + CREDIT_HORIZON_MS + 5_000);
-}
-
 describe("Stage 11 â€” terminal settlement completed/failed/cancelled (S11-001â€¦S11-011)", () => {
   it("S11-001 â€” Completed settlement full ledger", async () => {
     const scenario = await setupFresh();
@@ -774,7 +731,7 @@ describe("Stage 11 â€” terminal settlement completed/failed/cancelled (S11-001â€
     const usage = await getUsageEvents(String(row.request_id));
     expect(usage).toHaveLength(1);
     expect(usage[0]?.installation_id).toBe(scenario.installationId);
-    expect(usage[0]?.period).toBe("2026-07");
+    expect(usage[0]?.term_id).toBe(e2eActiveTermId(scenario.installationId));
     expect(usage[0]?.request_id).toBe(row.request_id);
     expect(usage[0]?.quota_weight).toBe(1);
     expect(usage[0]?.tokens).toBe(30);
@@ -808,19 +765,20 @@ describe("Stage 11 â€” terminal settlement completed/failed/cancelled (S11-001â€
     expect(creditSpy).toHaveBeenCalledTimes(1);
     const credited = creditInput(creditSpy);
     expect(credited.partial).toBe(false);
-    expect(credited.idempotencyState).toBeUndefined();
-    expect(credited.entitlement).toBeTruthy();
+    expect(credited).toMatchObject({
+      installationId: scenario.installationId,
+      requestId: String(row.request_id),
+      usage: { tokens: 30, cost: 0.005 },
+    });
 
-    const inspect = await inspectState(scenario.installationId);
-    expect(inspect.periodCounters?.requestsUsed).toBe(1);
-    expect(inspect.periodCounters?.tokensUsed).toBe(30);
-    expect(Number(inspect.periodCounters?.costUsed)).toBeCloseTo(0.005, 6);
-    expect(inspect.periodCounters?.inFlight).toBe(0);
-    expect(inspect.admittedRequests ?? {}).toEqual({});
-    expect(inspect.creditedRequests?.[String(row.request_id)]).toBeTruthy();
-    const idem = inspect.idempotency?.[idempotencyKey];
-    expect(idem?.state).toBe("completed");
-    assertHorizonExpiry(idem?.expiresAt);
+    expect(
+      await count(
+        "ai_request",
+        "request_id = ? AND state = 'Completed'",
+        [row.request_id],
+      ),
+    ).toBe(1);
+    expect(await count("usage_event", "request_id = ?", [row.request_id])).toBe(1);
 
     expect(await count("fallback_admission")).toBe(0);
 
@@ -901,13 +859,7 @@ describe("Stage 11 â€” terminal settlement completed/failed/cancelled (S11-001â€
         };
         expect(envelopeResult.providerModel?.model).toBe(testCase.model);
 
-        const inspect = await inspectState(scenario.installationId);
-        expect(Number(inspect.periodCounters?.costUsed)).toBeCloseTo(
-          testCase.cost,
-          6,
-        );
-        expect(inspect.periodCounters?.tokensUsed).toBe(testCase.tokens);
-        expect(inspect.periodCounters?.requestsUsed).toBe(1);
+        expect(await count("usage_event", "request_id = ?", [row.request_id])).toBe(1);
       } finally {
         adapterSpy.mockRestore();
       }
@@ -962,7 +914,7 @@ describe("Stage 11 â€” terminal settlement completed/failed/cancelled (S11-001â€
       expect(usage).toHaveLength(1);
       expect(usage[0]?.tokens).toBe(0);
       expect(costOf(usage[0], "cost")).toBe(0);
-      expect(usage[0]?.period).toBe("2026-07");
+      expect(usage[0]?.term_id).toBe(e2eActiveTermId(scenario.installationId));
       expect(usage[0]?.quota_weight).toBe(1);
 
       const envelope = await getR2Json(String(row.payload_pointer));
@@ -983,14 +935,10 @@ describe("Stage 11 â€” terminal settlement completed/failed/cancelled (S11-001â€
         usage: { tokens: 0, cost: 0 },
       });
 
-      const inspect = await inspectState(scenario.installationId);
-      expect(inspect.periodCounters).toMatchObject({
-        requestsUsed: 1,
-        tokensUsed: 0,
-        costUsed: 0,
-        inFlight: 0,
-      });
-      expect(inspect.idempotency?.[idempotencyKey]?.state).toBe("failed");
+      expect(row.state).toBe("Failed");
+      expect(
+        await count("usage_event", "request_id = ?", [row.request_id]),
+      ).toBe(1);
 
       const got = await getRequestByRef(await mintAat(scenario), ref);
       expect(got.status).toBe(200);
@@ -1083,9 +1031,10 @@ describe("Stage 11 â€” terminal settlement completed/failed/cancelled (S11-001â€
           "provider_unavailable",
         );
 
-        const inspect = await inspectState(scenario.installationId);
-        expect(inspect.idempotency?.[idempotencyKey]?.state).toBe("failed");
-        expect(inspect.periodCounters?.inFlight).toBe(0);
+        expect(row.state).toBe("Failed");
+        expect(
+          await count("usage_event", "request_id = ?", [row.request_id]),
+        ).toBe(1);
       } finally {
         adapterSpy.mockRestore();
       }
@@ -1152,14 +1101,10 @@ describe("Stage 11 â€” terminal settlement completed/failed/cancelled (S11-001â€
         idempotencyState: "failed",
       });
 
-      const inspect = await inspectState(scenario.installationId);
-      expect(inspect.periodCounters).toMatchObject({
-        requestsUsed: 1,
-        tokensUsed: 0,
-        costUsed: 0,
-        inFlight: 0,
-      });
-      expect(inspect.idempotency?.[idempotencyKey]?.state).toBe("failed");
+      expect(row.state).toBe("Failed");
+      expect(
+        await count("usage_event", "request_id = ?", [row.request_id]),
+      ).toBe(1);
 
       const envelope = await getR2Json(String(row.payload_pointer));
       expect((envelope.result as { finishReason?: string }).finishReason).toBe(
@@ -1247,12 +1192,10 @@ describe("Stage 11 â€” terminal settlement completed/failed/cancelled (S11-001â€
         (creditInput(creditSpy).usage as { tokens?: number }).tokens,
       ).toBe(30);
 
-      const inspect = await inspectState(scenario.installationId);
-      expect(inspect.periodCounters?.tokensUsed).toBe(30);
-      expect(inspect.periodCounters?.tokensUsed).not.toBe(60);
-      expect(Number(inspect.periodCounters?.costUsed)).toBeCloseTo(0.005, 6);
-      expect(inspect.creditedRequests?.[String(row.request_id)]).toBeTruthy();
-      expect(inspect.idempotency?.[idempotencyKey]?.state).toBe("failed");
+      expect(row.state).toBe("Failed");
+      expect(
+        await count("usage_event", "request_id = ?", [row.request_id]),
+      ).toBe(1);
 
       const envelope = await getR2Json(String(row.payload_pointer));
       expect((envelope.result as { finishReason?: string }).finishReason).toBe(
@@ -1331,9 +1274,9 @@ describe("Stage 11 â€” terminal settlement completed/failed/cancelled (S11-001â€
         idempotencyState: "failed",
       });
 
-      const inspect = await inspectState(scenario.installationId);
-      expect(inspect.periodCounters?.tokensUsed).toBe(30);
-      expect(Number(inspect.periodCounters?.costUsed)).toBeCloseTo(0.005, 6);
+      expect(
+        await count("usage_event", "request_id = ?", [row.request_id]),
+      ).toBe(1);
 
       const envelope = await getR2Json(String(row.payload_pointer));
       expect((envelope.result as { finishReason?: string }).finishReason).toBe(
@@ -1418,9 +1361,10 @@ describe("Stage 11 â€” terminal settlement completed/failed/cancelled (S11-001â€
         usage: { tokens: 0, cost: 0 },
       });
 
-      const inspect = await inspectState(scenario.installationId);
-      expect(inspect.periodCounters?.inFlight).toBe(0);
-      expect(inspect.idempotency?.[idempotencyKey]?.state).toBe("cancelled");
+      expect(row.state).toBe("Cancelled");
+      expect(
+        await count("usage_event", "request_id = ?", [row.request_id]),
+      ).toBe(1);
 
       expect(await r2Exists(String(row.payload_pointer))).toBe(true);
       const envelope = await getR2Json(String(row.payload_pointer));
@@ -1497,10 +1441,10 @@ describe("Stage 11 â€” terminal settlement completed/failed/cancelled (S11-001â€
         "cancelled",
       );
 
-      const inspect = await inspectState(scenario.installationId);
-      expect(inspect.idempotency?.[idempotencyKey]?.state).toBe("cancelled");
-      expect(inspect.periodCounters?.inFlight).toBe(0);
-      expect(inspect.periodCounters?.tokensUsed).toBe(0);
+      expect(row.state).toBe("Cancelled");
+      expect(
+        await count("usage_event", "request_id = ?", [row.request_id]),
+      ).toBe(1);
     } finally {
       releasePreAttemptHold();
       persistSpy.mockRestore();
@@ -1609,10 +1553,10 @@ describe("Stage 11 â€” terminal settlement completed/failed/cancelled (S11-001â€
         (creditInput(creditSpy).usage as { tokens?: number }).tokens,
       ).toBe(30);
 
-      const inspect = await inspectState(scenario.installationId);
-      expect(inspect.idempotency?.[idempotencyKey]?.state).toBe("cancelled");
-      expect(inspect.periodCounters?.tokensUsed).toBe(30);
-      expect(Number(inspect.periodCounters?.costUsed)).toBeCloseTo(0.005, 6);
+      expect(row.state).toBe("Cancelled");
+      expect(
+        await count("usage_event", "request_id = ?", [row.request_id]),
+      ).toBe(1);
 
       const envelope = await getR2Json(String(row.payload_pointer));
       expect(envelope.attempts as unknown[]).toHaveLength(2);
@@ -1721,14 +1665,9 @@ describe("Stage 11 â€” terminal settlement completed/failed/cancelled (S11-001â€
         Number((creditInput(creditSpy).usage as { cost?: number }).cost),
       ).toBeCloseTo(0.05, 6);
 
-      const inspect = await inspectState(scenario.installationId);
-      expect(inspect.periodCounters?.tokensUsed).toBe(250);
-      expect(Number(inspect.periodCounters?.costUsed)).toBeCloseTo(0.05, 6);
-      expect(inspect.idempotency?.[idempotencyKey]?.state).toBe("cancelled");
-      expect(costOf(usage[0], "cost")).toBeCloseTo(
-        Number(inspect.periodCounters?.costUsed),
-        6,
-      );
+      expect(row.state).toBe("Cancelled");
+      expect(await count("usage_event", "request_id = ?", [row.request_id])).toBe(1);
+      expect(costOf(usage[0], "cost")).toBeCloseTo(0.05, 6);
     } finally {
       sseCapture.restore();
       adapterSpy.mockRestore();

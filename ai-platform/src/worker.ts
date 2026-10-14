@@ -938,7 +938,7 @@ async function replayIdempotentTerminal(
       isTaxonomyCode(prior.terminalErrorCode)
         ? prior.terminalErrorCode
         : "internal_error";
-    pushFailedTerminal(sink, guard.requestReference, traceId, code);
+    pushFailedTerminal(sink, streamCtx.requestReference, traceId, code);
     return;
   }
   if (prior.state === "cancelled") {

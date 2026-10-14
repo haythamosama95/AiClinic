@@ -2,12 +2,13 @@ import { expect, vi } from "vitest";
 import type { CreditIdempotencyState } from "../../src/quota-do";
 import {
   DEFAULT_ENTITLE_PAYLOAD,
+  e2eActiveTermId,
   type EntitlePayload,
 } from "./harness";
 
 /**
- * Catalog Setup FRESH: period_start 2026-07-01, period_end covering wall clock.
- * `usage_event.period` is `periodFromIso(period_start)` → `"2026-07"`.
+ * Catalog Setup FRESH uses this billing window; usage events retain the active
+ * Durable Object term identity rather than a calendar month string.
  */
 export const STAGE10_ENTITLE: EntitlePayload = {
   ...DEFAULT_ENTITLE_PAYLOAD,
@@ -15,12 +16,12 @@ export const STAGE10_ENTITLE: EntitlePayload = {
   period_end: "2027-01-01T00:00:00.000Z",
 };
 
-export const STAGE10_USAGE_PERIOD = "2026-07";
-
-export function assertUsageEventPeriod(
+export function assertUsageEventTerm(
   usage: ReadonlyArray<Record<string, unknown>>,
 ): void {
-  expect(usage[0]?.period).toBe(STAGE10_USAGE_PERIOD);
+  const installationId = String(usage[0]?.installation_id ?? "");
+  expect(installationId).not.toBe("");
+  expect(usage[0]?.term_id).toBe(e2eActiveTermId(installationId));
 }
 
 /**

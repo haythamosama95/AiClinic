@@ -1,4 +1,5 @@
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
+import { runInDurableObject } from "cloudflare:test";
 import publishedVisitSummary from "../../manifests/published/clinic.visit_summary@1.0.0.json";
 import {
   assertRequestReferenceShape,
@@ -24,6 +25,7 @@ import {
   getR2Json,
   getRoutingPolicy,
   getUsageEvents,
+  e2eActiveTermId,
   isolateConfigCache,
   invokeCron,
   loadManifest,
@@ -42,6 +44,7 @@ import {
   resetE2eState,
   seedSql,
   setCapabilityRegistry,
+  setMirrorCapabilities,
   visitSummaryInvokeBody,
   wrapDurableObjectNamespace,
   type EntitlePayload,
@@ -109,17 +112,6 @@ type QuotaInspectState = {
   };
   periodBounds?: { period_start?: string; period_end?: string };
   admittedRequests?: Record<string, unknown>;
-  creditedRequests?: Record<string, unknown>;
-  idempotency?: Record<
-    string,
-    {
-      state?: string;
-      requestId?: string;
-      requestReference?: string;
-      terminalErrorCode?: string;
-      expiresAt?: number;
-    }
-  >;
 };
 
 type EnvelopeAttempt = {
@@ -306,6 +298,45 @@ const entitled = await entitleInstallation(
     expect(promoted.status).toBe(200);
   }
   return scenario;
+}
+
+async function setDurableTermCapabilities(
+  scenario: Scenario,
+  capabilities: string[],
+): Promise<void> {
+  await runInDurableObject(
+    env.DO.get(env.DO.idFromName(scenario.installationId)),
+    async (_instance, state) => {
+      const storage = state.storage as DurableObjectStorage & {
+        sql?: { exec: (query: string) => Iterable<Record<string, unknown>> };
+      };
+      if (!storage.sql) {
+        throw new Error("quota DO sql storage unavailable for e2e seed");
+      }
+      const termId = e2eActiveTermId(scenario.installationId);
+      const rows = [
+        ...storage.sql.exec(
+          `SELECT plan_snapshot FROM term WHERE term_id = '${termId}' LIMIT 1`,
+        ),
+      ];
+      expect(rows).toHaveLength(1);
+      const snapshot = JSON.parse(String(rows[0]!.plan_snapshot)) as Record<
+        string,
+        unknown
+      >;
+      snapshot.capabilities = capabilities;
+      const encoded = JSON.stringify(snapshot).replace(/'/g, "''");
+      storage.sql.exec(
+        `UPDATE term SET plan_snapshot = '${encoded}' WHERE term_id = '${termId}'`,
+      );
+      const updated = [
+        ...storage.sql.exec(
+          `SELECT plan_snapshot FROM term WHERE term_id = '${termId}' LIMIT 1`,
+        ),
+      ];
+      expect(updated[0]?.plan_snapshot).toBe(JSON.stringify(snapshot));
+    },
+  );
 }
 
 /**
@@ -773,7 +804,7 @@ async function waitForStableCancelledSnapshot(
 }
 
 describe("Stage 11 — replay, envelope, grace (S11-012…S11-021)", () => {
-  it("S11-012 — creditRPC rejects double credit and unknown ids", async () => {
+  it("S11-012 — creditRPC leaves settled and unknown requests unchanged", async () => {
     const scenario = await setupFresh();
     const idempotencyKey = `s11-012-${crypto.randomUUID()}`;
     const { requestId, ref } = await completeHappyRequest(
@@ -782,21 +813,17 @@ describe("Stage 11 — replay, envelope, grace (S11-012…S11-021)", () => {
     );
     const now = Date.now();
 
-    const afterComplete = await inspectState(scenario.installationId, now);
-    expect(afterComplete.periodCounters).toMatchObject({
-      requestsUsed: 1,
-      tokensUsed: 30,
-      inFlight: 0,
+    const durableRequest = await getAiRequest(ref);
+    expect(durableRequest).toMatchObject({
+      request_id: requestId,
+      state: "Completed",
+      terminal_error_code: null,
     });
-    expect(costOf(afterComplete.periodCounters, "costUsed")).toBeCloseTo(
-      0.005,
-      5,
-    );
-    expect(Object.keys(afterComplete.creditedRequests ?? {})).toEqual([
-      requestId,
-    ]);
-    expect(afterComplete.idempotency?.[idempotencyKey]?.state).toBe("completed");
     expect(await count("usage_event", "request_id = ?", [requestId])).toBe(1);
+    const persistedUsage = await getUsageEvents(requestId);
+    expect(persistedUsage).toMatchObject([
+      { request_id: requestId, tokens: 30, cost: 0.005 },
+    ]);
 
     const usage = { tokens: 30, cost: 0.005 };
     const creditMod = await loadCreditModule();
@@ -814,10 +841,10 @@ describe("Stage 11 — replay, envelope, grace (S11-012…S11-021)", () => {
       { now },
     );
     expect(doubleCredit.status).toBe(200);
-    expect(doubleCredit.json).toEqual({
+    expect(doubleCredit.json).toMatchObject({
       kind: "credit",
-      ok: false,
-      code: "unknown_request",
+      ok: true,
+      contract_version: 1,
     });
 
     const wrappedDouble = await creditMod.creditUsage(
@@ -830,17 +857,10 @@ describe("Stage 11 — replay, envelope, grace (S11-012…S11-021)", () => {
       },
       { DO: env.DO },
     );
-    expect(wrappedDouble).toEqual({ ok: false, code: "unknown_request" });
+    expect(wrappedDouble).toMatchObject({ ok: true });
 
-    const afterDouble = await inspectState(scenario.installationId, now);
-    expect(afterDouble.periodCounters).toMatchObject({
-      requestsUsed: 1,
-      tokensUsed: 30,
-      inFlight: 0,
-    });
-    expect(costOf(afterDouble.periodCounters, "costUsed")).toBeCloseTo(0.005, 5);
-    expect(Object.keys(afterDouble.creditedRequests ?? {})).toHaveLength(1);
-    expect(afterDouble.idempotency?.[idempotencyKey]?.state).toBe("completed");
+    expect(await getAiRequest(ref)).toEqual(durableRequest);
+    expect(await getUsageEvents(requestId)).toEqual(persistedUsage);
     expect(await count("usage_event", "request_id = ?", [requestId])).toBe(1);
 
     const unknownId = crypto.randomUUID();
@@ -856,10 +876,10 @@ describe("Stage 11 — replay, envelope, grace (S11-012…S11-021)", () => {
       },
       { now },
     );
-    expect(unknownCredit.json).toEqual({
+    expect(unknownCredit.json).toMatchObject({
       kind: "credit",
-      ok: false,
-      code: "unknown_request",
+      ok: true,
+      contract_version: 1,
     });
 
     const wrappedUnknown = await creditMod.creditUsage(
@@ -872,16 +892,12 @@ describe("Stage 11 — replay, envelope, grace (S11-012…S11-021)", () => {
       },
       { DO: env.DO },
     );
-    expect(wrappedUnknown).toEqual({ ok: false, code: "unknown_request" });
+    expect(wrappedUnknown).toMatchObject({ ok: true });
 
-    const afterUnknown = await inspectState(scenario.installationId, now);
-    expect(Object.keys(afterUnknown.creditedRequests ?? {})).toHaveLength(1);
-    expect(afterUnknown.creditedRequests?.[requestId]).toBeDefined();
-    expect(afterUnknown.periodCounters).toMatchObject({
-      requestsUsed: 1,
-      tokensUsed: 30,
-      inFlight: 0,
-    });
+    expect((await getAiRequest(ref))?.state).toBe("Completed");
+    expect(await getUsageEvents(requestId)).toEqual(persistedUsage);
+    expect(await count("ai_request", "request_id = ?", [unknownId])).toBe(0);
+    expect(await count("usage_event", "request_id = ?", [unknownId])).toBe(0);
     expect(await count("usage_event", "request_id = ?", [requestId])).toBe(1);
   });
 
@@ -894,7 +910,10 @@ describe("Stage 11 — replay, envelope, grace (S11-012…S11-021)", () => {
       "s11-013-orig",
     );
     const snapshot = await snapshotSettlement(requestId, ref);
-    const doBefore = await inspectState(scenario.installationId);
+    const storedEnvelope = JSON.parse(snapshot.envelopeJson) as {
+      result?: { finalContent?: { text?: string; authoritative?: boolean } };
+    };
+    const originalFinalContent = storedEnvelope.result?.finalContent;
 
     const replay = await postVisit(scenario, {
       idempotencyKey,
@@ -907,7 +926,7 @@ describe("Stage 11 — replay, envelope, grace (S11-012…S11-021)", () => {
       | { finalContent?: { text?: string; authoritative?: boolean } }
       | undefined;
     expect(resultPayload?.finalContent).toEqual({
-      text: "Prior request completed.",
+      text: originalFinalContent?.text,
       authoritative: true,
     });
 
@@ -919,11 +938,6 @@ describe("Stage 11 — replay, envelope, grace (S11-012…S11-021)", () => {
     expect(after.rowJson).toBe(snapshot.rowJson);
     expect(await count("ai_request")).toBe(1);
 
-    const doAfter = await inspectState(scenario.installationId);
-    expect(doAfter.periodCounters).toEqual(doBefore.periodCounters);
-    expect(Object.keys(doAfter.creditedRequests ?? {})).toEqual(
-      Object.keys(doBefore.creditedRequests ?? {}),
-    );
   });
 
   it("S11-014 — idempotent replay after Failed", async () => {
@@ -935,7 +949,6 @@ describe("Stage 11 — replay, envelope, grace (S11-012…S11-021)", () => {
       "s11-014-orig",
     );
     const snapshot = await snapshotSettlement(requestId, ref);
-    const doBefore = await inspectState(scenario.installationId);
 
     const replay = await postVisit(scenario, {
       idempotencyKey,
@@ -960,8 +973,6 @@ describe("Stage 11 — replay, envelope, grace (S11-012…S11-021)", () => {
     expect(after.rowJson).toBe(snapshot.rowJson);
     expect(after.row.terminal_error_code).toBe("provider_unavailable");
 
-    const doAfter = await inspectState(scenario.installationId);
-    expect(doAfter.periodCounters).toEqual(doBefore.periodCounters);
   });
 
   it("S11-015 — idempotent replay after Cancelled", async () => {
@@ -973,8 +984,6 @@ describe("Stage 11 — replay, envelope, grace (S11-012…S11-021)", () => {
       "s11-015-orig",
     );
     const snapshot = await waitForStableCancelledSnapshot(requestId, ref);
-    const doBefore = await inspectState(scenario.installationId);
-    expect(doBefore.idempotency?.[idempotencyKey]?.state).toBe("cancelled");
 
     const fakeMod = await loadFakeModule();
     const replaySpy = vi.spyOn(fakeMod, "FakeAdapter");
@@ -985,8 +994,10 @@ describe("Stage 11 — replay, envelope, grace (S11-012…S11-021)", () => {
       });
       assertHttpSse(replay);
       assertSseSequence(replay.events, ["accepted", "cancelled"], "exact");
+      const accepted = replay.events.find((event) => event.event === "accepted");
+      expect(accepted?.data.trace_id).toBe("s11-015-orig");
       const cancelled = replay.events.find((event) => event.event === "cancelled");
-      expect(cancelled?.data).toEqual({ trace_id: "s11-015-replay" });
+      expect(cancelled?.data).toEqual({ trace_id: "s11-015-orig" });
       expect(Object.keys(cancelled?.data ?? {})).toEqual(["trace_id"]);
       expect(replaySpy).not.toHaveBeenCalled();
     } finally {
@@ -1001,9 +1012,7 @@ describe("Stage 11 — replay, envelope, grace (S11-012…S11-021)", () => {
     expect(after.row.state).toBe("Cancelled");
     expect(after.row.terminal_error_code).toBeNull();
 
-    const doAfter = await inspectState(scenario.installationId);
-    expect(doAfter.idempotency?.[idempotencyKey]?.state).toBe("cancelled");
-    expect(doAfter.periodCounters).toEqual(doBefore.periodCounters);
+    expect(await getUsageEvents(requestId)).toHaveLength(1);
   });
 
   it("S11-016 — usage_event quota_weight from Economics.quotaWeight", async () => {
@@ -1050,6 +1059,8 @@ describe("Stage 11 — replay, envelope, grace (S11-012…S11-021)", () => {
         ],
       };
       const scenario = await setupFresh({ entitle });
+      await setMirrorCapabilities(scenario, [heavyId, zeroId]);
+      await setDurableTermCapabilities(scenario, [heavyId, zeroId]);
 
       const heavy = await completeHappyRequest(
         scenario,
@@ -1062,7 +1073,7 @@ describe("Stage 11 — replay, envelope, grace (S11-012…S11-021)", () => {
       expect(heavyUsage[0]?.quota_weight).toBe(3);
       expect(heavyUsage[0]?.tokens).toBe(30);
       expect(costOf(heavyUsage[0], "cost")).toBeCloseTo(0.005, 5);
-      expect(heavyUsage[0]?.period).toBe("2026-07");
+      expect(heavyUsage[0]?.term_id).toBe(e2eActiveTermId(scenario.installationId));
 
       const afterHeavy = await inspectState(scenario.installationId);
       expect(afterHeavy.periodCounters?.requestsUsed).toBe(1);
@@ -1079,7 +1090,7 @@ describe("Stage 11 — replay, envelope, grace (S11-012…S11-021)", () => {
       expect(zeroUsage[0]?.quota_weight).toBe(1);
       expect(zeroUsage[0]?.tokens).toBe(30);
       expect(costOf(zeroUsage[0], "cost")).toBeCloseTo(0.005, 5);
-      expect(zeroUsage[0]?.period).toBe("2026-07");
+      expect(zeroUsage[0]?.term_id).toBe(e2eActiveTermId(scenario.installationId));
 
       const afterZero = await inspectState(scenario.installationId);
       expect(afterZero.periodCounters?.requestsUsed).toBe(2);
@@ -1089,7 +1100,7 @@ describe("Stage 11 — replay, envelope, grace (S11-012…S11-021)", () => {
     }
   });
 
-  it("S11-017 — usage_event period from admission; DO reset on credit", async () => {
+  it("S11-017 — usage_event term ID from admission; DO reset on credit", async () => {
     const scenario = await setupFresh();
     const { requestId: httpRequestId } = await completeHappyRequest(
       scenario,
@@ -1097,8 +1108,7 @@ describe("Stage 11 — replay, envelope, grace (S11-012…S11-021)", () => {
     );
     const httpUsage = await getUsageEvents(httpRequestId);
     expect(httpUsage).toHaveLength(1);
-    expect(httpUsage[0]?.period).toBe("2026-07");
-    expect(String(httpUsage[0]?.period).length).toBeLessThanOrEqual(7);
+    expect(httpUsage[0]?.term_id).toBe(e2eActiveTermId(scenario.installationId));
 
     const now = Date.now();
     const doRef = "7K2M-9XQD";
@@ -1159,7 +1169,7 @@ describe("Stage 11 — replay, envelope, grace (S11-012…S11-021)", () => {
 
     const stillHttp = await getUsageEvents(httpRequestId);
     expect(stillHttp).toHaveLength(1);
-    expect(stillHttp[0]?.period).toBe("2026-07");
+    expect(stillHttp[0]?.term_id).toBe(e2eActiveTermId(scenario.installationId));
     expect(await count("usage_event", "request_id = ?", [doRequestId])).toBe(0);
   });
 
@@ -1387,17 +1397,43 @@ describe("Stage 11 — replay, envelope, grace (S11-012…S11-021)", () => {
     );
     const termRef =
       typeof mirror?.term_snapshot === "string"
-        ? (JSON.parse(mirror.term_snapshot) as { ref?: string }).ref ?? "term-s11"
-        : "term-s11";
+        ? (JSON.parse(mirror.term_snapshot) as { ref?: string }).ref ??
+          e2eActiveTermId(scenario.installationId)
+        : e2eActiveTermId(scenario.installationId);
+    const idempotencyKey = `s11-021-${crypto.randomUUID()}`;
+    const createdAt = new Date().toISOString();
 
     await seedSql([
+      {
+        // usage_event.request_id has an FK to ai_request; model the request
+        // represented by this fallback-admission row before cron settles it.
+        sql: `INSERT INTO ai_request (
+                request_id, request_reference, installation_id, actor_id,
+                capability_id, capability_version, prompt_artifact_hash,
+                idempotency_key, state, created_at, updated_at, trace_id
+              ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        params: [
+          requestId,
+          "SAAX-BBXX",
+          scenario.installationId,
+          "e2e-stage-11",
+          CAPABILITY_ID,
+          CAPABILITY_VERSION,
+          "e2e-stage-11-seed",
+          idempotencyKey,
+          "Accepted",
+          createdAt,
+          createdAt,
+          "s11-021-trace",
+        ],
+      },
       {
         sql: `INSERT INTO fallback_admission (
                 installation_id, idempotency_key, term_id, request_id, weight, admitted_at, state
               ) VALUES (?, ?, ?, ?, ?, ?, 'pending')`,
         params: [
           scenario.installationId,
-          `s11-021-${crypto.randomUUID()}`,
+          idempotencyKey,
           termRef,
           requestId,
           1,

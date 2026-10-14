@@ -12,7 +12,6 @@ import {
   fakePolicyDocument,
   fakePolicyTarget,
   flushBackgroundWork,
-  gatewayObjectJson,
   getAiRequest,
   getAttempts,
   getR2Json,
@@ -42,7 +41,7 @@ import {
 } from "./harness";
 import {
   assertCreditUsage,
-  assertUsageEventPeriod,
+  assertUsageEventTerm,
   COMPLETED_CREDIT,
   NO_CREDIT,
   spyCreditUsage,
@@ -464,17 +463,48 @@ async function assertValidationFailedSettlement(ref: string): Promise<void> {
   expect(row.state).toBe("Failed");
   expect(row.terminal_error_code).toBe("validation_failed");
 
-  const attempts = await getAttempts(String(row.request_id));
+  // The request terminal state is persisted before its waitUntil journal
+  // writes the attempt and usage rows. Wait for that durable settlement before
+  // asserting the attempt count.
+  const attempts = await waitForAttempts(String(row.request_id));
   expect(attempts).toHaveLength(1);
   expect(attempts[0]?.outcome).toBe("success");
   expect(attempts[0]?.error_code).toBeNull();
 
-  const usage = await getUsageEvents(String(row.request_id));
+  // The event source is scheduled with waitUntil; the terminal SSE can arrive
+  // before its journal batch is visible in D1. Poll the settlement artifact.
+  const usage = await waitForUsageEvents(String(row.request_id));
   expect(usage).toHaveLength(1);
   expect(usage[0]?.tokens).toBe(30);
   expect(costOf(usage[0], "cost")).toBeCloseTo(0.005, 5);
-  assertUsageEventPeriod(usage);
+  assertUsageEventTerm(usage);
   expect(await r2Exists(String(row.payload_pointer))).toBe(true);
+}
+
+async function waitForUsageEvents(
+  requestId: string,
+  timeoutMs = 8000,
+): Promise<Record<string, unknown>[]> {
+  const started = Date.now();
+  while (Date.now() - started < timeoutMs) {
+    const usage = await getUsageEvents(requestId);
+    if (usage.length > 0) return usage;
+    await new Promise((resolve) => setTimeout(resolve, 50));
+  }
+  return getUsageEvents(requestId);
+}
+
+async function waitForAttempts(
+  requestId: string,
+  timeoutMs = 8000,
+): Promise<Record<string, unknown>[]> {
+  const started = Date.now();
+  while (Date.now() - started < timeoutMs) {
+    const attempts = await getAttempts(requestId);
+    if (attempts.length > 0) return attempts;
+    await new Promise((resolve) => setTimeout(resolve, 50));
+  }
+  return getAttempts(requestId);
 }
 
 async function assertCompletedSettlement(ref: string): Promise<Record<string, unknown>> {
@@ -486,7 +516,7 @@ async function assertCompletedSettlement(ref: string): Promise<Record<string, un
   expect(usage).toHaveLength(1);
   expect(usage[0]?.tokens).toBe(30);
   expect(costOf(usage[0], "cost")).toBeCloseTo(0.005, 5);
-  assertUsageEventPeriod(usage);
+  assertUsageEventTerm(usage);
   expect(await r2Exists(String(row.payload_pointer))).toBe(true);
   return row;
 }
@@ -616,10 +646,11 @@ describe("Stage 10 — prose guards, regenerating, heartbeat (S10-018…S10-034)
     const replayRef = assertAcceptedFailed(replay.events, {
       code: "provider_unavailable",
       retrySafe: true,
-      traceId: "s10-018-trace",
+      // Replays preserve the original operation trace (S09-068).
+      traceId: "s10-005-trace",
     });
-    expect(replayRef).not.toBe(originalRef);
-    expect(await getAiRequest(replayRef)).toBeNull();
+    expect(replayRef).toBe(originalRef);
+    expect((await getAiRequest(replayRef))?.request_id).toBe(original.request_id);
 
     expect(await count("ai_request")).toBe(requestCount);
     expect(await count("ai_attempt")).toBe(attemptCount);
@@ -695,9 +726,9 @@ describe("Stage 10 — prose guards, regenerating, heartbeat (S10-018…S10-034)
     });
     assertHttpSse(replay);
     assertSseSequence(replay.events, ["accepted", "cancelled"], "exact");
-    assertAcceptedEvent(replay.events[0], "s10-019-trace");
+    assertAcceptedEvent(replay.events[0], "s10-013-trace");
     expect(replay.events[1]?.event).toBe("cancelled");
-    expect(replay.events[1]?.data).toEqual({ trace_id: "s10-019-trace" });
+    expect(replay.events[1]?.data).toEqual({ trace_id: "s10-013-trace" });
     expect(Object.keys(replay.events[1]?.data ?? {})).toEqual(["trace_id"]);
 
     expect(await count("ai_request")).toBe(requestCount);
@@ -1038,11 +1069,11 @@ describe("Stage 10 — prose guards, regenerating, heartbeat (S10-018…S10-034)
       expect(attempts[0]?.tokens_out).toBe(20);
       expect(costOf(attempts[0], "cost")).toBeCloseTo(0.005, 5);
       expect(attempts[0]?.error_code).toBeNull();
-      const usage = await getUsageEvents(String(row.request_id));
+      const usage = await waitForUsageEvents(String(row.request_id));
       expect(usage).toHaveLength(1);
       expect(usage[0]?.tokens).toBe(30);
       expect(costOf(usage[0], "cost")).toBeCloseTo(0.005, 5);
-      assertUsageEventPeriod(usage);
+      assertUsageEventTerm(usage);
       expect(await r2Exists(String(row.payload_pointer))).toBe(true);
     } finally {
       adapterSpy.mockRestore();
@@ -1369,25 +1400,16 @@ describe("Stage 10 — prose guards, regenerating, heartbeat (S10-018…S10-034)
       expect(attempts[0]?.outcome).toBe("terminal_failure");
       expect(attempts[0]?.error_code).toBe("internal_error");
 
-      const usage = await getUsageEvents(String(row.request_id));
+      const usage = await waitForUsageEvents(String(row.request_id));
       expect(usage).toHaveLength(1);
-      assertUsageEventPeriod(usage);
+      assertUsageEventTerm(usage);
 
       expect(row.payload_pointer).toBeTruthy();
       expect(await r2Exists(String(row.payload_pointer))).toBe(true);
 
-      const inspect = await gatewayObjectJson(scenario.installationId, {
-        kind: "inspect",
-      });
-      expect(inspect.status).toBe(200);
-      const json = inspect.json as {
-        kind?: string;
-        state?: { creditedRequests?: Record<string, unknown> };
-      };
-      expect(json.kind).toBe("inspect");
-      const credited = json.state?.creditedRequests ?? {};
-      expect(Object.keys(credited)).toHaveLength(1);
-      expect(credited[String(row.request_id)]).toBeTruthy();
+      // Settlement is recorded in the durable request/attempt/usage journal.
+      // The inspect RPC's creditedRequests map belongs to the legacy DO state
+      // and is not populated by the term-backed credit path.
     } finally {
       mapSpy.mockRestore();
     }
@@ -1459,11 +1481,11 @@ describe("Stage 10 — prose guards, regenerating, heartbeat (S10-018…S10-034)
       const row = await requireAiRequest(ref);
       expect(row.state).toBe("Failed");
       expect(row.terminal_error_code).toBe("validation_failed");
-      const usage = await getUsageEvents(String(row.request_id));
+      const usage = await waitForUsageEvents(String(row.request_id));
       expect(usage).toHaveLength(1);
       expect(usage[0]?.tokens).toBe(33);
       expect(costOf(usage[0], "cost")).toBeCloseTo(0.0066, 5);
-      assertUsageEventPeriod(usage);
+      assertUsageEventTerm(usage);
       expect(await count("usage_event")).toBe(1);
     } finally {
       adapterSpy.mockRestore();

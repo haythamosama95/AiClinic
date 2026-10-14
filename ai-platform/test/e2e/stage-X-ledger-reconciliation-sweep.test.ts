@@ -10,10 +10,10 @@ import {
   DEFAULT_ENTITLE_PAYLOAD,
   newClinic,
   entitleInstallation,
+  e2eActiveTermId,
   env,
   gatewayObjectJson,
   getAiRequest,
-  getEntitlement,
   getR2Json,
   getRoutingPolicy,
   invokeCron,
@@ -61,13 +61,6 @@ const EPHEMERAL_HORIZON_MS = 7_200_000;
 /** Default fake-v1 settlement: 10 in + 20 out. Bundled table: (10/1000)*0.1 + (20/1000)*0.2. */
 const FAKE_V1_SETTLEMENT_TOKENS = 30;
 const FAKE_V1_SETTLEMENT_COST = 0.005;
-
-/** Catalog P2 window after P1 admissions (SX-051 / SX-052). */
-const P2_ENTITLE: EntitlePayload = {
-  ...DEFAULT_ENTITLE_PAYLOAD,
-  period_start: "2026-09-01T00:00:00.000Z",
-  period_end: "2026-10-01T00:00:00.000Z",
-};
 
 /**
  * Wall-clock-covering entitle whose `period_start` month is catalog 2026-08
@@ -148,52 +141,6 @@ async function enrollAndEntitle(
   return scenario;
 }
 
-/**
- * Entitle is one-shot (`409 not_pending` while active). Re-open pending so
- * `entitleInstallation(P2)` writes the September `period_start` the same way
- * SX-051/052 roll the entitlement — do not rewrite `usage_event.period`.
- */
-async function rollEntitlementToP2(scenario: Scenario): Promise<void> {
-  await seedSql([
-    {
-      sql: "UPDATE entitlement SET status = 'pending' WHERE installation_id = ?",
-      params: [scenario.installationId],
-    },
-  ]);
-  const entitled = await entitleInstallation(scenario, P2_ENTITLE);
-  expect(entitled.status).toBe(200);
-  const rolled = await entitlementSnapshot(scenario.installationId);
-  expect(
-    (rolled.period_bounds as { period_start: string; period_end: string })
-      .period_start,
-  ).toBe(P2_ENTITLE.period_start);
-}
-
-async function entitlementSnapshot(
-  installationId: string,
-): Promise<Record<string, unknown>> {
-  const row = await getEntitlement(installationId);
-  expect(row).not.toBeNull();
-  const rawAllowed = row!.allowed_capabilities;
-  const allowed =
-    typeof rawAllowed === "string" ? JSON.parse(rawAllowed) : rawAllowed;
-  return {
-    plan: String(row!.plan),
-    period_bounds: {
-      period_start: String(row!.period_start),
-      period_end: String(row!.period_end),
-    },
-    request_quota: Number(row!.request_quota),
-    token_cost_budget: {
-      token_budget: Number(row!.token_budget),
-      cost_budget: Number(row!.cost_budget),
-    },
-    allowed_capabilities: allowed,
-    soft_threshold: Number(row!.soft_threshold),
-    status: String(row!.status),
-  };
-}
-
 async function inspectState(
   installationId: string,
   now?: number,
@@ -225,7 +172,8 @@ async function admitRpc(
       jti: opts.jti,
       installationId: scenario.installationId,
       idempotencyKey: opts.idempotencyKey,
-      entitlement: await entitlementSnapshot(scenario.installationId),
+      capabilityId: CAPABILITY_ID,
+      quotaWeight: 1,
       requestReference: opts.requestReference,
     },
     opts.now === undefined ? {} : { now: opts.now },
@@ -296,7 +244,7 @@ function expectTrailing30dWindow(window: unknown): void {
 async function seedUsageEvent(opts: {
   id: string;
   installationId: string;
-  period: string;
+  termId: string;
   requestId: string | null;
   tokens: number;
   cost: number;
@@ -305,13 +253,13 @@ async function seedUsageEvent(opts: {
   await seedSql([
     {
       sql: `INSERT INTO usage_event (
-              usage_event_id, installation_id, period, request_id,
+              usage_event_id, installation_id, term_id, request_id,
               quota_weight, tokens, cost, recorded_at
             ) VALUES (?, ?, ?, ?, 1, ?, ?, ?)`,
       params: [
         opts.id,
         opts.installationId,
-        opts.period,
+        opts.termId,
         opts.requestId,
         opts.tokens,
         opts.cost,
@@ -453,8 +401,8 @@ async function rebuildSx028EndState(): Promise<{
       params: [aged, aged, aged, oldReq.requestId],
     },
     {
-      sql: `UPDATE usage_event SET recorded_at = ?, period = '2026-08' WHERE request_id = ?`,
-      params: [aged, oldReq.requestId],
+      sql: `UPDATE usage_event SET recorded_at = ?, term_id = ? WHERE request_id = ?`,
+      params: [aged, e2eActiveTermId(scenario.installationId), oldReq.requestId],
     },
   ]);
   await invokeCron(CRON_RETENTION);
@@ -516,7 +464,7 @@ describe("Stage X — ledger purge, rollup reconciliation, DO sweep (SX-033…SX
     await seedUsageEvent({
       id: "ue-sx033-a",
       installationId: scenario.installationId,
-      period: "2019-08",
+      termId: "term-sx-2019-08",
       requestId: null,
       tokens: 10,
       cost: 0.001,
@@ -525,7 +473,7 @@ describe("Stage X — ledger purge, rollup reconciliation, DO sweep (SX-033…SX
     await seedUsageEvent({
       id: "ue-sx033-b",
       installationId: scenario.installationId,
-      period: "2019-09",
+      termId: "term-sx-2019-09",
       requestId: null,
       tokens: 20,
       cost: 0.002,
@@ -774,7 +722,7 @@ describe("Stage X — ledger purge, rollup reconciliation, DO sweep (SX-033…SX
     expect(kill?.target).toBe("deepseek");
   });
 
-  it("SX-037 — Rollup aggregates full ledger per (installation, period); re-run upserts", async () => {
+  it("SX-037 — Rollup aggregates full ledger per (installation, term); re-run upserts", async () => {
     const i0 = await provisionHappyPath(undefined, AUGUST_COVERING_NOW);
     const i1 = await enrollAndEntitle(AUGUST_COVERING_NOW);
 
@@ -782,8 +730,6 @@ describe("Stage X — ledger purge, rollup reconciliation, DO sweep (SX-033…SX
     const i0b = await completeVisit(i0, "sx037-i0b");
     await waitForUsageEvent(i0a.requestId);
     await waitForUsageEvent(i0b.requestId);
-
-    await rollEntitlementToP2(i0);
 
     const i0c = await completeVisit(i0, "sx037-i0c");
     const i1a = await completeVisit(i1, "sx037-i1a");
@@ -796,20 +742,22 @@ describe("Stage X — ledger purge, rollup reconciliation, DO sweep (SX-033…SX
     const usage = await queryAll<{
       tokens: number;
       cost: number;
-      period: string;
+      term_id: string;
       request_id: string;
-    }>("SELECT tokens, cost, period, request_id FROM usage_event");
+    }>("SELECT tokens, cost, term_id, request_id FROM usage_event");
     const byId = Object.fromEntries(usage.map((row) => [row.request_id, row]));
-    expect(byId[i0a.requestId]?.period).toBe("2026-08");
+    const i0TermId = e2eActiveTermId(i0.installationId);
+    const i1TermId = e2eActiveTermId(i1.installationId);
+    expect(byId[i0a.requestId]?.term_id).toBe(i0TermId);
     expect(byId[i0a.requestId]?.tokens).toBe(FAKE_V1_SETTLEMENT_TOKENS);
     expect(Number(byId[i0a.requestId]?.cost)).toBeCloseTo(FAKE_V1_SETTLEMENT_COST, 6);
-    expect(byId[i0b.requestId]?.period).toBe("2026-08");
+    expect(byId[i0b.requestId]?.term_id).toBe(i0TermId);
     expect(byId[i0b.requestId]?.tokens).toBe(FAKE_V1_SETTLEMENT_TOKENS);
     expect(Number(byId[i0b.requestId]?.cost)).toBeCloseTo(FAKE_V1_SETTLEMENT_COST, 6);
-    expect(byId[i0c.requestId]?.period).toBe("2026-09");
+    expect(byId[i0c.requestId]?.term_id).toBe(i0TermId);
     expect(byId[i0c.requestId]?.tokens).toBe(FAKE_V1_SETTLEMENT_TOKENS);
     expect(Number(byId[i0c.requestId]?.cost)).toBeCloseTo(FAKE_V1_SETTLEMENT_COST, 6);
-    expect(byId[i1a.requestId]?.period).toBe("2026-08");
+    expect(byId[i1a.requestId]?.term_id).toBe(i1TermId);
     expect(byId[i1a.requestId]?.tokens).toBe(FAKE_V1_SETTLEMENT_TOKENS);
     expect(Number(byId[i1a.requestId]?.cost)).toBeCloseTo(FAKE_V1_SETTLEMENT_COST, 6);
 
@@ -821,26 +769,19 @@ describe("Stage X — ledger purge, rollup reconciliation, DO sweep (SX-033…SX
       tokens: number;
       cost: number;
     }>("SELECT rollup_id, dimensions, request_count, tokens, cost FROM usage_rollup");
-    expect(first).toHaveLength(3);
+    expect(first).toHaveLength(2);
 
     const expected = [
       {
         installation_id: i0.installationId,
-        period: "2026-08",
-        request_count: 2,
-        tokens: FAKE_V1_SETTLEMENT_TOKENS * 2,
-        cost: FAKE_V1_SETTLEMENT_COST * 2,
-      },
-      {
-        installation_id: i0.installationId,
-        period: "2026-09",
-        request_count: 1,
-        tokens: FAKE_V1_SETTLEMENT_TOKENS,
-        cost: FAKE_V1_SETTLEMENT_COST,
+        term_id: i0TermId,
+        request_count: 3,
+        tokens: FAKE_V1_SETTLEMENT_TOKENS * 3,
+        cost: FAKE_V1_SETTLEMENT_COST * 3,
       },
       {
         installation_id: i1.installationId,
-        period: "2026-08",
+        term_id: i1TermId,
         request_count: 1,
         tokens: FAKE_V1_SETTLEMENT_TOKENS,
         cost: FAKE_V1_SETTLEMENT_COST,
@@ -849,7 +790,7 @@ describe("Stage X — ledger purge, rollup reconciliation, DO sweep (SX-033…SX
     for (const row of expected) {
       const dims = JSON.stringify({
         installation_id: row.installation_id,
-        period: row.period,
+        term_id: row.term_id,
       });
       const found = first.find((entry) => entry.dimensions === dims);
       expect(found, dims).toBeDefined();
@@ -867,7 +808,7 @@ describe("Stage X — ledger purge, rollup reconciliation, DO sweep (SX-033…SX
       tokens: number;
       cost: number;
     }>("SELECT rollup_id, dimensions, request_count, tokens, cost FROM usage_rollup");
-    expect(second).toHaveLength(3);
+    expect(second).toHaveLength(2);
     expect(second.map((row) => row.rollup_id).sort()).toEqual(
       first.map((row) => row.rollup_id).sort(),
     );
@@ -884,7 +825,7 @@ describe("Stage X — ledger purge, rollup reconciliation, DO sweep (SX-033…SX
     await seedUsageEvent({
       id: "ue-sx038-e1",
       installationId: scenario.installationId,
-      period: "2026-08",
+      termId: "term-sx-2026-08",
       requestId: null,
       tokens: 10,
       cost: 0.001,
@@ -893,7 +834,7 @@ describe("Stage X — ledger purge, rollup reconciliation, DO sweep (SX-033…SX
     await seedUsageEvent({
       id: "ue-sx038-e2",
       installationId: scenario.installationId,
-      period: "2026-08",
+      termId: "term-sx-2026-08",
       requestId: null,
       tokens: 20,
       cost: 0.002,
@@ -953,7 +894,7 @@ describe("Stage X — ledger purge, rollup reconciliation, DO sweep (SX-033…SX
     await seedUsageEvent({
       id: "ue-sx040",
       installationId: scenario.installationId,
-      period: "2026-09",
+      termId: "term-sx-2026-09",
       requestId: "req-sx040-noatt",
       tokens: 10,
       cost: 0.001,

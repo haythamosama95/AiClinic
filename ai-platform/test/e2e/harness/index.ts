@@ -145,6 +145,7 @@ export {
 } from "./faults";
 
 export {
+  e2eActiveTermId,
   ensureE2eCoverageMirror,
   ensureE2eQuotaDoCoverage,
   setMirrorCapabilities,
