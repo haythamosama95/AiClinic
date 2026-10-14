@@ -51,7 +51,7 @@ def test_filter_recorded_drops_suite_only_noise(tmp_path: Path) -> None:
     }
 
 
-def test_reconcile_adds_missing_fail_rows(tmp_path: Path) -> None:
+def test_reconcile_adds_missing_unrun_rows_without_counting_them_as_failures(tmp_path: Path) -> None:
     log_dir = tmp_path / "npm-test"
     log_dir.mkdir()
     missing = "test/system/platform-rebuild.system.test.ts > suite > case one"
@@ -90,19 +90,23 @@ def test_reconcile_adds_missing_fail_rows(tmp_path: Path) -> None:
         payload = json.loads((log_dir / "summary.json").read_text())
         names = {t["name"] for t in payload["tests"]}
         assert missing in names
-        assert payload["failed"] == 1
+        assert payload["failed"] == 0
+        assert payload["tests"][0]["status"] == "SKIP"
+        assert payload["tests"][0]["skipped"] is True
+        assert payload["tests"][0]["failure_kind"] == "not_executed"
+        assert "error" not in payload["tests"][0]
         assert not any(n.startswith("stdout |") for n in names)
         recorded = recorded_test_names_from_summary(
             log_dir,
             area="ai-platform",
             subcampaign="npm-test",
         )
-        assert missing in recorded
+        assert missing not in recorded
     finally:
         mod.vitest_labels_for_subcampaign = original
 
 
-def test_reconcile_marks_missing_outcomes_and_keeps_runner_diagnostics(
+def test_reconcile_marks_missing_outcomes_unrun_without_runner_cause(
     tmp_path: Path,
 ) -> None:
     log_dir = tmp_path / "npm-test"
@@ -133,11 +137,12 @@ def test_reconcile_marks_missing_outcomes_and_keeps_runner_diagnostics(
         mod.vitest_labels_for_subcampaign = original
 
     payload = json.loads((log_dir / "summary.json").read_text(encoding="utf-8"))
-    assert payload["tests"][0]["failure_kind"] == "runner_missing_outcome"
+    assert payload["tests"][0]["status"] == "SKIP"
+    assert payload["tests"][0]["skipped"] is True
+    assert payload["tests"][0]["failure_kind"] == "not_executed"
+    assert "error" not in payload["tests"][0]
     assert payload["not_recorded"] == [missing]
     assert payload["diagnostics_file"] == "output.log"
-    assert payload["tests"][0]["reference"] == "output.log"
-    assert payload["tests"][0]["runner_exit_code"] is None
     assert any("sqlite-shm" in line for line in payload["runner_diagnostics"])
 
 

@@ -154,15 +154,15 @@ describe("T-A5-19 config_cache_ttl_expiry_one_refetch", () => {
     expect(reader.readCount()).toBe(1);
   });
 
-  it("TTL 0 still serves a same-timestamp consult after remember", () => {
+  it("TTL 0 does not retain a remembered entry", () => {
     const cache = new ConfigCache(0);
     const now = 1_000;
     const row = sampleRow("installations");
     cache.remember("installations", TEST_INSTALLATION_KEY, row, now);
 
-    expect(cache.consult("installations", TEST_INSTALLATION_KEY, now)).toEqual(
-      row,
-    );
+    expect(
+      cache.consult("installations", TEST_INSTALLATION_KEY, now),
+    ).toBeUndefined();
     expect(
       cache.consult("installations", TEST_INSTALLATION_KEY, now + 1),
     ).toBeUndefined();
@@ -181,7 +181,7 @@ describe("T-A5-19 config_cache_ttl_expiry_one_refetch", () => {
     ).toBeUndefined();
   });
 
-  it("TTL 0 loadConfig hits on the same tick and refetches after the clock ticks", async () => {
+  it("TTL 0 loadConfig refetches on every load", async () => {
     const cache = new ConfigCache(0);
     const reader = makeReader(sampleRow("installations"));
 
@@ -190,8 +190,9 @@ describe("T-A5-19 config_cache_ttl_expiry_one_refetch", () => {
     reader.read.mockClear();
 
     await loadConfig(cache, reader, "installations", TEST_INSTALLATION_KEY);
-    expect(reader.readCount()).toBe(0);
+    expect(reader.readCount()).toBe(1);
 
+    reader.read.mockClear();
     vi.advanceTimersByTime(1);
     await loadConfig(cache, reader, "installations", TEST_INSTALLATION_KEY);
     expect(reader.readCount()).toBe(1);

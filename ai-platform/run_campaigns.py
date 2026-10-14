@@ -53,7 +53,12 @@ def _run(subcampaign: str, cmd: list[str]) -> int:
     return result
 
 
-def _run_steps(subcampaign: str, steps: list[tuple[str, list[str]]]) -> int:
+def _run_steps(
+    subcampaign: str,
+    steps: list[tuple[str, list[str]]],
+    *,
+    continue_on_step_failure: bool = False,
+) -> int:
     config = load_campaign_config(AREA, subcampaign)
     log_dir = _log_dir(subcampaign)
     prepared = [
@@ -67,6 +72,7 @@ def _run_steps(subcampaign: str, steps: list[tuple[str, list[str]]]) -> int:
         status_label=_status_label(subcampaign),
         campaign_config=config,
         config_area=AREA,
+        continue_on_step_failure=continue_on_step_failure,
     )
     _merge_step_reports(log_dir, [name for name, _ in steps])
     return result
@@ -188,6 +194,7 @@ def run_npm_test(_: str) -> int:
             ("unit", ["npx", "vitest", "run"]),
             ("workers", ["npx", "vitest", "run", "--config", "vitest.workers.config.ts"]),
         ],
+        continue_on_step_failure=True,
     )
 
 

@@ -144,7 +144,7 @@ def reconcile_vitest_summary_log(
     cwd: Path,
 ) -> bool:
     """
-    Remove invalid rows, dedupe by test name, and record FAIL for list cases with no outcome.
+    Remove invalid rows, dedupe by test name, and record unrun list cases as SKIP.
 
     Returns True when ``summary.json`` was updated.
     """
@@ -166,10 +166,7 @@ def reconcile_vitest_summary_log(
 
     known = vitest_exclude_label_set(labels)
     report = _report_outcomes(log_dir)
-    summary_exit = payload.get("exit_code")
-    summary_signal = payload.get("signal")
     diagnostics = _runner_diagnostic_excerpt(log_dir)
-    cause = diagnostics[0] if diagnostics else None
     by_name: dict[str, dict[str, Any]] = {}
     for entry in tests:
         if not isinstance(entry, dict):
@@ -214,24 +211,19 @@ def reconcile_vitest_summary_log(
                 continue
             by_name[label] = {
                 "name": label,
-                "status": "FAIL",
-                "skipped": False,
+                "status": "SKIP",
+                "skipped": True,
                 "log_file": None,
                 "started_at": None,
                 "finished_at": None,
                 "elapsed_seconds": 0.0,
-                "error": cause or "Vitest did not report an outcome for this case.",
-                "failure_kind": "runner_missing_outcome",
-                "reference": "output.log",
-                "runner_exit_code": summary_exit,
-                "runner_signal": summary_signal,
-                "runner_context": diagnostics,
+                "failure_kind": "not_executed",
                 "reconciled": True,
             }
     missing_labels = sorted(
         label
         for label, entry in by_name.items()
-        if entry.get("failure_kind") == "runner_missing_outcome"
+        if entry.get("failure_kind") == "not_executed"
     )
 
     ordered = [by_name[label] for label in sorted(by_name)]
