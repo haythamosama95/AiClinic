@@ -14,7 +14,10 @@ import {
 } from "./clinic-api/checkouts.js";
 import { handleGetOffers } from "./clinic-api/offers.js";
 import { checkTokenRate } from "./clinic-api/rate.js";
-import { checkContractVersion } from "./clinic-api/version.js";
+import {
+  checkContractVersion,
+  clinicErrorResponse,
+} from "./clinic-api/version.js";
 import { handleOps as dispatchOps, runDueTransferSteps } from "./ops/index.js";
 import { refreshCoverageView } from "./coverage/view.js";
 import { markExportLagIfDue, sendDueAlerts } from "./alert/index.js";
@@ -272,7 +275,7 @@ async function handleBillingV1(
     if (url.searchParams.get("open") === "1") {
       return handleListOpenCheckouts(env, auth.claims.org, versionGate.version);
     }
-    return emptyNotFound();
+    return clinicErrorResponse("not_found", 404, versionGate.version);
   }
 
   const checkoutIdMatch = /^\/v1\/checkouts\/([^/]+)$/u.exec(path);
