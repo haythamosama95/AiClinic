@@ -6,5 +6,5 @@ CREATE TABLE token_contract (
   changed_by TEXT NOT NULL
 );
 
-INSERT INTO token_contract (ver, added_at, retired_at, changed_by)
+INSERT OR IGNORE INTO token_contract (ver, added_at, retired_at, changed_by)
 VALUES ('1', '2026-08-03T00:00:00.000Z', NULL, 'seed');

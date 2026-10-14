@@ -1,8 +1,11 @@
 import { CHANNEL_VERSIONS, sha256Hex, ulid } from "vendor-contracts";
 import { raiseAlert } from "../alert/index.js";
 import { clockNowIso, clockNowMs, type ClockEnv } from "../clock.js";
-import { PAYMOB_PROVIDER_ID, providerForId } from "../provider/registry.js";
-import type { PaymobAdapterEnv } from "../provider/paymob/adapter.js";
+import {
+  PAYMOB_PROVIDER_ID,
+  providerForId,
+  type ProviderRegistryEnv,
+} from "../provider/registry.js";
 import { runConfirmForWorkId, type WorkRunnerEnv } from "./runner.js";
 import {
   recordReversalFromProviderTxn,
@@ -20,7 +23,7 @@ const ONE_DAY_MS = 24 * 60 * 60_000;
 const SEVEN_DAYS_MS = 7 * ONE_DAY_MS;
 const POST_EXPIRY_OFFSETS_MS = [ONE_DAY_MS, 3 * ONE_DAY_MS, SEVEN_DAYS_MS];
 
-export type SweepEnv = PaymobAdapterEnv &
+export type SweepEnv = ProviderRegistryEnv &
   ClockEnv &
   WorkRunnerEnv &
   ReversalEnv & {

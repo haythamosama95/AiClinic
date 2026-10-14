@@ -2,10 +2,13 @@ import { canonicalize, humanRef, sha256Hex, ulid } from "vendor-contracts";
 import { clockNowIso, clockNowMs, type ClockEnv } from "../clock.js";
 import { raiseAlert } from "../alert/index.js";
 import { insertFactLog } from "../records/append.js";
-import { PAYMOB_PROVIDER_ID, providerForId } from "../provider/registry.js";
-import type { PaymobAdapterEnv } from "../provider/paymob/adapter.js";
+import {
+  PAYMOB_ADAPTER_VERSION,
+  PAYMOB_PROVIDER_ID,
+  providerForId,
+  type ProviderRegistryEnv,
+} from "../provider/registry.js";
 import type { ProviderTxn } from "../provider/port.js";
-import { PAYMOB_ADAPTER_VERSION } from "../provider/paymob/adapter.js";
 import {
   recordReversalFromProviderTxn,
   type ReversalEnv,
@@ -17,7 +20,7 @@ const MAX_BACKOFF_MS = 15 * 60_000;
 const STALE_CONFIRM_MS = 5 * 60_000;
 const CONFIRM_BATCH_LIMIT = 50;
 
-export type WorkRunnerEnv = PaymobAdapterEnv &
+export type WorkRunnerEnv = ProviderRegistryEnv &
   ClockEnv & {
     R2: R2Bucket;
     TEST_CLOCK?: string;

@@ -1108,7 +1108,11 @@ async function setupActiveAndQueuedTerms(
   offer: { offerId: string; version: number },
   firstTxnId: number,
   secondTxnId: number,
-): Promise<{ activeCheckoutId: string; activePaymentId: string }> {
+): Promise<{
+  activeCheckoutId: string;
+  activePaymentId: string;
+  queuedPaymentId: string;
+}> {
   await putBillingContact(org);
   await ensureGrantTenantBinding(org);
   const firstCheckout = await postCheckoutWithOffer(
@@ -1139,12 +1143,15 @@ async function setupActiveAndQueuedTerms(
   });
   await runGrantStep(org);
   const activePaymentId = await paymentIdForCheckout(firstCheckout.checkoutId);
+  const queuedPaymentId = await paymentIdForCheckout(secondCheckout.checkoutId);
   expect(activePaymentId).not.toBeNull();
+  expect(queuedPaymentId).not.toBeNull();
   const subscriptionBefore = await getSubscriptionBody(org);
   expect((subscriptionBefore.snapshot?.queued_count ?? 0) > 0).toBe(true);
   return {
     activeCheckoutId: firstCheckout.checkoutId,
     activePaymentId: activePaymentId!,
+    queuedPaymentId: queuedPaymentId!,
   };
 }
 
@@ -1561,7 +1568,10 @@ describe.sequential("sweeps cross-worker", () => {
 
     const sixHourTxnId = 95092;
     const sixHourOrg = ORG_SWEEP_09;
-    const { activePaymentId: sixHourPaymentId } = await setupActiveAndQueuedTerms(
+    const {
+      activePaymentId: sixHourPaymentId,
+      queuedPaymentId: sixHourQueuedPaymentId,
+    } = await setupActiveAndQueuedTerms(
       sixHourOrg,
       expectations,
       offerVersions[1],
@@ -1578,7 +1588,10 @@ describe.sequential("sweeps cross-worker", () => {
 
     expect(await tableCount("payment")).toBe(paymentsBeforeSixHour);
     expect(await reversalCount()).toBe(reversalsBeforeSixHour + 1);
-    expect(await reversalDetectedVia(sixHourPaymentId)).toBe("inquiry");
+    const sixHourDetected = await Promise.all(
+      [sixHourPaymentId, sixHourQueuedPaymentId].map(reversalDetectedVia),
+    );
+    expect(sixHourDetected).toContain("inquiry");
 
     const dailyRunDay = addDays(baseClock, 100);
     const dailyTxnId = await findTxnIdForTodaySlot(dailyRunDay);

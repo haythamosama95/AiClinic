@@ -8,8 +8,11 @@ import {
 } from "vendor-contracts";
 import { refreshCoverageView } from "./coverage/view.js";
 import { clockNowIso, clockNowMs, type ClockEnv } from "./clock.js";
-import type { PaymobAdapterEnv } from "./provider/paymob/adapter.js";
-import { PAYMOB_PROVIDER_ID, providerForId } from "./provider/registry.js";
+import {
+  PAYMOB_PROVIDER_ID,
+  providerForId,
+  type ProviderRegistryEnv,
+} from "./provider/registry.js";
 import type { ProviderTxn } from "./provider/port.js";
 import { insertFactLog } from "./records/append.js";
 import { runReconciliation } from "./reconciliation/run.js";
@@ -60,7 +63,7 @@ type GrantPaymentRow = {
   paid_at: string;
 };
 
-export type RebuildEnv = PaymobAdapterEnv &
+export type RebuildEnv = ProviderRegistryEnv &
   ClockEnv & {
     DB: D1Database;
     R2: R2Bucket;

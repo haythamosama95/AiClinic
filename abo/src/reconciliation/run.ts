@@ -9,8 +9,10 @@ import {
 import { raiseAlert, type AlertEnv } from "../alert/index.js";
 import { clockNowIso, clockNowMs, type ClockEnv } from "../clock.js";
 import { insertFactLog } from "../records/append.js";
-import type { PaymobAdapterEnv } from "../provider/paymob/adapter.js";
-import { parseStoredPaymobNotification } from "../provider/paymob/adapter.js";
+import {
+  parseStoredPaymobNotification,
+  type ProviderRegistryEnv,
+} from "../provider/registry.js";
 
 const FIFTEEN_MINUTES_MS = 15 * 60 * 1000;
 const ONE_DAY_MS = 24 * 60 * 60 * 1000;
@@ -18,7 +20,7 @@ const SEVEN_DAYS_MS = 7 * ONE_DAY_MS;
 
 export type ReconciliationEnv = AlertEnv &
   ClockEnv &
-  Pick<PaymobAdapterEnv, "PAYMOB_HMAC_SECRET"> & {
+  Pick<ProviderRegistryEnv, "PAYMOB_HMAC_SECRET"> & {
     DB: D1Database;
     R2: R2Bucket;
     PLATFORM: {
@@ -446,7 +448,7 @@ async function checkCallbackWithoutConfirmation(
     }
     const body = await object.text();
     const parsed = body.startsWith("{")
-      ? await parseStoredPaymobNotification(env as PaymobAdapterEnv, body)
+      ? await parseStoredPaymobNotification(env as ProviderRegistryEnv, body)
       : { authentic: false, events: [] as [] };
     if (!parsed.authentic) {
       continue;

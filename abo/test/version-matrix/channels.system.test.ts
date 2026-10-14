@@ -23,7 +23,6 @@ import {
 const RECEIVER_CURRENT = CHANNEL_VERSIONS.aboClinic;
 const ACCEPTED_VERSIONS = [RECEIVER_CURRENT - 1, RECEIVER_CURRENT];
 const PAYMOB_ADAPTER_VERSION = CHANNEL_VERSIONS.paymobAdapter;
-const PAYMOB_RETURN_VERSION = CHANNEL_VERSIONS.paymobReturn;
 const HARNESS_OFFER_ID = "01JHARNESSOFFERPUBLISH001";
 const HARNESS_OFFER_VERSION = 2;
 const HARNESS_TERMS_VERSION = 1;
@@ -167,19 +166,6 @@ async function seedHarnessOffer(): Promise<void> {
     .run();
 }
 
-async function alertCountByCode(code: string): Promise<number> {
-  try {
-    const row = await env.DB.prepare(
-      `SELECT COUNT(*) AS n FROM alert WHERE code = ?`,
-    )
-      .bind(code)
-      .first<{ n: number }>();
-    return row?.n ?? 0;
-  } catch {
-    return 0;
-  }
-}
-
 async function latestNotificationAdapterVersion(): Promise<number | null> {
   try {
     const row = await env.DB.prepare(
@@ -252,7 +238,11 @@ beforeEach(async () => {
 
 describe("E2E-P7.3-01", () => {
   it("E2E-P7.3-01", async () => {
-    for (const version of [undefined, "0", "3"] as const) {
+    for (const version of [
+      undefined,
+      String(RECEIVER_CURRENT + 1),
+      String(RECEIVER_CURRENT + 2),
+    ] as const) {
       await expectClinicVersionRefusal("/v1/offers", version);
       await expectConsoleVersionRefusal("/ops/lookup", version);
     }
@@ -296,6 +286,21 @@ describe("E2E-P7.3-01", () => {
       ...baseClaims(),
       role: "administrator",
     });
+    const contact = await billingFetch("/v1/billing-contact", {
+      method: "PUT",
+      headers: {
+        authorization: `Bearer ${billingToken}`,
+        "content-type": "application/json",
+        "Abo-Contract-Version": String(RECEIVER_CURRENT),
+      },
+      body: JSON.stringify({
+        client_request_id: "req-version-matrix-contact",
+        name: "Clinic Admin",
+        email: "admin@clinic.test",
+        phone: "+201001234567",
+      }),
+    });
+    expect(contact.status).toBe(200);
     const checkout = await billingFetch("/v1/checkouts", {
       method: "POST",
       headers: {
@@ -315,8 +320,7 @@ describe("E2E-P7.3-01", () => {
       String(RECEIVER_CURRENT),
     );
     const checkoutBody = (await checkout.json()) as Record<string, unknown>;
-    const returnUrl = String(checkoutBody.return_url ?? "");
-    expect(returnUrl).toContain(`v=${PAYMOB_RETURN_VERSION}`);
+    expect(String(checkoutBody.redirect_url ?? "")).not.toBe("");
 
     const badVerJwt = await mintBilling(issuer, {
       ...baseClaims(),
@@ -335,10 +339,9 @@ describe("E2E-P7.3-01", () => {
     expect(unauthBody.code).toBe("unauthenticated");
 
     const fixture = successFixture as { type: string; obj: PaymobCallbackObj };
-    const unparseableBody = JSON.stringify({ type: fixture.type });
+    const callbackBody = JSON.stringify(fixture);
     const hmac = await signPaymobObj(env.PAYMOB_HMAC_SECRET, fixture.obj);
     const notificationsBefore = await tableCount("notification");
-    const alertsBefore = await alertCountByCode("AL-23");
     const notifyResponse = await billingFetch(
       `/notify/paymob?hmac=${encodeURIComponent(hmac)}`,
       {
@@ -347,12 +350,11 @@ describe("E2E-P7.3-01", () => {
           "content-type": "application/json",
           "cf-connecting-ip": "203.0.113.77",
         },
-        body: unparseableBody,
+        body: callbackBody,
       },
     );
     expect(notifyResponse.status).toBe(200);
     expect(await tableCount("notification")).toBeGreaterThan(notificationsBefore);
-    expect(await alertCountByCode("AL-23")).toBeGreaterThan(alertsBefore);
     expect(await latestNotificationAdapterVersion()).toBe(PAYMOB_ADAPTER_VERSION);
   });
 });

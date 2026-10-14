@@ -1,8 +1,11 @@
 import { sha256Hex, ulid } from "vendor-contracts";
 import { clockNowIso, clockNowMs, type ClockEnv } from "../clock.js";
 import { raiseAlert } from "../alert/index.js";
-import { PAYMOB_PROVIDER_ID, providerForId } from "../provider/registry.js";
-import type { PaymobAdapterEnv } from "../provider/paymob/adapter.js";
+import {
+  PAYMOB_PROVIDER_ID,
+  providerForId,
+  type ProviderRegistryEnv,
+} from "../provider/registry.js";
 
 const NOTIFY_ADAPTER_VERSION = 1;
 import type { ProviderNotificationRequest } from "../provider/port.js";
@@ -19,7 +22,7 @@ const HMAC_RAW_BODY_HOURLY_CAP = 10;
 const AL02_WINDOW_MS = 15 * 60 * 1000;
 const AL02_THRESHOLD = 3;
 
-export type NotifyIntakeEnv = PaymobAdapterEnv &
+export type NotifyIntakeEnv = ProviderRegistryEnv &
   ClockEnv & {
     R2: R2Bucket;
     PAYMOB_HMAC_SECRET: string;
