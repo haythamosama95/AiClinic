@@ -196,7 +196,7 @@ BEGIN
   VALUES
     ('visit-attachments', v_file_owner, v_user_a, '{}'::jsonb),
     ('visit-attachments', v_file_lab, v_lab_user_a, '{}'::jsonb)
-  ON CONFLICT (bucket_id, name) WHERE archived_at IS NULL DO NOTHING;
+  ON CONFLICT DO NOTHING;
 
   INSERT INTO public.visit_attachments (
     id, visit_id, file_path, file_type, label, uploaded_by, size_bytes, created_by, updated_by

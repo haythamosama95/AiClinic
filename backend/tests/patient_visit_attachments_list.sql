@@ -164,7 +164,7 @@ BEGIN
     v_file_path := v_org_id::text || '/' || v_branch_id::text || '/' || v_visit_id::text || '/doc-' || v_i || '.pdf';
     INSERT INTO storage.objects (bucket_id, name, owner, metadata)
     VALUES ('visit-attachments', v_file_path, v_owner_user, '{}'::jsonb)
-    ON CONFLICT (bucket_id, name) WHERE archived_at IS NULL DO NOTHING;
+    ON CONFLICT DO NOTHING;
     INSERT INTO public.visit_attachments (
       visit_id, file_path, file_type, label, uploaded_by, size_bytes, created_by, updated_by
     )
