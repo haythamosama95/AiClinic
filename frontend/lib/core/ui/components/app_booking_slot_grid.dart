@@ -115,12 +115,11 @@ class _SlotButton extends StatelessWidget {
               const SizedBox(height: 2),
             ],
             if (locked && !hasPreferredDoctor)
-              Row(
-                mainAxisAlignment: MainAxisAlignment.center,
+              Column(
                 mainAxisSize: MainAxisSize.min,
                 children: [
                   Icon(Icons.lock_outline, size: 12, color: colors.textTertiary.withValues(alpha: 0.5)),
-                  const SizedBox(width: 4),
+                  const SizedBox(height: 2),
                   Text(
                     slot.label,
                     textAlign: TextAlign.center,

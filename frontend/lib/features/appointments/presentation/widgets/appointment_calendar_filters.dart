@@ -71,10 +71,12 @@ class _AppointmentCalendarFilterButtonState
       open: _open,
       onOpenChange: (open) => setState(() => _open = open),
       align: AppPopoverAlign.end,
+      flip: true,
       minWidth: 360,
       width: 380,
       matchTriggerWidth: false,
       estimatedContentHeight: 460,
+      constrainContentToViewport: true,
       triggerBuilder: (context, isOpen, onToggle) {
         return AppIconButton(
           icon: Stack(
@@ -324,12 +326,17 @@ class _AppointmentCalendarFilterPanelState
     final doctors =
         widget.doctorsAsync.asData?.value ?? const <StaffListItem>[];
 
-    return Column(
-      mainAxisSize: MainAxisSize.min,
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
+    return ConstrainedBox(
+      constraints: BoxConstraints(
+        maxHeight: MediaQuery.sizeOf(context).height * 0.8,
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
         _FilterPanelHeader(activeCount: _draftFilterCount),
-        Padding(
+        Expanded(
+          child: SingleChildScrollView(
+            child: Padding(
           padding: const EdgeInsets.fromLTRB(
             AppSpacing.space4,
             AppSpacing.space4,
@@ -340,6 +347,29 @@ class _AppointmentCalendarFilterPanelState
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
+              _FilterScopeSection(
+                label: 'Appointment status',
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    Wrap(
+                      spacing: AppSpacing.space2,
+                      runSpacing: AppSpacing.space2,
+                      children: [
+                        for (final status in AppointmentCalendarDisplay.calendarStatusLegend)
+                          _StatusFilterChip(
+                            status: status,
+                            selected: AppointmentCalendarDisplay.isStatusChipSelected(status, _draftStatuses),
+                            onToggle: () => _toggleStatus(status),
+                          ),
+                      ],
+                    ),
+                    const SizedBox(height: AppSpacing.space2),
+                    Text(_statusHelperText(), style: AppTypography.caption(context).copyWith(color: colors.textTertiary)),
+                  ],
+                ),
+              ),
+              const SizedBox(height: AppSpacing.space4),
               _FilterScopeSection(
                 label: 'Location',
                 child: widget.branchesAsync.when(
@@ -412,41 +442,10 @@ class _AppointmentCalendarFilterPanelState
                   ),
                 ),
               ],
-              const SizedBox(height: AppSpacing.space4),
-              _FilterScopeSection(
-                label: 'Appointment status',
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: [
-                    Wrap(
-                      spacing: AppSpacing.space2,
-                      runSpacing: AppSpacing.space2,
-                      children: [
-                        for (final status
-                            in AppointmentCalendarDisplay.calendarStatusLegend)
-                          _StatusFilterChip(
-                            status: status,
-                            selected:
-                                AppointmentCalendarDisplay.isStatusChipSelected(
-                                  status,
-                                  _draftStatuses,
-                                ),
-                            onToggle: () => _toggleStatus(status),
-                          ),
-                      ],
-                    ),
-                    const SizedBox(height: AppSpacing.space2),
-                    Text(
-                      _statusHelperText(),
-                      style: AppTypography.caption(
-                        context,
-                      ).copyWith(color: colors.textTertiary),
-                    ),
-                  ],
-                ),
-              ),
             ],
+            ),
           ),
+        ),
         ),
         DecoratedBox(
           decoration: BoxDecoration(
@@ -497,7 +496,8 @@ class _AppointmentCalendarFilterPanelState
             ),
           ),
         ),
-      ],
+        ],
+      ),
     );
   }
 }

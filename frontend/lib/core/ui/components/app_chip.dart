@@ -20,6 +20,7 @@ class AppChip extends StatefulWidget {
     this.onPressed,
     this.disabled = false,
     this.semanticsLabel,
+    this.maxWidth,
     super.key,
   });
 
@@ -32,6 +33,8 @@ class AppChip extends StatefulWidget {
   final VoidCallback? onPressed;
   final bool disabled;
   final String? semanticsLabel;
+  /// Optional horizontal limit for chips shown inside narrow controls.
+  final double? maxWidth;
 
   @override
   State<AppChip> createState() => _AppChipState();
@@ -77,58 +80,64 @@ class _AppChipState extends State<AppChip> {
     final borderColor = widget.selected ? _focusBorderColor(brightness) : colors.borderDefault;
     final background = widget.selected ? colors.surfaceSelected : colors.surfaceDefault;
     final foreground = widget.selected ? colors.textPrimary : colors.textSecondary;
+    final Widget body = widget.selectable
+        ? _ChipBody(
+            hovered: _bodyHovered,
+            selected: widget.selected,
+            disabled: _isDisabled,
+            foreground: foreground,
+            hoverColor: colors.surfaceHover,
+            onHoverChanged: (hovered) => setState(() => _bodyHovered = hovered),
+            onPressed: _handleBodyPress,
+            selectedSemantics: widget.selected,
+            child: widget.child,
+          )
+        : Padding(
+            padding: const EdgeInsets.symmetric(
+              horizontal: AppSpacing.space2,
+              vertical: AppSpacing.space05,
+            ),
+            child: DefaultTextStyle(
+              style: AppTypography.bodySm(context).copyWith(color: foreground),
+              child: IconTheme(
+                data: IconThemeData(size: 14, color: colors.iconMuted),
+                child: widget.child,
+              ),
+            ),
+          );
+    final Widget constrainedBody = widget.maxWidth == null ? body : Flexible(child: body);
 
     return UnconstrainedBox(
       constrainedAxis: Axis.vertical,
       alignment: AlignmentDirectional.centerStart,
       clipBehavior: Clip.none,
-      child: Opacity(
-        opacity: _isDisabled ? 0.6 : 1,
-        child: DecoratedBox(
-          decoration: BoxDecoration(
-            color: background,
-            borderRadius: BorderRadius.circular(AppRadius.sm),
-            border: Border.all(color: borderColor),
-          ),
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              if (widget.selectable)
-                _ChipBody(
-                  hovered: _bodyHovered,
-                  selected: widget.selected,
-                  disabled: _isDisabled,
-                  foreground: foreground,
-                  hoverColor: colors.surfaceHover,
-                  onHoverChanged: (hovered) => setState(() => _bodyHovered = hovered),
-                  onPressed: _handleBodyPress,
-                  selectedSemantics: widget.selected,
-                  child: widget.child,
-                )
-              else
-                Padding(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: AppSpacing.space2,
-                    vertical: AppSpacing.space05,
+      child: ConstrainedBox(
+        constraints: widget.maxWidth == null
+            ? const BoxConstraints()
+            : BoxConstraints(maxWidth: widget.maxWidth!),
+        child: Opacity(
+          opacity: _isDisabled ? 0.6 : 1,
+          child: DecoratedBox(
+            decoration: BoxDecoration(
+              color: background,
+              borderRadius: BorderRadius.circular(AppRadius.sm),
+              border: Border.all(color: borderColor),
+            ),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                constrainedBody,
+                if (widget.removable)
+                  _ChipRemoveButton(
+                    hovered: _removeHovered,
+                    disabled: _isDisabled,
+                    semanticsLabel: _removeSemanticsLabel,
+                    colors: colors,
+                    onHoverChanged: (hovered) => setState(() => _removeHovered = hovered),
+                    onPressed: _handleRemove,
                   ),
-                  child: DefaultTextStyle(
-                    style: AppTypography.bodySm(context).copyWith(color: foreground),
-                    child: IconTheme(
-                      data: IconThemeData(size: 14, color: colors.iconMuted),
-                      child: widget.child,
-                    ),
-                  ),
-                ),
-              if (widget.removable)
-                _ChipRemoveButton(
-                  hovered: _removeHovered,
-                  disabled: _isDisabled,
-                  semanticsLabel: _removeSemanticsLabel,
-                  colors: colors,
-                  onHoverChanged: (hovered) => setState(() => _removeHovered = hovered),
-                  onPressed: _handleRemove,
-                ),
-            ],
+              ],
+            ),
           ),
         ),
       ),

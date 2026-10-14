@@ -64,11 +64,12 @@ class _AppointmentDetailStatusActionsState
   );
 
   AppointmentInProgressBlockedPredicate get _inProgressBlocked =>
-      (item, siblings) => AppointmentQueueStartDoctor.isForwardInProgressBlocked(
-        item: item,
-        siblingAppointments: siblings,
-        shiftLookup: widget.shiftLookup,
-      );
+      (item, siblings) =>
+          AppointmentQueueStartDoctor.isForwardInProgressBlocked(
+            item: item,
+            siblingAppointments: siblings,
+            shiftLookup: widget.shiftLookup,
+          );
 
   AppointmentStatus? get _forwardTarget => forwardStatusTargetFor(
     _listItem,
@@ -316,15 +317,16 @@ class _AppointmentDetailStatusActionsState
           'This will undo the last status change for ${detail.patientName}.',
       size: AppDialogSize.sm,
       child: Builder(
-        builder: (dialogContext) => Row(
-          mainAxisAlignment: MainAxisAlignment.end,
+        builder: (dialogContext) => Wrap(
+          alignment: WrapAlignment.end,
+          spacing: AppSpacing.space2,
+          runSpacing: AppSpacing.space2,
           children: [
             AppButton(
               variant: AppButtonVariant.secondary,
               onPressed: () => Navigator.of(dialogContext).pop(false),
               child: const Text('Keep current status'),
             ),
-            const SizedBox(width: AppSpacing.space2),
             AppButton(
               variant: AppButtonVariant.primary,
               onPressed: () => Navigator.of(dialogContext).pop(true),
@@ -450,15 +452,16 @@ class _AppointmentDetailStatusActionsState
           'Record that ${detail.patientName} did not arrive for this visit.',
       size: AppDialogSize.sm,
       child: Builder(
-        builder: (dialogContext) => Row(
-          mainAxisAlignment: MainAxisAlignment.end,
+        builder: (dialogContext) => Wrap(
+          alignment: WrapAlignment.end,
+          spacing: AppSpacing.space2,
+          runSpacing: AppSpacing.space2,
           children: [
             AppButton(
               variant: AppButtonVariant.secondary,
               onPressed: () => Navigator.of(dialogContext).pop(false),
               child: const Text('Keep appointment'),
             ),
-            const SizedBox(width: AppSpacing.space2),
             AppButton(
               variant: AppButtonVariant.danger,
               onPressed: () => Navigator.of(dialogContext).pop(true),

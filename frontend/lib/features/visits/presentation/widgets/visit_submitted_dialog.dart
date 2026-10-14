@@ -137,7 +137,10 @@ class _VisitSubmittedDialogFooter extends StatelessWidget {
   Widget build(BuildContext context) {
     return LayoutBuilder(
       builder: (context, constraints) {
-        final isWide = constraints.maxWidth >= 420;
+        // The two labelled actions need more than the dialog's normal 528 px
+        // inner width once their icons, button padding, and spacing are counted.
+        // Stack them until both buttons can fit without a RenderFlex overflow.
+        final isWide = constraints.maxWidth >= 560;
         final viewAppointment = AppButton(
           variant: AppButtonVariant.secondary,
           leadingIcon: const Icon(Icons.event_note_outlined, size: 16),

@@ -72,6 +72,7 @@ const ignorableExtensions = {
 /// Relative prefixes under frontend/ excluded from coverage discovery.
 const coverageExcludedPrefixes = [
   'build/',
+  'coverage/',
   '.dart_tool/',
   'tool/',
   'test-results/',
@@ -90,6 +91,7 @@ const coverageExcludedExact = {
   'l10n.yaml',
   'pubspec.yaml',
   'README.md',
+  'run_campaigns.py',
   '.gitignore',
   '.metadata',
   '.flutter-plugins-dependencies',

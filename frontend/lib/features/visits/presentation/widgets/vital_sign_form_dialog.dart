@@ -194,15 +194,16 @@ class _VitalSignFormDialogState extends State<VitalSignFormDialog> {
           ),
         ),
         const SizedBox(height: AppSpacing.space5),
-        Row(
-          mainAxisAlignment: MainAxisAlignment.end,
+        Wrap(
+          alignment: WrapAlignment.end,
+          spacing: AppSpacing.space2,
+          runSpacing: AppSpacing.space2,
           children: [
             AppButton(
               variant: AppButtonVariant.secondary,
               onPressed: () => Navigator.of(context).pop(),
               child: const Text('Cancel'),
             ),
-            const SizedBox(width: AppSpacing.space2),
             AppButton(
               leadingIcon: const Icon(Icons.monitor_heart_outlined, size: 16),
               onPressed: _submit,

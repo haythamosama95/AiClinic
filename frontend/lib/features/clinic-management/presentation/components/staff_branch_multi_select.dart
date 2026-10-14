@@ -249,8 +249,13 @@ class _StaffBranchMultiSelectState extends State<StaffBranchMultiSelect> {
                         AppChip(
                           removable: !widget.disabled,
                           disabled: widget.disabled,
+                          maxWidth: 240,
                           onRemove: widget.disabled ? null : () => _remove(item.id),
-                          child: Text(item.label),
+                          child: Text(
+                            item.label,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                          ),
                         ),
                       if (_showQueryField) SizedBox(width: 72, child: field),
                     ],

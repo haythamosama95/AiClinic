@@ -35,7 +35,14 @@ class AppFormField extends StatelessWidget {
       children: [
         Row(
           children: [
-            Text(label, style: AppTypography.title(context)),
+            Flexible(
+              child: Text(
+                label,
+                style: AppTypography.title(context),
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
+              ),
+            ),
             if (requiredMark) ...[
               const SizedBox(width: 2),
               Text('*', style: AppTypography.bodyStrong(context).copyWith(color: colors.statusDangerFg)),
