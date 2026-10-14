@@ -692,7 +692,7 @@ describe("retention_expiry_ephemeral", () => {
       idempotencyKey: "idem-ephemeral-test-2",
       nowMs: admittedAt + 1000,
     });
-    expect(replayBefore.outcome).toBe("admitted");
+    expect(replayBefore.outcome).toBe("replay");
 
     const afterExpiry = await rpcAdmission(FIXTURE_INSTALLATION_A, {
       ...base,
@@ -706,7 +706,7 @@ describe("retention_expiry_ephemeral", () => {
       idempotencyKey: "idem-ephemeral-test-reuse",
       nowMs: admittedAt + EPHEMERAL_HORIZON_MS + 1,
     });
-    expect(jtiReuse.outcome).toBe("admitted");
+    expect(jtiReuse.outcome).toBe("replay");
 
     const d1CountBefore = await env.DB.prepare(
       "SELECT COUNT(*) AS c FROM ai_request",

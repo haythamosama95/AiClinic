@@ -1188,7 +1188,7 @@ describe("admission_rejection_counted_not_journaled", () => {
     expect(totalRejected).toBeGreaterThanOrEqual(1);
   });
 
-  it("replays the prior DO admission for the same jti without an ai_request row", async () => {
+  it("rejects a repeated jti as replay without an ai_request row", async () => {
     const admission = await loadAdmissionModule();
     const installationId = freshInstallationId();
     const { cache, reader } = await seedInstallationAndEntitlement(installationId);
@@ -1211,8 +1211,10 @@ describe("admission_rejection_counted_not_journaled", () => {
       { DB: env.DB, DO: env.DO },
       { now: FIXTURE_NOW_MS, nowMs: FIXTURE_NOW_MS },
     );
-    assertAdmitted(replay);
-    expect(replay.requestId).toBe(first.requestId);
+    expect(replay).toMatchObject({
+      ok: false,
+      code: "unauthenticated",
+    });
     expect(await readAiRequestCount()).toBe(aiRequestsBefore);
   });
 

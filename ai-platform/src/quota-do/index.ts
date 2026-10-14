@@ -1142,12 +1142,12 @@ function admitOnHotRow(
   let hot = parseHotRow(hotRows[0]!);
   sweepStoredAnswers(hot, now);
 
+  if (hot.replay[request.jti]) {
+    return { kind: "admission", outcome: "replay" };
+  }
   const idempotencyEntry = hot.idempotency[request.idempotencyKey];
   if (idempotencyEntry) {
     return idempotencyEntry.answer;
-  }
-  if (hot.replay[request.jti]) {
-    return { kind: "admission", outcome: "replay" };
   }
 
   const nowIso =
