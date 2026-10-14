@@ -1,0 +1,62 @@
+name: Compare campaign runs
+
+on:
+  workflow_dispatch:
+    inputs:
+      run_a:
+        description: "First GitHub Actions run ID"
+        required: true
+        type: string
+      run_b:
+        description: "Second GitHub Actions run ID"
+        required: true
+        type: string
+      area:
+        description: "Campaign area to compare (leave empty for all matching areas)"
+        required: false
+        default: ""
+        type: string
+
+permissions:
+  actions: read
+  contents: read
+
+jobs:
+  compare:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Download run artifacts
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RUN_A: ${{ inputs.run_a }}
+          RUN_B: ${{ inputs.run_b }}
+        run: |
+          set -euo pipefail
+          for run_id in "$RUN_A" "$RUN_B"; do
+            if [[ ! "$run_id" =~ ^[0-9]+$ ]]; then
+              echo "Run IDs must be numeric." >&2
+              exit 2
+            fi
+            gh run download "$run_id" --repo "$GITHUB_REPOSITORY" --dir "compare-input/run-$run_id"
+          done
+
+      - name: Compare campaign stats
+        env:
+          RUN_A: ${{ inputs.run_a }}
+          RUN_B: ${{ inputs.run_b }}
+          AREA: ${{ inputs.area }}
+        run: |
+          args=(
+            --run-a "compare-input/run-${RUN_A}"
+            --run-b "compare-input/run-${RUN_B}"
+            --run-a-id "$RUN_A"
+            --run-b-id "$RUN_B"
+            --github-summary
+          )
+          if [[ -n "$AREA" ]]; then
+            args+=(--area "$AREA")
+          fi
+          python3 test/compare_campaign_runs.py "${args[@]}"
