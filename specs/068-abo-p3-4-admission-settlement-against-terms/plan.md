@@ -59,7 +59,7 @@ Re-run of 02 §7 against this unit and `.specify/memory/constitution.md` (rule S
 - [x] Security remains authenticated, tenant-scoped, branch-scoped, permission-gated,
       auditable, and soft-delete-preserving
 
-  `POST /v1/requests` and `GET /v1/capabilities` still require the issuer token (spec §4.1). A paid grant still enters through the consumed `grant` method. Denial paths write nothing unless step 2 or step 3 changed state. Replay returns the stored answer and does not write. Entitlement rows stay until P3.10. No hard delete of ledger or event rows.
+  `POST /v1/requests` and `GET /v1/capabilities` still require the issuer token (spec §4.1). A paid grant still enters through the consumed `grant` method. Denial paths write nothing unless step 2 or step 3 changed state. Repeated-JTI rejection does not write; an idempotency replay with a fresh JTI records that token in the ephemeral replay map, without another quota admission or journal insert. Entitlement rows stay until P3.10. No hard delete of ledger or event rows.
 
 - [x] AI actions remain human-approved, have no direct database/backend access, and the
       feature still works in a degraded manual mode when AI is unavailable
@@ -113,7 +113,7 @@ Earlier suites and `npm test` stay out of this command (rule S8).
 | E2E-P3.4-08 | `coverClinic()` → `POST`s that cross 75% and 90% → one `band_crossed` each → a later `POST` emits nothing |
 | E2E-P3.4-09 | `coverClinic()` → empty provider chain → `creditUsage` releases the reservation |
 | E2E-P3.4-10 | `coverClinic()` → `POST` left unsettled → `setTestClock` past 15 minutes → next `POST` step 2 → `runDurableObjectAlarm` → late credit |
-| E2E-P3.4-11 | `POST /v1/requests` twice with the same `x-idempotency-key` or the same token `jti` → step 1 |
+| E2E-P3.4-11 | `POST /v1/requests`: same key and canonical request with a fresh `jti` → stored answer; same `jti` even with a durable journal row → 401 `unauthenticated`; changed scope or request → 409 `idempotency_conflict` |
 | E2E-P3.4-12 | `POST /v1/requests` while the DO fetch returns `result` `rejected` → `coverage_unknown` |
 
 ### Source Code (repository root)
@@ -243,7 +243,7 @@ Titles start with the E2E id (rule V3). The file is `ai-platform/test/system/adm
 | E2E-P3.4-08 | H-AP | Title `E2E-P3.4-08 Crossing 75 percent and 90 percent emits one band event each`. `coverClinic()` with allowance 10. After the alarm, one `coverage_event` of kind `band_crossed` whose snapshot `term.band` is `75`, and one whose band is `90`. A further `POST` still inside a crossed band adds no second event for that band. |
 | E2E-P3.4-09 | H-AP | Title `E2E-P3.4-09 A provider call that consumes nothing releases the reservation`. `coverClinic()`, then `publishPolicy` / `promote` of `fakePolicyDocument` with an empty target list. `POST` admits, the provider chain is empty, and settlement releases. `hot.used` is unchanged and the reservation is gone. |
 | E2E-P3.4-10 | H-AP | Title `E2E-P3.4-10 A reservation older than 15 minutes is charged once`. `coverClinic()`, then `POST` whose first `kind: "credit"` is swallowed by a test wrapper on `GatewayObject.fetch` so the reservation stays. `setTestClock` more than 15 minutes later. The next `POST` charges it. `runDurableObjectAlarm` leaves one `usage_event` for that `request_id`. Replaying the swallowed credit changes neither `hot` nor that row. |
-| E2E-P3.4-11 | H-AP | Title `E2E-P3.4-11 A replayed jti or idempotency key returns the stored answer`. Two `POST`s with the same `x-idempotency-key`, and two with the same bearer token. The second response matches the stored answer. `hot` SQL is unchanged across the replay. |
+| E2E-P3.4-11 | H-AP | Title `E2E-P3.4-11 A replayed jti or idempotency key returns the stored answer`. Reuse with the same `jti` returns 401 even when D1 has the answer; a fresh token and matching scope/fingerprint returns the stored state; a changed request or scope returns HTTP 409 `idempotency_conflict`. A fresh JTI replay is recorded in the replay horizon. |
 | E2E-P3.4-12 | H-AP | Title `E2E-P3.4-12 A DO version rejection is coverage_unknown`. For this test, `GatewayObject.fetch` returns the P3.3 refusal `{result: "rejected", code: "contract_version_unsupported"}` for `kind` `admission` and does not touch storage. `POST /v1/requests` is 503 `coverage_unknown` with `retry_after`. |
 
 ## Sequencing
@@ -264,7 +264,7 @@ Tests are written and observed failing before term admission exists. Each step i
 12. Add E2E-P3.4-12. The run fails because a DO `rejected` version answer is not `coverage_unknown`.
 13. Add `coverClinic()` in `test/system/harness.ts` and switch `setupPromotedFakePolicy` plus the eight system suites in Files off `entitleScenario`. `coverClinic()` calls consumed `publishPlanVersion`, `registerServiceKey`, and `grant`, then `runDurableObjectAlarm`. The twelve E2E tests still fail on admission.
 14. Add `migrations/20261006120000_usage_term.sql` as `data-model.md` describes. Replace `schema.snap.sql` with the post-migration dump. Append that SQL after `20261003140000_plan_version_paid_grant_coverage.sql` in every file listed for FR-011. The twelve E2E tests still fail.
-15. In `admissionRPC`, step 1 reads `hot.replay` and `hot.idempotency` and returns the stored answer without writing. Sweep those maps on each write that does happen, keeping entries for at least `EPHEMERAL_HORIZON_MS`. Pass `now` from `clockNowMs`. E2E-P3.4-11 still fails until the HTTP path stores the answer.
+15. In `admissionRPC`, step 1 reads `hot.replay` to reject a repeated `jti` as `replay` (clinic HTTP 401 `unauthenticated`), then checks that an idempotency binding matches before returning a stored answer. Record a fresh JTI used for an idempotency retry. Durable D1 journal answers pass through the same DO check. Sweep replay and idempotency maps on writes, keeping entries for at least `EPHEMERAL_HORIZON_MS`. Pass `now` from `clockNowMs`.
 16. Step 2 charges reservations whose `admitted_at` is more than 15 minutes before `now`. Append outbox kind `usage_adjustment` with the payload in `data-model.md`. Do not insert `usage_event` inside the DO.
 17. In `shipCoverageOutboxAlarm`, ship `usage_adjustment` with `INSERT OR IGNORE` on `usage_event.request_id`, then delete the outbox row. Leave `coverage_event`, `grant_ledger`, and `alert` as they are. E2E-P3.4-10 still fails until the next admission charges.
 18. Step 4 refuses in the order in `contracts/clinic-denial-codes.md`. A refusal writes nothing unless step 2 changed state. Step 3 runs and applies no expiry or grace transition. `hot.suspended` maps to `suspended`; this unit does not set the flag. Capabilities and `concurrency_limit` come from `term.plan_snapshot`.

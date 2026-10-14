@@ -25,6 +25,7 @@ CREATE TABLE ai_request (
   capability_version TEXT NOT NULL,
   prompt_artifact_hash TEXT NOT NULL,
   idempotency_key TEXT NOT NULL,
+  request_fingerprint TEXT,
   state TEXT NOT NULL,
   created_at TEXT NOT NULL,
   updated_at TEXT NOT NULL,

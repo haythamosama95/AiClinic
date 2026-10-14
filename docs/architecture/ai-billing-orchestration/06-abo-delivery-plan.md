@@ -559,7 +559,7 @@ credit (`creditUsage`), entitlement, pipeline, capability, journal, rollup, dash
   - E2E-P3.4-08 Crossing 75 % and 90 % emits one band event each; no repeats [A29 platform half, FR-34].
   - E2E-P3.4-09 Provider consumed nothing → reservation released, `used` unchanged.
   - E2E-P3.4-10 Reservation unsettled > 15 min → charged at the next admission; the late settlement changes nothing; one `usage_event` (request_id dedupe) [NFR-06].
-  - E2E-P3.4-11 Replayed `jti`/idempotency key → stored answer; no DO write.
+  - E2E-P3.4-11 Repeated `jti` → HTTP 401 `unauthenticated`, even when D1 has the answer; matching fresh-`jti` retry → stored answer and records the new `jti`; changed actor, branch, capability, or canonical request → HTTP 409 `idempotency_conflict`.
   - E2E-P3.4-12 DO answers `rejected` (version) → client gets 503 `coverage_unknown`.
 
 ### P3.5 — Term boundaries, grace and renewal

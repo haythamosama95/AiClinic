@@ -86,6 +86,7 @@ import transferMigrationSql from "../../migrations/20261006150000_transfer.sql?r
 import fallbackAdmissionFeedMigrationSql from "../../migrations/20261006160000_fallback_admission_feed.sql?raw";
 import dropInvoicingSql from "../../migrations/20261006170000_drop_invoicing.sql?raw";
 import dropPlanEntitlementSql from "../../migrations/20261006170100_drop_plan_entitlement.sql?raw";
+import idempotencyFingerprintSql from "../../migrations/20261014120000_ai_request_idempotency_fingerprint.sql?raw";
 import { applySqlStatements } from "../split-sql-statements";
 import {
   createCapabilityRegistry,
@@ -273,6 +274,7 @@ const MIGRATION_SQL = [
   fallbackAdmissionFeedMigrationSql,
   dropInvoicingSql,
   dropPlanEntitlementSql,
+  idempotencyFingerprintSql,
 ];
 
 const CATALOGUE_PLAN_NAME = "standard";

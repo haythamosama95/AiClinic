@@ -883,39 +883,75 @@ describe("Stage 09 — capability, context, preflight (S09-044…S09-065)", () =
     await assertNoGuardWrites();
   });
 
-  it("S09-065 — jti replay returns the stored admission answer", async () => {
+  it("S09-065 — repeated jti is unauthenticated; fresh-token idempotency retry returns the stored answer", async () => {
     const scenario = await provisionHappyPath();
     const token = await mintAat(scenario, { claims: { jti: S09_065_JTI } });
+    const requestBody = happyVisitBody(scenario);
 
-    const first = await postH0(scenario, token, { idempotencyKey: "jti-a" });
+    const first = await postH0(scenario, token, {
+      idempotencyKey: "jti-a",
+      body: requestBody,
+    });
     const accepted = assertAcceptedSse(first, { traceId: TRACE_ID });
     const firstRef = String(accepted.data.request_reference);
     const firstRow = await getAiRequest(firstRef);
     expect(firstRow).not.toBeNull();
     expect(await count("ai_request")).toBe(1);
 
-    const second = await postH0(scenario, token, { idempotencyKey: "jti-b" });
-    expect(second.status).toBe(first.status);
-    expect(second.headers.get("content-type")).toBe(
+    const second = await postH0(scenario, token, {
+      idempotencyKey: "jti-b",
+      body: requestBody,
+    });
+    assertJsonTaxonomy(second, 401, "unauthenticated", true);
+    expect(second.body?.trace_id).toBe(TRACE_ID);
+    expect(await count("ai_request")).toBe(1);
+
+    const retry = await postH0(scenario, await mintAat(scenario), {
+      idempotencyKey: "jti-a",
+      body: requestBody,
+    });
+    expect(retry.status).toBe(first.status);
+    expect(retry.headers.get("content-type")).toBe(
       first.headers.get("content-type"),
     );
-    assertSseSequence(second.events, ["accepted", "completed"], "exact");
-    expect(second.events[0]?.data.request_reference).toBe(firstRef);
-    expect(second.events[0]?.data.trace_id).toBe(TRACE_ID);
-    expect(second.events.filter((event) => event.event === "completed")).toEqual(
+    assertSseSequence(retry.events, ["accepted", "completed"], "exact");
+    expect(retry.events[0]?.data.request_reference).toBe(firstRef);
+    expect(retry.events[0]?.data.trace_id).toBe(TRACE_ID);
+    expect(retry.events.filter((event) => event.event === "completed")).toEqual(
       first.events.filter((event) => event.event === "completed"),
     );
-    expect(second.events.some((event) => event.event === "text_delta")).toBe(
+    expect(retry.events.some((event) => event.event === "text_delta")).toBe(
       false,
     );
+
+    const replaySameTokenAndKey = await postH0(scenario, token, {
+      idempotencyKey: "jti-a",
+      body: requestBody,
+    });
+    assertJsonTaxonomy(replaySameTokenAndKey, 401, "unauthenticated", true);
+
+    const conflictToken = await mintAat(scenario);
+    const changedRequestBody = {
+      ...requestBody,
+      user_intent: "Prepare a different chart summary.",
+    };
+    const changedRequest = await postH0(scenario, conflictToken, {
+      idempotencyKey: "jti-a",
+      body: changedRequestBody,
+    });
+    assertJsonTaxonomy(changedRequest, 409, "idempotency_conflict", false);
+
+    const conflictTokenReplay = await postH0(scenario, conflictToken, {
+      idempotencyKey: "jti-conflict-replay",
+      body: changedRequestBody,
+    });
+    assertJsonTaxonomy(conflictTokenReplay, 401, "unauthenticated", true);
 
     expect(await count("ai_request")).toBe(1);
     const after = await getAiRequest(firstRef);
     expect(after).not.toBeNull();
-    // Catalog S09-065: first journal row "untouched". Code keeps settling
-    // request 1 after accept (payload_pointer, routing_decision, state,
-    // timestamps) via persistPostResponseDetail / journalTransition — not a
-    // second INSERT. Replay must not rewrite identity columns.
+    // Settlement may update request 1 after accept. Neither JTI rejection nor
+    // idempotency retry may insert another row or rewrite its identity.
     const settlementKeys = new Set([
       "payload_pointer",
       "routing_decision",

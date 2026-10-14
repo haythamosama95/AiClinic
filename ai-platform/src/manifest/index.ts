@@ -649,7 +649,12 @@ export function load(json: Record<string, unknown>): Manifest {
 export async function hashManifest(
   json: Record<string, unknown>,
 ): Promise<string> {
-  const encoded = new TextEncoder().encode(canonicalStringify(json));
+  return hashCanonicalJson(json);
+}
+
+/** Hash canonical JSON for stable request idempotency fingerprints. */
+export async function hashCanonicalJson(value: unknown): Promise<string> {
+  const encoded = new TextEncoder().encode(canonicalStringify(value));
   const digest = await crypto.subtle.digest("SHA-256", encoded);
   return bufferToHex(digest);
 }

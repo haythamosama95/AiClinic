@@ -105,6 +105,8 @@ export interface IdempotencyEntry extends EphemeralEntry {
   state: IdempotencyRequestState;
   requestId: string;
   terminalErrorCode?: TaxonomyCode;
+  binding?: AdmissionIdempotencyBinding;
+  traceId?: string;
 }
 
 export interface EntitlementSnapshot {
@@ -160,6 +162,17 @@ export interface AdmissionRequest {
   nowIso?: string;
   durationScale?: DurationScale;
   requestId?: string;
+  /** Identity and canonical request fields bound to this idempotency key. */
+  idempotencyBinding?: {
+    actorId: string;
+    branchId: string;
+    capabilityId: string;
+    requestFingerprint: string;
+  };
+  /** A durable D1 answer; the DO must still check JTI before returning it. */
+  journaledAnswer?: IdempotencyPriorState;
+  /** D1 found this key but its stored scope or fingerprint does not match. */
+  journaledConflict?: boolean;
 }
 
 export interface SettleFallbackRequest {
@@ -221,6 +234,11 @@ export interface AdmissionIdempotent {
   priorState: IdempotencyPriorState;
 }
 
+export interface AdmissionIdempotencyConflict {
+  kind: "admission";
+  outcome: "idempotency_conflict";
+}
+
 export interface AdmissionQuotaExhausted {
   kind: "admission";
   outcome: "quota_exhausted";
@@ -237,6 +255,7 @@ export type AdmissionResponse =
   | AdmissionTermRefusal
   | AdmissionReplay
   | AdmissionIdempotent
+  | AdmissionIdempotencyConflict
   | AdmissionQuotaExhausted
   | AdmissionConcurrencyExhausted;
 
@@ -494,8 +513,31 @@ async function admissionOnLegacyState(
     return { kind: "admission", outcome: "replay" };
   }
 
+  if (request.journaledConflict) {
+    state.jtiReplay[request.jti] = {
+      expiresAt: timestamp + EPHEMERAL_HORIZON_MS,
+    };
+    await storage.put(STATE_KEY, state);
+    return { kind: "admission", outcome: "idempotency_conflict" };
+  }
+
   const existingIdempotency = state.idempotency[request.idempotencyKey];
   if (existingIdempotency) {
+    if (
+      !sameIdempotencyBinding(
+        existingIdempotency.binding,
+        request.idempotencyBinding,
+      )
+    ) {
+      state.jtiReplay[request.jti] = {
+        expiresAt: timestamp + EPHEMERAL_HORIZON_MS,
+      };
+      await storage.put(STATE_KEY, state);
+      return { kind: "admission", outcome: "idempotency_conflict" };
+    }
+    const expiresAt = timestamp + EPHEMERAL_HORIZON_MS;
+    state.jtiReplay[request.jti] = { expiresAt };
+    existingIdempotency.expiresAt = expiresAt;
     logger.info("Admission idempotent replay", {
       installation_id: request.installationId,
       request_id: existingIdempotency.requestId,
@@ -509,10 +551,39 @@ async function admissionOnLegacyState(
         requestReference: existingIdempotency.requestReference,
         state: existingIdempotency.state,
         requestId: existingIdempotency.requestId,
+        ...(existingIdempotency.traceId !== undefined
+          ? { traceId: existingIdempotency.traceId }
+          : {}),
         ...(existingIdempotency.terminalErrorCode !== undefined
           ? { terminalErrorCode: existingIdempotency.terminalErrorCode }
           : {}),
       },
+    };
+  }
+
+  if (request.journaledAnswer !== undefined) {
+    const expiresAt = timestamp + EPHEMERAL_HORIZON_MS;
+    state.jtiReplay[request.jti] = { expiresAt };
+    state.idempotency[request.idempotencyKey] = {
+      expiresAt,
+      requestReference: request.journaledAnswer.requestReference,
+      state: request.journaledAnswer.state,
+      requestId: request.journaledAnswer.requestId,
+      ...(request.journaledAnswer.traceId !== undefined
+        ? { traceId: request.journaledAnswer.traceId }
+        : {}),
+      ...(request.journaledAnswer.terminalErrorCode !== undefined
+        ? { terminalErrorCode: request.journaledAnswer.terminalErrorCode }
+        : {}),
+      ...(request.idempotencyBinding !== undefined
+        ? { binding: request.idempotencyBinding }
+        : {}),
+    };
+    await storage.put(STATE_KEY, state);
+    return {
+      kind: "admission",
+      outcome: "idempotent",
+      priorState: request.journaledAnswer,
     };
   }
 
@@ -550,6 +621,9 @@ async function admissionOnLegacyState(
     requestReference: request.requestReference,
     state: "admitted",
     requestId,
+    ...(request.idempotencyBinding !== undefined
+      ? { binding: request.idempotencyBinding }
+      : {}),
   };
   state.admittedRequests[requestId] = {
     requestReference: request.requestReference,
@@ -722,9 +796,14 @@ type ReservationRow = {
   request_reference?: string;
 };
 
+type AdmissionIdempotencyBinding = NonNullable<
+  AdmissionRequest["idempotencyBinding"]
+>;
+
 type StoredAnswerEntry = {
   expiresAt: number;
   answer: AdmissionResponse;
+  binding?: AdmissionIdempotencyBinding;
 };
 
 type StoredReplayEntry = {
@@ -811,16 +890,36 @@ function sweepStoredAnswers(
   }
 }
 
+function sameIdempotencyBinding(
+  left: AdmissionIdempotencyBinding | undefined,
+  right: AdmissionIdempotencyBinding | undefined,
+): boolean {
+  if (left === undefined || right === undefined) {
+    return left === right;
+  }
+  return (
+    left.actorId === right.actorId &&
+    left.branchId === right.branchId &&
+    left.capabilityId === right.capabilityId &&
+    left.requestFingerprint === right.requestFingerprint
+  );
+}
+
 function storeAnswer(
   hot: ParsedHot,
-  jti: string,
-  idempotencyKey: string,
+  request: AdmissionRequest,
   answer: AdmissionResponse,
   now: number,
 ): void {
   const expiresAt = now + EPHEMERAL_HORIZON_MS;
-  hot.replay[jti] = { expiresAt, answer };
-  hot.idempotency[idempotencyKey] = { expiresAt, answer };
+  hot.replay[request.jti] = { expiresAt, answer };
+  hot.idempotency[request.idempotencyKey] = {
+    expiresAt,
+    answer,
+    ...(request.idempotencyBinding !== undefined
+      ? { binding: request.idempotencyBinding }
+      : {}),
+  };
 }
 
 function returnStoredAdmission(
@@ -830,7 +929,7 @@ function returnStoredAdmission(
   answer: AdmissionResponse,
   now: number,
 ): AdmissionResponse {
-  storeAnswer(hot, request.jti, request.idempotencyKey, answer, now);
+  storeAnswer(hot, request, answer, now);
   recordHotWrites(storage, request.requestId, () =>
     persistParsedHot(storage, hot),
   );
@@ -1145,9 +1244,52 @@ function admitOnHotRow(
   if (hot.replay[request.jti]) {
     return { kind: "admission", outcome: "replay" };
   }
+  if (request.journaledConflict) {
+    hot.replay[request.jti] = {
+      expiresAt: now + EPHEMERAL_HORIZON_MS,
+    };
+    recordHotWrites(storage, request.requestId, () =>
+      persistParsedHot(storage, hot),
+    );
+    return { kind: "admission", outcome: "idempotency_conflict" };
+  }
   const idempotencyEntry = hot.idempotency[request.idempotencyKey];
   if (idempotencyEntry) {
+    if (
+      !sameIdempotencyBinding(
+        idempotencyEntry.binding,
+        request.idempotencyBinding,
+      )
+    ) {
+      hot.replay[request.jti] = {
+        expiresAt: now + EPHEMERAL_HORIZON_MS,
+      };
+      recordHotWrites(storage, request.requestId, () =>
+        persistParsedHot(storage, hot),
+      );
+      return { kind: "admission", outcome: "idempotency_conflict" };
+    }
+    hot.replay[request.jti] = {
+      expiresAt: now + EPHEMERAL_HORIZON_MS,
+      answer: idempotencyEntry.answer,
+    };
+    recordHotWrites(storage, request.requestId, () =>
+      persistParsedHot(storage, hot),
+    );
     return idempotencyEntry.answer;
+  }
+
+  if (request.journaledAnswer !== undefined) {
+    const answer: AdmissionResponse = {
+      kind: "admission",
+      outcome: "idempotent",
+      priorState: request.journaledAnswer,
+    };
+    storeAnswer(hot, request, answer, now);
+    recordHotWrites(storage, request.requestId, () =>
+      persistParsedHot(storage, hot),
+    );
+    return answer;
   }
 
   const nowIso =
@@ -1409,7 +1551,7 @@ function admitOnHotRow(
       : {}),
   };
 
-  storeAnswer(hot, request.jti, request.idempotencyKey, admittedAnswer, now);
+  storeAnswer(hot, request, admittedAnswer, now);
   recordHotWrites(storage, request.requestId ?? reservationId, () =>
     persistParsedHot(storage, hot),
   );

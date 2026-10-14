@@ -49,14 +49,25 @@ Keep `idx_usage_event_installation_id`. The unique index replaces the non-unique
 
 The journal insert is `INSERT OR IGNORE`.
 
-## 4. `usage_rollup`
+## 4. Durable request idempotency
+
+`ai_request.request_fingerprint` is a nullable SHA-256 digest added by the
+forward-only migration `20261014120000_ai_request_idempotency_fingerprint.sql`.
+New request rows store a canonical hash of the validated user intent, filtered
+context, transcript, conversation identifiers, and capability identity. A
+durable idempotency replay must match `installation_id`, `actor_id`,
+`branch_id`, `capability_id`, and this fingerprint. Existing rows remain null
+and are refused with `idempotency_conflict`, since their request body cannot be
+proven equivalent.
+
+## 5. `usage_rollup`
 
 Dimensions JSON is `{installation_id, term_id}`. The migration deletes existing rollup rows and replaces `idx_usage_rollup_period` with an index on `json_extract(dimensions, '$.term_id')`. `quota_weight` stays.
 
-## 5. `usage_adjustment`
+## 6. `usage_adjustment`
 
 Outbox row. `kind` is `usage_adjustment`. `payload` is `{request_id, installation_id, term_id, quota_weight, tokens, cost, recorded_at}`. Step 2 sets `tokens` and `cost` to 0 because the provider has not reported usage. The existing alarm inserts that payload into `usage_event` with `INSERT OR IGNORE` on `request_id`, then deletes the outbox row.
 
-## 6. Band event
+## 7. Band event
 
 Outbox `kind` `coverage_event`, payload `kind` `band_crossed`. The snapshot is the existing coverage snapshot. `term.band` is `75` or `90`. `buildCoverageSnapshot` sets `band` from `used / allowance`: `ok` below 0.75, `75` from 0.75 and below 0.90, `90` at or above 0.90, `exhausted` when the active term has ended `exhausted`. A fresh grant with `used` 0 stays `ok`.

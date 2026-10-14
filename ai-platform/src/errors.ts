@@ -13,6 +13,7 @@ export type TaxonomyCode =
   | "context_required"
   | "context_invalid"
   | "conversation_budget_exhausted"
+  | "idempotency_conflict"
   | "capability_unknown"
   | "capability_retired"
   | "capability_disabled"
@@ -113,6 +114,12 @@ const TAXONOMY: Record<TaxonomyCode, TaxonomyEntry> = {
     code: "conversation_budget_exhausted",
     httpStatus: 409,
     retryable: "No, within this conversation",
+    consumesQuota: "No",
+  },
+  idempotency_conflict: {
+    code: "idempotency_conflict",
+    httpStatus: 409,
+    retryable: "No",
     consumesQuota: "No",
   },
   capability_unknown: {

@@ -1313,9 +1313,8 @@ describe("Stage 09 — admission, journal, compose (S09-066…S09-085)", () => {
       expect(await getUsageEvents(String(row.request_id))).toEqual([]);
     }
 
-    // P3.4 stores replay answers in the hot-row table, not the legacy `inspect`
-    // state. Probe the supported admission RPC: the same JTI returns its
-    // stored answer within the 2 h horizon, then a fresh admission after it.
+    // Probe the supported admission RPC: a repeated JTI is rejected within
+    // the 2 h replay horizon, then expires in place and can be admitted again.
     const replayProbe = {
       kind: "admission",
       jti,
@@ -1332,9 +1331,10 @@ describe("Stage 09 — admission, journal, compose (S09-066…S09-085)", () => {
     );
     expect(beforeExpiry.status).toBe(200);
     expect(beforeExpiry.json).toMatchObject({
-      outcome: "admitted",
-      requestId: row?.request_id,
+      outcome: "replay",
     });
+    expect(beforeExpiry.json).not.toHaveProperty("requestId");
+    expect(await count("ai_request")).toBe(1);
 
     const expiredRequestId = crypto.randomUUID();
     const afterExpiry = await gatewayObjectJson(

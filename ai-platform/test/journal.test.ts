@@ -2,6 +2,7 @@ import { env } from "cloudflare:test";
 import { beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import migrationSql from "../migrations/20260731120000_platform_schema.sql?raw";
 import usageTermMigrationSql from "../migrations/20261006120000_usage_term.sql?raw";
+import idempotencyFingerprintMigrationSql from "../migrations/20261014120000_ai_request_idempotency_fingerprint.sql?raw";
 import type { CanonicalResult } from "../src/contracts/canonical";
 import type { Principal } from "../src/identity";
 import { load, type Manifest } from "../src/manifest";
@@ -567,6 +568,7 @@ function routingDecisionFixture(
 beforeAll(async () => {
   await applyPlatformSchema(env.DB, migrationSql);
   await applyPlatformSchema(env.DB, usageTermMigrationSql);
+  await applyPlatformSchema(env.DB, idempotencyFingerprintMigrationSql);
 });
 
 beforeEach(async () => {

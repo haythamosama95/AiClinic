@@ -313,7 +313,7 @@ describe("Stage 08 — guard mapping, SSE accept, disconnect, adapter contract (
     }
   });
 
-  it("S08-045 — quota_exhausted maps to 429 without retry_after", async () => {
+  it("S08-045 — allowance_exhausted maps to 403 without retry fields", async () => {
     const { scenario } = await entitledJourney({
       ...DEFAULT_ENTITLE_PAYLOAD,
       request_quota: 1,
@@ -336,10 +336,11 @@ describe("Stage 08 — guard mapping, SSE accept, disconnect, adapter contract (
       body: happyVisitBody(scenario),
     });
 
-    assertJsonTaxonomy(second, 429, "quota_exhausted", true);
+    // P3.4 replaces the period-quota denial with term allowance exhaustion
+    // (specs/068 FR-012 and contracts/clinic-denial-codes.md).
+    assertJsonTaxonomy(second, 403, "allowance_exhausted", false);
     expect(second.body).not.toHaveProperty("retry_after");
-    // Catalog omits period_reset; admission forwards entitlement period_end.
-    expect(second.body?.period_reset).toBe(DEFAULT_ENTITLE_PAYLOAD.period_end);
+    expect(second.body).not.toHaveProperty("period_reset");
   });
 
   it("S08-046 — omitted chief complaint is JSON context_required", async () => {

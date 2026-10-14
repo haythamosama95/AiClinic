@@ -44,6 +44,8 @@ export type RequestRowInput = {
   routingTier?: "standard" | "degraded";
   /** Composer's `promptVersion` — content hash of resolved artifact bytes. */
   promptArtifactHash?: string;
+  /** SHA-256 of validated user-visible request inputs, excluding transport IDs. */
+  requestFingerprint?: string;
 };
 
 export type AttemptInput = {
@@ -243,9 +245,10 @@ export async function createRequestRow(
         `INSERT INTO ai_request (
           request_id, request_reference, installation_id, actor_id, branch_id,
           capability_id, capability_version, prompt_artifact_hash, idempotency_key,
+          request_fingerprint,
           trace_id, state, created_at, updated_at, completed_at, terminal_error_code,
           payload_pointer, conversation_id, turn_ordinal, routing_tier
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, NULL, NULL, ?, ?, ?)`,
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, NULL, NULL, ?, ?, ?)`,
       )
       .bind(
         input.requestId,
@@ -258,6 +261,7 @@ export async function createRequestRow(
         input.promptArtifactHash ??
           String(input.manifest["Prompt binding"].systemInstructionArtifactRef),
         input.idempotencyKey,
+        input.requestFingerprint ?? null,
         input.traceId,
         "Accepted",
         now,

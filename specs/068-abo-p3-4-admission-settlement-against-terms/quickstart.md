@@ -45,5 +45,5 @@ Earlier platform suites and `npm test` / `npm run test:e2e` are out of scope for
 | E2E-P3.4-08 | `coverClinic()` → `POST`s that cross 75% and 90% → one `band_crossed` each → a later `POST` emits nothing |
 | E2E-P3.4-09 | `coverClinic()` → empty provider chain → `creditUsage` releases the reservation |
 | E2E-P3.4-10 | `coverClinic()` → `POST` left unsettled → `setTestClock` past 15 minutes → next `POST` step 2 → `runDurableObjectAlarm` → late credit |
-| E2E-P3.4-11 | `POST /v1/requests` twice with the same `x-idempotency-key` or the same token `jti` → step 1 |
+| E2E-P3.4-11 | `POST /v1/requests`: same key and canonical request with a fresh `jti` → stored answer; same `jti` even with a durable journal row → 401 `unauthenticated`; changed scope or request → 409 `idempotency_conflict` |
 | E2E-P3.4-12 | `POST /v1/requests` while the DO fetch returns `result` `rejected` → `coverage_unknown` |

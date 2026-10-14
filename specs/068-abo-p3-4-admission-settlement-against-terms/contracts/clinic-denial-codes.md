@@ -1,6 +1,6 @@
 # Contract: Clinic denial codes
 
-**Unit**: P3.4 · **Requirements**: FR-005, FR-006, FR-012
+**Unit**: P3.4 · **Requirements**: FR-005, FR-006, FR-012, FR-014
 
 These are the clinic codes for `POST /v1/requests` after this unit. `GET /v1/capabilities` reads `coverage_mirror` by `installation_id` and does not use the config-cache TTL.
 
@@ -14,6 +14,7 @@ These are the clinic codes for `POST /v1/requests` after this unit. `GET /v1/cap
 | `suspended` | 403 | — | `installation_suspended` |
 | `concurrency_limited` | 429 | `retry_after` | `quota_exhausted` for concurrency |
 | `coverage_unknown` | 503 | `retry_after` | a DO `result` `rejected` version answer |
+| `idempotency_conflict` | 409 | — | same idempotency key used with a different actor, branch, capability, or canonical request |
 | `rate_limited` | 429 | `retry_after`, unchanged | unchanged |
 
 `coverage_reason` is `none`, `expired`, `grace_exhausted`, `reversed`, `transferred`, or `transfer_pending`. An org that was never granted uses `none`.

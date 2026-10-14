@@ -71,6 +71,12 @@ const TAXONOMY_TABLE = [
     consumesQuota: "No",
   },
   {
+    code: "idempotency_conflict",
+    httpStatus: 409,
+    retryable: "No",
+    consumesQuota: "No",
+  },
+  {
     code: "capability_unknown",
     httpStatus: 404,
     retryable: "No",
@@ -127,7 +133,7 @@ const TAXONOMY_TABLE = [
 ] as const;
 
 describe.each(TAXONOMY_TABLE)(
-  "taxonomy per-code contract (T1–T19)",
+  "taxonomy per-code contract",
   ({ code, httpStatus, retryable, consumesQuota }) => {
     it(`${code} maps to HTTP ${httpStatus} with retryability "${retryable}" and quota "${consumesQuota}"`, () => {
       const entry = getTaxonomyEntry(code);

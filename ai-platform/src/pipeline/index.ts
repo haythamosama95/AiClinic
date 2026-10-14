@@ -31,7 +31,7 @@ import {
   type AttemptInput,
   type PostResponseInput,
 } from "../journal";
-import type { Manifest } from "../manifest";
+import { hashCanonicalJson, type Manifest } from "../manifest";
 import { ledgerUsageFromProvider } from "../pricing";
 import { FakeAdapter } from "../provider/fake";
 import {
@@ -459,6 +459,15 @@ export async function runGuard(
   }
   const filteredContext = contextResult.filteredContext as Record<string, unknown>;
   const validatedTranscript = contextResult.validatedTranscript;
+  const requestFingerprint = await hashCanonicalJson({
+    capabilityId: manifest.Identity.capabilityId,
+    capabilityVersion: manifest.Identity.version,
+    userIntent,
+    context: filteredContext,
+    transcript: validatedTranscript ?? null,
+    conversationId: conversationId ?? null,
+    turnOrdinal: turnOrdinal ?? null,
+  });
 
   // Stage 7 — cost pre-flight (include validated transcript so conversational growth is priced)
   const serializedInput = serializePreflightInput({
@@ -488,6 +497,7 @@ export async function runGuard(
       idempotencyKey: input.idempotencyKey,
       requestReference: input.requestReference,
       capabilityId: input.capabilityId,
+      requestFingerprint,
       quotaWeight: Number(manifest.Economics.quotaWeight) || 1,
       orgId: principal.organizationId,
       cache: input.cache,
@@ -581,6 +591,7 @@ export async function runGuard(
       turnOrdinal: turnOrdinal ?? null,
       routingTier,
       promptArtifactHash: input.resolvePromptVersion?.(manifest),
+      requestFingerprint,
     },
     bindings.DB,
     logger,

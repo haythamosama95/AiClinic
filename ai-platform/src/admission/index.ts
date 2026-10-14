@@ -35,6 +35,7 @@ export type AdmissionInput = {
   requestReference: string;
   capabilityId: string;
   quotaWeight: number;
+  requestFingerprint?: string;
   orgId?: string;
   cache: ConfigCache;
   reader: D1Reader;
@@ -89,6 +90,7 @@ type AdmissionFailure = {
     | "coverage_unknown"
     | "rate_limited"
     | "internal_error"
+    | "idempotency_conflict"
   >;
   retryAfter?: number;
   coverageReason?: CoverageLapseReason;
@@ -119,6 +121,10 @@ type JournaledRequestRow = {
   state: string;
   terminal_error_code: string | null;
   trace_id: string;
+  actor_id: string;
+  branch_id: string | null;
+  capability_id: string;
+  request_fingerprint: string | null;
 };
 
 type AdmissionDoTransportResult =
@@ -170,7 +176,8 @@ async function selectAiRequestByKey(
 ): Promise<JournaledRequestRow | null> {
   const row = await db
     .prepare(
-      `SELECT request_id, request_reference, state, terminal_error_code, trace_id
+      `SELECT request_id, request_reference, state, terminal_error_code, trace_id,
+              actor_id, branch_id, capability_id, request_fingerprint
        FROM ai_request
        WHERE installation_id = ? AND idempotency_key = ?
        ORDER BY created_at ASC
@@ -188,7 +195,8 @@ async function selectAiRequestById(
 ): Promise<JournaledRequestRow | null> {
   const row = await db
     .prepare(
-      `SELECT request_id, request_reference, state, terminal_error_code, trace_id
+      `SELECT request_id, request_reference, state, terminal_error_code, trace_id,
+              actor_id, branch_id, capability_id, request_fingerprint
        FROM ai_request
        WHERE installation_id = ? AND request_id = ?
        LIMIT 1`,
@@ -352,6 +360,12 @@ function mapDoOutcome(
       return { ok: false, code: "unauthenticated" };
     case "idempotent":
       return { ok: true, outcome: "idempotent", priorState: body.priorState };
+    case "idempotency_conflict":
+      recordGuardRejection({
+        error_code: "idempotency_conflict",
+        installation_id: installationId,
+      });
+      return { ok: false, code: "idempotency_conflict" };
     case "quota_exhausted":
       recordGuardRejection({
         error_code: "allowance_exhausted",
@@ -599,6 +613,7 @@ export async function runAdmission(
     requestReference,
     capabilityId,
     quotaWeight,
+    requestFingerprint,
     orgId,
   } = input;
 
@@ -623,9 +638,30 @@ export async function runAdmission(
     principal.installationId,
     idempotencyKey,
   );
-  if (journaled) {
-    return idempotentFromJournal(journaled);
-  }
+  const idempotencyBinding = requestFingerprint === undefined ? undefined : {
+    actorId: principal.actorId,
+    branchId: principal.branchId,
+    capabilityId,
+    requestFingerprint,
+  };
+  const journaledBindingMatches =
+    journaled !== null &&
+    idempotencyBinding !== undefined &&
+    journaled.actor_id === idempotencyBinding.actorId &&
+    journaled.branch_id === idempotencyBinding.branchId &&
+    journaled.capability_id === idempotencyBinding.capabilityId &&
+    journaled.request_fingerprint === idempotencyBinding.requestFingerprint;
+  const journaledAnswer = journaledBindingMatches && journaled
+    ? {
+        requestReference: journaled.request_reference,
+        state: mapJournalState(journaled.state),
+        requestId: journaled.request_id,
+        traceId: journaled.trace_id,
+        ...(journaled.terminal_error_code !== null
+          ? { terminalErrorCode: journaled.terminal_error_code as TaxonomyCode }
+          : {}),
+      }
+    : undefined;
 
   const requestId = crypto.randomUUID();
   const rpcBody = {
@@ -637,6 +673,11 @@ export async function runAdmission(
     idempotencyKey,
     requestReference,
     capabilityId,
+    ...(idempotencyBinding !== undefined ? { idempotencyBinding } : {}),
+    ...(journaledAnswer !== undefined ? { journaledAnswer } : {}),
+    ...(journaled !== null && !journaledBindingMatches
+      ? { journaledConflict: true }
+      : {}),
     quotaWeight,
     requestId,
     ...(orgId !== undefined ? { orgId } : {}),
@@ -700,6 +741,12 @@ export async function runAdmission(
       installation_id: principal.installationId,
     });
     return { ok: false, code: "internal_error" };
+  }
+
+  // A D1 row is not sufficient to replay a request: the per-installation DO
+  // must authorize the JTI before its durable answer can be returned.
+  if (journaled !== null) {
+    return coverageUnknown(principal.installationId);
   }
 
   logger.info("Quota DO unavailable — attempting mirror fallback", {

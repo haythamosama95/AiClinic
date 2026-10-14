@@ -23,7 +23,11 @@ The pipeline passes `reservation_id` and `term_id` to `creditUsage`. A charge ad
 
 ## 2. Replay
 
-Step 1, for a `jti` or idempotency key that already has a stored answer, returns that answer and does not write. The stored answer is this admitted object, or one of the refusal outcomes below.
+Step 1 first rejects a `jti` already present within the installation's ephemeral replay horizon with `{kind: "admission", outcome: "replay"}`. The clinic mapping is HTTP 401 `unauthenticated`. This rejection does not return a stored admission or change state.
+
+With a fresh `jti`, an idempotency key that already has a matching stored answer returns that answer and records the fresh `jti` in the replay window. The stored answer is the admitted object or one of the refusal outcomes below. An HTTP retry uses a fresh token with the original idempotency key; a journaled request returns its persisted state without another quota admission or journal insert. The worker sends the journal candidate to the DO, which checks JTI replay before returning it.
+
+Idempotency is bound to the authenticated actor, branch, capability, and SHA-256 fingerprint of the canonical validated request inputs. Reusing a key for another scope or fingerprint returns HTTP 409 `idempotency_conflict`. Historical D1 rows without a fingerprint are not replayed; callers must use a new key.
 
 ## 3. Refusals from the DO
 

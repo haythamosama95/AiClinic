@@ -454,7 +454,7 @@ These rules run inside the DO's single-threaded execution (`blockConcurrencyWhil
 
 One admission per AI request, after rate limits (stage 4, which stays separate from allowance, FR-09):
 
-1. Return a stored answer for a replayed `jti` or idempotency key, without writing.
+1. Reject a repeated installation-scoped `jti` within the ephemeral replay horizon with `replay` (clinic HTTP 401 `unauthenticated`) before returning any DO or D1 stored answer. A fresh `jti` used for a matching idempotency retry is recorded in the replay horizon. The key is bound to actor, branch, capability, and a SHA-256 fingerprint of the validated canonical request; a mismatch returns HTTP 409 `idempotency_conflict`. Historical D1 rows without a fingerprint are not replayed. HTTP retries keep the original idempotency key and use a fresh token; a journaled request passes through the same DO replay check without another quota admission or journal insert.
 2. Charge reservations older than 15 minutes to their terms (NFR-06).
 3. Evaluate boundaries at the current time (§5.4), in order, until no transition applies.
 4. Refuse in this order: `suspended`; then no active or grace term, which is `allowance_exhausted` if the last term ended by exhaustion, otherwise `coverage_lapsed` with a reason (`none`, `expired`, `grace_exhausted`, `reversed`, `transferred`, `transfer_pending`); then a capability outside the term's plan, which is `forbidden_capability`; then in-flight requests at the term's concurrency limit, which is `concurrency_limited` with `retry_after`. A refusal writes nothing unless step 2 or 3 changed state.

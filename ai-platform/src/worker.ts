@@ -1572,6 +1572,34 @@ function assertAdmissionArgs(body: unknown): asserts body is AdmissionRequest {
   ) {
     throw new ArgValidationError("invalid_admission_args");
   }
+  const binding = candidate.idempotencyBinding;
+  if (
+    binding !== undefined &&
+    (typeof binding.actorId !== "string" ||
+      typeof binding.branchId !== "string" ||
+      typeof binding.capabilityId !== "string" ||
+      typeof binding.requestFingerprint !== "string" ||
+      !/^[a-f0-9]{64}$/.test(binding.requestFingerprint))
+  ) {
+    throw new ArgValidationError("invalid_admission_binding");
+  }
+  const journaledAnswer = candidate.journaledAnswer;
+  if (
+    journaledAnswer !== undefined &&
+    (typeof journaledAnswer.requestReference !== "string" ||
+      typeof journaledAnswer.requestId !== "string" ||
+      typeof journaledAnswer.state !== "string" ||
+      (journaledAnswer.traceId !== undefined &&
+        typeof journaledAnswer.traceId !== "string"))
+  ) {
+    throw new ArgValidationError("invalid_journaled_answer");
+  }
+  if (
+    candidate.journaledConflict !== undefined &&
+    typeof candidate.journaledConflict !== "boolean"
+  ) {
+    throw new ArgValidationError("invalid_journaled_conflict");
+  }
 }
 
 function assertCreditArgs(body: unknown): asserts body is CreditRequest {

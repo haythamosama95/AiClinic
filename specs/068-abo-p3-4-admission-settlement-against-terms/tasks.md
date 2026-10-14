@@ -79,7 +79,7 @@ The run fails because `coverClinic` is missing and `POST /v1/requests` is not ch
 
 - [X] T010 [US4] Add the failing test `E2E-P3.4-10 A reservation older than 15 minutes is charged once` in `ai-platform/test/system/admission-settlement.system.test.ts` — red test, FR-003, FR-011, E2E-P3.4-10. Depends on T009 (same file). `coverClinic()`, then `POST` whose first `kind: "credit"` is swallowed by a test wrapper on `GatewayObject.fetch` so the reservation stays. `setTestClock` more than 15 minutes later. The next `POST` charges it. `runDurableObjectAlarm` leaves one `usage_event` for that `request_id`. Replaying the swallowed credit changes neither `hot` nor that row. No `sleep` over 2 s. The unit command fails because a reservation older than 15 minutes is not charged on the next admission.
 
-- [X] T011 [US4] Add the failing test `E2E-P3.4-11 A replayed jti or idempotency key returns the stored answer` in `ai-platform/test/system/admission-settlement.system.test.ts` — red test, FR-002, E2E-P3.4-11. Depends on T010 (same file). Two `POST`s with the same `x-idempotency-key`, and two with the same bearer token. The second response matches the stored answer. `hot` SQL is unchanged across the replay. The unit command fails because a replayed key writes again.
+- [X] T011 [US4] Add the failing test `E2E-P3.4-11 A replayed jti or idempotency key returns the stored answer` in `ai-platform/test/system/admission-settlement.system.test.ts` — red test, FR-002, E2E-P3.4-11. Depends on T010 (same file). A repeated `jti` returns HTTP 401 even when D1 contains the answer; a fresh token with the same actor, branch, capability, and canonical request returns the stored answer; changed scope or request returns HTTP 409 `idempotency_conflict`. The quoted test title is historical; these assertions define the current contract.
 
 **Checkpoint**: E2E-P3.4-09, E2E-P3.4-10, and E2E-P3.4-11 exist and fail.
 
@@ -111,7 +111,7 @@ The run fails because `coverClinic` is missing and `POST /v1/requests` is not ch
 
 **Independent Test**: E2E-P3.4-09, E2E-P3.4-10, and E2E-P3.4-11 in harness H-AP. Every H-AP suite that entitles runs through `coverClinic()` and stays green (rule V2, rule S2).
 
-- [X] T015 [US4] In `admissionRPC` in `ai-platform/src/quota-do/index.ts`, step 1 reads `hot.replay` and `hot.idempotency` and returns the stored answer without writing — produces the replay read, FR-002, E2E-P3.4-11. Depends on T014. Sweep those maps on each write that does happen, keeping entries for at least `EPHEMERAL_HORIZON_MS`. Pass `now` from `clockNowMs`. E2E-P3.4-11 still fails until the HTTP path stores the answer.
+- [X] T015 [US4] In `admissionRPC` in `ai-platform/src/quota-do/index.ts`, step 1 reads `hot.replay` to reject a repeated `jti` as `replay` (clinic HTTP 401 `unauthenticated`), then validates the idempotency binding before returning a stored answer. Record each fresh `jti` used for an idempotency replay. Durable D1 journal answers pass through the same DO check — produces FR-002, FR-015, E2E-P3.4-11. Depends on T014. Sweep replay and idempotency maps on writes, keeping entries for at least `EPHEMERAL_HORIZON_MS`. Pass `now` from `clockNowMs`.
 
 - [X] T016 [US4] In `ai-platform/src/quota-do/index.ts`, step 2 charges reservations whose `admitted_at` is more than 15 minutes before `now` — produces the late charge and the outbox row, FR-003, E2E-P3.4-10. Depends on T015 (same file). Append outbox kind `usage_adjustment` with the payload in `specs/068-abo-p3-4-admission-settlement-against-terms/data-model.md`. Do not insert `usage_event` inside the DO.
 
@@ -155,7 +155,7 @@ The run fails because `coverClinic` is missing and `POST /v1/requests` is not ch
 
 **Independent Test**: E2E-P3.4-02, E2E-P3.4-03, E2E-P3.4-04, and E2E-P3.4-12 in harness H-AP.
 
-- [X] T022 [US2] In `ai-platform/src/admission/index.ts`, map DO outcomes through `specs/068-abo-p3-4-admission-settlement-against-terms/contracts/clinic-denial-codes.md`, including `result: "rejected"` to `coverage_unknown` — produces the client denial mapping, FR-005, FR-006, FR-010, FR-013, E2E-P3.4-02, E2E-P3.4-03, E2E-P3.4-04, E2E-P3.4-12. Depends on T021. Remove `mapEntitlementSnapshot`. Send `contract_version` and `now` from `clockNowMs`. Store the admission answer for the replay key on this path so E2E-P3.4-11 can return it. E2E-P3.4-02, E2E-P3.4-03, E2E-P3.4-04, and E2E-P3.4-12 pass once the worker uses this mapper.
+- [X] T022 [US2] In `ai-platform/src/admission/index.ts`, map DO outcomes through `specs/068-abo-p3-4-admission-settlement-against-terms/contracts/clinic-denial-codes.md`, including `result: "rejected"` to `coverage_unknown` — produces the client denial mapping, FR-005, FR-006, FR-010, FR-013, E2E-P3.4-02, E2E-P3.4-03, E2E-P3.4-04, E2E-P3.4-12. Depends on T021. Remove `mapEntitlementSnapshot`. Send `contract_version` and `now` from `clockNowMs`. Store the admission answer for the idempotency key on this path so E2E-P3.4-11 can return it when retried with a fresh token. E2E-P3.4-02, E2E-P3.4-03, E2E-P3.4-04, and E2E-P3.4-12 pass once the worker uses this mapper.
 
 - [X] T023 [US2] In `ai-platform/src/errors.ts` and `ai-platform/src/adapter.ts`, carry `retry_after` and `coverage_reason` and drop `quota_exhausted` and `period_reset` — produces the denial body fields, FR-005, FR-012, E2E-P3.4-02, E2E-P3.4-04, E2E-P3.4-05. Depends on T022. Rename `installation_suspended` to `suspended` in `ai-platform/src/identity/index.ts`, `ai-platform/src/usage-summary/index.ts`, and the journal union in `ai-platform/src/journal/index.ts`. Token verification stays.
 
@@ -249,7 +249,7 @@ Earlier suites and `npm test` stay out of this command (rule S8).
 | E2E-P3.4-08 | `coverClinic()` → `POST`s that cross 75% and 90% → one `band_crossed` each → a later `POST` emits nothing |
 | E2E-P3.4-09 | `coverClinic()` → empty provider chain → `creditUsage` releases the reservation |
 | E2E-P3.4-10 | `coverClinic()` → `POST` left unsettled → `setTestClock` past 15 minutes → next `POST` step 2 → `runDurableObjectAlarm` → late credit |
-| E2E-P3.4-11 | `POST /v1/requests` twice with the same `x-idempotency-key` or the same token `jti` → step 1 |
+| E2E-P3.4-11 | `POST /v1/requests`: same idempotency key with a fresh `jti` → stored answer; repeated token `jti` with a new key → 401 `unauthenticated` |
 | E2E-P3.4-12 | `POST /v1/requests` while the DO fetch returns `result` `rejected` → `coverage_unknown` |
 
 ---
