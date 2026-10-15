@@ -195,6 +195,11 @@ def build_campaign_stats(
     body["passed"] = stats.passed
     body["failed"] = stats.failed
     body["attempted"] = stats.attempted
+    body["not_recorded"] = (
+        len(summary_fields["not_recorded"])
+        if isinstance(summary_fields.get("not_recorded"), list)
+        else 0
+    )
     return body
 
 

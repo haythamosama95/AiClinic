@@ -65,13 +65,19 @@ def apply_campaign_stats(
     set_campaign_pass_fail_counts(
         batch_queue, area, subcampaign, stats.passed, stats.failed
     )
-    finished = campaign_progress_finished(
-        batch_queue,
-        area,
-        subcampaign,
-        passed=stats.passed,
-        failed=stats.failed,
-    )
+    if batch_queue is None:
+        # Standalone area/subcampaign runs do not have the batch queue used by
+        # --full-area and --interactive. Their live progress is still the
+        # number of recorded outcomes.
+        finished = max(0, stats.passed) + max(0, stats.failed)
+    else:
+        finished = campaign_progress_finished(
+            batch_queue,
+            area,
+            subcampaign,
+            passed=stats.passed,
+            failed=stats.failed,
+        )
     set_campaign_finished_count(batch_queue, area, subcampaign, finished)
     return finished
 
