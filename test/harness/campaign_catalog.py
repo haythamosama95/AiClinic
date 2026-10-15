@@ -39,6 +39,8 @@ CATALOG: dict[str, AreaCatalog] = {
                 "Fast tests for widgets, business logic, and integration flows that do not "
                 "require the full billing stack."
             ),
+            "unit-1": "First balanced shard of frontend unit, widget, and isolated integration tests.",
+            "unit-2": "Second balanced shard of frontend unit, widget, and isolated integration tests.",
             "fullstack": (
                 "End-to-end UI flows that call a running billing worker and platform worker "
                 "on the machine, plus local database state those flows expect."

@@ -7,6 +7,8 @@ SUBCAMPAIGN_PARENT: dict[str, dict[str, str | None]] = {
     "frontend": {
         "all": None,
         "unit": "all",
+        "unit-1": "unit",
+        "unit-2": "unit",
         "boundary": "all",
         "boundary-auth": "boundary",
         "boundary-settings": "boundary",

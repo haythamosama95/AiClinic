@@ -8,7 +8,7 @@ import sys
 from collections import defaultdict
 from pathlib import Path
 
-from discover_tests import count_expected_tests, unit_test_files
+from discover_tests import count_expected_tests, unit_test_files, unit_test_shards
 from test_run_artifacts import (
     MachineEventRecorder,
     refresh_latest,
@@ -176,6 +176,7 @@ def parse_args() -> argparse.Namespace:
         type=Path,
         help="JSON campaign runner config (parallelism, coverage).",
     )
+    parser.add_argument("--shard", type=int, choices=(1, 2))
     return parser.parse_args()
 
 
@@ -202,7 +203,11 @@ def main():
             campaign_dir,
         )
 
-    test_files = unit_test_files(ROOT)
+    test_files = (
+        unit_test_shards(ROOT)[args.shard - 1]
+        if args.shard is not None
+        else unit_test_files(ROOT)
+    )
     total_tests = count_expected_tests(ROOT, test_files)
 
     global RECORDER, DISPLAY

@@ -175,11 +175,16 @@ def _frontend_counts() -> dict[str, int]:
         count_expected_tests,
         fullstack_test_files,
         unit_test_files,
+        unit_test_shards,
     )
 
     counts: dict[str, int] = {}
     unit_files = unit_test_files(frontend_root)
     counts["unit"] = count_expected_tests(frontend_root, unit_files)
+    for shard_number, shard_files in enumerate(unit_test_shards(frontend_root), 1):
+        counts[f"unit-{shard_number}"] = count_expected_tests(
+            frontend_root, shard_files
+        )
     counts["boundary"] = count_expected_tests(
         frontend_root, boundary_test_files(frontend_root, None)
     )

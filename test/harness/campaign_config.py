@@ -31,6 +31,8 @@ def _config_candidates(area: str, subcampaign: str) -> list[str]:
     if area == "frontend":
         if subcampaign == "all":
             return names
+        if subcampaign.startswith("unit-"):
+            names.append("unit")
         if subcampaign.startswith(f"{_FRONTEND_BOUNDARY_PREFIX}-") or subcampaign == _FRONTEND_BOUNDARY_PREFIX:
             names.append(_FRONTEND_BOUNDARY_PREFIX)
         if subcampaign == "fullstack":

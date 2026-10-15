@@ -163,6 +163,21 @@ def unit_test_files(cwd: Path) -> list[str]:
     ]
 
 
+def unit_test_shards(cwd: Path, shard_count: int = 2) -> list[list[str]]:
+    """Partition unit test files deterministically by estimated test count."""
+    if shard_count < 1:
+        raise ValueError("shard_count must be positive")
+    files = unit_test_files(cwd)
+    shards: list[list[str]] = [[] for _ in range(shard_count)]
+    loads = [0] * shard_count
+    weighted = [(count_expected_tests(cwd, [path]), path) for path in files]
+    for weight, path in sorted(weighted, key=lambda item: (-item[0], item[1])):
+        target = min(range(shard_count), key=lambda index: (loads[index], index))
+        shards[target].append(path)
+        loads[target] += weight
+    return [sorted(shard) for shard in shards]
+
+
 def boundary_test_files(cwd: Path, subset: str | None) -> list[str]:
     if subset:
         roots = BOUNDARY_SUBSET_ROOTS.get(subset)

@@ -63,12 +63,15 @@ def _child_cmd(
     campaign_dir: Path,
     boundary_subset: str | None,
     config_path: Path | None,
+    runner_args: list[str] | None = None,
 ) -> list[str]:
     cmd = [sys.executable, str(runner), "--campaign-dir", str(campaign_dir)]
     if config_path is not None:
         cmd.extend(["--campaign-config", str(config_path)])
     if boundary_subset:
         cmd.append(boundary_subset)
+    if runner_args:
+        cmd.extend(runner_args)
     return cmd
 
 
@@ -119,11 +122,12 @@ def _run_child_subcampaign(
     subcampaign: str,
     runner: Path,
     boundary_subset: str | None,
+    runner_args: list[str] | None = None,
 ) -> int:
     run_id = resolve_governor_run_id()
     log_dir = resolve_campaign_log_dir(AREA, subcampaign, run_id)
     config_path = _campaign_config_path(subcampaign)
-    cmd = _child_cmd(runner, log_dir, boundary_subset, config_path)
+    cmd = _child_cmd(runner, log_dir, boundary_subset, config_path, runner_args)
     code = _run_live(subcampaign, cmd, log_dir, FRONTEND_ROOT)
     _augment_meta(
         log_dir,
@@ -137,6 +141,13 @@ def _run_child_subcampaign(
 
 def _run_unit(_subcampaign: str) -> int:
     return _run_child_subcampaign("unit", UNIT_RUNNER, None)
+
+
+def _run_unit_shard(subcampaign: str) -> int:
+    shard = int(subcampaign[-1])
+    return _run_child_subcampaign(
+        subcampaign, UNIT_RUNNER, None, ["--shard", str(shard)]
+    )
 
 
 def _run_boundary(_subcampaign: str) -> int:
@@ -273,6 +284,8 @@ def _run_all(_subcampaign: str) -> int:
 
 SUBCAMPAIGNS: dict[str, object] = {
     "unit": _run_unit,
+    "unit-1": _run_unit_shard,
+    "unit-2": _run_unit_shard,
     "fullstack": _run_fullstack,
     "boundary": _run_boundary,
     **{name: _run_boundary_subset for name in BOUNDARY_SUBSET_BY_SUBCAMPAIGN},

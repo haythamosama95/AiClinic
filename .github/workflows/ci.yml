@@ -23,8 +23,14 @@ jobs:
       matrix:
         include:
           - area: frontend
-            subcampaign: unit
-            timeout_minutes: 120
+            subcampaign: unit-1
+            timeout_minutes: 60
+            flutter: true
+            supabase: false
+            postgresql_client: false
+          - area: frontend
+            subcampaign: unit-2
+            timeout_minutes: 60
             flutter: true
             supabase: false
             postgresql_client: false

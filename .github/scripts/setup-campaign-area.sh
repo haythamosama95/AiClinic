@@ -92,7 +92,7 @@ if [[ "${need_supabase}" -eq 1 ]]; then
   (cd "${repo_root}/backend" && supabase start)
 fi
 
-if [[ "${area}" == "frontend" && "${subcampaign}" != "unit" ]]; then
+if [[ "${area}" == "frontend" && "${subcampaign}" != "unit" && "${subcampaign}" != unit-* ]]; then
   echo "Writing frontend local deployment profile..."
   anon_key=""
   api_url=""

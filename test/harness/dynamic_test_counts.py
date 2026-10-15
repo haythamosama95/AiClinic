@@ -103,10 +103,15 @@ def _frontend_count(subcampaign: str) -> int | None:
         count_expected_tests,
         fullstack_test_files,
         unit_test_files,
+        unit_test_shards,
     )
 
     if subcampaign == "unit":
         return count_expected_tests(frontend_root, unit_test_files(frontend_root))
+    if subcampaign in {"unit-1", "unit-2"}:
+        return count_expected_tests(
+            frontend_root, unit_test_shards(frontend_root)[int(subcampaign[-1]) - 1]
+        )
     if subcampaign == "boundary":
         return count_expected_tests(
             frontend_root, boundary_test_files(frontend_root, None)
