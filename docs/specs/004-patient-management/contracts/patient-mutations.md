@@ -102,6 +102,8 @@ Patient profile mutations and duplicate detection (V1-3).
 - `branch_id` not mutable
 - Audit `patient.update` with old/new json
 
+**Returns**: On success, `data.patient_id` and `data.updated_at`; `updated_at` is the server-generated timestamp of the persisted patient row.
+
 ---
 
 ## RPC: `archive_patient`

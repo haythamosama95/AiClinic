@@ -115,21 +115,38 @@ export async function preparePlatformD1({
     D1_SEED_PERSIST,
   ]);
 
-  const platformWorker = await startWorker({
-    config: platformConfig,
-    env,
-    dev: {
-      server: { hostname: "127.0.0.1", port: platformPort },
-      inspector: false,
-      persist: PLATFORM_PERSIST,
-      registry: REGISTRY_DIR,
-    },
-  });
-  await platformWorker.ready;
-  await platformWorker.dispose();
-  await new Promise((resolve) => setTimeout(resolve, 300));
+  let platformWorker;
+  let disposeAttempted = false;
+  try {
+    platformWorker = await startWorker({
+      config: platformConfig,
+      env,
+      dev: {
+        server: { hostname: "127.0.0.1", port: platformPort },
+        inspector: false,
+        persist: PLATFORM_PERSIST,
+        registry: REGISTRY_DIR,
+      },
+    });
+    await platformWorker.ready;
+    disposeAttempted = true;
+    await platformWorker.dispose();
+    await new Promise((resolve) => setTimeout(resolve, 300));
 
-  copyD1SqliteTree(D1_SEED_PERSIST, PLATFORM_PERSIST);
+    copyD1SqliteTree(D1_SEED_PERSIST, PLATFORM_PERSIST);
+  } catch (error) {
+    if (platformWorker && !disposeAttempted) {
+      disposeAttempted = true;
+      try {
+        await platformWorker.dispose();
+      } catch (cleanupError) {
+        console.error(
+          `[preparePlatformD1 cleanup] ${cleanupError.message}`,
+        );
+      }
+    }
+    throw error;
+  }
 }
 
 export function platformD1DatabaseFile() {

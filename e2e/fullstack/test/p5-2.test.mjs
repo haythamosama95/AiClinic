@@ -57,6 +57,14 @@ const WEBAUTHN_RP_ID = "ops.vendor.test";
 const WEBAUTHN_ORIGIN = "https://ops.vendor.test";
 const OPERATOR_EMAIL = "operator@clinic.test";
 const BILLING_HOST = "billing.vendor.test";
+const STARTUP_LOG_TAIL_CHARS = 4_000;
+const MAX_DIAGNOSTIC_CHILDREN = 4;
+const PORT_BINDINGS = [
+  `platform ${PLATFORM_BIND_HOST}:8787 (ai-platform/wrangler.toml, inspector disabled)`,
+  "harness 127.0.0.1:8790 (e2e/fullstack/wrangler.toml, inspector disabled)",
+  "paymob 127.0.0.1:8789 (abo/test/stubs/paymob/worker.ts), inspector 9230",
+  "abo 127.0.0.1:8788 (abo/wrangler.toml, development), inspector 9231",
+];
 const PAYMOB_HMAC_SECRET = "paymob-hmac-unconfigured";
 const ABO_GRANT_KEY = {
   kid: "abo-grant-test",
@@ -126,30 +134,127 @@ function psqlQuery(sql) {
   return result.stdout.trim();
 }
 
-async function waitForHttp(url, { timeoutMs = 120_000, accept = [200], headers = {} } = {}) {
+function createStartupScope() {
+  const cleanups = [];
+  let stopPromise = null;
+
+  return {
+    defer(label, dispose) {
+      const entry = { label, dispose, active: true };
+      cleanups.push(entry);
+      return () => {
+        entry.active = false;
+      };
+    },
+    stop() {
+      if (stopPromise) return stopPromise;
+      stopPromise = (async () => {
+        const errors = [];
+        for (const entry of cleanups.reverse()) {
+          if (!entry.active) continue;
+          entry.active = false;
+          try {
+            await entry.dispose();
+          } catch (error) {
+            errors.push(`${entry.label}: ${error.message}`);
+          }
+        }
+        if (errors.length) {
+          throw new Error(`P5.2 cleanup errors: ${errors.join("; ")}`);
+        }
+      })();
+      return stopPromise;
+    },
+  };
+}
+
+function safeDiagnosticText(value) {
+  return String(value)
+    .replace(/\bBearer\s+[^\s"']+/gi, "Bearer [redacted]")
+    .replace(/\beyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\b/g, "[redacted-jwt]")
+    .replace(/("?(?:access[_-]?jwt|access[_-]?token|api[_-]?key|secret|password|private[_-]?key|pkcs8|issuer[_-]?keys|abo[_-]?grant[_-]?key|platform[_-]?public[_-]?keys)"?\s*[:=]\s*)("[^"]*"|'[^']*'|[^,\s}\]]+)/gi, "$1[redacted]");
+}
+
+function tail(value) {
+  const safe = safeDiagnosticText(value);
+  return safe.length > STARTUP_LOG_TAIL_CHARS
+    ? `[earlier output truncated]\n${safe.slice(-STARTUP_LOG_TAIL_CHARS)}`
+    : safe;
+}
+
+function safeUrl(url) {
+  try {
+    const parsed = new URL(url);
+    return `${parsed.protocol}//${parsed.host}${parsed.pathname}`;
+  } catch {
+    return "[invalid readiness URL]";
+  }
+}
+
+async function waitForHttp(
+  url,
+  {
+    timeoutMs = 120_000,
+    accept = [200],
+    headers = {},
+    label = "HTTP readiness",
+    diagnostics = () => "",
+  } = {},
+) {
   const deadline = Date.now() + timeoutMs;
+  let lastStatus = "none";
+  let lastError = "none";
   while (Date.now() < deadline) {
     try {
       const response = await fetch(url, { headers });
+      lastStatus = String(response.status);
       if (accept.includes(response.status)) {
         return response;
       }
-    } catch {
-      // worker still starting
+    } catch (error) {
+      lastError = `${error.code ?? error.cause?.code ?? error.name ?? "Error"}: ` +
+        `${error.message === "fetch failed" ? "fetch failed" : "request failed"}`;
     }
     await new Promise((resolve) => setTimeout(resolve, 500));
   }
-  throw new Error(`Timed out waiting for ${url}`);
+  const hostHeader = headers.Host ? `, Host: ${headers.Host}` : "";
+  throw new Error(
+    `${label} timed out after ${timeoutMs}ms at ${safeUrl(url)}${hostHeader}; ` +
+      `accepted status: ${accept.join(",")}; last status: ${lastStatus}; ` +
+      `last fetch error: ${safeDiagnosticText(lastError)}; ` +
+      `ports: ${PORT_BINDINGS.join("; ")}${diagnostics()}`,
+  );
 }
 
-function spawnDevProcess(args, env = {}) {
+function spawnDevProcess(args, env = {}, { label = "wrangler dev" } = {}) {
   const child = spawn(process.execPath, [WRANGLER_CLI, ...args], {
     cwd: REPO_ROOT,
     env: wranglerLocalEnv(env),
     stdio: ["ignore", "pipe", "pipe"],
     detached: process.platform !== "win32",
   });
+  child.diagnostic = { label, stdout: "", stderr: "", spawnError: "none" };
+  child.on("error", (error) => {
+    child.diagnostic.spawnError = `${error.code ?? error.name ?? "Error"}: ` +
+      safeDiagnosticText(error.message);
+  });
+  child.stdout?.on("data", (chunk) => {
+    child.diagnostic.stdout = tail(child.diagnostic.stdout + chunk.toString());
+  });
+  child.stderr?.on("data", (chunk) => {
+    child.diagnostic.stderr = tail(child.diagnostic.stderr + chunk.toString());
+  });
   return child;
+}
+
+function childDiagnostics(child) {
+  if (!child) return "";
+  return (
+    `\nchild ${child.diagnostic?.label ?? "wrangler dev"}: pid=${child.pid ?? "none"}, ` +
+    `exitCode=${child.exitCode ?? "running/unknown"}, signal=${child.signalCode ?? "none"}, ` +
+    `spawnError=${child.diagnostic?.spawnError ?? "none"}; ` +
+    `stdout tail:\n${child.diagnostic?.stdout || "[empty]"}; stderr tail:\n${child.diagnostic?.stderr || "[empty]"}`
+  );
 }
 
 async function stopChild(child) {
@@ -473,184 +578,243 @@ async function createClinicUsers() {
 }
 
 async function startStack() {
-  await mkdir(PLATFORM_PERSIST, { recursive: true });
-  await mkdir(HARNESS_PERSIST, { recursive: true });
-  await mkdir(REGISTRY_DIR, { recursive: true });
-  await mkdir(ABO_PERSIST, { recursive: true });
-  await preparePlatformD1({ platformConfig: PLATFORM_CONFIG });
+  const scope = createStartupScope();
+  const children = new Set();
+  let phase = "prepare persistence";
+  const diagnostics = () => {
+    const allChildren = [...children];
+    const shownChildren = allChildren.slice(-MAX_DIAGNOSTIC_CHILDREN);
+    const childDetails = shownChildren.map(childDiagnostics).join("\n");
+    const omitted = allChildren.length - shownChildren.length;
+    return childDetails
+      ? `\n${omitted ? `[${omitted} earlier child diagnostics omitted]\n` : ""}${childDetails}`
+      : "";
+  };
 
-  const accessTeam = await createAccessTeam({
-    issuer: `https://${ACCESS_TEAM_DOMAIN}`,
-  });
-  const authenticator = await createSoftwareAuthenticator("EdDSA");
-  const attestation = await authenticator.attest();
-  const credentialId = crypto.randomUUID();
-  const publicKeyCose = base64urlEncode(attestation.publicKey);
+  try {
+    await mkdir(PLATFORM_PERSIST, { recursive: true });
+    await mkdir(HARNESS_PERSIST, { recursive: true });
+    await mkdir(REGISTRY_DIR, { recursive: true });
+    await mkdir(ABO_PERSIST, { recursive: true });
+    await preparePlatformD1({ platformConfig: PLATFORM_CONFIG });
 
-  const mockFetch = new MockAgent();
-  mockFetch
-    .get(`https://${ACCESS_TEAM_DOMAIN}`)
-    .intercept({
-      path: "/cdn-cgi/access/certs",
-      method: "GET",
-    })
-    .reply(200, JSON.stringify({ keys: accessTeam.certs.keys }), {
+    const accessTeam = await createAccessTeam({
+      issuer: `https://${ACCESS_TEAM_DOMAIN}`,
+    });
+    const authenticator = await createSoftwareAuthenticator("EdDSA");
+    const attestation = await authenticator.attest();
+    const credentialId = crypto.randomUUID();
+    const publicKeyCose = base64urlEncode(attestation.publicKey);
+
+    phase = "create access mock";
+    const mockFetch = new MockAgent();
+    scope.defer("access MockAgent", () => mockFetch.close());
+    mockFetch
+      .get(`https://${ACCESS_TEAM_DOMAIN}`)
+      .intercept({
+        path: "/cdn-cgi/access/certs",
+        method: "GET",
+      })
+      .reply(200, JSON.stringify({ keys: accessTeam.certs.keys }), {
+        headers: { "content-type": "application/json" },
+      })
+      .persist();
+
+    await insertActiveOperatorCredential({
+      credentialId,
+      operatorEmail: OPERATOR_EMAIL,
+      publicKeyCose,
+    });
+
+    phase = "start platform worker on 8787";
+    const platformWorker = await startWorker({
+      config: PLATFORM_CONFIG,
+      env: "development",
+      dev: {
+        server: { hostname: PLATFORM_BIND_HOST, port: 8787 },
+        inspector: false,
+        persist: PLATFORM_PERSIST,
+        registry: REGISTRY_DIR,
+        mockFetch,
+      },
+    });
+    scope.defer("platform worker", () => platformWorker.dispose());
+    await platformWorker.ready;
+
+    phase = "start harness worker on 8790";
+    const harnessWorker = await startWorker({
+      config: HARNESS_CONFIG,
+      env: undefined,
+      dev: {
+        server: { hostname: "127.0.0.1", port: 8790 },
+        inspector: false,
+        persist: HARNESS_PERSIST,
+        registry: REGISTRY_DIR,
+      },
+    });
+    scope.defer("harness worker", () => harnessWorker.dispose());
+    await harnessWorker.ready;
+
+    phase = "wait for platform /health";
+    await waitForHttp(`${PLATFORM_URL}/health`, {
+      label: "platform worker readiness",
+      diagnostics,
+    });
+    phase = "probe harness /register-issuer-key";
+    const harnessProbe = await fetch(`${HARNESS_URL}/register-issuer-key`, {
+      method: "POST",
       headers: { "content-type": "application/json" },
-    })
-    .persist();
+      body: JSON.stringify({ contract_version: 1 }),
+    });
+    if (harnessProbe.status === 404) {
+      throw new Error("Harness register-issuer-key route is unavailable");
+    }
 
-  await insertActiveOperatorCredential({
-    credentialId,
-    operatorEmail: OPERATOR_EMAIL,
-    publicKeyCose,
-  });
+    const signingKey = readIssuerKeyByStatus("signing");
+    if (!signingKey) {
+      throw new Error("No signing issuer key row found");
+    }
+    const issuerKeys = [{ kid: signingKey.kid, public_key: signingKey.public_key }];
 
-  const platformWorker = await startWorker({
-    config: PLATFORM_CONFIG,
-    env: "development",
-    dev: {
-      server: { hostname: PLATFORM_BIND_HOST, port: 8787 },
-      inspector: false,
-      persist: PLATFORM_PERSIST,
-      registry: REGISTRY_DIR,
-      mockFetch,
-    },
-  });
-  await platformWorker.ready;
-
-  const harnessWorker = await startWorker({
-    config: HARNESS_CONFIG,
-    env: undefined,
-    dev: {
-      server: { hostname: "127.0.0.1", port: 8790 },
-      inspector: false,
-      persist: HARNESS_PERSIST,
-      registry: REGISTRY_DIR,
-    },
-  });
-  await harnessWorker.ready;
-
-  await waitForHttp(`${PLATFORM_URL}/health`);
-  const harnessProbe = await fetch(`${HARNESS_URL}/register-issuer-key`, {
-    method: "POST",
-    headers: { "content-type": "application/json" },
-    body: JSON.stringify({ contract_version: 1 }),
-  });
-  if (harnessProbe.status === 404) {
-    throw new Error("Harness register-issuer-key route is unavailable");
-  }
-
-  const signingKey = readIssuerKeyByStatus("signing");
-  if (!signingKey) {
-    throw new Error("No signing issuer key row found");
-  }
-  const issuerKeys = [{ kid: signingKey.kid, public_key: signingKey.public_key }];
-
-  const paymob = spawnDevProcess([
-    "dev",
-    PAYMOB_WORKER,
-    "--port",
-    "8789",
-    "--ip",
-    "127.0.0.1",
-    "--inspector-port",
-    "9230",
-  ]);
-  await waitForHttp(`${PAYMOB_URL}/`, { accept: [200, 404] });
-
-  await applyAboMigrations();
-  const abo = spawnDevProcess(
-    [
+    phase = "spawn paymob worker on 8789";
+    const paymob = spawnDevProcess([
       "dev",
-      "--config",
-      ABO_CONFIG,
-      "--env",
-      "development",
+      PAYMOB_WORKER,
       "--port",
-      "8788",
+      "8789",
       "--ip",
       "127.0.0.1",
       "--inspector-port",
-      "9231",
-      "--persist-to",
-      ABO_PERSIST,
-      "--var",
-      `PAYMOB_BASE_URL:${PAYMOB_URL}`,
-      "--var",
-      `ISSUER_KEYS:${JSON.stringify(issuerKeys)}`,
-      "--var",
-      `ABO_GRANT_KEY:${JSON.stringify(ABO_GRANT_KEY)}`,
-      "--var",
-      `PLATFORM_PUBLIC_KEYS:${JSON.stringify(PLATFORM_PUBLIC_KEYS)}`,
-    ],
-  );
-  await waitForHttp(`${ABO_URL}/v1/offers`, {
-    accept: [401, 403, 400],
-    headers: { Host: BILLING_HOST },
-  });
+      "9230",
+    ], {}, { label: "wrangler dev paymob (abo/test/stubs/paymob/worker.ts)" });
+    children.add(paymob);
+    scope.defer("paymob child process", () => stopChild(paymob));
+    phase = "wait for paymob /";
+    await waitForHttp(`${PAYMOB_URL}/`, {
+      accept: [200, 404],
+      label: "paymob worker readiness",
+      diagnostics,
+    });
 
-  const clinic = await createClinicUsers();
+    phase = "apply ABO migrations";
+    await applyAboMigrations();
+    phase = "spawn ABO worker on 8788";
+    const abo = spawnDevProcess(
+      [
+        "dev",
+        "--config",
+        ABO_CONFIG,
+        "--env",
+        "development",
+        "--port",
+        "8788",
+        "--ip",
+        "127.0.0.1",
+        "--inspector-port",
+        "9231",
+        "--persist-to",
+        ABO_PERSIST,
+        "--var",
+        `PAYMOB_BASE_URL:${PAYMOB_URL}`,
+        "--var",
+        `ISSUER_KEYS:${JSON.stringify(issuerKeys)}`,
+        "--var",
+        `ABO_GRANT_KEY:${JSON.stringify(ABO_GRANT_KEY)}`,
+        "--var",
+        `PLATFORM_PUBLIC_KEYS:${JSON.stringify(PLATFORM_PUBLIC_KEYS)}`,
+      ],
+      {},
+      { label: "wrangler dev ABO (abo/wrangler.toml, development)" },
+    );
+    children.add(abo);
+    let deactivateAbo = scope.defer("ABO child process", () => stopChild(abo));
+    phase = "wait for ABO /v1/offers with billing host";
+    await waitForHttp(`${ABO_URL}/v1/offers`, {
+      accept: [401, 403, 400],
+      headers: { Host: BILLING_HOST },
+      label: "ABO offers readiness",
+      diagnostics,
+    });
 
-  const stackRef = {
-    accessTeam,
-    authenticator,
-    credentialId,
-    publicKeyCose,
-    platformWorker,
-    harnessWorker,
-    paymob,
-    abo,
-    issuerKeys,
-    signingKey,
-    clinic,
-    async stop() {
-      await stopChild(paymob);
-      await stopChild(stackRef.abo);
-      await harnessWorker.dispose();
-      await platformWorker.dispose();
-      await mockFetch.close();
-    },
-    async restartAbo(nextIssuerKeys = issuerKeys) {
-      await stopChild(stackRef.abo);
-      const restarted = spawnDevProcess(
-        [
-          "dev",
-          "--config",
-          ABO_CONFIG,
-          "--env",
-          "development",
-          "--port",
-          "8788",
-          "--ip",
-          "127.0.0.1",
-          "--inspector-port",
-          "9231",
-          "--persist-to",
-          ABO_PERSIST,
-          "--var",
-          `PAYMOB_BASE_URL:${PAYMOB_URL}`,
-          "--var",
-          `ISSUER_KEYS:${JSON.stringify(nextIssuerKeys)}`,
-          "--var",
-          `ABO_GRANT_KEY:${JSON.stringify(ABO_GRANT_KEY)}`,
-          "--var",
-          `PLATFORM_PUBLIC_KEYS:${JSON.stringify(PLATFORM_PUBLIC_KEYS)}`,
-        ],
-      );
-      await waitForHttp(`${ABO_URL}/v1/offers`, {
-        accept: [401, 403, 400],
-        headers: { Host: BILLING_HOST },
-      });
-      stackRef.abo = restarted;
-      stackRef.issuerKeys = nextIssuerKeys;
-      return restarted;
-    },
-  };
+    phase = "create clinic users";
+    const clinic = await createClinicUsers();
 
-  await registerIssuerKey(stackRef, signingKey);
-  await stackRef.restartAbo(issuerKeys);
+    const stackRef = {
+      accessTeam,
+      authenticator,
+      credentialId,
+      publicKeyCose,
+      platformWorker,
+      harnessWorker,
+      paymob,
+      abo,
+      issuerKeys,
+      signingKey,
+      clinic,
+      async stop() {
+        await scope.stop();
+      },
+      async restartAbo(nextIssuerKeys = issuerKeys) {
+        await stopChild(stackRef.abo);
+        deactivateAbo();
+        const restarted = spawnDevProcess(
+          [
+            "dev",
+            "--config",
+            ABO_CONFIG,
+            "--env",
+            "development",
+            "--port",
+            "8788",
+            "--ip",
+            "127.0.0.1",
+            "--inspector-port",
+            "9231",
+            "--persist-to",
+            ABO_PERSIST,
+            "--var",
+            `PAYMOB_BASE_URL:${PAYMOB_URL}`,
+            "--var",
+            `ISSUER_KEYS:${JSON.stringify(nextIssuerKeys)}`,
+            "--var",
+            `ABO_GRANT_KEY:${JSON.stringify(ABO_GRANT_KEY)}`,
+            "--var",
+            `PLATFORM_PUBLIC_KEYS:${JSON.stringify(PLATFORM_PUBLIC_KEYS)}`,
+          ],
+          {},
+          { label: "wrangler dev restarted ABO (abo/wrangler.toml, development)" },
+        );
+        children.add(restarted);
+        deactivateAbo = scope.defer("restarted ABO child process", () => stopChild(restarted));
+        stackRef.abo = restarted;
+        phase = "wait for restarted ABO /v1/offers with billing host";
+        await waitForHttp(`${ABO_URL}/v1/offers`, {
+          accept: [401, 403, 400],
+          headers: { Host: BILLING_HOST },
+          label: "restarted ABO offers readiness",
+          diagnostics,
+        });
+        stackRef.issuerKeys = nextIssuerKeys;
+        return restarted;
+      },
+    };
 
-  return stackRef;
+    await registerIssuerKey(stackRef, signingKey);
+    await stackRef.restartAbo(issuerKeys);
+
+    return stackRef;
+  } catch (error) {
+    try {
+      await scope.stop();
+    } catch (cleanupError) {
+      console.error(`[P5.2 startup cleanup] ${safeDiagnosticText(cleanupError.message)}`);
+    }
+    const detail = diagnostics();
+    console.error(
+      `[P5.2 startup failure] phase=${phase}; ports: ${PORT_BINDINGS.join("; ")}${detail}`,
+    );
+    throw error;
+  }
 }
 
 function sqlLiteral(value) {

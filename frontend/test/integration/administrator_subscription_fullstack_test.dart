@@ -3,6 +3,7 @@ library;
 
 // ignore_for_file: depend_on_referenced_packages
 
+import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
@@ -28,8 +29,14 @@ import '../helpers/auth_test_support.dart';
 import '../widget/ai/ai_surface_test_harness.dart';
 
 final _aboUrl = Platform.environment['ABO_URL'] ?? 'http://127.0.0.1:8788';
-final _paymobUrl = Platform.environment['PAYMOB_URL'] ?? 'http://127.0.0.1:8789';
+final _paymobUrl =
+    Platform.environment['PAYMOB_URL'] ?? 'http://127.0.0.1:8789';
 var _hfsStackReady = false;
+var _activeCase = 'suite-setup';
+const _operationTimeout = Duration(seconds: 30);
+// The 120 × 500ms retry schedule is nominally 60s; another 60s allows for
+// bounded local API latency without allowing a poll to consume a case timeout.
+const _pollTimeout = Duration(seconds: 120);
 const _billingHost = 'billing.vendor.test';
 const _paymobHmacSecret = 'paymob-hmac-unconfigured';
 
@@ -39,7 +46,8 @@ const _paymentHistoryKey = Key('billing_payment_history');
 const _paymentHistoryNextKey = Key('billing_payment_history_next');
 const _renewNoticeKey = Key('ai_notice_renew');
 
-class _FullstackSubscriptionTestBinding extends AutomatedTestWidgetsFlutterBinding {
+class _FullstackSubscriptionTestBinding
+    extends AutomatedTestWidgetsFlutterBinding {
   @override
   bool get overrideHttpClient => false;
 }
@@ -73,28 +81,43 @@ void main() {
   late BoundaryTestContext ctx;
 
   setUpAll(() async {
+    _progress('stack readiness: probing ABO');
     _hfsStackReady = await _probeHfsReady();
+    _progress('stack readiness: ${_hfsStackReady ? 'ready' : 'unavailable'}');
     if (_hfsStackReady) {
-      await LiveSupabaseHarness.ensureReady();
+      _progress('stack readiness: initializing Supabase');
+      await _bounded(
+        'Supabase harness readiness',
+        LiveSupabaseHarness.ensureReady(),
+      );
+      _progress('stack readiness: Supabase ready');
     }
   });
 
   setUp(() async {
+    _activeCase = 'setup';
     if (!_hfsStackReady) {
       return;
     }
-    ctx = await BoundaryTestContext.create();
-    await ctx.resetInstallation();
+    _progress('fixture setup: creating boundary context');
+    ctx = await _bounded(
+      'create boundary context',
+      BoundaryTestContext.create(),
+    );
+    _progress('fixture setup: resetting installation');
+    await _bounded('reset installation fixture', ctx.resetInstallation());
   });
 
   group('E2E-P6.4-01', () {
     testWidgets('E2E-P6.4-01', (tester) async {
+      _activeCase = 'E2E-P6.4-01';
       if (!_hfsStackReady) {
         fail(
           'H-FS stack unavailable (ABO at $_aboUrl). Start the H-FS stack before running fullstack subscription tests.',
         );
       }
 
+      _progress('fixture setup: clinic and coverage');
       final clinic = await ctx.ensureClinic(label: 'p64_dup');
       final installationId = _deterministicUuid('b641', clinic.suffix);
       await _seedAllowanceLowCoverage(
@@ -104,7 +127,11 @@ void main() {
       );
 
       final sessions = RoleSessions(ctx, clinic);
-      await sessions.signInAs(StaffRole.administrator);
+      _progress('login: administrator');
+      await _bounded(
+        'login administrator',
+        sessions.signInAs(StaffRole.administrator),
+      );
 
       final billingToken = await _issueBillingToken();
       await _putBillingContact(billingToken);
@@ -125,8 +152,14 @@ void main() {
       final checkout1 = checkouts[0];
       final checkout2 = checkouts[1];
 
-      await _replayPaymobFixtureForCheckout('success.json', checkoutId: checkout1.checkoutId);
-      await _replayPaymobFixtureForCheckout('success.json', checkoutId: checkout2.checkoutId);
+      await _replayPaymobFixtureForCheckout(
+        'success.json',
+        checkoutId: checkout1.checkoutId,
+      );
+      await _replayPaymobFixtureForCheckout(
+        'success.json',
+        checkoutId: checkout2.checkoutId,
+      );
 
       final payments = await _waitForPayments(billingToken, count: 2);
       expect(payments.length, 2);
@@ -154,12 +187,14 @@ void main() {
 
   group('E2E-P6.4-02', () {
     testWidgets('E2E-P6.4-02', (tester) async {
+      _activeCase = 'E2E-P6.4-02';
       if (!_hfsStackReady) {
         fail(
           'H-FS stack unavailable (ABO at $_aboUrl). Start the H-FS stack before running fullstack subscription tests.',
         );
       }
 
+      _progress('fixture setup: clinic and coverage');
       final clinic = await ctx.ensureClinic(label: 'p64_refund');
       final installationId = _deterministicUuid('b642', clinic.suffix);
       await _seedEndsSoonCoverage(
@@ -169,7 +204,11 @@ void main() {
       );
 
       final sessions = RoleSessions(ctx, clinic);
-      await sessions.signInAs(StaffRole.administrator);
+      _progress('login: administrator');
+      await _bounded(
+        'login administrator',
+        sessions.signInAs(StaffRole.administrator),
+      );
 
       final billingToken = await _issueBillingToken();
       await _putBillingContact(billingToken);
@@ -198,10 +237,15 @@ void main() {
       final reversalReference = await _waitForReversal(billingToken);
 
       final subscription = await _fetchSubscription(billingToken);
-      expect(subscription['notices'], containsAll(['reversal_recorded', 'terms_held']));
+      expect(
+        subscription['notices'],
+        containsAll(['reversal_recorded', 'terms_held']),
+      );
 
       final billingStatus = await _fetchBillingStatus();
-      final notices = (billingStatus['notices'] as List?)?.cast<Map<String, dynamic>>() ?? const [];
+      final notices =
+          (billingStatus['notices'] as List?)?.cast<Map<String, dynamic>>() ??
+          const [];
       expect(notices.map((entry) => entry['code']), contains('ended_reversed'));
 
       await _openSubscriptionPageFromRenew(tester, clinic: clinic);
@@ -218,12 +262,14 @@ void main() {
 
   group('E2E-P6.4-03', () {
     testWidgets('E2E-P6.4-03', (tester) async {
+      _activeCase = 'E2E-P6.4-03';
       if (!_hfsStackReady) {
         fail(
           'H-FS stack unavailable (ABO at $_aboUrl). Start the H-FS stack before running fullstack subscription tests.',
         );
       }
 
+      _progress('fixture setup: clinic and coverage');
       final clinic = await ctx.ensureClinic(label: 'p64_late');
       final installationId = _deterministicUuid('b643', clinic.suffix);
       await _seedEndsSoonCoverage(
@@ -233,7 +279,11 @@ void main() {
       );
 
       final sessions = RoleSessions(ctx, clinic);
-      await sessions.signInAs(StaffRole.administrator);
+      _progress('login: administrator');
+      await _bounded(
+        'login administrator',
+        sessions.signInAs(StaffRole.administrator),
+      );
 
       final billingToken = await _issueBillingToken();
       await _putBillingContact(billingToken);
@@ -245,7 +295,10 @@ void main() {
         clientRequestId: 'p64-late-${clinic.suffix}',
       );
       await _setCheckoutCancelled(lateCheckout.checkoutId);
-      await _replayPaymobFixtureForCheckout('success.json', checkoutId: lateCheckout.checkoutId);
+      await _replayPaymobFixtureForCheckout(
+        'success.json',
+        checkoutId: lateCheckout.checkoutId,
+      );
       await _waitForPayments(billingToken, count: 1);
 
       final withheldCheckout = await _createCheckout(
@@ -260,7 +313,10 @@ void main() {
       );
 
       final subscription = await _fetchSubscription(billingToken);
-      expect(subscription['notices'], containsAll(['late_payment_honoured', 'payment_withheld']));
+      expect(
+        subscription['notices'],
+        containsAll(['late_payment_honoured', 'payment_withheld']),
+      );
 
       await _openSubscriptionPageFromRenew(tester, clinic: clinic);
 
@@ -272,12 +328,14 @@ void main() {
 
   group('E2E-P6.4-04', () {
     testWidgets('E2E-P6.4-04', (tester) async {
+      _activeCase = 'E2E-P6.4-04';
       if (!_hfsStackReady) {
         fail(
           'H-FS stack unavailable (ABO at $_aboUrl). Start the H-FS stack before running fullstack subscription tests.',
         );
       }
 
+      _progress('fixture setup: clinic and coverage');
       final clinic = await ctx.ensureClinic(label: 'p64_page');
       final installationId = _deterministicUuid('b644', clinic.suffix);
       await _seedEndsSoonCoverage(
@@ -287,7 +345,11 @@ void main() {
       );
 
       final sessions = RoleSessions(ctx, clinic);
-      await sessions.signInAs(StaffRole.administrator);
+      _progress('login: administrator');
+      await _bounded(
+        'login administrator',
+        sessions.signInAs(StaffRole.administrator),
+      );
 
       final billingToken = await _issueBillingToken();
       await _putBillingContact(billingToken);
@@ -302,7 +364,10 @@ void main() {
             clientRequestId: 'p64-page-$batch-$i-${clinic.suffix}',
           );
           batchCheckoutIds.add(checkout.checkoutId);
-          await _replayPaymobFixtureForCheckout('success.json', checkoutId: checkout.checkoutId);
+          await _replayPaymobFixtureForCheckout(
+            'success.json',
+            checkoutId: checkout.checkoutId,
+          );
         }
         await _waitForPayments(billingToken, count: (batch + 1) * 10);
         if (batch < 2) {
@@ -314,7 +379,8 @@ void main() {
       String? cursor;
       do {
         final page = await _fetchPayments(billingToken, cursor: cursor);
-        final payments = (page['payments'] as List).cast<Map<String, dynamic>>();
+        final payments = (page['payments'] as List)
+            .cast<Map<String, dynamic>>();
         for (final payment in payments) {
           final reference = payment['reference']?.toString();
           if (reference != null) {
@@ -342,7 +408,7 @@ void main() {
       }
 
       await tester.tap(find.byKey(_paymentHistoryNextKey));
-      await tester.pumpAndSettle();
+      await _settle(tester);
 
       for (final reference in allReferences) {
         expect(find.text(reference), findsOneWidget);
@@ -352,6 +418,8 @@ void main() {
 
   group('E2E-P6.4-05', () {
     testWidgets('E2E-P6.4-05', (tester) async {
+      _activeCase = 'E2E-P6.4-05';
+      _progress('fixture setup: two organization contexts');
       if (!_hfsStackReady) {
         fail(
           'H-FS stack unavailable (ABO at $_aboUrl). Start the H-FS stack before running fullstack subscription tests.',
@@ -365,7 +433,11 @@ void main() {
       final orgBRefs = await _arrangePaidSubscription(ctx, orgB);
 
       final sessions = RoleSessions(ctx, orgA);
-      await sessions.signInAs(StaffRole.administrator);
+      _progress('login: administrator');
+      await _bounded(
+        'login administrator',
+        sessions.signInAs(StaffRole.administrator),
+      );
 
       await _openSubscriptionPageFromRenew(tester, clinic: orgA);
 
@@ -409,7 +481,10 @@ Future<_PaidSubscriptionRefs> _arrangePaidSubscription(
     offer: offer,
     clientRequestId: 'p64-boundary-${clinic.suffix}',
   );
-  await _replayPaymobFixtureForCheckout('success.json', checkoutId: checkout.checkoutId);
+  await _replayPaymobFixtureForCheckout(
+    'success.json',
+    checkoutId: checkout.checkoutId,
+  );
   final payments = await _waitForPayments(billingToken, count: 1);
   final subscription = await _fetchSubscription(billingToken);
   await ctx.signOut();
@@ -423,6 +498,7 @@ Future<void> _openSubscriptionPageFromRenew(
   WidgetTester tester, {
   required BoundaryClinicFixture clinic,
 }) async {
+  _progress('UI wait: opening subscription page from renew');
   final router = _billingRouter(
     branchIds: [clinic.branchId],
     activeBranchId: clinic.branchId,
@@ -451,20 +527,48 @@ Future<void> _openSubscriptionPageFromRenew(
           ),
         ),
       ],
-      child: MaterialApp.router(
-        theme: AppTheme.light(),
-        routerConfig: router,
-      ),
+      child: MaterialApp.router(theme: AppTheme.light(), routerConfig: router),
     ),
   );
-  await tester.pumpAndSettle();
+  await _settle(tester);
   router.go(AppRoutes.aiFeatureHost, extra: composition.dependencies);
-  await tester.pumpAndSettle();
+  await _settle(tester);
   expect(find.byKey(_renewNoticeKey), findsOneWidget);
   await tester.tap(find.byKey(_renewNoticeKey));
-  await tester.pumpAndSettle();
+  await _settle(tester);
   expect(find.byKey(_subscriptionSummaryKey), findsOneWidget);
 }
+
+void _progress(String message) {
+  // Flutter --machine emits this as a testID-attributed `print` event.
+  // Keep labels static and free of fixture values, tokens, or credentials.
+  // ignore: avoid_print
+  print('[HFS-PROGRESS] case=$_activeCase $message');
+}
+
+Future<T> _bounded<T>(
+  String operation,
+  Future<T> future, {
+  Duration timeout = _operationTimeout,
+}) async {
+  _progress('operation start: $operation');
+  try {
+    return await future.timeout(
+      timeout,
+      onTimeout: () => throw TimeoutException(
+        'Operation "$operation" exceeded $timeout',
+        timeout,
+      ),
+    );
+  } finally {
+    _progress('operation end: $operation');
+  }
+}
+
+Future<void> _settle(WidgetTester tester) => _bounded(
+  'UI pumpAndSettle',
+  tester.pumpAndSettle(timeout: const Duration(seconds: 29)),
+);
 
 GoRouter _billingRouter({
   StaffRole role = StaffRole.administrator,
@@ -480,7 +584,8 @@ GoRouter _billingRouter({
             status: AuthSessionStatus.authenticated,
             context: sampleAuthSessionContext(
               role: role,
-              branchIds: branchIds ?? const ['00000000-0000-4000-8000-000000000001'],
+              branchIds:
+                  branchIds ?? const ['00000000-0000-4000-8000-000000000001'],
               activeBranchId: activeBranchId,
             ),
           ),
@@ -493,12 +598,13 @@ GoRouter _billingRouter({
 
 Future<bool> _probeHfsReady() async {
   try {
-    final response = await http
-        .get(
-          Uri.parse('$_aboUrl/v1/offers'),
-          headers: {'Host': _billingHost},
-        )
-        .timeout(const Duration(seconds: 3));
+    final response = await _bounded(
+      'GET /v1/offers stack readiness',
+      http.get(
+        Uri.parse('$_aboUrl/v1/offers'),
+        headers: {'Host': _billingHost},
+      ),
+    );
     return response.statusCode < 500;
   } on Exception {
     return false;
@@ -506,9 +612,12 @@ Future<bool> _probeHfsReady() async {
 }
 
 Future<String> _issueBillingToken() async {
-  final response = await LiveSupabaseHarness.client.rpc(
+  final response = await _bounded(
     'issue_billing_token',
-    params: {'p_contract_version': backendRpc},
+    LiveSupabaseHarness.client.rpc(
+      'issue_billing_token',
+      params: {'p_contract_version': backendRpc},
+    ),
   );
   final tokenMap = Map<String, dynamic>.from(response as Map);
   final data = Map<String, dynamic>.from(tokenMap['data'] as Map);
@@ -516,18 +625,24 @@ Future<String> _issueBillingToken() async {
 }
 
 Future<Map<String, dynamic>> _fetchBillingStatus() async {
-  final response = await LiveSupabaseHarness.client.rpc(
+  final response = await _bounded(
     'get_ai_billing_status',
-    params: {'p_contract_version': backendRpc},
+    LiveSupabaseHarness.client.rpc(
+      'get_ai_billing_status',
+      params: {'p_contract_version': backendRpc},
+    ),
   );
   final statusMap = Map<String, dynamic>.from(response as Map);
   return Map<String, dynamic>.from(statusMap['data'] as Map);
 }
 
 Future<Map<String, dynamic>> _fetchFirstOffer(String billingToken) async {
-  final response = await http.get(
-    Uri.parse('$_aboUrl/v1/offers'),
-    headers: _aboHeaders(billingToken),
+  final response = await _bounded(
+    'GET /v1/offers',
+    http.get(
+      Uri.parse('$_aboUrl/v1/offers'),
+      headers: _aboHeaders(billingToken),
+    ),
   );
   expect(response.statusCode, 200);
   final body = jsonDecode(response.body) as Map<String, dynamic>;
@@ -537,18 +652,22 @@ Future<Map<String, dynamic>> _fetchFirstOffer(String billingToken) async {
 }
 
 Future<void> _putBillingContact(String billingToken) async {
-  final response = await http.put(
-    Uri.parse('$_aboUrl/v1/billing-contact'),
-    headers: {
-      ..._aboHeaders(billingToken),
-      'content-type': 'application/json',
-    },
-    body: jsonEncode({
-      'client_request_id': 'p64-contact-${DateTime.now().microsecondsSinceEpoch}',
-      'name': 'P6.4 Administrator',
-      'email': 'p64-admin@clinic.test',
-      'phone': '+201001234567',
-    }),
+  final response = await _bounded(
+    'PUT /v1/billing-contact',
+    http.put(
+      Uri.parse('$_aboUrl/v1/billing-contact'),
+      headers: {
+        ..._aboHeaders(billingToken),
+        'content-type': 'application/json',
+      },
+      body: jsonEncode({
+        'client_request_id':
+            'p64-contact-${DateTime.now().microsecondsSinceEpoch}',
+        'name': 'P6.4 Administrator',
+        'email': 'p64-admin@clinic.test',
+        'phone': '+201001234567',
+      }),
+    ),
   );
   expect(response.statusCode, 200);
 }
@@ -565,18 +684,21 @@ Future<_CreatedCheckout> _createCheckout({
   required Map<String, dynamic> offer,
   required String clientRequestId,
 }) async {
-  final response = await http.post(
-    Uri.parse('$_aboUrl/v1/checkouts'),
-    headers: {
-      ..._aboHeaders(billingToken),
-      'content-type': 'application/json',
-    },
-    body: jsonEncode({
-      'client_request_id': clientRequestId,
-      'offer_id': offer['offer_id'],
-      'offer_version': offer['version'],
-      'terms_version': (offer['terms'] as Map)['version'],
-    }),
+  final response = await _bounded(
+    'POST /v1/checkouts',
+    http.post(
+      Uri.parse('$_aboUrl/v1/checkouts'),
+      headers: {
+        ..._aboHeaders(billingToken),
+        'content-type': 'application/json',
+      },
+      body: jsonEncode({
+        'client_request_id': clientRequestId,
+        'offer_id': offer['offer_id'],
+        'offer_version': offer['version'],
+        'terms_version': (offer['terms'] as Map)['version'],
+      }),
+    ),
   );
   expect(response.statusCode, 201, reason: 'POST /v1/checkouts should succeed');
   final body = jsonDecode(response.body) as Map<String, dynamic>;
@@ -596,19 +718,30 @@ Map<String, String> _aboHeaders(String billingToken) {
 }
 
 Future<Map<String, dynamic>> _fetchSubscription(String billingToken) async {
-  final response = await http.get(
-    Uri.parse('$_aboUrl/v1/subscription'),
-    headers: _aboHeaders(billingToken),
+  final response = await _bounded(
+    'GET /v1/subscription',
+    http.get(
+      Uri.parse('$_aboUrl/v1/subscription'),
+      headers: _aboHeaders(billingToken),
+    ),
   );
   expect(response.statusCode, 200);
   return jsonDecode(response.body) as Map<String, dynamic>;
 }
 
-Future<Map<String, dynamic>> _fetchPayments(String billingToken, {String? cursor}) async {
+Future<Map<String, dynamic>> _fetchPayments(
+  String billingToken, {
+  String? cursor,
+  Duration timeout = _operationTimeout,
+}) async {
   final uri = cursor == null || cursor.isEmpty
       ? Uri.parse('$_aboUrl/v1/payments')
       : Uri.parse('$_aboUrl/v1/payments?cursor=${Uri.encodeComponent(cursor)}');
-  final response = await http.get(uri, headers: _aboHeaders(billingToken));
+  final response = await _bounded(
+    'GET /v1/payments',
+    http.get(uri, headers: _aboHeaders(billingToken)),
+    timeout: timeout,
+  );
   expect(response.statusCode, 200);
   return jsonDecode(response.body) as Map<String, dynamic>;
 }
@@ -617,33 +750,77 @@ Future<List<Map<String, dynamic>>> _waitForPayments(
   String billingToken, {
   required int count,
 }) async {
+  const pollBound = _pollTimeout;
+  const pollInterval = Duration(milliseconds: 500);
+  final elapsed = Stopwatch()..start();
+  _progress(
+    'poll start: payments count $count (max 120 attempts, bound $pollBound)',
+  );
   for (var attempt = 0; attempt < 120; attempt++) {
-    final page = await _fetchPayments(billingToken);
-    final payments = (page['payments'] as List?)?.cast<Map<String, dynamic>>() ?? const [];
+    final remaining = pollBound - elapsed.elapsed;
+    if (remaining <= Duration.zero) {
+      break;
+    }
+    final requestBound = remaining < _operationTimeout
+        ? remaining
+        : _operationTimeout;
+    final page = await _fetchPayments(billingToken, timeout: requestBound);
+    final payments =
+        (page['payments'] as List?)?.cast<Map<String, dynamic>>() ?? const [];
     if (payments.length >= count) {
+      _progress('poll complete: payments count $count');
       return payments;
     }
-    await Future<void>.delayed(const Duration(milliseconds: 500));
+    final delayRemaining = pollBound - elapsed.elapsed;
+    if (delayRemaining <= Duration.zero) {
+      break;
+    }
+    await Future<void>.delayed(
+      delayRemaining < pollInterval ? delayRemaining : pollInterval,
+    );
   }
-  fail('Timed out waiting for $count payments');
+  fail(
+    'Timed out polling payments count $count after $pollBound or 120 attempts',
+  );
 }
 
 Future<String> _waitForReversal(String billingToken) async {
+  const pollBound = _pollTimeout;
+  const pollInterval = Duration(milliseconds: 500);
+  final elapsed = Stopwatch()..start();
+  _progress(
+    'poll start: payment reversal (max 120 attempts, bound $pollBound)',
+  );
   for (var attempt = 0; attempt < 120; attempt++) {
-    final page = await _fetchPayments(billingToken);
-    final payments = (page['payments'] as List?)?.cast<Map<String, dynamic>>() ?? const [];
+    final remaining = pollBound - elapsed.elapsed;
+    if (remaining <= Duration.zero) {
+      break;
+    }
+    final requestBound = remaining < _operationTimeout
+        ? remaining
+        : _operationTimeout;
+    final page = await _fetchPayments(billingToken, timeout: requestBound);
+    final payments =
+        (page['payments'] as List?)?.cast<Map<String, dynamic>>() ?? const [];
     if (payments.isNotEmpty) {
       final reversals = payments.first['reversals'];
       if (reversals is List && reversals.isNotEmpty) {
         final reference = reversals.first['reference']?.toString();
         if (reference != null && reference.isNotEmpty) {
+          _progress('poll complete: payment reversal');
           return reference;
         }
       }
     }
-    await Future<void>.delayed(const Duration(milliseconds: 500));
+    final delayRemaining = pollBound - elapsed.elapsed;
+    if (delayRemaining <= Duration.zero) {
+      break;
+    }
+    await Future<void>.delayed(
+      delayRemaining < pollInterval ? delayRemaining : pollInterval,
+    );
   }
-  fail('Timed out waiting for reversal in payment history');
+  fail('Timed out polling payment reversal after $pollBound or 120 attempts');
 }
 
 Future<void> _replayPaymobFixtureForCheckout(
@@ -655,33 +832,51 @@ Future<void> _replayPaymobFixtureForCheckout(
   final orderId = await _readPaymobOrderId(checkoutId);
   final txnId = transactionId ?? _transactionIdForCheckout(checkoutId);
   final amountMinor = await _readCheckoutAmountMinor(checkoutId);
-  await _scriptPaymobStub(orderId: orderId, amountMinor: amountMinor, inquiry: inquiry);
+  await _scriptPaymobStub(
+    orderId: orderId,
+    amountMinor: amountMinor,
+    inquiry: inquiry,
+  );
 
-  final repoRoot = File('pubspec.yaml').existsSync() ? Directory.current.parent.path : Directory.current.path;
+  final repoRoot = File('pubspec.yaml').existsSync()
+      ? Directory.current.parent.path
+      : Directory.current.path;
   final fixturePath = '$repoRoot/abo/test/fixtures/paymob/$fixtureName';
-  final fixture = jsonDecode(File(fixturePath).readAsStringSync()) as Map<String, dynamic>;
+  final fixture =
+      jsonDecode(File(fixturePath).readAsStringSync()) as Map<String, dynamic>;
   final obj = Map<String, dynamic>.from(fixture['obj'] as Map);
   obj['id'] = txnId;
   obj['order'] = {'id': int.parse(orderId)};
   final body = jsonEncode({'type': fixture['type'], 'obj': obj});
   final hmac = _signPaymobObj(obj);
-  final response = await http.post(
-    Uri.parse('$_aboUrl/notify/paymob?hmac=${Uri.encodeComponent(hmac)}'),
-    headers: {
-      'Host': _billingHost,
-      'content-type': 'application/json',
-      'cf-connecting-ip': '203.0.113.10',
-    },
-    body: body,
+  final response = await _bounded(
+    'POST /notify/paymob fixture',
+    http.post(
+      Uri.parse('$_aboUrl/notify/paymob?hmac=${Uri.encodeComponent(hmac)}'),
+      headers: {
+        'Host': _billingHost,
+        'content-type': 'application/json',
+        'cf-connecting-ip': '203.0.113.10',
+      },
+      body: body,
+    ),
   );
-  expect(response.statusCode, 200, reason: 'paymob fixture $fixtureName should be accepted by the running stack');
+  expect(
+    response.statusCode,
+    200,
+    reason:
+        'paymob fixture $fixtureName should be accepted by the running stack',
+  );
 }
 
 Future<void> _scriptPaymobInquiry(String inquiry) async {
-  final response = await http.post(
-    Uri.parse('$_paymobUrl/__script'),
-    headers: {'content-type': 'application/json'},
-    body: jsonEncode({'inquiry': inquiry}),
+  final response = await _bounded(
+    'POST Paymob inquiry script',
+    http.post(
+      Uri.parse('$_paymobUrl/__script'),
+      headers: {'content-type': 'application/json'},
+      body: jsonEncode({'inquiry': inquiry}),
+    ),
   );
   expect(response.statusCode, 204);
 }
@@ -691,21 +886,29 @@ Future<void> _scriptPaymobStub({
   required int amountMinor,
   String inquiry = 'bound_success',
 }) async {
-  final response = await http.post(
-    Uri.parse('$_paymobUrl/__script'),
-    headers: {'content-type': 'application/json'},
-    body: jsonEncode({
-      'amount_cents': '$amountMinor',
-      'intention_order_id': orderId,
-      'inquiry': inquiry,
-    }),
+  final response = await _bounded(
+    'POST Paymob stub script',
+    http.post(
+      Uri.parse('$_paymobUrl/__script'),
+      headers: {'content-type': 'application/json'},
+      body: jsonEncode({
+        'amount_cents': '$amountMinor',
+        'intention_order_id': orderId,
+        'inquiry': inquiry,
+      }),
+    ),
   );
   expect(response.statusCode, 204);
 }
 
 String _signPaymobObj(Map<String, dynamic> obj) {
-  final concatenated = _paymobHmacFields.map((field) => _paymobFieldValue(obj, field)).join();
-  final digest = Hmac(sha512, utf8.encode(_paymobHmacSecret)).convert(utf8.encode(concatenated));
+  final concatenated = _paymobHmacFields
+      .map((field) => _paymobFieldValue(obj, field))
+      .join();
+  final digest = Hmac(
+    sha512,
+    utf8.encode(_paymobHmacSecret),
+  ).convert(utf8.encode(concatenated));
   return digest.toString();
 }
 
@@ -756,22 +959,32 @@ Future<void> _ageCheckoutFacts(List<String> checkoutIds) async {
   if (checkoutIds.isEmpty) {
     return;
   }
-  final keys = checkoutIds.map((id) => "'${id.replaceAll("'", "''")}'").join(', ');
+  final keys = checkoutIds
+      .map((id) => "'${id.replaceAll("'", "''")}'")
+      .join(', ');
   await _executeAboD1(
     "UPDATE fact_log SET created_at = datetime('now', '-2 hours') WHERE \"table\" = 'checkout' AND key IN ($keys)",
   );
 }
 
 Future<String?> _aboSqlitePath() async {
-  final repoRoot = File('pubspec.yaml').existsSync() ? Directory.current.parent.path : Directory.current.path;
-  final dbDir = Directory('$repoRoot/e2e/fullstack/.wrangler/abo/v3/d1/miniflare-D1DatabaseObject');
+  final repoRoot = File('pubspec.yaml').existsSync()
+      ? Directory.current.parent.path
+      : Directory.current.path;
+  final dbDir = Directory(
+    '$repoRoot/e2e/fullstack/.wrangler/abo/v3/d1/miniflare-D1DatabaseObject',
+  );
   if (!dbDir.existsSync()) {
     return null;
   }
   final files = dbDir
       .listSync()
       .whereType<File>()
-      .where((file) => file.path.endsWith('.sqlite') && !file.path.endsWith('metadata.sqlite'))
+      .where(
+        (file) =>
+            file.path.endsWith('.sqlite') &&
+            !file.path.endsWith('metadata.sqlite'),
+      )
       .toList();
   if (files.isEmpty) {
     return null;
@@ -896,7 +1109,11 @@ Future<void> _seedAllowanceLowCoverage({
   required String orgId,
   required String installationId,
 }) async {
-  await _seedActiveCoverage(ctx: ctx, orgId: orgId, installationId: installationId);
+  await _seedActiveCoverage(
+    ctx: ctx,
+    orgId: orgId,
+    installationId: installationId,
+  );
   await ctx.sql.execute('''
 UPDATE ai_internal.clinic_ai_coverage
 SET band = '75'
@@ -909,7 +1126,11 @@ Future<void> _seedEndsSoonCoverage({
   required String orgId,
   required String installationId,
 }) async {
-  await _seedActiveCoverage(ctx: ctx, orgId: orgId, installationId: installationId);
+  await _seedActiveCoverage(
+    ctx: ctx,
+    orgId: orgId,
+    installationId: installationId,
+  );
   await ctx.sql.execute('''
 UPDATE ai_internal.clinic_ai_coverage
 SET ends_at = now() + interval '7 days',

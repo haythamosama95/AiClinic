@@ -3,6 +3,7 @@ library;
 
 // ignore_for_file: depend_on_referenced_packages
 
+import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
@@ -43,6 +44,8 @@ const kAdministratorBillingPath = '/ai/administrator-billing';
 
 final _aboUrl = Platform.environment['ABO_URL'] ?? 'http://127.0.0.1:8788';
 var _hfsStackReady = false;
+var _activeCase = 'suite-setup';
+const _operationTimeout = Duration(seconds: 30);
 const _billingHost = 'billing.vendor.test';
 const _paymobHmacSecret = 'paymob-hmac-unconfigured';
 
@@ -90,30 +93,45 @@ void main() {
   late RecordingUrlLauncher urlLauncher;
 
   setUpAll(() async {
+    _progress('stack readiness: probing ABO');
     _hfsStackReady = await _probeHfsReady();
+    _progress('stack readiness: ${_hfsStackReady ? 'ready' : 'unavailable'}');
     if (_hfsStackReady) {
-      await LiveSupabaseHarness.ensureReady();
+      _progress('stack readiness: initializing Supabase');
+      await _bounded(
+        'Supabase harness readiness',
+        LiveSupabaseHarness.ensureReady(),
+      );
+      _progress('stack readiness: Supabase ready');
     }
   });
 
   setUp(() async {
+    _activeCase = 'setup';
     if (!_hfsStackReady) {
       return;
     }
-    ctx = await BoundaryTestContext.create();
-    await ctx.resetInstallation();
+    _progress('fixture setup: creating boundary context');
+    ctx = await _bounded(
+      'create boundary context',
+      BoundaryTestContext.create(),
+    );
+    _progress('fixture setup: resetting installation');
+    await _bounded('reset installation fixture', ctx.resetInstallation());
     urlLauncher = RecordingUrlLauncher();
     UrlLauncherPlatform.instance = urlLauncher;
   });
 
   group('E2E-P6.3-01', () {
     testWidgets('E2E-P6.3-01', (tester) async {
+      _activeCase = 'E2E-P6.3-01';
       if (!_hfsStackReady) {
         fail(
           'H-FS stack unavailable (ABO at $_aboUrl). Start the H-FS stack before running fullstack billing tests.',
         );
       }
 
+      _progress('fixture setup: clinic and coverage');
       final clinic = await ctx.ensureClinic(label: 'p63_purchase');
       final installationId = _deterministicUuid('b63', clinic.suffix);
       await _seedEndsSoonCoverage(
@@ -121,10 +139,17 @@ void main() {
         orgId: clinic.organizationId,
         installationId: installationId,
       );
-      await _seedPlatformTenantBinding(orgId: clinic.organizationId, installationId: installationId);
+      await _seedPlatformTenantBinding(
+        orgId: clinic.organizationId,
+        installationId: installationId,
+      );
 
       final sessions = RoleSessions(ctx, clinic);
-      await sessions.signInAs(StaffRole.administrator);
+      _progress('login: administrator');
+      await _bounded(
+        'login administrator',
+        sessions.signInAs(StaffRole.administrator),
+      );
 
       final composition = buildLiveVisitSummaryComposition(
         client: LiveSupabaseHarness.client,
@@ -163,8 +188,17 @@ void main() {
 
       await _submitCheckout(tester);
 
-      expect(urlLauncher.launchedUrls, isNotEmpty, reason: 'checkout should record redirect_url via UrlLauncherPlatform');
-      expect(urlLauncher.didOpenBrowser, isFalse, reason: 'UrlLauncherPlatform records redirect_url and does not open a browser');
+      expect(
+        urlLauncher.launchedUrls,
+        isNotEmpty,
+        reason: 'checkout should record redirect_url via UrlLauncherPlatform',
+      );
+      expect(
+        urlLauncher.didOpenBrowser,
+        isFalse,
+        reason:
+            'UrlLauncherPlatform records redirect_url and does not open a browser',
+      );
 
       final redirectUrl = urlLauncher.launchedUrls.last;
       await _replayPaymobFixture('success.json', redirectUrl: redirectUrl);
@@ -178,9 +212,12 @@ void main() {
         reason: 'Active should call request_ai_status_refresh once',
       );
 
-      final status = await LiveSupabaseHarness.client.rpc(
+      final status = await _bounded(
         'get_ai_status',
-        params: {'p_contract_version': backendRpc},
+        LiveSupabaseHarness.client.rpc(
+          'get_ai_status',
+          params: {'p_contract_version': backendRpc},
+        ),
       );
       final statusMap = Map<String, dynamic>.from(status as Map);
       expect(statusMap['success'], isTrue);
@@ -188,17 +225,26 @@ void main() {
       expect(data['available'], isTrue);
       expect(data['state'], 'active');
 
-      final aat = await LiveSupabaseHarness.client.rpc(
+      final aat = await _bounded(
         'issue_ai_token',
-        params: {'p_contract_version': backendRpc},
+        LiveSupabaseHarness.client.rpc(
+          'issue_ai_token',
+          params: {'p_contract_version': backendRpc},
+        ),
       );
-      expect(aat, isA<String>(), reason: 'AAT mint should succeed after billing completes');
+      expect(
+        aat,
+        isA<String>(),
+        reason: 'AAT mint should succeed after billing completes',
+      );
       expect((aat as String).split('.'), hasLength(3));
     });
   });
 
   group('E2E-P6.3-02', () {
     testWidgets('E2E-P6.3-02', (tester) async {
+      _activeCase = 'E2E-P6.3-02';
+      _progress('fixture setup: clinic, branch, and coverage');
       final clinic = await ctx.ensureClinic(label: 'p63_resume');
       final secondBranchId = await _createSecondBranch(ctx, clinic);
       final installationId = _deterministicUuid('b632', clinic.suffix);
@@ -207,9 +253,16 @@ void main() {
         orgId: clinic.organizationId,
         installationId: installationId,
       );
-      await _seedPlatformTenantBinding(orgId: clinic.organizationId, installationId: installationId);
+      await _seedPlatformTenantBinding(
+        orgId: clinic.organizationId,
+        installationId: installationId,
+      );
       final sessions = RoleSessions(ctx, clinic);
-      await sessions.signInAs(StaffRole.administrator);
+      _progress('login: administrator');
+      await _bounded(
+        'login administrator',
+        sessions.signInAs(StaffRole.administrator),
+      );
 
       final firstSession = _BillingDesktopSession(
         tester: tester,
@@ -238,26 +291,39 @@ void main() {
       expect(
         find.textContaining(checkoutReference!),
         findsOneWidget,
-        reason: 'second desktop should resume the open checkout by reference from GET /v1/checkouts?open=1',
+        reason:
+            'second desktop should resume the open checkout by reference from GET /v1/checkouts?open=1',
       );
 
-      await _replayPaymobFixture('success.json', redirectUrl: urlLauncher.launchedUrls.last);
+      await _replayPaymobFixture(
+        'success.json',
+        redirectUrl: urlLauncher.launchedUrls.last,
+      );
       await _pumpUntilCheckoutShownState(tester, 'Active');
       expect(find.text('Active'), findsOneWidget);
 
-      final statusOnOpen = await LiveSupabaseHarness.client.rpc(
+      final statusOnOpen = await _bounded(
         'get_ai_status',
-        params: {'p_contract_version': backendRpc},
+        LiveSupabaseHarness.client.rpc(
+          'get_ai_status',
+          params: {'p_contract_version': backendRpc},
+        ),
       );
       final statusMap = Map<String, dynamic>.from(statusOnOpen as Map);
       expect(statusMap['success'], isTrue);
       final data = Map<String, dynamic>.from(statusMap['data'] as Map);
-      expect(data['state'], 'active', reason: 'get_ai_status should be active on open');
+      expect(
+        data['state'],
+        'active',
+        reason: 'get_ai_status should be active on open',
+      );
     });
   });
 
   group('E2E-P6.3-03', () {
     testWidgets('E2E-P6.3-03', (tester) async {
+      _activeCase = 'E2E-P6.3-03';
+      _progress('fixture setup: clinic and coverage');
       final clinic = await ctx.ensureClinic(label: 'p63_queued');
       final installationId = _deterministicUuid('b633', clinic.suffix);
       await _seedActiveCoverage(
@@ -267,7 +333,11 @@ void main() {
       );
 
       final sessions = RoleSessions(ctx, clinic);
-      await sessions.signInAs(StaffRole.administrator);
+      _progress('login: administrator');
+      await _bounded(
+        'login administrator',
+        sessions.signInAs(StaffRole.administrator),
+      );
 
       final composition = buildLiveVisitSummaryComposition(
         client: LiveSupabaseHarness.client,
@@ -283,7 +353,7 @@ void main() {
       );
 
       await tester.tap(find.byKey(const Key('ai_notice_renew')));
-      await tester.pumpAndSettle();
+      await _settle(tester);
 
       await _acceptTermsAndContinue(tester);
       await _fillAndSaveBillingContact(tester);
@@ -294,14 +364,22 @@ void main() {
       expect(
         find.text(_queuedTermText),
         findsOneWidget,
-        reason: 'active clinic should see queued-term sentence before launchUrl',
+        reason:
+            'active clinic should see queued-term sentence before launchUrl',
       );
-      expect(urlLauncher.launchedUrls, isEmpty, reason: 'launchUrl should not run before the queued-term sentence is shown');
+      expect(
+        urlLauncher.launchedUrls,
+        isEmpty,
+        reason:
+            'launchUrl should not run before the queued-term sentence is shown',
+      );
     });
   });
 
   group('E2E-P6.3-04', () {
     testWidgets('E2E-P6.3-04', (tester) async {
+      _activeCase = 'E2E-P6.3-04';
+      _progress('fixture setup: clinic and coverage');
       final clinic = await ctx.ensureClinic(label: 'p63_price');
       final installationId = _deterministicUuid('b634', clinic.suffix);
       await _seedEndsSoonCoverage(
@@ -311,7 +389,11 @@ void main() {
       );
 
       final sessions = RoleSessions(ctx, clinic);
-      await sessions.signInAs(StaffRole.administrator);
+      _progress('login: administrator');
+      await _bounded(
+        'login administrator',
+        sessions.signInAs(StaffRole.administrator),
+      );
 
       final composition = buildLiveVisitSummaryComposition(
         client: LiveSupabaseHarness.client,
@@ -327,7 +409,7 @@ void main() {
       );
 
       await tester.tap(find.byKey(const Key('ai_notice_renew')));
-      await tester.pumpAndSettle();
+      await _settle(tester);
       await _acceptTermsAndContinue(tester);
       await _fillAndSaveBillingContact(tester);
 
@@ -337,13 +419,23 @@ void main() {
 
       await _submitCheckout(tester);
 
-      expect(find.textContaining('$newPriceMinor'), findsOneWidget, reason: 'offer_unavailable should show the new price before launch');
-      expect(urlLauncher.launchedUrls, isEmpty, reason: 'checkout should not launch until the new price is shown');
+      expect(
+        find.textContaining('$newPriceMinor'),
+        findsOneWidget,
+        reason: 'offer_unavailable should show the new price before launch',
+      );
+      expect(
+        urlLauncher.launchedUrls,
+        isEmpty,
+        reason: 'checkout should not launch until the new price is shown',
+      );
     });
   });
 
   group('E2E-P6.3-05', () {
     testWidgets('E2E-P6.3-05', (tester) async {
+      _activeCase = 'E2E-P6.3-05';
+      _progress('fixture setup: clinic and coverage');
       final clinic = await ctx.ensureClinic(label: 'p63_decline');
       final installationId = _deterministicUuid('b635', clinic.suffix);
       await _seedEndsSoonCoverage(
@@ -351,10 +443,17 @@ void main() {
         orgId: clinic.organizationId,
         installationId: installationId,
       );
-      await _seedPlatformTenantBinding(orgId: clinic.organizationId, installationId: installationId);
+      await _seedPlatformTenantBinding(
+        orgId: clinic.organizationId,
+        installationId: installationId,
+      );
 
       final sessions = RoleSessions(ctx, clinic);
-      await sessions.signInAs(StaffRole.administrator);
+      _progress('login: administrator');
+      await _bounded(
+        'login administrator',
+        sessions.signInAs(StaffRole.administrator),
+      );
 
       final composition = buildLiveVisitSummaryComposition(
         client: LiveSupabaseHarness.client,
@@ -370,7 +469,7 @@ void main() {
       );
 
       await tester.tap(find.byKey(const Key('ai_notice_renew')));
-      await tester.pumpAndSettle();
+      await _settle(tester);
       await _acceptTermsAndContinue(tester);
       await _fillAndSaveBillingContact(tester);
       await _submitCheckout(tester);
@@ -378,17 +477,31 @@ void main() {
       final redirectUrl = urlLauncher.launchedUrls.last;
       await _replayPaymobFixture('decline.json', redirectUrl: redirectUrl);
       await _pumpUntilCheckoutShownState(tester, 'Failed');
-      expect(find.text('Failed'), findsOneWidget, reason: 'decline should leave the checkout page on Failed');
+      expect(
+        find.text('Failed'),
+        findsOneWidget,
+        reason: 'decline should leave the checkout page on Failed',
+      );
 
       await _replayPaymobFixture('success.json', redirectUrl: redirectUrl);
       await _pumpUntilCheckoutShownState(tester, 'Active');
-      expect(find.text('Active'), findsOneWidget, reason: 'later success on the same page should show Active');
-      expect(find.byKey(_billingCheckoutKey), findsOneWidget, reason: 'Failed should stay on the same checkout page');
+      expect(
+        find.text('Active'),
+        findsOneWidget,
+        reason: 'later success on the same page should show Active',
+      );
+      expect(
+        find.byKey(_billingCheckoutKey),
+        findsOneWidget,
+        reason: 'Failed should stay on the same checkout page',
+      );
     });
   });
 
   group('E2E-P6.3-06', () {
     testWidgets('E2E-P6.3-06', (tester) async {
+      _activeCase = 'E2E-P6.3-06';
+      _progress('fixture setup: clinic and coverage');
       final clinic = await ctx.ensureClinic(label: 'p63_staff_gate');
       final installationId = _deterministicUuid('b636', clinic.suffix);
       await _seedEndsSoonCoverage(
@@ -398,9 +511,12 @@ void main() {
       );
 
       final sessions = RoleSessions(ctx, clinic);
-      await sessions.signInAs(StaffRole.doctor);
+      _progress('login: doctor');
+      await _bounded('login doctor', sessions.signInAs(StaffRole.doctor));
 
-      final recordingClient = _RecordingSessionSupabaseClient(LiveSupabaseHarness.client);
+      final recordingClient = _RecordingSessionSupabaseClient(
+        LiveSupabaseHarness.client,
+      );
       final composition = buildLiveVisitSummaryComposition(
         client: recordingClient,
         visitId: testVisitId,
@@ -416,8 +532,16 @@ void main() {
         role: StaffRole.doctor,
       );
 
-      expect(find.byKey(const Key('ai_notice_renew')), findsNothing, reason: 'staff should not see the renew control');
-      expect(find.byKey(kAiDegradedRenewOrBuyKey), findsNothing, reason: 'staff should not see the renew or buy control');
+      expect(
+        find.byKey(const Key('ai_notice_renew')),
+        findsNothing,
+        reason: 'staff should not see the renew control',
+      );
+      expect(
+        find.byKey(kAiDegradedRenewOrBuyKey),
+        findsNothing,
+        reason: 'staff should not see the renew or buy control',
+      );
 
       final degradedComposition = buildLiveVisitSummaryComposition(
         client: recordingClient,
@@ -435,7 +559,11 @@ void main() {
         role: StaffRole.doctor,
       );
 
-      expect(find.byKey(kAiDegradedRenewOrBuyKey), findsNothing, reason: 'staff degraded state should not offer renew or buy');
+      expect(
+        find.byKey(kAiDegradedRenewOrBuyKey),
+        findsNothing,
+        reason: 'staff degraded state should not offer renew or buy',
+      );
       expect(
         recordingClient.rpcCalls.where((call) => call == 'issue_billing_token'),
         isEmpty,
@@ -446,6 +574,8 @@ void main() {
 
   group('E2E-P6.3-07', () {
     testWidgets('E2E-P6.3-07', (tester) async {
+      _activeCase = 'E2E-P6.3-07';
+      _progress('fixture setup: clinic and coverage');
       final clinic = await ctx.ensureClinic(label: 'p63_contract');
       final installationId = _deterministicUuid('b637', clinic.suffix);
       await _seedEndsSoonCoverage(
@@ -455,26 +585,42 @@ void main() {
       );
 
       final sessions = RoleSessions(ctx, clinic);
-      await sessions.signInAs(StaffRole.administrator);
+      _progress('login: administrator');
+      await _bounded(
+        'login administrator',
+        sessions.signInAs(StaffRole.administrator),
+      );
 
-      final tokenResponse = await LiveSupabaseHarness.client.rpc(
+      final tokenResponse = await _bounded(
         'issue_billing_token',
-        params: {'p_contract_version': backendRpc},
+        LiveSupabaseHarness.client.rpc(
+          'issue_billing_token',
+          params: {'p_contract_version': backendRpc},
+        ),
       );
       final tokenMap = Map<String, dynamic>.from(tokenResponse as Map);
       final data = Map<String, dynamic>.from(tokenMap['data'] as Map);
       final billingToken = data['token'] as String;
 
-      final unsupportedProbe = await http.get(
-        Uri.parse('$_aboUrl/v1/offers'),
-        headers: {
-          'Authorization': 'Bearer $billingToken',
-          'Host': _billingHost,
-          'Abo-Contract-Version': '$_unsupportedAboContractVersion',
-        },
+      final unsupportedProbe = await _bounded(
+        'GET /v1/offers contract probe',
+        http.get(
+          Uri.parse('$_aboUrl/v1/offers'),
+          headers: {
+            'Authorization': 'Bearer $billingToken',
+            'Host': _billingHost,
+            'Abo-Contract-Version': '$_unsupportedAboContractVersion',
+          },
+        ),
       );
-      expect(unsupportedProbe.statusCode, 400, reason: 'unsupported Abo-Contract-Version should be refused before auth');
-      final unsupportedBody = jsonDecode(unsupportedProbe.body) as Map<String, dynamic>;
+      expect(
+        unsupportedProbe.statusCode,
+        400,
+        reason:
+            'unsupported Abo-Contract-Version should be refused before auth',
+      );
+      final unsupportedBody =
+          jsonDecode(unsupportedProbe.body) as Map<String, dynamic>;
       expect(unsupportedBody['code'], 'contract_version_unsupported');
 
       debugAboContractVersionOverride = _unsupportedAboContractVersion;
@@ -484,8 +630,16 @@ void main() {
         debugAboContractVersionOverride = null;
       }
 
-      expect(find.byType(AlertDialog), findsNothing, reason: 'contract_version_unsupported should not open a dialog');
-      expect(find.byKey(kAiDegradedAppUpdateKey), findsOneWidget, reason: 'billing screens should show the inline app-update state');
+      expect(
+        find.byType(AlertDialog),
+        findsNothing,
+        reason: 'contract_version_unsupported should not open a dialog',
+      );
+      expect(
+        find.byKey(kAiDegradedAppUpdateKey),
+        findsOneWidget,
+        reason: 'billing screens should show the inline app-update state',
+      );
       expect(find.text(_appUpdateCopy), findsOneWidget);
     });
   });
@@ -505,7 +659,8 @@ GoRouter _billingRouter({
             status: AuthSessionStatus.authenticated,
             context: sampleAuthSessionContext(
               role: role,
-              branchIds: branchIds ?? const ['00000000-0000-4000-8000-000000000001'],
+              branchIds:
+                  branchIds ?? const ['00000000-0000-4000-8000-000000000001'],
               activeBranchId: activeBranchId,
             ),
           ),
@@ -535,22 +690,19 @@ Future<void> _pumpAdministratorShell(
           ),
         ),
       ],
-      child: MaterialApp.router(
-        theme: AppTheme.light(),
-        routerConfig: router,
-      ),
+      child: MaterialApp.router(theme: AppTheme.light(), routerConfig: router),
     ),
   );
   if (boundedPumping) {
     await _pumpBillingFrames(tester);
   } else {
-    await tester.pumpAndSettle();
+    await _settle(tester);
   }
   router.go(AppRoutes.ai);
   if (boundedPumping) {
     await _pumpBillingFrames(tester);
   } else {
-    await tester.pumpAndSettle();
+    await _settle(tester);
   }
   await tester.pumpWidget(
     ProviderScope(
@@ -560,7 +712,10 @@ Future<void> _pumpAdministratorShell(
       child: MaterialApp(
         theme: AppTheme.light(),
         home: Scaffold(
-          body: liveVisitSummaryHostBody(visitId: testVisitId, composition: composition),
+          body: liveVisitSummaryHostBody(
+            visitId: testVisitId,
+            composition: composition,
+          ),
         ),
       ),
     ),
@@ -572,7 +727,7 @@ Future<void> _pumpAdministratorShell(
       reason: 'administrator shell should show the renew control',
     );
   } else {
-    await tester.pumpAndSettle();
+    await _settle(tester);
     expect(find.byKey(const Key('ai_notice_renew')), findsOneWidget);
   }
 }
@@ -596,15 +751,12 @@ Future<void> _pumpStaffShell(
           ),
         ),
       ],
-      child: MaterialApp.router(
-        theme: AppTheme.light(),
-        routerConfig: router,
-      ),
+      child: MaterialApp.router(theme: AppTheme.light(), routerConfig: router),
     ),
   );
-  await tester.pumpAndSettle();
+  await _settle(tester);
   router.go(AppRoutes.ai);
-  await tester.pumpAndSettle();
+  await _settle(tester);
   await tester.pumpWidget(
     ProviderScope(
       overrides: [
@@ -613,12 +765,15 @@ Future<void> _pumpStaffShell(
       child: MaterialApp(
         theme: AppTheme.light(),
         home: Scaffold(
-          body: liveVisitSummaryHostBody(visitId: testVisitId, composition: composition),
+          body: liveVisitSummaryHostBody(
+            visitId: testVisitId,
+            composition: composition,
+          ),
         ),
       ),
     ),
   );
-  await tester.pumpAndSettle();
+  await _settle(tester);
 }
 
 Future<void> _pumpAdministratorBillingRoute(
@@ -638,25 +793,26 @@ Future<void> _pumpAdministratorBillingRoute(
           ),
         ),
       ],
-      child: MaterialApp.router(
-        theme: AppTheme.light(),
-        routerConfig: router,
-      ),
+      child: MaterialApp.router(theme: AppTheme.light(), routerConfig: router),
     ),
   );
-  await tester.pumpAndSettle();
+  await _settle(tester);
   router.go(kAdministratorBillingPath);
-  await tester.pumpAndSettle();
+  await _settle(tester);
 }
 
-Future<void> _acceptTermsAndContinue(WidgetTester tester, {bool boundedPumping = false}) async {
+Future<void> _acceptTermsAndContinue(
+  WidgetTester tester, {
+  bool boundedPumping = false,
+}) async {
+  _progress('UI action: accept terms and continue');
   final acceptTerms = find.byKey(const Key('billing_accept_terms'));
   if (acceptTerms.evaluate().isNotEmpty) {
     await tester.tap(acceptTerms);
     if (boundedPumping) {
       await _pumpBillingFrames(tester);
     } else {
-      await tester.pumpAndSettle();
+      await _settle(tester);
     }
   }
   final continueButton = find.byKey(const Key('billing_continue'));
@@ -665,30 +821,49 @@ Future<void> _acceptTermsAndContinue(WidgetTester tester, {bool boundedPumping =
     if (boundedPumping) {
       await _pumpBillingFrames(tester);
     } else {
-      await tester.pumpAndSettle();
+      await _settle(tester);
     }
   }
 }
 
-Future<void> _fillAndSaveBillingContact(WidgetTester tester, {bool boundedPumping = false}) async {
-  await tester.enterText(find.byKey(const Key('billing_contact_name')), 'P6.3 Administrator');
-  await tester.enterText(find.byKey(const Key('billing_contact_email')), 'p63-admin@clinic.test');
-  await tester.enterText(find.byKey(const Key('billing_contact_phone')), '+201001234567');
+Future<void> _fillAndSaveBillingContact(
+  WidgetTester tester, {
+  bool boundedPumping = false,
+}) async {
+  _progress('UI action: save billing contact');
+  await tester.enterText(
+    find.byKey(const Key('billing_contact_name')),
+    'P6.3 Administrator',
+  );
+  await tester.enterText(
+    find.byKey(const Key('billing_contact_email')),
+    'p63-admin@clinic.test',
+  );
+  await tester.enterText(
+    find.byKey(const Key('billing_contact_phone')),
+    '+201001234567',
+  );
   await tester.tap(find.byKey(const Key('billing_contact_save')));
   if (boundedPumping) {
     await _pumpBillingFrames(tester);
   } else {
-    await tester.pumpAndSettle();
+    await _settle(tester);
   }
 }
 
 Future<void> _submitCheckout(WidgetTester tester) async {
+  _progress('UI action: submit checkout and wait for response');
   await tester.tap(find.byKey(const Key('billing_checkout_submit')));
   // Checkout polling uses Timer.periodic; pumpAndSettle would wait until timeout.
   await _pumpBillingFrames(tester, iterations: 60);
 }
 
-Future<void> _pumpUntilCheckoutShownState(WidgetTester tester, String shownState, {int maxSeconds = 30}) async {
+Future<void> _pumpUntilCheckoutShownState(
+  WidgetTester tester,
+  String shownState, {
+  int maxSeconds = 30,
+}) async {
+  _progress('UI wait: checkout state $shownState (max ${maxSeconds}s)');
   for (var i = 0; i < maxSeconds; i++) {
     await tester.pump(const Duration(seconds: 1));
     if (find.text(shownState).evaluate().isNotEmpty) {
@@ -699,7 +874,9 @@ Future<void> _pumpUntilCheckoutShownState(WidgetTester tester, String shownState
 }
 
 // ignore: unused_element
-Future<void> _expectAiRequestSucceeds(LiveVisitSummaryComposition composition) async {
+Future<void> _expectAiRequestSucceeds(
+  LiveVisitSummaryComposition composition,
+) async {
   final session = await composition.dependencies.sdk.invoke(
     const CapabilityInvokeInput(
       capabilityId: 'clinic.visit_summary',
@@ -709,17 +886,22 @@ Future<void> _expectAiRequestSucceeds(LiveVisitSummaryComposition composition) a
     ),
   );
   final terminal = await session.terminal;
-  expect(terminal, isA<CompletedTerminal>(), reason: 'an AI request should succeed after billing completes');
+  expect(
+    terminal,
+    isA<CompletedTerminal>(),
+    reason: 'an AI request should succeed after billing completes',
+  );
 }
 
 Future<bool> _probeHfsReady() async {
   try {
-    final response = await http
-        .get(
-          Uri.parse('$_aboUrl/v1/offers'),
-          headers: {'Host': _billingHost},
-        )
-        .timeout(const Duration(seconds: 3));
+    final response = await _bounded(
+      'GET /v1/offers stack readiness',
+      http.get(
+        Uri.parse('$_aboUrl/v1/offers'),
+        headers: {'Host': _billingHost},
+      ),
+    );
     return response.statusCode < 500;
   } on Exception {
     return false;
@@ -731,10 +913,38 @@ Future<void> _pumpBillingFrames(
   int iterations = 10,
   Duration step = const Duration(milliseconds: 100),
 }) async {
+  _progress('UI wait: pumping billing frames ($iterations iterations)');
   for (var i = 0; i < iterations; i++) {
     await tester.pump(step);
   }
 }
+
+void _progress(String message) {
+  // Flutter --machine emits this as a testID-attributed `print` event.
+  // Keep labels static and free of fixture values, tokens, or credentials.
+  // ignore: avoid_print
+  print('[HFS-PROGRESS] case=$_activeCase $message');
+}
+
+Future<T> _bounded<T>(String operation, Future<T> future) async {
+  _progress('operation start: $operation');
+  try {
+    return await future.timeout(
+      _operationTimeout,
+      onTimeout: () => throw TimeoutException(
+        'Operation "$operation" exceeded ${_operationTimeout.inSeconds}s',
+        _operationTimeout,
+      ),
+    );
+  } finally {
+    _progress('operation end: $operation');
+  }
+}
+
+Future<void> _settle(WidgetTester tester) => _bounded(
+  'UI pumpAndSettle',
+  tester.pumpAndSettle(timeout: const Duration(seconds: 29)),
+);
 
 Future<void> _pumpUntilFound(
   WidgetTester tester,
@@ -743,6 +953,7 @@ Future<void> _pumpUntilFound(
   int maxIterations = 120,
   Duration step = const Duration(milliseconds: 500),
 }) async {
+  _progress('UI wait: ${reason ?? 'finder'} (max ${maxIterations} frames)');
   for (var i = 0; i < maxIterations; i++) {
     await tester.pump(step);
     if (finder.evaluate().isNotEmpty) {
@@ -752,28 +963,47 @@ Future<void> _pumpUntilFound(
   fail(reason ?? 'Timed out waiting for $finder');
 }
 
-Future<void> _replayPaymobFixture(String fixtureName, {required String redirectUrl}) async {
-  final repoRoot = File('pubspec.yaml').existsSync() ? Directory.current.parent.path : Directory.current.path;
+Future<void> _replayPaymobFixture(
+  String fixtureName, {
+  required String redirectUrl,
+}) async {
+  final repoRoot = File('pubspec.yaml').existsSync()
+      ? Directory.current.parent.path
+      : Directory.current.path;
   final fixturePath = '$repoRoot/abo/test/fixtures/paymob/$fixtureName';
-  final fixture = jsonDecode(File(fixturePath).readAsStringSync()) as Map<String, dynamic>;
+  final fixture =
+      jsonDecode(File(fixturePath).readAsStringSync()) as Map<String, dynamic>;
   final obj = Map<String, dynamic>.from(fixture['obj'] as Map);
   final body = jsonEncode({'type': fixture['type'], 'obj': obj});
   final hmac = _signPaymobObj(obj);
-  final response = await http.post(
-    Uri.parse('$_aboUrl/notify/paymob?hmac=${Uri.encodeComponent(hmac)}'),
-    headers: {
-      'Host': _billingHost,
-      'content-type': 'application/json',
-      'cf-connecting-ip': '203.0.113.10',
-    },
-    body: body,
+  final response = await _bounded(
+    'POST /notify/paymob fixture',
+    http.post(
+      Uri.parse('$_aboUrl/notify/paymob?hmac=${Uri.encodeComponent(hmac)}'),
+      headers: {
+        'Host': _billingHost,
+        'content-type': 'application/json',
+        'cf-connecting-ip': '203.0.113.10',
+      },
+      body: body,
+    ),
   );
-  expect(response.statusCode, 200, reason: 'paymob fixture $fixtureName should be accepted by the running stack');
+  expect(
+    response.statusCode,
+    200,
+    reason:
+        'paymob fixture $fixtureName should be accepted by the running stack',
+  );
 }
 
 String _signPaymobObj(Map<String, dynamic> obj) {
-  final concatenated = _paymobHmacFields.map((field) => _paymobFieldValue(obj, field)).join();
-  final digest = Hmac(sha512, utf8.encode(_paymobHmacSecret)).convert(utf8.encode(concatenated));
+  final concatenated = _paymobHmacFields
+      .map((field) => _paymobFieldValue(obj, field))
+      .join();
+  final digest = Hmac(
+    sha512,
+    utf8.encode(_paymobHmacSecret),
+  ).convert(utf8.encode(concatenated));
   return digest.toString();
 }
 
@@ -792,7 +1022,10 @@ String _paymobFieldValue(Map<String, dynamic> obj, String field) {
   return '$raw';
 }
 
-Future<String> _createSecondBranch(BoundaryTestContext ctx, BoundaryClinicFixture clinic) async {
+Future<String> _createSecondBranch(
+  BoundaryTestContext ctx,
+  BoundaryClinicFixture clinic,
+) async {
   await ctx.signInAdminForClinic(clinic);
   final branchId = await ctx.branches.createBranch(
     CreateBranchInput(
@@ -806,20 +1039,26 @@ Future<String> _createSecondBranch(BoundaryTestContext ctx, BoundaryClinicFixtur
 }
 
 Future<int> _readCurrentSellablePriceMinor() async {
-  final token = await LiveSupabaseHarness.client.rpc(
+  final token = await _bounded(
     'issue_billing_token',
-    params: {'p_contract_version': backendRpc},
+    LiveSupabaseHarness.client.rpc(
+      'issue_billing_token',
+      params: {'p_contract_version': backendRpc},
+    ),
   );
   final tokenMap = Map<String, dynamic>.from(token as Map);
   final data = Map<String, dynamic>.from(tokenMap['data'] as Map);
   final billingToken = data['token'] as String;
-  final response = await http.get(
-    Uri.parse('$_aboUrl/v1/offers'),
-    headers: {
-      'Authorization': 'Bearer $billingToken',
-      'Host': _billingHost,
-      'Abo-Contract-Version': '$aboClinic',
-    },
+  final response = await _bounded(
+    'GET /v1/offers price',
+    http.get(
+      Uri.parse('$_aboUrl/v1/offers'),
+      headers: {
+        'Authorization': 'Bearer $billingToken',
+        'Host': _billingHost,
+        'Abo-Contract-Version': '$aboClinic',
+      },
+    ),
   );
   expect(response.statusCode, 200);
   final body = jsonDecode(response.body) as Map<String, dynamic>;
@@ -829,7 +1068,9 @@ Future<int> _readCurrentSellablePriceMinor() async {
 }
 
 Future<void> _bumpSellableOfferVersion() async {
-  final repoRoot = File('pubspec.yaml').existsSync() ? Directory.current.parent.path : Directory.current.path;
+  final repoRoot = File('pubspec.yaml').existsSync()
+      ? Directory.current.parent.path
+      : Directory.current.path;
   final aboPersist = '$repoRoot/e2e/fullstack/.wrangler/abo';
   final dbPath = '$aboPersist/v3/d1/miniflare-D1DatabaseObject';
   final dbDir = Directory(dbPath);
@@ -845,11 +1086,9 @@ Future<void> _bumpSellableOfferVersion() async {
     return;
   }
   final dbFile = files.first.path;
-  await Process.run(
-    'sqlite3',
-    [
-      dbFile,
-      '''
+  await Process.run('sqlite3', [
+    dbFile,
+    '''
 INSERT INTO offer_version (
   offer_id, version, plan_id, plan_version, term_unit, term_count,
   price_minor, currency, allowance_credits, grace_days, grace_cap_rule,
@@ -874,8 +1113,7 @@ WHERE offer_id = (SELECT offer_id FROM offer LIMIT 1)
 ORDER BY version DESC
 LIMIT 1;
 ''',
-    ],
-  );
+  ]);
 }
 
 String _deterministicUuid(String prefix, String label) {
@@ -958,22 +1196,36 @@ WHERE singleton;
 ''');
 }
 
-Future<void> _seedPlatformTenantBinding({required String orgId, required String installationId}) async {
-  final repoRoot = File('pubspec.yaml').existsSync() ? Directory.current.parent.path : Directory.current.path;
-  final dbDir = Directory('$repoRoot/e2e/fullstack/.wrangler/platform/v3/d1/miniflare-D1DatabaseObject');
+Future<void> _seedPlatformTenantBinding({
+  required String orgId,
+  required String installationId,
+}) async {
+  final repoRoot = File('pubspec.yaml').existsSync()
+      ? Directory.current.parent.path
+      : Directory.current.path;
+  final dbDir = Directory(
+    '$repoRoot/e2e/fullstack/.wrangler/platform/v3/d1/miniflare-D1DatabaseObject',
+  );
   final files = dbDir.existsSync()
       ? (dbDir
-          .listSync()
-          .whereType<File>()
-          .where((f) => f.path.endsWith('.sqlite') && !f.path.endsWith('metadata.sqlite'))
-          .toList()
-        ..sort((a, b) => a.path.compareTo(b.path)))
+            .listSync()
+            .whereType<File>()
+            .where(
+              (f) =>
+                  f.path.endsWith('.sqlite') &&
+                  !f.path.endsWith('metadata.sqlite'),
+            )
+            .toList()
+          ..sort((a, b) => a.path.compareTo(b.path)))
       : <File>[];
   if (files.isEmpty) {
-    fail('Local platform D1 database not found under e2e/fullstack/.wrangler/platform');
+    fail(
+      'Local platform D1 database not found under e2e/fullstack/.wrangler/platform',
+    );
   }
   final now = DateTime.now().toUtc().toIso8601String();
-  final sql = '''
+  final sql =
+      '''
 INSERT OR IGNORE INTO installation (installation_id, org_id, status, display_name, region, enrolled_at)
 VALUES ('$installationId', '$orgId', 'active', '', '', '$now');
 INSERT OR REPLACE INTO tenant_binding (org_id, installation_id, epoch, status, retired_at, reason, created_at)
@@ -990,7 +1242,11 @@ Future<void> _seedEndsSoonCoverage({
   required String orgId,
   required String installationId,
 }) async {
-  await _seedActiveCoverage(ctx: ctx, orgId: orgId, installationId: installationId);
+  await _seedActiveCoverage(
+    ctx: ctx,
+    orgId: orgId,
+    installationId: installationId,
+  );
   await ctx.sql.execute('''
 UPDATE ai_internal.clinic_ai_coverage
 SET ends_at = now() + interval '3 days',
@@ -1012,7 +1268,11 @@ class _RecordingSessionSupabaseClient extends Fake implements SupabaseClient {
   PostgrestClient get rest => _inner.rest;
 
   @override
-  PostgrestFilterBuilder<T> rpc<T>(String fn, {Map<String, dynamic>? params, dynamic get = false}) {
+  PostgrestFilterBuilder<T> rpc<T>(
+    String fn, {
+    Map<String, dynamic>? params,
+    dynamic get = false,
+  }) {
     rpcCalls.add(fn);
     return _inner.rpc<T>(fn, params: params, get: get);
   }
@@ -1086,7 +1346,9 @@ Future<String?> _readStatusRefreshRequestedAt(String orgId) async {
       '-c',
       "SELECT requested_at::text FROM ai_internal.status_refresh WHERE organization_id = '$orgId'::uuid",
     ],
-    environment: {'PGPASSWORD': Platform.environment['POSTGRES_PASSWORD'] ?? 'postgres'},
+    environment: {
+      'PGPASSWORD': Platform.environment['POSTGRES_PASSWORD'] ?? 'postgres',
+    },
   );
   if (result.exitCode != 0) {
     return null;
@@ -1138,7 +1400,7 @@ class _BillingDesktopSession {
         ),
       ),
     );
-    await tester.pumpAndSettle();
+    await _settle(tester);
   }
 
   Future<void> openBillingFromRenew() async {
@@ -1148,15 +1410,19 @@ class _BillingDesktopSession {
       staffIsAdministrator: true,
       reachabilityPort: FakePlatformReachabilityPort(reachable: false),
     );
-    await _pumpAdministratorShell(tester, router: _router, composition: composition);
+    await _pumpAdministratorShell(
+      tester,
+      router: _router,
+      composition: composition,
+    );
     await tester.tap(find.byKey(const Key('ai_notice_renew')));
-    await tester.pumpAndSettle();
+    await _settle(tester);
   }
 
   Future<void> openBillingRouteDirectly() async {
     await _pumpShell();
     _router.go(kAdministratorBillingPath);
-    await tester.pumpAndSettle();
+    await _settle(tester);
   }
 
   Future<void> completeOffersAndContact() async {
@@ -1177,6 +1443,6 @@ class _BillingDesktopSession {
 
   Future<void> dispose() async {
     await tester.pumpWidget(const SizedBox.shrink());
-    await tester.pumpAndSettle();
+    await _settle(tester);
   }
 }

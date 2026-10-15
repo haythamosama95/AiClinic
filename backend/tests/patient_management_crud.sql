@@ -639,8 +639,10 @@ BEGIN
   PERFORM set_config('role', 'postgres', true);
   INSERT INTO patient_crud_results VALUES (
     'update_patient_cross_branch_same_org',
-    v_result.success,
-    COALESCE(v_result.error_code, '<null>')
+    v_result.success
+      AND (v_result.data ->> 'patient_id')::uuid = v_patient_main
+      AND (v_result.data ->> 'updated_at')::timestamptz IS NOT NULL,
+    COALESCE(v_result.error_code, v_result.data ->> 'updated_at', '<null>')
   );
   PERFORM set_config('role', 'authenticated', true);
 

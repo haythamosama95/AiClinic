@@ -82,19 +82,46 @@ def _supabase_endpoint_ready(path: str) -> bool:
         return False
 
 
-def _reset_supabase_between_files() -> bool:
+def _reset_supabase_between_files(subcampaign: str, step_name: str) -> bool:
     if os.environ.get("HFS_RESET_SUPABASE") != "1":
         return True
-    result = subprocess.run(["supabase", "db", "reset", "--local"], cwd=REPO_ROOT / "backend")
+    reset_started = time.monotonic()
+    label = f"{_status_label(subcampaign)} step={step_name}"
+    print(f"{label} supabase-reset=started", flush=True)
+    result = subprocess.run(
+        ["supabase", "db", "reset", "--local"], cwd=REPO_ROOT / "backend"
+    )
     if result.returncode != 0:
-        print("error: supabase db reset failed", file=sys.stderr)
+        elapsed = time.monotonic() - reset_started
+        print(
+            f"{label} supabase-reset=failed elapsed={elapsed:.1f}s "
+            f"exit_code={result.returncode}",
+            file=sys.stderr,
+            flush=True,
+        )
         return False
+    reset_elapsed = time.monotonic() - reset_started
+    readiness_started = time.monotonic()
     deadline = time.monotonic() + 120
     while time.monotonic() < deadline:
-        if _supabase_endpoint_ready("/auth/v1/health") and _supabase_endpoint_ready("/rest/v1/"):
+        if _supabase_endpoint_ready("/auth/v1/health") and _supabase_endpoint_ready(
+            "/rest/v1/"
+        ):
+            readiness_elapsed = time.monotonic() - readiness_started
+            print(
+                f"{label} supabase-reset=ready reset_elapsed={reset_elapsed:.1f}s "
+                f"readiness_elapsed={readiness_elapsed:.1f}s",
+                flush=True,
+            )
             return True
         time.sleep(1)
-    print("error: Supabase did not become ready after db reset", file=sys.stderr)
+    readiness_elapsed = time.monotonic() - readiness_started
+    print(
+        f"{label} supabase-reset=readiness-timeout reset_elapsed={reset_elapsed:.1f}s "
+        f"readiness_elapsed={readiness_elapsed:.1f}s",
+        file=sys.stderr,
+        flush=True,
+    )
     return False
 
 
@@ -111,10 +138,13 @@ def _run_node_steps(subcampaign: str, steps: list[tuple[str, list[str]]]) -> int
     log_dir = _log_dir(subcampaign)
     for name, files in steps:
         _prepare_fullstack_stack_ports()
-        if not _reset_supabase_between_files():
+        if not _reset_supabase_between_files(subcampaign, name):
             exit_code = max(exit_code, 1)
             continue
         cmd = apply_campaign_args(_node_cmd(files), config)
+        step_started = time.monotonic()
+        step_label = f"{_status_label(subcampaign)} step={name}"
+        print(f"{step_label} node-tests=started", flush=True)
         code = run_subprocess_sequence(
             [(name, cmd)],
             E2E_ROOT,
@@ -122,6 +152,11 @@ def _run_node_steps(subcampaign: str, steps: list[tuple[str, list[str]]]) -> int
             status_label=_status_label(subcampaign),
             campaign_config=config,
             config_area=AREA,
+        )
+        print(
+            f"{step_label} node-tests={'passed' if code == 0 else 'failed'} "
+            f"elapsed={time.monotonic() - step_started:.1f}s exit_code={code}",
+            flush=True,
         )
         exit_code = max(exit_code, code)
     return exit_code

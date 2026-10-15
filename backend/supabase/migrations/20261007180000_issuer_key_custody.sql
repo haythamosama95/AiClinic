@@ -774,7 +774,10 @@ BEGIN
     to_jsonb(v_new)
   );
 
-  RETURN public.rpc_success(jsonb_build_object('patient_id', p_patient_id));
+  RETURN public.rpc_success(jsonb_build_object(
+    'patient_id', p_patient_id,
+    'updated_at', v_new.updated_at
+  ));
 EXCEPTION
   WHEN OTHERS THEN
     IF SQLERRM = 'FORBIDDEN' THEN
@@ -941,7 +944,10 @@ BEGIN
     to_jsonb(v_new)
   );
 
-  RETURN public.rpc_success(jsonb_build_object('patient_id', p_patient_id));
+  RETURN public.rpc_success(jsonb_build_object(
+    'patient_id', p_patient_id,
+    'updated_at', v_new.updated_at
+  ));
 EXCEPTION
   WHEN OTHERS THEN
     IF SQLERRM = 'FORBIDDEN' THEN

@@ -41,6 +41,17 @@ mixin AppRpcInvoker {
     } on AuthException catch (error) {
       throw RpcFailure(RpcResult(success: false, errorCode: 'AUTH_ERROR', errorMessage: error.message));
     } on PostgrestException catch (error) {
+      // Preserve the original response for the signed-out appointment-settings
+      // boundary case. This lets CI distinguish a real access denial from a
+      // missing/misconfigured RPC before the user-facing classification below
+      // replaces the PostgREST details. The call has no patient or credential
+      // parameters, and this diagnostic is limited to that one endpoint.
+      if (functionName == 'get_appointment_settings' && rpcClient.auth.currentSession == null) {
+        AppLog.warning(
+          '$rpcLogDomain.rpc.postgrest_error fn=$functionName unauthenticated=true '
+          'postgrest_code=${error.code ?? 'unknown'} postgrest_message=${error.message}',
+        );
+      }
       if (error.code == 'PGRST202' || error.message.contains('Could not find the function')) {
         final hint = migrationHint;
         throw RpcFailure(
