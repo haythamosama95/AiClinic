@@ -48,6 +48,7 @@ import transferSql from "../../../ai-platform/migrations/20261006150000_transfer
 import fallbackAdmissionFeedSql from "../../../ai-platform/migrations/20261006160000_fallback_admission_feed.sql?raw";
 import dropInvoicingSql from "../../../ai-platform/migrations/20261006170000_drop_invoicing.sql?raw";
 import dropPlanEntitlementSql from "../../../ai-platform/migrations/20261006170100_drop_plan_entitlement.sql?raw";
+import idempotencyFingerprintSql from "../../../ai-platform/migrations/20261014120000_ai_request_idempotency_fingerprint.sql?raw";
 
 const PLATFORM_MIGRATION_SQL: string[] = [
   platformSchemaSql,
@@ -73,6 +74,7 @@ const PLATFORM_MIGRATION_SQL: string[] = [
   fallbackAdmissionFeedSql,
   dropInvoicingSql,
   dropPlanEntitlementSql,
+  idempotencyFingerprintSql,
 ];
 
 const VENDOR_CONTRACT_VERSION = CHANNEL_VERSIONS.vendorEntrypoint;
