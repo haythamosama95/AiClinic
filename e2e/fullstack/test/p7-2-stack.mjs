@@ -4,7 +4,6 @@ import { mkdir } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { createClient } from "@supabase/supabase-js";
-import { MockAgent } from "undici";
 import {
   closeLocalVirtualHostDispatchers,
   fetchLocalVirtualHost,
@@ -777,19 +776,6 @@ export async function startStack() {
   const credentialId = crypto.randomUUID();
   const publicKeyCose = base64urlEncode(attestation.publicKey);
 
-  const mockFetch = new MockAgent();
-  startupCleanups.push(() => mockFetch.close());
-  mockFetch
-    .get(`https://${ACCESS_TEAM_DOMAIN}`)
-    .intercept({
-      path: "/cdn-cgi/access/certs",
-      method: "GET",
-    })
-    .reply(200, JSON.stringify({ keys: accessTeam.certs.keys }), {
-      headers: { "content-type": "application/json" },
-    })
-    .persist();
-
   await insertActiveOperatorCredential({
     credentialId,
     operatorEmail: OPERATOR_EMAIL,
@@ -804,7 +790,9 @@ export async function startStack() {
       inspector: false,
       persist: PLATFORM_PERSIST,
       registry: REGISTRY_DIR,
-      mockFetch,
+      vars: {
+        ACCESS_CERTS_JSON: JSON.stringify({ keys: accessTeam.certs.keys }),
+      },
     },
   });
   startupCleanups.push(() => platformWorker.dispose());
@@ -890,7 +878,6 @@ export async function startStack() {
       await stopChild(stackRef.abo);
       await harnessWorker.dispose();
       await platformWorker.dispose();
-      await mockFetch.close();
       await closeLocalVirtualHostDispatchers();
       stackStopped = true;
     },

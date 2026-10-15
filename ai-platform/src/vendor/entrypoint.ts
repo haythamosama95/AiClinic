@@ -178,6 +178,8 @@ type VendorEnv = ClockEnv & {
   ISSUER_ID: string;
   ACCESS_TEAM_DOMAIN: string;
   ACCESS_AUD: string;
+  /** Local full-stack tests provide the generated Access certificates here. */
+  ACCESS_CERTS_JSON?: string;
   WEBAUTHN_RP_ID: string;
   WEBAUTHN_ORIGIN: string;
   ALERT_EMAIL_TO: string;
@@ -762,6 +764,16 @@ function decodeAttestation(value: unknown): { alg: "ES256" | "EdDSA"; publicKey:
 
 async function loadAccessCerts(env: VendorEnv): Promise<AccessCertsDocument | null> {
   const issuer = `https://${env.ACCESS_TEAM_DOMAIN}`;
+  if (typeof env.ACCESS_CERTS_JSON === "string") {
+    try {
+      const body = JSON.parse(env.ACCESS_CERTS_JSON) as {
+        keys?: AccessCertsDocument["keys"];
+      };
+      return Array.isArray(body.keys) ? { issuer, keys: body.keys } : null;
+    } catch {
+      return null;
+    }
+  }
   const url = `${issuer}/cdn-cgi/access/certs`;
   try {
     const response = await fetch(url);

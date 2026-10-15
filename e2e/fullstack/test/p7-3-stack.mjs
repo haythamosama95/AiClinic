@@ -512,55 +512,6 @@ async function registerIssuerKey(stackRef, issuerKey) {
   return envelope;
 }
 
-// Workerd does not use Node's global fetch dispatcher. Give Wrangler/Miniflare
-// an explicit outbound service so the Access certificate endpoint is entirely
-// deterministic and no test request can escape to public DNS/networking.
-function createAccessCertOutboundService(accessTeam) {
-  const expectedUrl =
-    `https://${ACCESS_TEAM_DOMAIN}/cdn-cgi/access/certs`;
-  const state = { requests: 0, unexpected: [] };
-  const handler = async (request) => {
-    const url = new URL(request.url);
-    if (
-      request.method === "GET" &&
-      url.href === expectedUrl
-    ) {
-      state.requests += 1;
-      return new Response(JSON.stringify({ keys: accessTeam.certs.keys }), {
-        status: 200,
-        headers: { "content-type": "application/json" },
-      });
-    }
-
-    // Keep diagnostics bounded and avoid retaining request bodies or headers.
-    if (state.unexpected.length < 3) {
-      state.unexpected.push(`${request.method} ${url.origin}${url.pathname}`.slice(0, 240));
-    }
-    return new Response("Unexpected test-worker outbound request", {
-      status: 502,
-      headers: { "content-type": "text/plain" },
-    });
-  };
-
-  return {
-    handler,
-    assertUsed() {
-      if (state.requests === 0 || state.unexpected.length > 0) {
-        const unexpected = state.unexpected.length
-          ? `; unexpected outbound request(s): ${state.unexpected.join("; ")}`
-          : "";
-        throw new Error(
-          `Access certificate test response was not used successfully ` +
-            `(matched ${state.requests} request(s))${unexpected}`,
-        );
-      }
-    },
-    get diagnostics() {
-      return `Access certificate test response matched ${state.requests} request(s)`;
-    },
-  };
-}
-
 export function queryPlatformD1One(sql) {
   return queryPlatformD1Row(sql);
 }
@@ -846,7 +797,7 @@ function spawnAboProcess(issuerKeys, aboConfig = activeAboConfig) {
   );
 }
 
-async function startPlatformDoReceiverWorker(doReceiverConfigPath, outboundService) {
+async function startPlatformDoReceiverWorker(doReceiverConfigPath, accessCertsJson) {
   const doReceiverWorker = await startWorker({
     config: doReceiverConfigPath,
     env: "development",
@@ -854,14 +805,16 @@ async function startPlatformDoReceiverWorker(doReceiverConfigPath, outboundServi
       inspector: false,
       persist: PLATFORM_PERSIST,
       registry: REGISTRY_DIR,
-      outboundService,
+      vars: accessCertsJson
+        ? { ACCESS_CERTS_JSON: accessCertsJson }
+        : undefined,
     },
   });
   await doReceiverWorker.ready;
   return doReceiverWorker;
 }
 
-async function startPlatformAdmissionWorker(platformConfigPath, outboundService) {
+async function startPlatformAdmissionWorker(platformConfigPath, accessCertsJson) {
   const platformWorker = await startWorker({
     config: platformConfigPath,
     env: "development",
@@ -870,7 +823,9 @@ async function startPlatformAdmissionWorker(platformConfigPath, outboundService)
       inspector: false,
       persist: PLATFORM_PERSIST,
       registry: REGISTRY_DIR,
-      outboundService,
+      vars: accessCertsJson
+        ? { ACCESS_CERTS_JSON: accessCertsJson }
+        : undefined,
     },
   });
   await platformWorker.ready;
@@ -899,7 +854,7 @@ export async function startStack({
   activeAboConfig = resolveHarnessConfig(aboConfig) ?? ABO_CONFIG;
   const platformDoReceiverConfigPath = resolveHarnessConfig(platformDoReceiverConfig);
 
-  let accessCertOutboundService = null;
+  let accessCertsJson = null;
   let accessTeam = null;
   let authenticator = null;
   let credentialId = null;
@@ -927,7 +882,7 @@ export async function startStack({
       credentialId = crypto.randomUUID();
       publicKeyCose = base64urlEncode(attestation.publicKey);
 
-      accessCertOutboundService = createAccessCertOutboundService(accessTeam);
+      accessCertsJson = JSON.stringify({ keys: accessTeam.certs.keys });
 
       await insertActiveOperatorCredential({
         credentialId,
@@ -939,13 +894,13 @@ export async function startStack({
     if (platformDoReceiverConfigPath) {
       platformDoReceiverWorker = await startPlatformDoReceiverWorker(
         platformDoReceiverConfigPath,
-        accessCertOutboundService?.handler,
+        accessCertsJson,
       );
     }
 
     platformWorker = await startPlatformAdmissionWorker(
       activePlatformConfig,
-      accessCertOutboundService?.handler,
+      accessCertsJson,
     );
 
     harnessWorker = await startWorker({
@@ -1076,13 +1031,13 @@ export async function startStack({
         if (nextDoReceiverConfigPath) {
           stackRef.platformDoReceiverWorker = await startPlatformDoReceiverWorker(
             nextDoReceiverConfigPath,
-            accessCertOutboundService?.handler,
+            accessCertsJson,
           );
         }
 
         stackRef.platformWorker = await startPlatformAdmissionWorker(
           activePlatformConfig,
-          accessCertOutboundService?.handler,
+          accessCertsJson,
         );
         await waitForHttp(`${PLATFORM_URL}/health`);
         return stackRef.platformWorker;
@@ -1092,11 +1047,9 @@ export async function startStack({
     if (registerIssuer) {
       try {
         await registerIssuerKey(stackRef, signingKey);
-        accessCertOutboundService.assertUsed();
       } catch (error) {
-        const diagnostic = accessCertOutboundService?.diagnostics;
         throw new Error(
-          `P7.3 issuer registration startup failed${diagnostic ? `; ${diagnostic}` : ""}: ` +
+          `P7.3 issuer registration startup failed: ` +
             `${error instanceof Error ? error.message : String(error)}`,
           { cause: error },
         );

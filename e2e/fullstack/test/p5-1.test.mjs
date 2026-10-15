@@ -5,7 +5,6 @@ import { fileURLToPath } from "node:url";
 import test, { after, before } from "node:test";
 import assert from "node:assert/strict";
 import { createClient } from "@supabase/supabase-js";
-import { MockAgent } from "undici";
 import {
   closeLocalVirtualHostDispatchers,
   fetchLocalVirtualHost,
@@ -600,20 +599,6 @@ async function startStack() {
     const credentialId = crypto.randomUUID();
     const publicKeyCose = base64urlEncode(attestation.publicKey);
 
-    phase = "create access mock";
-    const mockFetch = new MockAgent();
-    scope.defer("access MockAgent", () => mockFetch.close());
-    mockFetch
-      .get(`https://${ACCESS_TEAM_DOMAIN}`)
-      .intercept({
-        path: "/cdn-cgi/access/certs",
-        method: "GET",
-      })
-      .reply(200, JSON.stringify({ keys: accessTeam.certs.keys }), {
-        headers: { "content-type": "application/json" },
-      })
-      .persist();
-
     await insertActiveOperatorCredential({
       credentialId,
       operatorEmail: OPERATOR_EMAIL,
@@ -629,7 +614,9 @@ async function startStack() {
         inspector: false,
         persist: PLATFORM_PERSIST,
         registry: REGISTRY_DIR,
-        mockFetch,
+        vars: {
+          ACCESS_CERTS_JSON: JSON.stringify({ keys: accessTeam.certs.keys }),
+        },
       },
     });
     scope.defer("platform worker", () => platformWorker.dispose());
