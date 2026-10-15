@@ -30,6 +30,7 @@ import {
   queryPlatformD1One as queryPlatformD1Row,
   runWranglerSync,
   wranglerLocalEnv,
+  PLATFORM_BIND_HOST,
 } from "./wrangler-persist.mjs";
 
 // H-FS shared boot for P7.2: imported by p7-2-*.test.mjs
@@ -751,7 +752,7 @@ export async function startStack() {
     config: PLATFORM_CONFIG,
     env: "development",
     dev: {
-      server: { hostname: "127.0.0.1", port: 8787 },
+      server: { hostname: PLATFORM_BIND_HOST, port: 8787 },
       inspector: false,
       persist: PLATFORM_PERSIST,
       registry: REGISTRY_DIR,

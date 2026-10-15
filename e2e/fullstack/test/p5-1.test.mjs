@@ -22,6 +22,8 @@ import {
   queryPlatformD1One,
   runWranglerSync,
   wranglerLocalEnv,
+  WRANGLER_CLI,
+  PLATFORM_BIND_HOST,
 } from "./wrangler-persist.mjs";
 
 const REPO_ROOT = path.resolve(
@@ -76,11 +78,11 @@ function psqlQuery(sql) {
   return result.stdout.trim();
 }
 
-async function waitForHttp(url, { timeoutMs = 120_000, accept = [200] } = {}) {
+async function waitForHttp(url, { timeoutMs = 120_000, accept = [200], headers = {} } = {}) {
   const deadline = Date.now() + timeoutMs;
   while (Date.now() < deadline) {
     try {
-      const response = await fetch(url);
+      const response = await fetch(url, { headers });
       if (accept.includes(response.status)) {
         return response;
       }
@@ -93,29 +95,68 @@ async function waitForHttp(url, { timeoutMs = 120_000, accept = [200] } = {}) {
 }
 
 function spawnDevProcess(args, env = {}) {
-  const child = spawn("npx", ["wrangler", ...args], {
+  const child = spawn(process.execPath, [WRANGLER_CLI, ...args], {
     cwd: REPO_ROOT,
     env: wranglerLocalEnv(env),
     stdio: ["ignore", "pipe", "pipe"],
+    detached: process.platform !== "win32",
   });
   return child;
 }
 
 async function stopChild(child) {
-  if (!child || child.killed) {
+  if (!child) return;
+
+  if (process.platform === "win32" || !child.pid) {
+    if (child.exitCode !== null || child.signalCode !== null) return;
+    child.kill("SIGTERM");
+    await new Promise((resolve) => {
+      const timer = setTimeout(() => {
+        child.kill("SIGKILL");
+        resolve();
+      }, 5_000);
+      child.once("exit", () => {
+        clearTimeout(timer);
+        resolve();
+      });
+    });
     return;
   }
-  child.kill("SIGTERM");
-  await new Promise((resolve) => {
-    const timer = setTimeout(() => {
-      child.kill("SIGKILL");
-      resolve();
-    }, 5_000);
-    child.on("exit", () => {
-      clearTimeout(timer);
-      resolve();
-    });
-  });
+
+  const signalGroup = (signal) => {
+    try {
+      process.kill(-child.pid, signal);
+      return true;
+    } catch (error) {
+      if (error.code === "ESRCH") return false;
+      throw error;
+    }
+  };
+  const groupExists = () => {
+    try {
+      process.kill(-child.pid, 0);
+      return true;
+    } catch (error) {
+      if (error.code === "ESRCH") return false;
+      throw error;
+    }
+  };
+  const waitForGroupExit = async (timeoutMs) => {
+    const deadline = Date.now() + timeoutMs;
+    while (groupExists() && Date.now() < deadline) {
+      await new Promise((resolve) => setTimeout(resolve, 100));
+    }
+    return !groupExists();
+  };
+
+  // The Wrangler leader may already have exited while workerd descendants
+  // remain in this dedicated process group, so signal the group regardless.
+  if (!signalGroup("SIGTERM")) return;
+  if (await waitForGroupExit(5_000)) return;
+  signalGroup("SIGKILL");
+  if (!(await waitForGroupExit(1_000))) {
+    throw new Error(`Process group ${child.pid} did not exit after SIGKILL`);
+  }
 }
 
 async function applyAboMigrations() {
@@ -454,7 +495,7 @@ async function startStack() {
     config: PLATFORM_CONFIG,
     env: "development",
     dev: {
-      server: { hostname: "127.0.0.1", port: 8787 },
+      server: { hostname: PLATFORM_BIND_HOST, port: 8787 },
       inspector: false,
       persist: PLATFORM_PERSIST,
       registry: REGISTRY_DIR,
@@ -519,14 +560,15 @@ async function startStack() {
       "9231",
       "--persist-to",
       ABO_PERSIST,
+      "--var",
+      `PAYMOB_BASE_URL:${PAYMOB_URL}`,
+      "--var",
+      `ISSUER_KEYS:${JSON.stringify(issuerKeys)}`,
     ],
-    {
-      PAYMOB_BASE_URL: PAYMOB_URL,
-      ISSUER_KEYS: JSON.stringify(issuerKeys),
-    },
   );
   await waitForHttp(`${ABO_URL}/v1/offers`, {
     accept: [401, 403, 400],
+    headers: { Host: BILLING_HOST },
   });
 
   const clinic = await createClinicUsers();
@@ -547,7 +589,7 @@ async function startStack() {
     billingToken: null,
     async stop() {
       await stopChild(paymob);
-      await stopChild(abo);
+      await stopChild(stackRef.abo);
       await harnessWorker.dispose();
       await platformWorker.dispose();
       await mockFetch.close();
@@ -569,14 +611,15 @@ async function startStack() {
           "9231",
           "--persist-to",
           ABO_PERSIST,
+          "--var",
+          `PAYMOB_BASE_URL:${PAYMOB_URL}`,
+          "--var",
+          `ISSUER_KEYS:${JSON.stringify(nextIssuerKeys)}`,
         ],
-        {
-          PAYMOB_BASE_URL: PAYMOB_URL,
-          ISSUER_KEYS: JSON.stringify(nextIssuerKeys),
-        },
       );
       await waitForHttp(`${ABO_URL}/v1/offers`, {
         accept: [401, 403, 400],
+        headers: { Host: BILLING_HOST },
       });
       stackRef.abo = restarted;
       stackRef.issuerKeys = nextIssuerKeys;

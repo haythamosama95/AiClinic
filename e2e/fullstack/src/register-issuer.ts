@@ -1,4 +1,5 @@
 const VENDOR_CALL_METHODS = new Set([
+  "feedConsumerHealth",
   "grant",
   "suspend",
   "resume",
@@ -19,6 +20,7 @@ export interface Env {
       code: string;
       detail: string;
     }>;
+    feedConsumerHealth(args: VendorCallArgs): Promise<unknown>;
     grant(args: VendorCallArgs): Promise<unknown>;
     suspend(args: VendorCallArgs): Promise<unknown>;
     resume(args: VendorCallArgs): Promise<unknown>;

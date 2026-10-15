@@ -9,6 +9,8 @@ import {
   HARNESS_URL,
   PAYMOB_URL,
   PLATFORM_URL,
+  seedAboOffers,
+  seedPlatformGrantGlobals,
   startStack,
   SUPABASE_URL,
 } from "./p7-3-stack.mjs";
@@ -239,6 +241,8 @@ async function main() {
       if (requestedSignal) {
         exitCode = SIGNAL_EXIT_CODES[requestedSignal];
       } else {
+        await seedAboOffers();
+        seedPlatformGrantGlobals();
         exitCode = await runFlutter(commandArgs[0], commandArgs.slice(1));
       }
     }

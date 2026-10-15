@@ -154,6 +154,7 @@ async function main() {
   stack = await startStack({
     aboConfig: ABO_DESKTOP_CONFIG,
     platformConfig: PLATFORM_DESKTOP_CONFIG,
+    createClinics: false,
   });
   await applyDesktopRpcGates();
 

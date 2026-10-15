@@ -11,7 +11,7 @@ const FULLSTACK_ROOT = path.resolve(
 );
 
 export const REPO_ROOT = path.resolve(FULLSTACK_ROOT, "../..");
-const WRANGLER_CLI = path.join(
+export const WRANGLER_CLI = path.join(
   FULLSTACK_ROOT,
   "node_modules/wrangler/bin/wrangler.js",
 );
@@ -25,6 +25,7 @@ export const REGISTRY_DIR = path.join(FULLSTACK_ROOT, ".wrangler/registry");
 export const ABO_PERSIST = path.join(FULLSTACK_ROOT, ".wrangler/abo");
 export const ABO_D1_SEED_PERSIST = path.join(FULLSTACK_ROOT, ".wrangler/abo-d1-seed");
 export const PAYMOB_PERSIST = path.join(FULLSTACK_ROOT, ".wrangler/paymob");
+export const PLATFORM_BIND_HOST = process.env.HFS_PLATFORM_BIND_HOST ?? "127.0.0.1";
 
 const D1_OBJECT_DIR = "v3/d1/miniflare-D1DatabaseObject";
 
@@ -148,6 +149,7 @@ export function platformD1DatabaseFile() {
 export function execPlatformD1Sql(sql) {
   const db = new DatabaseSync(platformD1DatabaseFile());
   try {
+    db.exec("PRAGMA busy_timeout = 5000");
     db.exec(sql);
   } finally {
     db.close();

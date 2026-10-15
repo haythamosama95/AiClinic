@@ -3,7 +3,11 @@
 
 from __future__ import annotations
 
+import os
+import subprocess
 import sys
+import time
+import urllib.request
 from pathlib import Path
 
 E2E_ROOT = Path(__file__).resolve().parent
@@ -22,6 +26,11 @@ from harness.local_dev_ports import prepare_fullstack_e2e_stack  # noqa: E402
 
 AREA = "e2e-fullstack"
 TEST_DIR = E2E_ROOT / "test"
+_SUPABASE_URL = os.environ.get("SUPABASE_URL", "http://127.0.0.1:54321")
+_SUPABASE_ANON_KEY = os.environ.get(
+    "SUPABASE_ANON_KEY",
+    "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZS1kZW1vIiwicm9sZSI6ImFub24iLCJleHAiOjE5ODM4MTI5OTZ9.CRXP1A7WOeoJeXxjNni43kdQwgnWNReilDMblYTn_I0",
+)
 
 
 def _log_dir(subcampaign: str) -> Path:
@@ -62,12 +71,49 @@ def _run_node_tests(subcampaign: str, files: list[str]) -> int:
     )
 
 
+def _supabase_endpoint_ready(path: str) -> bool:
+    try:
+        request = urllib.request.Request(
+            f"{_SUPABASE_URL}{path}", headers={"apikey": _SUPABASE_ANON_KEY}
+        )
+        with urllib.request.urlopen(request, timeout=3) as response:
+            return response.status == 200
+    except OSError:
+        return False
+
+
+def _reset_supabase_between_files() -> bool:
+    if os.environ.get("HFS_RESET_SUPABASE") != "1":
+        return True
+    result = subprocess.run(["supabase", "db", "reset", "--local"], cwd=REPO_ROOT / "backend")
+    if result.returncode != 0:
+        print("error: supabase db reset failed", file=sys.stderr)
+        return False
+    deadline = time.monotonic() + 120
+    while time.monotonic() < deadline:
+        if _supabase_endpoint_ready("/auth/v1/health") and _supabase_endpoint_ready("/rest/v1/"):
+            return True
+        time.sleep(1)
+    print("error: Supabase did not become ready after db reset", file=sys.stderr)
+    return False
+
+
+def _per_file_steps(files: list[str]) -> list[tuple[str, list[str]]]:
+    return [(Path(f).name.removesuffix(".test.mjs"), [f]) for f in files]
+
+
 def _run_node_steps(subcampaign: str, steps: list[tuple[str, list[str]]]) -> int:
+    if not steps:
+        print(f"error: no test files for {subcampaign}", file=sys.stderr)
+        return 1
     config = load_campaign_config(AREA, subcampaign)
     exit_code = 0
     log_dir = _log_dir(subcampaign)
     for name, files in steps:
         _prepare_fullstack_stack_ports()
+        if not _reset_supabase_between_files():
+            exit_code = max(exit_code, 1)
+            continue
         cmd = apply_campaign_args(_node_cmd(files), config)
         code = run_subprocess_sequence(
             [(name, cmd)],
@@ -94,13 +140,11 @@ def run_p5_2b(_: str) -> int:
 
 
 def run_p7_3(_: str) -> int:
-    files = _node_test_files("p7-3*.test.mjs")
-    return _run_node_tests("p7-3", files)
+    return _run_node_steps("p7-3", _per_file_steps(_node_test_files("p7-3*.test.mjs")))
 
 
 def run_p7_2(_: str) -> int:
-    files = _node_test_files("p7-2*.test.mjs")
-    return _run_node_tests("p7-2", files)
+    return _run_node_steps("p7-2", _per_file_steps(_node_test_files("p7-2*.test.mjs")))
 
 
 def run_all_ci(_: str) -> int:
@@ -114,8 +158,7 @@ def run_all_ci(_: str) -> int:
 
 
 def run_all_manual(_: str) -> int:
-    files = _node_test_files("*.test.mjs")
-    return _run_node_tests("all-manual", files)
+    return _run_node_steps("all-manual", _per_file_steps(_node_test_files("*.test.mjs")))
 
 
 SUBCAMPAIGNS = {

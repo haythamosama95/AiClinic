@@ -6,13 +6,12 @@ import test, { after, before } from "node:test";
 import assert from "node:assert/strict";
 import { createClient } from "@supabase/supabase-js";
 import { MockAgent } from "undici";
-import { getPlatformProxy, unstable_startWorker as startWorker } from "wrangler";
+import { unstable_startWorker as startWorker } from "wrangler";
 import { CHANNEL_VERSIONS } from "vendor-contracts";
 import {
   createAccessTeam,
   createSoftwareAuthenticator,
 } from "vendor-contracts/testkit";
-import { VendorEntrypoint } from "../../../ai-platform/src/vendor/entrypoint.ts";
 import {
   ABO_PERSIST,
   HARNESS_PERSIST,
@@ -23,6 +22,8 @@ import {
   queryPlatformD1One,
   runWranglerSync,
   wranglerLocalEnv,
+  WRANGLER_CLI,
+  PLATFORM_BIND_HOST,
 } from "./wrangler-persist.mjs";
 
 // H-FS unit harness (P5.2a): node --import tsx --test test/p5-2.test.mjs
@@ -104,7 +105,6 @@ const PAYMOB_HMAC_FIELDS = [
 ];
 
 let stack = null;
-let platformVendorProxy = null;
 
 function base64urlEncode(bytes) {
   return Buffer.from(bytes).toString("base64url");
@@ -126,11 +126,11 @@ function psqlQuery(sql) {
   return result.stdout.trim();
 }
 
-async function waitForHttp(url, { timeoutMs = 120_000, accept = [200] } = {}) {
+async function waitForHttp(url, { timeoutMs = 120_000, accept = [200], headers = {} } = {}) {
   const deadline = Date.now() + timeoutMs;
   while (Date.now() < deadline) {
     try {
-      const response = await fetch(url);
+      const response = await fetch(url, { headers });
       if (accept.includes(response.status)) {
         return response;
       }
@@ -143,29 +143,68 @@ async function waitForHttp(url, { timeoutMs = 120_000, accept = [200] } = {}) {
 }
 
 function spawnDevProcess(args, env = {}) {
-  const child = spawn("npx", ["wrangler", ...args], {
+  const child = spawn(process.execPath, [WRANGLER_CLI, ...args], {
     cwd: REPO_ROOT,
     env: wranglerLocalEnv(env),
     stdio: ["ignore", "pipe", "pipe"],
+    detached: process.platform !== "win32",
   });
   return child;
 }
 
 async function stopChild(child) {
-  if (!child || child.killed) {
+  if (!child) return;
+
+  if (process.platform === "win32" || !child.pid) {
+    if (child.exitCode !== null || child.signalCode !== null) return;
+    child.kill("SIGTERM");
+    await new Promise((resolve) => {
+      const timer = setTimeout(() => {
+        child.kill("SIGKILL");
+        resolve();
+      }, 5_000);
+      child.once("exit", () => {
+        clearTimeout(timer);
+        resolve();
+      });
+    });
     return;
   }
-  child.kill("SIGTERM");
-  await new Promise((resolve) => {
-    const timer = setTimeout(() => {
-      child.kill("SIGKILL");
-      resolve();
-    }, 5_000);
-    child.on("exit", () => {
-      clearTimeout(timer);
-      resolve();
-    });
-  });
+
+  const signalGroup = (signal) => {
+    try {
+      process.kill(-child.pid, signal);
+      return true;
+    } catch (error) {
+      if (error.code === "ESRCH") return false;
+      throw error;
+    }
+  };
+  const groupExists = () => {
+    try {
+      process.kill(-child.pid, 0);
+      return true;
+    } catch (error) {
+      if (error.code === "ESRCH") return false;
+      throw error;
+    }
+  };
+  const waitForGroupExit = async (timeoutMs) => {
+    const deadline = Date.now() + timeoutMs;
+    while (groupExists() && Date.now() < deadline) {
+      await new Promise((resolve) => setTimeout(resolve, 100));
+    }
+    return !groupExists();
+  };
+
+  // The Wrangler leader may already have exited while workerd descendants
+  // remain in this dedicated process group, so signal the group regardless.
+  if (!signalGroup("SIGTERM")) return;
+  if (await waitForGroupExit(5_000)) return;
+  signalGroup("SIGKILL");
+  if (!(await waitForGroupExit(1_000))) {
+    throw new Error(`Process group ${child.pid} did not exit after SIGKILL`);
+  }
 }
 
 async function applyAboMigrations() {
@@ -470,7 +509,7 @@ async function startStack() {
     config: PLATFORM_CONFIG,
     env: "development",
     dev: {
-      server: { hostname: "127.0.0.1", port: 8787 },
+      server: { hostname: PLATFORM_BIND_HOST, port: 8787 },
       inspector: false,
       persist: PLATFORM_PERSIST,
       registry: REGISTRY_DIR,
@@ -535,16 +574,19 @@ async function startStack() {
       "9231",
       "--persist-to",
       ABO_PERSIST,
+      "--var",
+      `PAYMOB_BASE_URL:${PAYMOB_URL}`,
+      "--var",
+      `ISSUER_KEYS:${JSON.stringify(issuerKeys)}`,
+      "--var",
+      `ABO_GRANT_KEY:${JSON.stringify(ABO_GRANT_KEY)}`,
+      "--var",
+      `PLATFORM_PUBLIC_KEYS:${JSON.stringify(PLATFORM_PUBLIC_KEYS)}`,
     ],
-    {
-      PAYMOB_BASE_URL: PAYMOB_URL,
-      ISSUER_KEYS: JSON.stringify(issuerKeys),
-      ABO_GRANT_KEY: JSON.stringify(ABO_GRANT_KEY),
-      PLATFORM_PUBLIC_KEYS: JSON.stringify(PLATFORM_PUBLIC_KEYS),
-    },
   );
   await waitForHttp(`${ABO_URL}/v1/offers`, {
     accept: [401, 403, 400],
+    headers: { Host: BILLING_HOST },
   });
 
   const clinic = await createClinicUsers();
@@ -563,7 +605,7 @@ async function startStack() {
     clinic,
     async stop() {
       await stopChild(paymob);
-      await stopChild(abo);
+      await stopChild(stackRef.abo);
       await harnessWorker.dispose();
       await platformWorker.dispose();
       await mockFetch.close();
@@ -585,16 +627,19 @@ async function startStack() {
           "9231",
           "--persist-to",
           ABO_PERSIST,
+          "--var",
+          `PAYMOB_BASE_URL:${PAYMOB_URL}`,
+          "--var",
+          `ISSUER_KEYS:${JSON.stringify(nextIssuerKeys)}`,
+          "--var",
+          `ABO_GRANT_KEY:${JSON.stringify(ABO_GRANT_KEY)}`,
+          "--var",
+          `PLATFORM_PUBLIC_KEYS:${JSON.stringify(PLATFORM_PUBLIC_KEYS)}`,
         ],
-        {
-          PAYMOB_BASE_URL: PAYMOB_URL,
-          ISSUER_KEYS: JSON.stringify(nextIssuerKeys),
-          ABO_GRANT_KEY: JSON.stringify(ABO_GRANT_KEY),
-          PLATFORM_PUBLIC_KEYS: JSON.stringify(PLATFORM_PUBLIC_KEYS),
-        },
       );
       await waitForHttp(`${ABO_URL}/v1/offers`, {
         accept: [401, 403, 400],
+        headers: { Host: BILLING_HOST },
       });
       stackRef.abo = restarted;
       stackRef.issuerKeys = nextIssuerKeys;
@@ -843,20 +888,7 @@ function queryAboD1One(sql) {
 }
 
 function runPlatformD1Command(sql) {
-  runWrangler([
-    "d1",
-    "execute",
-    "ai-platform-development",
-    "--local",
-    "--env",
-    "development",
-    "--config",
-    PLATFORM_CONFIG,
-    "--persist-to",
-    PLATFORM_PERSIST,
-    "--command",
-    sql,
-  ]);
+  execPlatformD1Sql(sql);
 }
 
 function readClinicAiCoverage(orgId) {
@@ -950,20 +982,16 @@ function setFeedConsumerLastPullAt(isoTimestamp) {
 }
 
 async function callFeedConsumerHealth() {
-  if (!platformVendorProxy) {
-    platformVendorProxy = await getPlatformProxy({
-      configPath: PLATFORM_CONFIG,
-      environment: "development",
-      persist: { path: PLATFORM_PERSIST },
-    });
-  }
-  const entrypoint = new VendorEntrypoint(
-    platformVendorProxy.ctx,
-    platformVendorProxy.env,
-  );
-  return await entrypoint.feedConsumerHealth({
-    contract_version: 1,
+  const response = await fetch(`${HARNESS_URL}/vendor-call`, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({
+      method: "feedConsumerHealth",
+      args: { contract_version: 1 },
+    }),
   });
+  assert.equal(response.status, 200, "harness /vendor-call feedConsumerHealth");
+  return await response.json();
 }
 
 function paymobFieldValue(obj, field) {
@@ -1204,7 +1232,7 @@ async function postPaymobProcessedCallback(checkoutReference) {
 }
 
 function stopSupabase() {
-  const result = spawnSync("npx", ["supabase", "stop"], {
+  const result = spawnSync("supabase", ["stop"], {
     cwd: path.join(REPO_ROOT, "backend"),
     encoding: "utf8",
   });
@@ -1214,7 +1242,7 @@ function stopSupabase() {
 }
 
 function startSupabase() {
-  const result = spawnSync("npx", ["supabase", "start"], {
+  const result = spawnSync("supabase", ["start"], {
     cwd: path.join(REPO_ROOT, "backend"),
     encoding: "utf8",
   });
@@ -1263,8 +1291,6 @@ before(async () => {
 });
 
 after(async () => {
-  await platformVendorProxy?.dispose();
-  platformVendorProxy = null;
   await stack?.stop();
   stack = null;
 });

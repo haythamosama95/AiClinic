@@ -67,10 +67,10 @@ def pids_listening_on_tcp_port(port: int, host: str = "127.0.0.1") -> list[int]:
         return []
     if result.returncode != 0:
         return []
-    needle = f"{host}:{port}"
+    needles = (f"{host}:{port}", f"0.0.0.0:{port}", f"*:{port}", f"[::]:{port}")
     pids: list[int] = []
     for line in result.stdout.splitlines():
-        if needle not in line:
+        if not any(needle in line for needle in needles):
             continue
         for match in _PID_RE.finditer(line):
             try:

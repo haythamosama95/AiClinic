@@ -22,6 +22,8 @@ import {
   queryPlatformD1One as queryPlatformD1Row,
   runWranglerSync,
   wranglerLocalEnv,
+  WRANGLER_CLI,
+  PLATFORM_BIND_HOST,
 } from "./wrangler-persist.mjs";
 
 // H-FS shared boot for P7.3: imported by p7-3-*.test.mjs
@@ -219,7 +221,7 @@ export async function waitForHttp(
 }
 
 function spawnDevProcess(args, env = {}) {
-  const child = spawn("npx", ["wrangler", ...args], {
+  const child = spawn(process.execPath, [WRANGLER_CLI, ...args], {
     cwd: REPO_ROOT,
     env: wranglerLocalEnv(env),
     stdio: ["ignore", "pipe", "pipe"],
@@ -584,6 +586,44 @@ export function sqlLiteral(value) {
   return `'${String(value).replace(/'/g, "''")}'`;
 }
 
+function findTestOrganizationId(orgName) {
+  return psqlQuery(
+    `SELECT id FROM public.organizations
+     WHERE name = ${sqlLiteral(orgName)} AND is_deleted = false
+     LIMIT 1`,
+  );
+}
+
+function insertTestOrganization(orgName) {
+  const adminUserId = psqlQuery(
+    "SELECT id FROM auth.users WHERE email = 'admin' LIMIT 1",
+  );
+  if (!adminUserId) {
+    throw new Error("Cannot seed a test organization without the bootstrap admin user");
+  }
+  return psqlQuery(
+    `WITH inserted AS (
+       INSERT INTO public.organizations (
+         name, currency_code, timezone, settings_json, created_by, updated_by
+       ) VALUES (
+         ${sqlLiteral(orgName)}, 'EGP', 'UTC', '{}'::jsonb,
+         ${sqlLiteral(adminUserId)}::uuid, ${sqlLiteral(adminUserId)}::uuid
+       ) RETURNING id
+     )
+     SELECT id FROM inserted`,
+  );
+}
+
+function findTestBranchId(orgId, branchCode) {
+  return psqlQuery(
+    `SELECT id FROM public.branches
+     WHERE organization_id = ${sqlLiteral(orgId)}::uuid
+       AND code = ${sqlLiteral(branchCode)}
+       AND is_deleted = false
+     LIMIT 1`,
+  );
+}
+
 function seedStaffMembership(orgId, username, role) {
   psqlQuery(`
     INSERT INTO ai_internal.membership (user_id, organization_id, role)
@@ -615,27 +655,53 @@ async function createOrgClinic({ prefix, orgName, branchCode, branchName }) {
 
   const bootstrap = await signIn("admin", "admin");
 
-  const orgResult = await rpc(bootstrap, "bootstrap_create_organization", {
-    p_name: orgName,
-    p_settings_json: {},
-    p_currency_code: "EGP",
-    p_timezone: "UTC",
-  });
-  if (!orgResult?.success) {
-    throw new Error(`bootstrap_create_organization failed for ${prefix}`);
+  let orgId = findTestOrganizationId(orgName);
+  if (!orgId) {
+    const orgResult = await rpc(bootstrap, "bootstrap_create_organization", {
+      p_name: orgName,
+      p_settings_json: {},
+      p_currency_code: "EGP",
+      p_timezone: "UTC",
+    });
+    if (orgResult?.success) {
+      orgId = orgResult.data.organization_id;
+    } else if (orgResult?.error_code === "ORG_ALREADY_EXISTS") {
+      // Bootstrap is intentionally single-organization per installation. The
+      // cross-tenant E2E fixture needs a second organization, so seed it through
+      // the privileged local test database connection.
+      orgId = insertTestOrganization(orgName);
+    } else {
+      throw new Error(
+        `bootstrap_create_organization failed for ${prefix}: ${orgResult?.error_code ?? "unknown"} ${orgResult?.error_message ?? ""}`,
+      );
+    }
   }
-  const orgId = orgResult.data.organization_id;
-  await bootstrap.auth.refreshSession();
 
-  const branchResult = await rpc(bootstrap, "bootstrap_create_branch", {
-    p_organization_id: orgId,
-    p_name: branchName,
-    p_code: branchCode,
-  });
-  if (!branchResult?.success) {
-    throw new Error(`bootstrap_create_branch failed for ${prefix}`);
+  let branchId = findTestBranchId(orgId, branchCode);
+  if (!branchId) {
+    const branchResult = await rpc(bootstrap, "bootstrap_create_branch", {
+      p_organization_id: orgId,
+      p_name: branchName,
+      p_code: branchCode,
+    });
+    if (!branchResult?.success) {
+      throw new Error(
+        `bootstrap_create_branch failed for ${prefix}: ${branchResult?.error_code ?? "unknown"} ${branchResult?.error_message ?? ""}`,
+      );
+    }
+    branchId = branchResult.data.branch_id;
   }
-  const branchId = branchResult.data.branch_id;
+
+  const activeOrganization = await rpc(
+    bootstrap,
+    "set_active_organization",
+    { p_organization_id: orgId },
+  );
+  if (!activeOrganization?.success) {
+    throw new Error(
+      `set_active_organization failed for ${prefix}: ${activeOrganization?.error_code ?? "unknown"}`,
+    );
+  }
   await bootstrap.auth.refreshSession();
 
   const createStaff = async (username, password, fullName, role) => {
@@ -711,14 +777,16 @@ function spawnAboProcess(issuerKeys, aboConfig = activeAboConfig) {
       "9231",
       "--persist-to",
       ABO_PERSIST,
+      "--var",
+      `PAYMOB_BASE_URL:${PAYMOB_URL}`,
+      "--var",
+      `ISSUER_KEYS:${JSON.stringify(issuerKeys)}`,
+      "--var",
+      `ABO_GRANT_KEY:${JSON.stringify(ABO_GRANT_KEY)}`,
+      "--var",
+      `PLATFORM_PUBLIC_KEYS:${JSON.stringify(PLATFORM_PUBLIC_KEYS)}`,
       "--test-scheduled",
     ],
-    {
-      PAYMOB_BASE_URL: PAYMOB_URL,
-      ISSUER_KEYS: JSON.stringify(issuerKeys),
-      ABO_GRANT_KEY: JSON.stringify(ABO_GRANT_KEY),
-      PLATFORM_PUBLIC_KEYS: JSON.stringify(PLATFORM_PUBLIC_KEYS),
-    },
   );
 }
 
@@ -742,7 +810,7 @@ async function startPlatformAdmissionWorker(platformConfigPath, mockFetch) {
     config: platformConfigPath,
     env: "development",
     dev: {
-      server: { hostname: "127.0.0.1", port: 8787 },
+      server: { hostname: PLATFORM_BIND_HOST, port: 8787 },
       inspector: false,
       persist: PLATFORM_PERSIST,
       registry: REGISTRY_DIR,
@@ -1121,6 +1189,34 @@ export function ensurePlatformGrantPrerequisites(orgId, installationId) {
       ${sqlLiteral(installationId)},
       1, 'active', NULL, NULL, ${sqlLiteral(createdAt)}
     );
+    INSERT OR REPLACE INTO service_key (
+      kid, service, public_key, status, not_before, not_after,
+      registered_by, assertion_sha256
+    ) VALUES (
+      ${sqlLiteral(ABO_GRANT_KEY.kid)},
+      'abo',
+      ${sqlLiteral(ABO_GRANT_KEY.public_key)},
+      'active',
+      '2020-01-01T00:00:00.000Z',
+      '2099-01-01T00:00:00.000Z',
+      ${sqlLiteral(OPERATOR_EMAIL)},
+      'harness'
+    );
+    INSERT OR IGNORE INTO plan_version (
+      plan_id, version, display_name, capabilities, max_cost_class,
+      concurrency_limit, max_allowance_per_month, status, published_by,
+      assertion_sha256
+    ) VALUES (
+      '${PLAN_ID}', ${PLAN_VERSION}, 'Clinic Pro',
+      ${sqlLiteral(JSON.stringify([CAPABILITY_ID]))},
+      '2', 4, ${ALLOWANCE_CREDITS}, 'published',
+      ${sqlLiteral(OPERATOR_EMAIL)}, 'harness'
+    );
+  `);
+}
+
+export function seedPlatformGrantGlobals() {
+  runPlatformD1Command(`
     INSERT OR REPLACE INTO service_key (
       kid, service, public_key, status, not_before, not_after,
       registered_by, assertion_sha256
