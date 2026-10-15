@@ -609,14 +609,17 @@ async function startStack() {
     const platformWorker = await startWorker({
       config: PLATFORM_CONFIG,
       env: "development",
+      bindings: {
+        ACCESS_CERTS_JSON: {
+          type: "plain_text",
+          value: JSON.stringify({ keys: accessTeam.certs.keys }),
+        },
+      },
       dev: {
         server: { hostname: PLATFORM_BIND_HOST, port: 8787 },
         inspector: false,
         persist: PLATFORM_PERSIST,
         registry: REGISTRY_DIR,
-        vars: {
-          ACCESS_CERTS_JSON: JSON.stringify({ keys: accessTeam.certs.keys }),
-        },
       },
     });
     scope.defer("platform worker", () => platformWorker.dispose());

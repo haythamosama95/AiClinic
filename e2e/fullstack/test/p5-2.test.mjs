@@ -628,8 +628,15 @@ async function startStack() {
         inspector: false,
         persist: PLATFORM_PERSIST,
         registry: REGISTRY_DIR,
-        vars: {
-          ACCESS_CERTS_JSON: JSON.stringify({ keys: accessTeam.certs.keys }),
+      },
+      // startWorker reads injected Worker environment through the top-level
+      // bindings option. `dev.vars` is not part of its API and was silently
+      // ignored, leaving workerd to fetch https://access.test/cdn-cgi/access/certs
+      // (which is intentionally not resolvable in the test environment).
+      bindings: {
+        ACCESS_CERTS_JSON: {
+          type: "plain_text",
+          value: JSON.stringify({ keys: accessTeam.certs.keys }),
         },
       },
     });

@@ -790,8 +790,14 @@ export async function startStack() {
       inspector: false,
       persist: PLATFORM_PERSIST,
       registry: REGISTRY_DIR,
-      vars: {
-        ACCESS_CERTS_JSON: JSON.stringify({ keys: accessTeam.certs.keys }),
+    },
+    // `startWorker` exposes injected environment variables through the
+    // top-level `bindings` option. `dev.vars` is not part of its API and is
+    // silently ignored, causing workerd to try resolving access.test over DNS.
+    bindings: {
+      ACCESS_CERTS_JSON: {
+        type: "plain_text",
+        value: JSON.stringify({ keys: accessTeam.certs.keys }),
       },
     },
   });

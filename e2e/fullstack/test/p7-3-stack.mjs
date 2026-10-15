@@ -801,13 +801,18 @@ async function startPlatformDoReceiverWorker(doReceiverConfigPath, accessCertsJs
   const doReceiverWorker = await startWorker({
     config: doReceiverConfigPath,
     env: "development",
+    bindings: accessCertsJson
+      ? {
+          ACCESS_CERTS_JSON: {
+            type: "plain_text",
+            value: accessCertsJson,
+          },
+        }
+      : undefined,
     dev: {
       inspector: false,
       persist: PLATFORM_PERSIST,
       registry: REGISTRY_DIR,
-      vars: accessCertsJson
-        ? { ACCESS_CERTS_JSON: accessCertsJson }
-        : undefined,
     },
   });
   await doReceiverWorker.ready;
@@ -818,14 +823,19 @@ async function startPlatformAdmissionWorker(platformConfigPath, accessCertsJson)
   const platformWorker = await startWorker({
     config: platformConfigPath,
     env: "development",
+    bindings: accessCertsJson
+      ? {
+          ACCESS_CERTS_JSON: {
+            type: "plain_text",
+            value: accessCertsJson,
+          },
+        }
+      : undefined,
     dev: {
       server: { hostname: PLATFORM_BIND_HOST, port: 8787 },
       inspector: false,
       persist: PLATFORM_PERSIST,
       registry: REGISTRY_DIR,
-      vars: accessCertsJson
-        ? { ACCESS_CERTS_JSON: accessCertsJson }
-        : undefined,
     },
   });
   await platformWorker.ready;
