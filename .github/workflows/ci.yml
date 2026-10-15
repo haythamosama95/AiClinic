@@ -160,3 +160,51 @@ jobs:
             test-results/${{ matrix.area }}/
           if-no-files-found: ignore
           retention-days: 14
+
+  ci-history:
+    name: CI test history
+    if: always()
+    needs: [test-campaign]
+    runs-on: ubuntu-latest
+    permissions:
+      actions: read
+      contents: read
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Find previous completed CI run on this branch
+        id: previous
+        env:
+          GH_TOKEN: ${{ github.token }}
+          COMPARE_BRANCH: ${{ github.event_name == 'pull_request' && github.head_ref || github.ref_name }}
+          CURRENT_RUN_ID: ${{ github.run_id }}
+          CURRENT_EVENT: ${{ github.event_name }}
+        run: |
+          previous_run_id="$(gh api "repos/${GITHUB_REPOSITORY}/actions/workflows/ci.yml/runs" \
+            -f "branch=${COMPARE_BRANCH}" \
+            -f status=completed \
+            -F per_page=100 \
+            --jq '[.workflow_runs[] | select((.id | tostring) != env.CURRENT_RUN_ID and .event == env.CURRENT_EVENT)] | sort_by(.run_number) | last | .id // empty')"
+          echo "run_id=${previous_run_id}" >> "$GITHUB_OUTPUT"
+
+      - name: Download campaign reports
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PREVIOUS_RUN_ID: ${{ steps.previous.outputs.run_id }}
+        run: |
+          mkdir -p ci-history/current ci-history/previous
+          gh run download "${GITHUB_RUN_ID}" --repo "${GITHUB_REPOSITORY}" --dir ci-history/current || true
+          if [[ -n "${PREVIOUS_RUN_ID}" ]]; then
+            gh run download "${PREVIOUS_RUN_ID}" --repo "${GITHUB_REPOSITORY}" --dir ci-history/previous || true
+          fi
+
+      - name: Add test count comparison and charts to summary
+        env:
+          PREVIOUS_RUN_ID: ${{ steps.previous.outputs.run_id }}
+        run: |
+          args=(--current-run-id "${GITHUB_RUN_ID}")
+          if [[ -n "${PREVIOUS_RUN_ID}" ]]; then
+            args+=(--previous-run-id "${PREVIOUS_RUN_ID}")
+          fi
+          python3 test/ci_history_summary.py "${args[@]}"
