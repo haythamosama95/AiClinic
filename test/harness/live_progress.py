@@ -495,11 +495,12 @@ class StallTrackingDisplay:
         status: str,
         *,
         duration_seconds: float | None = None,
+        identity: str | None = None,
     ) -> None:
         self._guard.note_finished(name, status)
         setter = getattr(self._target, "add_finished", None)
         if callable(setter):
-            setter(name, status, duration_seconds=duration_seconds)
+            setter(name, status, duration_seconds=duration_seconds, identity=identity)
 
     def set_campaign_config(self, config: dict[str, Any] | None) -> None:
         setter = getattr(self._target, "set_campaign_config", None)
@@ -522,6 +523,7 @@ class NoOpCampaignProgressDisplay:
         status: str,
         *,
         duration_seconds: float | None = None,
+        identity: str | None = None,
     ) -> None:
         pass
 
@@ -634,13 +636,16 @@ class CampaignProgressDisplay:
                 self.failed = failed
         self._sync_queue_counts()
 
-    def _apply_outcome_delta(self, name: str, status: str) -> None:
+    def _apply_outcome_delta(
+        self, name: str, status: str, identity: str | None = None
+    ) -> None:
         if status not in ("PASS", "FAIL"):
             return
         from harness.vitest_labels import normalize_vitest_case_label
 
         name = normalize_vitest_case_label(name)
-        prior = self._status_by_test.get(name)
+        key = identity or name
+        prior = self._status_by_test.get(key)
         if prior == status:
             return
         if status == "PASS":
@@ -655,7 +660,7 @@ class CampaignProgressDisplay:
             elif prior == "PASS":
                 self.passed -= 1
                 self.failed += 1
-        self._status_by_test[name] = status
+        self._status_by_test[key] = status
 
     def _sync_queue_counts(self) -> None:
         """Push in-memory pass/fail into the queue (does not read ``summary.json``)."""
@@ -861,10 +866,11 @@ class CampaignProgressDisplay:
         status: str,
         *,
         duration_seconds: float | None = None,
+        identity: str | None = None,
     ) -> None:
         def work() -> None:
             if status in ("PASS", "FAIL"):
-                self._apply_outcome_delta(name, status)
+                self._apply_outcome_delta(name, status, identity)
                 if status == "FAIL":
                     path, leaf = _failure_path_and_leaf(self._nested, name)
                     self._failures.insert(path, leaf)
@@ -1414,12 +1420,15 @@ class FlutterMachineParser(ProgressParser):
         display: CampaignProgressDisplay,
         log_session: Optional["CampaignLogSession"] = None,
     ) -> None:
+        self.owns_test_logs = True
         self.display = display
         self.log_session = log_session
         self._active: dict[int, str] = {}
+        self._identity_by_id: dict[int, str] = {}
         self._ignored_ids: set[int] = set()
         self._pseudo: dict[int, str] = {}
         self._failed_pseudo: set[int] = set()
+        self._failed_tests: set[int] = set()
         self._suite_paths: dict[int, str] = {}
 
     def feed(self, line: str) -> None:
@@ -1436,12 +1445,12 @@ class FlutterMachineParser(ProgressParser):
         if isinstance(event, list):
             for item in event:
                 if isinstance(item, dict):
-                    self._handle_event(item)
+                    self._handle_event(item, stripped)
             return
         if isinstance(event, dict):
-            self._handle_event(event)
+            self._handle_event(event, stripped)
 
-    def _handle_event(self, event: dict) -> None:
+    def _handle_event(self, event: dict, raw_line: str) -> None:
         from harness.flutter_machine_labels import (
             flutter_pseudo_test_failure_label,
             flutter_test_label,
@@ -1474,9 +1483,13 @@ class FlutterMachineParser(ProgressParser):
                 self._ignored_ids.add(tid)
                 return
             self._active[tid] = label
-            _emit_ci_test_status(label, "In Progress")
+            suite_id = test.get("suiteID")
+            suite_path = self._suite_paths.get(int(suite_id)) if suite_id is not None else None
+            self._identity_by_id[tid] = self._stable_identity(suite_path, label)
             if self.log_session is not None:
-                self.log_session.start_test(label)
+                self.log_session.start_test(label, identity=self._identity_by_id[tid])
+                self.log_session.append_line(raw_line, identity=self._identity_by_id[tid])
+            _emit_ci_test_status(label, "In Progress")
             self.display.set_current(label)
         elif kind == "testDone":
             test_id = event.get("testID")
@@ -1497,44 +1510,99 @@ class FlutterMachineParser(ProgressParser):
                 self._ignored_ids.discard(tid)
                 return
             name = self._active.pop(tid, None)
+            identity = self._identity_by_id.get(tid)
             if name is None:
                 return
-            result = event.get("result")
-            status = "PASS" if result == "success" else "FAIL"
-            _emit_ci_test_status(name, status)
-            self.display.add_finished(name, status)
             if self.log_session is not None:
-                self.log_session.end_test(name, status=status)
+                self.log_session.append_line(raw_line, identity=identity)
+            result = event.get("result")
+            skipped = bool(event.get("skipped"))
+            status = "SKIP" if skipped else (
+                "FAIL"
+                if tid in self._failed_tests or result != "success"
+                else "PASS"
+            )
+            self._failed_tests.discard(tid)
+            if status != "SKIP":
+                _emit_ci_test_status(name, status)
+            if self.log_session is not None:
+                self.log_session.end_test(
+                    name,
+                    status=status,
+                    skipped=skipped,
+                    identity=identity,
+                )
+            self._identity_by_id.pop(tid, None)
+            self.display.add_finished(name, status, identity=identity)
+        elif kind == "print":
+            test_id = event.get("testID")
+            tid = int(test_id) if test_id is not None else None
+            identity = self._identity_by_id.get(tid) if tid is not None else None
+            if self.log_session is not None and identity is not None:
+                self.log_session.append_line(raw_line, identity=identity)
         elif kind == "error":
             test_id = event.get("testID")
             tid = int(test_id) if test_id is not None else None
             name: str | None = None
+            identity: str | None = None
             if tid is not None and tid in self._pseudo:
                 if tid in self._failed_pseudo:
                     return
                 self._failed_pseudo.add(tid)
                 name = self._pseudo[tid]
             elif tid is not None and tid in self._active:
-                name = self._active.pop(tid, None)
+                name = self._active.get(tid)
+                identity = self._identity_by_id.get(tid)
+                self._failed_tests.add(tid)
+            else:
+                identity = None
+            if self.log_session is not None and identity is not None:
+                self.log_session.append_line(raw_line, identity=identity)
             if name is None:
                 name = self.display.current
                 if name in ("(starting…)", "starting…", "Interrupted"):
                     name = "flutter test error"
             err = (event.get("error") or "flutter test error").strip()
-            self._record_failure(name, err, stack_trace=event.get("stackTrace"))
+            self._record_failure(
+                name,
+                err,
+                stack_trace=event.get("stackTrace"),
+                identity=identity,
+            )
+
+    @staticmethod
+    def _stable_identity(suite_path: str | None, label: str) -> str:
+        from harness.common import REPO_ROOT
+
+        if suite_path:
+            path = Path(suite_path)
+            try:
+                source = path.resolve().relative_to(REPO_ROOT.resolve()).as_posix()
+            except (OSError, ValueError):
+                source = path.as_posix()
+            return f"{source}::{label}"
+        return label
 
     def _record_failure(
-        self, name: str, err: str, *, stack_trace: object = None
+        self,
+        name: str,
+        err: str,
+        *,
+        stack_trace: object = None,
+        identity: str | None = None,
     ) -> None:
         _emit_ci_test_status(name, "FAIL")
         if self.log_session is not None:
-            if not self.log_session.has_active():
-                self.log_session.start_test(name)
+            if identity is None and not self.log_session.has_active():
+                self.log_session.start_test(name, identity=identity)
             if stack_trace:
-                self.log_session.append_line(str(stack_trace))
-            self.log_session.append_line(err)
-            self.log_session.end_test(name, status="FAIL", error=err)
-        self.display.add_finished(name, "FAIL")
+                self.log_session.append_line(str(stack_trace), identity=identity)
+            self.log_session.append_line(err, identity=identity)
+            # Flutter's error event belongs to an in-flight test. Keep its log open
+            # until testDone supplies the terminal outcome and final event line.
+            if identity is None:
+                self.log_session.end_test(name, status="FAIL", error=err)
+        self.display.add_finished(name, "FAIL", identity=identity)
 
 
 def _emit_ci_test_status(name: str, status: str) -> None:
@@ -1862,7 +1930,11 @@ def pump_process_output(
                     transcript.flush()
                 else:
                     governor_console_log_line(msg)
-            if log_session is not None and log_session.has_active():
+            if (
+                log_session is not None
+                and log_session.has_active()
+                and not getattr(parser, "owns_test_logs", False)
+            ):
                 log_session.append_line(line)
             if forward_stdout:
                 sys.stdout.write(line)

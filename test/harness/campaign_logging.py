@@ -38,10 +38,12 @@ class CampaignLogSession:
         self._run_started = _utc_now_iso()
         self._run_mono = time.monotonic()
         self._current_name: str | None = None
+        self._current_identity: str | None = None
         self._current_rel: str | None = None
         self._current_fp: TextIO | None = None
         self._current_started: str | None = None
         self._current_mono: float | None = None
+        self._active_tests: dict[str, dict[str, Any]] = {}
         self._exclude = exclude_tests_from_environ()
         self._resume = resume if resume is not None else campaign_resume_enabled()
         self._summary_fields: dict[str, Any] = {}
@@ -58,16 +60,18 @@ class CampaignLogSession:
         tests = payload.get("tests", [])
         if not isinstance(tests, list):
             return
-        by_name: dict[str, dict[str, Any]] = {}
+        by_identity: dict[str, dict[str, Any]] = {}
         for entry in tests:
             if not isinstance(entry, dict):
                 continue
             if entry.get("status") not in ("PASS", "FAIL"):
                 continue
+            identity = entry.get("identity")
             name = entry.get("name")
-            if isinstance(name, str) and name:
-                by_name[name] = dict(entry)
-        self._entries = list(by_name.values())
+            key = identity if isinstance(identity, str) and identity else name
+            if isinstance(key, str) and key:
+                by_identity[key] = dict(entry)
+        self._entries = list(by_identity.values())
         for entry in self._entries:
             rel = entry.get("log_file")
             if isinstance(rel, str) and rel.startswith("tests/"):
@@ -81,42 +85,69 @@ class CampaignLogSession:
         return name in self._exclude
 
     def has_active(self) -> bool:
-        return self._current_fp is not None
+        return bool(self._active_tests) or self._current_fp is not None
 
-    def start_test(self, name: str) -> None:
+    def start_test(self, name: str, *, identity: str | None = None) -> None:
         if self.is_excluded(name):
             return
-        if self._current_name == name and self._current_fp is not None:
+        resolved_identity = identity or name
+        if resolved_identity in self._active_tests:
             return
-        self._close_current_without_entry()
         self._seq += 1
         rel = f"tests/{self._seq:03d}-{slug_for_test_log(name)}.log"
         path = self.log_dir / rel
+        fp = path.open("w", encoding="utf-8")
+        started = _utc_now_iso()
+        mono = time.monotonic()
+        self._active_tests[resolved_identity] = {
+            "name": name,
+            "log_file": rel,
+            "fp": fp,
+            "started_at": started,
+            "started_mono": mono,
+        }
         self._current_name = name
+        self._current_identity = resolved_identity
         self._current_rel = rel
-        self._current_fp = path.open("w", encoding="utf-8")
-        self._current_started = _utc_now_iso()
-        self._current_mono = time.monotonic()
+        self._current_fp = fp
+        self._current_started = started
+        self._current_mono = mono
 
-    def append_output(self, text: str) -> None:
-        if self._current_fp is None:
+    def append_output(self, text: str, *, identity: str | None = None) -> None:
+        fp = self._active_fp(identity)
+        if fp is None:
+            if identity is not None:
+                return
             self.start_test("_runner")
-        if self._current_fp is None:
+            fp = self._active_fp(identity)
+        if fp is None:
             return
-        self._current_fp.write(text)
+        fp.write(text)
         if text and not text.endswith("\n"):
-            self._current_fp.write("\n")
-        self._current_fp.flush()
+            fp.write("\n")
+        fp.flush()
 
-    def append_line(self, line: str) -> None:
-        if self._current_fp is None:
+    def append_line(self, line: str, *, identity: str | None = None) -> None:
+        fp = self._active_fp(identity)
+        if fp is None:
+            if identity is not None:
+                return
             self.start_test("_runner")
-        if self._current_fp is None:
+            fp = self._active_fp(identity)
+        if fp is None:
             return
-        self._current_fp.write(line)
+        fp.write(line)
         if not line.endswith("\n"):
-            self._current_fp.write("\n")
-        self._current_fp.flush()
+            fp.write("\n")
+        fp.flush()
+
+    def _active_fp(self, identity: str | None = None) -> TextIO | None:
+        if identity is not None:
+            active = self._active_tests.get(identity)
+            return active.get("fp") if active is not None else None
+        key = self._current_identity
+        active = self._active_tests.get(key) if key is not None else None
+        return active.get("fp") if active is not None else self._current_fp
 
     def end_test(
         self,
@@ -126,15 +157,22 @@ class CampaignLogSession:
         error: str | None = None,
         skipped: bool = False,
         resumed: bool = False,
+        identity: str | None = None,
     ) -> None:
         resolved = name or self._current_name or "test"
         if self.is_excluded(resolved) and not resumed:
-            self._close_current_without_entry()
+            if identity is None:
+                self._close_current_without_entry()
             return
-        if self._current_fp is None and status == "PASS" and skipped:
+        resolved_identity = identity or self._current_identity or resolved
+        active = self._active_tests.get(resolved_identity)
+        if identity is not None and active is None:
+            return
+        if active is None and self._current_fp is None and status == "PASS" and skipped:
             self._entries.append(
                 {
                     "name": resolved,
+                    "identity": resolved_identity,
                     "status": "PASS",
                     "skipped": True,
                     "resumed": True,
@@ -147,29 +185,49 @@ class CampaignLogSession:
             )
             self._flush_summary_partial()
             return
-        if self._current_fp is None:
+        if active is None and self._current_fp is None:
             return
         finished = _utc_now_iso()
-        elapsed = round(time.monotonic() - (self._current_mono or time.monotonic()), 3)
+        started_mono = active.get("started_mono") if active else self._current_mono
+        started_at = active.get("started_at") if active else self._current_started
+        log_file = active.get("log_file") if active else self._current_rel
+        elapsed = round(time.monotonic() - (started_mono or time.monotonic()), 3)
         entry = {
             "name": resolved,
+            "identity": resolved_identity,
             "status": status,
             "skipped": skipped,
-            "log_file": self._current_rel,
-            "started_at": self._current_started,
+            "log_file": log_file,
+            "started_at": started_at,
             "finished_at": finished,
             "elapsed_seconds": elapsed,
             "error": error,
         }
         self._upsert_entry(entry)
-        self._close_current_without_entry()
+        if active is not None:
+            active["fp"].close()
+            self._active_tests.pop(resolved_identity, None)
+            if self._current_identity == resolved_identity:
+                self._set_current_from_active()
+        else:
+            self._close_current_without_entry()
         self._flush_summary_partial()
 
     def _upsert_entry(self, entry: dict[str, Any]) -> None:
+        identity = entry.get("identity")
         name = entry.get("name")
-        if isinstance(name, str) and name:
+        key = identity if isinstance(identity, str) and identity else name
+        if isinstance(key, str) and key:
             for index in range(len(self._entries) - 1, -1, -1):
-                if self._entries[index].get("name") == name:
+                existing = self._entries[index]
+                existing_identity = existing.get("identity")
+                existing_name = existing.get("name")
+                existing_key = (
+                    existing_identity
+                    if isinstance(existing_identity, str) and existing_identity
+                    else existing_name
+                )
+                if existing_key == key:
                     self._entries[index] = entry
                     return
         self._entries.append(entry)
@@ -184,10 +242,27 @@ class CampaignLogSession:
                 path.unlink()
 
     def _close_current_without_entry(self) -> None:
-        if self._current_fp is not None:
+        if self._current_identity is not None:
+            active = self._active_tests.pop(self._current_identity, None)
+            if active is not None:
+                active["fp"].close()
+        elif self._current_fp is not None:
             self._current_fp.close()
+        self._set_current_from_active()
+
+    def _set_current_from_active(self) -> None:
+        if self._active_tests:
+            key, active = next(reversed(self._active_tests.items()))
+            self._current_identity = key
+            self._current_name = active["name"]
+            self._current_rel = active["log_file"]
+            self._current_fp = active["fp"]
+            self._current_started = active["started_at"]
+            self._current_mono = active["started_mono"]
+            return
         self._current_fp = None
         self._current_name = None
+        self._current_identity = None
         self._current_rel = None
         self._current_started = None
         self._current_mono = None
@@ -219,7 +294,10 @@ class CampaignLogSession:
         return stats.passed, stats.failed
 
     def write_summary(self, **fields: Any) -> dict[str, Any]:
-        self._close_current_without_entry()
+        for active in self._active_tests.values():
+            active["fp"].close()
+        self._active_tests.clear()
+        self._set_current_from_active()
         self._summary_fields = dict(fields)
         if "passed" not in fields or "failed" not in fields:
             passed, failed = self.deduped_pass_fail_counts()

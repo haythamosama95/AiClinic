@@ -8,7 +8,7 @@ from typing import Any
 
 @dataclass(frozen=True)
 class CampaignTestStats:
-    """Counts with at most one terminal status per test name (latest wins)."""
+    """Counts with at most one terminal status per test identity (latest wins)."""
 
     passed: int
     failed: int
@@ -24,7 +24,11 @@ class CampaignTestStats:
 
 
 def dedupe_test_statuses(tests: list[Any]) -> dict[str, str]:
-    """Map test name → latest PASS/FAIL (order in ``tests`` is chronological)."""
+    """Map stable test identity → latest PASS/FAIL (rows are chronological).
+
+    New campaign rows include an ``identity`` that can distinguish equal test
+    names in different files. Legacy rows fall back to their display name.
+    """
     statuses: dict[str, str] = {}
     if not isinstance(tests, list):
         return statuses
@@ -34,10 +38,28 @@ def dedupe_test_statuses(tests: list[Any]) -> dict[str, str]:
         status = entry.get("status")
         if status not in ("PASS", "FAIL"):
             continue
+        identity = entry.get("identity")
         name = entry.get("name")
-        if isinstance(name, str) and name:
-            statuses[name] = status
+        key = identity if isinstance(identity, str) and identity else name
+        if isinstance(key, str) and key:
+            statuses[key] = status
     return statuses
+
+
+def dedupe_test_entries(tests: list[Any]) -> dict[str, dict[str, Any]]:
+    """Map stable test identity to the latest terminal summary row."""
+    entries: dict[str, dict[str, Any]] = {}
+    if not isinstance(tests, list):
+        return entries
+    for entry in tests:
+        if not isinstance(entry, dict):
+            continue
+        identity = entry.get("identity")
+        name = entry.get("name")
+        key = identity if isinstance(identity, str) and identity else name
+        if isinstance(key, str) and key:
+            entries[key] = entry
+    return entries
 
 
 def stats_from_status_map(statuses: dict[str, str]) -> CampaignTestStats:
@@ -54,7 +76,18 @@ def stats_from_status_map(statuses: dict[str, str]) -> CampaignTestStats:
 
 
 def stats_from_tests_list(tests: list[Any]) -> CampaignTestStats:
-    return stats_from_status_map(dedupe_test_statuses(tests))
+    entries = dedupe_test_entries(tests)
+    passed = failed = 0
+    failures: list[str] = []
+    for entry in entries.values():
+        status = entry.get("status")
+        if status == "PASS":
+            passed += 1
+        elif status == "FAIL":
+            failed += 1
+            name = entry.get("name")
+            failures.append(name if isinstance(name, str) and name else "unknown test")
+    return CampaignTestStats(passed, failed, tuple(sorted(failures)))
 
 
 def stats_from_summary_payload(payload: dict[str, Any] | None) -> CampaignTestStats:

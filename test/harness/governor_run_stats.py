@@ -18,7 +18,7 @@ from harness.governor_run_manifest import (
     resolve_governor_run_dir,
 )
 from harness.governor_run_stats_display import print_governor_run_stats_report
-from harness.test_result_stats import cap_stats, reconcile_total
+from harness.test_result_stats import cap_stats, dedupe_test_entries, reconcile_total
 
 STATS_FILE_NAME = "stats.json"
 STATS_VERSION = 1
@@ -51,15 +51,8 @@ def _load_summary_tests(log_dir: Path) -> list[Any]:
 
 
 def _dedupe_test_entries(tests: list[Any]) -> dict[str, dict[str, Any]]:
-    """Latest summary row per test name."""
-    by_name: dict[str, dict[str, Any]] = {}
-    for entry in tests:
-        if not isinstance(entry, dict):
-            continue
-        name = entry.get("name")
-        if isinstance(name, str) and name:
-            by_name[name] = entry
-    return by_name
+    """Latest summary row per stable test identity."""
+    return dedupe_test_entries(tests)
 
 
 def _outcome_bucket(entry: dict[str, Any]) -> str | None:
@@ -82,6 +75,9 @@ def _manifest_test_row(log_dir: Path, entry: dict[str, Any]) -> dict[str, Any]:
     if log_file:
         log_path = str((log_dir / log_file).resolve())
     row: dict[str, Any] = {"name": name}
+    identity = entry.get("identity")
+    if isinstance(identity, str) and identity:
+        row["identity"] = identity
     if log_file is not None:
         row["log_file"] = log_file
     if log_path is not None:
