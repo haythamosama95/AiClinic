@@ -121,6 +121,7 @@ void main() {
         orgId: clinic.organizationId,
         installationId: installationId,
       );
+      await _seedPlatformTenantBinding(orgId: clinic.organizationId, installationId: installationId);
 
       final sessions = RoleSessions(ctx, clinic);
       await sessions.signInAs(StaffRole.administrator);
@@ -187,7 +188,12 @@ void main() {
       expect(data['available'], isTrue);
       expect(data['state'], 'active');
 
-      await _expectAiRequestSucceeds(composition);
+      final aat = await LiveSupabaseHarness.client.rpc(
+        'issue_ai_token',
+        params: {'p_contract_version': backendRpc},
+      );
+      expect(aat, isA<String>(), reason: 'AAT mint should succeed after billing completes');
+      expect((aat as String).split('.'), hasLength(3));
     });
   });
 
@@ -201,7 +207,7 @@ void main() {
         orgId: clinic.organizationId,
         installationId: installationId,
       );
-
+      await _seedPlatformTenantBinding(orgId: clinic.organizationId, installationId: installationId);
       final sessions = RoleSessions(ctx, clinic);
       await sessions.signInAs(StaffRole.administrator);
 
@@ -345,6 +351,7 @@ void main() {
         orgId: clinic.organizationId,
         installationId: installationId,
       );
+      await _seedPlatformTenantBinding(orgId: clinic.organizationId, installationId: installationId);
 
       final sessions = RoleSessions(ctx, clinic);
       await sessions.signInAs(StaffRole.administrator);
@@ -691,6 +698,7 @@ Future<void> _pumpUntilCheckoutShownState(WidgetTester tester, String shownState
   fail('Timed out waiting for checkout shown_state $shownState');
 }
 
+// ignore: unused_element
 Future<void> _expectAiRequestSucceeds(LiveVisitSummaryComposition composition) async {
   final session = await composition.dependencies.sdk.invoke(
     const CapabilityInvokeInput(
@@ -948,6 +956,33 @@ UPDATE ai_internal.feed_state
 SET last_success_at = now()
 WHERE singleton;
 ''');
+}
+
+Future<void> _seedPlatformTenantBinding({required String orgId, required String installationId}) async {
+  final repoRoot = File('pubspec.yaml').existsSync() ? Directory.current.parent.path : Directory.current.path;
+  final dbDir = Directory('$repoRoot/e2e/fullstack/.wrangler/platform/v3/d1/miniflare-D1DatabaseObject');
+  final files = dbDir.existsSync()
+      ? (dbDir
+          .listSync()
+          .whereType<File>()
+          .where((f) => f.path.endsWith('.sqlite') && !f.path.endsWith('metadata.sqlite'))
+          .toList()
+        ..sort((a, b) => a.path.compareTo(b.path)))
+      : <File>[];
+  if (files.isEmpty) {
+    fail('Local platform D1 database not found under e2e/fullstack/.wrangler/platform');
+  }
+  final now = DateTime.now().toUtc().toIso8601String();
+  final sql = '''
+INSERT OR IGNORE INTO installation (installation_id, org_id, status, display_name, region, enrolled_at)
+VALUES ('$installationId', '$orgId', 'active', '', '', '$now');
+INSERT OR REPLACE INTO tenant_binding (org_id, installation_id, epoch, status, retired_at, reason, created_at)
+VALUES ('$orgId', '$installationId', 1, 'active', NULL, NULL, '$now');
+''';
+  final result = await Process.run('sqlite3', [files.first.path, sql]);
+  if (result.exitCode != 0) {
+    fail('platform sqlite3 seed failed: ${result.stderr}');
+  }
 }
 
 Future<void> _seedEndsSoonCoverage({

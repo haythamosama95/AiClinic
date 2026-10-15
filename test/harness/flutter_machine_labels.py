@@ -52,3 +52,15 @@ def flutter_test_label(test: dict) -> str | None:
         return filename
 
     return None
+
+
+def flutter_pseudo_test_failure_label(test: dict, suite_path: str | None) -> str:
+    """Label for a failed loading/hook pseudo-test, e.g. ``foo_test.dart (setUpAll)``."""
+    name = (test.get("name") or "").strip()
+    if is_loading_pseudo_test(test):
+        loaded = name.split(" ", 1)[1] if " " in name else name
+        return f"{Path(loaded).name} (loading)"
+    suite_file = Path(suite_path).name if suite_path else _filename_from_url(test.get("url"))
+    if suite_file:
+        return f"{suite_file} {name}".strip()
+    return name or "flutter hook"

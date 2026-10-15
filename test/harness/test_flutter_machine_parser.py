@@ -92,3 +92,39 @@ def test_error_event_marks_failure_without_test_done() -> None:
         + "\n"
     )
     assert display.failed == 1
+
+
+def _feed(parser: FlutterMachineParser, event: dict) -> None:
+    parser.feed(json.dumps(event) + "\n")
+
+
+def test_setup_all_error_is_attributed_to_suite_file() -> None:
+    display = CampaignProgressDisplay("[frontend/fullstack]")
+    parser = FlutterMachineParser(display)
+    _feed(parser, {"type": "suite", "suite": {"id": 0, "platform": "vm", "path": "/proj/test/integration/foo_fullstack_test.dart"}})
+    _feed(parser, {"type": "testStart", "test": {"id": 3, "name": "(setUpAll)", "suiteID": 0}})
+    _feed(parser, {"type": "error", "testID": 3, "error": "Bad state: prepare exited 1"})
+    _feed(parser, {"type": "testDone", "testID": 3, "result": "error", "hidden": False})
+    assert display.failed == 1
+    assert display.passed == 0
+    assert display.current == "foo_fullstack_test.dart (setUpAll)"
+
+
+def test_passing_setup_all_is_not_counted() -> None:
+    display = CampaignProgressDisplay("[frontend/fullstack]")
+    parser = FlutterMachineParser(display)
+    _feed(parser, {"type": "suite", "suite": {"id": 0, "path": "/proj/a_test.dart"}})
+    _feed(parser, {"type": "testStart", "test": {"id": 1, "name": "(setUpAll)", "suiteID": 0}})
+    _feed(parser, {"type": "testDone", "testID": 1, "result": "success", "hidden": True})
+    assert display.failed == 0
+    assert display.passed == 0
+
+
+def test_loading_failure_is_attributed_to_file() -> None:
+    display = CampaignProgressDisplay("[frontend/unit]")
+    parser = FlutterMachineParser(display)
+    _feed(parser, {"type": "testStart", "test": {"id": 1, "name": "loading /proj/test/broken_test.dart", "suiteID": 0}})
+    _feed(parser, {"type": "error", "testID": 1, "error": "Compilation failed"})
+    _feed(parser, {"type": "testDone", "testID": 1, "result": "error", "hidden": False})
+    assert display.failed == 1
+    assert display.current == "broken_test.dart (loading)"

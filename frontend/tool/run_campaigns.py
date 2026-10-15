@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import json
+import os
 import sys
 from pathlib import Path
 
@@ -31,10 +32,14 @@ from harness.common import (  # noqa: E402
     run_subprocess_with_live_status,
     utc_now_iso,
 )
+from harness.local_dev_ports import prepare_fullstack_e2e_stack  # noqa: E402
 
 AREA = "frontend"
 UNIT_RUNNER = TOOL_DIR / "run_unit_tests.py"
 BOUNDARY_RUNNER = TOOL_DIR / "run_boundary_tests.py"
+SELF_MANAGED_STACK_FILES = frozenset(
+    {"test/integration/contract_version_matrix_fullstack_test.dart"}
+)
 
 BOUNDARY_SUBSET_BY_SUBCAMPAIGN: dict[str, str] = {
     "boundary-auth": "auth",
@@ -155,10 +160,6 @@ def _run_fullstack(_subcampaign: str) -> int:
             file=sys.stderr,
         )
         return 1
-    cmd = apply_campaign_args(
-        ["flutter", "test", *test_files, "--tags", "fullstack"],
-        config,
-    )
     stack_runner = FRONTEND_ROOT.parent / "e2e/fullstack/test/hfl-run-flutter.mjs"
     tsx_loader = (
         FRONTEND_ROOT.parent / "e2e/fullstack/node_modules/tsx/dist/loader.mjs"
@@ -170,8 +171,59 @@ def _run_fullstack(_subcampaign: str) -> int:
             file=sys.stderr,
         )
         return 1
-    wrapped_cmd = ["node", "--import", str(tsx_loader), str(stack_runner), "--", *cmd]
-    return _run_live("fullstack", wrapped_cmd, log_dir, FRONTEND_ROOT)
+
+    os.environ.setdefault("AICLINIC_BOUNDARY_INTEGRATION", "1")
+    os.environ.setdefault(
+        "AICLINIC_DEPLOYMENT_PROFILE_PATH", "config/local/deployment-profile.json"
+    )
+    if os.environ.get("CI"):
+        os.environ.setdefault("AICLINIC_BOUNDARY_REQUIRE_LIVE", "1")
+    prepare_fullstack_e2e_stack()
+
+    def flutter_cmd(files: list[str]) -> list[str]:
+        return apply_campaign_args(
+            [
+                "flutter",
+                "test",
+                *files,
+                "--tags",
+                "fullstack",
+                "--timeout",
+                "6m",
+                "--machine",
+            ],
+            config,
+        )
+
+    shared_stack = [f for f in test_files if f not in SELF_MANAGED_STACK_FILES]
+    self_managed = [f for f in test_files if f in SELF_MANAGED_STACK_FILES]
+    steps: list[tuple[str, list[str]]] = []
+    if shared_stack:
+        steps.append(
+            (
+                "hfs-shared-stack",
+                [
+                    "node",
+                    "--import",
+                    str(tsx_loader),
+                    str(stack_runner),
+                    "--",
+                    *flutter_cmd(shared_stack),
+                ],
+            )
+        )
+    if self_managed:
+        steps.append(("hfs-self-managed-stack", flutter_cmd(self_managed)))
+
+    return run_subprocess_sequence(
+        steps,
+        FRONTEND_ROOT,
+        log_dir,
+        status_label=_status_label("fullstack"),
+        campaign_config=config,
+        config_area=AREA,
+        continue_on_step_failure=True,
+    )
 
 
 def _run_all(_subcampaign: str) -> int:

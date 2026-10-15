@@ -1418,6 +1418,9 @@ class FlutterMachineParser(ProgressParser):
         self.log_session = log_session
         self._active: dict[int, str] = {}
         self._ignored_ids: set[int] = set()
+        self._pseudo: dict[int, str] = {}
+        self._failed_pseudo: set[int] = set()
+        self._suite_paths: dict[int, str] = {}
 
     def feed(self, line: str) -> None:
         stripped = line.strip()
@@ -1440,12 +1443,19 @@ class FlutterMachineParser(ProgressParser):
 
     def _handle_event(self, event: dict) -> None:
         from harness.flutter_machine_labels import (
+            flutter_pseudo_test_failure_label,
             flutter_test_label,
             is_flutter_hook_pseudo_test,
             is_loading_pseudo_test,
         )
 
         kind = event.get("type")
+        if kind == "suite":
+            suite = event.get("suite") or {}
+            suite_id = suite.get("id")
+            if suite_id is not None and suite.get("path"):
+                self._suite_paths[int(suite_id)] = str(suite["path"])
+            return
         if kind == "testStart":
             test = event.get("test") or {}
             test_id = test.get("id")
@@ -1453,7 +1463,11 @@ class FlutterMachineParser(ProgressParser):
                 return
             tid = int(test_id)
             if is_loading_pseudo_test(test) or is_flutter_hook_pseudo_test(test):
-                self._ignored_ids.add(tid)
+                suite_id = test.get("suiteID")
+                suite_path = (
+                    self._suite_paths.get(int(suite_id)) if suite_id is not None else None
+                )
+                self._pseudo[tid] = flutter_pseudo_test_failure_label(test, suite_path)
                 return
             label = flutter_test_label(test)
             if label is None:
@@ -1464,12 +1478,20 @@ class FlutterMachineParser(ProgressParser):
                 self.log_session.start_test(label)
             self.display.set_current(label)
         elif kind == "testDone":
-            if event.get("hidden"):
-                return
             test_id = event.get("testID")
             if test_id is None:
                 return
             tid = int(test_id)
+            if tid in self._pseudo:
+                label = self._pseudo.pop(tid)
+                already_failed = tid in self._failed_pseudo
+                self._failed_pseudo.discard(tid)
+                result = event.get("result")
+                if not already_failed and result not in (None, "success"):
+                    self._record_failure(label, f"{label} finished with result {result}")
+                return
+            if event.get("hidden"):
+                return
             if tid in self._ignored_ids:
                 self._ignored_ids.discard(tid)
                 return
@@ -1485,21 +1507,31 @@ class FlutterMachineParser(ProgressParser):
             test_id = event.get("testID")
             tid = int(test_id) if test_id is not None else None
             name: str | None = None
-            if tid is not None and tid in self._active:
+            if tid is not None and tid in self._pseudo:
+                if tid in self._failed_pseudo:
+                    return
+                self._failed_pseudo.add(tid)
+                name = self._pseudo[tid]
+            elif tid is not None and tid in self._active:
                 name = self._active.pop(tid, None)
             if name is None:
                 name = self.display.current
                 if name in ("(starting…)", "starting…", "Interrupted"):
                     name = "flutter test error"
             err = (event.get("error") or "flutter test error").strip()
-            if self.log_session is not None:
-                if not self.log_session.has_active():
-                    self.log_session.start_test(name)
-                if event.get("stackTrace"):
-                    self.log_session.append_line(str(event.get("stackTrace")))
-                self.log_session.append_line(err)
-                self.log_session.end_test(name, status="FAIL", error=err)
-            self.display.add_finished(name, "FAIL")
+            self._record_failure(name, err, stack_trace=event.get("stackTrace"))
+
+    def _record_failure(
+        self, name: str, err: str, *, stack_trace: object = None
+    ) -> None:
+        if self.log_session is not None:
+            if not self.log_session.has_active():
+                self.log_session.start_test(name)
+            if stack_trace:
+                self.log_session.append_line(str(stack_trace))
+            self.log_session.append_line(err)
+            self.log_session.end_test(name, status="FAIL", error=err)
+        self.display.add_finished(name, "FAIL")
 
 
 class VitestReporterParser(ProgressParser):
