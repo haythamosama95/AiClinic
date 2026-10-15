@@ -2541,6 +2541,8 @@ export default {
           r2: runtimeEnv.R2,
           resolveRetentionClass: createManifestRetentionClassResolver(),
           logger: makeLog("retention/index.ts"),
+          // Harness-clock-aware purge cutoff (falls back to Date.now()).
+          now: new Date(await clockNowMs(runtimeEnv)),
         });
         log.info("scheduled_retention_purge_complete");
       } catch (error) {
@@ -2559,8 +2561,12 @@ export default {
       log.info("scheduled_rollup_start");
       const rollupLog = makeLog("rollup/index.ts");
       try {
+        // Reconciliation window reads the harness clock so TEST_CLOCK runs
+        // (system/version-matrix) scan the same time base the events were
+        // stamped with; in production this falls back to Date.now().
+        const rollupNowMs = await clockNowMs(runtimeEnv);
         const result = await runRollupAndReconciliation(
-          { db: runtimeEnv.DB },
+          { db: runtimeEnv.DB, nowMs: rollupNowMs },
           rollupLog,
         );
         log.info("usage_rollup_reconciliation", {

@@ -102,9 +102,11 @@ describe("cron retention interplay", () => {
 
     await invoke(scenario);
     await invoke(scenario);
-    await flushBackgroundWork();
-
-    const usageTotals = await env.DB.prepare(
+    // Usage events are credited in `waitUntil` after the SSE response. Poll
+    // until both settlements landed instead of a fixed sleep so a slow run
+    // cannot roll up an empty ledger (SYS-8.2 flake).
+    const usageStarted = Date.now();
+    let usageTotals = await env.DB.prepare(
       `SELECT COUNT(*) AS request_count, SUM(tokens) AS tokens, SUM(cost) AS cost
        FROM usage_event WHERE installation_id = ?`,
     )
@@ -114,6 +116,22 @@ describe("cron retention interplay", () => {
         tokens: number;
         cost: number;
       }>();
+    while (
+      (usageTotals?.request_count ?? 0) < 2 &&
+      Date.now() - usageStarted < 8000
+    ) {
+      await flushBackgroundWork();
+      usageTotals = await env.DB.prepare(
+        `SELECT COUNT(*) AS request_count, SUM(tokens) AS tokens, SUM(cost) AS cost
+         FROM usage_event WHERE installation_id = ?`,
+      )
+        .bind(scenario.installationId)
+        .first<{
+          request_count: number;
+          tokens: number;
+          cost: number;
+        }>();
+    }
 
     await runScheduled("0 4 * * *");
 

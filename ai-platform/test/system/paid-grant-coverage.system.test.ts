@@ -929,7 +929,15 @@ describe("paid grant coverage", () => {
     });
     expect(second.result).toBe("applied");
 
+    // apply_grant arms a DO alarm at least 5 s out on WALL CLOCK (syncAlarm's
+    // 5 s floor). On a slow runner that alarm can fire across the test's
+    // isolated-storage frame, leaving a live SQLite journal behind and
+    // poisoning later tests (see test/e2e/harness/do-drain.ts). Drain the
+    // outbox in-frame and cancel the re-armed timer so the term snapshot
+    // below is read from a quiescent DO (E2E-P3.3-04 flake).
     const installationId = await installationIdForOrg(fixture.orgId);
+    await drainAndCancelAlarm(installationId);
+
     const terms = await readDoTerms(installationId);
     const active = terms.find((row) => row.state === "active");
     expect(active?.ends_at).toBeTruthy();

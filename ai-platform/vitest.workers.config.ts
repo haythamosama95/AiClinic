@@ -37,6 +37,19 @@ export default defineWorkersConfig({
     fileParallelism: false,
     testTimeout: 120_000,
     setupFiles: ["./test/setup-isolate-config-cache.ts"],
+    // Retry once to absorb residual @cloudflare/vitest-pool-workers isolated
+    // storage flakiness: the pool snapshots/rolls back D1/R2/DO storage around
+    // every test, and if the per-test storage stack fails to pop cleanly
+    // (e.g. an uncaught rejection racing the pop), the runner aborts with
+    // "Isolated storage failed. There should be additional logs above." and
+    // fails effectively random downstream tests. The SEND_EMAIL stub
+    // (test/stub-send-email-binding.ts) and the pool upgrade to 0.12.21
+    // (workers-sdk fixes #11031 / #11690) address the root causes; this retry
+    // is the last-resort net. Safe with the campaign governor: it dedupes
+    // recorded test statuses by name keeping the latest attempt
+    // (test/harness/test_result_stats.py `dedupe_test_statuses`), so a
+    // retried-then-passing test is not counted as a distinct failure.
+    retry: 1,
     poolOptions: {
       workers: {
         main: "./src/worker.ts",

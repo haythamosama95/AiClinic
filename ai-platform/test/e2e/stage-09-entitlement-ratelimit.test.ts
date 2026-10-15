@@ -535,6 +535,13 @@ describe("Stage 09 — entitlement and rate limit (S09-023…S09-043)", () => {
   });
 
   it("S09-041 — actor limiter with no hint uses retry_after 60", async () => {
+    // Determinism note: this test stubs all three RATE_LIMITER_* bindings
+    // (patchLiveRateLimiters), so the miniflare/workerd-internal real-time
+    // limiter windows are never consulted. The asserted retry_after 60 is
+    // the constant DEFAULT_RATE_LIMITED_RETRY_AFTER_SECONDS applied when the
+    // binding supplies no positive retry hint (src/errors.ts) — no wall-clock
+    // window boundary can influence it. The harness D1 clock cannot drive
+    // these bindings anyway (see stage-X comment on miniflare `ratelimits`).
     const scenario = await provisionHappyPath();
     const variants: Array<{ retryAfter?: number }> = [
       {},

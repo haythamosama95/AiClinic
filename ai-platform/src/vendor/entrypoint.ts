@@ -5073,12 +5073,17 @@ export class VendorEntrypoint extends WorkerEntrypoint<VendorEnv> {
         return rejected(version, "missing_lookup_key");
       }
 
+      // Diagnostic-retention gate reads the harness clock so TEST_CLOCK
+      // runs age rows deterministically; production falls back to
+      // Date.now() (single snapshot per lookup).
+      const lookupNowMs = await clockNowMs(this.env);
       const result = await runSupportLookup(
         { reference, subscription_ref: subscriptionRefArg, org_id: orgId },
         {
           db: this.env.DB,
           r2: this.env.R2,
           resolveRetentionClass: createManifestRetentionClassResolver(),
+          now: () => new Date(lookupNowMs),
         },
       );
 

@@ -695,9 +695,16 @@ const token = await mintAat(i0.scenario, {
         .bind(scenario.kid)
         .run();
 
-      await flushBackgroundWork(200);
-
-      const expired = await getClinic(ref, { token });
+      // TTL expiry is measured against wall clock. Poll until the first
+      // post-expiry consult misses the cache and re-reads the revoked key
+      // (401) instead of assuming a fixed sleep outruns the 50 ms TTL; the
+      // poll times out (and fails) if the cache never expires.
+      const expiredStarted = Date.now();
+      let expired = await getClinic(ref, { token });
+      while (expired.status !== 401 && Date.now() - expiredStarted < 8000) {
+        await flushBackgroundWork(50);
+        expired = await getClinic(ref, { token });
+      }
       assertUnauthenticated(expired, ref);
     } finally {
       isolateConfigCache.setTtlMs(previousTtl);

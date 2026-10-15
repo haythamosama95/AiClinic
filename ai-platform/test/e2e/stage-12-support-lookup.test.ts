@@ -346,6 +346,15 @@ async function settleCompleted(): Promise<Settled> {
   expect(row).not.toBeNull();
   expect(row!.state).toBe("Completed");
   const rid = String(row!.request_id);
+  // Drain waitUntil background work deterministically: the R2 envelope is
+  // written after the terminal state is visible. Poll for it so a slow run
+  // cannot race these writes against the caller's backdating/seeding
+  // (S12-051 flake: completed_at overwritten after the [SEED] UPDATE).
+  const envelopeStarted = Date.now();
+  while (!(await r2Exists(envelopeKey(rid))) && Date.now() - envelopeStarted < 8000) {
+    await flushBackgroundWork(50);
+  }
+  expect(await r2Exists(envelopeKey(rid))).toBe(true);
   return { scenario, token, ref, rid, row: row! };
 }
 

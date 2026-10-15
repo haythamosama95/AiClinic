@@ -1,6 +1,12 @@
 import { beforeEach } from "vitest";
 import { env } from "cloudflare:test";
 import { isolateConfigCache } from "../src/config-cache";
+// Import for its side effect: stub the real `send_email` binding so workerd's
+// local mail pipeline is never exercised in the workers pool (its parse
+// failures become uncaught promise rejections that desync isolated-storage
+// accounting). See test/stub-send-email-binding.ts for the full rationale.
+// System tests later swap in their own capturing stub via setupVendorHarness.
+import "./stub-send-email-binding";
 
 /**
  * Unit fixtures clear `issuer_key` and `tenant_binding` after their own

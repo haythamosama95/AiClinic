@@ -354,6 +354,24 @@ async function waitForRequestCompleted(
 }
 
 /**
+ * The usage_event row is credited in `waitUntil` after the terminal state is
+ * visible. Poll instead of a fixed sleep so a slow run cannot observe the
+ * ledger before settlement lands (SX-002 rollup flake: [] instead of 1 row).
+ */
+async function waitForUsageEvent(
+  requestId: string,
+  timeoutMs = 8000,
+): Promise<Array<Record<string, unknown>>> {
+  const started = Date.now();
+  let usage = await getUsageEvents(requestId);
+  while (usage.length < 1 && Date.now() - started < timeoutMs) {
+    await flushBackgroundWork(50);
+    usage = await getUsageEvents(requestId);
+  }
+  return usage;
+}
+
+/**
  * Pool TTL is 100 ms. Parallel files share isolateConfigCache and call
  * clear(); preload→consult can then miss
  * `active_routing_policy:routing/standard` (ConfigCacheMissError → Failed
@@ -408,7 +426,9 @@ async function completeVisit(
   expect(ref.length).toBeGreaterThan(0);
   const row = await waitForRequestCompleted(ref);
   // Drain waitUntil envelope / usage_event after terminal state is visible.
-  await flushBackgroundWork(200);
+  // Poll for the usage_event ledger row (not a fixed sleep) so the rollup cron
+  // that follows always finds the settled usage (SX-002 determinism).
+  await waitForUsageEvent(String(row.request_id));
   return { requestId: String(row.request_id), ref };
 }
 

@@ -579,6 +579,24 @@ async function requireAiRequest(ref: string): Promise<Record<string, unknown>> {
   return row!;
 }
 
+/**
+ * The usage_event row is credited in `waitUntil` after the terminal state is
+ * visible. Poll instead of a fixed sleep so a slow run cannot read the ledger
+ * before settlement lands (S11-002/S11-010 flake: [] instead of 1 row).
+ */
+async function waitForUsageEvent(
+  requestId: string,
+  timeoutMs = 8000,
+): Promise<Array<Record<string, unknown>>> {
+  const started = Date.now();
+  let usage = await getUsageEvents(requestId);
+  while (usage.length < 1 && Date.now() - started < timeoutMs) {
+    await flushBackgroundWork(50);
+    usage = await getUsageEvents(requestId);
+  }
+  return usage;
+}
+
 function envelopePointer(row: Record<string, unknown>): string {
   if (typeof row.payload_pointer === "string" && row.payload_pointer.length > 0) {
     return row.payload_pointer;
@@ -844,7 +862,8 @@ describe("Stage 11 â€” terminal settlement completed/failed/cancelled (S11-001â€
         const attempts = await getAttempts(String(row.request_id));
         expect(attempts).toHaveLength(1);
         expect(costOf(attempts[0], "cost")).toBeCloseTo(testCase.cost, 6);
-        const usage = await getUsageEvents(String(row.request_id));
+        // Poll until the waitUntil usage credit lands (deterministic drain).
+        const usage = await waitForUsageEvent(String(row.request_id));
         expect(usage).toHaveLength(1);
         expect(usage[0]?.tokens).toBe(testCase.tokens);
         expect(costOf(usage[0], "cost")).toBeCloseTo(testCase.cost, 6);
@@ -1509,7 +1528,6 @@ describe("Stage 11 â€” terminal settlement completed/failed/cancelled (S11-001â€
       );
       controller.abort();
       const settled = await settleAbortedFetch(fetchPromise);
-      await flushBackgroundWork(350);
       const events =
         settled.events.length > 0 ? settled.events : sseCapture.events();
 
@@ -1522,7 +1540,18 @@ describe("Stage 11 â€” terminal settlement completed/failed/cancelled (S11-001â€
       );
       expect(row.terminal_error_code).toBeNull();
 
-      const attempts = await getAttempts(String(row.request_id));
+      // The second (cancelled) attempt journal and the usage credit are
+      // written in waitUntil after the Cancelled state. Poll for both instead
+      // of a fixed sleep so a slow run cannot read a partial journal.
+      const attempts = await (async () => {
+        const started = Date.now();
+        let rows = await getAttempts(String(row.request_id));
+        while (rows.length < 2 && Date.now() - started < 8000) {
+          await flushBackgroundWork(50);
+          rows = await getAttempts(String(row.request_id));
+        }
+        return rows;
+      })();
       expect(attempts).toHaveLength(2);
       expect(attempts[0]).toMatchObject({
         outcome: "truncation",
@@ -1539,7 +1568,8 @@ describe("Stage 11 â€” terminal settlement completed/failed/cancelled (S11-001â€
       });
       expect(costOf(attempts[1], "cost")).toBe(0);
 
-      const usage = await getUsageEvents(String(row.request_id));
+      // Poll until the waitUntil usage credit lands (deterministic drain).
+      const usage = await waitForUsageEvent(String(row.request_id));
       expect(usage).toHaveLength(1);
       expect(usage[0]?.tokens).toBe(30);
       expect(costOf(usage[0], "cost")).toBeCloseTo(0.005, 6);

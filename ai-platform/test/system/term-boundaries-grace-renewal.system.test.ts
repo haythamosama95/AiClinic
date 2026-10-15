@@ -131,7 +131,16 @@ async function completeChargedRequest(scenario: Scenario): Promise<string | null
   await flushBackgroundWork();
   const ref = String(invoked.events[0]?.data.request_reference);
   const request = await getAiRequest(ref);
-  const usage = await getUsageEvents(String(request?.request_id));
+  // The usage credit (and any grace-end it triggers in the same creditRPC)
+  // runs in waitUntil after the SSE response. Poll for the ledger row instead
+  // of a fixed sleep so a slow run cannot observe an unsettled DO
+  // (E2E-P3.5-03 flake: grace term not yet ended).
+  const usageStarted = Date.now();
+  let usage = await getUsageEvents(String(request?.request_id));
+  while (usage.length < 1 && Date.now() - usageStarted < 8000) {
+    await flushBackgroundWork();
+    usage = await getUsageEvents(String(request?.request_id));
+  }
   expect(usage).toHaveLength(1);
   return usage[0]?.term_id ? String(usage[0].term_id) : null;
 }
@@ -380,9 +389,21 @@ describe("term boundaries, grace and renewal", () => {
     expect(lastAdmission.status).toBe(200);
     await flushBackgroundWork();
 
-    const ended = (await readDoTerms(scenario.installationId)).find(
+    // The grace-exhaustion happens inside the waitUntil credit settlement.
+    // Poll the DO terms instead of trusting a fixed sleep (E2E-P3.5-03 flake).
+    const endedStarted = Date.now();
+    let ended = (await readDoTerms(scenario.installationId)).find(
       (row) => row.term_id === graceTerm.term_id,
     );
+    while (
+      ended?.state !== "ended" &&
+      Date.now() - endedStarted < 8000
+    ) {
+      await flushBackgroundWork();
+      ended = (await readDoTerms(scenario.installationId)).find(
+        (row) => row.term_id === graceTerm.term_id,
+      );
+    }
     expect(ended?.state).toBe("ended");
     expect(ended?.end_reason).toBe("grace_exhausted");
 

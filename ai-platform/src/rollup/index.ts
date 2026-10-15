@@ -1,4 +1,5 @@
 import { noopLogger, type Logger } from "../logger";
+import { clockNowMs } from "../clock";
 
 export type ReconciliationReport = {
   window: { start: string; end: string };
@@ -9,6 +10,9 @@ export type ReconciliationReport = {
 export type RollupBindings = {
   db: D1Database;
   window?: { start: string; end: string };
+  /** Harness-clock-aware "now" for the default reconciliation window
+   *  (falls back to `Date.now()`; see `src/clock.ts`). */
+  nowMs?: number;
 };
 
 type UsageAggregate = {
@@ -26,8 +30,8 @@ type TerminalRequestRow = {
 };
 
 /** Trailing window for reconciliation scan only (not used for rollup aggregation). */
-function defaultReconciliationWindow(): { start: string; end: string } {
-  const end = new Date();
+function defaultReconciliationWindow(nowMs: number = Date.now()): { start: string; end: string } {
+  const end = new Date(nowMs);
   const start = new Date(end.getTime() - 30 * 24 * 60 * 60 * 1000);
   return { start: start.toISOString(), end: end.toISOString() };
 }
@@ -140,7 +144,7 @@ export async function runReconciliation(
   bindings: RollupBindings,
   logger: Logger = noopLogger,
 ): Promise<ReconciliationReport> {
-  const window = bindings.window ?? defaultReconciliationWindow();
+  const window = bindings.window ?? defaultReconciliationWindow(bindings.nowMs);
 
   logger.info("reconcile_start", {
     window_start: window.start,

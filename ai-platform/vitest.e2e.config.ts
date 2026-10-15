@@ -13,6 +13,11 @@ export default defineWorkersConfig({
     fileParallelism: false,
     testTimeout: 120_000,
     setupFiles: ["./test/e2e/setup.ts"],
+    // Retry once to absorb residual "Isolated storage failed" flakiness from
+    // @cloudflare/vitest-pool-workers' per-test storage accounting. See the
+    // longer comment in vitest.workers.config.ts for the mechanism and why
+    // retries are safe with the campaign governor's stats.
+    retry: 1,
     poolOptions: {
       workers: {
         main: "./src/worker.ts",

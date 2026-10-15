@@ -280,10 +280,11 @@ describe("settlement integrity", () => {
       } catch {
         // Client abort may reject the fetch.
       }
-      await flushBackgroundWork();
-      await new Promise((resolve) => setTimeout(resolve, 200));
-
-      const request = await env.DB.prepare(
+      // The Cancelled journal is written in waitUntil after the client abort
+      // settles. Poll for the terminal state instead of fixed sleeps so a
+      // slow run cannot read the request mid-settlement (SYS-7.3 flake).
+      const cancelStarted = Date.now();
+      let request = await env.DB.prepare(
         "SELECT request_id, request_reference, state, completed_at, terminal_error_code, payload_pointer FROM ai_request WHERE installation_id = ? ORDER BY created_at DESC LIMIT 1",
       )
         .bind(scenario.installationId)
@@ -295,6 +296,21 @@ describe("settlement integrity", () => {
           terminal_error_code: string | null;
           payload_pointer: string | null;
         }>();
+      while (request?.state !== "Cancelled" && Date.now() - cancelStarted < 8000) {
+        await flushBackgroundWork();
+        request = await env.DB.prepare(
+          "SELECT request_id, request_reference, state, completed_at, terminal_error_code, payload_pointer FROM ai_request WHERE installation_id = ? ORDER BY created_at DESC LIMIT 1",
+        )
+          .bind(scenario.installationId)
+          .first<{
+            request_id: string;
+            request_reference: string;
+            state: string;
+            completed_at: string | null;
+            terminal_error_code: string | null;
+            payload_pointer: string | null;
+          }>();
+      }
       expect(request?.state).toBe("Cancelled");
       expect(request?.completed_at).toBeTruthy();
       expect(request?.terminal_error_code).toBeNull();

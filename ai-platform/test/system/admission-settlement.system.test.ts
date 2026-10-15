@@ -149,6 +149,24 @@ async function completeChargedRequest(scenario: Scenario): Promise<void> {
   expect(invoked.status).toBe(200);
   expect(terminalEventTypes(invoked.events)).toEqual(["completed"]);
   await flushBackgroundWork();
+  // The usage credit (which appends band_crossed / term-end outbox rows to
+  // the DO) runs in waitUntil after the SSE response. Poll for the ledger
+  // row instead of a fixed sleep so the shipCoverageOutbox flush that
+  // follows always drains a settled DO (E2E-P3.4-08 flake: missing band
+  // event).
+  const ref = String(invoked.events[0]?.data.request_reference);
+  const request = await getAiRequest(ref);
+  const usageStarted = Date.now();
+  let usageCount = await count("usage_event", "request_id = ?", [
+    String(request?.request_id),
+  ]);
+  while (usageCount < 1 && Date.now() - usageStarted < 8000) {
+    await flushBackgroundWork();
+    usageCount = await count("usage_event", "request_id = ?", [
+      String(request?.request_id),
+    ]);
+  }
+  expect(usageCount).toBe(1);
 }
 
 async function postUntilAllowanceConsumed(
@@ -162,6 +180,14 @@ async function postUntilAllowanceConsumed(
 
 async function shipCoverageOutbox(installationId: string): Promise<void> {
   await runDurableObjectAlarm(quotaDoStub(installationId));
+  // The alarm handler re-arms the next boundary on WALL CLOCK (syncAlarm's
+  // 5 s floor); the DO alarm path cannot read the D1 harness clock, so a
+  // slow runner lets it fire mid-test and apply term boundaries with real
+  // time (E2E-P3.4-08 flake: band events from a mutated term). Cancel the
+  // re-armed timer so state reads stay deterministic.
+  await runInDurableObject(quotaDoStub(installationId), async (_instance, state) => {
+    await state.storage.deleteAlarm();
+  });
 }
 
 async function readHotReservations(
