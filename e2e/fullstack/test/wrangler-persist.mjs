@@ -38,11 +38,15 @@ export function wranglerLocalEnv(extra = {}) {
   };
 }
 
-export function runWranglerSync(args, { cwd = REPO_ROOT, env = {} } = {}) {
+export function runWranglerSync(
+  args,
+  { cwd = REPO_ROOT, env = {}, input } = {},
+) {
   const result = spawnSync(process.execPath, [WRANGLER_CLI, ...args], {
     cwd,
     env: wranglerLocalEnv(env),
     encoding: "utf8",
+    input,
   });
   if (result.status !== 0) {
     throw new Error(

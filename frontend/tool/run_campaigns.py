@@ -200,7 +200,7 @@ def _run_fullstack(_subcampaign: str) -> int:
                 "--tags",
                 "fullstack",
                 "--timeout",
-                "6m",
+                "1m",
                 "--machine",
             ],
             config,

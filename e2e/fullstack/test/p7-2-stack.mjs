@@ -171,8 +171,8 @@ function base64urlEncode(bytes) {
   return Buffer.from(bytes).toString("base64url");
 }
 
-export function runWrangler(args, { cwd = REPO_ROOT, env = {} } = {}) {
-  return runWranglerSync(args, { cwd, env });
+export function runWrangler(args, { cwd = REPO_ROOT, env = {}, input } = {}) {
+  return runWranglerSync(args, { cwd, env, input });
 }
 
 export function psqlQuery(sql) {
@@ -1015,6 +1015,28 @@ export function seedAboOffers() {
       '2026-02-01T00:00:00.000Z', 1
     );
   `);
+  runWrangler(
+    [
+      "r2",
+      "object",
+      "put",
+      "abo-development/terms/en/1.txt",
+      "--local",
+      "--env",
+      "development",
+      "--config",
+      ABO_CONFIG,
+      "--persist-to",
+      ABO_PERSIST,
+      "--content-type",
+      "text/plain",
+      "--pipe",
+    ],
+    {
+      input:
+        "ABO fixture terms v1.\nBy subscribing you agree to clinic billing terms.",
+    },
+  );
 }
 
 export function ensurePlatformGrantPrerequisites(orgId, installationId) {

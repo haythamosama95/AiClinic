@@ -6,6 +6,8 @@ from harness.flutter_machine_labels import flutter_test_label, is_loading_pseudo
 from harness.live_progress import (
     CampaignProgressDisplay,
     FlutterMachineParser,
+    RunnerStallGuard,
+    StallTrackingDisplay,
     should_forward_progress_stdout_line,
 )
 
@@ -69,6 +71,20 @@ def test_test_done_uses_test_id() -> None:
     )
     assert display.passed == 1
     assert display.failed == 0
+
+
+def test_done_event_prevents_dangling_failure_on_nonzero_exit() -> None:
+    guard = RunnerStallGuard(
+        {"kind": "flutter", "test_timeout_ms": 60_000},
+        subcampaign="unit",
+    )
+    display = CampaignProgressDisplay("[frontend/unit]")
+    parser = FlutterMachineParser(StallTrackingDisplay(display, guard))
+    guard.set_current("last passing test")
+    assert guard.dangling_failure_on_exit(1) == "last passing test"
+
+    _feed(parser, {"type": "done", "success": False})
+    assert guard.dangling_failure_on_exit(1) is None
 
 
 def test_error_event_marks_failure_without_test_done() -> None:

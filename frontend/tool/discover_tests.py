@@ -14,7 +14,6 @@ _FOR_ENUM_VALUES = re.compile(
 )
 _ENUM_DECL = re.compile(r"enum\s+(\w+)\s*\{([^}]*)\}", re.DOTALL)
 _ENUM_LENGTH_CACHE: dict[str, int] = {
-    "StaffRole": 5,
     "StaffListFilter": 3,
     "PatientGender": 5,
     "PatientMaritalStatus": 4,
@@ -35,6 +34,23 @@ BOUNDARY_SUBSET_ROOTS: dict[str, tuple[str, ...]] = {
     "appointments": ("test/boundary/appointments",),
     "postgrest": ("test/boundary/postgrest_reads_boundary_test.dart",),
 }
+
+# Live boundary tests can live under integration/ when they exercise a complete
+# user journey. Keep them in the boundary campaign and out of the unit campaign
+# by their Dart @Tags annotation rather than relying on file naming conventions.
+BOUNDARY_INTEGRATION_SUBSET_ROOTS: dict[str, tuple[str, ...]] = {
+    "patients": ("test/integration/patients",),
+}
+_BOUNDARY_TAG = re.compile(r"@Tags\s*\(\s*\[([^\]]*)\]\s*\)", re.DOTALL)
+
+
+def _is_boundary_tagged(cwd: Path, relative_path: str) -> bool:
+    source = (cwd / relative_path).read_text(encoding="utf-8")
+    tags = _BOUNDARY_TAG.search(source)
+    return (
+        tags is not None
+        and re.search(r"['\"]boundary['\"]", tags.group(1)) is not None
+    )
 
 
 def discover_test_files(cwd: Path, *roots: str) -> list[str]:
@@ -160,6 +176,7 @@ def unit_test_files(cwd: Path) -> list[str]:
         path
         for path in discover_test_files(cwd, *UNIT_TEST_ROOTS)
         if path not in fullstack
+        and not _is_boundary_tagged(cwd, path)
     ]
 
 
@@ -183,8 +200,24 @@ def boundary_test_files(cwd: Path, subset: str | None) -> list[str]:
         roots = BOUNDARY_SUBSET_ROOTS.get(subset)
         if roots is None:
             raise ValueError(f"unknown boundary subset: {subset}")
-        return discover_test_files(cwd, *roots)
-    return discover_test_files(cwd, BOUNDARY_DEFAULT_ROOT)
+        integration_roots = BOUNDARY_INTEGRATION_SUBSET_ROOTS.get(subset, ())
+        integration_tests = [
+            path
+            for path in discover_test_files(cwd, *integration_roots)
+            if _is_boundary_tagged(cwd, path)
+        ]
+        return sorted(
+            set(discover_test_files(cwd, *roots)) | set(integration_tests)
+        )
+
+    boundary_tests = discover_test_files(cwd, BOUNDARY_DEFAULT_ROOT)
+    integration_tests = [
+        path
+        for roots in BOUNDARY_INTEGRATION_SUBSET_ROOTS.values()
+        for path in discover_test_files(cwd, *roots)
+        if _is_boundary_tagged(cwd, path)
+    ]
+    return sorted(set(boundary_tests) | set(integration_tests))
 
 
 def fullstack_test_files(cwd: Path) -> list[str]:

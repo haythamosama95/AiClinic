@@ -1,6 +1,11 @@
 import test, { after, before } from "node:test";
 import assert from "node:assert/strict";
 import {
+  ensurePlatformActiveCoverage,
+  ensurePlatformGrantPrerequisites,
+} from "./p7-2-stack.mjs";
+import {
+  PLATFORM_CONFIG,
   psqlQuery,
   readClinicAiCoverage,
   rpc,
@@ -15,9 +20,18 @@ const PUBLISHED_FEED_VERSION = 1;
 let stack = null;
 
 before(async () => {
-  stack = await startStack({
-    platformConfig: PLATFORM_FEED_WINDOW,
-  });
+  // Establish a real projection against the published feed contract first.
+  // This test then switches the platform to the incompatible feed window and
+  // verifies that the existing projection is preserved after refusal.
+  stack = await startStack({ platformConfig: PLATFORM_CONFIG });
+  const { orgId, installationId } = stack.clinics.orgA;
+  ensurePlatformGrantPrerequisites(orgId, installationId);
+  await ensurePlatformActiveCoverage(stack, orgId, installationId);
+  await runTwoPhaseCoveragePull();
+  if (!readClinicAiCoverage(orgId)) {
+    throw new Error("Could not establish baseline clinic AI coverage projection");
+  }
+  await stack.restartPlatform({ platformConfig: PLATFORM_FEED_WINDOW });
 });
 
 after(async () => {

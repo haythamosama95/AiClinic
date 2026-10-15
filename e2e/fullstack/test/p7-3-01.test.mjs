@@ -93,7 +93,10 @@ async function expectAboClinicRefusal(pathname, version) {
     headers["Abo-Contract-Version"] = String(version);
   }
   const notificationsBefore = countAboTable("notification");
-  const response = await billingFetch(pathname, { headers });
+  const response = await billingFetch(pathname, {
+    headers,
+    omitContractVersionDefault: version === undefined,
+  });
   assert.equal(response.status, 400);
   const body = await response.json();
   assert.equal(body.code, "contract_version_unsupported");
@@ -109,7 +112,10 @@ async function expectAboConsoleRefusal(pathname, version) {
     headers["Abo-Contract-Version"] = String(version);
   }
   const workBefore = countAboWork();
-  const response = await opsFetch(pathname, { headers });
+  const response = await opsFetch(pathname, {
+    headers,
+    omitContractVersionDefault: version === undefined,
+  });
   assert.equal(response.status, 400);
   const body = await response.json();
   assert.equal(body.code, "contract_version_unsupported");
@@ -123,7 +129,11 @@ async function expectPlatformClinicRefusal(pathname, init = {}) {
   if (!headers.has("Aip-Contract-Version")) {
     headers.delete("Aip-Contract-Version");
   }
-  const response = await platformFetch(pathname, { ...init, headers });
+  const response = await platformFetch(pathname, {
+    ...init,
+    headers,
+    omitContractVersionDefault: !headers.has("Aip-Contract-Version"),
+  });
   assert.equal(response.status, 400);
   const body = await response.json();
   assert.equal(body.code, "contract_version_unsupported");

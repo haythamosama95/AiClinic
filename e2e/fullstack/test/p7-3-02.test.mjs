@@ -14,6 +14,7 @@ import {
   readLatestSendEmailText,
   readSendEmailTextFile,
   rpc,
+  seedAboOffers,
   sqlLiteral,
   startStack,
   syncPaymobForCheckout,
@@ -76,6 +77,7 @@ async function readLatestAlertBody() {
 test("E2E-P7.3-02", async () => {
   const { orgId, installationId, administrator } = stack.clinics.orgA;
   ensurePlatformGrantPrerequisites(orgId, installationId);
+  seedAboOffers();
 
   const billing = await rpc(administrator, "issue_billing_token", {
     p_contract_version: 1,

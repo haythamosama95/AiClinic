@@ -1130,11 +1130,16 @@ function setFeedStateCursor(cursor) {
 }
 
 function setCronJobActive(active) {
-  psqlQuery(`
-    UPDATE cron.job
-    SET active = ${active}
+  const jobId = psqlQuery(`
+    SELECT jobid
+    FROM cron.job
     WHERE jobname = 'ai_coverage_feed_pull'
+    LIMIT 1
   `);
+  if (!jobId) {
+    throw new Error("ai_coverage_feed_pull cron job is not scheduled");
+  }
+  psqlQuery(`SELECT cron.alter_job(${Number(jobId)}, active := ${active})`);
 }
 
 function setFeedConsumerLastPullAt(isoTimestamp) {
@@ -1707,25 +1712,27 @@ test("E2E-P5.2-07 Disabled pull is stale and feedConsumerHealth shows the lag", 
   const lagAt = new Date(Date.now() - 5 * 60 * 1000).toISOString();
 
   setCronJobActive(false);
-  setFeedStateLastSuccessAgo(121);
-  setFeedConsumerLastPullAt(lagAt);
+  try {
+    setFeedStateLastSuccessAgo(121);
+    setFeedConsumerLastPullAt(lagAt);
 
-  const status = await rpc(administrator, "get_ai_status", {
-    p_contract_version: 1,
-  });
-  assert.equal(status.success, true);
-  assert.equal(status.data.stale, true, "disabled pull with stale feed_state is stale");
+    const status = await rpc(administrator, "get_ai_status", {
+      p_contract_version: 1,
+    });
+    assert.equal(status.success, true);
+    assert.equal(status.data.stale, true, "disabled pull with stale feed_state is stale");
 
-  const health = await callFeedConsumerHealth();
-  assert.equal(health.result, "ok");
-  const detail = JSON.parse(health.detail);
-  assert.equal(
-    detail.last_pull_at,
-    lagAt,
-    "feedConsumerHealth should show the platform feed_consumer lag",
-  );
-
-  setCronJobActive(true);
+    const health = await callFeedConsumerHealth();
+    assert.equal(health.result, "ok");
+    const detail = JSON.parse(health.detail);
+    assert.equal(
+      detail.last_pull_at,
+      lagAt,
+      "feedConsumerHealth should show the platform feed_consumer lag",
+    );
+  } finally {
+    setCronJobActive(true);
+  }
 });
 
 test("E2E-P5.2-08 Cursor reset to 0 reproduces the projection", async () => {

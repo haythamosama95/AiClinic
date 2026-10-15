@@ -18,6 +18,7 @@ import {
   readStatusRefreshRequestedAt,
   rpc,
   seedAboOffers,
+  scriptPaymobAmount,
   signPaymobObj,
   sqlLiteral,
   startStack,
@@ -423,6 +424,12 @@ test("E2E-P7.2-04", async () => {
   const billingToken = billing.data.token;
 
   await putBillingContact(billingToken);
+  // The local Paymob stub defaults every intention to order 9001. Give this
+  // checkout a unique numeric order id so callbacks cannot resolve to an
+  // earlier checkout that used the same stub default.
+  const paymobOrderId =
+    (Number.parseInt(crypto.randomUUID().slice(0, 8), 16) % 2_000_000_000) + 1;
+  await scriptPaymobAmount(1000, paymobOrderId);
   const checkout = await openCheckout(billingToken, "p72-forged-callback");
   await syncPaymobForCheckout(checkout.checkoutId);
 

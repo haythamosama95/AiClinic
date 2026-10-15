@@ -28,7 +28,6 @@ const SUPABASE_CREDENTIAL_PATTERNS = [
   /postgres:\/\//i,
   /SUPABASE_SERVICE_ROLE_KEY/i,
   /SUPABASE_JWT_SECRET/i,
-  DEMO_ANON_KEY,
 ];
 
 let stack = null;
@@ -60,12 +59,13 @@ function assertNoSupabaseCredential(tomlText, label) {
     if (!trimmed || trimmed.startsWith("#")) {
       continue;
     }
-    for (const pattern of SUPABASE_CREDENTIAL_PATTERNS) {
-      assert.ok(
-        !pattern.test(trimmed),
-        `${label} must not hold a Supabase credential (${trimmed})`,
-      );
-    }
+    const containsCredential =
+      trimmed.includes(DEMO_ANON_KEY) ||
+      SUPABASE_CREDENTIAL_PATTERNS.some((pattern) => pattern.test(trimmed));
+    assert.ok(
+      !containsCredential,
+      `${label} must not hold a Supabase credential (${trimmed})`,
+    );
   }
 }
 

@@ -1,6 +1,5 @@
 import test, { after, before } from "node:test";
 import assert from "node:assert/strict";
-import { getPlatformProxy } from "wrangler";
 import {
   CHANNEL_VERSIONS,
   canonicalize,
@@ -26,8 +25,6 @@ import {
   parseSendEmailCaptures,
   PLAN_ID,
   PLAN_VERSION,
-  PLATFORM_CONFIG,
-  PLATFORM_PERSIST,
   putBillingContact,
   queryAboD1One,
   queryPlatformD1One,
@@ -35,6 +32,7 @@ import {
   readSendEmailTextFile,
   rpc,
   runAboD1Command,
+  seedAboOffers,
   sqlLiteral,
   startStack,
   triggerAboScheduled,
@@ -57,22 +55,14 @@ const LAUNCH_CEILING_POLICY = {
 };
 
 let stack = null;
-let platformProxy = null;
 let aboGrantSigner = null;
 
 before(async () => {
   stack = await startStack();
   aboGrantSigner = await createHarnessAboGrantSigner();
-  platformProxy = await getPlatformProxy({
-    configPath: PLATFORM_CONFIG,
-    environment: "development",
-    persist: { path: PLATFORM_PERSIST },
-  });
 });
 
 after(async () => {
-  await platformProxy?.dispose();
-  platformProxy = null;
   await stack?.stop();
   stack = null;
 });
@@ -168,21 +158,6 @@ function installationIdForOrg(orgId) {
   return row?.installation_id ?? null;
 }
 
-async function runQuotaDoAlarm(installationId) {
-  const stub = platformProxy.env.DO.get(
-    platformProxy.env.DO.idFromName(installationId),
-  );
-  if (typeof stub.runAlarm === "function") {
-    await stub.runAlarm();
-    return;
-  }
-  if (typeof stub.alarm === "function") {
-    await stub.alarm();
-    return;
-  }
-  throw new Error("quota DO alarm runner is unavailable in H-FS");
-}
-
 async function readAlertBodiesFromSendEmail() {
   const bodies = [];
   for (const capture of parseSendEmailCaptures()) {
@@ -196,7 +171,18 @@ async function flushPlatformGrantAlerts(orgId) {
   clearPlatformLogBuffer();
   const installationId = installationIdForOrg(orgId);
   assert.ok(installationId, "org should have an active installation binding");
-  await runQuotaDoAlarm(installationId);
+  // The grant RPC schedules the real Durable Object alarm at least five
+  // seconds in the future. getPlatformProxy cannot invoke this internal DO:
+  // it constructs a binding-only worker that does not export GatewayObject.
+  // Wait for the running platform worker to deliver the scheduled alert.
+  const deadline = Date.now() + 20_000;
+  while (Date.now() < deadline) {
+    if (parseSendEmailCaptures().length > 0) return;
+    await new Promise((resolve) => setTimeout(resolve, 100));
+  }
+  throw new Error(
+    `Timed out waiting for the quota Durable Object alarm for installation ${installationId}`,
+  );
 }
 
 async function buildComplimentaryEnvelope({
@@ -433,6 +419,7 @@ test("E2E-P7.2-05", async () => {
 test("E2E-P7.2-06", async () => {
   const { orgId, installationId, administrator } = stack.clinics.orgA;
   ensurePlatformGrantPrerequisites(orgId, installationId);
+  seedAboOffers();
   const accessJwt = await mintAccessJwt(stack.accessTeam);
 
   const suspended = await vendorCall(

@@ -432,6 +432,7 @@ class RunnerStallGuard:
         self._phase: _Phase = "starting"
         self._status_by_test: dict[str, str] = {}
         self._aborted = False
+        self._runner_reported_done = False
 
     def touch(self) -> None:
         self._last_progress_at = time.monotonic()
@@ -447,6 +448,11 @@ class RunnerStallGuard:
             self._status_by_test[name] = status
         self._current = name
         self._phase = "between" if status == "FAIL" else "running"
+
+    def note_runner_done(self) -> None:
+        """Remember that the test protocol reached its terminal event."""
+        self.touch()
+        self._runner_reported_done = True
 
     def should_abort(self) -> bool:
         if self._aborted or self._limit is None:
@@ -464,7 +470,11 @@ class RunnerStallGuard:
         return runner_stall_abort_error(self._limit)
 
     def dangling_failure_on_exit(self, exit_code: int) -> str | None:
-        if exit_code == 0 or self._phase != "running":
+        if (
+            exit_code == 0
+            or self._phase != "running"
+            or self._runner_reported_done
+        ):
             return None
         name = self.failure_test_name()
         if name in self._status_by_test:
@@ -489,6 +499,9 @@ class StallTrackingDisplay:
         setter = getattr(self._target, "set_current", None)
         if callable(setter):
             setter(name)
+
+    def runner_done(self) -> None:
+        self._guard.note_runner_done()
 
     def add_finished(
         self,
@@ -1535,6 +1548,10 @@ class FlutterMachineParser(ProgressParser):
                 )
             self._identity_by_id.pop(tid, None)
             self.display.add_finished(name, status, identity=identity)
+        elif kind == "done":
+            marker = getattr(self.display, "runner_done", None)
+            if callable(marker):
+                marker()
         elif kind == "print":
             test_id = event.get("testID")
             tid = int(test_id) if test_id is not None else None

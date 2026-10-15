@@ -11,6 +11,7 @@ import {
   queryPlatformD1One,
   rpc,
   runAboD1Command,
+  seedAboOffers,
   sqlLiteral,
   startStack,
   syncPaymobForCheckout,
@@ -61,6 +62,7 @@ function platformGrantLedger(grantId) {
 test("E2E-P7.3-04", async () => {
   const { orgId, installationId, administrator } = stack.clinics.orgA;
   ensurePlatformGrantPrerequisites(orgId, installationId);
+  seedAboOffers();
 
   const billing = await rpc(administrator, "issue_billing_token", {
     p_contract_version: STORED_CONTRACT_VERSION,

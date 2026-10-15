@@ -810,6 +810,10 @@ async function startPlatformDoReceiverWorker(doReceiverConfigPath, accessCertsJs
         }
       : undefined,
     dev: {
+      // The receiver is reached through Wrangler's local service binding, so
+      // it does not need the config's default public dev port (8787). Give it
+      // an ephemeral listener to avoid colliding with the admission worker.
+      server: { hostname: "127.0.0.1", port: 0 },
       inspector: false,
       persist: PLATFORM_PERSIST,
       registry: REGISTRY_DIR,
@@ -1085,35 +1089,38 @@ export async function startStack({
 }
 
 export async function billingFetch(pathname, init = {}) {
+  const { omitContractVersionDefault = false, ...requestInit } = init;
   const headers = new Headers(init.headers ?? {});
   headers.delete("host");
-  if (!headers.has("Abo-Contract-Version")) {
+  if (!omitContractVersionDefault && !headers.has("Abo-Contract-Version")) {
     headers.set("Abo-Contract-Version", "1");
   }
   return fetchLocalVirtualHost(`${ABO_URL}${pathname}`, BILLING_HOST, {
-    ...init,
+    ...requestInit,
     headers,
   });
 }
 
 export async function opsFetch(pathname, init = {}) {
+  const { omitContractVersionDefault = false, ...requestInit } = init;
   const headers = new Headers(init.headers ?? {});
   headers.delete("host");
-  if (!headers.has("Abo-Contract-Version")) {
+  if (!omitContractVersionDefault && !headers.has("Abo-Contract-Version")) {
     headers.set("Abo-Contract-Version", "1");
   }
   return fetchLocalVirtualHost(`${ABO_URL}${pathname}`, OPS_HOST, {
-    ...init,
+    ...requestInit,
     headers,
   });
 }
 
 export async function platformFetch(pathname, init = {}) {
+  const { omitContractVersionDefault = false, ...requestInit } = init;
   const headers = new Headers(init.headers ?? {});
-  if (!headers.has("Aip-Contract-Version")) {
+  if (!omitContractVersionDefault && !headers.has("Aip-Contract-Version")) {
     headers.set("Aip-Contract-Version", "1");
   }
-  return fetch(`${PLATFORM_URL}${pathname}`, { ...init, headers });
+  return fetch(`${PLATFORM_URL}${pathname}`, { ...requestInit, headers });
 }
 
 export async function triggerAboScheduled(cron = "0 6 * * *") {
