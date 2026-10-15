@@ -1,0 +1,470 @@
+
+### campaign-abo-38695681551\governor\20261015T065913Z-244b6d47\abo\cross-worker  label=[abo/cross-worker] passed=69 failed=4 exit=1
+- [NOT_RECORDED] test/system/checkout-throw.cross-worker.test.ts > checkout throw fallback > E2E-P4.2-03 throw and transient use coverage_view
+    log: null
+    err: 
+- [FAIL] test/system/configuration-relays.cross-worker.test.ts > configuration relays cross-worker > E2E-P4.9-03 issuer-key register, token accept/reject within TTL, retire
+    log: tests/074-test-system-configuration-relays-cross-worker-te.log
+    err: 
+- [FAIL] test/system/configuration-relays.cross-worker.test.ts > configuration relays cross-worker > E2E-P4.9-05 routing publish, canary, fake provider, promote, rollback
+    log: tests/075-test-system-configuration-relays-cross-worker-te.log
+    err: 
+- [FAIL] test/system/console-relays.cross-worker.test.ts > console relays cross-worker > E2E-P4.8-07 suspend refuses admission and resume restores it
+    log: tests/076-test-system-console-relays-cross-worker-test-ts.log
+    err: 
+- [FAIL] test/system/grant.cross-worker.test.ts > grant cross-worker > E2E-P4.4-01 paid grant activates the term and completes an issuer request
+    log: tests/077-test-system-grant-cross-worker-test-ts-grant-cro.log
+    err: 
+
+### campaign-abo-38695681551\governor\20261015T065913Z-244b6d47\abo\import-boundary  label=[abo/import-boundary] passed=2 failed=0 exit=0
+
+### campaign-abo-38695681551\governor\20261015T065913Z-244b6d47\abo\system  label=[abo/system] passed=23 failed=0 exit=0
+
+### campaign-abo-38695681551\governor\20261015T065913Z-244b6d47\abo\version-matrix  label=[abo/version-matrix] passed=1 failed=0 exit=0
+
+### campaign-ai-platform-38695681551\governor\20261015T065855Z-999179fa\ai-platform\e2e  label=[ai-platform/e2e] passed=525 failed=11 exit=1
+- [FAIL] test/e2e/stage-09-admission-journal-compose.test.ts > Stage 09 — admission, journal, compose (S09-066…S09-085) > S09-068 — idempotent replay after failed
+    log: tests/1108-test-e2e-stage-09-admission-journal-compose-test.log
+    err: 
+- [FAIL] test/e2e/stage-09-admission-journal-compose.test.ts > Stage 09 — admission, journal, compose (S09-066…S09-085) > S09-069 — idempotent replay after cancelled
+    log: tests/1110-test-e2e-stage-09-admission-journal-compose-test.log
+    err: 
+- [FAIL] test/e2e/stage-10-prose-guard-stream.test.ts > Stage 10 — prose guards, regenerating, heartbeat (S10-018…S10-034) > S10-018 — idempotent replay of a failed prior request
+    log: tests/1112-test-e2e-stage-10-prose-guard-stream-test-ts-sta.log
+    err: 
+- [FAIL] test/e2e/stage-10-prose-guard-stream.test.ts > Stage 10 — prose guards, regenerating, heartbeat (S10-018…S10-034) > S10-019 — idempotent replay of a cancelled prior request
+    log: tests/1114-test-e2e-stage-10-prose-guard-stream-test-ts-sta.log
+    err: 
+- [FAIL] test/e2e/stage-10-route-retry-idempotency.test.ts > Stage 10 — accept, route, invoke, stream (S10-001…S10-017) > S10-001 — single-target chain success settles completed
+    log: tests/1116-test-e2e-stage-10-route-retry-idempotency-test-t.log
+    err: 
+- [FAIL] test/e2e/stage-10-route-retry-idempotency.test.ts > Stage 10 — accept, route, invoke, stream (S10-001…S10-017) > S10-016 — idempotent replay of completed prior returns placeholder
+    log: tests/1118-test-e2e-stage-10-route-retry-idempotency-test-t.log
+    err: 
+- [FAIL] test/e2e/stage-11-completed-failed-cancelled.test.ts > Stage 11 — terminal settlement completed/failed/cancelled (S11-001…S11-011) > S11-002 — Ledger cost from pricing table
+    log: tests/1120-test-e2e-stage-11-completed-failed-cancelled-tes.log
+    err: 
+- [FAIL] test/e2e/stage-11-completed-failed-cancelled.test.ts > Stage 11 — terminal settlement completed/failed/cancelled (S11-001…S11-011) > S11-010 — Cancel after truncation fallback
+    log: tests/1122-test-e2e-stage-11-completed-failed-cancelled-tes.log
+    err: 
+- [FAIL] test/e2e/stage-11-replay-envelope-grace.test.ts > Stage 11 — replay, envelope, grace (S11-012…S11-021) > S11-013 — idempotent replay after Completed
+    log: tests/1124-test-e2e-stage-11-replay-envelope-grace-test-ts.log
+    err: 
+- [FAIL] test/e2e/stage-11-replay-envelope-grace.test.ts > Stage 11 — replay, envelope, grace (S11-012…S11-021) > S11-014 — idempotent replay after Failed
+    log: tests/1126-test-e2e-stage-11-replay-envelope-grace-test-ts.log
+    err: 
+- [FAIL] test/e2e/stage-11-replay-envelope-grace.test.ts > Stage 11 — replay, envelope, grace (S11-012…S11-021) > S11-015 — idempotent replay after Cancelled
+    log: tests/1128-test-e2e-stage-11-replay-envelope-grace-test-ts.log
+    err: 
+
+### campaign-ai-platform-38695681551\governor\20261015T065855Z-999179fa\ai-platform\eval  label=[ai-platform/eval] passed=24 failed=0 exit=0
+
+### campaign-ai-platform-38695681551\governor\20261015T065855Z-999179fa\ai-platform\eval-all  label=[ai-platform/eval-all] passed=39 failed=0 exit=0
+
+### campaign-ai-platform-38695681551\governor\20261015T065855Z-999179fa\ai-platform\load  label=[ai-platform/load] passed=0 failed=0 exit=1
+- [NOT_RECORDED] test/load/load-and-cost.test.ts > d1_write_headroom_measured > measures one hot-path ai_request INSERT per request (finite, no ceiling)
+    log: null
+    err: 
+- [NOT_RECORDED] test/load/load-and-cost.test.ts > do_throughput_per_installation_measured > measures time-dimensioned DO throughput against one pinned installation
+    log: null
+    err: 
+- [NOT_RECORDED] test/load/load-and-cost.test.ts > exactly_one_r2_class_a_per_request_under_load > counts exactly one R2 Class A operation per request (max and average)
+    log: null
+    err: 
+- [NOT_RECORDED] test/load/load-and-cost.test.ts > exactly_two_durable_object_requests_per_request_under_load > counts exactly two Quota DO fetches per request — admission and credit
+    log: null
+    err: 
+- [NOT_RECORDED] test/load/load-and-cost.test.ts > guard_p95_within_tens_of_ms_at_target_concurrency > drives N=20 happy-path requests via a bounded pool with real overlap
+    log: null
+    err: 
+- [NOT_RECORDED] test/load/load-and-cost.test.ts > load_suite_introduces_no_per_request_server_state > keeps load tooling under test/load; composition lives in src/pipeline
+    log: null
+    err: 
+- [NOT_RECORDED] test/load/load-and-cost.test.ts > load_suite_joins_ci_permanently > wires load into CI via the ai-platform root campaign job
+    log: null
+    err: 
+- [NOT_RECORDED] test/load/load-and-cost.test.ts > no_prompt_provider_model_in_flutter_from_load_suite > introduces no Flutter client files under the load suite tree
+    log: null
+    err: 
+- [NOT_RECORDED] test/load/load-and-cost.test.ts > no_second_quota_do_round_trip_beyond_two > proves no third Quota DO fetch occurs per request under load
+    log: null
+    err: 
+- [NOT_RECORDED] test/load/load-and-cost.test.ts > no_second_r2_object_per_request > proves no second R2 Class A op is written per request under load
+    log: null
+    err: 
+
+### campaign-ai-platform-38695681551\governor\20261015T065855Z-999179fa\ai-platform\npm-test  label=[ai-platform/npm-test] passed=1375 failed=81 exit=1
+- [FAIL] test/admission-credit.test.ts > admission_exactly_one_do_fetch_per_request > makes exactly one Durable Object fetch per pipeline admission call
+    log: tests/2345-test-admission-credit-test-ts-admission-exactly.log
+    err: 
+- [FAIL] test/admission-credit.test.ts > admission_expired_token_same_key_unauthenticated > rejects unauthenticated when the token expired outside skew before idempotency replay
+    log: tests/2349-test-admission-credit-test-ts-admission-expired.log
+    err: 
+- [FAIL] test/admission-credit.test.ts > admission_missing_entitlement_fail_closed > rejects coverage_lapsed on config-cache miss instead of throwing or grace
+    log: tests/2375-test-admission-credit-test-ts-admission-missing.log
+    err: 
+- [FAIL] test/admission-credit.test.ts > admission_rejection_counted_not_journaled > maps concurrency_exhausted onto concurrency_limited and tallies that code
+    log: tests/2371-test-admission-credit-test-ts-admission-rejectio.log
+    err: 
+- [FAIL] test/admission-credit.test.ts > admission_rejection_counted_not_journaled > rejects a repeated jti as replay without an ai_request row
+    log: tests/2369-test-admission-credit-test-ts-admission-rejectio.log
+    err: 
+- [FAIL] test/admission-credit.test.ts > admission_rejection_counted_not_journaled > tallies allowance_exhausted to bucketed platform_counter without an ai_request row
+    log: tests/2367-test-admission-credit-test-ts-admission-rejectio.log
+    err: 
+- [FAIL] test/admission-credit.test.ts > admission_rejection_counted_not_journaled > tallies fallback-cap rejection as coverage_unknown, not quota_exhausted
+    log: tests/2373-test-admission-credit-test-ts-admission-rejectio.log
+    err: 
+- [FAIL] test/admission-credit.test.ts > admission_repeated_key_no_second_inference > returns idempotent priorState with one DO fetch per call and no duplicate inference
+    log: tests/2347-test-admission-credit-test-ts-admission-repeated.log
+    err: 
+- [FAIL] test/admission-credit.test.ts > exactly_two_durable_object_round_trips_per_request > makes exactly two DO fetches for admission then credit
+    log: tests/2379-test-admission-credit-test-ts-exactly-two-durabl.log
+    err: 
+- [FAIL] test/admission-credit.test.ts > fallback_reconcile_drains_pending_rows > keeps pending fallback rows when settleFallback is skipped
+    log: tests/2365-test-admission-credit-test-ts-fallback-reconcile.log
+    err: 
+- [FAIL] test/admission-credit.test.ts > fallback_reconcile_drains_pending_rows > settles pending fallback_admission via settleFallback on the five-minute drain
+    log: tests/2363-test-admission-credit-test-ts-fallback-reconcile.log
+    err: 
+- [FAIL] test/admission-credit.test.ts > grace_cap_refusal_distinct_from_quota_exhausted > rejects at the fallback cap with coverage_unknown while entitlement budget remains
+    log: tests/2353-test-admission-credit-test-ts-grace-cap-refusal.log
+    err: 
+- [FAIL] test/admission-credit.test.ts > grace_durable_cap_across_isolate_maps > rejects a sixth grace admit after isolate maps are wiped because D1 pending count holds the cap
+    log: tests/2355-test-admission-credit-test-ts-grace-durable-cap.log
+    err: 
+- [FAIL] test/admission-credit.test.ts > grace_idempotency_key_replay_during_do_outage > returns the same graceRequestId and keeps a single pending D1 row
+    log: tests/2357-test-admission-credit-test-ts-grace-idempotency.log
+    err: 
+- [FAIL] test/admission-credit.test.ts > grace_rejects_when_ledger_quota_exhausted > rejects coverage_unknown when mirror fallback is unavailable
+    log: tests/2361-test-admission-credit-test-ts-grace-rejects-when.log
+    err: 
+- [FAIL] test/admission-credit.test.ts > grace_rejects_when_ledger_quota_exhausted > rejects quota_exhausted when request_quota is already 0 on the entitlement snapshot
+    log: tests/2359-test-admission-credit-test-ts-grace-rejects-when.log
+    err: 
+- [FAIL] test/admission-credit.test.ts > guard_rejection_debits_nothing_and_writes_no_journal_row > does not invoke credit or write ai_request when credit budget is exhausted at admission
+    log: tests/2377-test-admission-credit-test-ts-guard-rejection-de.log
+    err: 
+- [FAIL] test/admission-credit.test.ts > quota_do_unavailable_capped_grace_then_rejection > admits under grace for 5 calls then rejects when DO stays unavailable
+    log: tests/2351-test-admission-credit-test-ts-quota-do-unavailab.log
+    err: 
+- [FAIL] test/cohort-activate-promote.test.ts > T-J3-05 journal_records_serving_version_under_cohort_split > journaled prompt hash and capability version match each cohort build
+    log: tests/2381-test-cohort-activate-promote-test-ts-t-j3-05-jou.log
+    err: 
+- [FAIL] test/conversational-journaling.test.ts > context_requested_leg_credited_with_actual_usage > credits a leg terminating as AwaitingContext with actual usage
+    log: tests/2389-test-conversational-journaling-test-ts-context-r.log
+    err: 
+- [FAIL] test/conversational-journaling.test.ts > conversation_id_and_turn_ordinal_written_per_leg > writes client-supplied conversation_id and turn_ordinal on each conversational leg
+    log: tests/2383-test-conversational-journaling-test-ts-conversat.log
+    err: 
+- [FAIL] test/conversational-journaling.test.ts > each_leg_admitted_and_credited_independently > produces N admissions and N usage credits for N legs
+    log: tests/2387-test-conversational-journaling-test-ts-each-leg.log
+    err: 
+- [FAIL] test/conversational-journaling.test.ts > no_conversation_table_and_no_per_request_state_object > has no conversation entity table and only ordinary ai_request rows
+    log: tests/2391-test-conversational-journaling-test-ts-no-conver.log
+    err: 
+- [FAIL] test/conversational-journaling.test.ts > no_second_r2_object_and_no_second_quota_do_round_trip_from_h3 > writes one R2 object and one DO fetch per leg
+    log: tests/2395-test-conversational-journaling-test-ts-no-second.log
+    err: 
+- [FAIL] test/conversational-journaling.test.ts > one_indexed_query_returns_whole_conversation_ordered > returns all legs ordered by turn_ordinal via listConversationLegs
+    log: tests/2385-test-conversational-journaling-test-ts-one-index.log
+    err: 
+- [FAIL] test/conversational-journaling.test.ts > platform_held_no_state_between_legs > holds no conversation state between terminal leg 1 and leg 2 submit
+    log: tests/2393-test-conversational-journaling-test-ts-platform.log
+    err: 
+- [FAIL] test/conversational-journaling.test.ts > run_guard_writes_conversational_grouping_from_body > writes conversation_id and turn_ordinal when runGuard receives a conversational body
+    log: tests/2399-test-conversational-journaling-test-ts-run-guard.log
+    err: 
+- [FAIL] test/conversational-journaling.test.ts > single_shot_unaffected_by_h3 > writes null conversation_id and turn_ordinal for single_shot rows
+    log: tests/2397-test-conversational-journaling-test-ts-single-sh.log
+    err: 
+- [NOT_RECORDED] test/load/load-and-cost.test.ts > d1_write_headroom_measured > measures one hot-path ai_request INSERT per request (finite, no ceiling)
+    log: null
+    err: 
+- [NOT_RECORDED] test/load/load-and-cost.test.ts > do_throughput_per_installation_measured > measures time-dimensioned DO throughput against one pinned installation
+    log: null
+    err: 
+- [NOT_RECORDED] test/load/load-and-cost.test.ts > exactly_one_r2_class_a_per_request_under_load > counts exactly one R2 Class A operation per request (max and average)
+    log: null
+    err: 
+- [NOT_RECORDED] test/load/load-and-cost.test.ts > exactly_two_durable_object_requests_per_request_under_load > counts exactly two Quota DO fetches per request — admission and credit
+    log: null
+    err: 
+- [NOT_RECORDED] test/load/load-and-cost.test.ts > guard_p95_within_tens_of_ms_at_target_concurrency > drives N=20 happy-path requests via a bounded pool with real overlap
+    log: null
+    err: 
+- [NOT_RECORDED] test/load/load-and-cost.test.ts > load_suite_introduces_no_per_request_server_state > keeps load tooling under test/load; composition lives in src/pipeline
+    log: null
+    err: 
+- [NOT_RECORDED] test/load/load-and-cost.test.ts > load_suite_joins_ci_permanently > wires load into CI via the ai-platform root campaign job
+    log: null
+    err: 
+- [NOT_RECORDED] test/load/load-and-cost.test.ts > no_prompt_provider_model_in_flutter_from_load_suite > introduces no Flutter client files under the load suite tree
+    log: null
+    err: 
+- [NOT_RECORDED] test/load/load-and-cost.test.ts > no_second_quota_do_round_trip_beyond_two > proves no third Quota DO fetch occurs per request under load
+    log: null
+    err: 
+- [NOT_RECORDED] test/load/load-and-cost.test.ts > no_second_r2_object_per_request > proves no second R2 Class A op is written per request under load
+    log: null
+    err: 
+- [FAIL] test/manifest.test.ts > T-A4-15 manifest_is_data_not_code > export surface contains only data declarations and load/hashManifest/verifyPublishedRegistry
+    log: tests/1002-test-manifest-test-ts-t-a4-15-manifest-is-data-n.log
+    err: 
+- [FAIL] test/migrations.test.ts > T-A5-13 schema_snapshot_matches > post-migration CREATE TABLE DDL equals ai-platform/schema.snap.sql
+    log: tests/1003-test-migrations-test-ts-t-a5-13-schema-snapshot.log
+    err: 
+- [FAIL] test/migrations.test.ts > schema_snapshot_matches > post-migration snapshot matches DDL and includes G1 catalogue entities
+    log: tests/1004-test-migrations-test-ts-schema-snapshot-matches.log
+    err: 
+- [FAIL] test/pipeline.test.ts > pipeline_compose_stream_flag > passes streamFlag true and the request deadline into composeRequest
+    log: tests/2413-test-pipeline-test-ts-pipeline-compose-stream-fl.log
+    err: 
+- [FAIL] test/pipeline.test.ts > pipeline_soft_threshold_exposes_degraded_routing_tier > returns routingTier degraded on GuardFreshSuccess after usage crosses soft_threshold
+    log: tests/2415-test-pipeline-test-ts-pipeline-soft-threshold-ex.log
+    err: 
+- [FAIL] test/pipeline.test.ts > pipeline_stage_failures > stage 10 — compose failure → Failed terminal + internal_error
+    log: tests/2409-test-pipeline-test-ts-pipeline-stage-failures-st.log
+    err: 
+- [FAIL] test/pipeline.test.ts > pipeline_stage_failures > stage 8 — duplicate idempotency key → idempotent success with priorState
+    log: tests/2403-test-pipeline-test-ts-pipeline-stage-failures-st.log
+    err: 
+- [FAIL] test/pipeline.test.ts > pipeline_stage_failures > stage 8 — quota exhausted → quota_exhausted; no journal
+    log: tests/2401-test-pipeline-test-ts-pipeline-stage-failures-st.log
+    err: 
+- [FAIL] test/pipeline.test.ts > pipeline_stage_failures > stage 9 — D1 insert failure → internal_error + release; key reusable
+    log: tests/2407-test-pipeline-test-ts-pipeline-stage-failures-st.log
+    err: 
+- [FAIL] test/pipeline.test.ts > pipeline_stage_failures > stage 9 — journals resolvePromptVersion into prompt_artifact_hash, not the artifact ref
+    log: tests/2405-test-pipeline-test-ts-pipeline-stage-failures-st.log
+    err: 
+- [FAIL] test/pipeline.test.ts > pipeline_transcript_threading > threads validatedTranscript into composeRequest and GuardSuccess
+    log: tests/2411-test-pipeline-test-ts-pipeline-transcript-thread.log
+    err: 
+- [FAIL] test/soft-threshold-routing.test.ts > below_threshold_traffic_unaffected > keeps standard tier without degraded_notice below the soft threshold
+    log: tests/2421-test-soft-threshold-routing-test-ts-below-thresh.log
+    err: 
+- [FAIL] test/soft-threshold-routing.test.ts > hard_exhaustion_quota_exhausted_admin_path_no_lock > returns quota_exhausted with period_reset and does not journal an AI request
+    log: tests/2419-test-soft-threshold-routing-test-ts-hard-exhaust.log
+    err: 
+- [FAIL] test/soft-threshold-routing.test.ts > quota_exhausted_only_error_code_on_hard_exhaustion > emits only quota_exhausted from hard exhaustion and no error on soft path
+    log: tests/2427-test-soft-threshold-routing-test-ts-quota-exhaus.log
+    err: 
+- [FAIL] test/soft-threshold-routing.test.ts > soft_threshold_cost_dimension_selects_degraded > crosses soft threshold on creditsUsed / credit_budget and routes degraded
+    log: tests/2433-test-soft-threshold-routing-test-ts-soft-thresho.log
+    err: 
+- [FAIL] test/soft-threshold-routing.test.ts > soft_threshold_just_below_boundary_unaffected > keeps standard tier at 79/100 just below the >= soft boundary
+    log: tests/2435-test-soft-threshold-routing-test-ts-soft-thresho.log
+    err: 
+- [FAIL] test/soft-threshold-routing.test.ts > soft_threshold_no_second_quota_do_round_trip > uses exactly one Quota DO fetch for soft-threshold admission
+    log: tests/2425-test-soft-threshold-routing-test-ts-soft-thresho.log
+    err: 
+- [FAIL] test/soft-threshold-routing.test.ts > soft_threshold_persists_routing_tier > writes degraded and standard routing_tier via createRequestRow
+    log: tests/2423-test-soft-threshold-routing-test-ts-soft-thresho.log
+    err: 
+- [FAIL] test/soft-threshold-routing.test.ts > soft_threshold_selects_degraded_target > admits with degraded flag, routes degraded tier, and emits degraded_notice
+    log: tests/2417-test-soft-threshold-routing-test-ts-soft-thresho.log
+    err: 
+- [FAIL] test/soft-threshold-routing.test.ts > soft_threshold_token_dimension_selects_degraded > crosses soft threshold on creditsUsed / credit_budget and routes degraded
+    log: tests/2431-test-soft-threshold-routing-test-ts-soft-thresho.log
+    err: 
+- [FAIL] test/soft-threshold-routing.test.ts > soft_threshold_zero_never_degrades > keeps standard routing when soft_threshold is 0 with positive budgets
+    log: tests/2429-test-soft-threshold-routing-test-ts-soft-thresho.log
+    err: 
+- [FAIL] test/system/admission-settlement.system.test.ts > admission settlement against terms > E2E-P3.4-01 CP-B paid grant then issuer token lists the plan and completes a request charged to the term
+    log: tests/2485-test-system-admission-settlement-system-test-ts.log
+    err: 
+- [FAIL] test/system/admission-settlement.system.test.ts > admission settlement against terms > E2E-P3.4-11 A replayed jti or idempotency key returns the stored answer
+    log: tests/2487-test-system-admission-settlement-system-test-ts.log
+    err: 
+- [FAIL] test/system/cron-retention-interplay.system.test.ts > cron retention interplay > SYS-8.1 — Retention purge keeps usage_event money row
+    log: tests/2489-test-system-cron-retention-interplay-system-test.log
+    err: 
+- [FAIL] test/system/quota-admission-interplay.system.test.ts > quota admission interplay > SYS-5.5 — Idempotent replay of completed
+    log: tests/2491-test-system-quota-admission-interplay-system-tes.log
+    err: 
+- [FAIL] test/system/quota-admission-interplay.system.test.ts > quota admission interplay > SYS-5.6 — Replay of failed and cancelled
+    log: tests/2493-test-system-quota-admission-interplay-system-tes.log
+    err: 
+- [FAIL] test/system/settlement-integrity.system.test.ts > settlement integrity > SYS-7.1 — Completed settlement columns and envelope
+    log: tests/2495-test-system-settlement-integrity-system-test-ts.log
+    err: 
+- [FAIL] test/system/settlement-integrity.system.test.ts > settlement integrity > SYS-7.3 — Cancelled settlement after accepted
+    log: tests/2497-test-system-settlement-integrity-system-test-ts.log
+    err: 
+- [FAIL] test/system/settlement-integrity.system.test.ts > settlement integrity > SYS-7.4 — Exactly-once under replay
+    log: tests/2499-test-system-settlement-integrity-system-test-ts.log
+    err: 
+- [FAIL] test/worker-request-orchestrator.test.ts > ai_request_written_before_invoke > T2 — one journal insert before provider work
+    log: tests/2443-test-worker-request-orchestrator-test-ts-ai-requ.log
+    err: 
+- [FAIL] test/worker-request-orchestrator.test.ts > cancel_disconnect_aborts_cancelled_credits_partial > T16 — disconnect aborts in-flight invoke; journal Cancelled; partial credit
+    log: tests/2471-test-worker-request-orchestrator-test-ts-cancel.log
+    err: 
+- [FAIL] test/worker-request-orchestrator.test.ts > cancel_disconnect_aborts_cancelled_credits_partial > writes ai_attempt and usage_event when cancel has accrued usage
+    log: tests/2473-test-worker-request-orchestrator-test-ts-cancel.log
+    err: 
+- [FAIL] test/worker-request-orchestrator.test.ts > completed_attempt_and_usage_event_cost_agree > prices ai_attempt.cost and usage_event.cost from the same helper
+    log: tests/2449-test-worker-request-orchestrator-test-ts-complet.log
+    err: 
+- [FAIL] test/worker-request-orchestrator.test.ts > exactly_one_terminal_event_on_every_live_path > T22 — every exercised path has exactly one terminal
+    log: tests/2469-test-worker-request-orchestrator-test-ts-exactly.log
+    err: 
+- [FAIL] test/worker-request-orchestrator.test.ts > exactly_two_do_round_trips_admit_and_credit > T4 — admit + credit only
+    log: tests/2453-test-worker-request-orchestrator-test-ts-exactly.log
+    err: 
+- [FAIL] test/worker-request-orchestrator.test.ts > idempotency_repeat_returns_prior_no_second_inference > T15 — repeated key returns prior state
+    log: tests/2455-test-worker-request-orchestrator-test-ts-idempot.log
+    err: 
+- [FAIL] test/worker-request-orchestrator.test.ts > live_grace_admission_routing_tier_matches_router > routes the degraded chain when grace admission journals routing_tier degraded
+    log: tests/2481-test-worker-request-orchestrator-test-ts-live-gr.log
+    err: 
+- [FAIL] test/worker-request-orchestrator.test.ts > live_post_happy_path_accepted_stream_completed > T1 — accepted, fake chunks, exactly one completed
+    log: tests/2439-test-worker-request-orchestrator-test-ts-live-po.log
+    err: 
+- [FAIL] test/worker-request-orchestrator.test.ts > live_post_happy_path_accepted_stream_completed > journals promptVersion content hash into prompt_artifact_hash, not the ref (4.4)
+    log: tests/2441-test-worker-request-orchestrator-test-ts-live-po.log
+    err: 
+- [FAIL] test/worker-request-orchestrator.test.ts > live_soft_threshold_degraded_notice_and_routing_agree > emits degraded_notice, journals degraded, and routes the degraded cost class
+    log: tests/2479-test-worker-request-orchestrator-test-ts-live-so.log
+    err: 
+- [FAIL] test/worker-request-orchestrator.test.ts > no_per_request_server_side_state > T17 — Quota DO is installation-scoped only (no per-request DO name)
+    log: tests/2475-test-worker-request-orchestrator-test-ts-no-per.log
+    err: 
+- [FAIL] test/worker-request-orchestrator.test.ts > one_r2_envelope_after_response > T3 — exactly one R2 envelope after terminal
+    log: tests/2445-test-worker-request-orchestrator-test-ts-one-r2.log
+    err: 
+- [FAIL] test/worker-request-orchestrator.test.ts > one_r2_envelope_after_response > stores a non-empty raw provider body per attempt in the envelope
+    log: tests/2447-test-worker-request-orchestrator-test-ts-one-r2.log
+    err: 
+- [FAIL] test/worker-request-orchestrator.test.ts > post_guard_failed_terminal_provider_unavailable > T20 — provider_unavailable as one failed terminal
+    log: tests/2457-test-worker-request-orchestrator-test-ts-post-gu.log
+    err: 
+- [FAIL] test/worker-request-orchestrator.test.ts > post_guard_failed_terminal_provider_unavailable > writes a diagnostic attempt row when routing yields an empty chain
+    log: tests/2459-test-worker-request-orchestrator-test-ts-post-gu.log
+    err: 
+- [FAIL] test/worker-request-orchestrator.test.ts > post_guard_failed_terminal_validation_failed > T21 — validation_failed as one failed terminal
+    log: tests/2461-test-worker-request-orchestrator-test-ts-post-gu.log
+    err: 
+- [FAIL] test/worker-request-orchestrator.test.ts > prose_safety_markers_on_live_path > fails validation_failed when the model echoes the injection needle
+    log: tests/2465-test-worker-request-orchestrator-test-ts-prose-s.log
+    err: 
+- [FAIL] test/worker-request-orchestrator.test.ts > prose_safety_markers_on_live_path > fails validation_failed when the model leaks the composed system instruction
+    log: tests/2467-test-worker-request-orchestrator-test-ts-prose-s.log
+    err: 
+- [FAIL] test/worker-request-orchestrator.test.ts > prose_safety_markers_on_live_path > fails validation_failed when the model opens with a refusal prefix
+    log: tests/2463-test-worker-request-orchestrator-test-ts-prose-s.log
+    err: 
+- [FAIL] test/worker-request-orchestrator.test.ts > provider_selection_only_via_routing_policy > T18 — routing-policy edit changes selection without orchestrator code change
+    log: tests/2477-test-worker-request-orchestrator-test-ts-provide.log
+    err: 
+- [FAIL] test/worker-request-orchestrator.test.ts > routing_decision_persisted_at_stage_10 > writes the router decision onto the existing ai_request row before invoke
+    log: tests/2483-test-worker-request-orchestrator-test-ts-routing.log
+    err: 
+- [FAIL] test/worker-request-orchestrator.test.ts > usage_event_term_id_from_admission > journals term_id from admission, not an entitlement period string
+    log: tests/2451-test-worker-request-orchestrator-test-ts-usage-e.log
+    err: 
+- [FAIL] test/worker-request-orchestrator.test.ts > worker_supplies_production_event_source > T23 — live route is not the missing-eventSource 503 shell
+    log: tests/2437-test-worker-request-orchestrator-test-ts-worker.log
+    err: 
+
+### campaign-ai-platform-38695681551\governor\20261015T065855Z-999179fa\ai-platform\version-matrix  label=[ai-platform/version-matrix] passed=2 failed=0 exit=0
+
+### campaign-backend-38695681551\governor\20261015T070018Z-295be2f6\backend\all  label=[backend/all] passed=73 failed=0 exit=0
+
+### campaign-backend-38695681551\governor\20261015T070018Z-295be2f6\backend\catalog  label=[backend/catalog] passed=8 failed=0 exit=0
+
+### campaign-e2e-fullstack-38695681551\governor\20261015T070039Z-78af63ae\e2e-fullstack\all-ci  label=[e2e-fullstack/all-ci] passed=0 failed=2 exit=1
+- [FAIL] test/p5-1.test.mjs
+    log: tests/001-test-p5-1-test-mjs.log
+    err: 
+- [FAIL] test/p5-2.test.mjs
+    log: tests/002-test-p5-2-test-mjs.log
+    err: 
+
+### campaign-e2e-fullstack-38695681551\governor\20261015T070039Z-78af63ae\e2e-fullstack\all-manual  label=[e2e-fullstack/all-manual] passed=4 failed=12 exit=130
+- [FAIL] test/p5-1.test.mjs
+    log: tests/001-test-p5-1-test-mjs.log
+    err: 
+- [FAIL] test/p5-2.test.mjs
+    log: tests/002-test-p5-2-test-mjs.log
+    err: 
+- [FAIL] E2E-P7.2-07
+    log: tests/007-e2e-p7-2-07.log
+    err: 
+- [FAIL] E2E-P7.2-08
+    log: tests/008-e2e-p7-2-08.log
+    err: 
+- [FAIL] E2E-P7.2-01
+    log: tests/009-e2e-p7-2-01.log
+    err: 
+- [FAIL] E2E-P7.2-02
+    log: tests/010-e2e-p7-2-02.log
+    err: 
+- [FAIL] E2E-P7.2-03
+    log: tests/011-e2e-p7-2-03.log
+    err: 
+- [FAIL] E2E-P7.2-04
+    log: tests/012-e2e-p7-2-04.log
+    err: 
+- [FAIL] E2E-P7.2-05
+    log: tests/013-e2e-p7-2-05.log
+    err: 
+- [FAIL] E2E-P7.2-06
+    log: tests/014-e2e-p7-2-06.log
+    err: 
+- [FAIL] E2E-P7.2-09
+    log: tests/015-e2e-p7-2-09.log
+    err: 
+- [FAIL] E2E-P7.3-01
+    log: tests/016-e2e-p7-3-01.log
+    err: 
+
+### campaign-frontend-38695681551\governor\20261015T070147Z-536da71a\frontend\all  label=[frontend/all] passed=4372 failed=12 exit=1
+- [FAIL] E2E-P6.3-01 E2E-P6.3-01
+    log: tests/002-e2e-p6-4-01-e2e-p6-4-01.log
+    err: Test failed. See exception logs above. The test description was: E2E-P6.3-01
+- [FAIL] E2E-P6.3-02 E2E-P6.3-02
+    log: tests/003-e2e-p6-3-02-e2e-p6-3-02.log
+    err: Test failed. See exception logs above. The test description was: E2E-P6.3-02
+- [FAIL] E2E-P6.3-03 E2E-P6.3-03
+    log: tests/004-e2e-p6-3-03-e2e-p6-3-03.log
+    err: Test failed. See exception logs above. The test description was: E2E-P6.3-03
+- [FAIL] E2E-P6.3-04 E2E-P6.3-04
+    log: tests/005-e2e-p6-3-04-e2e-p6-3-04.log
+    err: Test failed. See exception logs above. The test description was: E2E-P6.3-04
+- [FAIL] E2E-P6.3-05 E2E-P6.3-05
+    log: tests/006-e2e-p6-3-05-e2e-p6-3-05.log
+    err: Test failed. See exception logs above. The test description was: E2E-P6.3-05
+- [FAIL] E2E-P6.3-06 E2E-P6.3-06
+    log: tests/007-e2e-p6-3-06-e2e-p6-3-06.log
+    err: Test failed. See exception logs above. The test description was: E2E-P6.3-06
+- [FAIL] E2E-P6.3-07 E2E-P6.3-07
+    log: tests/008-e2e-p6-3-07-e2e-p6-3-07.log
+    err: Test failed. See exception logs above. The test description was: E2E-P6.3-07
+- [FAIL] E2E-P6.4-01 E2E-P6.4-01
+    log: tests/009-e2e-p6-4-01-e2e-p6-4-01.log
+    err: Test failed. See exception logs above. The test description was: E2E-P6.4-01
+- [FAIL] E2E-P6.4-02 E2E-P6.4-02
+    log: tests/010-e2e-p6-4-02-e2e-p6-4-02.log
+    err: Test failed. See exception logs above. The test description was: E2E-P6.4-02
+- [FAIL] E2E-P6.4-03 E2E-P6.4-03
+    log: tests/011-e2e-p6-4-03-e2e-p6-4-03.log
+    err: Test failed. See exception logs above. The test description was: E2E-P6.4-03
+- [FAIL] E2E-P6.4-04 E2E-P6.4-04
+    log: tests/012-e2e-p6-4-04-e2e-p6-4-04.log
+    err: Test failed. See exception logs above. The test description was: E2E-P6.4-04
+- [FAIL] E2E-P6.4-05 E2E-P6.4-05
+    log: tests/013-e2e-p6-4-05-e2e-p6-4-05.log
+    err: Test failed. See exception logs above. The test description was: E2E-P6.4-05
+
+### campaign-frontend-38695681551\governor\20261015T070147Z-536da71a\frontend\fullstack  label=[frontend/fullstack] passed=0 failed=0 exit=1
+
+### campaign-ops-launch-38695681551\governor\20261015T065835Z-cfdfc88a\ops-launch\launch-check  label=[ops-launch/launch-check] passed=2 failed=0 exit=0
+
+### campaign-ops-launch-38695681551\ops-launch\launch-check\20261015T065835Z-024a600a  label=[ops-launch/launch-check] passed=2 failed=0 exit=0
+
+### campaign-vendor-contracts-38695681551\governor\20261015T065850Z-0a6fa8f1\vendor-contracts\all  label=[vendor-contracts/all] passed=10 failed=1 exit=1
+- [FAIL] test/bundle-scan.test.ts > production bundle scan > E2E-P2.2-08 A production ai-platform bundle contains no testkit code
+    log: tests/012-test-bundle-scan-test-ts-production-bundle-scan.log
+    err: 

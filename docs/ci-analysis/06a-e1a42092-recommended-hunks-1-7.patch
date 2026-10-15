@@ -1,0 +1,1169 @@
+diff --git a/abo/src/worker.ts b/abo/src/worker.ts
+index 650d6a10..048884c1 100644
+--- a/abo/src/worker.ts
++++ b/abo/src/worker.ts
+@@ -14,7 +14,10 @@ import {
+ } from "./clinic-api/checkouts.js";
+ import { handleGetOffers } from "./clinic-api/offers.js";
+ import { checkTokenRate } from "./clinic-api/rate.js";
+-import { checkContractVersion } from "./clinic-api/version.js";
++import {
++  checkContractVersion,
++  clinicErrorResponse,
++} from "./clinic-api/version.js";
+ import { handleOps as dispatchOps, runDueTransferSteps } from "./ops/index.js";
+ import { refreshCoverageView } from "./coverage/view.js";
+ import { markExportLagIfDue, sendDueAlerts } from "./alert/index.js";
+@@ -272,7 +275,7 @@ async function handleBillingV1(
+     if (url.searchParams.get("open") === "1") {
+       return handleListOpenCheckouts(env, auth.claims.org, versionGate.version);
+     }
+-    return emptyNotFound();
++    return clinicErrorResponse("not_found", 404, versionGate.version);
+   }
+ 
+   const checkoutIdMatch = /^\/v1\/checkouts\/([^/]+)$/u.exec(path);
+diff --git a/backend/supabase/migrations/20261014170000_canonical_billing_jwt_json.sql b/backend/supabase/migrations/20261014170000_canonical_billing_jwt_json.sql
+new file mode 100644
+index 00000000..ec81bda9
+--- /dev/null
++++ b/backend/supabase/migrations/20261014170000_canonical_billing_jwt_json.sql
+@@ -0,0 +1,250 @@
++-- Billing JWTs are signed by PostgreSQL, so their JSON bytes must match the
++-- RFC 8785 contract used by the Worker verifier. PostgreSQL's jsonb::text is
++-- semantically equivalent JSON but includes whitespace and is not JCS.
++
++CREATE OR REPLACE FUNCTION auth_internal.canonical_issuer_jwt_json(p_value jsonb)
++RETURNS text
++LANGUAGE plpgsql
++IMMUTABLE
++STRICT
++SET search_path = pg_catalog, auth_internal
++AS $$
++DECLARE
++  v_kind text := jsonb_typeof(p_value);
++  v_result text;
++  v_number numeric;
++BEGIN
++  CASE v_kind
++    WHEN 'object' THEN
++      -- The issuer header and claims have fixed ASCII member names. Restrict
++      -- keys to ASCII so byte ordering is the RFC 8785 UTF-16 ordering too.
++      IF EXISTS (
++        SELECT 1
++        FROM jsonb_object_keys(p_value) AS entry(key)
++        WHERE length(entry.key) <> octet_length(entry.key)
++      ) THEN
++        RAISE EXCEPTION 'issuer JWT JSON keys must be ASCII';
++      END IF;
++
++      SELECT COALESCE(
++        string_agg(
++          to_json(entry.key)::text || ':' ||
++            auth_internal.canonical_issuer_jwt_json(entry.value),
++          ',' ORDER BY entry.key COLLATE "C"
++        ),
++        ''
++      )
++      INTO v_result
++      FROM jsonb_each(p_value) AS entry(key, value);
++      RETURN '{' || v_result || '}';
++    WHEN 'array' THEN
++      SELECT COALESCE(
++        string_agg(
++          auth_internal.canonical_issuer_jwt_json(item.value),
++          ',' ORDER BY item.ordinality
++        ),
++        ''
++      )
++      INTO v_result
++      FROM jsonb_array_elements(p_value) WITH ORDINALITY AS item(value, ordinality);
++      RETURN '[' || v_result || ']';
++    WHEN 'string' THEN
++      -- jsonb's scalar text form uses JSON string escaping. It matches the
++      -- JCS string form for valid PostgreSQL text, including UTF-8 characters.
++      RETURN p_value::text;
++    WHEN 'number' THEN
++      -- Issuer JWT numeric claims are integer Unix timestamps. Limit output to
++      -- IEEE-754 safe integers so PostgreSQL numeric formatting is identical
++      -- to the RFC 8785 number form used by the shared TypeScript verifier.
++      v_number := (p_value #>> '{}')::numeric;
++      IF v_number <> trunc(v_number)
++        OR abs(v_number) > 9007199254740991::numeric THEN
++        RAISE EXCEPTION 'issuer JWT numbers must be safe integers';
++      END IF;
++      RETURN v_number::bigint::text;
++    WHEN 'boolean' THEN
++      RETURN p_value::text;
++    WHEN 'null' THEN
++      RETURN 'null';
++    ELSE
++      RAISE EXCEPTION 'unsupported issuer JWT JSON value: %', v_kind;
++  END CASE;
++END;
++$$;
++
++REVOKE ALL ON FUNCTION auth_internal.canonical_issuer_jwt_json(jsonb)
++  FROM PUBLIC, anon, authenticated, service_role;
++
++CREATE OR REPLACE FUNCTION auth_internal.issue_billing_token(p_contract_version integer)
++RETURNS public.rpc_result
++LANGUAGE plpgsql
++SECURITY DEFINER
++SET search_path = public, auth, ai_internal, pgsodium, vault, auth_internal
++AS $$
++DECLARE
++  v_uid uuid;
++  v_org uuid;
++  v_staff public.staff_members%ROWTYPE;
++  v_branch_id uuid;
++  v_signing_key ai_internal.issuer_key%ROWTYPE;
++  v_secret_key bytea;
++  v_jti uuid;
++  v_iat bigint;
++  v_exp bigint;
++  v_recent_mints int;
++  v_abo_base_url text;
++  v_header_text text;
++  v_payload_text text;
++  v_header_b64 text;
++  v_payload_b64 text;
++  v_signing_input text;
++  v_signature bytea;
++  v_token text;
++BEGIN
++  v_uid := auth_internal.assert_valid_ai_session();
++
++  IF public.current_membership_role() IS DISTINCT FROM 'administrator' THEN
++    RETURN public.rpc_error('FORBIDDEN_ROLE', 'Only administrators can issue billing tokens.');
++  END IF;
++
++  v_org := public.current_org_id();
++  IF v_org IS NULL THEN
++    RETURN public.rpc_error('FORBIDDEN', 'Organization context is required.');
++  END IF;
++
++  SELECT sm.*
++  INTO v_staff
++  FROM public.staff_members sm
++  WHERE sm.auth_user_id = v_uid
++    AND sm.is_deleted = false
++    AND sm.is_active = true;
++
++  IF NOT FOUND THEN
++    RETURN public.rpc_error('STAFF_NOT_FOUND', 'Staff member was not found.');
++  END IF;
++
++  SELECT b.id
++  INTO v_branch_id
++  FROM public.staff_branch_assignments sba
++  JOIN public.branches b ON b.id = sba.branch_id
++  WHERE sba.staff_member_id = v_staff.id
++    AND sba.is_deleted = false
++    AND b.is_deleted = false
++    AND b.is_active = true
++    AND b.organization_id = v_org
++  ORDER BY sba.is_primary DESC, b.name
++  LIMIT 1;
++
++  IF v_branch_id IS NULL THEN
++    RETURN public.rpc_error('BRANCH_NOT_FOUND', 'No active branch is assigned for this organization.');
++  END IF;
++
++  SELECT ik.*
++  INTO v_signing_key
++  FROM ai_internal.issuer_key ik
++  WHERE ik.status = 'signing'
++  LIMIT 1;
++
++  IF NOT FOUND THEN
++    RETURN public.rpc_error('ISSUER_KEY_NOT_CONFIGURED', 'Issuer signing key is not configured.');
++  END IF;
++
++  SELECT decode(ds.decrypted_secret, 'base64')
++  INTO v_secret_key
++  FROM vault.decrypted_secrets ds
++  WHERE ds.id = v_signing_key.secret_ref;
++
++  IF v_secret_key IS NULL THEN
++    RETURN public.rpc_error('ISSUER_KEY_NOT_CONFIGURED', 'Issuer signing key is not configured.');
++  END IF;
++
++  PERFORM pg_advisory_xact_lock(
++    87201402,
++    hashtext(v_staff.id::text || ':abo')
++  );
++
++  SELECT count(*)::int
++  INTO v_recent_mints
++  FROM ai_internal.ai_token_issuance i
++  WHERE i.actor_staff_id = v_staff.id
++    AND i.aud = 'abo'
++    AND i.is_deleted = false
++    AND i.iat >= now() - interval '10 minutes';
++
++  IF v_recent_mints >= 20 THEN
++    RETURN public.rpc_error('RATE_LIMITED', 'Billing token rate limit exceeded.', p_contract_version);
++  END IF;
++
++  v_jti := gen_random_uuid();
++  v_iat := extract(epoch FROM now())::bigint;
++  v_exp := v_iat + 300;
++  v_abo_base_url := auth_internal.ai_app_setting_text('ai.abo_base_url', 'http://127.0.0.1:8788');
++
++  v_header_text := auth_internal.canonical_issuer_jwt_json(jsonb_build_object(
++    'alg', 'EdDSA',
++    'kid', v_signing_key.kid,
++    'typ', 'JWT'
++  ));
++
++  v_payload_text := auth_internal.canonical_issuer_jwt_json(jsonb_build_object(
++    'iss', auth_internal.ai_app_setting_text('ai.issuer_id', 'issuer-test'),
++    'aud', 'abo',
++    'sub', v_staff.id::text,
++    'org', v_org::text,
++    'branch', v_branch_id::text,
++    'role', 'administrator',
++    'jti', v_jti::text,
++    'iat', v_iat,
++    'exp', v_exp,
++    'ver', '2'
++  ));
++
++  v_header_b64 := auth_internal.base64url_encode(convert_to(v_header_text, 'utf8'));
++  v_payload_b64 := auth_internal.base64url_encode(convert_to(v_payload_text, 'utf8'));
++  v_signing_input := v_header_b64 || '.' || v_payload_b64;
++
++  v_signature := pgsodium.crypto_sign_detached(
++    convert_to(v_signing_input, 'utf8'),
++    v_secret_key
++  );
++
++  v_token := v_signing_input || '.' || auth_internal.base64url_encode(v_signature);
++
++  INSERT INTO ai_internal.ai_token_issuance (
++    jti,
++    actor_staff_id,
++    organization_id,
++    aud,
++    iat,
++    created_by,
++    updated_by
++  )
++  VALUES (
++    v_jti,
++    v_staff.id,
++    v_org,
++    'abo',
++    to_timestamp(v_iat),
++    v_uid,
++    v_uid
++  );
++
++  RETURN public.rpc_success(
++    jsonb_build_object(
++      'token', v_token,
++      'abo_base_url', v_abo_base_url,
++      'expires_at', to_timestamp(v_exp)
++    ),
++    p_contract_version
++  );
++EXCEPTION
++  WHEN OTHERS THEN
++    IF SQLERRM IN ('UNAUTHENTICATED', 'SESSION_EXPIRED') THEN
++      RETURN public.rpc_error(SQLERRM, SQLERRM);
++    END IF;
++    RAISE;
++END;
++$$;
++
++REVOKE EXECUTE ON FUNCTION auth_internal.issue_billing_token(integer)
++  FROM PUBLIC, anon, authenticated, service_role;
+diff --git a/backend/tests/issuer_rpc.sql b/backend/tests/issuer_rpc.sql
+index 2ec513c8..a01444f7 100644
+--- a/backend/tests/issuer_rpc.sql
++++ b/backend/tests/issuer_rpc.sql
+@@ -28,6 +28,47 @@ AS $$
+   )::jsonb;
+ $$;
+ 
++CREATE OR REPLACE FUNCTION pg_temp.decode_jws_segment(
++  p_token text,
++  p_segment integer
++)
++RETURNS text
++LANGUAGE sql
++IMMUTABLE
++AS $$
++  SELECT convert_from(
++    decode(
++      rpad(
++        translate(split_part(p_token, '.', p_segment), '-_', '+/'),
++        length(split_part(p_token, '.', p_segment))
++          + ((4 - length(split_part(p_token, '.', p_segment)) % 4) % 4),
++        '='
++      ),
++      'base64'
++    ),
++    'utf8'
++  );
++$$;
++
++-- The DB-side issuer serializer must produce exact RFC 8785 bytes, including
++-- escaping for sensitive ASCII characters and preserving valid UTF-8 text.
++DO $$
++DECLARE
++  v_actual text;
++  v_expected text := $jcs${"control":"line\n\t\u0001end","email":"clínic+ø@example.test","quote":"she said \"yes\"","slash":"C:\\clinic\\docs"}$jcs$;
++BEGIN
++  v_actual := auth_internal.canonical_issuer_jwt_json(jsonb_build_object(
++    'email', 'clínic+ø@example.test',
++    'quote', 'she said "yes"',
++    'slash', E'C:\\clinic\\docs',
++    'control', E'line\n\t\001end'
++  ));
++  IF v_actual <> v_expected THEN
++    RAISE EXCEPTION 'issuer JCS escaping mismatch: expected %, got %', v_expected, v_actual;
++  END IF;
++END;
++$$;
++
+ CREATE OR REPLACE FUNCTION pg_temp.set_authenticated_session(p_user_id uuid)
+ RETURNS void
+ LANGUAGE plpgsql
+@@ -141,6 +182,10 @@ DECLARE
+   v_branch_id uuid;
+   v_billing public.rpc_result;
+   v_billing_version int;
++  v_billing_token text;
++  v_billing_header text;
++  v_billing_payload text;
++  v_canonical_billing_token boolean;
+   v_passed boolean;
+   v_detail text;
+ BEGIN
+@@ -209,6 +254,13 @@ BEGIN
+ 
+   v_billing := public.issue_billing_token(1);
+   v_billing_version := v_billing.contract_version;
++  v_billing_token := v_billing.data ->> 'token';
++  PERFORM set_config('role', 'postgres', true);
++  v_billing_header := pg_temp.decode_jws_segment(v_billing_token, 1);
++  v_billing_payload := pg_temp.decode_jws_segment(v_billing_token, 2);
++  v_canonical_billing_token :=
++    v_billing_header = auth_internal.canonical_issuer_jwt_json(v_billing_header::jsonb)
++    AND v_billing_payload = auth_internal.canonical_issuer_jwt_json(v_billing_payload::jsonb);
+ 
+   v_passed := v_v2
+     AND v_v2_message LIKE '%CONTRACT_VERSION_UNSUPPORTED%'
+@@ -220,7 +272,8 @@ BEGIN
+     AND v_null_detail LIKE '%accepted_versions%'
+     AND v_rows_before = v_rows_after
+     AND v_billing.success
+-    AND v_billing_version = 1;
++    AND v_billing_version = 1
++    AND v_canonical_billing_token;
+ 
+   v_detail := 'v2_raised=' || v_v2::text
+     || ' v2_msg=' || COALESCE(v_v2_message, '<null>')
+@@ -229,7 +282,8 @@ BEGIN
+     || ' null_msg=' || COALESCE(v_null_message, '<null>')
+     || ' rows_before=' || v_rows_before::text
+     || ' rows_after=' || v_rows_after::text
+-    || ' billing_contract_version=' || COALESCE(v_billing_version::text, '<null>');
++    || ' billing_contract_version=' || COALESCE(v_billing_version::text, '<null>')
++    || ' billing_token_canonical=' || COALESCE(v_canonical_billing_token::text, '<null>');
+ 
+   PERFORM set_config('role', 'postgres', true);
+   INSERT INTO issuer_rpc_results VALUES (
+diff --git a/e2e/fullstack/dart/bin/session_jwt_capture.dart b/e2e/fullstack/dart/bin/session_jwt_capture.dart
+index 56ac7563..aee7a8b3 100644
+--- a/e2e/fullstack/dart/bin/session_jwt_capture.dart
++++ b/e2e/fullstack/dart/bin/session_jwt_capture.dart
+@@ -4,10 +4,8 @@ import 'dart:io';
+ import 'package:ai_clinic/core/ai/discovery_client.dart';
+ import 'package:ai_clinic/core/ai/https_submit_port.dart';
+ import 'package:ai_clinic/core/ai/ports.dart';
+-import 'package:ai_clinic/core/ai/supabase_aat_mint_port.dart';
+ import 'package:ai_clinic/core/ai/usage_summary_client.dart';
+-import 'package:ai_clinic/features/ai/billing/abo_client.dart';
+-import 'package:ai_clinic/features/ai/billing/billing_token_client.dart';
++import 'package:ai_clinic/core/contract_versions.dart';
+ import 'package:http/http.dart' as http;
+ 
+ const _defaultSupabaseUrl = 'http://127.0.0.1:54321';
+@@ -80,9 +78,6 @@ Future<void> main() async {
+     sessionJwt: sessionJwt,
+   );
+ 
+-  final aatMintPort = SupabaseAatMintPort.withRpc(rpc: rpc.call);
+-  final billingTokenClient = BillingTokenClient.withRpc(rpc: rpc.call);
+-
+   stdout.writeln(jsonEncode({'session_jwt': sessionJwt}));
+ 
+   final recordingClient = _RecordingHttpClient(
+@@ -96,12 +91,10 @@ Future<void> main() async {
+     platformBaseUrl: platformUrl,
+     httpClient: recordingClient,
+   );
+-  final aboClient = AboClient(
+-    tokenClient: billingTokenClient,
+-    httpClient: recordingClient,
+-  );
+-
+-  final aat = await aatMintPort.mint();
++  final aat = await rpc.call('issue_ai_token', {'p_contract_version': backendRpc});
++  if (aat is! String || aat.isEmpty) {
++    throw StateError('issue_ai_token returned an empty token');
++  }
+ 
+   try {
+     await discoveryClient.fetchCapabilities(platformBaseUrl: platformUrl, aat: aat);
+@@ -136,12 +129,60 @@ Future<void> main() async {
+   }
+ 
+   try {
+-    await aboClient.getOffers();
++    final billingRaw = await rpc.call(
++      'issue_billing_token',
++      {'p_contract_version': backendRpc},
++    );
++    final billing = _readRpcResult(billingRaw);
++    final billingData = billing['data'];
++    if (!_isSuccess(billing['success']) || billingData is! Map) {
++      throw StateError('issue_billing_token returned an invalid result');
++    }
++    final billingSession = Map<String, dynamic>.from(billingData);
++    final billingToken = billingSession['token']?.toString();
++    final aboBaseUrl = billingSession['abo_base_url']?.toString();
++    if (billingToken == null || billingToken.isEmpty || aboBaseUrl == null || aboBaseUrl.isEmpty) {
++      throw StateError('issue_billing_token returned an incomplete session');
++    }
++    final normalizedAboUrl = aboBaseUrl.endsWith('/')
++        ? aboBaseUrl.substring(0, aboBaseUrl.length - 1)
++        : aboBaseUrl;
++    await recordingClient.get(
++      Uri.parse('$normalizedAboUrl/v1/offers'),
++      headers: {
++        'authorization': 'Bearer $billingToken',
++        'accept': 'application/json',
++        'abo-contract-version': '$aboClinic',
++        'host': Uri.parse(aboBaseUrl).host == '127.0.0.1' ||
++                Uri.parse(aboBaseUrl).host == 'localhost'
++            ? 'billing.vendor.test'
++            : Uri.parse(aboBaseUrl).host,
++      },
++    );
+   } catch (_) {
+     // Capture only; billing routes may be empty on a bare stack.
+   }
+ }
+ 
++Map<String, dynamic> _readRpcResult(dynamic raw) {
++  if (raw is Map<String, dynamic>) return raw;
++  if (raw is Map) return Map<String, dynamic>.from(raw);
++  if (raw is List && raw.length >= 4) {
++    return {
++      'success': raw[0],
++      'data': raw[1],
++      'error_code': raw[2],
++      'error_message': raw[3],
++    };
++  }
++  throw FormatException('Unrecognized RPC result: $raw');
++}
++
++bool _isSuccess(Object? value) {
++  final normalized = value?.toString().toLowerCase();
++  return value == true || normalized == 't' || normalized == 'true';
++}
++
+ Future<String> _signIn({
+   required String supabaseUrl,
+   required String anonKey,
+diff --git a/e2e/fullstack/test/p7-2-stack.mjs b/e2e/fullstack/test/p7-2-stack.mjs
+index 2167baf6..6bc93c2f 100644
+--- a/e2e/fullstack/test/p7-2-stack.mjs
++++ b/e2e/fullstack/test/p7-2-stack.mjs
+@@ -6,17 +6,26 @@ import { fileURLToPath } from "node:url";
+ import { createClient } from "@supabase/supabase-js";
+ import { MockAgent } from "undici";
+ import { unstable_startWorker as startWorker } from "wrangler";
+-import { CHANNEL_VERSIONS } from "vendor-contracts";
++import {
++  CHANNEL_VERSIONS,
++  canonicalize,
++  grantIdPaid,
++  sha256Hex,
++  signCompactJws,
++} from "vendor-contracts";
+ import {
+   createAccessTeam,
+   createSoftwareAuthenticator,
+ } from "vendor-contracts/testkit";
+ import {
+   ABO_PERSIST,
++  ABO_D1_SEED_PERSIST,
+   HARNESS_PERSIST,
++  PAYMOB_PERSIST,
+   PLATFORM_PERSIST,
+   REGISTRY_DIR,
+   preparePlatformD1,
++  prepareAboD1,
+   execPlatformD1Sql,
+   queryPlatformD1One as queryPlatformD1Row,
+   runWranglerSync,
+@@ -25,7 +34,7 @@ import {
+ 
+ // H-FS shared boot for P7.2: imported by p7-2-*.test.mjs
+ 
+-export { ABO_PERSIST, HARNESS_PERSIST, PLATFORM_PERSIST, REGISTRY_DIR };
++export { ABO_PERSIST, ABO_D1_SEED_PERSIST, HARNESS_PERSIST, PAYMOB_PERSIST, PLATFORM_PERSIST, REGISTRY_DIR };
+ 
+ export const REPO_ROOT = path.resolve(
+   path.dirname(fileURLToPath(import.meta.url)),
+@@ -174,11 +183,25 @@ export function psqlQuery(sql) {
+   return result.stdout.trim();
+ }
+ 
+-export async function waitForHttp(url, { timeoutMs = 120_000, accept = [200] } = {}) {
++export async function waitForHttp(
++  url,
++  { timeoutMs = 120_000, accept = [200], headers, child, childLabel = "worker" } = {},
++) {
+   const deadline = Date.now() + timeoutMs;
+   while (Date.now() < deadline) {
++    if (child?.spawnError) {
++      throw new Error(
++        `Could not start ${childLabel} while waiting for ${url}: ${child.spawnError.message}${formatChildOutput(child)}`,
++      );
++    }
++    if (child?.exitResult) {
++      const { code, signal } = child.exitResult;
++      throw new Error(
++        `${childLabel} exited before ${url} became ready (code=${code}, signal=${signal ?? "none"})${formatChildOutput(child)}`,
++      );
++    }
+     try {
+-      const response = await fetch(url);
++      const response = await fetch(url, { headers });
+       if (accept.includes(response.status)) {
+         return response;
+       }
+@@ -190,48 +213,93 @@ export async function waitForHttp(url, { timeoutMs = 120_000, accept = [200] } =
+   throw new Error(`Timed out waiting for ${url}`);
+ }
+ 
++function formatChildOutput(child) {
++  const output = child.startupOutput?.trim();
++  return output ? `\n${child.startupLabel ?? "Worker"} output:\n${output}` : "";
++}
++
+ function spawnDevProcess(args, env = {}) {
+-  const child = spawn("npx", ["wrangler", ...args], {
++  const wranglerCli = path.join(
++    FULLSTACK_ROOT,
++    "node_modules/wrangler/bin/wrangler.js",
++  );
++  const child = spawn(process.execPath, [wranglerCli, ...args], {
+     cwd: REPO_ROOT,
+     env: wranglerLocalEnv(env),
++    detached: process.platform !== "win32",
+     stdio: ["ignore", "pipe", "pipe"],
+   });
+-  child.stdout.on("data", captureLogChunk);
+-  child.stderr.on("data", captureLogChunk);
++  child.startupLabel = args.includes(PAYMOB_WORKER) ? "Paymob worker" : "ABO worker";
++  child.startupOutput = "";
++  child.spawnError = null;
++  child.exitResult = null;
++  const captureChildOutput = (chunk) => {
++    const text = chunk.toString();
++    captureLogChunk(text);
++    child.startupOutput = `${child.startupOutput}${text}`.slice(-12_000);
++  };
++  child.stdout.on("data", captureChildOutput);
++  child.stderr.on("data", captureChildOutput);
++  child.once("error", (error) => {
++    child.spawnError = error;
++  });
++  child.once("exit", (code, signal) => {
++    child.exitResult = { code, signal };
++  });
+   return child;
+ }
+ 
+ async function stopChild(child) {
+-  if (!child || child.killed) {
++  if (!child) return;
++
++  if (process.platform === "win32" || !child.pid) {
++    if (child.exitCode !== null || child.signalCode !== null) return;
++    child.kill("SIGTERM");
++    await new Promise((resolve) => {
++      const timer = setTimeout(() => {
++        child.kill("SIGKILL");
++        resolve();
++      }, 5_000);
++      child.once("exit", () => {
++        clearTimeout(timer);
++        resolve();
++      });
++    });
+     return;
+   }
+-  child.kill("SIGTERM");
+-  await new Promise((resolve) => {
+-    const timer = setTimeout(() => {
+-      child.kill("SIGKILL");
+-      resolve();
+-    }, 5_000);
+-    child.on("exit", () => {
+-      clearTimeout(timer);
+-      resolve();
+-    });
+-  });
+-}
+ 
+-async function applyAboMigrations() {
+-  runWrangler([
+-    "d1",
+-    "migrations",
+-    "apply",
+-    "abo-development",
+-    "--local",
+-    "--env",
+-    "development",
+-    "--config",
+-    ABO_CONFIG,
+-    "--persist-to",
+-    ABO_PERSIST,
+-  ]);
++  const signalGroup = (signal) => {
++    try {
++      process.kill(-child.pid, signal);
++      return true;
++    } catch (error) {
++      if (error.code === "ESRCH") return false;
++      throw error;
++    }
++  };
++  const groupExists = () => {
++    try {
++      process.kill(-child.pid, 0);
++      return true;
++    } catch (error) {
++      if (error.code === "ESRCH") return false;
++      throw error;
++    }
++  };
++  const waitForGroupExit = async (timeoutMs) => {
++    const deadline = Date.now() + timeoutMs;
++    while (groupExists() && Date.now() < deadline) {
++      await new Promise((resolve) => setTimeout(resolve, 100));
++    }
++    return !groupExists();
++  };
++
++  if (!signalGroup("SIGTERM")) return;
++  if (await waitForGroupExit(5_000)) return;
++  signalGroup("SIGKILL");
++  if (!(await waitForGroupExit(1_000))) {
++    throw new Error(`Process group ${child.pid} did not exit after SIGKILL`);
++  }
+ }
+ 
+ async function insertActiveOperatorCredential({
+@@ -439,6 +507,44 @@ export function sqlLiteral(value) {
+   return `'${String(value).replace(/'/g, "''")}'`;
+ }
+ 
++function findTestOrganizationId(orgName) {
++  return psqlQuery(
++    `SELECT id FROM public.organizations
++     WHERE name = ${sqlLiteral(orgName)} AND is_deleted = false
++     LIMIT 1`,
++  );
++}
++
++function insertTestOrganization(orgName) {
++  const adminUserId = psqlQuery(
++    "SELECT id FROM auth.users WHERE email = 'admin' LIMIT 1",
++  );
++  if (!adminUserId) {
++    throw new Error("Cannot seed a test organization without the bootstrap admin user");
++  }
++  return psqlQuery(
++    `WITH inserted AS (
++       INSERT INTO public.organizations (
++         name, currency_code, timezone, settings_json, created_by, updated_by
++       ) VALUES (
++         ${sqlLiteral(orgName)}, 'EGP', 'UTC', '{}'::jsonb,
++         ${sqlLiteral(adminUserId)}::uuid, ${sqlLiteral(adminUserId)}::uuid
++       ) RETURNING id
++     )
++     SELECT id FROM inserted`,
++  );
++}
++
++function findTestBranchId(orgId, branchCode) {
++  return psqlQuery(
++    `SELECT id FROM public.branches
++     WHERE organization_id = ${sqlLiteral(orgId)}::uuid
++       AND code = ${sqlLiteral(branchCode)}
++       AND is_deleted = false
++     LIMIT 1`,
++  );
++}
++
+ function seedStaffMembership(orgId, username, role) {
+   psqlQuery(`
+     INSERT INTO ai_internal.membership (user_id, organization_id, role)
+@@ -470,27 +576,53 @@ async function createOrgClinic({ prefix, orgName, branchCode, branchName }) {
+ 
+   const bootstrap = await signIn("admin", "admin");
+ 
+-  const orgResult = await rpc(bootstrap, "bootstrap_create_organization", {
+-    p_name: orgName,
+-    p_settings_json: {},
+-    p_currency_code: "EGP",
+-    p_timezone: "UTC",
+-  });
+-  if (!orgResult?.success) {
+-    throw new Error(`bootstrap_create_organization failed for ${prefix}`);
++  let orgId = findTestOrganizationId(orgName);
++  if (!orgId) {
++    const orgResult = await rpc(bootstrap, "bootstrap_create_organization", {
++      p_name: orgName,
++      p_settings_json: {},
++      p_currency_code: "EGP",
++      p_timezone: "UTC",
++    });
++    if (orgResult?.success) {
++      orgId = orgResult.data.organization_id;
++    } else if (orgResult?.error_code === "ORG_ALREADY_EXISTS") {
++      // Bootstrap is intentionally single-organization per installation. The
++      // cross-tenant E2E fixture needs a second organization, so seed it through
++      // the privileged local test database connection.
++      orgId = insertTestOrganization(orgName);
++    } else {
++      throw new Error(
++        `bootstrap_create_organization failed for ${prefix}: ${orgResult?.error_code ?? "unknown"} ${orgResult?.error_message ?? ""}`,
++      );
++    }
+   }
+-  const orgId = orgResult.data.organization_id;
+-  await bootstrap.auth.refreshSession();
+ 
+-  const branchResult = await rpc(bootstrap, "bootstrap_create_branch", {
+-    p_organization_id: orgId,
+-    p_name: branchName,
+-    p_code: branchCode,
+-  });
+-  if (!branchResult?.success) {
+-    throw new Error(`bootstrap_create_branch failed for ${prefix}`);
++  let branchId = findTestBranchId(orgId, branchCode);
++  if (!branchId) {
++    const branchResult = await rpc(bootstrap, "bootstrap_create_branch", {
++      p_organization_id: orgId,
++      p_name: branchName,
++      p_code: branchCode,
++    });
++    if (!branchResult?.success) {
++      throw new Error(
++        `bootstrap_create_branch failed for ${prefix}: ${branchResult?.error_code ?? "unknown"} ${branchResult?.error_message ?? ""}`,
++      );
++    }
++    branchId = branchResult.data.branch_id;
++  }
++
++  const activeOrganization = await rpc(
++    bootstrap,
++    "set_active_organization",
++    { p_organization_id: orgId },
++  );
++  if (!activeOrganization?.success) {
++    throw new Error(
++      `set_active_organization failed for ${prefix}: ${activeOrganization?.error_code ?? "unknown"}`,
++    );
+   }
+-  const branchId = branchResult.data.branch_id;
+   await bootstrap.auth.refreshSession();
+ 
+   const createStaff = async (username, password, fullName, role) => {
+@@ -566,14 +698,16 @@ function spawnAboProcess(issuerKeys) {
+       "9231",
+       "--persist-to",
+       ABO_PERSIST,
++      "--var",
++      `PAYMOB_BASE_URL:${PAYMOB_URL}`,
++      "--var",
++      `ISSUER_KEYS:${JSON.stringify(issuerKeys)}`,
++      "--var",
++      `ABO_GRANT_KEY:${JSON.stringify(ABO_GRANT_KEY)}`,
++      "--var",
++      `PLATFORM_PUBLIC_KEYS:${JSON.stringify(PLATFORM_PUBLIC_KEYS)}`,
+       "--test-scheduled",
+     ],
+-    {
+-      PAYMOB_BASE_URL: PAYMOB_URL,
+-      ISSUER_KEYS: JSON.stringify(issuerKeys),
+-      ABO_GRANT_KEY: JSON.stringify(ABO_GRANT_KEY),
+-      PLATFORM_PUBLIC_KEYS: JSON.stringify(PLATFORM_PUBLIC_KEYS),
+-    },
+   );
+ }
+ 
+@@ -583,6 +717,8 @@ export async function startStack() {
+   await mkdir(HARNESS_PERSIST, { recursive: true });
+   await mkdir(REGISTRY_DIR, { recursive: true });
+   await mkdir(ABO_PERSIST, { recursive: true });
++  await mkdir(ABO_D1_SEED_PERSIST, { recursive: true });
++  await mkdir(PAYMOB_PERSIST, { recursive: true });
+   await preparePlatformD1({ platformConfig: PLATFORM_CONFIG });
+ 
+   const accessTeam = await createAccessTeam({
+@@ -657,21 +793,31 @@ export async function startStack() {
+     PAYMOB_WORKER,
+     "--port",
+     "8789",
++    "--persist-to",
++    PAYMOB_PERSIST,
+     "--ip",
+     "127.0.0.1",
+     "--inspector-port",
+     "9230",
+   ]);
+-  await waitForHttp(`${PAYMOB_URL}/`, { accept: [200, 404] });
++  await waitForHttp(`${PAYMOB_URL}/`, {
++    accept: [200, 404],
++    child: paymob,
++    childLabel: "Paymob worker",
++  });
+ 
+-  await applyAboMigrations();
++  await prepareAboD1({ aboConfig: ABO_CONFIG });
+   const abo = spawnAboProcess(issuerKeys);
+   await waitForHttp(`${ABO_URL}/v1/offers`, {
+     accept: [401, 403, 400],
++    headers: { Host: BILLING_HOST },
++    child: abo,
++    childLabel: "ABO worker",
+   });
+ 
+   const clinics = await createTwoOrgClinics();
+ 
++  let stackStopped = false;
+   const stackRef = {
+     accessTeam,
+     authenticator,
+@@ -685,18 +831,31 @@ export async function startStack() {
+     signingKey,
+     clinics,
+     async stop() {
++      if (stackStopped) return;
+       await stopChild(paymob);
+-      await stopChild(abo);
++      await stopChild(stackRef.abo);
+       await harnessWorker.dispose();
+       await platformWorker.dispose();
+       await mockFetch.close();
++      stackStopped = true;
+     },
+     async restartAbo(nextIssuerKeys = issuerKeys) {
++      if (stackStopped) {
++        throw new Error("Cannot restart ABO after the P7.2 stack has stopped");
++      }
+       await stopChild(stackRef.abo);
+       const restarted = spawnAboProcess(nextIssuerKeys);
+-      await waitForHttp(`${ABO_URL}/v1/offers`, {
+-        accept: [401, 403, 400],
+-      });
++      try {
++        await waitForHttp(`${ABO_URL}/v1/offers`, {
++          accept: [401, 403, 400],
++          headers: { Host: BILLING_HOST },
++          child: restarted,
++          childLabel: "restarted ABO worker",
++        });
++      } catch (error) {
++        await stopChild(restarted);
++        throw error;
++      }
+       stackRef.abo = restarted;
+       stackRef.issuerKeys = nextIssuerKeys;
+       return restarted;
+@@ -846,6 +1005,60 @@ export function ensurePlatformGrantPrerequisites(orgId, installationId) {
+   `);
+ }
+ 
++export async function ensurePlatformActiveCoverage(
++  stackRef,
++  orgId,
++  installationId,
++) {
++  const paymentRef = crypto.randomUUID().replace(/-/g, "");
++  const privateKey = await crypto.subtle.importKey(
++    "pkcs8",
++    Buffer.from(ABO_GRANT_KEY.pkcs8, "base64url"),
++    { name: "Ed25519" },
++    false,
++    ["sign"],
++  );
++  const envelope = {
++    contract_version: CHANNEL_VERSIONS.vendorEntrypoint,
++    grant_id: await grantIdPaid(paymentRef),
++    org_id: orgId,
++    kind: "term",
++    placement: "queue",
++    source: { kind: "paid", ref: paymentRef },
++    plan: { plan_id: PLAN_ID, plan_version: PLAN_VERSION },
++    duration: { unit: "month", count: 1 },
++    allowance_credits: ALLOWANCE_CREDITS,
++    grace: { days: 7, cap_rule: "proportional" },
++    paid_at: new Date().toISOString(),
++    evidence: {
++      content_sha256: await sha256Hex(new TextEncoder().encode(paymentRef)),
++      approvals: [{ credential_id: stackRef.credentialId, assertion: "stub" }],
++    },
++  };
++  const signature = await signCompactJws({
++    payload: canonicalize(envelope),
++    privateKey,
++    kid: ABO_GRANT_KEY.kid,
++  });
++  const response = await fetch(`${HARNESS_URL}/vendor-call`, {
++    method: "POST",
++    headers: { "content-type": "application/json" },
++    body: JSON.stringify({
++      method: "grant",
++      args: {
++        contract_version: CHANNEL_VERSIONS.vendorEntrypoint,
++        abo_kid: ABO_GRANT_KEY.kid,
++        abo_signature: signature,
++        envelope_b64: Buffer.from(canonicalize(envelope)).toString("base64"),
++      },
++    }),
++  });
++  const result = await response.json();
++  if (response.status !== 200 || result.result !== "applied") {
++    throw new Error(`Could not seed Org AI coverage: ${JSON.stringify(result)}`);
++  }
++}
++
+ export async function putBillingContact(billingToken) {
+   const response = await billingFetch("/v1/billing-contact", {
+     method: "PUT",
+diff --git a/e2e/fullstack/test/p7-2-untrusted-callers.test.mjs b/e2e/fullstack/test/p7-2-untrusted-callers.test.mjs
+index 791cae15..c4402376 100644
+--- a/e2e/fullstack/test/p7-2-untrusted-callers.test.mjs
++++ b/e2e/fullstack/test/p7-2-untrusted-callers.test.mjs
+@@ -7,6 +7,7 @@ import {
+   billingFetch,
+   countAboTable,
+   countAboWork,
++  ensurePlatformActiveCoverage,
+   ensurePlatformGrantPrerequisites,
+   issueFeedToken,
+   openCheckout,
+@@ -223,6 +224,15 @@ test("E2E-P7.2-03", async () => {
+   await putBillingContact(billingTokenA);
+   const checkoutA = await openCheckout(billingTokenA, "p72-org-a-checkout");
+ 
++  // Keep the checkout under test open, but give Org A an independent paid
++  // grant so its later request reaches tenant-context validation instead of
++  // being rejected first for missing coverage.
++  await ensurePlatformActiveCoverage(
++    stack,
++    orgA.orgId,
++    orgA.installationId,
++  );
++
+   const coverageBBefore = readClinicAiCoverage(orgB.orgId);
+   const paymentCountBBefore = countAboTable("payment");
+   const checkoutBStatusBefore = queryAboD1One(
+@@ -335,7 +345,18 @@ test("E2E-P7.2-03", async () => {
+     policy_version: "1",
+     idempotency_key: `p72-cross-tenant-${crypto.randomUUID()}`,
+     trace_id: crypto.randomUUID(),
+-    input: { visit_id: orgB.branchId },
++    // Supply a schema-valid Org B visit context so validation reaches the
++    // tenant binding check. A missing required context key would only prove
++    // the request-shape guard, not cross-tenant isolation.
++    context: {
++      org: orgB.orgId,
++      branch: orgB.branchId,
++      "visit.chief_complaint@v1": {
++        visit_id: orgB.branchId,
++        complaint: "Persistent headache for three days.",
++        recorded_at: "2026-07-31T12:00:00Z",
++      },
++    },
+   };
+   const request = await platformFetch("/v1/requests", {
+     method: "POST",
+@@ -374,13 +395,13 @@ test("E2E-P7.2-03", async () => {
+   assert.deepEqual(checkoutBStatusAfter, checkoutBStatusBefore);
+   assert.ok(
+     queryAboD1One(
+-      `SELECT checkout_id FROM checkout WHERE checkout_id = ${sqlLiteral(checkoutA.checkoutId)} AND org = ${sqlLiteral(orgA.orgId)}`,
++      `SELECT checkout_id FROM checkout WHERE checkout_id = ${sqlLiteral(checkoutA.checkoutId)} AND org_id = ${sqlLiteral(orgA.orgId)}`,
+     ),
+     "org A checkout stays under org A",
+   );
+   assert.equal(
+     queryAboD1One(
+-      `SELECT checkout_id FROM checkout WHERE checkout_id = ${sqlLiteral(checkoutA.checkoutId)} AND org = ${sqlLiteral(orgB.orgId)}`,
++      `SELECT checkout_id FROM checkout WHERE checkout_id = ${sqlLiteral(checkoutA.checkoutId)} AND org_id = ${sqlLiteral(orgB.orgId)}`,
+     ),
+     null,
+     "org A open checkout must not lock org B resources",
+diff --git a/e2e/fullstack/test/wrangler-persist.mjs b/e2e/fullstack/test/wrangler-persist.mjs
+index 74cc0d99..42c1ffa7 100644
+--- a/e2e/fullstack/test/wrangler-persist.mjs
++++ b/e2e/fullstack/test/wrangler-persist.mjs
+@@ -1,5 +1,5 @@
+ import { spawnSync } from "node:child_process";
+-import { cpSync, existsSync, mkdirSync, readdirSync } from "node:fs";
++import { cpSync, existsSync, mkdirSync, readdirSync, rmSync } from "node:fs";
+ import path from "node:path";
+ import { DatabaseSync } from "node:sqlite";
+ import { fileURLToPath } from "node:url";
+@@ -11,6 +11,10 @@ const FULLSTACK_ROOT = path.resolve(
+ );
+ 
+ export const REPO_ROOT = path.resolve(FULLSTACK_ROOT, "../..");
++const WRANGLER_CLI = path.join(
++  FULLSTACK_ROOT,
++  "node_modules/wrangler/bin/wrangler.js",
++);
+ 
+ /** Isolated dirs for local wrangler/workerd (wiped by test harness before e2e runs). */
+ export const PLATFORM_PERSIST = path.join(FULLSTACK_ROOT, ".wrangler/platform");
+@@ -19,6 +23,8 @@ export const D1_SEED_PERSIST = path.join(FULLSTACK_ROOT, ".wrangler/d1-seed");
+ export const HARNESS_PERSIST = path.join(FULLSTACK_ROOT, ".wrangler/harness");
+ export const REGISTRY_DIR = path.join(FULLSTACK_ROOT, ".wrangler/registry");
+ export const ABO_PERSIST = path.join(FULLSTACK_ROOT, ".wrangler/abo");
++export const ABO_D1_SEED_PERSIST = path.join(FULLSTACK_ROOT, ".wrangler/abo-d1-seed");
++export const PAYMOB_PERSIST = path.join(FULLSTACK_ROOT, ".wrangler/paymob");
+ 
+ const D1_OBJECT_DIR = "v3/d1/miniflare-D1DatabaseObject";
+ 
+@@ -32,7 +38,7 @@ export function wranglerLocalEnv(extra = {}) {
+ }
+ 
+ export function runWranglerSync(args, { cwd = REPO_ROOT, env = {} } = {}) {
+-  const result = spawnSync("npx", ["wrangler", ...args], {
++  const result = spawnSync(process.execPath, [WRANGLER_CLI, ...args], {
+     cwd,
+     env: wranglerLocalEnv(env),
+     encoding: "utf8",
+@@ -56,7 +62,20 @@ export function copyD1SqliteTree(fromPersist, toPersist) {
+     if (!name.endsWith(".sqlite") || name.startsWith("metadata")) {
+       continue;
+     }
+-    cpSync(path.join(fromDir, name), path.join(toDir, name));
++    const sourcePath = path.join(fromDir, name);
++    const sourceDb = new DatabaseSync(sourcePath);
++    try {
++      const checkpoint = sourceDb.prepare("PRAGMA wal_checkpoint(TRUNCATE)").get();
++      if (checkpoint?.busy !== 0) {
++        throw new Error(`Could not checkpoint D1 seed ${sourcePath} before copying`);
++      }
++    } finally {
++      sourceDb.close();
++    }
++    const targetPath = path.join(toDir, name);
++    rmSync(`${targetPath}-wal`, { force: true });
++    rmSync(`${targetPath}-shm`, { force: true });
++    cpSync(sourcePath, targetPath);
+   }
+ }
+ 
+@@ -78,6 +97,8 @@ export async function preparePlatformD1({
+   if (!platformConfig) {
+     throw new Error("preparePlatformD1 requires platformConfig");
+   }
++  rmSync(D1_SEED_PERSIST, { recursive: true, force: true });
++  mkdirSync(D1_SEED_PERSIST, { recursive: true });
+   mkdirSync(REGISTRY_DIR, { recursive: true });
+   runWranglerSync([
+     "d1",
+@@ -123,34 +144,33 @@ export function platformD1DatabaseFile() {
+   throw new Error(`No platform D1 sqlite under ${dir}`);
+ }
+ 
+-/**
+- * Mutate platform D1 before any startWorker (uses seed persist + copy).
+- * Never run `wrangler d1 execute` against PLATFORM_PERSIST while workers use it.
+- */
+-export function execPlatformD1Sql(
+-  sql,
+-  {
+-    platformConfig,
+-    env = "development",
+-    database = "ai-platform-development",
+-  } = {},
+-) {
+-  const config = platformConfig ?? path.join(REPO_ROOT, "ai-platform/wrangler.toml");
++/** Apply fixture SQL directly to the runtime D1 file. */
++export function execPlatformD1Sql(sql) {
++  const db = new DatabaseSync(platformD1DatabaseFile());
++  try {
++    db.exec(sql);
++  } finally {
++    db.close();
++  }
++}
++
++/** Apply ABO migrations in an isolated CLI persist, then copy its app D1 DB. */
++export async function prepareAboD1({
++  aboConfig,
++  env = "development",
++  database = "abo-development",
++} = {}) {
++  if (!aboConfig) throw new Error("prepareAboD1 requires aboConfig");
++  rmSync(ABO_PERSIST, { recursive: true, force: true });
++  rmSync(ABO_D1_SEED_PERSIST, { recursive: true, force: true });
++  mkdirSync(ABO_PERSIST, { recursive: true });
++  mkdirSync(ABO_D1_SEED_PERSIST, { recursive: true });
++  mkdirSync(REGISTRY_DIR, { recursive: true });
+   runWranglerSync([
+-    "d1",
+-    "execute",
+-    database,
+-    "--local",
+-    "--env",
+-    env,
+-    "--config",
+-    config,
+-    "--persist-to",
+-    D1_SEED_PERSIST,
+-    "--command",
+-    sql,
++    "d1", "migrations", "apply", database, "--local", "--env", env,
++    "--config", aboConfig, "--persist-to", ABO_D1_SEED_PERSIST,
+   ]);
+-  copyD1SqliteTree(D1_SEED_PERSIST, PLATFORM_PERSIST);
++  copyD1SqliteTree(ABO_D1_SEED_PERSIST, ABO_PERSIST);
+ }
+ 
+ export function queryPlatformD1One(sql) {
+diff --git a/packages/vendor-contracts/src/token-claims.ts b/packages/vendor-contracts/src/token-claims.ts
+index 7e9ab019..ffa01361 100644
+--- a/packages/vendor-contracts/src/token-claims.ts
++++ b/packages/vendor-contracts/src/token-claims.ts
+@@ -21,7 +21,12 @@ function base64UrlDecode(segment: string): Uint8Array | null {
+   const padded =
+     base64 + "=".repeat((4 - (base64.length % 4 || 4)) % 4);
+   try {
+-    return Uint8Array.from(Buffer.from(padded, "base64"));
++    const binary = atob(padded);
++    const bytes = new Uint8Array(binary.length);
++    for (let index = 0; index < binary.length; index += 1) {
++      bytes[index] = binary.charCodeAt(index);
++    }
++    return bytes;
+   } catch {
+     return null;
+   }
