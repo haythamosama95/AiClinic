@@ -1090,6 +1090,38 @@ export function ensurePlatformGrantPrerequisites(orgId, installationId) {
   `);
 }
 
+async function waitForPlatformCoverageProjection(
+  orgId,
+  installationId,
+  { timeoutMs = 30_000, pollIntervalMs = 250 } = {},
+) {
+  const deadline = Date.now() + timeoutMs;
+  let lastState = null;
+  while (Date.now() < deadline) {
+    lastState = queryPlatformD1Row(`
+      SELECT
+        EXISTS (
+          SELECT 1 FROM coverage_event
+          WHERE org_id = ${sqlLiteral(orgId)}
+            AND installation_id = ${sqlLiteral(installationId)}
+        ) AS event_visible,
+        EXISTS (
+          SELECT 1 FROM coverage_mirror
+          WHERE org_id = ${sqlLiteral(orgId)}
+            AND installation_id = ${sqlLiteral(installationId)}
+        ) AS mirror_visible
+    `);
+    if (Number(lastState?.event_visible) === 1 && Number(lastState?.mirror_visible) === 1) {
+      return;
+    }
+    await new Promise((resolve) => setTimeout(resolve, pollIntervalMs));
+  }
+  throw new Error(
+    `Timed out after ${timeoutMs}ms waiting for platform coverage projection ` +
+      `(org=${orgId}, installation=${installationId}, state=${JSON.stringify(lastState)})`,
+  );
+}
+
 export async function ensurePlatformActiveCoverage(
   stackRef,
   orgId,
@@ -1142,6 +1174,10 @@ export async function ensurePlatformActiveCoverage(
   if (response.status !== 200 || result.result !== "applied") {
     throw new Error(`Could not seed Org AI coverage: ${JSON.stringify(result)}`);
   }
+  // Grant application schedules the Durable Object outbox alarm. Wait until
+  // both the feed event and the request-serving mirror have been published to
+  // platform D1 before dependent feed pulls or organization requests proceed.
+  await waitForPlatformCoverageProjection(orgId, installationId);
 }
 
 export async function putBillingContact(billingToken) {

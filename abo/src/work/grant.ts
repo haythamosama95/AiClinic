@@ -72,6 +72,15 @@ type CheckoutRow = {
   grace_cap_rule: string;
 };
 
+type StoredGrantRequest = {
+  grant_id: string;
+  org_id: string;
+  source_kind: string;
+  source_ref: string;
+  envelope: string;
+  envelope_sha256: string;
+};
+
 export type GrantEnv = ClockEnv &
   AlertEnv & {
     DB: D1Database;
@@ -376,18 +385,6 @@ async function paymentFactSha256(
   return row?.row_sha256 ?? null;
 }
 
-async function grantRequestExists(
-  env: GrantEnv,
-  grantId: string,
-): Promise<boolean> {
-  const row = await env.DB.prepare(
-    `SELECT 1 FROM grant_request WHERE grant_id = ?`,
-  )
-    .bind(grantId)
-    .first();
-  return row !== null;
-}
-
 async function paymentReleaseExists(
   env: GrantEnv,
   paymentId: string,
@@ -559,6 +556,65 @@ function insertGrantRequestIfAbsent(
   ).bind(grantId, orgId, paymentId, envelopeText, envelopeSha256);
 }
 
+async function loadStoredGrantRequest(
+  env: GrantEnv,
+  grantId: string,
+): Promise<StoredGrantRequest | null> {
+  return env.DB.prepare(
+    `SELECT grant_id, org_id, source_kind, source_ref, envelope, envelope_sha256
+     FROM grant_request WHERE grant_id = ?`,
+  )
+    .bind(grantId)
+    .first<StoredGrantRequest>();
+}
+
+async function persistGrantRequest(
+  env: GrantEnv,
+  input: {
+    grantId: string;
+    orgId: string;
+    paymentId: string;
+    envelopeText: string;
+    envelopeSha256: string;
+    at: string;
+  },
+): Promise<StoredGrantRequest> {
+  const before = await loadStoredGrantRequest(env, input.grantId);
+  if (before !== null) {
+    return before;
+  }
+
+  const requestCanonical = grantRequestCanonical({
+    grantId: input.grantId,
+    orgId: input.orgId,
+    paymentId: input.paymentId,
+    envelopeText: input.envelopeText,
+    envelopeSha256: input.envelopeSha256,
+  });
+  const requestBytes = canonicalize(requestCanonical);
+  const requestJson = new TextDecoder().decode(requestBytes);
+  const requestSha256 = await sha256Hex(requestBytes);
+  await env.DB.batch([
+    insertGrantRequestIfAbsent(
+      env,
+      input.grantId,
+      input.orgId,
+      input.paymentId,
+      input.envelopeText,
+      input.envelopeSha256,
+    ),
+    env.DB.prepare(
+      `INSERT INTO fact_log ("table", key, row_sha256, row_json, created_at)
+       SELECT 'grant_request', ?, ?, ?, ? WHERE changes() > 0`,
+    ).bind(input.grantId, requestSha256, requestJson, input.at),
+  ]);
+  const stored = await loadStoredGrantRequest(env, input.grantId);
+  if (stored === null) {
+    throw new Error("grant_request_persist_failed");
+  }
+  return stored;
+}
+
 async function maybeRaiseAl04(
   env: GrantEnv,
   workId: string,
@@ -647,13 +703,53 @@ async function processGrantWork(env: GrantEnv, work: WorkRow): Promise<void> {
     return;
   }
 
-  const { envelope, envelopeBytes, grantId } = await buildGrantEnvelope(
+  const candidate = await buildGrantEnvelope(
     payment,
     checkout,
     contentSha256,
   );
-  const envelopeText = new TextDecoder().decode(envelopeBytes);
+  const { grantId } = candidate;
+  const candidateText = new TextDecoder().decode(candidate.envelopeBytes);
+  const candidateSha256 = await sha256Hex(candidate.envelopeBytes);
+  const nowIso = await clockNowIso(env);
+  let storedRequest: StoredGrantRequest;
+  try {
+    storedRequest = await persistGrantRequest(env, {
+      grantId,
+      orgId: payment.org_id,
+      paymentId: payment.payment_id,
+      envelopeText: candidateText,
+      envelopeSha256: candidateSha256,
+      at: nowIso,
+    });
+  } catch {
+    await handleTransientFailure(env, work, leaseUntil);
+    return;
+  }
+  let envelope: Record<string, unknown>;
+  try {
+    envelope = JSON.parse(storedRequest.envelope) as Record<string, unknown>;
+  } catch {
+    await releaseLeaseRetry(env, work, leaseUntil, "invalid_stored_grant_request");
+    return;
+  }
+  if (
+    storedRequest.grant_id !== grantId ||
+    storedRequest.org_id !== payment.org_id ||
+    storedRequest.source_kind !== "paid" ||
+    storedRequest.source_ref !== payment.payment_id ||
+    typeof envelope.contract_version !== "number"
+  ) {
+    await releaseLeaseRetry(env, work, leaseUntil, "invalid_stored_grant_request");
+    return;
+  }
+  const envelopeText = storedRequest.envelope;
+  const envelopeBytes = new TextEncoder().encode(envelopeText);
   const envelopeSha256 = await sha256Hex(envelopeBytes);
+  if (envelopeSha256 !== storedRequest.envelope_sha256) {
+    await releaseLeaseRetry(env, work, leaseUntil, "invalid_stored_grant_request");
+    return;
+  }
   const aboSignature = await signCompactJws({
     payload: envelopeBytes,
     privateKey,
@@ -663,7 +759,7 @@ async function processGrantWork(env: GrantEnv, work: WorkRow): Promise<void> {
   let platformResult: Record<string, unknown>;
   try {
     platformResult = await env.PLATFORM.grant({
-      contract_version: CHANNEL_VERSIONS.vendorEntrypoint,
+      contract_version: envelope.contract_version,
       abo_kid: aboKey.kid,
       abo_signature: aboSignature,
       envelope_b64: envelopeB64(envelopeBytes),
@@ -674,8 +770,6 @@ async function processGrantWork(env: GrantEnv, work: WorkRow): Promise<void> {
   }
 
   const result = platformResult.result;
-  const nowIso = await clockNowIso(env);
-
   if (result === "transient") {
     await handleTransientFailure(env, work, leaseUntil);
     return;
@@ -694,26 +788,13 @@ async function processGrantWork(env: GrantEnv, work: WorkRow): Promise<void> {
     const receiptRecord = receipt as Record<string, unknown>;
     const verified = await verifyGrantReceipt(env, receiptRecord);
     if (!verified) {
-      const statements: D1PreparedStatement[] = [];
-      if (!(await grantRequestExists(env, grantId))) {
-        statements.push(
-          insertGrantRequestIfAbsent(
-            env,
-            grantId,
-            payment.org_id,
-            payment.payment_id,
-            envelopeText,
-            envelopeSha256,
-          ),
-        );
-      }
-      statements.push(
+      const statements: D1PreparedStatement[] = [
         env.DB.prepare(
           `UPDATE work
            SET state = 'parked', lease_until = NULL, last_error = 'receipt_unverified'
            WHERE work_id = ? AND lease_until = ?`,
         ).bind(work.work_id, leaseUntil),
-      );
+      )];
       await env.DB.batch(statements);
       await raiseAlert(env, "AL-07", `AL-07:${work.work_id}`, work.work_id);
       return;
@@ -724,13 +805,6 @@ async function processGrantWork(env: GrantEnv, work: WorkRow): Promise<void> {
           (value): value is string => typeof value === "string",
         )
       : [];
-    const requestCanonical = grantRequestCanonical({
-      grantId,
-      orgId: payment.org_id,
-      paymentId: payment.payment_id,
-      envelopeText,
-      envelopeSha256,
-    });
     const outcomeCanonical = grantOutcomeCanonical({
       grantId,
       result: result as GrantResult,
@@ -741,14 +815,6 @@ async function processGrantWork(env: GrantEnv, work: WorkRow): Promise<void> {
       at: nowIso,
     });
     const statements: D1PreparedStatement[] = [
-      insertGrantRequestIfAbsent(
-        env,
-        grantId,
-        payment.org_id,
-        payment.payment_id,
-        envelopeText,
-        envelopeSha256,
-      ),
       env.DB.prepare(
         `INSERT INTO grant_outcome (
            grant_id, result, abo_kid, abo_signature, receipt, term_ids, at
@@ -762,7 +828,6 @@ async function processGrantWork(env: GrantEnv, work: WorkRow): Promise<void> {
         JSON.stringify(termIds),
         nowIso,
       ),
-      await factLogStatement(env, "grant_request", grantId, requestCanonical, nowIso),
       await factLogStatement(env, "grant_outcome", grantId, outcomeCanonical, nowIso),
       env.DB.prepare(
         `UPDATE work SET state = 'done', lease_until = NULL, last_error = NULL
@@ -784,13 +849,6 @@ async function processGrantWork(env: GrantEnv, work: WorkRow): Promise<void> {
   }
 
   if (result === "rejected" && platformResult.code === "voided") {
-    const requestCanonical = grantRequestCanonical({
-      grantId,
-      orgId: payment.org_id,
-      paymentId: payment.payment_id,
-      envelopeText,
-      envelopeSha256,
-    });
     const outcomeCanonical = grantOutcomeCanonical({
       grantId,
       result: "rejected",
@@ -801,20 +859,11 @@ async function processGrantWork(env: GrantEnv, work: WorkRow): Promise<void> {
       at: nowIso,
     });
     const statements: D1PreparedStatement[] = [
-      insertGrantRequestIfAbsent(
-        env,
-        grantId,
-        payment.org_id,
-        payment.payment_id,
-        envelopeText,
-        envelopeSha256,
-      ),
       env.DB.prepare(
         `INSERT INTO grant_outcome (
            grant_id, result, abo_kid, abo_signature, receipt, term_ids, at
          ) VALUES (?, ?, NULL, NULL, NULL, NULL, ?)`,
       ).bind(grantId, "rejected", nowIso),
-      await factLogStatement(env, "grant_request", grantId, requestCanonical, nowIso),
       await factLogStatement(env, "grant_outcome", grantId, outcomeCanonical, nowIso),
       env.DB.prepare(
         `UPDATE work SET state = 'done', lease_until = NULL, last_error = NULL
@@ -835,13 +884,6 @@ async function processGrantWork(env: GrantEnv, work: WorkRow): Promise<void> {
   }
 
   if (result === "conflict" || result === "rejected") {
-    const requestCanonical = grantRequestCanonical({
-      grantId,
-      orgId: payment.org_id,
-      paymentId: payment.payment_id,
-      envelopeText,
-      envelopeSha256,
-    });
     const outcomeCanonical = grantOutcomeCanonical({
       grantId,
       result: result as GrantResult,
@@ -852,20 +894,11 @@ async function processGrantWork(env: GrantEnv, work: WorkRow): Promise<void> {
       at: nowIso,
     });
     const statements: D1PreparedStatement[] = [
-      insertGrantRequestIfAbsent(
-        env,
-        grantId,
-        payment.org_id,
-        payment.payment_id,
-        envelopeText,
-        envelopeSha256,
-      ),
       env.DB.prepare(
         `INSERT INTO grant_outcome (
            grant_id, result, abo_kid, abo_signature, receipt, term_ids, at
          ) VALUES (?, ?, NULL, NULL, NULL, NULL, ?)`,
       ).bind(grantId, result, nowIso),
-      await factLogStatement(env, "grant_request", grantId, requestCanonical, nowIso),
       await factLogStatement(env, "grant_outcome", grantId, outcomeCanonical, nowIso),
       env.DB.prepare(
         `UPDATE work

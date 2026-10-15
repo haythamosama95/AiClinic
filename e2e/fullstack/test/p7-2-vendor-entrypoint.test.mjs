@@ -274,6 +274,16 @@ async function opsFetch(pathname, init = {}) {
   });
 }
 
+async function responseDiagnostic(response) {
+  let body;
+  try {
+    body = await response.clone().text();
+  } catch (error) {
+    body = `<unable to read cloned response body: ${error.message}>`;
+  }
+  return `HTTP ${response.status} ${response.statusText}; body: ${body}`;
+}
+
 function seedParkedGrantWork(workId) {
   const now = new Date().toISOString();
   runAboD1Command(
@@ -336,8 +346,8 @@ test("E2E-P7.2-05", async () => {
   await triggerAboScheduled("0 6 * * *");
   assert.equal(
     countAboFindings("grant_without_payment"),
-    grantWithoutPaymentBefore + 1,
-    "reconciliation should raise grant_without_payment for the within-bound grants",
+    grantWithoutPaymentBefore + 4,
+    "reconciliation should raise one grant_without_payment finding for each of the four distinct within-bound paid grants",
   );
 
   const accessJwt = await mintAccessJwt(stack.accessTeam);
@@ -472,7 +482,7 @@ test("E2E-P7.2-06", async () => {
     method: "POST",
     headers: { "Cf-Access-Jwt-Assertion": accessJwt },
   });
-  assert.equal(cancel.status, 200);
+  assert.equal(cancel.status, 200, await responseDiagnostic(cancel));
 
   const workId = crypto.randomUUID();
   seedParkedGrantWork(workId);
@@ -480,7 +490,7 @@ test("E2E-P7.2-06", async () => {
     method: "POST",
     headers: { "Cf-Access-Jwt-Assertion": accessJwt },
   });
-  assert.equal(retry.status, 200);
+  assert.equal(retry.status, 200, await responseDiagnostic(retry));
 
   const complimentaryEnvelope = await buildComplimentaryEnvelope({
     orgId,

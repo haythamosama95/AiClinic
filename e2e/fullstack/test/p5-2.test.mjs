@@ -1408,34 +1408,70 @@ async function postPaymobProcessedCallback(checkoutReference) {
   assert.equal(response.status, 200, "paymob notify should be accepted");
 }
 
-function runSupabaseCommand(action, args) {
+async function runSupabaseCommand(action, args, { timeoutMs = 120_000 } = {}) {
   const startedAt = Date.now();
-  console.log(`[p5-2] supabase-${action}=started args=${args.join(" ")}`);
-  const result = spawnSync("supabase", args, {
+  console.log(`[p5-2] supabase-${action}=started args=${args.join(" ")} timeout_ms=${timeoutMs}`);
+  const child = spawn("supabase", args, {
     cwd: path.join(REPO_ROOT, "backend"),
-    encoding: "utf8",
-    timeout: 120_000,
+    stdio: ["ignore", "pipe", "pipe"],
   });
-  const elapsedMs = Date.now() - startedAt;
-  if (result.error || result.status !== 0) {
-    const detail =
-      result.error?.message ??
-      (result.stderr || result.stdout || `exit ${result.status}`);
-    console.error(
-      `[p5-2] supabase-${action}=failed elapsed_ms=${elapsedMs}: ${detail}`,
-    );
+  let outputTail = "";
+  const rememberOutput = (stream, chunk) => {
+    const safe = safeDiagnosticText(chunk.toString());
+    outputTail = tail(`${outputTail}${safe}`);
+    for (const line of safe.split(/(?<=\n)/)) {
+      if (line.trim()) console.log(`[p5-2] supabase-${action} ${stream}: ${line.trimEnd()}`);
+    }
+  };
+  child.stdout.on("data", (chunk) => rememberOutput("stdout", chunk));
+  child.stderr.on("data", (chunk) => rememberOutput("stderr", chunk));
+
+  const progressTimer = setInterval(() => {
+    const elapsedMs = Date.now() - startedAt;
+    console.log(`[p5-2] supabase-${action}=running elapsed_ms=${elapsedMs} timeout_ms=${timeoutMs}`);
+  }, 10_000);
+  progressTimer.unref?.();
+
+  let timeoutTimer;
+  try {
+    const result = await Promise.race([
+      new Promise((resolve, reject) => {
+        child.once("error", reject);
+        child.once("close", (code, signal) => resolve({ code, signal }));
+      }),
+      new Promise((_, reject) => {
+        timeoutTimer = setTimeout(() => {
+          child.kill("SIGTERM");
+          const forceKillTimer = setTimeout(() => child.kill("SIGKILL"), 5_000);
+          forceKillTimer.unref?.();
+          reject(new Error(`timed out after ${timeoutMs}ms`));
+        }, timeoutMs);
+      }),
+    ]);
+    const elapsedMs = Date.now() - startedAt;
+    if (result.code !== 0) {
+      const detail = outputTail || `exit ${result.code}${result.signal ? ` (${result.signal})` : ""}`;
+      console.error(`[p5-2] supabase-${action}=failed elapsed_ms=${elapsedMs}: ${detail}`);
+      throw new Error(`supabase ${action} failed after ${elapsedMs}ms: ${detail}`);
+    }
+    console.log(`[p5-2] supabase-${action}=completed elapsed_ms=${elapsedMs}`);
+  } catch (error) {
+    const elapsedMs = Date.now() - startedAt;
+    const detail = `${safeDiagnosticText(error.message)}${outputTail ? `; output tail:\n${outputTail}` : ""}`;
+    console.error(`[p5-2] supabase-${action}=failed elapsed_ms=${elapsedMs}: ${detail}`);
     throw new Error(`supabase ${action} failed after ${elapsedMs}ms: ${detail}`);
+  } finally {
+    clearInterval(progressTimer);
+    clearTimeout(timeoutTimer);
   }
-  console.log(`[p5-2] supabase-${action}=completed elapsed_ms=${elapsedMs}`);
-  if (result.stdout?.trim()) console.log(`[p5-2] supabase-${action} stdout:\n${result.stdout.trim()}`);
 }
 
 function stopSupabase() {
-  runSupabaseCommand("stop", ["stop"]);
+  return runSupabaseCommand("stop", ["stop"]);
 }
 
 function startSupabase() {
-  runSupabaseCommand("start", ["start"]);
+  return runSupabaseCommand("start", ["start"]);
 }
 
 async function waitForSupabaseReady() {
@@ -1811,7 +1847,7 @@ test("E2E-P5.2-10 Supabase stopped during a payment still provisions and status 
   const expectedGrantEventId = `${paymentInstallationId}:1`;
 
   console.log("[p5-2] restart-checkpoint=stop-supabase");
-  stopSupabase();
+  await stopSupabase();
   try {
     console.log("[p5-2] restart-checkpoint=paymob-callback-started");
     await postPaymobProcessedCallback(checkoutId);
@@ -1822,7 +1858,7 @@ test("E2E-P5.2-10 Supabase stopped during a payment still provisions and status 
     await waitForPlatformGrantEvent(orgId, { eventId: expectedGrantEventId });
     console.log("[p5-2] restart-checkpoint=grant-event-observed");
   } finally {
-    startSupabase();
+    await startSupabase();
     await waitForSupabaseReady();
   }
 

@@ -100,7 +100,7 @@ test("E2E-P7.3-02", async () => {
   )?.payment_id;
   assert.ok(paymentId, "paid checkout should create a payment row");
 
-  await triggerAboScheduled("0 * * * *");
+  await triggerAboScheduled("* * * * *");
 
   const parkedWork = grantWorkForPayment(paymentId);
   assert.ok(parkedWork, "grant work should exist after scheduled run");
@@ -111,7 +111,7 @@ test("E2E-P7.3-02", async () => {
   assert.equal(countAboTable("grant_outcome"), grantOutcomesBefore);
 
   const al07Before = alertCountByCode("AL-07");
-  await triggerAboScheduled("0 * * * *");
+  await triggerAboScheduled("* * * * *");
   assert.ok(alertCountByCode("AL-07") > al07Before, "FM-25 should raise AL-07");
 
   const alertBody = await readLatestAlertBody();
@@ -125,7 +125,7 @@ test("E2E-P7.3-02", async () => {
   });
   assert.equal(retry.status, 200);
 
-  await triggerAboScheduled("0 * * * *");
+  await triggerAboScheduled("* * * * *");
 
   const retriedWork = grantWorkForPayment(paymentId);
   assert.ok(retriedWork);

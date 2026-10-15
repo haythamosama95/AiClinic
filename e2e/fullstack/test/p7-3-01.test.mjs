@@ -66,12 +66,13 @@ async function vendorCall(method, args) {
     headers: { "content-type": "application/json" },
     body: JSON.stringify({ method, args }),
   });
+  const bodyText = await response.text();
   assert.equal(
     response.status,
     200,
-    `POST /vendor-call for ${method} failed with HTTP ${response.status}: ${await response.text()}`,
+    `POST /vendor-call for ${method} failed with HTTP ${response.status}: ${bodyText}`,
   );
-  return response.json();
+  return JSON.parse(bodyText);
 }
 
 function installationIdForOrg(orgId) {
