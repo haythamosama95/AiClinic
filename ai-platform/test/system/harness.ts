@@ -817,6 +817,20 @@ export async function vendorDeleteInstallation(
   return { status: 400, json: { error: envelope.code } };
 }
 
+const visitContextByInstallation = new Map<
+  string,
+  { visitId: string; recordedAt: string }
+>();
+
+function visitContextFor(installationId: string): { visitId: string; recordedAt: string } {
+  let visit = visitContextByInstallation.get(installationId);
+  if (visit === undefined) {
+    visit = { visitId: randomUuid(), recordedAt: new Date().toISOString() };
+    visitContextByInstallation.set(installationId, visit);
+  }
+  return visit;
+}
+
 export function visitSummaryInvokeBody(
   scenario: Scenario,
   overrides: Record<string, unknown> = {},
@@ -829,9 +843,9 @@ export function visitSummaryInvokeBody(
       org: scenario.orgId,
       branch: scenario.branchId,
       [VISIT_CHIEF_COMPLAINT_V1]: {
-        visit_id: randomUuid(),
+        visit_id: visitContextFor(scenario.installationId).visitId,
         complaint: "Headache for three days.",
-        recorded_at: new Date().toISOString(),
+        recorded_at: visitContextFor(scenario.installationId).recordedAt,
       },
     },
     ...overrides,
@@ -1212,6 +1226,23 @@ export async function getAttempts(requestId: string): Promise<Record<string, unk
 
 export async function getUsageEvents(requestId: string): Promise<Record<string, unknown>[]> {
   return queryAll("SELECT * FROM usage_event WHERE request_id = ?", [requestId]);
+}
+
+export async function waitForSettledRequest(
+  requestReference: string,
+  timeoutMs = 8000,
+): Promise<Record<string, unknown>> {
+  const started = Date.now();
+  for (;;) {
+    const row = await getAiRequest(requestReference);
+    if (row !== null && typeof row.payload_pointer === "string" && row.payload_pointer.length > 0) {
+      return row;
+    }
+    if (Date.now() - started > timeoutMs) {
+      throw new Error(`settlement did not land for ${requestReference}`);
+    }
+    await new Promise((resolve) => setTimeout(resolve, 50));
+  }
 }
 
 export const COVER_PLAN_ID = "live-monthly";

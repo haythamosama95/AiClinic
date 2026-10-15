@@ -30,6 +30,7 @@ import {
   terminalEventTypes,
   coverClinic,
   ensureDefaultCohortGrants,
+  waitForSettledRequest,
   type Scenario,
 } from "./harness";
 import { addDuration } from "../../src/coverage/calendar";
@@ -362,6 +363,7 @@ describe("admission settlement against terms", () => {
     await flushBackgroundWork();
 
     const ref = String(invoked.events[0]?.data.request_reference);
+    await waitForSettledRequest(ref);
     const request = await getAiRequest(ref);
     expect(request?.request_id).toBeTruthy();
 
@@ -731,7 +733,11 @@ describe("admission settlement against terms", () => {
     expect(first.status).toBe(200);
     await flushBackgroundWork();
 
-    const replayIdempotency = await invoke(scenario, { token, idempotencyKey });
+    await waitForSettledRequest(String(first.events[0]?.data.request_reference));
+    const replayIdempotency = await invoke(scenario, {
+      token: await mintAat(scenario),
+      idempotencyKey,
+    });
     expect(replayIdempotency.status).toBe(first.status);
     expect(replayIdempotency.body).toEqual(first.body);
     // A replay returns the persisted terminal answer. It does not replay

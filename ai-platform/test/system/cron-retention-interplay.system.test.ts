@@ -23,6 +23,7 @@ import {
   r2Exists,
   runScheduled,
   setupPromotedFakePolicy,
+  waitForSettledRequest,
 } from "./harness";
 
 beforeAll(async () => {
@@ -44,6 +45,7 @@ describe("cron retention interplay", () => {
     const invoked = await invoke(scenario);
     const ref = String(invoked.events[0]?.data.request_reference);
     await flushBackgroundWork();
+    await waitForSettledRequest(ref);
 
     const request = await getAiRequest(ref);
     const requestId = String(request?.request_id);

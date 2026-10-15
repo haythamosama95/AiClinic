@@ -857,7 +857,7 @@ describe("Stage 11 â€” terminal settlement completed/failed/cancelled (S11-001â€
         const completed = result.events.find((event) => event.event === "completed");
         assertCompletedEvent(completed, FAKE_SUMMARY);
 
-        const row = await requireAiRequest(ref);
+        const row = await waitForCompletedEnvelope(ref);
         expect(row.state).toBe("Completed");
         const attempts = await getAttempts(String(row.request_id));
         expect(attempts).toHaveLength(1);
@@ -1588,7 +1588,13 @@ describe("Stage 11 â€” terminal settlement completed/failed/cancelled (S11-001â€
         await count("usage_event", "request_id = ?", [row.request_id]),
       ).toBe(1);
 
-      const envelope = await getR2Json(String(row.payload_pointer));
+      let settledRow = await requireAiRequest(String(row.request_reference));
+      const pointerStarted = Date.now();
+      while (typeof settledRow.payload_pointer !== "string" && Date.now() - pointerStarted < 8000) {
+        await flushBackgroundWork(50);
+        settledRow = await requireAiRequest(String(row.request_reference));
+      }
+      const envelope = await getR2Json(String(settledRow.payload_pointer));
       expect(envelope.attempts as unknown[]).toHaveLength(2);
       expect((envelope.result as { usage?: unknown }).usage).toEqual({
         input: 30,

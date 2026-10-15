@@ -31,6 +31,7 @@ import {
   coverClinic,
   terminalEventTypes,
   visitSummaryInvokeBody,
+  waitForSettledRequest,
   type CoverClinicOptions,
 } from "./harness";
 
@@ -258,6 +259,7 @@ describe("quota admission interplay", () => {
     assertSseOrder(first.events);
     const ref = String(first.events[0]?.data.request_reference);
     await flushBackgroundWork();
+    await waitForSettledRequest(ref);
 
     const requestBefore = await getAiRequest(ref);
     const attemptsBefore = await getAttempts(String(requestBefore?.request_id));
@@ -314,6 +316,7 @@ describe("quota admission interplay", () => {
     expect(failed.events[1]?.event).toBe("failed");
     expect(failed.events[1]?.data.code).toBe("provider_unavailable");
     await flushBackgroundWork();
+    await waitForSettledRequest(String(failed.events[0]?.data.request_reference));
     const failedAttemptsBefore = await count("ai_attempt");
 
     const failedReplay = await invoke(failedScenario, {
@@ -397,6 +400,13 @@ describe("quota admission interplay", () => {
     }
     expect(cancelledRow?.idempotency_key).toBe(cancelledKey);
     expect(cancelledRow?.state).toBe("Cancelled");
+    const cancelledRef = await env.DB.prepare(
+      `SELECT request_reference FROM ai_request
+       WHERE installation_id = ? AND idempotency_key = ?`,
+    )
+      .bind(cancelledScenario.installationId, cancelledKey)
+      .first<{ request_reference: string }>();
+    await waitForSettledRequest(String(cancelledRef?.request_reference));
 
     const cancelledReplay = await invoke(cancelledScenario, {
       token: await mintAat(cancelledScenario),

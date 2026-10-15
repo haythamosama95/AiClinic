@@ -445,6 +445,16 @@ async function requireAiRequest(ref: string): Promise<Record<string, unknown>> {
   return row!;
 }
 
+async function waitForSettledRow(ref: string): Promise<Record<string, unknown>> {
+  const started = Date.now();
+  for (;;) {
+    const row = await requireAiRequest(ref);
+    if (typeof row.payload_pointer === "string" && row.payload_pointer.length > 0) return row;
+    if (Date.now() - started > 8000) throw new Error(`settlement did not land for ${ref}`);
+    await flushBackgroundWork(50);
+  }
+}
+
 /**
  * SSE `failed` closes before waitUntil `recordTerminalState` / journal land.
  * Poll Failed + usage_event so suite-pool load cannot read Accepted.
@@ -485,7 +495,7 @@ describe("Stage 10 — accept, route, invoke, stream (S10-001…S10-017)", () =>
     assertHttpSse(result);
     const ref = assertHappyPathEvents(result.events, "s10-001-trace");
 
-    const row = await requireAiRequest(ref);
+    const row = await waitForSettledRow(ref);
     expect(row.state).toBe("Completed");
     expect(row.completed_at).toBeTruthy();
     expect(row.terminal_error_code).toBeNull();
@@ -1403,7 +1413,7 @@ describe("Stage 10 — accept, route, invoke, stream (S10-001…S10-017)", () =>
     });
     assertHttpSse(first);
     const firstRef = assertHappyPathEvents(first.events, "s10-001-trace");
-    const firstRow = await requireAiRequest(firstRef);
+    const firstRow = await waitForSettledRow(firstRef);
     expect(firstRow.state).toBe("Completed");
     expect(await count("ai_request")).toBe(1);
 

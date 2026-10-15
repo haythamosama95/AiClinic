@@ -33,6 +33,7 @@ import {
   r2Exists,
   setupPromotedFakePolicy,
   visitSummaryInvokeBody,
+  waitForSettledRequest,
   type Scenario,
 } from "./harness";
 
@@ -79,8 +80,7 @@ async function completeRequest(scenario: Scenario): Promise<{
   const invoked = await invoke(scenario, { idempotencyKey });
   expect(invoked.status).toBe(200);
   const ref = String(invoked.events[0]?.data.request_reference);
-  await flushBackgroundWork();
-  const request = await getAiRequest(ref);
+  const request = await waitForSettledRequest(ref);
   return {
     ref,
     requestId: String(request?.request_id),
@@ -110,8 +110,7 @@ async function failWithEmptyChain(scenario: Scenario): Promise<{
   expect(invoked.status).toBe(200);
   expect(invoked.events.find((event) => event.event === "failed")).toBeTruthy();
   const ref = String(invoked.events[0]?.data.request_reference);
-  await flushBackgroundWork();
-  const request = await getAiRequest(ref);
+  const request = await waitForSettledRequest(ref);
   return {
     ref,
     requestId: String(request?.request_id),
@@ -327,7 +326,8 @@ describe("settlement integrity", () => {
         await flushBackgroundWork();
       }
       expect(usageCount).toBe(1);
-      expect(await r2Exists(String(request?.payload_pointer))).toBe(true);
+      const settled = await waitForSettledRequest(String(request?.request_reference));
+      expect(await r2Exists(String(settled.payload_pointer))).toBe(true);
     } finally {
       invokeSpy.mockRestore();
     }
@@ -425,6 +425,7 @@ describe("settlement integrity", () => {
         .bind(cancelledKey)
         .first<{ request_id: string; request_reference: string }>();
       expect(cancelledRow?.request_id).toBeTruthy();
+      await waitForSettledRequest(String(cancelledRow?.request_reference));
 
       const terminals: Array<{
         label: string;

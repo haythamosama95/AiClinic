@@ -14,6 +14,20 @@ import { parseSseEvents, type SseEvent } from "./sse";
 
 export { VISIT_CHIEF_COMPLAINT_V1 };
 
+const visitContextByInstallation = new Map<
+  string,
+  { visitId: string; recordedAt: string }
+>();
+
+function visitContextFor(installationId: string): { visitId: string; recordedAt: string } {
+  let visit = visitContextByInstallation.get(installationId);
+  if (visit === undefined) {
+    visit = { visitId: crypto.randomUUID(), recordedAt: new Date().toISOString() };
+    visitContextByInstallation.set(installationId, visit);
+  }
+  return visit;
+}
+
 export function visitSummaryInvokeBody(
   scenario: Scenario,
   overrides: Record<string, unknown> = {},
@@ -26,9 +40,9 @@ export function visitSummaryInvokeBody(
       org: scenario.orgId,
       branch: scenario.branchId,
       [VISIT_CHIEF_COMPLAINT_V1]: {
-        visit_id: crypto.randomUUID(),
+        visit_id: visitContextFor(scenario.installationId).visitId,
         complaint: "Headache for three days.",
-        recorded_at: new Date().toISOString(),
+        recorded_at: visitContextFor(scenario.installationId).recordedAt,
       },
     },
     ...overrides,

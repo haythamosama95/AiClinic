@@ -591,6 +591,7 @@ function defaultAdmissionInput(
     principal?: Partial<Principal>;
     idempotencyKey?: string;
     requestReference?: string;
+    requestFingerprint?: string;
   } = {},
 ): AdmissionInput {
   return {
@@ -601,6 +602,9 @@ function defaultAdmissionInput(
     quotaWeight: 1,
     cache,
     reader,
+    ...(overrides.requestFingerprint === undefined
+      ? {}
+      : { requestFingerprint: overrides.requestFingerprint }),
   };
 }
 
@@ -627,14 +631,15 @@ async function journalAdmittedRequest(input: {
   requestId: string;
   requestReference: string;
   idempotencyKey: string;
+  requestFingerprint?: string;
 }): Promise<void> {
   await env.DB.prepare(
     `INSERT INTO ai_request (
        request_id, request_reference, installation_id, actor_id, branch_id,
        capability_id, capability_version, prompt_artifact_hash, idempotency_key,
        state, created_at, updated_at, completed_at, terminal_error_code,
-       trace_id, payload_pointer, conversation_id, turn_ordinal
-     ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, NULL, ?, NULL, NULL, NULL)`,
+       trace_id, payload_pointer, conversation_id, turn_ordinal, request_fingerprint
+     ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, NULL, ?, NULL, NULL, NULL, ?)`,
   )
     .bind(
       input.requestId,
@@ -650,6 +655,7 @@ async function journalAdmittedRequest(input: {
       FIXTURE_NOW,
       FIXTURE_NOW,
       "01ADMJOURNALTRACE00000001",
+      input.requestFingerprint ?? null,
     )
     .run();
 }
@@ -724,12 +730,14 @@ describe("admission_repeated_key_no_second_inference", () => {
     const { cache, reader } = await seedInstallationAndEntitlement(installationId);
     const idempotencyKey = uniqueIdempotencyKey();
     const requestReference = uniqueRequestReference();
+    const requestFingerprint = "f".repeat(64);
 
     const firstSpy = createDoSpy(env.DO);
     const first = await admission.runAdmission(
       defaultAdmissionInput(installationId, cache, reader, {
         idempotencyKey,
         requestReference,
+        requestFingerprint,
       }),
       { DB: env.DB, DO: firstSpy },
       { now: FIXTURE_NOW_MS, nowMs: FIXTURE_NOW_MS },
@@ -741,6 +749,7 @@ describe("admission_repeated_key_no_second_inference", () => {
       requestId: first.requestId,
       requestReference,
       idempotencyKey,
+      requestFingerprint,
     });
 
     const secondSpy = createDoSpy(env.DO);
@@ -749,12 +758,13 @@ describe("admission_repeated_key_no_second_inference", () => {
         idempotencyKey,
         requestReference: uniqueRequestReference(),
         principal: { jti: uniqueJti() },
+        requestFingerprint,
       }),
       { DB: env.DB, DO: secondSpy },
       { now: FIXTURE_NOW_MS, nowMs: FIXTURE_NOW_MS },
     );
 
-    expect(secondSpy.fetchCount()).toBe(0);
+    expect(secondSpy.fetchCount()).toBe(1);
     expect(second).toEqual({
       ok: true,
       outcome: "idempotent",
