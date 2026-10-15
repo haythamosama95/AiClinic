@@ -251,6 +251,7 @@ describe("T-A4-15 manifest_is_data_not_code", () => {
     const exportNames = Object.keys(manifestModule).sort();
 
     const allowedRuntimeExports = [
+      "hashCanonicalJson",
       "hashManifest",
       "load",
       "verifyManifestTree",

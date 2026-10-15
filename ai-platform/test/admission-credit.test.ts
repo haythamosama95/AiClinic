@@ -6,6 +6,7 @@ import fallbackAdmissionFeedMigrationSql from "../migrations/20261006160000_fall
 import planCatalogueMigrationSql from "../migrations/20260911120000_plan_catalogue.sql?raw";
 import planVersionPaidGrantCoverageMigrationSql from "../migrations/20261003140000_plan_version_paid_grant_coverage.sql?raw";
 import usageTermMigrationSql from "../migrations/20261006120000_usage_term.sql?raw";
+import idempotencyFingerprintMigrationSql from "../migrations/20261014120000_ai_request_idempotency_fingerprint.sql?raw";
 import { applySqlStatements } from "./split-sql-statements";
 import {
   ConfigCache,
@@ -671,6 +672,7 @@ beforeAll(async () => {
   await applySqlStatements(env.DB, planVersionPaidGrantCoverageMigrationSql);
   await applySqlStatements(env.DB, usageTermMigrationSql);
   await applySqlStatements(env.DB, fallbackAdmissionFeedMigrationSql);
+  await applySqlStatements(env.DB, idempotencyFingerprintMigrationSql);
 });
 
 async function pinHarnessTestClock(isoUtc: string = FIXTURE_NOW): Promise<void> {

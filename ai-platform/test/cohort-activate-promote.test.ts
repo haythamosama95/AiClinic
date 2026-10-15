@@ -7,6 +7,7 @@ import statusMigrationSql from "../migrations/20260805190000_routing_policy_stat
 import killSwitchMigrationSql from "../migrations/20260807120000_kill_switch.sql?raw";
 import issuerKeyTenantBindingMigrationSql from "../migrations/20261003130000_issuer_key_tenant_binding.sql?raw";
 import planVersionPaidGrantCoverageMigrationSql from "../migrations/20261003140000_plan_version_paid_grant_coverage.sql?raw";
+import idempotencyFingerprintMigrationSql from "../migrations/20261014120000_ai_request_idempotency_fingerprint.sql?raw";
 import { applySqlStatements } from "./split-sql-statements";
 import schemaSnapSql from "../schema.snap.sql?raw";
 import {
@@ -488,6 +489,7 @@ beforeAll(async () => {
   await applyPlatformSchema(env.DB, killSwitchMigrationSql);
   await applySqlStatements(env.DB, issuerKeyTenantBindingMigrationSql);
   await applySqlStatements(env.DB, planVersionPaidGrantCoverageMigrationSql);
+  await applySqlStatements(env.DB, idempotencyFingerprintMigrationSql);
 });
 
 beforeEach(async () => {

@@ -5,6 +5,7 @@ import planCatalogueMigrationSql from "../migrations/20260911120000_plan_catalog
 import issuerKeyTenantBindingMigrationSql from "../migrations/20261003130000_issuer_key_tenant_binding.sql?raw";
 import planVersionPaidGrantCoverageMigrationSql from "../migrations/20261003140000_plan_version_paid_grant_coverage.sql?raw";
 import usageTermMigrationSql from "../migrations/20261006120000_usage_term.sql?raw";
+import idempotencyFingerprintMigrationSql from "../migrations/20261014120000_ai_request_idempotency_fingerprint.sql?raw";
 import { applySqlStatements } from "./split-sql-statements";
 import { CONCURRENCY_LIMIT, ensureCoverageDoTables } from "../src/quota-do";
 import {
@@ -822,6 +823,7 @@ beforeAll(async () => {
   await applySqlStatements(env.DB, issuerKeyTenantBindingMigrationSql);
   await applySqlStatements(env.DB, planVersionPaidGrantCoverageMigrationSql);
   await applySqlStatements(env.DB, usageTermMigrationSql);
+  await applySqlStatements(env.DB, idempotencyFingerprintMigrationSql);
 });
 
 beforeEach(async () => {

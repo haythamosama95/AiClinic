@@ -8,6 +8,7 @@ import issuerKeyTenantBindingMigrationSql from "../../migrations/20261003130000_
 import planVersionPaidGrantCoverageMigrationSql from "../../migrations/20261003140000_plan_version_paid_grant_coverage.sql?raw";
 import usageTermMigrationSql from "../../migrations/20261006120000_usage_term.sql?raw";
 import fallbackAdmissionFeedMigrationSql from "../../migrations/20261006160000_fallback_admission_feed.sql?raw";
+import idempotencyFingerprintMigrationSql from "../../migrations/20261014120000_ai_request_idempotency_fingerprint.sql?raw";
 import { applySqlStatements } from "../split-sql-statements";
 import ciWorkflowSource from "../../../.github/workflows/ci.yml?raw";
 import packageJson from "../../package.json";
@@ -114,6 +115,7 @@ beforeAll(async () => {
   await applySqlStatements(env.DB, planVersionPaidGrantCoverageMigrationSql);
   await applySqlStatements(env.DB, usageTermMigrationSql);
   await applySqlStatements(env.DB, fallbackAdmissionFeedMigrationSql);
+  await applySqlStatements(env.DB, idempotencyFingerprintMigrationSql);
   await clearLoadTables();
   const spies = createBindingSpies(env);
   const result = await runLoadHappyPath({
