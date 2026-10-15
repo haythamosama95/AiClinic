@@ -10,6 +10,7 @@ on:
 jobs:
   test-campaign:
     name: campaign-${{ matrix.area }}-${{ matrix.subcampaign }}
+    if: github.event_name != 'workflow_dispatch' || (matrix.area == 'frontend' && matrix.subcampaign == 'fullstack')
     runs-on: ubuntu-latest
     timeout-minutes: ${{ matrix.timeout_minutes }}
     env:
