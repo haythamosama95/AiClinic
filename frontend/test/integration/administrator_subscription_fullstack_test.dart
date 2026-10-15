@@ -50,6 +50,9 @@ class _FullstackSubscriptionTestBinding
     extends AutomatedTestWidgetsFlutterBinding {
   @override
   bool get overrideHttpClient => false;
+
+  @override
+  Timeout get defaultTestTimeout => const Timeout(Duration(seconds: 60));
 }
 
 const _paymobHmacFields = <String>[

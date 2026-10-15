@@ -43,6 +43,9 @@ String _desktopWindowPrepareStderr = '';
 class _FullstackContractVersionTestBinding extends AutomatedTestWidgetsFlutterBinding {
   @override
   bool get overrideHttpClient => false;
+
+  @override
+  Timeout get defaultTestTimeout => const Timeout(Duration(seconds: 60));
 }
 
 void main() {
