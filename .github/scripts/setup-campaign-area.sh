@@ -29,7 +29,7 @@ need_flutter=0
 case "${area}" in
   frontend)
     case "${subcampaign}" in
-      unit)
+      unit|unit-*)
         need_flutter=1
         ;;
       boundary)
