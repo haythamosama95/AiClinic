@@ -203,6 +203,15 @@ class CampaignLogSession:
             "elapsed_seconds": elapsed,
             "error": error,
         }
+        if status == "FAIL":
+            # The governor's run-root console is the first artifact users see in
+            # GitHub Actions. Keep a useful reason there as well as in test logs.
+            from harness.governor_console_log import governor_console_log_line
+
+            governor_console_log_line(f"FAIL: {resolved}")
+            if error:
+                for line in str(error).strip().splitlines()[:8]:
+                    governor_console_log_line(f"  {line[:500]}")
         self._upsert_entry(entry)
         if active is not None:
             active["fp"].close()

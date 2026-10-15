@@ -1609,6 +1609,16 @@ class FlutterMachineParser(ProgressParser):
         stack_trace: object = None,
         identity: str | None = None,
     ) -> None:
+        # Flutter reports assertion/exception text in an `error` event, while
+        # `testDone` only carries the terminal status. Mirror that diagnostic to
+        # the run-root console before the event is lost from the live stream.
+        from harness.governor_console_log import governor_console_log_line
+
+        governor_console_log_line(f"FAIL: {name}")
+        for diagnostic in (str(stack_trace) if stack_trace else "", err):
+            if diagnostic:
+                for line in diagnostic.strip().splitlines()[:8]:
+                    governor_console_log_line(f"  {line[:500]}")
         if self.log_session is not None:
             if identity is None and not self.log_session.has_active():
                 self.log_session.start_test(name, identity=identity)
