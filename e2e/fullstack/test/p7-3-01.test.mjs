@@ -66,6 +66,11 @@ async function vendorCall(method, args) {
     headers: { "content-type": "application/json" },
     body: JSON.stringify({ method, args }),
   });
+  assert.equal(
+    response.status,
+    200,
+    `POST /vendor-call for ${method} failed with HTTP ${response.status}: ${await response.text()}`,
+  );
   return response.json();
 }
 

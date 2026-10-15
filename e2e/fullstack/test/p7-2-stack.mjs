@@ -715,7 +715,7 @@ export async function createTwoOrgClinics() {
   return { orgA, orgB };
 }
 
-function spawnAboProcess(issuerKeys) {
+function spawnAboProcess(issuerKeys, accessCerts) {
   return spawnDevProcess(
     [
       "dev",
@@ -733,6 +733,14 @@ function spawnAboProcess(issuerKeys) {
       ABO_PERSIST,
       "--var",
       `PAYMOB_BASE_URL:${PAYMOB_URL}`,
+      "--var",
+      `ACCESS_TEAM_DOMAIN:${ACCESS_TEAM_DOMAIN}`,
+      "--var",
+      `ACCESS_AUD:${ACCESS_AUD}`,
+      "--var",
+      `ACCESS_CERTS_JSON:${JSON.stringify({ keys: accessCerts.keys })}`,
+      "--var",
+      "TEST_CLOCK:1",
       "--var",
       `ISSUER_KEYS:${JSON.stringify(issuerKeys)}`,
       "--var",
@@ -853,7 +861,7 @@ export async function startStack() {
   });
 
   await prepareAboD1({ aboConfig: ABO_CONFIG });
-  const abo = spawnAboProcess(issuerKeys);
+  const abo = spawnAboProcess(issuerKeys, accessTeam.certs);
   startupCleanups.push(() => stopChild(abo));
   await waitForHttp(`${ABO_URL}/v1/offers`, {
     accept: [401, 403, 400],
@@ -892,7 +900,7 @@ export async function startStack() {
         throw new Error("Cannot restart ABO after the P7.2 stack has stopped");
       }
       await stopChild(stackRef.abo);
-      const restarted = spawnAboProcess(nextIssuerKeys);
+      const restarted = spawnAboProcess(nextIssuerKeys, accessTeam.certs);
       startupCleanups.push(() => stopChild(restarted));
       try {
         await waitForHttp(`${ABO_URL}/v1/offers`, {

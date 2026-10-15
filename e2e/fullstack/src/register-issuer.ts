@@ -8,6 +8,7 @@ const VENDOR_CALL_METHODS = new Set([
   "beginTransfer",
   "releaseHeld",
   "voidGrant",
+  "listOperatorCredentials",
 ]);
 
 type VendorCallArgs = Record<string, unknown>;
@@ -29,6 +30,7 @@ export interface Env {
     beginTransfer(args: VendorCallArgs): Promise<unknown>;
     releaseHeld(args: VendorCallArgs): Promise<unknown>;
     voidGrant(args: VendorCallArgs): Promise<unknown>;
+    listOperatorCredentials(args: VendorCallArgs): Promise<unknown>;
   };
 }
 

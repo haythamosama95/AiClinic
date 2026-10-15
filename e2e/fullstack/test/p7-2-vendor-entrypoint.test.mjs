@@ -167,7 +167,7 @@ async function readAlertBodiesFromSendEmail() {
   return bodies;
 }
 
-async function flushPlatformGrantAlerts(orgId) {
+async function flushPlatformGrantAlerts(orgId, expectedCodes) {
   clearPlatformLogBuffer();
   const installationId = installationIdForOrg(orgId);
   assert.ok(installationId, "org should have an active installation binding");
@@ -177,11 +177,17 @@ async function flushPlatformGrantAlerts(orgId) {
   // Wait for the running platform worker to deliver the scheduled alert.
   const deadline = Date.now() + 20_000;
   while (Date.now() < deadline) {
-    if (parseSendEmailCaptures().length > 0) return;
+    const alertBodies = await readAlertBodiesFromSendEmail();
+    const deliveredCodes = new Set(
+      alertBodies
+        .filter((body) => body.org_id === orgId)
+        .map((body) => body.code),
+    );
+    if (expectedCodes.every((code) => deliveredCodes.has(code))) return alertBodies;
     await new Promise((resolve) => setTimeout(resolve, 100));
   }
   throw new Error(
-    `Timed out waiting for the quota Durable Object alarm for installation ${installationId}`,
+    `Timed out waiting for quota alert(s) ${expectedCodes.join(", ")} for org ${orgId} (installation ${installationId})`,
   );
 }
 
@@ -314,7 +320,7 @@ test("E2E-P7.2-05", async () => {
       aboSignature,
     });
     assert.equal(applied.result, "applied", `within-bound grant ${index + 1}`);
-    await flushPlatformGrantAlerts(orgId);
+    await flushPlatformGrantAlerts(orgId, index === 3 ? ["AL-11", "AL-17"] : ["AL-11"]);
   }
 
   const alertBodies = await readAlertBodiesFromSendEmail();
@@ -403,7 +409,7 @@ test("E2E-P7.2-05", async () => {
     { accessJwt },
   );
   assert.equal(substituted.result, "applied");
-  await flushPlatformGrantAlerts(orgId);
+  await flushPlatformGrantAlerts(orgId, ["AL-11"]);
   const latestAlertText = await readLatestSendEmailText();
   assert.ok(latestAlertText, "complimentary grant should emit AL-11");
   const latestAlert = JSON.parse(latestAlertText);

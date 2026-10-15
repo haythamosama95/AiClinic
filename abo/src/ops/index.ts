@@ -39,6 +39,8 @@ export interface OpsEnv extends ClockEnv {
   R2: R2Bucket;
   ACCESS_TEAM_DOMAIN: string;
   ACCESS_AUD: string;
+  /** Optional Access signing keys supplied by local integration tests. */
+  ACCESS_CERTS_JSON?: string;
   OPS_HOST: string;
   ABO_GRANT_KEY: string;
   PLATFORM_PUBLIC_KEYS: string;
@@ -232,6 +234,16 @@ function parseJwtPayload(jwt: string): Record<string, unknown> | null {
 
 async function loadAccessCerts(env: OpsEnv): Promise<AccessCertsDocument | null> {
   const issuer = `https://${env.ACCESS_TEAM_DOMAIN}`;
+  if (env.ACCESS_CERTS_JSON !== undefined) {
+    try {
+      const body = JSON.parse(env.ACCESS_CERTS_JSON) as {
+        keys?: AccessCertsDocument["keys"];
+      };
+      return Array.isArray(body.keys) ? { issuer, keys: body.keys } : null;
+    } catch {
+      return null;
+    }
+  }
   try {
     const response = await fetch(`${issuer}/cdn-cgi/access/certs`);
     if (!response.ok) {

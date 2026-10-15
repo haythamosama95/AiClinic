@@ -1,6 +1,7 @@
 import test, { after, before } from "node:test";
 import assert from "node:assert/strict";
 import { getPlatformProxy } from "wrangler";
+import { ensurePlatformActiveCoverage } from "./p7-2-stack.mjs";
 import {
   CAPABILITY_VERSION,
   ensurePlatformGrantPrerequisites,
@@ -68,6 +69,7 @@ async function postAdmissionRequest({ token, contractVersion, idempotencyKey }) 
 test("E2E-P7.3-05", async () => {
   const { orgId, installationId } = stack.clinics.orgA;
   ensurePlatformGrantPrerequisites(orgId, installationId);
+  await ensurePlatformActiveCoverage(stack, orgId, installationId);
   const boundInstallationId = installationIdForOrg(orgId);
   assert.ok(boundInstallationId);
 

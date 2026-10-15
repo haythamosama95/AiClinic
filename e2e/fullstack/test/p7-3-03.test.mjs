@@ -7,8 +7,10 @@ import {
 import {
   PLATFORM_CONFIG,
   psqlQuery,
+  queryPlatformD1One,
   readClinicAiCoverage,
   rpc,
+  sqlLiteral,
   startStack,
 } from "./p7-3-stack.mjs";
 
@@ -27,9 +29,11 @@ before(async () => {
   const { orgId, installationId } = stack.clinics.orgA;
   ensurePlatformGrantPrerequisites(orgId, installationId);
   await ensurePlatformActiveCoverage(stack, orgId, installationId);
-  await runTwoPhaseCoveragePull();
+  await runTwoPhaseCoveragePull("baseline coverage pull");
   if (!readClinicAiCoverage(orgId)) {
-    throw new Error("Could not establish baseline clinic AI coverage projection");
+    throw new Error(
+      `Could not establish baseline clinic AI coverage projection. ${formatLastPullDiagnostics()}`,
+    );
   }
   await stack.restartPlatform({ platformConfig: PLATFORM_FEED_WINDOW });
 });
@@ -78,6 +82,13 @@ function countHttpResponses() {
   return Number(row || "0");
 }
 
+function countCoverageEvents(orgId) {
+  const row = queryPlatformD1One(
+    `SELECT COUNT(*) AS n FROM coverage_event WHERE org_id = ${sqlLiteral(orgId)}`,
+  );
+  return Number(row?.n ?? 0);
+}
+
 async function waitForPendingHttpResponse(pendingRequestId, { timeoutMs = 10_000 } = {}) {
   const deadline = Date.now() + timeoutMs;
   while (Date.now() < deadline) {
@@ -104,13 +115,57 @@ function readFeedStatePendingRequestId() {
   `);
 }
 
-async function runTwoPhaseCoveragePull() {
-  psqlQuery(`SELECT auth_internal.pull_coverage_feed()`);
+function readLatestFeedResponse() {
+  const row = psqlQuery(`
+    SELECT row_to_json(t)::text
+    FROM (
+      SELECT id::text, status_code, content
+      FROM net._http_response
+      ORDER BY created DESC
+      LIMIT 1
+    ) t
+  `);
+  return row ? JSON.parse(row) : null;
+}
+
+function formatPullDiagnostics(phase = "current state", orgId = stack?.clinics.orgA.orgId) {
+  return `${phase}: feed response=${JSON.stringify(readLatestFeedResponse())}; ` +
+    `HTTP response count=${countHttpResponses()}; ` +
+    `coverage event count=${orgId ? countCoverageEvents(orgId) : "unavailable"}; ` +
+    `pending_request_id=${readFeedStatePendingRequestId() ?? "null"}; ` +
+    `feed_state=${JSON.stringify(readFeedState())}`;
+}
+
+async function runTwoPhaseCoveragePull(label = "coverage pull") {
+  const phase = (name) => `${label} / ${name}`;
+  try {
+    psqlQuery(`SELECT auth_internal.pull_coverage_feed()`);
+  } catch (error) {
+    throw new Error(`${error.message}. ${formatPullDiagnostics(phase("first pull"))}`);
+  }
   const pendingRequestId = readFeedStatePendingRequestId();
   if (pendingRequestId) {
-    await waitForPendingHttpResponse(pendingRequestId);
+    try {
+      await waitForPendingHttpResponse(pendingRequestId);
+    } catch (error) {
+      throw new Error(`${error.message}. ${formatPullDiagnostics(phase("request wait"))}`);
+    }
   }
-  psqlQuery(`SELECT auth_internal.pull_coverage_feed()`);
+  // Capture the completed first request before the second call consumes its result.
+  const orgId = stack?.clinics.orgA.orgId;
+  const firstPhaseDiagnostics = formatPullDiagnostics(phase("first pull"), orgId);
+  try {
+    psqlQuery(`SELECT auth_internal.pull_coverage_feed()`);
+  } catch (error) {
+    throw new Error(`${error.message}. ${firstPhaseDiagnostics}`);
+  }
+  // Retain diagnostics from both phases so setup failures identify where the
+  // feed request or response processing stopped progressing.
+  runTwoPhaseCoveragePull.lastDiagnostics = `${firstPhaseDiagnostics}; ${formatPullDiagnostics(phase("second pull"), orgId)}`;
+}
+
+function formatLastPullDiagnostics() {
+  return runTwoPhaseCoveragePull.lastDiagnostics ?? formatPullDiagnostics();
 }
 
 function setFeedStateLastSuccessAgo(seconds) {

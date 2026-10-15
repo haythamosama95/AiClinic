@@ -91,6 +91,9 @@ test("E2E-P7.3-02", async () => {
 
   const checkout = await openCheckout(billingToken, "p73-fm25-grant");
   await syncPaymobForCheckout(checkout.checkoutId);
+  const returnResponse = await billingFetch("/return/paymob?v=99");
+  assert.equal(returnResponse.status, 200);
+  await triggerAboScheduled("* * * * *");
 
   const paymentId = queryAboD1One(
     `SELECT payment_id FROM payment WHERE checkout_id = ${sqlLiteral(checkout.checkoutId)} LIMIT 1`,

@@ -2,6 +2,7 @@ import test, { after, before } from "node:test";
 import assert from "node:assert/strict";
 import { sha256Hex } from "vendor-contracts";
 import {
+  billingFetch,
   ensurePlatformGrantPrerequisites,
   mintAccessJwt,
   openCheckout,
@@ -73,6 +74,9 @@ test("E2E-P7.3-04", async () => {
 
   const checkout = await openCheckout(billingToken, "p73-stored-envelope");
   await syncPaymobForCheckout(checkout.checkoutId);
+  const returnResponse = await billingFetch("/return/paymob?v=99");
+  assert.equal(returnResponse.status, 200);
+  await triggerAboScheduled("* * * * *");
 
   const paymentId = queryAboD1One(
     `SELECT payment_id FROM payment WHERE checkout_id = ${sqlLiteral(checkout.checkoutId)} LIMIT 1`,

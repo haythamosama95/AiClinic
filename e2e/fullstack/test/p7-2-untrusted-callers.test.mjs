@@ -17,6 +17,7 @@ import {
   readClinicAiCoverage,
   readStatusRefreshRequestedAt,
   rpc,
+  runAboD1Command,
   seedAboOffers,
   scriptPaymobAmount,
   signPaymobObj,
@@ -95,45 +96,61 @@ test("E2E-P7.2-01", async () => {
   assert.equal(countAboTable("notification"), notificationsBefore);
   assert.equal(countAboWork(), workBefore);
 
-  const rateIp = "203.0.113.52";
-  for (let index = 0; index < 60; index += 1) {
-    const response = await billingFetch("/notify/paymob?hmac=deadbeef", {
+  runAboD1Command(`
+    CREATE TABLE IF NOT EXISTS harness_test_clock (
+      id TEXT PRIMARY KEY,
+      now_iso TEXT NOT NULL
+    );
+    INSERT OR REPLACE INTO harness_test_clock (id, now_iso)
+    VALUES ('default', '2026-10-16T10:00:00.000Z');
+  `);
+  try {
+    const rateIp = "203.0.113.52";
+    for (let index = 0; index < 60; index += 1) {
+      const response = await billingFetch("/notify/paymob?hmac=deadbeef", {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          "cf-connecting-ip": rateIp,
+        },
+        body: junkNotifyBody(100 + index),
+      });
+      assert.equal(response.status, 401);
+    }
+    const limited = await billingFetch("/notify/paymob?hmac=deadbeef", {
       method: "POST",
       headers: {
         "content-type": "application/json",
         "cf-connecting-ip": rateIp,
       },
-      body: junkNotifyBody(100 + index),
+      body: junkNotifyBody(999),
     });
-    assert.equal(response.status, 401);
-  }
-  const limited = await billingFetch("/notify/paymob?hmac=deadbeef", {
-    method: "POST",
-    headers: {
-      "content-type": "application/json",
-      "cf-connecting-ip": rateIp,
-    },
-    body: junkNotifyBody(999),
-  });
-  assert.equal(limited.status, 429);
-  assert.equal(await limited.text(), "");
-  assert.equal(countAboTable("notification"), notificationsBefore);
-  assert.equal(countAboWork(), workBefore);
+    assert.equal(limited.status, 429);
+    assert.equal(await limited.text(), "");
+    assert.equal(countAboTable("notification"), notificationsBefore);
+    assert.equal(countAboWork(), workBefore);
 
-  const unknownKeyIp = "unknown";
-  for (let index = 0; index < 60; index += 1) {
-    await billingFetch("/notify/paymob?hmac=deadbeef", {
+    const unknownKeyIp = "unknown";
+    for (let index = 0; index < 60; index += 1) {
+      await billingFetch("/notify/paymob?hmac=deadbeef", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: junkNotifyBody(200 + index),
+      });
+    }
+    const unknownLimited = await billingFetch("/notify/paymob?hmac=deadbeef", {
       method: "POST",
       headers: { "content-type": "application/json" },
-      body: junkNotifyBody(200 + index),
+      body: junkNotifyBody(299),
     });
+    assert.equal(unknownLimited.status, 429);
+  } finally {
+    runAboD1Command(`
+      UPDATE harness_test_clock
+      SET now_iso = ${sqlLiteral(new Date().toISOString())}
+      WHERE id = 'default';
+    `);
   }
-  const unknownLimited = await billingFetch("/notify/paymob?hmac=deadbeef", {
-    method: "POST",
-    headers: { "content-type": "application/json" },
-    body: junkNotifyBody(299),
-  });
-  assert.equal(unknownLimited.status, 429);
 
   const paymentsBeforeReturn = countAboTable("payment");
   const coverageBeforeReturn = readClinicAiCoverage(stack.clinics.orgA.orgId);
@@ -203,6 +220,13 @@ test("E2E-P7.2-03", async () => {
   seedAboOffers();
   ensurePlatformGrantPrerequisites(orgA.orgId, orgA.installationId);
   ensurePlatformGrantPrerequisites(orgB.orgId, orgB.installationId);
+  // This request is intended to exercise the tenant binding check. Give Org B
+  // active coverage so its request context passes the earlier coverage gate.
+  await ensurePlatformActiveCoverage(
+    stack,
+    orgB.orgId,
+    orgB.installationId,
+  );
 
   const billingB = await rpc(orgB.administrator, "issue_billing_token", {
     p_contract_version: 1,

@@ -3,8 +3,11 @@ import assert from "node:assert/strict";
 import {
   billingFetch,
   countAboTable,
+  openCheckout,
+  putBillingContact,
   queryAboD1One,
-  runAboD1Command,
+  rpc,
+  seedAboOffers,
   sqlLiteral,
   startStack,
 } from "./p7-3-stack.mjs";
@@ -31,37 +34,18 @@ function scheduledConfirmCount(checkoutId) {
   return Number(row?.n ?? 0);
 }
 
-function seedOpenCheckout(checkoutId) {
-  const now = new Date().toISOString();
-  runAboD1Command(
-    `INSERT OR REPLACE INTO checkout (
-      checkout_id, org_id, offer_id, offer_version, terms_version, currency,
-      amount_minor, client_request_id, return_url, state, created_at, updated_at
-    ) VALUES (
-      ${sqlLiteral(checkoutId)},
-      ${sqlLiteral(stack.clinics.orgA.orgId)},
-      '01JHARNESSOFFERPUBLISH001',
-      2,
-      1,
-      'EGP',
-      80000,
-      ${sqlLiteral(`p73-return-${checkoutId}`)},
-      'https://billing.vendor.test/return/paymob?v=99',
-      'open',
-      ${sqlLiteral(now)},
-      ${sqlLiteral(now)}
-    )`,
-  );
-  runAboD1Command(
-    `INSERT OR REPLACE INTO checkout_status (checkout_id, state, updated_at)
-     VALUES (${sqlLiteral(checkoutId)}, 'open', ${sqlLiteral(now)})`,
-  );
-}
-
 test("E2E-P7.3-07", async () => {
-  seedOpenCheckout(CHECKOUT_ID);
+  const { administrator } = stack.clinics.orgA;
+  seedAboOffers();
+  const billing = await rpc(administrator, "issue_billing_token", {
+    p_contract_version: 1,
+  });
+  assert.equal(billing.success, true);
+  await putBillingContact(billing.data.token);
+  const checkout = await openCheckout(billing.data.token, `p73-return-${CHECKOUT_ID}`);
+
   const paymentsBefore = countAboTable("payment");
-  const confirmsBefore = scheduledConfirmCount(CHECKOUT_ID);
+  const confirmsBefore = scheduledConfirmCount(checkout.checkoutId);
 
   const response = await billingFetch("/return/paymob?v=99");
   assert.equal(response.status, 200);
@@ -72,5 +56,5 @@ test("E2E-P7.3-07", async () => {
   assert.equal(html.includes("checkout paid"), false);
 
   assert.equal(countAboTable("payment"), paymentsBefore);
-  assert.equal(scheduledConfirmCount(CHECKOUT_ID), confirmsBefore + 1);
+  assert.equal(scheduledConfirmCount(checkout.checkoutId), confirmsBefore + 1);
 });

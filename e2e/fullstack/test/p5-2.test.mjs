@@ -156,9 +156,17 @@ function createStartupScope() {
         for (const entry of cleanups.reverse()) {
           if (!entry.active) continue;
           entry.active = false;
+          const startedAt = Date.now();
+          console.error(`[P5.2 teardown] starting cleanup: ${entry.label}`);
           try {
             await entry.dispose();
+            console.error(
+              `[P5.2 teardown] completed cleanup: ${entry.label} (${Date.now() - startedAt}ms)`,
+            );
           } catch (error) {
+            console.error(
+              `[P5.2 teardown] failed cleanup: ${entry.label} (${Date.now() - startedAt}ms): ${safeDiagnosticText(error.message)}`,
+            );
             errors.push(`${entry.label}: ${error.message}`);
           }
         }
@@ -1461,10 +1469,24 @@ before(async () => {
 
 after(async () => {
   try {
+    console.error("[P5.2 teardown] starting worker stack cleanup");
     await stack?.stop();
+    console.error("[P5.2 teardown] completed worker stack cleanup");
   } finally {
     stack = null;
-    await closeLocalVirtualHostDispatchers();
+    const startedAt = Date.now();
+    console.error("[P5.2 teardown] starting virtual-host dispatcher closure");
+    try {
+      await closeLocalVirtualHostDispatchers();
+      console.error(
+        `[P5.2 teardown] completed virtual-host dispatcher closure (${Date.now() - startedAt}ms)`,
+      );
+    } catch (error) {
+      console.error(
+        `[P5.2 teardown] failed virtual-host dispatcher closure (${Date.now() - startedAt}ms): ${safeDiagnosticText(error.message)}`,
+      );
+      throw error;
+    }
   }
 });
 
