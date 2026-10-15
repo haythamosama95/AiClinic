@@ -9,7 +9,13 @@ function dispatcherFor(hostname) {
   if (!dispatcher) {
     dispatcher = new Agent({
       connect: {
-        lookup(_hostname, _options, callback) {
+        lookup(_hostname, options, callback) {
+          // Node may request all DNS candidates for a connection. Its lookup
+          // callback then requires an address list instead of a single IP.
+          if (options.all) {
+            callback(null, [{ address: "127.0.0.1", family: 4 }]);
+            return;
+          }
           callback(null, "127.0.0.1", 4);
         },
       },

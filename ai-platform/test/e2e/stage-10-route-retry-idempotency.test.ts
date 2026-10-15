@@ -461,6 +461,7 @@ async function waitForSettledRow(ref: string): Promise<Record<string, unknown>> 
  */
 async function waitForFailedSettlement(
   ref: string,
+  expectedAttemptCount = 2,
   timeoutMs = 8000,
 ): Promise<Record<string, unknown>> {
   const started = Date.now();
@@ -470,7 +471,14 @@ async function waitForFailedSettlement(
     if (row?.state === "Failed") {
       const attempts = await getAttempts(String(row.request_id));
       const usage = await getUsageEvents(String(row.request_id));
-      if (attempts.length === 2 && usage.length === 1) {
+      const pointer = row.payload_pointer;
+      if (
+        attempts.length === expectedAttemptCount &&
+        usage.length === 1 &&
+        typeof pointer === "string" &&
+        pointer.length > 0 &&
+        (await r2Exists(pointer))
+      ) {
         return row;
       }
     }
@@ -620,7 +628,7 @@ describe("Stage 10 — accept, route, invoke, stream (S10-001…S10-017)", () =>
       traceId: "s10-003-trace",
     });
 
-    const row = await requireAiRequest(ref);
+    const row = await waitForFailedSettlement(ref, 1);
     expect(row.state).toBe("Failed");
     expect(row.terminal_error_code).toBe("internal_error");
 

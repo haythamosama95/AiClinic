@@ -486,7 +486,7 @@ async function assertValidationFailedSettlement(
   expect(usage[0]?.tokens).toBe(30);
   expect(costOf(usage[0], "cost")).toBeCloseTo(0.005, 5);
   assertUsageEventTerm(usage);
-  expect(await r2Exists(String(row.payload_pointer))).toBe(true);
+  await waitForPayloadObject(ref);
 }
 
 async function waitForUsageEvents(
@@ -513,6 +513,29 @@ async function waitForAttempts(
     await new Promise((resolve) => setTimeout(resolve, 50));
   }
   return getAttempts(requestId);
+}
+
+async function waitForPayloadObject(
+  ref: string,
+  timeoutMs = 8000,
+): Promise<string> {
+  const started = Date.now();
+  let pointer: unknown;
+  while (Date.now() - started < timeoutMs) {
+    const row = await getAiRequest(ref);
+    pointer = row?.payload_pointer;
+    if (
+      typeof pointer === "string" &&
+      pointer.length > 0 &&
+      (await r2Exists(pointer))
+    ) {
+      return pointer;
+    }
+    await new Promise((resolve) => setTimeout(resolve, 50));
+  }
+  throw new Error(
+    `timed out waiting for R2 payload for ${ref} (pointer=${String(pointer)})`,
+  );
 }
 
 async function assertCompletedSettlement(ref: string): Promise<Record<string, unknown>> {
