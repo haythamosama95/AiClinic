@@ -7,6 +7,7 @@ import os
 import re
 import sys
 from collections import deque
+from datetime import datetime, timezone
 from pathlib import Path
 import threading
 import time
@@ -1591,7 +1592,6 @@ class FlutterMachineParser(ProgressParser):
         stack_trace: object = None,
         identity: str | None = None,
     ) -> None:
-        _emit_ci_test_status(name, "FAIL")
         if self.log_session is not None:
             if identity is None and not self.log_session.has_active():
                 self.log_session.start_test(name, identity=identity)
@@ -1609,10 +1609,15 @@ def _emit_ci_test_status(name: str, status: str) -> None:
     """Write durable per-test progress lines to GitHub Actions' step log."""
     if os.environ.get("GITHUB_ACTIONS", "").strip().lower() != "true":
         return
-    readable_status = (
-        "Pass" if status == "PASS" else "Fail" if status == "FAIL" else status
+    timestamp = datetime.now(timezone.utc).isoformat(timespec="milliseconds").replace(
+        "+00:00", "Z"
     )
-    sys.stdout.write(f"{name}: {readable_status}\n")
+    if status == "In Progress":
+        message = f"[{timestamp}] {name} Started"
+    else:
+        readable_status = "Pass" if status == "PASS" else "Fail"
+        message = f"[{timestamp}] {name} Finished with status {readable_status}"
+    sys.stdout.write(f"{message}\n")
     sys.stdout.flush()
 
 
