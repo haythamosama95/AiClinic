@@ -32,6 +32,8 @@ from harness.governor_run_manifest import (  # noqa: E402
     load_run_manifest,
     picked_from_manifest,
     resolve_governor_run_dir,
+    update_manifest_campaign,
+    write_run_manifest,
 )
 from harness.campaign_resume import sync_resume_state  # noqa: E402
 from harness.governor_run_stats import generate_governor_run_stats  # noqa: E402
@@ -105,6 +107,10 @@ def _run_area(
     if run_root is None:
         governor_run_id = governor_run_id or new_run_id()
         run_root = governor_run_root(governor_run_id)
+        # Standalone CI campaigns use the same report resolver as batch runs.
+        # Create the manifest before the child starts so even interrupted runs
+        # remain discoverable by ``--run latest``.
+        write_run_manifest(run_root, [(area, effective)])
     elif governor_run_id is None:
         governor_run_id = run_root.name
     run_root.mkdir(parents=True, exist_ok=True)
@@ -158,6 +164,13 @@ def _run_area(
         )
     if batch_queue is None:
         generate_governor_run_stats(run_root)
+        update_manifest_campaign(
+            run_root,
+            area,
+            effective,
+            status="finished" if code == 0 else "failed",
+            exit_code=code,
+        )
     return code
 
 

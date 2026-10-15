@@ -1,5 +1,6 @@
 {
   "kind": "flutter",
   "parallel_tests": 1,
-  "coverage": true
+  "coverage": true,
+  "test_timeout_ms": 60000
 }

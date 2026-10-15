@@ -115,6 +115,15 @@ def apply_flutter_args(cmd: list[str], config: dict[str, Any] | None) -> list[st
             out.append("--coverage")
     else:
         out = [arg for arg in out if arg != "--coverage"]
+    timeout = config.get("test_timeout_ms")
+    if timeout is not None:
+        timeout_arg = _format_timeout_ms(int(timeout))
+        if "--timeout" in out:
+            idx = out.index("--timeout")
+            if idx + 1 < len(out):
+                out[idx + 1] = timeout_arg
+        else:
+            out.extend(["--timeout", timeout_arg])
     return out
 
 

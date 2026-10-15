@@ -1,6 +1,6 @@
 {
   "kind": "vitest",
   "file_parallelism": false,
-  "test_timeout_ms": 120000,
+  "test_timeout_ms": 60000,
   "shard": null
 }
