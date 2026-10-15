@@ -6,17 +6,26 @@ import { fileURLToPath } from "node:url";
 import { createClient } from "@supabase/supabase-js";
 import { MockAgent } from "undici";
 import { unstable_startWorker as startWorker } from "wrangler";
-import { CHANNEL_VERSIONS } from "vendor-contracts";
+import {
+  CHANNEL_VERSIONS,
+  canonicalize,
+  grantIdPaid,
+  sha256Hex,
+  signCompactJws,
+} from "vendor-contracts";
 import {
   createAccessTeam,
   createSoftwareAuthenticator,
 } from "vendor-contracts/testkit";
 import {
   ABO_PERSIST,
+  ABO_D1_SEED_PERSIST,
   HARNESS_PERSIST,
+  PAYMOB_PERSIST,
   PLATFORM_PERSIST,
   REGISTRY_DIR,
   preparePlatformD1,
+  prepareAboD1,
   execPlatformD1Sql,
   queryPlatformD1One as queryPlatformD1Row,
   runWranglerSync,
@@ -25,7 +34,7 @@ import {
 
 // H-FS shared boot for P7.2: imported by p7-2-*.test.mjs
 
-export { ABO_PERSIST, HARNESS_PERSIST, PLATFORM_PERSIST, REGISTRY_DIR };
+export { ABO_PERSIST, ABO_D1_SEED_PERSIST, HARNESS_PERSIST, PAYMOB_PERSIST, PLATFORM_PERSIST, REGISTRY_DIR };
 
 export const REPO_ROOT = path.resolve(
   path.dirname(fileURLToPath(import.meta.url)),
@@ -174,11 +183,25 @@ export function psqlQuery(sql) {
   return result.stdout.trim();
 }
 
-export async function waitForHttp(url, { timeoutMs = 120_000, accept = [200] } = {}) {
+export async function waitForHttp(
+  url,
+  { timeoutMs = 120_000, accept = [200], headers, child, childLabel = "worker" } = {},
+) {
   const deadline = Date.now() + timeoutMs;
   while (Date.now() < deadline) {
+    if (child?.spawnError) {
+      throw new Error(
+        `Could not start ${childLabel} while waiting for ${url}: ${child.spawnError.message}${formatChildOutput(child)}`,
+      );
+    }
+    if (child?.exitResult) {
+      const { code, signal } = child.exitResult;
+      throw new Error(
+        `${childLabel} exited before ${url} became ready (code=${code}, signal=${signal ?? "none"})${formatChildOutput(child)}`,
+      );
+    }
     try {
-      const response = await fetch(url);
+      const response = await fetch(url, { headers });
       if (accept.includes(response.status)) {
         return response;
       }
@@ -190,48 +213,93 @@ export async function waitForHttp(url, { timeoutMs = 120_000, accept = [200] } =
   throw new Error(`Timed out waiting for ${url}`);
 }
 
+function formatChildOutput(child) {
+  const output = child.startupOutput?.trim();
+  return output ? `\n${child.startupLabel ?? "Worker"} output:\n${output}` : "";
+}
+
 function spawnDevProcess(args, env = {}) {
-  const child = spawn("npx", ["wrangler", ...args], {
+  const wranglerCli = path.join(
+    FULLSTACK_ROOT,
+    "node_modules/wrangler/bin/wrangler.js",
+  );
+  const child = spawn(process.execPath, [wranglerCli, ...args], {
     cwd: REPO_ROOT,
     env: wranglerLocalEnv(env),
+    detached: process.platform !== "win32",
     stdio: ["ignore", "pipe", "pipe"],
   });
-  child.stdout.on("data", captureLogChunk);
-  child.stderr.on("data", captureLogChunk);
+  child.startupLabel = args.includes(PAYMOB_WORKER) ? "Paymob worker" : "ABO worker";
+  child.startupOutput = "";
+  child.spawnError = null;
+  child.exitResult = null;
+  const captureChildOutput = (chunk) => {
+    const text = chunk.toString();
+    captureLogChunk(text);
+    child.startupOutput = `${child.startupOutput}${text}`.slice(-12_000);
+  };
+  child.stdout.on("data", captureChildOutput);
+  child.stderr.on("data", captureChildOutput);
+  child.once("error", (error) => {
+    child.spawnError = error;
+  });
+  child.once("exit", (code, signal) => {
+    child.exitResult = { code, signal };
+  });
   return child;
 }
 
 async function stopChild(child) {
-  if (!child || child.killed) {
+  if (!child) return;
+
+  if (process.platform === "win32" || !child.pid) {
+    if (child.exitCode !== null || child.signalCode !== null) return;
+    child.kill("SIGTERM");
+    await new Promise((resolve) => {
+      const timer = setTimeout(() => {
+        child.kill("SIGKILL");
+        resolve();
+      }, 5_000);
+      child.once("exit", () => {
+        clearTimeout(timer);
+        resolve();
+      });
+    });
     return;
   }
-  child.kill("SIGTERM");
-  await new Promise((resolve) => {
-    const timer = setTimeout(() => {
-      child.kill("SIGKILL");
-      resolve();
-    }, 5_000);
-    child.on("exit", () => {
-      clearTimeout(timer);
-      resolve();
-    });
-  });
-}
 
-async function applyAboMigrations() {
-  runWrangler([
-    "d1",
-    "migrations",
-    "apply",
-    "abo-development",
-    "--local",
-    "--env",
-    "development",
-    "--config",
-    ABO_CONFIG,
-    "--persist-to",
-    ABO_PERSIST,
-  ]);
+  const signalGroup = (signal) => {
+    try {
+      process.kill(-child.pid, signal);
+      return true;
+    } catch (error) {
+      if (error.code === "ESRCH") return false;
+      throw error;
+    }
+  };
+  const groupExists = () => {
+    try {
+      process.kill(-child.pid, 0);
+      return true;
+    } catch (error) {
+      if (error.code === "ESRCH") return false;
+      throw error;
+    }
+  };
+  const waitForGroupExit = async (timeoutMs) => {
+    const deadline = Date.now() + timeoutMs;
+    while (groupExists() && Date.now() < deadline) {
+      await new Promise((resolve) => setTimeout(resolve, 100));
+    }
+    return !groupExists();
+  };
+
+  if (!signalGroup("SIGTERM")) return;
+  if (await waitForGroupExit(5_000)) return;
+  signalGroup("SIGKILL");
+  if (!(await waitForGroupExit(1_000))) {
+    throw new Error(`Process group ${child.pid} did not exit after SIGKILL`);
+  }
 }
 
 async function insertActiveOperatorCredential({
@@ -439,6 +507,44 @@ export function sqlLiteral(value) {
   return `'${String(value).replace(/'/g, "''")}'`;
 }
 
+function findTestOrganizationId(orgName) {
+  return psqlQuery(
+    `SELECT id FROM public.organizations
+     WHERE name = ${sqlLiteral(orgName)} AND is_deleted = false
+     LIMIT 1`,
+  );
+}
+
+function insertTestOrganization(orgName) {
+  const adminUserId = psqlQuery(
+    "SELECT id FROM auth.users WHERE email = 'admin' LIMIT 1",
+  );
+  if (!adminUserId) {
+    throw new Error("Cannot seed a test organization without the bootstrap admin user");
+  }
+  return psqlQuery(
+    `WITH inserted AS (
+       INSERT INTO public.organizations (
+         name, currency_code, timezone, settings_json, created_by, updated_by
+       ) VALUES (
+         ${sqlLiteral(orgName)}, 'EGP', 'UTC', '{}'::jsonb,
+         ${sqlLiteral(adminUserId)}::uuid, ${sqlLiteral(adminUserId)}::uuid
+       ) RETURNING id
+     )
+     SELECT id FROM inserted`,
+  );
+}
+
+function findTestBranchId(orgId, branchCode) {
+  return psqlQuery(
+    `SELECT id FROM public.branches
+     WHERE organization_id = ${sqlLiteral(orgId)}::uuid
+       AND code = ${sqlLiteral(branchCode)}
+       AND is_deleted = false
+     LIMIT 1`,
+  );
+}
+
 function seedStaffMembership(orgId, username, role) {
   psqlQuery(`
     INSERT INTO ai_internal.membership (user_id, organization_id, role)
@@ -470,27 +576,53 @@ async function createOrgClinic({ prefix, orgName, branchCode, branchName }) {
 
   const bootstrap = await signIn("admin", "admin");
 
-  const orgResult = await rpc(bootstrap, "bootstrap_create_organization", {
-    p_name: orgName,
-    p_settings_json: {},
-    p_currency_code: "EGP",
-    p_timezone: "UTC",
-  });
-  if (!orgResult?.success) {
-    throw new Error(`bootstrap_create_organization failed for ${prefix}`);
+  let orgId = findTestOrganizationId(orgName);
+  if (!orgId) {
+    const orgResult = await rpc(bootstrap, "bootstrap_create_organization", {
+      p_name: orgName,
+      p_settings_json: {},
+      p_currency_code: "EGP",
+      p_timezone: "UTC",
+    });
+    if (orgResult?.success) {
+      orgId = orgResult.data.organization_id;
+    } else if (orgResult?.error_code === "ORG_ALREADY_EXISTS") {
+      // Bootstrap is intentionally single-organization per installation. The
+      // cross-tenant E2E fixture needs a second organization, so seed it through
+      // the privileged local test database connection.
+      orgId = insertTestOrganization(orgName);
+    } else {
+      throw new Error(
+        `bootstrap_create_organization failed for ${prefix}: ${orgResult?.error_code ?? "unknown"} ${orgResult?.error_message ?? ""}`,
+      );
+    }
   }
-  const orgId = orgResult.data.organization_id;
-  await bootstrap.auth.refreshSession();
 
-  const branchResult = await rpc(bootstrap, "bootstrap_create_branch", {
-    p_organization_id: orgId,
-    p_name: branchName,
-    p_code: branchCode,
-  });
-  if (!branchResult?.success) {
-    throw new Error(`bootstrap_create_branch failed for ${prefix}`);
+  let branchId = findTestBranchId(orgId, branchCode);
+  if (!branchId) {
+    const branchResult = await rpc(bootstrap, "bootstrap_create_branch", {
+      p_organization_id: orgId,
+      p_name: branchName,
+      p_code: branchCode,
+    });
+    if (!branchResult?.success) {
+      throw new Error(
+        `bootstrap_create_branch failed for ${prefix}: ${branchResult?.error_code ?? "unknown"} ${branchResult?.error_message ?? ""}`,
+      );
+    }
+    branchId = branchResult.data.branch_id;
   }
-  const branchId = branchResult.data.branch_id;
+
+  const activeOrganization = await rpc(
+    bootstrap,
+    "set_active_organization",
+    { p_organization_id: orgId },
+  );
+  if (!activeOrganization?.success) {
+    throw new Error(
+      `set_active_organization failed for ${prefix}: ${activeOrganization?.error_code ?? "unknown"}`,
+    );
+  }
   await bootstrap.auth.refreshSession();
 
   const createStaff = async (username, password, fullName, role) => {
@@ -566,14 +698,16 @@ function spawnAboProcess(issuerKeys) {
       "9231",
       "--persist-to",
       ABO_PERSIST,
+      "--var",
+      `PAYMOB_BASE_URL:${PAYMOB_URL}`,
+      "--var",
+      `ISSUER_KEYS:${JSON.stringify(issuerKeys)}`,
+      "--var",
+      `ABO_GRANT_KEY:${JSON.stringify(ABO_GRANT_KEY)}`,
+      "--var",
+      `PLATFORM_PUBLIC_KEYS:${JSON.stringify(PLATFORM_PUBLIC_KEYS)}`,
       "--test-scheduled",
     ],
-    {
-      PAYMOB_BASE_URL: PAYMOB_URL,
-      ISSUER_KEYS: JSON.stringify(issuerKeys),
-      ABO_GRANT_KEY: JSON.stringify(ABO_GRANT_KEY),
-      PLATFORM_PUBLIC_KEYS: JSON.stringify(PLATFORM_PUBLIC_KEYS),
-    },
   );
 }
 
@@ -583,6 +717,8 @@ export async function startStack() {
   await mkdir(HARNESS_PERSIST, { recursive: true });
   await mkdir(REGISTRY_DIR, { recursive: true });
   await mkdir(ABO_PERSIST, { recursive: true });
+  await mkdir(ABO_D1_SEED_PERSIST, { recursive: true });
+  await mkdir(PAYMOB_PERSIST, { recursive: true });
   await preparePlatformD1({ platformConfig: PLATFORM_CONFIG });
 
   const accessTeam = await createAccessTeam({
@@ -657,21 +793,31 @@ export async function startStack() {
     PAYMOB_WORKER,
     "--port",
     "8789",
+    "--persist-to",
+    PAYMOB_PERSIST,
     "--ip",
     "127.0.0.1",
     "--inspector-port",
     "9230",
   ]);
-  await waitForHttp(`${PAYMOB_URL}/`, { accept: [200, 404] });
+  await waitForHttp(`${PAYMOB_URL}/`, {
+    accept: [200, 404],
+    child: paymob,
+    childLabel: "Paymob worker",
+  });
 
-  await applyAboMigrations();
+  await prepareAboD1({ aboConfig: ABO_CONFIG });
   const abo = spawnAboProcess(issuerKeys);
   await waitForHttp(`${ABO_URL}/v1/offers`, {
     accept: [401, 403, 400],
+    headers: { Host: BILLING_HOST },
+    child: abo,
+    childLabel: "ABO worker",
   });
 
   const clinics = await createTwoOrgClinics();
 
+  let stackStopped = false;
   const stackRef = {
     accessTeam,
     authenticator,
@@ -685,18 +831,31 @@ export async function startStack() {
     signingKey,
     clinics,
     async stop() {
+      if (stackStopped) return;
       await stopChild(paymob);
-      await stopChild(abo);
+      await stopChild(stackRef.abo);
       await harnessWorker.dispose();
       await platformWorker.dispose();
       await mockFetch.close();
+      stackStopped = true;
     },
     async restartAbo(nextIssuerKeys = issuerKeys) {
+      if (stackStopped) {
+        throw new Error("Cannot restart ABO after the P7.2 stack has stopped");
+      }
       await stopChild(stackRef.abo);
       const restarted = spawnAboProcess(nextIssuerKeys);
-      await waitForHttp(`${ABO_URL}/v1/offers`, {
-        accept: [401, 403, 400],
-      });
+      try {
+        await waitForHttp(`${ABO_URL}/v1/offers`, {
+          accept: [401, 403, 400],
+          headers: { Host: BILLING_HOST },
+          child: restarted,
+          childLabel: "restarted ABO worker",
+        });
+      } catch (error) {
+        await stopChild(restarted);
+        throw error;
+      }
       stackRef.abo = restarted;
       stackRef.issuerKeys = nextIssuerKeys;
       return restarted;
@@ -844,6 +1003,60 @@ export function ensurePlatformGrantPrerequisites(orgId, installationId) {
       ${sqlLiteral(OPERATOR_EMAIL)}, 'harness'
     );
   `);
+}
+
+export async function ensurePlatformActiveCoverage(
+  stackRef,
+  orgId,
+  installationId,
+) {
+  const paymentRef = crypto.randomUUID().replace(/-/g, "");
+  const privateKey = await crypto.subtle.importKey(
+    "pkcs8",
+    Buffer.from(ABO_GRANT_KEY.pkcs8, "base64url"),
+    { name: "Ed25519" },
+    false,
+    ["sign"],
+  );
+  const envelope = {
+    contract_version: CHANNEL_VERSIONS.vendorEntrypoint,
+    grant_id: await grantIdPaid(paymentRef),
+    org_id: orgId,
+    kind: "term",
+    placement: "queue",
+    source: { kind: "paid", ref: paymentRef },
+    plan: { plan_id: PLAN_ID, plan_version: PLAN_VERSION },
+    duration: { unit: "month", count: 1 },
+    allowance_credits: ALLOWANCE_CREDITS,
+    grace: { days: 7, cap_rule: "proportional" },
+    paid_at: new Date().toISOString(),
+    evidence: {
+      content_sha256: await sha256Hex(new TextEncoder().encode(paymentRef)),
+      approvals: [{ credential_id: stackRef.credentialId, assertion: "stub" }],
+    },
+  };
+  const signature = await signCompactJws({
+    payload: canonicalize(envelope),
+    privateKey,
+    kid: ABO_GRANT_KEY.kid,
+  });
+  const response = await fetch(`${HARNESS_URL}/vendor-call`, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({
+      method: "grant",
+      args: {
+        contract_version: CHANNEL_VERSIONS.vendorEntrypoint,
+        abo_kid: ABO_GRANT_KEY.kid,
+        abo_signature: signature,
+        envelope_b64: Buffer.from(canonicalize(envelope)).toString("base64"),
+      },
+    }),
+  });
+  const result = await response.json();
+  if (response.status !== 200 || result.result !== "applied") {
+    throw new Error(`Could not seed Org AI coverage: ${JSON.stringify(result)}`);
+  }
 }
 
 export async function putBillingContact(billingToken) {
