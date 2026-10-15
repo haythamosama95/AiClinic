@@ -78,13 +78,38 @@ jobs:
           echo "Campaign: ${CAMPAIGN_AREA}/${CAMPAIGN_SUBCAMPAIGN}"
           echo "Commit: ${GITHUB_SHA}"
           echo "Run: ${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
+          campaign_pid=""
+          cancellation_requested=false
+          forward_cancellation() {
+            cancellation_requested=true
+            if [[ -n "${campaign_pid}" ]] && kill -0 "${campaign_pid}" 2>/dev/null; then
+              echo "Workflow cancellation received; forwarding SIGINT to campaign ${campaign_pid}."
+              kill -INT "${campaign_pid}" 2>/dev/null || true
+            fi
+          }
+          trap forward_cancellation INT TERM
           set +e
           if [[ "${CAMPAIGN_SUBCAMPAIGN}" == "full-area" ]]; then
-            python3 test/run_campaigns.py --full-area "${CAMPAIGN_AREA}"
+            python3 test/run_campaigns.py --full-area "${CAMPAIGN_AREA}" &
           else
-            python3 test/run_campaigns.py "${CAMPAIGN_AREA}" "${CAMPAIGN_SUBCAMPAIGN}"
+            python3 test/run_campaigns.py "${CAMPAIGN_AREA}" "${CAMPAIGN_SUBCAMPAIGN}" &
           fi
-          exit_code=$?
+          campaign_pid=$!
+          # Bash can return from wait when the step receives SIGINT, while the
+          # campaign is still shutting down its own child processes. Keep
+          # waiting so the output collection and reporting steps get complete logs.
+          while true; do
+            wait "${campaign_pid}"
+            exit_code=$?
+            if ! kill -0 "${campaign_pid}" 2>/dev/null; then
+              break
+            fi
+          done
+          campaign_pid=""
+          trap - INT TERM
+          if [[ "${cancellation_requested}" == "true" && "${exit_code}" == "0" ]]; then
+            exit_code=130
+          fi
           set -e
           elapsed_seconds=$(( $(date +%s) - started_epoch ))
           echo "::endgroup::"
