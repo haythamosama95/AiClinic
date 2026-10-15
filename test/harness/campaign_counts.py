@@ -269,11 +269,18 @@ def _e2e_counts() -> dict[str, int]:
     return {
         "p5-1": _count_node(p51),
         "p5-2": _count_node(p52),
+        "p5-core": _count_node(p51) + _count_node(p52),
         "p5-2b": _count_node(p52b),
         "p7-3": _count_node(p73),
         "p7-2": _count_node(p72),
         "all-ci": _count_node(p51) + _count_node(p52),
-        "all-manual": _count_node(all_manual),
+        "all-manual": _count_node(
+            [
+                path
+                for path in all_manual
+                if path.name not in {"p5-1.test.mjs", "p5-2.test.mjs"}
+            ]
+        ),
     }
 
 

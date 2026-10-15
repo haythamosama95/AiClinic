@@ -72,13 +72,13 @@ def render(previous_root: Path, current_root: Path, previous_run_id: str | None,
         "",
         f"Comparing previous completed CI run {previous_label} with current run {current_label}. Counts are summed from campaign subcampaigns for each area.",
         "",
-        "| CI job | Run | Passed | Failed | Skipped | Total |",
+        "| Campaign area (aggregated) | Run | Passed | Failed | Skipped | Total |",
         "|---|---|---:|---:|---:|---:|",
     ]
     for area in areas:
         for run_label, stats in ((previous_label, previous.get(area)), (current_label, current.get(area))):
             values = [str(stats[metric]) if stats is not None else "—" for metric in METRICS]
-            lines.append(f"| `campaign-{area}` | {run_label} | " + " | ".join(values) + " |")
+            lines.append(f"| `{area}` | {run_label} | " + " | ".join(values) + " |")
         for metric in METRICS:
             lines.extend((f"#### {metric.title()}", "", _chart(area, metric, previous.get(area), current.get(area)), ""))
     return "\n".join(lines).rstrip() + "\n"

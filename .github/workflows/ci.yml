@@ -9,12 +9,13 @@ on:
 
 jobs:
   test-campaign:
-    name: campaign-${{ matrix.area }}
+    name: campaign-${{ matrix.area }}-${{ matrix.subcampaign }}
     runs-on: ubuntu-latest
     timeout-minutes: ${{ matrix.timeout_minutes }}
     env:
       CI: "true"
       CAMPAIGN_AREA: ${{ matrix.area }}
+      CAMPAIGN_SUBCAMPAIGN: ${{ matrix.subcampaign }}
       HFS_RESET_SUPABASE: ${{ matrix.area == 'e2e-fullstack' && '1' || '0' }}
       HFS_PLATFORM_BIND_HOST: ${{ matrix.area == 'e2e-fullstack' && '0.0.0.0' || '127.0.0.1' }}
     strategy:
@@ -22,36 +23,91 @@ jobs:
       matrix:
         include:
           - area: frontend
+            subcampaign: unit
+            timeout_minutes: 120
+            flutter: true
+            supabase: false
+            postgresql_client: false
+          - area: frontend
+            subcampaign: boundary
+            timeout_minutes: 120
+            flutter: true
+            supabase: true
+            postgresql_client: true
+          - area: frontend
+            subcampaign: fullstack
             timeout_minutes: 120
             flutter: true
             supabase: true
             postgresql_client: true
           - area: backend
+            subcampaign: all
             timeout_minutes: 45
             flutter: false
             supabase: true
             postgresql_client: true
           - area: ai-platform
+            subcampaign: unit
+            timeout_minutes: 60
+            flutter: false
+            supabase: false
+            postgresql_client: false
+          - area: ai-platform
+            subcampaign: workers
+            timeout_minutes: 60
+            flutter: false
+            supabase: false
+            postgresql_client: false
+          - area: ai-platform
+            subcampaign: e2e
+            timeout_minutes: 60
+            flutter: false
+            supabase: false
+            postgresql_client: false
+          - area: ai-platform
+            subcampaign: version-matrix
             timeout_minutes: 60
             flutter: false
             supabase: false
             postgresql_client: false
           - area: abo
+            subcampaign: full-area
             timeout_minutes: 60
             flutter: false
             supabase: false
             postgresql_client: false
           - area: e2e-fullstack
+            subcampaign: p5-core
+            timeout_minutes: 110
+            flutter: true
+            supabase: true
+            postgresql_client: true
+          - area: e2e-fullstack
+            subcampaign: p5-2b
+            timeout_minutes: 110
+            flutter: true
+            supabase: true
+            postgresql_client: true
+          - area: e2e-fullstack
+            subcampaign: p7-2
+            timeout_minutes: 110
+            flutter: true
+            supabase: true
+            postgresql_client: true
+          - area: e2e-fullstack
+            subcampaign: p7-3
             timeout_minutes: 110
             flutter: true
             supabase: true
             postgresql_client: true
           - area: vendor-contracts
+            subcampaign: all
             timeout_minutes: 30
             flutter: false
             supabase: false
             postgresql_client: false
           - area: ops-launch
+            subcampaign: full-area
             timeout_minutes: 15
             flutter: false
             supabase: false
@@ -86,20 +142,24 @@ jobs:
       - name: Set up campaign area
         run: |
           echo "::group::Prepare campaign environment — ${CAMPAIGN_AREA}"
-          bash .github/scripts/setup-campaign-area.sh "${CAMPAIGN_AREA}"
+          bash .github/scripts/setup-campaign-area.sh "${CAMPAIGN_AREA}" "${CAMPAIGN_SUBCAMPAIGN}"
           echo "::endgroup::"
 
-      - name: Run full root campaign
+      - name: Run root campaign subcampaign
         id: campaign
         run: |
           started_at="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
           started_epoch="$(date +%s)"
-          echo "::group::Run campaign — ${CAMPAIGN_AREA}"
-          echo "Area: ${CAMPAIGN_AREA}"
+          echo "::group::Run campaign — ${CAMPAIGN_AREA}/${CAMPAIGN_SUBCAMPAIGN}"
+          echo "Campaign: ${CAMPAIGN_AREA}/${CAMPAIGN_SUBCAMPAIGN}"
           echo "Commit: ${GITHUB_SHA}"
           echo "Run: ${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
           set +e
-          python3 test/run_campaigns.py --full-area "${CAMPAIGN_AREA}"
+          if [[ "${CAMPAIGN_SUBCAMPAIGN}" == "full-area" ]]; then
+            python3 test/run_campaigns.py --full-area "${CAMPAIGN_AREA}"
+          else
+            python3 test/run_campaigns.py "${CAMPAIGN_AREA}" "${CAMPAIGN_SUBCAMPAIGN}"
+          fi
           exit_code=$?
           set -e
           elapsed_seconds=$(( $(date +%s) - started_epoch ))
@@ -122,9 +182,9 @@ jobs:
           CAMPAIGN_ELAPSED_SECONDS: ${{ steps.campaign.outputs.elapsed_seconds }}
         run: |
           run_ref="${GOVERNOR_RUN:-latest}"
-          echo "::group::Campaign report — ${CAMPAIGN_AREA}"
+          echo "::group::Campaign report — ${CAMPAIGN_AREA}/${CAMPAIGN_SUBCAMPAIGN}"
           {
-            echo "## CI campaign: \`${CAMPAIGN_AREA}\`"
+            echo "## CI campaign: \`${CAMPAIGN_AREA}/${CAMPAIGN_SUBCAMPAIGN}\`"
             echo
             echo "- Commit: [\`${GITHUB_SHA:0:7}\`](${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/commit/${GITHUB_SHA})"
             echo "- Branch/ref: \`${GITHUB_REF_NAME}\`"
@@ -154,7 +214,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: campaign-${{ matrix.area }}-${{ github.run_id }}
+          name: campaign-${{ matrix.area }}-${{ matrix.subcampaign }}-${{ github.run_id }}
           path: |
             test-results/governor/
             test-results/${{ matrix.area }}/

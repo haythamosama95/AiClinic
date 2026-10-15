@@ -2,7 +2,8 @@
 # Install only what a single root campaign area needs on Linux CI.
 set -euo pipefail
 
-area="${1:?usage: setup-campaign-area.sh <frontend|backend|ai-platform|abo|e2e-fullstack|vendor-contracts|ops-launch>}"
+area="${1:?usage: setup-campaign-area.sh <frontend|backend|ai-platform|abo|e2e-fullstack|vendor-contracts|ops-launch> [subcampaign]}"
+subcampaign="${2:-full-area}"
 
 script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 repo_root="$(cd "${script_dir}/../.." && pwd)"
@@ -27,9 +28,24 @@ need_flutter=0
 
 case "${area}" in
   frontend)
-    need_supabase=1
-    need_flutter=1
-    npm_dirs+=(packages/vendor-contracts ai-platform abo e2e/fullstack)
+    case "${subcampaign}" in
+      unit)
+        need_flutter=1
+        ;;
+      boundary)
+        need_supabase=1
+        need_flutter=1
+        ;;
+      fullstack|full-area)
+        need_supabase=1
+        need_flutter=1
+        npm_dirs+=(packages/vendor-contracts ai-platform abo e2e/fullstack)
+        ;;
+      *)
+        echo "ERROR: unknown frontend subcampaign: ${subcampaign}" >&2
+        exit 1
+        ;;
+    esac
     ;;
   backend)
     need_supabase=1
@@ -76,7 +92,7 @@ if [[ "${need_supabase}" -eq 1 ]]; then
   (cd "${repo_root}/backend" && supabase start)
 fi
 
-if [[ "${area}" == "frontend" ]]; then
+if [[ "${area}" == "frontend" && "${subcampaign}" != "unit" ]]; then
   echo "Writing frontend local deployment profile..."
   anon_key=""
   api_url=""

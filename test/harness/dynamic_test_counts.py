@@ -273,6 +273,11 @@ def _e2e_count(subcampaign: str) -> int | None:
         return _count_node_sources(root, ["test/p5-1.test.mjs"])
     if subcampaign == "p5-2":
         return _count_node_sources(root, ["test/p5-2.test.mjs"])
+    if subcampaign == "p5-core":
+        with ThreadPoolExecutor(max_workers=2) as pool:
+            a = pool.submit(_e2e_count, "p5-1")
+            b = pool.submit(_e2e_count, "p5-2")
+        return _sum_parallel_counts([a.result(), b.result()])
     if subcampaign == "p5-2b":
         return _count_node_sources(root, ["test/p5-2b.test.mjs"])
     if subcampaign == "p7-3":
@@ -285,7 +290,12 @@ def _e2e_count(subcampaign: str) -> int | None:
             b = pool.submit(_e2e_count, "p5-2")
         return _sum_parallel_counts([a.result(), b.result()])
     if subcampaign == "all-manual":
-        return _count_node_sources(root, _e2e_files("*.test.mjs"))
+        files = [
+            file
+            for file in _e2e_files("*.test.mjs")
+            if Path(file).name not in {"p5-1.test.mjs", "p5-2.test.mjs"}
+        ]
+        return _count_node_sources(root, files)
     return None
 
 

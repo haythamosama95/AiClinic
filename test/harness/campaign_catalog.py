@@ -186,6 +186,9 @@ CATALOG: dict[str, AreaCatalog] = {
             "p5-2": (
                 "Coverage feed pull, projection into the database, and administrator status paths."
             ),
+            "p5-core": (
+                "The CI core pair: issuer key custody followed by coverage feed projection."
+            ),
             "p5-2b": (
                 "Read-time billing status, notices, and administrator-facing status refresh."
             ),
@@ -196,11 +199,10 @@ CATALOG: dict[str, AreaCatalog] = {
             "p7-2": (
                 "Vendor entrypoint wiring, credential isolation, and untrusted caller rejection."
             ),
-            "all-ci": (
-                "The pair of scenarios run in continuous integration: issuer custody, then "
-                "coverage feed."
+            "all-ci": "Compatibility rollup for the P5.1 and P5.2 CI core pair.",
+            "all-manual": (
+                "Remaining Node scenario files in one run; P5.1 and P5.2 are covered by all-ci."
             ),
-            "all-manual": "Every Node scenario file in this package, in one run.",
         },
     ),
     "vendor-contracts": AreaCatalog(

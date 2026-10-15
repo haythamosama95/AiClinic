@@ -170,6 +170,16 @@ def run_p5_2(_: str) -> int:
     return _run_node_tests("p5-2", ["test/p5-2.test.mjs"])
 
 
+def run_p5_core(_: str) -> int:
+    return _run_node_steps(
+        "p5-core",
+        [
+            ("p5-1", ["test/p5-1.test.mjs"]),
+            ("p5-2", ["test/p5-2.test.mjs"]),
+        ],
+    )
+
+
 def run_p5_2b(_: str) -> int:
     return _run_node_tests("p5-2b", ["test/p5-2b.test.mjs"])
 
@@ -193,12 +203,18 @@ def run_all_ci(_: str) -> int:
 
 
 def run_all_manual(_: str) -> int:
-    return _run_node_steps("all-manual", _per_file_steps(_node_test_files("*.test.mjs")))
+    files = [
+        file
+        for file in _node_test_files("*.test.mjs")
+        if Path(file).name not in {"p5-1.test.mjs", "p5-2.test.mjs"}
+    ]
+    return _run_node_steps("all-manual", _per_file_steps(files))
 
 
 SUBCAMPAIGNS = {
     "p5-1": run_p5_1,
     "p5-2": run_p5_2,
+    "p5-core": run_p5_core,
     "p5-2b": run_p5_2b,
     "p7-3": run_p7_3,
     "p7-2": run_p7_2,

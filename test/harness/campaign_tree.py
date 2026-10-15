@@ -55,8 +55,9 @@ SUBCAMPAIGN_PARENT: dict[str, dict[str, str | None]] = {
     },
     "e2e-fullstack": {
         "all-manual": None,
-        "p5-1": "all-manual",
-        "p5-2": "all-manual",
+        "p5-1": "p5-core",
+        "p5-2": "p5-core",
+        "p5-core": "all-ci",
         "p5-2b": "all-manual",
         "p7-2": "all-manual",
         "p7-3": "all-manual",

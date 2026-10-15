@@ -33,18 +33,23 @@ Shared helpers: `test/harness/common.py`.
 
 ## CI
 
-GitHub Actions runs **one job per root campaign area** (`campaign-frontend`, `campaign-backend`, …).
-Each job runs every subcampaign in that area (same as selecting the whole area in `-i`):
+GitHub Actions runs named campaign subcampaign jobs. Frontend runs `unit`, `boundary`, and `fullstack` separately; AI Platform runs `unit`, `workers`, `e2e`, and `version-matrix`; E2E Fullstack runs `p5-core`, `p5-2b`, `p7-2`, and `p7-3`. Backend, ABO, vendor-contracts, and ops-launch remain whole-area jobs.
+
+Split jobs invoke one campaign directly:
 
 ```bash
-python3 test/run_campaigns.py --full-area <area>
+python3 test/run_campaigns.py <area> <subcampaign>
 ```
+
+Whole-area jobs use `--full-area <area>`.
 
 Per-area setup on Linux CI:
 
 ```bash
-bash .github/scripts/setup-campaign-area.sh <area>
+bash .github/scripts/setup-campaign-area.sh <area> <subcampaign>
 ```
+
+Frontend setup uses the subcampaign to install only its prerequisites: `unit` sets up Flutter without Supabase or npm packages, `boundary` adds Supabase, and `fullstack` installs the worker packages and starts Supabase. Omitting the subcampaign retains full-area setup.
 
 Failed cases are listed in the job log, GitHub **Step summary**, and `::error` annotations via:
 
@@ -52,7 +57,7 @@ Failed cases are listed in the job log, GitHub **Step summary**, and `::error` a
 python3 test/report_campaign_ci.py --area <area> --run latest --github-summary
 ```
 
-Download **campaign-&lt;area&gt;-&lt;run_id&gt;** artifacts for governor logs (`console.log`, per-test `tests/*.log`, `summary.json`, `stats.json`).
+Download **campaign-&lt;area&gt;-&lt;subcampaign&gt;-&lt;run_id&gt;** artifacts for governor logs (`console.log`, per-test `tests/*.log`, `summary.json`, `stats.json`).
 
 On CI (`CI` / `GITHUB_ACTIONS`), the Rich batch dashboard is disabled so logs stay readable; use `AICLINIC_PLAIN_CAMPAIGN_LOG=1` locally for the same behavior.
 
