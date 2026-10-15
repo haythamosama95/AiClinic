@@ -1395,27 +1395,42 @@ class StepProgressParser(ProgressParser):
         self.display = display
         self.log_session = log_session
         self._pending: str | None = None
+        self._pending_started: float | None = None
 
     def feed(self, line: str) -> None:
         stripped = line.strip()
         match = _STEP_HEADER.match(stripped)
         if match:
             self._pending = match.group(2)
+            self._pending_started = time.monotonic()
+            _emit_test_started(self._pending)
             if self.log_session is not None:
                 self.log_session.start_test(self._pending)
             self.display.set_current(self._pending)
             return
         if self._pending and stripped == "PASS":
+            _emit_test_finished(
+                self._pending,
+                "PASS",
+                time.monotonic() - (self._pending_started or time.monotonic()),
+            )
             self.display.add_finished(self._pending, "PASS")
             if self.log_session is not None:
                 self.log_session.end_test(self._pending, status="PASS")
             self._pending = None
+            self._pending_started = None
             return
         if self._pending and stripped == "FAIL":
+            _emit_test_finished(
+                self._pending,
+                "FAIL",
+                time.monotonic() - (self._pending_started or time.monotonic()),
+            )
             self.display.add_finished(self._pending, "FAIL")
             if self.log_session is not None:
                 self.log_session.end_test(self._pending, status="FAIL")
             self._pending = None
+            self._pending_started = None
             return
         if self._pending and stripped.startswith("SKIP"):
             self.display.add_finished(self._pending, "SKIP")
@@ -1424,6 +1439,7 @@ class StepProgressParser(ProgressParser):
                     self._pending, status="SKIP", skipped=True
                 )
             self._pending = None
+            self._pending_started = None
 
 
 class FlutterMachineParser(ProgressParser):
@@ -1444,6 +1460,7 @@ class FlutterMachineParser(ProgressParser):
         self._failed_pseudo: set[int] = set()
         self._failed_tests: set[int] = set()
         self._suite_paths: dict[int, str] = {}
+        self._started_mono: dict[int, float] = {}
 
     def feed(self, line: str) -> None:
         stripped = line.strip()
@@ -1497,13 +1514,14 @@ class FlutterMachineParser(ProgressParser):
                 self._ignored_ids.add(tid)
                 return
             self._active[tid] = label
+            self._started_mono[tid] = time.monotonic()
             suite_id = test.get("suiteID")
             suite_path = self._suite_paths.get(int(suite_id)) if suite_id is not None else None
             self._identity_by_id[tid] = self._stable_identity(suite_path, label)
             if self.log_session is not None:
                 self.log_session.start_test(label, identity=self._identity_by_id[tid])
                 self.log_session.append_line(raw_line, identity=self._identity_by_id[tid])
-            _emit_ci_test_status(label, "In Progress")
+            _emit_test_started(label)
             self.display.set_current(label)
         elif kind == "testDone":
             test_id = event.get("testID")
@@ -1538,7 +1556,10 @@ class FlutterMachineParser(ProgressParser):
             )
             self._failed_tests.discard(tid)
             if status != "SKIP":
-                _emit_ci_test_status(name, status)
+                elapsed = time.monotonic() - self._started_mono.pop(tid, time.monotonic())
+                _emit_test_finished(name, status, elapsed)
+            else:
+                self._started_mono.pop(tid, None)
             if self.log_session is not None:
                 self.log_session.end_test(
                     name,
@@ -1632,19 +1653,24 @@ class FlutterMachineParser(ProgressParser):
         self.display.add_finished(name, "FAIL", identity=identity)
 
 
-def _emit_ci_test_status(name: str, status: str) -> None:
-    """Write durable per-test progress lines to GitHub Actions' step log."""
-    if os.environ.get("GITHUB_ACTIONS", "").strip().lower() != "true":
-        return
+def _emit_test_started(name: str) -> None:
+    """Write timestamped per-test progress to every campaign console."""
     timestamp = datetime.now(timezone.utc).isoformat(timespec="milliseconds").replace(
         "+00:00", "Z"
     )
-    if status == "In Progress":
-        message = f"[{timestamp}] {name} Started"
-    else:
-        readable_status = "Pass" if status == "PASS" else "Fail"
-        message = f"[{timestamp}] {name} Finished with status {readable_status}"
-    sys.stdout.write(f"{message}\n")
+    sys.stdout.write(f"[{timestamp}] {name} Started\n")
+    sys.stdout.flush()
+
+
+def _emit_test_finished(name: str, status: str, elapsed_seconds: float) -> None:
+    timestamp = datetime.now(timezone.utc).isoformat(timespec="milliseconds").replace(
+        "+00:00", "Z"
+    )
+    readable_status = "Pass" if status == "PASS" else "Fail"
+    sys.stdout.write(
+        f"[{timestamp}] {name} Finished with status {readable_status} "
+        f"(time={elapsed_seconds:.3f}s)\n"
+    )
     sys.stdout.flush()
 
 
@@ -1663,6 +1689,7 @@ class VitestReporterParser(ProgressParser):
         from harness.vitest_labels import vitest_exclude_label_set
 
         self._exclude = vitest_exclude_label_set(exclude_tests)
+        self._started: dict[str, float] = {}
 
     def _finish_vitest(self, name: str, status: str, line: str) -> None:
         from harness.campaign_vitest_reconcile import is_harness_artifact_test_name
@@ -1675,6 +1702,15 @@ class VitestReporterParser(ProgressParser):
             return
         duration = _parse_vitest_duration_seconds(name) or _parse_vitest_duration_seconds(
             line
+        )
+        started = self._started.pop(label, None)
+        if started is None:
+            started = time.monotonic()
+            _emit_test_started(label)
+        _emit_test_finished(
+            label,
+            status,
+            duration if duration is not None else time.monotonic() - started,
         )
         if self.log_session is not None:
             self.log_session.start_test(label)
@@ -1719,6 +1755,9 @@ class VitestReporterParser(ProgressParser):
 
             label = normalize_vitest_case_label(stripped)
             if label not in self._exclude:
+                if label not in self._started:
+                    self._started[label] = time.monotonic()
+                    _emit_test_started(label)
                 self.display.set_current(label)
 
 
@@ -1738,6 +1777,31 @@ class NodeTestParser(ProgressParser):
         self.log_session = log_session
         self._exclude = vitest_exclude_label_set(exclude_tests)
         self._pending_subtest: str | None = None
+        self._pending_started: float | None = None
+
+    def _finish_node_test(self, raw_name: str, status: str, line: str) -> None:
+        from harness.vitest_labels import normalize_vitest_case_label
+
+        name = normalize_vitest_case_label(raw_name)
+        if name in self._exclude:
+            self._pending_subtest = None
+            self._pending_started = None
+            return
+        started = (
+            self._pending_started
+            if self._pending_subtest == name
+            else None
+        )
+        if started is None:
+            started = time.monotonic()
+            _emit_test_started(name)
+        _emit_test_finished(name, status, time.monotonic() - started)
+        if self.log_session is not None:
+            self.log_session.append_line(line)
+            self.log_session.end_test(name, status=status)
+        self.display.add_finished(name, status)
+        self._pending_subtest = None
+        self._pending_started = None
 
     def feed(self, line: str) -> None:
         stripped = line.strip()
@@ -1754,35 +1818,21 @@ class NodeTestParser(ProgressParser):
                 return
             if self.log_session is not None:
                 self.log_session.start_test(name)
+            _emit_test_started(name)
             self.display.set_current(name)
             self._pending_subtest = name
+            self._pending_started = time.monotonic()
             return
         tap_ok = _NODE_TAP_OK.match(stripped)
         if tap_ok:
-            from harness.vitest_labels import normalize_vitest_case_label
-
             raw = (tap_ok.group(1) or self._pending_subtest or "").strip()
             if raw:
-                name = normalize_vitest_case_label(raw)
-                if name not in self._exclude:
-                    if self.log_session is not None:
-                        self.log_session.append_line(line)
-                        self.log_session.end_test(name, status="PASS")
-                    self.display.add_finished(name, "PASS")
-            self._pending_subtest = None
+                self._finish_node_test(raw, "PASS", line)
             return
         tap_fail = _NODE_TAP_NOT_OK.match(stripped)
         if tap_fail:
-            from harness.vitest_labels import normalize_vitest_case_label
-
             raw = (tap_fail.group(1) or self._pending_subtest or "node test").strip()
-            name = normalize_vitest_case_label(raw)
-            if name not in self._exclude:
-                if self.log_session is not None:
-                    self.log_session.append_line(line)
-                    self.log_session.end_test(name, status="FAIL")
-                self.display.add_finished(name, "FAIL")
-            self._pending_subtest = None
+            self._finish_node_test(raw, "FAIL", line)
             return
         tap_label = _node_tap_progress_label(stripped)
         if tap_label is not None:
@@ -1797,6 +1847,10 @@ class NodeTestParser(ProgressParser):
             name = normalize_vitest_case_label(pass_match.group(1))
             if name in self._exclude:
                 return
+            _emit_test_started(name)
+            _emit_test_finished(
+                name, "PASS", _parse_vitest_duration_seconds(line) or 0.0
+            )
             if self.log_session is not None:
                 self.log_session.append_line(line)
                 self.log_session.end_test(name, status="PASS")
@@ -1809,6 +1863,10 @@ class NodeTestParser(ProgressParser):
             name = normalize_vitest_case_label(fail_match.group(1))
             if name in self._exclude:
                 return
+            _emit_test_started(name)
+            _emit_test_finished(
+                name, "FAIL", _parse_vitest_duration_seconds(line) or 0.0
+            )
             if self.log_session is not None:
                 self.log_session.append_line(line)
                 self.log_session.end_test(name, status="FAIL")
