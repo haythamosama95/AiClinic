@@ -1474,6 +1474,7 @@ class FlutterMachineParser(ProgressParser):
                 self._ignored_ids.add(tid)
                 return
             self._active[tid] = label
+            _emit_ci_test_status(label, "In Progress")
             if self.log_session is not None:
                 self.log_session.start_test(label)
             self.display.set_current(label)
@@ -1500,6 +1501,7 @@ class FlutterMachineParser(ProgressParser):
                 return
             result = event.get("result")
             status = "PASS" if result == "success" else "FAIL"
+            _emit_ci_test_status(name, status)
             self.display.add_finished(name, status)
             if self.log_session is not None:
                 self.log_session.end_test(name, status=status)
@@ -1524,6 +1526,7 @@ class FlutterMachineParser(ProgressParser):
     def _record_failure(
         self, name: str, err: str, *, stack_trace: object = None
     ) -> None:
+        _emit_ci_test_status(name, "FAIL")
         if self.log_session is not None:
             if not self.log_session.has_active():
                 self.log_session.start_test(name)
@@ -1532,6 +1535,17 @@ class FlutterMachineParser(ProgressParser):
             self.log_session.append_line(err)
             self.log_session.end_test(name, status="FAIL", error=err)
         self.display.add_finished(name, "FAIL")
+
+
+def _emit_ci_test_status(name: str, status: str) -> None:
+    """Write durable per-test progress lines to GitHub Actions' step log."""
+    if os.environ.get("GITHUB_ACTIONS", "").strip().lower() != "true":
+        return
+    readable_status = (
+        "Pass" if status == "PASS" else "Fail" if status == "FAIL" else status
+    )
+    sys.stdout.write(f"{name}: {readable_status}\n")
+    sys.stdout.flush()
 
 
 class VitestReporterParser(ProgressParser):
