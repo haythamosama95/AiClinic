@@ -85,12 +85,66 @@ def _supabase_endpoint_ready(path: str) -> bool:
 def _reset_supabase_between_files(subcampaign: str, step_name: str) -> bool:
     if os.environ.get("HFS_RESET_SUPABASE") != "1":
         return True
-    reset_started = time.monotonic()
     label = f"{_status_label(subcampaign)} step={step_name}"
-    print(f"{label} supabase-reset=started", flush=True)
-    result = subprocess.run(
-        ["supabase", "db", "reset", "--local"], cwd=REPO_ROOT / "backend"
+    start_started = time.monotonic()
+    print(f"{label} supabase-start=started", flush=True)
+    try:
+        start_result = subprocess.run(
+            ["supabase", "start"],
+            cwd=REPO_ROOT / "backend",
+            timeout=180,
+            capture_output=True,
+            text=True,
+        )
+    except subprocess.TimeoutExpired:
+        elapsed = time.monotonic() - start_started
+        print(
+            f"{label} supabase-start=timeout elapsed={elapsed:.1f}s limit=180s",
+            file=sys.stderr,
+            flush=True,
+        )
+        return False
+    if start_result.returncode != 0:
+        elapsed = time.monotonic() - start_started
+        print(
+            f"{label} supabase-start=failed elapsed={elapsed:.1f}s "
+            f"exit_code={start_result.returncode}",
+            file=sys.stderr,
+            flush=True,
+        )
+        if start_result.stdout.strip():
+            print(
+                f"{label} supabase-start stdout:\n{start_result.stdout.strip()}",
+                flush=True,
+            )
+        if start_result.stderr.strip():
+            print(
+                f"{label} supabase-start stderr:\n{start_result.stderr.strip()}",
+                file=sys.stderr,
+                flush=True,
+            )
+        return False
+    print(
+        f"{label} supabase-start=ready elapsed={time.monotonic() - start_started:.1f}s",
+        flush=True,
     )
+
+    reset_started = time.monotonic()
+    print(f"{label} supabase-reset=started", flush=True)
+    try:
+        result = subprocess.run(
+            ["supabase", "db", "reset", "--local"],
+            cwd=REPO_ROOT / "backend",
+            timeout=300,
+        )
+    except subprocess.TimeoutExpired:
+        elapsed = time.monotonic() - reset_started
+        print(
+            f"{label} supabase-reset=timeout elapsed={elapsed:.1f}s limit=300s",
+            file=sys.stderr,
+            flush=True,
+        )
+        return False
     if result.returncode != 0:
         elapsed = time.monotonic() - reset_started
         print(

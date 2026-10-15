@@ -1408,30 +1408,45 @@ async function postPaymobProcessedCallback(checkoutReference) {
   assert.equal(response.status, 200, "paymob notify should be accepted");
 }
 
-function stopSupabase() {
-  const result = spawnSync("supabase", ["stop"], {
+function runSupabaseCommand(action, args) {
+  const startedAt = Date.now();
+  console.log(`[p5-2] supabase-${action}=started args=${args.join(" ")}`);
+  const result = spawnSync("supabase", args, {
     cwd: path.join(REPO_ROOT, "backend"),
     encoding: "utf8",
+    timeout: 120_000,
   });
-  if (result.status !== 0) {
-    throw new Error(`supabase stop failed: ${result.stderr || result.stdout}`);
+  const elapsedMs = Date.now() - startedAt;
+  if (result.error || result.status !== 0) {
+    const detail =
+      result.error?.message ??
+      (result.stderr || result.stdout || `exit ${result.status}`);
+    console.error(
+      `[p5-2] supabase-${action}=failed elapsed_ms=${elapsedMs}: ${detail}`,
+    );
+    throw new Error(`supabase ${action} failed after ${elapsedMs}ms: ${detail}`);
   }
+  console.log(`[p5-2] supabase-${action}=completed elapsed_ms=${elapsedMs}`);
+  if (result.stdout?.trim()) console.log(`[p5-2] supabase-${action} stdout:\n${result.stdout.trim()}`);
+}
+
+function stopSupabase() {
+  runSupabaseCommand("stop", ["stop"]);
 }
 
 function startSupabase() {
-  const result = spawnSync("supabase", ["start"], {
-    cwd: path.join(REPO_ROOT, "backend"),
-    encoding: "utf8",
-  });
-  if (result.status !== 0) {
-    throw new Error(`supabase start failed: ${result.stderr || result.stdout}`);
-  }
+  runSupabaseCommand("start", ["start"]);
 }
 
 async function waitForSupabaseReady() {
+  const startedAt = Date.now();
+  console.log("[p5-2] supabase-readiness=started timeout_ms=120000");
   await waitForHttp(`${SUPABASE_URL}/rest/v1/`, {
+    timeoutMs: 120_000,
     accept: [200, 401, 404],
+    label: "Supabase REST readiness after restart",
   });
+  console.log(`[p5-2] supabase-readiness=ready elapsed_ms=${Date.now() - startedAt}`);
 }
 
 async function waitForPlatformGrantEvent(
@@ -1795,15 +1810,23 @@ test("E2E-P5.2-10 Supabase stopped during a payment still provisions and status 
 
   const expectedGrantEventId = `${paymentInstallationId}:1`;
 
+  console.log("[p5-2] restart-checkpoint=stop-supabase");
   stopSupabase();
   try {
+    console.log("[p5-2] restart-checkpoint=paymob-callback-started");
     await postPaymobProcessedCallback(checkoutId);
+    console.log("[p5-2] restart-checkpoint=paymob-callback-accepted");
+    console.log(
+      `[p5-2] restart-checkpoint=grant-event-wait-started event_id=${expectedGrantEventId} timeout_ms=30000`,
+    );
     await waitForPlatformGrantEvent(orgId, { eventId: expectedGrantEventId });
+    console.log("[p5-2] restart-checkpoint=grant-event-observed");
   } finally {
     startSupabase();
     await waitForSupabaseReady();
   }
 
+  console.log("[p5-2] restart-checkpoint=post-restart-status-started");
   const statusBeforePull = await rpc(administrator, "get_ai_status", {
     p_contract_version: 1,
   });
@@ -1814,7 +1837,9 @@ test("E2E-P5.2-10 Supabase stopped during a payment still provisions and status 
     "projection should be absent before the post-restart pull",
   );
 
+  console.log("[p5-2] restart-checkpoint=coverage-pull-started");
   await runTwoPhaseCoveragePull();
+  console.log("[p5-2] restart-checkpoint=coverage-pull-completed");
 
   const administratorAfterRestart = await signIn("p5-2-admin", "P5AdminPass2!");
   const status = await rpc(administratorAfterRestart, "get_ai_status", {
