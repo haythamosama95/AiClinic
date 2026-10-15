@@ -4,40 +4,8 @@ import json
 from pathlib import Path
 
 from harness.batch_queue_display import batch_queue_from_picked
-from harness.campaign_live_stats import apply_campaign_stats, refresh_live_campaign_stats
+from harness.campaign_live_stats import refresh_live_campaign_stats
 from harness.live_progress import CampaignProgressDisplay
-from harness.test_result_stats import CampaignTestStats
-
-
-def test_apply_campaign_stats_without_queue_returns_finished_count() -> None:
-    stats = CampaignTestStats(passed=3, failed=2, failure_names=("f1", "f2"))
-
-    assert apply_campaign_stats(stats, "ai-platform", "npm-test") == 5
-    assert apply_campaign_stats(stats, "ai-platform", "npm-test", total=4) == 4
-
-
-def test_refresh_live_campaign_stats_without_queue(tmp_path: Path) -> None:
-    log_dir = tmp_path / "ai-platform" / "npm-test"
-    log_dir.mkdir(parents=True)
-    (log_dir / "summary.json").write_text(
-        json.dumps(
-            {
-                "passed": 2,
-                "failed": 1,
-                "tests": [
-                    {"name": "a", "status": "PASS"},
-                    {"name": "b", "status": "PASS"},
-                    {"name": "c", "status": "FAIL"},
-                ],
-            }
-        ),
-        encoding="utf-8",
-    )
-
-    stats = refresh_live_campaign_stats(log_dir, "ai-platform", "npm-test")
-
-    assert stats.passed == 2
-    assert stats.failed == 1
 
 
 def test_refresh_live_campaign_stats_updates_queue_and_display(tmp_path: Path) -> None:

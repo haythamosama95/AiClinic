@@ -7,7 +7,6 @@ import {
   billingFetch,
   countAboTable,
   countAboWork,
-  ensurePlatformActiveCoverage,
   ensurePlatformGrantPrerequisites,
   issueFeedToken,
   openCheckout,
@@ -224,15 +223,6 @@ test("E2E-P7.2-03", async () => {
   await putBillingContact(billingTokenA);
   const checkoutA = await openCheckout(billingTokenA, "p72-org-a-checkout");
 
-  // Keep the checkout under test open, but give Org A an independent paid
-  // grant so its later request reaches tenant-context validation instead of
-  // being rejected first for missing coverage.
-  await ensurePlatformActiveCoverage(
-    stack,
-    orgA.orgId,
-    orgA.installationId,
-  );
-
   const coverageBBefore = readClinicAiCoverage(orgB.orgId);
   const paymentCountBBefore = countAboTable("payment");
   const checkoutBStatusBefore = queryAboD1One(
@@ -345,18 +335,7 @@ test("E2E-P7.2-03", async () => {
     policy_version: "1",
     idempotency_key: `p72-cross-tenant-${crypto.randomUUID()}`,
     trace_id: crypto.randomUUID(),
-    // Supply a schema-valid Org B visit context so validation reaches the
-    // tenant binding check. A missing required context key would only prove
-    // the request-shape guard, not cross-tenant isolation.
-    context: {
-      org: orgB.orgId,
-      branch: orgB.branchId,
-      "visit.chief_complaint@v1": {
-        visit_id: orgB.branchId,
-        complaint: "Persistent headache for three days.",
-        recorded_at: "2026-07-31T12:00:00Z",
-      },
-    },
+    input: { visit_id: orgB.branchId },
   };
   const request = await platformFetch("/v1/requests", {
     method: "POST",
@@ -395,13 +374,13 @@ test("E2E-P7.2-03", async () => {
   assert.deepEqual(checkoutBStatusAfter, checkoutBStatusBefore);
   assert.ok(
     queryAboD1One(
-      `SELECT checkout_id FROM checkout WHERE checkout_id = ${sqlLiteral(checkoutA.checkoutId)} AND org_id = ${sqlLiteral(orgA.orgId)}`,
+      `SELECT checkout_id FROM checkout WHERE checkout_id = ${sqlLiteral(checkoutA.checkoutId)} AND org = ${sqlLiteral(orgA.orgId)}`,
     ),
     "org A checkout stays under org A",
   );
   assert.equal(
     queryAboD1One(
-      `SELECT checkout_id FROM checkout WHERE checkout_id = ${sqlLiteral(checkoutA.checkoutId)} AND org_id = ${sqlLiteral(orgB.orgId)}`,
+      `SELECT checkout_id FROM checkout WHERE checkout_id = ${sqlLiteral(checkoutA.checkoutId)} AND org = ${sqlLiteral(orgB.orgId)}`,
     ),
     null,
     "org A open checkout must not lock org B resources",

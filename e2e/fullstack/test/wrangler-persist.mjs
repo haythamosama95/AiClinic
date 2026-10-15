@@ -1,5 +1,5 @@
 import { spawnSync } from "node:child_process";
-import { cpSync, existsSync, mkdirSync, readdirSync, rmSync } from "node:fs";
+import { cpSync, existsSync, mkdirSync, readdirSync } from "node:fs";
 import path from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { fileURLToPath } from "node:url";
@@ -11,10 +11,6 @@ const FULLSTACK_ROOT = path.resolve(
 );
 
 export const REPO_ROOT = path.resolve(FULLSTACK_ROOT, "../..");
-const WRANGLER_CLI = path.join(
-  FULLSTACK_ROOT,
-  "node_modules/wrangler/bin/wrangler.js",
-);
 
 /** Isolated dirs for local wrangler/workerd (wiped by test harness before e2e runs). */
 export const PLATFORM_PERSIST = path.join(FULLSTACK_ROOT, ".wrangler/platform");
@@ -23,8 +19,6 @@ export const D1_SEED_PERSIST = path.join(FULLSTACK_ROOT, ".wrangler/d1-seed");
 export const HARNESS_PERSIST = path.join(FULLSTACK_ROOT, ".wrangler/harness");
 export const REGISTRY_DIR = path.join(FULLSTACK_ROOT, ".wrangler/registry");
 export const ABO_PERSIST = path.join(FULLSTACK_ROOT, ".wrangler/abo");
-export const ABO_D1_SEED_PERSIST = path.join(FULLSTACK_ROOT, ".wrangler/abo-d1-seed");
-export const PAYMOB_PERSIST = path.join(FULLSTACK_ROOT, ".wrangler/paymob");
 
 const D1_OBJECT_DIR = "v3/d1/miniflare-D1DatabaseObject";
 
@@ -38,7 +32,7 @@ export function wranglerLocalEnv(extra = {}) {
 }
 
 export function runWranglerSync(args, { cwd = REPO_ROOT, env = {} } = {}) {
-  const result = spawnSync(process.execPath, [WRANGLER_CLI, ...args], {
+  const result = spawnSync("npx", ["wrangler", ...args], {
     cwd,
     env: wranglerLocalEnv(env),
     encoding: "utf8",
@@ -62,20 +56,7 @@ export function copyD1SqliteTree(fromPersist, toPersist) {
     if (!name.endsWith(".sqlite") || name.startsWith("metadata")) {
       continue;
     }
-    const sourcePath = path.join(fromDir, name);
-    const sourceDb = new DatabaseSync(sourcePath);
-    try {
-      const checkpoint = sourceDb.prepare("PRAGMA wal_checkpoint(TRUNCATE)").get();
-      if (checkpoint?.busy !== 0) {
-        throw new Error(`Could not checkpoint D1 seed ${sourcePath} before copying`);
-      }
-    } finally {
-      sourceDb.close();
-    }
-    const targetPath = path.join(toDir, name);
-    rmSync(`${targetPath}-wal`, { force: true });
-    rmSync(`${targetPath}-shm`, { force: true });
-    cpSync(sourcePath, targetPath);
+    cpSync(path.join(fromDir, name), path.join(toDir, name));
   }
 }
 
@@ -97,8 +78,6 @@ export async function preparePlatformD1({
   if (!platformConfig) {
     throw new Error("preparePlatformD1 requires platformConfig");
   }
-  rmSync(D1_SEED_PERSIST, { recursive: true, force: true });
-  mkdirSync(D1_SEED_PERSIST, { recursive: true });
   mkdirSync(REGISTRY_DIR, { recursive: true });
   runWranglerSync([
     "d1",
@@ -144,33 +123,34 @@ export function platformD1DatabaseFile() {
   throw new Error(`No platform D1 sqlite under ${dir}`);
 }
 
-/** Apply fixture SQL directly to the runtime D1 file. */
-export function execPlatformD1Sql(sql) {
-  const db = new DatabaseSync(platformD1DatabaseFile());
-  try {
-    db.exec(sql);
-  } finally {
-    db.close();
-  }
-}
-
-/** Apply ABO migrations in an isolated CLI persist, then copy its app D1 DB. */
-export async function prepareAboD1({
-  aboConfig,
-  env = "development",
-  database = "abo-development",
-} = {}) {
-  if (!aboConfig) throw new Error("prepareAboD1 requires aboConfig");
-  rmSync(ABO_PERSIST, { recursive: true, force: true });
-  rmSync(ABO_D1_SEED_PERSIST, { recursive: true, force: true });
-  mkdirSync(ABO_PERSIST, { recursive: true });
-  mkdirSync(ABO_D1_SEED_PERSIST, { recursive: true });
-  mkdirSync(REGISTRY_DIR, { recursive: true });
+/**
+ * Mutate platform D1 before any startWorker (uses seed persist + copy).
+ * Never run `wrangler d1 execute` against PLATFORM_PERSIST while workers use it.
+ */
+export function execPlatformD1Sql(
+  sql,
+  {
+    platformConfig,
+    env = "development",
+    database = "ai-platform-development",
+  } = {},
+) {
+  const config = platformConfig ?? path.join(REPO_ROOT, "ai-platform/wrangler.toml");
   runWranglerSync([
-    "d1", "migrations", "apply", database, "--local", "--env", env,
-    "--config", aboConfig, "--persist-to", ABO_D1_SEED_PERSIST,
+    "d1",
+    "execute",
+    database,
+    "--local",
+    "--env",
+    env,
+    "--config",
+    config,
+    "--persist-to",
+    D1_SEED_PERSIST,
+    "--command",
+    sql,
   ]);
-  copyD1SqliteTree(ABO_D1_SEED_PERSIST, ABO_PERSIST);
+  copyD1SqliteTree(D1_SEED_PERSIST, PLATFORM_PERSIST);
 }
 
 export function queryPlatformD1One(sql) {

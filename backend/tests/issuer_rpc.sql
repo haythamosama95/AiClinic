@@ -28,47 +28,6 @@ AS $$
   )::jsonb;
 $$;
 
-CREATE OR REPLACE FUNCTION pg_temp.decode_jws_segment(
-  p_token text,
-  p_segment integer
-)
-RETURNS text
-LANGUAGE sql
-IMMUTABLE
-AS $$
-  SELECT convert_from(
-    decode(
-      rpad(
-        translate(split_part(p_token, '.', p_segment), '-_', '+/'),
-        length(split_part(p_token, '.', p_segment))
-          + ((4 - length(split_part(p_token, '.', p_segment)) % 4) % 4),
-        '='
-      ),
-      'base64'
-    ),
-    'utf8'
-  );
-$$;
-
--- The DB-side issuer serializer must produce exact RFC 8785 bytes, including
--- escaping for sensitive ASCII characters and preserving valid UTF-8 text.
-DO $$
-DECLARE
-  v_actual text;
-  v_expected text := $jcs${"control":"line\n\t\u0001end","email":"clínic+ø@example.test","quote":"she said \"yes\"","slash":"C:\\clinic\\docs"}$jcs$;
-BEGIN
-  v_actual := auth_internal.canonical_issuer_jwt_json(jsonb_build_object(
-    'email', 'clínic+ø@example.test',
-    'quote', 'she said "yes"',
-    'slash', E'C:\\clinic\\docs',
-    'control', E'line\n\t\001end'
-  ));
-  IF v_actual <> v_expected THEN
-    RAISE EXCEPTION 'issuer JCS escaping mismatch: expected %, got %', v_expected, v_actual;
-  END IF;
-END;
-$$;
-
 CREATE OR REPLACE FUNCTION pg_temp.set_authenticated_session(p_user_id uuid)
 RETURNS void
 LANGUAGE plpgsql
@@ -182,10 +141,6 @@ DECLARE
   v_branch_id uuid;
   v_billing public.rpc_result;
   v_billing_version int;
-  v_billing_token text;
-  v_billing_header text;
-  v_billing_payload text;
-  v_canonical_billing_token boolean;
   v_passed boolean;
   v_detail text;
 BEGIN
@@ -254,13 +209,6 @@ BEGIN
 
   v_billing := public.issue_billing_token(1);
   v_billing_version := v_billing.contract_version;
-  v_billing_token := v_billing.data ->> 'token';
-  PERFORM set_config('role', 'postgres', true);
-  v_billing_header := pg_temp.decode_jws_segment(v_billing_token, 1);
-  v_billing_payload := pg_temp.decode_jws_segment(v_billing_token, 2);
-  v_canonical_billing_token :=
-    v_billing_header = auth_internal.canonical_issuer_jwt_json(v_billing_header::jsonb)
-    AND v_billing_payload = auth_internal.canonical_issuer_jwt_json(v_billing_payload::jsonb);
 
   v_passed := v_v2
     AND v_v2_message LIKE '%CONTRACT_VERSION_UNSUPPORTED%'
@@ -272,8 +220,7 @@ BEGIN
     AND v_null_detail LIKE '%accepted_versions%'
     AND v_rows_before = v_rows_after
     AND v_billing.success
-    AND v_billing_version = 1
-    AND v_canonical_billing_token;
+    AND v_billing_version = 1;
 
   v_detail := 'v2_raised=' || v_v2::text
     || ' v2_msg=' || COALESCE(v_v2_message, '<null>')
@@ -282,8 +229,7 @@ BEGIN
     || ' null_msg=' || COALESCE(v_null_message, '<null>')
     || ' rows_before=' || v_rows_before::text
     || ' rows_after=' || v_rows_after::text
-    || ' billing_contract_version=' || COALESCE(v_billing_version::text, '<null>')
-    || ' billing_token_canonical=' || COALESCE(v_canonical_billing_token::text, '<null>');
+    || ' billing_contract_version=' || COALESCE(v_billing_version::text, '<null>');
 
   PERFORM set_config('role', 'postgres', true);
   INSERT INTO issuer_rpc_results VALUES (

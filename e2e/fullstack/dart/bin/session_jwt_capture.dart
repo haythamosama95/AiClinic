@@ -4,8 +4,10 @@ import 'dart:io';
 import 'package:ai_clinic/core/ai/discovery_client.dart';
 import 'package:ai_clinic/core/ai/https_submit_port.dart';
 import 'package:ai_clinic/core/ai/ports.dart';
+import 'package:ai_clinic/core/ai/supabase_aat_mint_port.dart';
 import 'package:ai_clinic/core/ai/usage_summary_client.dart';
-import 'package:ai_clinic/core/contract_versions.dart';
+import 'package:ai_clinic/features/ai/billing/abo_client.dart';
+import 'package:ai_clinic/features/ai/billing/billing_token_client.dart';
 import 'package:http/http.dart' as http;
 
 const _defaultSupabaseUrl = 'http://127.0.0.1:54321';
@@ -78,6 +80,9 @@ Future<void> main() async {
     sessionJwt: sessionJwt,
   );
 
+  final aatMintPort = SupabaseAatMintPort.withRpc(rpc: rpc.call);
+  final billingTokenClient = BillingTokenClient.withRpc(rpc: rpc.call);
+
   stdout.writeln(jsonEncode({'session_jwt': sessionJwt}));
 
   final recordingClient = _RecordingHttpClient(
@@ -91,10 +96,12 @@ Future<void> main() async {
     platformBaseUrl: platformUrl,
     httpClient: recordingClient,
   );
-  final aat = await rpc.call('issue_ai_token', {'p_contract_version': backendRpc});
-  if (aat is! String || aat.isEmpty) {
-    throw StateError('issue_ai_token returned an empty token');
-  }
+  final aboClient = AboClient(
+    tokenClient: billingTokenClient,
+    httpClient: recordingClient,
+  );
+
+  final aat = await aatMintPort.mint();
 
   try {
     await discoveryClient.fetchCapabilities(platformBaseUrl: platformUrl, aat: aat);
@@ -129,58 +136,10 @@ Future<void> main() async {
   }
 
   try {
-    final billingRaw = await rpc.call(
-      'issue_billing_token',
-      {'p_contract_version': backendRpc},
-    );
-    final billing = _readRpcResult(billingRaw);
-    final billingData = billing['data'];
-    if (!_isSuccess(billing['success']) || billingData is! Map) {
-      throw StateError('issue_billing_token returned an invalid result');
-    }
-    final billingSession = Map<String, dynamic>.from(billingData);
-    final billingToken = billingSession['token']?.toString();
-    final aboBaseUrl = billingSession['abo_base_url']?.toString();
-    if (billingToken == null || billingToken.isEmpty || aboBaseUrl == null || aboBaseUrl.isEmpty) {
-      throw StateError('issue_billing_token returned an incomplete session');
-    }
-    final normalizedAboUrl = aboBaseUrl.endsWith('/')
-        ? aboBaseUrl.substring(0, aboBaseUrl.length - 1)
-        : aboBaseUrl;
-    await recordingClient.get(
-      Uri.parse('$normalizedAboUrl/v1/offers'),
-      headers: {
-        'authorization': 'Bearer $billingToken',
-        'accept': 'application/json',
-        'abo-contract-version': '$aboClinic',
-        'host': Uri.parse(aboBaseUrl).host == '127.0.0.1' ||
-                Uri.parse(aboBaseUrl).host == 'localhost'
-            ? 'billing.vendor.test'
-            : Uri.parse(aboBaseUrl).host,
-      },
-    );
+    await aboClient.getOffers();
   } catch (_) {
     // Capture only; billing routes may be empty on a bare stack.
   }
-}
-
-Map<String, dynamic> _readRpcResult(dynamic raw) {
-  if (raw is Map<String, dynamic>) return raw;
-  if (raw is Map) return Map<String, dynamic>.from(raw);
-  if (raw is List && raw.length >= 4) {
-    return {
-      'success': raw[0],
-      'data': raw[1],
-      'error_code': raw[2],
-      'error_message': raw[3],
-    };
-  }
-  throw FormatException('Unrecognized RPC result: $raw');
-}
-
-bool _isSuccess(Object? value) {
-  final normalized = value?.toString().toLowerCase();
-  return value == true || normalized == 't' || normalized == 'true';
 }
 
 Future<String> _signIn({
