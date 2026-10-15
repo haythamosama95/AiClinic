@@ -8,9 +8,23 @@ on:
   workflow_dispatch:
 
 jobs:
+  campaign_matrix:
+    runs-on: ubuntu-latest
+    outputs:
+      matrix: ${{ steps.select.outputs.matrix }}
+    steps:
+      - id: select
+        run: |
+          if [[ "${GITHUB_EVENT_NAME}" == "workflow_dispatch" ]]; then
+            matrix='{"include":[{"area":"frontend","subcampaign":"fullstack","timeout_minutes":120,"flutter":true,"supabase":true,"postgresql_client":true}]}'
+          else
+            matrix='{"include":[{"area":"frontend","subcampaign":"unit-1","timeout_minutes":60,"flutter":true,"supabase":false,"postgresql_client":false},{"area":"frontend","subcampaign":"unit-2","timeout_minutes":60,"flutter":true,"supabase":false,"postgresql_client":false},{"area":"frontend","subcampaign":"boundary","timeout_minutes":120,"flutter":true,"supabase":true,"postgresql_client":true},{"area":"frontend","subcampaign":"fullstack","timeout_minutes":120,"flutter":true,"supabase":true,"postgresql_client":true},{"area":"backend","subcampaign":"all","timeout_minutes":45,"flutter":false,"supabase":true,"postgresql_client":true},{"area":"ai-platform","subcampaign":"unit","timeout_minutes":60,"flutter":false,"supabase":false,"postgresql_client":false},{"area":"ai-platform","subcampaign":"workers","timeout_minutes":60,"flutter":false,"supabase":false,"postgresql_client":false},{"area":"ai-platform","subcampaign":"e2e","timeout_minutes":60,"flutter":false,"supabase":false,"postgresql_client":false},{"area":"ai-platform","subcampaign":"version-matrix","timeout_minutes":60,"flutter":false,"supabase":false,"postgresql_client":false},{"area":"abo","subcampaign":"full-area","timeout_minutes":60,"flutter":false,"supabase":false,"postgresql_client":false},{"area":"e2e-fullstack","subcampaign":"p5-core","timeout_minutes":110,"flutter":true,"supabase":true,"postgresql_client":true},{"area":"e2e-fullstack","subcampaign":"p5-2b","timeout_minutes":110,"flutter":true,"supabase":true,"postgresql_client":true},{"area":"e2e-fullstack","subcampaign":"p7-2","timeout_minutes":110,"flutter":true,"supabase":true,"postgresql_client":true},{"area":"e2e-fullstack","subcampaign":"p7-3","timeout_minutes":110,"flutter":true,"supabase":true,"postgresql_client":true},{"area":"vendor-contracts","subcampaign":"all","timeout_minutes":30,"flutter":false,"supabase":false,"postgresql_client":false},{"area":"ops-launch","subcampaign":"full-area","timeout_minutes":15,"flutter":false,"supabase":false,"postgresql_client":false}]}'
+          fi
+          echo "matrix=${matrix}" >> "${GITHUB_OUTPUT}"
+
   test-campaign:
     name: campaign-${{ matrix.area }}-${{ matrix.subcampaign }}
-    if: github.event_name != 'workflow_dispatch' || (matrix.area == 'frontend' && matrix.subcampaign == 'fullstack')
+    needs: campaign_matrix
     runs-on: ubuntu-latest
     timeout-minutes: ${{ matrix.timeout_minutes }}
     env:
@@ -21,104 +35,7 @@ jobs:
       HFS_PLATFORM_BIND_HOST: ${{ matrix.area == 'e2e-fullstack' && '0.0.0.0' || '127.0.0.1' }}
     strategy:
       fail-fast: false
-      matrix:
-        include:
-          - area: frontend
-            subcampaign: unit-1
-            timeout_minutes: 60
-            flutter: true
-            supabase: false
-            postgresql_client: false
-          - area: frontend
-            subcampaign: unit-2
-            timeout_minutes: 60
-            flutter: true
-            supabase: false
-            postgresql_client: false
-          - area: frontend
-            subcampaign: boundary
-            timeout_minutes: 120
-            flutter: true
-            supabase: true
-            postgresql_client: true
-          - area: frontend
-            subcampaign: fullstack
-            timeout_minutes: 120
-            flutter: true
-            supabase: true
-            postgresql_client: true
-          - area: backend
-            subcampaign: all
-            timeout_minutes: 45
-            flutter: false
-            supabase: true
-            postgresql_client: true
-          - area: ai-platform
-            subcampaign: unit
-            timeout_minutes: 60
-            flutter: false
-            supabase: false
-            postgresql_client: false
-          - area: ai-platform
-            subcampaign: workers
-            timeout_minutes: 60
-            flutter: false
-            supabase: false
-            postgresql_client: false
-          - area: ai-platform
-            subcampaign: e2e
-            timeout_minutes: 60
-            flutter: false
-            supabase: false
-            postgresql_client: false
-          - area: ai-platform
-            subcampaign: version-matrix
-            timeout_minutes: 60
-            flutter: false
-            supabase: false
-            postgresql_client: false
-          - area: abo
-            subcampaign: full-area
-            timeout_minutes: 60
-            flutter: false
-            supabase: false
-            postgresql_client: false
-          - area: e2e-fullstack
-            subcampaign: p5-core
-            timeout_minutes: 110
-            flutter: true
-            supabase: true
-            postgresql_client: true
-          - area: e2e-fullstack
-            subcampaign: p5-2b
-            timeout_minutes: 110
-            flutter: true
-            supabase: true
-            postgresql_client: true
-          - area: e2e-fullstack
-            subcampaign: p7-2
-            timeout_minutes: 110
-            flutter: true
-            supabase: true
-            postgresql_client: true
-          - area: e2e-fullstack
-            subcampaign: p7-3
-            timeout_minutes: 110
-            flutter: true
-            supabase: true
-            postgresql_client: true
-          - area: vendor-contracts
-            subcampaign: all
-            timeout_minutes: 30
-            flutter: false
-            supabase: false
-            postgresql_client: false
-          - area: ops-launch
-            subcampaign: full-area
-            timeout_minutes: 15
-            flutter: false
-            supabase: false
-            postgresql_client: false
+      matrix: ${{ fromJSON(needs.campaign_matrix.outputs.matrix) }}
 
     steps:
       - name: Checkout
