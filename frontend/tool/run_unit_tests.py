@@ -48,6 +48,8 @@ def run_tests(test_files: list[str], config: dict) -> int:
             "test",
             *test_files,
             "--machine",
+            "--exclude-tags",
+            "fullstack",
         ],
         config,
     )

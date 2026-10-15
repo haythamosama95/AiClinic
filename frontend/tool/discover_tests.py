@@ -155,7 +155,12 @@ def count_expected_tests(cwd: Path, relative_paths: list[str]) -> int:
 
 
 def unit_test_files(cwd: Path) -> list[str]:
-    return discover_test_files(cwd, *UNIT_TEST_ROOTS)
+    fullstack = set(fullstack_test_files(cwd))
+    return [
+        path
+        for path in discover_test_files(cwd, *UNIT_TEST_ROOTS)
+        if path not in fullstack
+    ]
 
 
 def boundary_test_files(cwd: Path, subset: str | None) -> list[str]:

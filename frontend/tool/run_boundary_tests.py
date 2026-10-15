@@ -7,6 +7,8 @@ import json
 import os
 import subprocess
 import sys
+import urllib.error
+import urllib.request
 from collections import defaultdict
 from pathlib import Path
 
@@ -45,7 +47,20 @@ DISPLAY: LiveTestDisplay | None = None
 RECORDER: MachineEventRecorder | None = None
 
 
+def _supabase_http_ready() -> bool:
+    url = os.environ.get("SUPABASE_URL", "http://127.0.0.1:54321").rstrip("/") + "/rest/v1/"
+    try:
+        urllib.request.urlopen(url, timeout=3)
+        return True
+    except urllib.error.HTTPError as error:
+        return error.code < 500
+    except (urllib.error.URLError, OSError):
+        return False
+
+
 def ensure_stack_running():
+    if _supabase_http_ready():
+        return
     result = subprocess.run(
         ["docker", "compose", "-f", str(COMPOSE_FILE), "ps", "--status", "running"],
         capture_output=True,
@@ -104,6 +119,8 @@ def run_tests(test_files: list[str], config: dict) -> int:
         "AICLINIC_BOUNDARY_INTEGRATION": "1",
         "AICLINIC_DEPLOYMENT_PROFILE_PATH": "config/local/deployment-profile.json",
     }
+    if os.environ.get("CI"):
+        env.setdefault("AICLINIC_BOUNDARY_REQUIRE_LIVE", "1")
 
     cmd = apply_flutter_args(
         [
