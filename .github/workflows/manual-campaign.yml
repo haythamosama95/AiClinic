@@ -34,11 +34,13 @@ jobs:
     name: manual-${{ inputs.area }}${{ inputs.subcampaign != '' && format('-{0}', inputs.subcampaign) || '' }}
     runs-on: ubuntu-latest
     # Generous ceiling; most targeted runs finish in minutes.
-    timeout-minutes: 90
+    timeout-minutes: 120
     env:
       CI: "true"
       CAMPAIGN_AREA: ${{ inputs.area }}
       CAMPAIGN_SUBCAMPAIGN: ${{ inputs.subcampaign }}
+      HFS_RESET_SUPABASE: ${{ inputs.area == 'e2e-fullstack' && '1' || '0' }}
+      HFS_PLATFORM_BIND_HOST: ${{ inputs.area == 'e2e-fullstack' && '0.0.0.0' || '127.0.0.1' }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -69,7 +71,7 @@ jobs:
           node-version: "22"
 
       - name: Set up Flutter
-        if: inputs.area == 'frontend'
+        if: contains(fromJSON('["frontend", "e2e-fullstack"]'), inputs.area)
         uses: subosito/flutter-action@v2
         with:
           channel: stable
@@ -82,8 +84,8 @@ jobs:
           version: latest
 
       - name: Install PostgreSQL client
-        if: contains(fromJSON('["backend", "e2e-fullstack"]'), inputs.area)
-        run: sudo apt-get update && sudo apt-get install -y postgresql-client
+        if: contains(fromJSON('["frontend", "backend", "e2e-fullstack"]'), inputs.area)
+        run: sudo apt-get update && sudo apt-get install -y postgresql-client sqlite3
 
       - name: Set up campaign area
         run: |

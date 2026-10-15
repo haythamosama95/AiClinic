@@ -15,15 +15,17 @@ jobs:
     env:
       CI: "true"
       CAMPAIGN_AREA: ${{ matrix.area }}
+      HFS_RESET_SUPABASE: ${{ matrix.area == 'e2e-fullstack' && '1' || '0' }}
+      HFS_PLATFORM_BIND_HOST: ${{ matrix.area == 'e2e-fullstack' && '0.0.0.0' || '127.0.0.1' }}
     strategy:
       fail-fast: false
       matrix:
         include:
           - area: frontend
-            timeout_minutes: 90
+            timeout_minutes: 120
             flutter: true
             supabase: true
-            postgresql_client: false
+            postgresql_client: true
           - area: backend
             timeout_minutes: 45
             flutter: false
@@ -40,8 +42,8 @@ jobs:
             supabase: false
             postgresql_client: false
           - area: e2e-fullstack
-            timeout_minutes: 45
-            flutter: false
+            timeout_minutes: 110
+            flutter: true
             supabase: true
             postgresql_client: true
           - area: vendor-contracts
@@ -79,7 +81,7 @@ jobs:
 
       - name: Install PostgreSQL client
         if: matrix.postgresql_client
-        run: sudo apt-get update && sudo apt-get install -y postgresql-client
+        run: sudo apt-get update && sudo apt-get install -y postgresql-client sqlite3
 
       - name: Set up campaign area
         run: |
