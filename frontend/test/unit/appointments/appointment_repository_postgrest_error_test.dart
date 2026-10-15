@@ -18,15 +18,52 @@ class _ThrowingPostgrestRpc extends Fake implements PostgrestFilterBuilder<dynam
 }
 
 class _PostgrestErrorClient extends Fake implements SupabaseClient {
-  _PostgrestErrorClient({required this.exception});
+  _PostgrestErrorClient({
+    required this.exception,
+    required bool signedIn,
+    bool authStateReadThrows = false,
+  }) : auth = _PostgrestErrorAuth(
+         signedIn: signedIn,
+         readThrows: authStateReadThrows,
+       );
 
   final PostgrestException exception;
+  @override
+  final GoTrueClient auth;
   String? lastFunction;
 
   @override
   PostgrestFilterBuilder<T> rpc<T>(String fn, {Map<String, dynamic>? params, dynamic get = false}) {
     lastFunction = fn;
     return _ThrowingPostgrestRpc(exception) as PostgrestFilterBuilder<T>;
+  }
+}
+
+class _PostgrestErrorAuth extends Fake implements GoTrueClient {
+  _PostgrestErrorAuth({required this.signedIn, required this.readThrows});
+
+  final bool signedIn;
+  final bool readThrows;
+
+  @override
+  Session? get currentSession {
+    if (readThrows) {
+      throw StateError('Auth state unavailable');
+    }
+    return signedIn
+        ? Session(
+            accessToken: 'test-access-token',
+            refreshToken: 'test-refresh-token',
+            tokenType: 'bearer',
+            user: User(
+              id: 'test-user',
+              appMetadata: const {},
+              userMetadata: const {},
+              aud: 'authenticated',
+              createdAt: DateTime.utc(2026, 1, 1).toIso8601String(),
+            ),
+          )
+        : null;
   }
 }
 
@@ -44,7 +81,7 @@ PostgrestException _authInternalPermissionDenied() {
 void main() {
   group('AppointmentRepository PostgrestException handling', () {
     test('PGRST202 maps to RPC_NOT_APPLIED with appointment migration hint', () async {
-      final client = _PostgrestErrorClient(exception: _pgrst202());
+      final client = _PostgrestErrorClient(exception: _pgrst202(), signedIn: true);
       final repository = AppointmentRepository(client);
 
       expect(
@@ -58,8 +95,22 @@ void main() {
       );
     });
 
-    test('42501 auth_internal permission denied maps to RPC_NOT_CONFIGURED', () async {
-      final client = _PostgrestErrorClient(exception: _authInternalPermissionDenied());
+    test('signed-out 42501 permission denied maps to FORBIDDEN', () async {
+      final client = _PostgrestErrorClient(exception: _authInternalPermissionDenied(), signedIn: false);
+      final repository = AppointmentRepository(client);
+
+      expect(
+        () => repository.getSettings(branchId: '44444444-4444-4444-8444-444444444444'),
+        throwsA(
+          isA<RpcFailure>()
+              .having((e) => e.code, 'code', 'FORBIDDEN')
+              .having((e) => e.message, 'message', contains('Authentication is required')),
+        ),
+      );
+    });
+
+    test('authenticated 42501 auth_internal permission denied maps to RPC_NOT_CONFIGURED', () async {
+      final client = _PostgrestErrorClient(exception: _authInternalPermissionDenied(), signedIn: true);
       final repository = AppointmentRepository(client);
 
       expect(
@@ -73,7 +124,7 @@ void main() {
     });
 
     test('42501 on create_appointment surfaces RPC_NOT_CONFIGURED', () async {
-      final client = _PostgrestErrorClient(exception: _authInternalPermissionDenied());
+      final client = _PostgrestErrorClient(exception: _authInternalPermissionDenied(), signedIn: true);
       final repository = AppointmentRepository(client);
 
       expect(
@@ -91,6 +142,8 @@ void main() {
     test('generic Postgrest error maps to RpcFailure with postgrest code', () async {
       final client = _PostgrestErrorClient(
         exception: PostgrestException(message: 'JWT expired', code: 'PGRST301'),
+        signedIn: false,
+        authStateReadThrows: true,
       );
       final repository = AppointmentRepository(client);
 

@@ -1890,7 +1890,7 @@ describe("console relays cross-worker", () => {
     const refused = await platformHttpInvoke(orgId);
     expect(refused.status).toBe(403);
     const refusedBody = await parsePlatformInvokeBody(refused);
-    expect(refusedBody?.code).toBe("installation_suspended");
+    expect(refusedBody?.code).toBe("suspended");
     await drainPlatformDurableObjects();
 
     const resume = await opsResumeRelay({

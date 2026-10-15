@@ -943,7 +943,11 @@ Future<T> _bounded<T>(String operation, Future<T> future) async {
 
 Future<void> _settle(WidgetTester tester) => _bounded(
   'UI pumpAndSettle',
-  tester.pumpAndSettle(timeout: const Duration(seconds: 29)),
+  tester.pumpAndSettle(
+    const Duration(milliseconds: 100),
+    EnginePhase.sendSemanticsUpdate,
+    const Duration(seconds: 29),
+  ),
 );
 
 Future<void> _pumpUntilFound(

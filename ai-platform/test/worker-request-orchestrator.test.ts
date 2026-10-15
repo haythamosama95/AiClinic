@@ -1131,17 +1131,50 @@ describe("completed_attempt_and_usage_event_cost_agree", () => {
 describe("usage_event_term_id_from_admission", () => {
   it("journals term_id from admission, not an entitlement period string", async () => {
     const token = await mintAat();
-    await fetchLivePost(token);
-    await flushBackgroundWork();
+    const idempotencyKey = uniqueIdempotencyKey();
+    await fetchLivePost(token, { idempotencyKey });
 
-    const usage = await env.DB
-      .prepare(
-        `SELECT term_id FROM usage_event
-         WHERE installation_id = ?
-         ORDER BY recorded_at DESC LIMIT 1`,
-      )
-      .bind(FIXTURE_INSTALLATION_ID)
-      .first<{ term_id: string }>();
+    let usage: { term_id: string } | null = null;
+    let requestId: string | null = null;
+    let requestReference: string | null = null;
+    let lastObservedState = "request_not_found";
+    const pollStartedAt = Date.now();
+    const pollBudgetMs = 8_000;
+    const pollIntervalMs = 100;
+    while (Date.now() - pollStartedAt < pollBudgetMs) {
+      const observed = await env.DB
+        .prepare(
+          `SELECT r.request_id, r.request_reference, r.state, u.term_id
+           FROM ai_request r
+           LEFT JOIN usage_event u ON u.request_id = r.request_id
+           WHERE r.installation_id = ? AND r.idempotency_key = ?
+           LIMIT 1`,
+        )
+        .bind(FIXTURE_INSTALLATION_ID, idempotencyKey)
+        .first<{
+          request_id: string;
+          request_reference: string;
+          state: string;
+          term_id: string | null;
+        }>();
+      requestId = observed?.request_id ?? null;
+      requestReference = observed?.request_reference ?? null;
+      lastObservedState = observed
+        ? observed.term_id === null
+          ? `request_${observed.state}_usage_event_missing`
+          : `request_${observed.state}_usage_event_found`
+        : "request_not_found";
+      if (observed?.term_id !== null && observed?.term_id !== undefined) {
+        usage = { term_id: observed.term_id };
+        break;
+      }
+      await new Promise((resolve) => setTimeout(resolve, pollIntervalMs));
+    }
+    if (!usage) {
+      throw new Error(
+        `Timed out waiting for usage_event for request_reference=${requestReference ?? "unknown"}, request_id=${requestId ?? "unknown"}, idempotency_key=${idempotencyKey}; last observed state=${lastObservedState}`,
+      );
+    }
     expect(usage?.term_id).toBeTruthy();
     expect(usage?.term_id).not.toMatch(/^\d{4}-\d{2}$/);
   });

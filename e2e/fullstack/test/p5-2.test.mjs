@@ -6,6 +6,10 @@ import test, { after, before } from "node:test";
 import assert from "node:assert/strict";
 import { createClient } from "@supabase/supabase-js";
 import { MockAgent } from "undici";
+import {
+  closeLocalVirtualHostDispatchers,
+  fetchLocalVirtualHost,
+} from "./local-virtual-host.mjs";
 import { unstable_startWorker as startWorker } from "wrangler";
 import { CHANNEL_VERSIONS } from "vendor-contracts";
 import {
@@ -197,6 +201,7 @@ async function waitForHttp(
     timeoutMs = 120_000,
     accept = [200],
     headers = {},
+    authorityHost = null,
     label = "HTTP readiness",
     diagnostics = () => "",
   } = {},
@@ -206,7 +211,9 @@ async function waitForHttp(
   let lastError = "none";
   while (Date.now() < deadline) {
     try {
-      const response = await fetch(url, { headers });
+      const response = authorityHost
+        ? await fetchLocalVirtualHost(url, authorityHost, { headers })
+        : await fetch(url, { headers });
       lastStatus = String(response.status);
       if (accept.includes(response.status)) {
         return response;
@@ -217,9 +224,10 @@ async function waitForHttp(
     }
     await new Promise((resolve) => setTimeout(resolve, 500));
   }
+  const authority = authorityHost ? `, authority: ${authorityHost}` : "";
   const hostHeader = headers.Host ? `, Host: ${headers.Host}` : "";
   throw new Error(
-    `${label} timed out after ${timeoutMs}ms at ${safeUrl(url)}${hostHeader}; ` +
+    `${label} timed out after ${timeoutMs}ms at ${safeUrl(url)}${authority}${hostHeader}; ` +
       `accepted status: ${accept.join(",")}; last status: ${lastStatus}; ` +
       `last fetch error: ${safeDiagnosticText(lastError)}; ` +
       `ports: ${PORT_BINDINGS.join("; ")}${diagnostics()}`,
@@ -731,7 +739,7 @@ async function startStack() {
     phase = "wait for ABO /v1/offers with billing host";
     await waitForHttp(`${ABO_URL}/v1/offers`, {
       accept: [401, 403, 400],
-      headers: { Host: BILLING_HOST },
+      authorityHost: BILLING_HOST,
       label: "ABO offers readiness",
       diagnostics,
     });
@@ -790,7 +798,7 @@ async function startStack() {
         phase = "wait for restarted ABO /v1/offers with billing host";
         await waitForHttp(`${ABO_URL}/v1/offers`, {
           accept: [401, 403, 400],
-          headers: { Host: BILLING_HOST },
+          authorityHost: BILLING_HOST,
           label: "restarted ABO offers readiness",
           diagnostics,
         });
@@ -1288,11 +1296,10 @@ function ensurePlatformGrantPrerequisites(orgId, installationId) {
 }
 
 async function putBillingContact(billingToken) {
-  const response = await fetch(`${ABO_URL}/v1/billing-contact`, {
+  const response = await fetchLocalVirtualHost(`${ABO_URL}/v1/billing-contact`, BILLING_HOST, {
     method: "PUT",
     headers: {
       authorization: `Bearer ${billingToken}`,
-      host: BILLING_HOST,
       "Abo-Contract-Version": "1",
       "content-type": "application/json",
     },
@@ -1307,11 +1314,10 @@ async function putBillingContact(billingToken) {
 }
 
 async function openCheckout(billingToken) {
-  const response = await fetch(`${ABO_URL}/v1/checkouts`, {
+  const response = await fetchLocalVirtualHost(`${ABO_URL}/v1/checkouts`, BILLING_HOST, {
     method: "POST",
     headers: {
       authorization: `Bearer ${billingToken}`,
-      host: BILLING_HOST,
       "Abo-Contract-Version": "1",
       "content-type": "application/json",
     },
@@ -1380,12 +1386,12 @@ async function postPaymobProcessedCallback(checkoutReference) {
   };
   const body = JSON.stringify({ type: "TRANSACTION", obj: paymobObj });
   const hmac = await signPaymobObj(paymobObj);
-  const response = await fetch(
+  const response = await fetchLocalVirtualHost(
     `${ABO_URL}/notify/paymob?hmac=${encodeURIComponent(hmac)}`,
+    BILLING_HOST,
     {
       method: "POST",
       headers: {
-        host: BILLING_HOST,
         "content-type": "application/json",
         "cf-connecting-ip": "203.0.113.10",
       },
@@ -1455,8 +1461,12 @@ before(async () => {
 });
 
 after(async () => {
-  await stack?.stop();
-  stack = null;
+  try {
+    await stack?.stop();
+  } finally {
+    stack = null;
+    await closeLocalVirtualHostDispatchers();
+  }
 });
 
 test("E2E-P5.2-01 Grant applied on the platform reaches get_ai_status available and active", async () => {

@@ -42,6 +42,7 @@ import {
   resetPlatformState,
   terminalEventTypes,
   visitSummaryInvokeBody,
+  waitForSettledRequest,
 } from "./harness";
 
 beforeAll(async () => {
@@ -338,7 +339,7 @@ describe("golden journey", () => {
     const invoked = await invoke(scenario, { traceId });
     expect(invoked.status).toBe(200);
     const ref = String(invoked.events[0]?.data.request_reference);
-    await flushBackgroundWork();
+    await waitForSettledRequest(ref);
 
     const request = await getAiRequest(ref);
     expect(request?.state).toBe("Completed");

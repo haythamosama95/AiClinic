@@ -5,9 +5,12 @@ import { mkdir } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { createClient } from "@supabase/supabase-js";
-import { MockAgent } from "undici";
 import { unstable_startWorker as startWorker } from "wrangler";
 import { CHANNEL_VERSIONS } from "vendor-contracts";
+import {
+  fetchLocalVirtualHost,
+  closeLocalVirtualHostDispatchers,
+} from "./local-virtual-host.mjs";
 import {
   createAccessTeam,
   createSoftwareAuthenticator,
@@ -193,22 +196,27 @@ export function psqlQuery(sql) {
 
 export async function waitForHttp(
   url,
-  { timeoutMs = 120_000, accept = [200], headers } = {},
+  { timeoutMs = 120_000, accept = [200], headers, fetcher } = {},
 ) {
   const deadline = Date.now() + timeoutMs;
   while (Date.now() < deadline) {
     try {
-      const status = await new Promise((resolve, reject) => {
-        const request = httpRequest(url, { headers }, (response) => {
-          response.resume();
-          response.once("end", () => resolve(response.statusCode));
+      const status = fetcher
+        ? await fetcher(url, { signal: AbortSignal.timeout(3_000) }).then(async (response) => {
+            await response.body?.cancel();
+            return response.status;
+          })
+        : await new Promise((resolve, reject) => {
+            const request = httpRequest(url, { headers }, (response) => {
+              response.resume();
+              response.once("end", () => resolve(response.statusCode));
+            });
+            request.setTimeout(3_000, () => {
+              request.destroy(new Error(`Timed out connecting to ${url}`));
+            });
+            request.once("error", reject);
+            request.end();
         });
-        request.setTimeout(3_000, () => {
-          request.destroy(new Error(`Timed out connecting to ${url}`));
-        });
-        request.once("error", reject);
-        request.end();
-      });
       if (accept.includes(status)) {
         return { statusCode: status };
       }
@@ -293,7 +301,6 @@ async function stopStartedResources({
   harnessWorker,
   platformWorker,
   platformDoReceiverWorker,
-  mockFetch,
 }) {
   const cleanup = [
     ["Paymob worker", () => stopChild(paymob)],
@@ -301,7 +308,7 @@ async function stopStartedResources({
     ["Harness worker", () => harnessWorker?.dispose()],
     ["Platform worker", () => platformWorker?.dispose()],
     ["Platform receiver worker", () => platformDoReceiverWorker?.dispose()],
-    ["mock fetch", () => mockFetch?.close()],
+    ["Local virtual-host dispatchers", () => closeLocalVirtualHostDispatchers()],
   ];
   const errors = [];
   for (const [label, dispose] of cleanup) {
@@ -503,6 +510,55 @@ async function registerIssuerKey(stackRef, issuerKey) {
     throw new Error(`registerIssuerKey failed: ${envelope.code || response.status}`);
   }
   return envelope;
+}
+
+// Workerd does not use Node's global fetch dispatcher. Give Wrangler/Miniflare
+// an explicit outbound service so the Access certificate endpoint is entirely
+// deterministic and no test request can escape to public DNS/networking.
+function createAccessCertOutboundService(accessTeam) {
+  const expectedUrl =
+    `https://${ACCESS_TEAM_DOMAIN}/cdn-cgi/access/certs`;
+  const state = { requests: 0, unexpected: [] };
+  const handler = async (request) => {
+    const url = new URL(request.url);
+    if (
+      request.method === "GET" &&
+      url.href === expectedUrl
+    ) {
+      state.requests += 1;
+      return new Response(JSON.stringify({ keys: accessTeam.certs.keys }), {
+        status: 200,
+        headers: { "content-type": "application/json" },
+      });
+    }
+
+    // Keep diagnostics bounded and avoid retaining request bodies or headers.
+    if (state.unexpected.length < 3) {
+      state.unexpected.push(`${request.method} ${url.origin}${url.pathname}`.slice(0, 240));
+    }
+    return new Response("Unexpected test-worker outbound request", {
+      status: 502,
+      headers: { "content-type": "text/plain" },
+    });
+  };
+
+  return {
+    handler,
+    assertUsed() {
+      if (state.requests === 0 || state.unexpected.length > 0) {
+        const unexpected = state.unexpected.length
+          ? `; unexpected outbound request(s): ${state.unexpected.join("; ")}`
+          : "";
+        throw new Error(
+          `Access certificate test response was not used successfully ` +
+            `(matched ${state.requests} request(s))${unexpected}`,
+        );
+      }
+    },
+    get diagnostics() {
+      return `Access certificate test response matched ${state.requests} request(s)`;
+    },
+  };
 }
 
 export function queryPlatformD1One(sql) {
@@ -790,7 +846,7 @@ function spawnAboProcess(issuerKeys, aboConfig = activeAboConfig) {
   );
 }
 
-async function startPlatformDoReceiverWorker(doReceiverConfigPath, mockFetch) {
+async function startPlatformDoReceiverWorker(doReceiverConfigPath, outboundService) {
   const doReceiverWorker = await startWorker({
     config: doReceiverConfigPath,
     env: "development",
@@ -798,14 +854,14 @@ async function startPlatformDoReceiverWorker(doReceiverConfigPath, mockFetch) {
       inspector: false,
       persist: PLATFORM_PERSIST,
       registry: REGISTRY_DIR,
-      mockFetch,
+      outboundService,
     },
   });
   await doReceiverWorker.ready;
   return doReceiverWorker;
 }
 
-async function startPlatformAdmissionWorker(platformConfigPath, mockFetch) {
+async function startPlatformAdmissionWorker(platformConfigPath, outboundService) {
   const platformWorker = await startWorker({
     config: platformConfigPath,
     env: "development",
@@ -814,7 +870,7 @@ async function startPlatformAdmissionWorker(platformConfigPath, mockFetch) {
       inspector: false,
       persist: PLATFORM_PERSIST,
       registry: REGISTRY_DIR,
-      mockFetch,
+      outboundService,
     },
   });
   await platformWorker.ready;
@@ -843,7 +899,7 @@ export async function startStack({
   activeAboConfig = resolveHarnessConfig(aboConfig) ?? ABO_CONFIG;
   const platformDoReceiverConfigPath = resolveHarnessConfig(platformDoReceiverConfig);
 
-  let mockFetch = null;
+  let accessCertOutboundService = null;
   let accessTeam = null;
   let authenticator = null;
   let credentialId = null;
@@ -871,17 +927,7 @@ export async function startStack({
       credentialId = crypto.randomUUID();
       publicKeyCose = base64urlEncode(attestation.publicKey);
 
-      mockFetch = new MockAgent();
-      mockFetch
-        .get(`https://${ACCESS_TEAM_DOMAIN}`)
-        .intercept({
-          path: "/cdn-cgi/access/certs",
-          method: "GET",
-        })
-        .reply(200, JSON.stringify({ keys: accessTeam.certs.keys }), {
-          headers: { "content-type": "application/json" },
-        })
-        .persist();
+      accessCertOutboundService = createAccessCertOutboundService(accessTeam);
 
       await insertActiveOperatorCredential({
         credentialId,
@@ -893,13 +939,13 @@ export async function startStack({
     if (platformDoReceiverConfigPath) {
       platformDoReceiverWorker = await startPlatformDoReceiverWorker(
         platformDoReceiverConfigPath,
-        mockFetch,
+        accessCertOutboundService?.handler,
       );
     }
 
     platformWorker = await startPlatformAdmissionWorker(
       activePlatformConfig,
-      mockFetch,
+      accessCertOutboundService?.handler,
     );
 
     harnessWorker = await startWorker({
@@ -949,7 +995,7 @@ export async function startStack({
     abo = spawnAboProcess(issuerKeys, activeAboConfig);
     await waitForHttp(`${ABO_URL}/v1/offers`, {
       accept: [401, 403, 400],
-      headers: { Host: BILLING_HOST },
+      fetcher: (url, init) => fetchLocalVirtualHost(url, BILLING_HOST, init),
     });
 
     const clinics = createClinics ? await createTwoOrgClinics() : null;
@@ -992,7 +1038,6 @@ export async function startStack({
           harnessWorker: stackRef.harnessWorker,
           platformWorker: stackRef.platformWorker,
           platformDoReceiverWorker: stackRef.platformDoReceiverWorker,
-          mockFetch,
         });
       },
       async restartAbo(nextIssuerKeys = issuerKeys) {
@@ -1001,7 +1046,7 @@ export async function startStack({
         abo = restarted;
         await waitForHttp(`${ABO_URL}/v1/offers`, {
           accept: [401, 403, 400],
-          headers: { Host: BILLING_HOST },
+          fetcher: (url, init) => fetchLocalVirtualHost(url, BILLING_HOST, init),
         });
         stackRef.abo = restarted;
         stackRef.issuerKeys = nextIssuerKeys;
@@ -1031,13 +1076,13 @@ export async function startStack({
         if (nextDoReceiverConfigPath) {
           stackRef.platformDoReceiverWorker = await startPlatformDoReceiverWorker(
             nextDoReceiverConfigPath,
-            mockFetch,
+            accessCertOutboundService?.handler,
           );
         }
 
         stackRef.platformWorker = await startPlatformAdmissionWorker(
           activePlatformConfig,
-          mockFetch,
+          accessCertOutboundService?.handler,
         );
         await waitForHttp(`${PLATFORM_URL}/health`);
         return stackRef.platformWorker;
@@ -1045,7 +1090,17 @@ export async function startStack({
     };
 
     if (registerIssuer) {
-      await registerIssuerKey(stackRef, signingKey);
+      try {
+        await registerIssuerKey(stackRef, signingKey);
+        accessCertOutboundService.assertUsed();
+      } catch (error) {
+        const diagnostic = accessCertOutboundService?.diagnostics;
+        throw new Error(
+          `P7.3 issuer registration startup failed${diagnostic ? `; ${diagnostic}` : ""}: ` +
+            `${error instanceof Error ? error.message : String(error)}`,
+          { cause: error },
+        );
+      }
       await stackRef.restartAbo(issuerKeys);
     }
 
@@ -1058,7 +1113,6 @@ export async function startStack({
         harnessWorker,
         platformWorker,
         platformDoReceiverWorker,
-        mockFetch,
       });
     } catch (cleanupError) {
       console.error("H-FS startup rollback encountered cleanup errors:", cleanupError);
@@ -1069,24 +1123,26 @@ export async function startStack({
 
 export async function billingFetch(pathname, init = {}) {
   const headers = new Headers(init.headers ?? {});
-  if (!headers.has("host")) {
-    headers.set("host", BILLING_HOST);
-  }
+  headers.delete("host");
   if (!headers.has("Abo-Contract-Version")) {
     headers.set("Abo-Contract-Version", "1");
   }
-  return fetch(`${ABO_URL}${pathname}`, { ...init, headers });
+  return fetchLocalVirtualHost(`${ABO_URL}${pathname}`, BILLING_HOST, {
+    ...init,
+    headers,
+  });
 }
 
 export async function opsFetch(pathname, init = {}) {
   const headers = new Headers(init.headers ?? {});
-  if (!headers.has("host")) {
-    headers.set("host", OPS_HOST);
-  }
+  headers.delete("host");
   if (!headers.has("Abo-Contract-Version")) {
     headers.set("Abo-Contract-Version", "1");
   }
-  return fetch(`${ABO_URL}${pathname}`, { ...init, headers });
+  return fetchLocalVirtualHost(`${ABO_URL}${pathname}`, OPS_HOST, {
+    ...init,
+    headers,
+  });
 }
 
 export async function platformFetch(pathname, init = {}) {

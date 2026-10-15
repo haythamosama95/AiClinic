@@ -41,6 +41,7 @@ import {
   WEBAUTHN_ORIGIN,
   WEBAUTHN_RP_ID,
 } from "./p7-2-stack.mjs";
+import { fetchLocalVirtualHost } from "./local-virtual-host.mjs";
 
 // H-FS unit harness (P7.2 US2): node --import tsx --test test/p7-2-vendor-entrypoint.test.mjs
 
@@ -272,13 +273,10 @@ async function hpComplimentaryGrant({ envelope, accessJwt }) {
 
 async function opsFetch(pathname, init = {}) {
   const headers = new Headers(init.headers ?? {});
-  if (!headers.has("host")) {
-    headers.set("host", OPS_HOST);
-  }
   if (!headers.has("Abo-Contract-Version")) {
     headers.set("Abo-Contract-Version", "1");
   }
-  return fetch(`${ABO_URL}${pathname}`, {
+  return fetchLocalVirtualHost(`${ABO_URL}${pathname}`, OPS_HOST, {
     ...init,
     headers,
   });

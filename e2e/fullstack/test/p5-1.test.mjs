@@ -6,6 +6,10 @@ import test, { after, before } from "node:test";
 import assert from "node:assert/strict";
 import { createClient } from "@supabase/supabase-js";
 import { MockAgent } from "undici";
+import {
+  closeLocalVirtualHostDispatchers,
+  fetchLocalVirtualHost,
+} from "./local-virtual-host.mjs";
 import { unstable_startWorker as startWorker } from "wrangler";
 import { CHANNEL_VERSIONS } from "vendor-contracts";
 import {
@@ -149,6 +153,7 @@ async function waitForHttp(
     timeoutMs = 120_000,
     accept = [200],
     headers = {},
+    authorityHost = null,
     label = "HTTP readiness",
     diagnostics = () => "",
   } = {},
@@ -158,7 +163,9 @@ async function waitForHttp(
   let lastError = "none";
   while (Date.now() < deadline) {
     try {
-      const response = await fetch(url, { headers });
+      const response = authorityHost
+        ? await fetchLocalVirtualHost(url, authorityHost, { headers })
+        : await fetch(url, { headers });
       lastStatus = String(response.status);
       if (accept.includes(response.status)) {
         return response;
@@ -169,9 +176,10 @@ async function waitForHttp(
     }
     await new Promise((resolve) => setTimeout(resolve, 500));
   }
+  const authority = authorityHost ? `, authority: ${authorityHost}` : "";
   const hostHeader = headers.Host ? `, Host: ${headers.Host}` : "";
   throw new Error(
-    `${label} timed out after ${timeoutMs}ms at ${safeUrl(url)}${hostHeader}; ` +
+    `${label} timed out after ${timeoutMs}ms at ${safeUrl(url)}${authority}${hostHeader}; ` +
       `accepted status: ${accept.join(",")}; last status: ${lastStatus}; ` +
       `last fetch error: ${safeDiagnosticText(lastError)}; ` +
       `ports: ${PORT_BINDINGS.join("; ")}${diagnostics()}`,
@@ -713,7 +721,7 @@ async function startStack() {
     phase = "wait for ABO /v1/offers with billing host";
     await waitForHttp(`${ABO_URL}/v1/offers`, {
       accept: [401, 403, 400],
-      headers: { Host: BILLING_HOST },
+      authorityHost: BILLING_HOST,
       label: "ABO offers readiness",
       diagnostics,
     });
@@ -770,7 +778,7 @@ async function startStack() {
         phase = "wait for restarted ABO /v1/offers with billing host";
         await waitForHttp(`${ABO_URL}/v1/offers`, {
           accept: [401, 403, 400],
-          headers: { Host: BILLING_HOST },
+          authorityHost: BILLING_HOST,
           label: "restarted ABO offers readiness",
           diagnostics,
         });
@@ -802,8 +810,12 @@ before(async () => {
 });
 
 after(async () => {
-  await stack?.stop();
-  stack = null;
+  try {
+    await stack?.stop();
+  } finally {
+    stack = null;
+    await closeLocalVirtualHostDispatchers();
+  }
 });
 
 async function assertRunnerWired() {
@@ -859,10 +871,9 @@ test("E2E-P5.1-02 Administrator issue_billing_token(1) is accepted by the local 
   assert.ok(billingToken);
   stack.billingToken = billingToken;
 
-  const offers = await fetch(`${ABO_URL}/v1/offers`, {
+  const offers = await fetchLocalVirtualHost(`${ABO_URL}/v1/offers`, BILLING_HOST, {
     headers: {
       authorization: `Bearer ${billingToken}`,
-      host: BILLING_HOST,
       "Abo-Contract-Version": "1",
     },
   });
@@ -891,10 +902,9 @@ test("E2E-P5.1-03 Billing token at the platform and AI token at the ABO are 401"
   });
   assert.equal(billingAtPlatform.status, 401);
 
-  const aiAtAbo = await fetch(`${ABO_URL}/v1/offers`, {
+  const aiAtAbo = await fetchLocalVirtualHost(`${ABO_URL}/v1/offers`, BILLING_HOST, {
     headers: {
       authorization: `Bearer ${stack.aiToken}`,
-      host: BILLING_HOST,
       "Abo-Contract-Version": "1",
     },
   });
@@ -919,10 +929,9 @@ test("E2E-P5.1-06 New signing kid is accepted everywhere, old tokens stay valid,
       "Aip-Contract-Version": "1",
     },
   });
-  const offersOld = await fetch(`${ABO_URL}/v1/offers`, {
+  const offersOld = await fetchLocalVirtualHost(`${ABO_URL}/v1/offers`, BILLING_HOST, {
     headers: {
       authorization: `Bearer ${oldBillingToken}`,
-      host: BILLING_HOST,
       "Abo-Contract-Version": "1",
     },
   });
@@ -959,10 +968,9 @@ test("E2E-P5.1-06 New signing kid is accepted everywhere, old tokens stay valid,
       "Aip-Contract-Version": "1",
     },
   });
-  const offersNew = await fetch(`${ABO_URL}/v1/offers`, {
+  const offersNew = await fetchLocalVirtualHost(`${ABO_URL}/v1/offers`, BILLING_HOST, {
     headers: {
       authorization: `Bearer ${newBillingToken}`,
-      host: BILLING_HOST,
       "Abo-Contract-Version": "1",
     },
   });
@@ -976,10 +984,9 @@ test("E2E-P5.1-06 New signing kid is accepted everywhere, old tokens stay valid,
       "Aip-Contract-Version": "1",
     },
   });
-  const offersOldAfter = await fetch(`${ABO_URL}/v1/offers`, {
+  const offersOldAfter = await fetchLocalVirtualHost(`${ABO_URL}/v1/offers`, BILLING_HOST, {
     headers: {
       authorization: `Bearer ${oldBillingToken}`,
-      host: BILLING_HOST,
       "Abo-Contract-Version": "1",
     },
   });

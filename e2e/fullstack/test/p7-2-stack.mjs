@@ -5,6 +5,10 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { createClient } from "@supabase/supabase-js";
 import { MockAgent } from "undici";
+import {
+  closeLocalVirtualHostDispatchers,
+  fetchLocalVirtualHost,
+} from "./local-virtual-host.mjs";
 import { unstable_startWorker as startWorker } from "wrangler";
 import {
   CHANNEL_VERSIONS,
@@ -186,9 +190,21 @@ export function psqlQuery(sql) {
 
 export async function waitForHttp(
   url,
-  { timeoutMs = 120_000, accept = [200], headers, child, childLabel = "worker" } = {},
+  {
+    timeoutMs = 120_000,
+    accept = [200],
+    headers,
+    authorityHost,
+    targetDescription = "local Wrangler listener",
+    stable404Attempts = 3,
+    child,
+    childLabel = "worker",
+  } = {},
 ) {
   const deadline = Date.now() + timeoutMs;
+  let lastStatus = "none";
+  let lastBody = "none";
+  let consecutive404s = 0;
   while (Date.now() < deadline) {
     if (child?.spawnError) {
       throw new Error(
@@ -202,16 +218,33 @@ export async function waitForHttp(
       );
     }
     try {
-      const response = await fetch(url, { headers });
+      const response = authorityHost
+        ? await fetchLocalVirtualHost(url, authorityHost, { headers })
+        : await fetch(url, { headers });
+      lastStatus = String(response.status);
       if (accept.includes(response.status)) {
         return response;
       }
-    } catch {
-      // worker still starting
+      lastBody = (await response.text()).slice(0, 1_200) || "[empty response body]";
+      consecutive404s = response.status === 404 ? consecutive404s + 1 : 0;
+      if (consecutive404s >= stable404Attempts) {
+        throw new Error(
+          `${childLabel} returned stable HTTP 404 while waiting for ${url}; ` +
+            `authority=${authorityHost ?? new URL(url).host}; target=${targetDescription}; ` +
+            `last body=${lastBody}${formatChildOutput(child)}`,
+        );
+      }
+    } catch (error) {
+      if (error.message?.includes("returned stable HTTP 404")) throw error;
+      lastBody = `${error.code ?? error.cause?.code ?? error.name ?? "Error"}: request failed`;
     }
     await new Promise((resolve) => setTimeout(resolve, 500));
   }
-  throw new Error(`Timed out waiting for ${url}`);
+  throw new Error(
+    `Timed out waiting for ${url}; authority=${authorityHost ?? new URL(url).host}; ` +
+      `target=${targetDescription}; last status=${lastStatus}; ` +
+      `last body=${lastBody}${formatChildOutput(child)}`,
+  );
 }
 
 function formatChildOutput(child) {
@@ -713,6 +746,20 @@ function spawnAboProcess(issuerKeys) {
 }
 
 export async function startStack() {
+  const startupCleanups = [];
+  const cleanupStartup = async () => {
+    const errors = [];
+    for (const cleanup of startupCleanups.reverse()) {
+      try {
+        await cleanup();
+      } catch (error) {
+        errors.push(error.message);
+      }
+    }
+    await closeLocalVirtualHostDispatchers();
+    if (errors.length) throw new Error(errors.join("; "));
+  };
+  try {
   clearPlatformLogBuffer();
   await mkdir(PLATFORM_PERSIST, { recursive: true });
   await mkdir(HARNESS_PERSIST, { recursive: true });
@@ -731,6 +778,7 @@ export async function startStack() {
   const publicKeyCose = base64urlEncode(attestation.publicKey);
 
   const mockFetch = new MockAgent();
+  startupCleanups.push(() => mockFetch.close());
   mockFetch
     .get(`https://${ACCESS_TEAM_DOMAIN}`)
     .intercept({
@@ -759,6 +807,7 @@ export async function startStack() {
       mockFetch,
     },
   });
+  startupCleanups.push(() => platformWorker.dispose());
   await platformWorker.ready;
 
   const harnessWorker = await startWorker({
@@ -771,6 +820,7 @@ export async function startStack() {
       registry: REGISTRY_DIR,
     },
   });
+  startupCleanups.push(() => harnessWorker.dispose());
   await harnessWorker.ready;
 
   await waitForHttp(`${PLATFORM_URL}/health`);
@@ -801,6 +851,7 @@ export async function startStack() {
     "--inspector-port",
     "9230",
   ]);
+  startupCleanups.push(() => stopChild(paymob));
   await waitForHttp(`${PAYMOB_URL}/`, {
     accept: [200, 404],
     child: paymob,
@@ -809,9 +860,11 @@ export async function startStack() {
 
   await prepareAboD1({ aboConfig: ABO_CONFIG });
   const abo = spawnAboProcess(issuerKeys);
+  startupCleanups.push(() => stopChild(abo));
   await waitForHttp(`${ABO_URL}/v1/offers`, {
     accept: [401, 403, 400],
-    headers: { Host: BILLING_HOST },
+    authorityHost: BILLING_HOST,
+    targetDescription: `127.0.0.1:8788 (${ABO_CONFIG})`,
     child: abo,
     childLabel: "ABO worker",
   });
@@ -838,6 +891,7 @@ export async function startStack() {
       await harnessWorker.dispose();
       await platformWorker.dispose();
       await mockFetch.close();
+      await closeLocalVirtualHostDispatchers();
       stackStopped = true;
     },
     async restartAbo(nextIssuerKeys = issuerKeys) {
@@ -846,10 +900,12 @@ export async function startStack() {
       }
       await stopChild(stackRef.abo);
       const restarted = spawnAboProcess(nextIssuerKeys);
+      startupCleanups.push(() => stopChild(restarted));
       try {
         await waitForHttp(`${ABO_URL}/v1/offers`, {
           accept: [401, 403, 400],
-          headers: { Host: BILLING_HOST },
+          authorityHost: BILLING_HOST,
+          targetDescription: `127.0.0.1:8788 (${ABO_CONFIG})`,
           child: restarted,
           childLabel: "restarted ABO worker",
         });
@@ -867,17 +923,22 @@ export async function startStack() {
   await stackRef.restartAbo(issuerKeys);
 
   return stackRef;
+  } catch (error) {
+    try {
+      await cleanupStartup();
+    } catch (cleanupError) {
+      console.error(`[P7.2 startup rollback] ${cleanupError.message}`);
+    }
+    throw error;
+  }
 }
 
 export async function billingFetch(pathname, init = {}) {
   const headers = new Headers(init.headers ?? {});
-  if (!headers.has("host")) {
-    headers.set("host", BILLING_HOST);
-  }
   if (!headers.has("Abo-Contract-Version")) {
     headers.set("Abo-Contract-Version", "1");
   }
-  return fetch(`${ABO_URL}${pathname}`, { ...init, headers });
+  return fetchLocalVirtualHost(`${ABO_URL}${pathname}`, BILLING_HOST, { ...init, headers });
 }
 
 export async function platformFetch(pathname, init = {}) {
