@@ -251,6 +251,81 @@ function formatChildOutput(child) {
   return output ? `\n${child.startupLabel ?? "Worker"} output:\n${output}` : "";
 }
 
+async function waitForHarnessPlatformBinding() {
+  const url = `${HARNESS_URL}/register-issuer-key`;
+  const deadline = Date.now() + 15_000;
+  let lastStatus = "none";
+  let lastBody = "none";
+  let lastRequestError = null;
+
+  while (Date.now() < deadline) {
+    try {
+      const response = await fetch(url, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ contract_version: 1 }),
+      });
+      lastStatus = String(response.status);
+      const responseBody = await response.text();
+      lastBody = responseBody.slice(0, 1_200) || "[empty response body]";
+      lastRequestError = null;
+
+      if (response.status === 200) {
+        let envelope;
+        try {
+          envelope = JSON.parse(responseBody);
+        } catch {
+          throw new Error(
+            `PLATFORM service-binding probe returned non-JSON response (HTTP ${response.status}): ${lastBody}`,
+          );
+        }
+        if (
+          envelope === null ||
+          typeof envelope !== "object" ||
+          Array.isArray(envelope) ||
+          Object.getPrototypeOf(envelope) !== Object.prototype ||
+          typeof envelope.result !== "string"
+        ) {
+          throw new Error(
+            `PLATFORM service-binding probe returned unexpected vendor envelope (HTTP ${response.status}): ${lastBody}`,
+          );
+        }
+        return;
+      }
+      if (response.status === 404) {
+        throw new Error(
+          `Harness register-issuer-key route is unavailable (HTTP ${response.status}): ${lastBody}`,
+        );
+      }
+      if (response.status < 500) {
+        throw new Error(
+          `Harness PLATFORM service-binding probe failed (HTTP ${response.status}): ${lastBody}`,
+        );
+      }
+    } catch (error) {
+      if (
+        error.message?.startsWith("Harness register-issuer-key route is unavailable") ||
+        error.message?.startsWith("Harness PLATFORM service-binding probe failed") ||
+        error.message?.startsWith("PLATFORM service-binding probe returned non-JSON response") ||
+        error.message?.startsWith("PLATFORM service-binding probe returned unexpected vendor envelope")
+      ) {
+        throw error;
+      }
+      lastRequestError = `${error.cause?.code ?? error.code ?? error.name}: ${error.message}`;
+      lastStatus = "unavailable";
+      lastBody = lastRequestError;
+    }
+
+    await new Promise((resolve) => setTimeout(resolve, 500));
+  }
+
+  throw new Error(
+    `Timed out waiting for harness PLATFORM service binding at ${url}; ` +
+      `last HTTP status=${lastStatus}; last response body=${lastBody}` +
+      (lastRequestError ? `; last request error=${lastRequestError}` : ""),
+  );
+}
+
 function spawnDevProcess(args, env = {}) {
   const wranglerCli = path.join(
     FULLSTACK_ROOT,
@@ -452,7 +527,22 @@ async function registerIssuerKey(stackRef, issuerKey) {
       assertion,
     }),
   });
-  const envelope = await response.json();
+  const responseBody = await response.text();
+  const bodyExcerpt = responseBody.slice(0, 1_200) || "[empty response body]";
+  if (!response.ok) {
+    throw new Error(
+      `registerIssuerKey HTTP ${response.status}: ${bodyExcerpt}`,
+    );
+  }
+
+  let envelope;
+  try {
+    envelope = JSON.parse(responseBody);
+  } catch {
+    throw new Error(
+      `registerIssuerKey returned non-JSON response (HTTP ${response.status}): ${bodyExcerpt}`,
+    );
+  }
   if (envelope.result !== "ok") {
     throw new Error(`registerIssuerKey failed: ${envelope.code || response.status}`);
   }
@@ -826,14 +916,7 @@ export async function startStack() {
   await harnessWorker.ready;
 
   await waitForHttp(`${PLATFORM_URL}/health`);
-  const harnessProbe = await fetch(`${HARNESS_URL}/register-issuer-key`, {
-    method: "POST",
-    headers: { "content-type": "application/json" },
-    body: JSON.stringify({ contract_version: 1 }),
-  });
-  if (harnessProbe.status === 404) {
-    throw new Error("Harness register-issuer-key route is unavailable");
-  }
+  await waitForHarnessPlatformBinding();
 
   const signingKey = readIssuerKeyByStatus("signing");
   if (!signingKey) {

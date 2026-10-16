@@ -56,7 +56,30 @@ function countPlatformCoverageEvents(orgId) {
 
 function grantWorkForPayment(paymentId) {
   return queryAboD1One(
-    `SELECT work_id, state, last_error FROM work WHERE kind = 'grant' AND subject_id = ${sqlLiteral(paymentId)}`,
+    `SELECT work_id, state, next_attempt_at, last_error FROM work WHERE kind = 'grant' AND subject_id = ${sqlLiteral(paymentId)}`,
+  );
+}
+
+async function waitForGrantWorkToLeaveOpen(paymentId) {
+  const maxAttempts = 20;
+  const pollIntervalMs = 250;
+  let work = null;
+
+  for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
+    if (attempt > 0) {
+      await new Promise((resolve) => setTimeout(resolve, pollIntervalMs));
+    }
+
+    await triggerAboScheduled("* * * * *");
+    work = grantWorkForPayment(paymentId);
+    if (work && work.state !== "open") return work;
+  }
+
+  assert.fail(
+    `grant work did not leave open after ${maxAttempts} targeted minute triggers; ` +
+      `state=${work?.state ?? "missing"}, ` +
+      `next_attempt_at=${work?.next_attempt_at ?? "null"}, ` +
+      `last_error=${work?.last_error ?? "null"}`,
   );
 }
 
@@ -100,9 +123,7 @@ test("E2E-P7.3-02", async () => {
   )?.payment_id;
   assert.ok(paymentId, "paid checkout should create a payment row");
 
-  await triggerAboScheduled("* * * * *");
-
-  const parkedWork = grantWorkForPayment(paymentId);
+  const parkedWork = await waitForGrantWorkToLeaveOpen(paymentId);
   assert.ok(parkedWork, "grant work should exist after scheduled run");
   assert.equal(parkedWork.state, "parked");
   assert.match(String(parkedWork.last_error ?? ""), /contract_version_unsupported|rejected/);

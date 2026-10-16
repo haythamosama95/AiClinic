@@ -30,6 +30,15 @@ before(async () => {
   ensurePlatformGrantPrerequisites(orgId, installationId);
   await ensurePlatformActiveCoverage(stack, orgId, installationId);
   await runTwoPhaseCoveragePull("baseline coverage pull");
+  const pendingBaselineRequestId = readFeedStatePendingRequestId();
+  if (pendingBaselineRequestId) {
+    await waitForPendingHttpResponse(pendingBaselineRequestId);
+    psqlQuery(`
+      UPDATE ai_internal.feed_state
+      SET pending_request_id = NULL, pending_since = NULL
+      WHERE singleton
+    `);
+  }
   if (!readClinicAiCoverage(orgId)) {
     throw new Error(
       `Could not establish baseline clinic AI coverage projection. ${formatLastPullDiagnostics()}`,

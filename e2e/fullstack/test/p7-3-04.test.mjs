@@ -50,7 +50,33 @@ function grantRequestEnvelope(paymentId) {
 
 function grantWorkForPayment(paymentId) {
   return queryAboD1One(
-    `SELECT work_id, state FROM work WHERE kind = 'grant' AND subject_id = ${sqlLiteral(paymentId)}`,
+    `SELECT work_id, state, next_attempt_at, last_error FROM work WHERE kind = 'grant' AND subject_id = ${sqlLiteral(paymentId)}`,
+  );
+}
+
+function grantWorkById(workId) {
+  return queryAboD1One(
+    `SELECT work_id, state, next_attempt_at, last_error FROM work WHERE work_id = ${sqlLiteral(workId)}`,
+  );
+}
+
+async function waitForGrantWorkState(paymentId, expectedState, timeoutMs = 10_000) {
+  const deadline = Date.now() + timeoutMs;
+  let work = null;
+
+  while (Date.now() < deadline) {
+    work = work?.work_id
+      ? grantWorkById(work.work_id)
+      : grantWorkForPayment(paymentId);
+    if (work?.state === expectedState) return work;
+    await new Promise((resolve) => setTimeout(resolve, 100));
+  }
+
+  assert.fail(
+    `grant work did not reach ${expectedState} within ${timeoutMs}ms; ` +
+      `work_id=${work?.work_id ?? "<missing>"}, state=${work?.state ?? "<missing>"}, ` +
+      `next_attempt_at=${work?.next_attempt_at ?? "<null>"}, ` +
+      `last_error=${work?.last_error ?? "<null>"}`,
   );
 }
 
@@ -83,7 +109,9 @@ test("E2E-P7.3-04", async () => {
   )?.payment_id;
   assert.ok(paymentId, "paid checkout should create a payment row");
 
-  await triggerAboScheduled("0 * * * *");
+  await triggerAboScheduled("* * * * *");
+
+  const work = await waitForGrantWorkState(paymentId, "done");
 
   const envelopeText = grantRequestEnvelope(paymentId);
   assert.ok(envelopeText, "grant_request should store the envelope after the first attempt");
@@ -99,9 +127,6 @@ test("E2E-P7.3-04", async () => {
     "first grant should use the stored envelope bytes",
   );
 
-  const work = grantWorkForPayment(paymentId);
-  assert.ok(work, "grant work should exist");
-  assert.equal(work.state, "done", "published pair should apply the first grant attempt");
   const workId = work.work_id;
 
   runAboD1Command(
@@ -118,7 +143,8 @@ test("E2E-P7.3-04", async () => {
   });
   assert.equal(retry.status, 200);
 
-  await triggerAboScheduled("0 * * * *");
+  await triggerAboScheduled("* * * * *");
+  await waitForGrantWorkState(paymentId, "done");
 
   const envelopeAfterRetry = grantRequestEnvelope(paymentId);
   assert.ok(envelopeAfterRetry, "stored envelope should remain after retry");

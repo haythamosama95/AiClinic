@@ -1631,6 +1631,10 @@ test("E2E-P5.2-02 Refresh starts a pull and a second call within 10 seconds is R
   );
 
   clearStatusRefresh(orgId);
+  const pendingRequestId = readFeedStatePendingRequestId();
+  if (pendingRequestId) {
+    await waitForPendingHttpResponse(pendingRequestId);
+  }
   const responsesBeforeUnsupported = countHttpResponses();
 
   const missingVersion = await rpc(administrator, "request_ai_status_refresh", {});

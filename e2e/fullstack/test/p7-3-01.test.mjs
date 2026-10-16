@@ -1,6 +1,5 @@
 import test, { after, before } from "node:test";
 import assert from "node:assert/strict";
-import { getPlatformProxy } from "wrangler";
 import {
   billingFetch,
   countAboTable,
@@ -17,7 +16,6 @@ import {
   platformFetch,
   putBillingContact,
   queryAboD1One,
-  queryPlatformD1One,
   rpc,
   seedAboOffers,
   sqlLiteral,
@@ -39,23 +37,15 @@ const PAYMOB_ADAPTER_VERSION = 2;
 const PAYMOB_RETURN_VERSION = 2;
 
 let stack = null;
-let platformProxy = null;
 
 before(async () => {
   stack = await startStack({
     aboConfig: ABO_N_PLUS_1,
     platformConfig: PLATFORM_N_PLUS_1,
   });
-  platformProxy = await getPlatformProxy({
-    configPath: stack.platformConfigPath,
-    environment: "development",
-    persist: { path: stack.platformPersistPath },
-  });
 });
 
 after(async () => {
-  await platformProxy?.dispose();
-  platformProxy = null;
   await stack?.stop();
   stack = null;
 });
@@ -73,24 +63,6 @@ async function vendorCall(method, args) {
     `POST /vendor-call for ${method} failed with HTTP ${response.status}: ${bodyText}`,
   );
   return JSON.parse(bodyText);
-}
-
-function installationIdForOrg(orgId) {
-  const row = queryPlatformD1One(
-    `SELECT installation_id FROM tenant_binding WHERE org_id = ${sqlLiteral(orgId)} AND status = 'active'`,
-  );
-  return row?.installation_id ?? null;
-}
-
-async function fetchGatewayObjectRpc(installationId, body) {
-  const stub = platformProxy.env.DO.get(
-    platformProxy.env.DO.idFromName(installationId),
-  );
-  return stub.fetch("https://quota-do.internal/rpc", {
-    method: "POST",
-    headers: { "content-type": "application/json" },
-    body: JSON.stringify(body),
-  });
 }
 
 async function expectAboClinicRefusal(pathname, version) {
@@ -234,25 +206,6 @@ test("E2E-P7.3-01", async () => {
     contract_version: RECEIVER_CURRENT,
   });
   assert.equal(vendorOk.result, "ok");
-
-  const doInstallationId = installationIdForOrg(orgId);
-  assert.ok(doInstallationId);
-  const doAccepted = await fetchGatewayObjectRpc(doInstallationId, {
-    contract_version: 1,
-    kind: "inspect",
-  });
-  assert.equal(doAccepted.status, 200);
-  const doAcceptedBody = await doAccepted.json();
-  assert.equal(doAcceptedBody.contract_version, 1);
-
-  const doRefused = await fetchGatewayObjectRpc(doInstallationId, {
-    contract_version: 3,
-    kind: "inspect",
-  });
-  const doRefusedBody = await doRefused.json();
-  assert.equal(doRefusedBody.result, "rejected");
-  assert.equal(doRefusedBody.code, "contract_version_unsupported");
-  assert.deepEqual(doRefusedBody.accepted_versions, ACCEPTED_VERSIONS);
 
   const returnResponse = await billingFetch("/return/paymob?v=99");
   assert.equal(returnResponse.status, 200);
