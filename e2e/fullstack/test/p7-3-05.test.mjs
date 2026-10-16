@@ -50,6 +50,7 @@ async function postAdmissionRequest({ token, contractVersion, idempotencyKey }) 
   return platformFetch("/v1/requests", {
     method: "POST",
     headers,
+    omitContractVersionDefault: contractVersion === undefined,
     body: JSON.stringify({
       capability_id: "clinic.visit_summary",
       context: {
@@ -83,6 +84,7 @@ test("E2E-P7.3-05", async () => {
   });
   assert.equal(accepted.status, 200);
   assert.equal(accepted.headers.get("Aip-Contract-Version"), String(WORKER_VERSION));
+  await accepted.text();
 
   const missingVersion = await postAdmissionRequest({
     token,
@@ -103,5 +105,4 @@ test("E2E-P7.3-05", async () => {
   const unsupportedBody = await unsupported.json();
   assert.equal(unsupportedBody.code, "contract_version_unsupported");
   assert.deepEqual(unsupportedBody.accepted_versions, CLINIC_ACCEPTED_VERSIONS);
-
 });

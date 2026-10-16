@@ -86,6 +86,22 @@ function platformGrantLedger(grantId) {
   );
 }
 
+async function waitForPlatformGrantLedger(grantId, { paymentId, workId }, timeoutMs = 10_000) {
+  const deadline = Date.now() + timeoutMs;
+  let grant = null;
+
+  while (Date.now() < deadline) {
+    grant = platformGrantLedger(grantId);
+    if (grant) return grant;
+    await new Promise((resolve) => setTimeout(resolve, 100));
+  }
+
+  assert.fail(
+    `platform grant ledger did not contain grant_id=${grantId} within ${timeoutMs}ms; ` +
+      `payment_id=${paymentId}, work_id=${workId}, grant_id=${grantId}`,
+  );
+}
+
 test("E2E-P7.3-04", async () => {
   const { orgId, installationId, administrator } = stack.clinics.orgA;
   ensurePlatformGrantPrerequisites(orgId, installationId);
@@ -119,7 +135,10 @@ test("E2E-P7.3-04", async () => {
   assert.equal(envelope.contract_version, STORED_CONTRACT_VERSION);
   const envelopeSha256 = await sha256Hex(new TextEncoder().encode(envelopeText));
 
-  const platformGrant = platformGrantLedger(envelope.grant_id);
+  const platformGrant = await waitForPlatformGrantLedger(envelope.grant_id, {
+    paymentId,
+    workId: work.work_id,
+  });
   assert.ok(platformGrant, "platform should record the first grant envelope");
   assert.equal(
     platformGrant.envelope_sha256,
@@ -153,7 +172,10 @@ test("E2E-P7.3-04", async () => {
   assert.equal(parsedAfter.contract_version, parsedBefore.contract_version);
   assert.equal(envelopeAfterRetry, envelopeBeforeRetry);
 
-  const platformGrantAfterRetry = platformGrantLedger(parsedAfter.grant_id);
+  const platformGrantAfterRetry = await waitForPlatformGrantLedger(parsedAfter.grant_id, {
+    paymentId,
+    workId,
+  });
   assert.ok(platformGrantAfterRetry, "platform grant ledger should still exist after retry");
   assert.equal(
     platformGrantAfterRetry.envelope_sha256,

@@ -873,7 +873,11 @@ Future<Map<String, dynamic>> _fetchFirstOffer(String billingToken) async {
       headers: _aboHeaders(billingToken),
     ),
   );
-  expect(response.statusCode, 200);
+  if (response.statusCode != 200) {
+    throw StateError(
+      'GET /v1/offers failed with HTTP ${response.statusCode}: ${response.body}',
+    );
+  }
   final body = jsonDecode(response.body) as Map<String, dynamic>;
   final offers = (body['offers'] as List).cast<Map<String, dynamic>>();
   expect(offers, isNotEmpty);

@@ -713,7 +713,7 @@ void main() {
       final data = Map<String, dynamic>.from(tokenMap['data'] as Map);
       final billingToken = data['token'] as String;
 
-      final unsupportedProbe = await _runLiveIo(
+      final unsupportedProbe = (await _runLiveIo(
         tester,
         'GET /v1/offers contract probe',
         () => http.get(
@@ -724,7 +724,7 @@ void main() {
             'Abo-Contract-Version': '$_unsupportedAboContractVersion',
           },
         ),
-      );
+      ))!;
       expect(
         unsupportedProbe.statusCode,
         400,

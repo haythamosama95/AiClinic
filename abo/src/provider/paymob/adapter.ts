@@ -1,4 +1,4 @@
-import { paymentId, sha256Hex } from "vendor-contracts";
+import { CHANNEL_VERSIONS, paymentId, sha256Hex } from "vendor-contracts";
 import type {
   CancelCheckoutResult,
   CreateCheckoutInput,
@@ -27,7 +27,7 @@ import {
   type PaymobClientEnv,
 } from "./client.js";
 
-export const PAYMOB_ADAPTER_VERSION = 1;
+export const PAYMOB_ADAPTER_VERSION = CHANNEL_VERSIONS.paymobAdapter;
 
 export type PaymobAdapterEnv = PaymobClientEnv &
   ClockEnv & {
@@ -891,18 +891,19 @@ async function parseNotificationImpl(
     obj = paymobObjFromQuery(url.searchParams);
   }
   if (obj === null) {
-    return { authentic: false, events: [] };
+    return { authentic: false, events: [], parseable: false };
   }
 
   const authentic = await verifyPaymobHmac(env, obj, providedHmac);
   if (!authentic) {
-    return { authentic: false, events: [] };
+    return { authentic: false, events: [], parseable: true };
   }
 
   const event = await providerTxnFromCallback(env, obj);
   return {
     authentic: true,
     events: event === null ? [] : [event],
+    parseable: true,
   };
 }
 
@@ -912,7 +913,7 @@ export async function parseStoredPaymobNotification(
 ): Promise<ParseNotificationResult> {
   const obj = paymobObjFromProcessedBody(body);
   if (obj === null) {
-    return { authentic: false, events: [] };
+    return { authentic: false, events: [], parseable: false };
   }
   const hmac = await computeHmacHex(
     env.PAYMOB_HMAC_SECRET,

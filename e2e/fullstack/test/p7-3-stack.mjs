@@ -521,6 +521,9 @@ function base64urlFromBytes(bytes) {
 }
 
 export async function mintHarnessBillingToken(stack, claimsOverrides = {}) {
+  // Keep the fixture's configured signing keys available to callers that
+  // restart ABO after exercising this temporary issuer.
+  const originalIssuerKeys = [...stack.issuerKeys];
   const { createIssuer } = await import("vendor-contracts/testkit");
   const issuer = await createIssuer({ issuerId: "issuer-test" });
   const publicKeyBytes = new Uint8Array(
@@ -533,6 +536,7 @@ export async function mintHarnessBillingToken(stack, claimsOverrides = {}) {
     },
   ];
   await stack.restartAbo(harnessIssuerKeys);
+  stack.issuerKeys = originalIssuerKeys;
   const clinic = stack.clinics.orgA;
   const now = Math.floor(Date.now() / 1000);
   const token = await issuer.mintBilling({
@@ -575,45 +579,94 @@ function buildRegisterIssuerKeyOperation({
 }
 
 async function registerIssuerKey(stackRef, issuerKey) {
-  const accessJwt = await mintAccessJwt(stackRef.accessTeam);
-  const issuedAt = new Date().toISOString();
-  const operation = buildRegisterIssuerKeyOperation({
-    kid: issuerKey.kid,
-    publicKey: issuerKey.public_key,
-    notBefore: issuerKey.not_before,
-    notAfter: issuerKey.not_after,
-    accessJwt,
-    issuedAt,
-  });
-  const assertion = encodeVendorAssertion(
-    await stackRef.authenticator.assert({
-      operation,
-      rpId: WEBAUTHN_RP_ID,
-      origin: WEBAUTHN_ORIGIN,
-      up: true,
-      uv: true,
-    }),
-  );
-  const response = await fetch(`${HARNESS_URL}/register-issuer-key`, {
-    method: "POST",
-    headers: { "content-type": "application/json" },
-    body: JSON.stringify({
-      contract_version: CHANNEL_VERSIONS.vendorEntrypoint,
+  const maxAttempts = 3;
+  const url = `${HARNESS_URL}/register-issuer-key`;
+
+  for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
+    // Use a fresh nonce/assertion for each attempt. The platform operation is
+    // idempotent for the same issuer key, so an uncertain response can be
+    // safely retried without replaying a consumed WebAuthn assertion.
+    const accessJwt = await mintAccessJwt(stackRef.accessTeam);
+    const issuedAt = new Date().toISOString();
+    const operation = buildRegisterIssuerKeyOperation({
       kid: issuerKey.kid,
-      public_key: issuerKey.public_key,
-      not_before: issuerKey.not_before,
-      not_after: issuerKey.not_after,
-      access_jwt: accessJwt,
-      signer_credential_id: stackRef.credentialId,
-      operation,
-      assertion,
-    }),
-  });
-  const envelope = await response.json();
-  if (envelope.result !== "ok") {
-    throw new Error(`registerIssuerKey failed: ${envelope.code || response.status}`);
+      publicKey: issuerKey.public_key,
+      notBefore: issuerKey.not_before,
+      notAfter: issuerKey.not_after,
+      accessJwt,
+      issuedAt,
+    });
+    const assertion = encodeVendorAssertion(
+      await stackRef.authenticator.assert({
+        operation,
+        rpId: WEBAUTHN_RP_ID,
+        origin: WEBAUTHN_ORIGIN,
+        up: true,
+        uv: true,
+      }),
+    );
+
+    let response;
+    try {
+      response = await fetch(url, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          contract_version: CHANNEL_VERSIONS.vendorEntrypoint,
+          kid: issuerKey.kid,
+          public_key: issuerKey.public_key,
+          not_before: issuerKey.not_before,
+          not_after: issuerKey.not_after,
+          access_jwt: accessJwt,
+          signer_credential_id: stackRef.credentialId,
+          operation,
+          assertion,
+        }),
+      });
+    } catch (error) {
+      if (attempt === maxAttempts) {
+        throw new Error(
+          `registerIssuerKey request failed after ${attempt} attempts: ${error.message}`,
+          { cause: error },
+        );
+      }
+      await new Promise((resolve) => setTimeout(resolve, 250 * attempt));
+      continue;
+    }
+
+    const responseBody = await response.text();
+    const bodyExcerpt = responseBody.slice(0, 1_200) || "[empty response body]";
+    let envelope;
+    try {
+      envelope = JSON.parse(responseBody);
+    } catch {
+      envelope = null;
+    }
+    if (response.ok && envelope?.result === "ok") {
+      return envelope;
+    }
+
+    const transientBindingFailure =
+      response.status >= 500 && response.status <= 599;
+    if (transientBindingFailure && attempt < maxAttempts) {
+      await new Promise((resolve) => setTimeout(resolve, 250 * attempt));
+      continue;
+    }
+
+    if (!response.ok) {
+      throw new Error(
+        `registerIssuerKey HTTP ${response.status}: ${bodyExcerpt}`,
+      );
+    }
+    if (envelope === null) {
+      throw new Error(
+        `registerIssuerKey returned non-JSON response (HTTP ${response.status}): ${bodyExcerpt}`,
+      );
+    }
+    throw new Error(
+      `registerIssuerKey failed (HTTP ${response.status}): ${envelope.code || bodyExcerpt}`,
+    );
   }
-  return envelope;
 }
 
 export function queryPlatformD1One(sql) {
@@ -1155,6 +1208,7 @@ export async function startStack({
           accessCertsJson,
         );
         await waitForHttp(`${PLATFORM_URL}/health`);
+        await waitForHarnessPlatformBinding();
         return stackRef.platformWorker;
       },
     };
@@ -1247,6 +1301,23 @@ export function readClinicAiCoverage(orgId) {
     ) t
   `);
   return row ? JSON.parse(row) : null;
+}
+
+export async function waitForClinicAiCoverage(
+  orgId,
+  { timeoutMs = 10_000, intervalMs = 100, predicate = Boolean } = {},
+) {
+  const deadline = Date.now() + timeoutMs;
+  let lastCoverage = null;
+  while (Date.now() < deadline) {
+    lastCoverage = readClinicAiCoverage(orgId);
+    if (predicate(lastCoverage)) return lastCoverage;
+    await new Promise((resolve) => setTimeout(resolve, intervalMs));
+  }
+  throw new Error(
+    `Timed out waiting for clinic AI coverage for organization ${orgId}; ` +
+      `last projection=${JSON.stringify(lastCoverage)}`,
+  );
 }
 
 export function readStatusRefreshRequestedAt(orgId) {

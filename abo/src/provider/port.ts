@@ -88,6 +88,8 @@ export type ProviderNotificationRequest = {
 export type ParseNotificationResult = {
   authentic: boolean;
   events: ProviderTxn[];
+  /** False when the request could not be parsed as a provider notification. */
+  parseable?: boolean;
 };
 
 export type InquireByCheckout = {

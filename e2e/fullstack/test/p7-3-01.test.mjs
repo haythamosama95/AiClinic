@@ -263,6 +263,8 @@ test("E2E-P7.3-01", async () => {
   await stack.restartAbo(stack.issuerKeys);
 
   const notificationsBefore = countAboTable("notification");
+  const paymentsBeforeUnparseable = countAboTable("payment");
+  const workBeforeUnparseable = countAboWork();
   const unparseable = await billingFetch("/notify/paymob?hmac=deadbeef", {
     method: "POST",
     headers: {
@@ -274,13 +276,52 @@ test("E2E-P7.3-01", async () => {
   assert.equal(unparseable.status, 200);
   assert.equal(countAboTable("notification"), notificationsBefore + 1);
   const evidence = queryAboD1One(
-    "SELECT adapter_version FROM notification ORDER BY notification_id DESC LIMIT 1",
+    "SELECT adapter_version, hmac_valid, disposition, checkout_id FROM notification ORDER BY notification_id DESC LIMIT 1",
   );
   assert.equal(evidence?.adapter_version, PAYMOB_ADAPTER_VERSION);
+  assert.equal(evidence?.hmac_valid, 0);
+  assert.equal(evidence?.disposition, "unparseable");
+  assert.equal(evidence?.checkout_id, null);
+  assert.equal(countAboTable("payment"), paymentsBeforeUnparseable);
+  assert.equal(countAboWork(), workBeforeUnparseable);
   const alertRow = queryAboD1One(
     `SELECT code FROM alert WHERE code = 'AL-23' ORDER BY alert_key DESC LIMIT 1`,
   );
   assert.equal(alertRow?.code, "AL-23");
+
+  const badHmacNotificationsBefore = countAboTable("notification");
+  const parseableBadHmac = await billingFetch("/notify/paymob?hmac=deadbeef", {
+    method: "POST",
+    headers: {
+      "content-type": "application/json",
+      "cf-connecting-ip": "203.0.113.89",
+    },
+    body: JSON.stringify({
+      type: "TRANSACTION",
+      obj: {
+        amount_cents: 100,
+        created_at: "2026-10-16T00:00:00Z",
+        currency: "EGP",
+        error_occured: false,
+        has_parent_transaction: false,
+        id: 7654321,
+        integration_id: 1,
+        is_3d_secure: false,
+        is_auth: false,
+        is_capture: true,
+        is_refunded: false,
+        is_standalone_payment: true,
+        is_voided: false,
+        order: { id: 8765432 },
+        owner: 1,
+        pending: false,
+        source_data: { pan: "0000", sub_type: "MasterCard", type: "card" },
+        success: true,
+      },
+    }),
+  });
+  assert.equal(parseableBadHmac.status, 401);
+  assert.equal(countAboTable("notification"), badHmacNotificationsBefore);
 
   const billingForGrant = await rpc(administrator, "issue_billing_token", {
     p_contract_version: 1,
@@ -299,7 +340,7 @@ test("E2E-P7.3-01", async () => {
 
   await stack.restartPlatform({ platformConfig: PLATFORM_CONFIG });
 
-  await triggerAboScheduled("0 * * * *");
+  await triggerAboScheduled("* * * * *");
 
   const parkedGrant = queryAboD1One(
     `SELECT state, last_error FROM work WHERE kind = 'grant' AND subject_id = ${sqlLiteral(grantPaymentId)}`,

@@ -364,6 +364,21 @@ Future<void> _pumpAdministratorBillingRoute(
   await tester.pumpAndSettle();
   router.go(kAdministratorBillingPath);
   await tester.pumpAndSettle();
+  await _pumpUntilAppUpdate(tester);
+}
+
+Future<void> _pumpUntilAppUpdate(WidgetTester tester) async {
+  final updateNotice = find.byKey(kAiDegradedAppUpdateKey);
+  for (var attempt = 0; attempt < 100; attempt++) {
+    await tester.runAsync(
+      () => Future<void>.delayed(const Duration(milliseconds: 100)),
+    );
+    await tester.pump();
+    if (updateNotice.evaluate().isNotEmpty) {
+      return;
+    }
+  }
+  fail('Timed out waiting for the billing route app-update state.');
 }
 
 Future<void> _pumpAiPage(

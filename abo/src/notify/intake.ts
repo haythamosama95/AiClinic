@@ -2,12 +2,12 @@ import { sha256Hex, ulid } from "vendor-contracts";
 import { clockNowIso, clockNowMs, type ClockEnv } from "../clock.js";
 import { raiseAlert } from "../alert/index.js";
 import {
+  PAYMOB_ADAPTER_VERSION,
   PAYMOB_PROVIDER_ID,
   providerForId,
   type ProviderRegistryEnv,
 } from "../provider/registry.js";
 
-const NOTIFY_ADAPTER_VERSION = 1;
 import type { ProviderNotificationRequest } from "../provider/port.js";
 import { runMinuteInquiryBudget } from "../work/inquiry-budget.js";
 import { recordReversalFromProviderTxn } from "../work/reversal.js";
@@ -21,6 +21,7 @@ const RATE_LIMIT_MAX = 60;
 const HMAC_RAW_BODY_HOURLY_CAP = 10;
 const AL02_WINDOW_MS = 15 * 60 * 1000;
 const AL02_THRESHOLD = 3;
+const AL23_PARSE_ALERT_KEY = "AL-23:notification-parse";
 
 export type NotifyIntakeEnv = ProviderRegistryEnv &
   ClockEnv & {
@@ -147,6 +148,33 @@ async function recordInvalidHmac(
   }
 }
 
+async function recordUnparseableNotification(
+  env: NotifyIntakeEnv,
+  rawBody: string,
+): Promise<void> {
+  const nowIso = await clockNowIso(env);
+  const notificationId = await newId(env);
+  const bodySha256 = await sha256Hex(new TextEncoder().encode(rawBody));
+  const bodyR2Key = `evidence/notification/${notificationId}`;
+  await env.R2.put(bodyR2Key, rawBody);
+  await env.DB.prepare(
+    `INSERT INTO notification (
+       notification_id, provider_id, channel, hmac_valid, body_r2_key,
+       body_sha256, dedupe_key, checkout_id, disposition, adapter_version
+     ) VALUES (?, ?, 'processed', 0, ?, ?, ?, NULL, 'unparseable', ?)`
+  )
+    .bind(
+      notificationId,
+      PAYMOB_PROVIDER_ID,
+      bodyR2Key,
+      bodySha256,
+      bodySha256,
+      PAYMOB_ADAPTER_VERSION,
+    )
+    .run();
+  await raiseAlert(env, "AL-23", AL23_PARSE_ALERT_KEY, notificationId);
+}
+
 async function scheduleConfirmForCheckout(
   env: NotifyIntakeEnv,
   checkoutId: string,
@@ -218,7 +246,7 @@ async function insertEnqueuedNotificationAndConfirm(
       params.bodySha256,
       params.bodySha256,
       params.checkoutId,
-      NOTIFY_ADAPTER_VERSION,
+      PAYMOB_ADAPTER_VERSION,
     ),
     env.DB.prepare(
       `INSERT INTO work (
@@ -260,7 +288,7 @@ async function insertDuplicateNotification(
       params.bodySha256,
       params.bodySha256,
       params.checkoutId,
-      NOTIFY_ADAPTER_VERSION,
+      PAYMOB_ADAPTER_VERSION,
     )
     .run();
 }
@@ -287,7 +315,7 @@ async function insertUnmatchedNotification(
       params.bodyR2Key,
       params.bodySha256,
       params.bodySha256,
-      NOTIFY_ADAPTER_VERSION,
+      PAYMOB_ADAPTER_VERSION,
     )
     .run();
 }
@@ -320,6 +348,14 @@ export async function handlePostNotifyPaymob(
     body,
   };
   const parsed = await provider.parseNotification(parseRequest);
+  if (parsed.parseable === false) {
+    try {
+      await recordUnparseableNotification(env, body);
+    } catch {
+      return emptyResponse(500);
+    }
+    return emptyResponse(200);
+  }
   if (!parsed.authentic) {
     await recordInvalidHmac(env, body);
     return emptyResponse(401);
@@ -369,7 +405,7 @@ export async function handlePostNotifyPaymob(
             bodySha256,
             bodySha256,
             checkoutId,
-            NOTIFY_ADAPTER_VERSION,
+            PAYMOB_ADAPTER_VERSION,
           )
           .run();
       } else {
@@ -456,6 +492,14 @@ export async function handleGetNotifyPaymob(
     headers: request.headers,
     body: query,
   });
+  if (parsed.parseable === false) {
+    try {
+      await recordUnparseableNotification(env, query);
+    } catch {
+      return emptyResponse(500);
+    }
+    return emptyResponse(200);
+  }
   if (!parsed.authentic) {
     await recordInvalidHmac(env, query);
     return emptyResponse(401);

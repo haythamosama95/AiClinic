@@ -351,6 +351,7 @@ test("E2E-P7.2-05", async () => {
   );
 
   const accessJwt = await mintAccessJwt(stack.accessTeam);
+
   const hpEnvelope = await buildComplimentaryEnvelope({
     orgId,
     grantId: await grantIdComp(crypto.randomUUID().replace(/-/g, "")),
@@ -437,6 +438,18 @@ test("E2E-P7.2-06", async () => {
   ensurePlatformGrantPrerequisites(orgId, installationId);
   seedAboOffers();
   const accessJwt = await mintAccessJwt(stack.accessTeam);
+  const knownGrantId = await grantIdPaid(crypto.randomUUID().replace(/-/g, ""));
+  const knownGrantEnvelope = await buildPaidGrantEnvelope({
+    orgId,
+    grantId: knownGrantId,
+    allowanceCredits: ALLOWANCE_CREDITS,
+  });
+  const knownGrant = await grantPaid({
+    envelope: knownGrantEnvelope,
+    aboKid: aboGrantSigner.kid,
+    aboSignature: await aboGrantSigner.sign(knownGrantEnvelope),
+  });
+  assert.equal(knownGrant.result, "applied", "void probe uses an existing paid grant");
 
   const suspended = await vendorCall(
     "suspend",
@@ -566,12 +579,15 @@ test("E2E-P7.2-06", async () => {
   assert.equal(transferJwtOnly.result, "rejected");
   assert.equal(transferJwtOnly.code, "assertion_required");
 
+  const releasePaymentId = crypto.randomUUID();
   const releaseJwtOnly = await vendorCall(
     "releaseHeld",
     {
       contract_version: CONTRACT_VERSION,
       org_id: orgId,
-      payment_id: crypto.randomUUID(),
+      payment_id: releasePaymentId,
+      grant_id: knownGrantId,
+      reason: "class hp jwt-only probe",
       signer_credential_id: stack.credentialId,
       operation: {
         op: "releaseHeld",
@@ -579,7 +595,9 @@ test("E2E-P7.2-06", async () => {
           contract_version: CONTRACT_VERSION,
           access_jwt: accessJwt,
           org_id: orgId,
-          payment_id: crypto.randomUUID(),
+          payment_id: releasePaymentId,
+          grant_id: knownGrantId,
+          reason: "class hp jwt-only probe",
         },
         actor_email: OPERATOR_EMAIL,
         issued_at: new Date().toISOString(),
@@ -596,7 +614,7 @@ test("E2E-P7.2-06", async () => {
     "voidGrant",
     {
       contract_version: CONTRACT_VERSION,
-      grant_id: crypto.randomUUID(),
+      grant_id: knownGrantId,
       reason: "class hp jwt-only probe",
       signer_credential_id: stack.credentialId,
       operation: {
@@ -604,7 +622,7 @@ test("E2E-P7.2-06", async () => {
         params: {
           contract_version: CONTRACT_VERSION,
           access_jwt: accessJwt,
-          grant_id: crypto.randomUUID(),
+          grant_id: knownGrantId,
           reason: "class hp jwt-only probe",
         },
         actor_email: OPERATOR_EMAIL,
@@ -618,9 +636,26 @@ test("E2E-P7.2-06", async () => {
   assert.equal(voidJwtOnly.result, "rejected");
   assert.equal(voidJwtOnly.code, "assertion_required");
 
+  const { orgId: windowOrgId, installationId: windowInstallationId } =
+    stack.clinics.orgB;
+  ensurePlatformGrantPrerequisites(windowOrgId, windowInstallationId);
+
+  const yearEnvelope = await buildComplimentaryEnvelope({
+    orgId: windowOrgId,
+    grantId: await grantIdComp(crypto.randomUUID().replace(/-/g, "")),
+    count: 365,
+    reason: "year-long complimentary grant",
+  });
+  const yearBlocked = await hpComplimentaryGrant({
+    envelope: yearEnvelope,
+    accessJwt,
+  });
+  assert.equal(yearBlocked.result, "rejected");
+  assert.equal(yearBlocked.code, "exceeds_ceiling");
+
   for (let index = 0; index < 2; index += 1) {
     const windowEnvelope = await buildComplimentaryEnvelope({
-      orgId,
+      orgId: windowOrgId,
       grantId: await grantIdComp(crypto.randomUUID().replace(/-/g, "")),
       count: 31,
       reason: `window grant ${index + 1}`,
@@ -633,7 +668,7 @@ test("E2E-P7.2-06", async () => {
   }
 
   const extraDayEnvelope = await buildComplimentaryEnvelope({
-    orgId,
+    orgId: windowOrgId,
     grantId: await grantIdComp(crypto.randomUUID().replace(/-/g, "")),
     count: 1,
     reason: "window overflow day",
@@ -645,18 +680,6 @@ test("E2E-P7.2-06", async () => {
   assert.equal(windowBlocked.result, "rejected");
   assert.equal(windowBlocked.code, "exceeds_ceiling");
 
-  const yearEnvelope = await buildComplimentaryEnvelope({
-    orgId,
-    grantId: await grantIdComp(crypto.randomUUID().replace(/-/g, "")),
-    count: 365,
-    reason: "year-long complimentary grant",
-  });
-  const yearBlocked = await hpComplimentaryGrant({
-    envelope: yearEnvelope,
-    accessJwt,
-  });
-  assert.equal(yearBlocked.result, "rejected");
-  assert.equal(yearBlocked.code, "exceeds_ceiling");
 });
 
 test("E2E-P7.2-09", async () => {
@@ -669,6 +692,7 @@ test("E2E-P7.2-09", async () => {
     count: 14,
     reason: "ci staging fixture",
   });
+  const fixtureGrantId = await grantIdPaid(crypto.randomUUID().replace(/-/g, ""));
 
   for (const method of [
     "grant",
@@ -729,28 +753,37 @@ test("E2E-P7.2-09", async () => {
                 },
               }
             : method === "releaseHeld"
-              ? {
-                  contract_version: CONTRACT_VERSION,
-                  org_id: orgId,
-                  payment_id: crypto.randomUUID(),
-                  signer_credential_id: stack.credentialId,
-                  operation: {
-                    op: "releaseHeld",
-                    params: {
-                      contract_version: CONTRACT_VERSION,
-                      access_jwt: fixtureToken,
-                      org_id: orgId,
-                      payment_id: crypto.randomUUID(),
-                    },
-                    actor_email: OPERATOR_EMAIL,
-                    issued_at: new Date().toISOString(),
-                    nonce: crypto.randomUUID(),
+              ? (() => {
+                  const paymentId = crypto.randomUUID();
+                  const grantId = fixtureGrantId;
+                  const reason = "ci staging fixture";
+                  return {
                     contract_version: CONTRACT_VERSION,
-                  },
-                }
+                    org_id: orgId,
+                    payment_id: paymentId,
+                    grant_id: grantId,
+                    reason,
+                    signer_credential_id: stack.credentialId,
+                    operation: {
+                      op: "releaseHeld",
+                      params: {
+                        contract_version: CONTRACT_VERSION,
+                        access_jwt: fixtureToken,
+                        org_id: orgId,
+                        payment_id: paymentId,
+                        grant_id: grantId,
+                        reason,
+                      },
+                      actor_email: OPERATOR_EMAIL,
+                      issued_at: new Date().toISOString(),
+                      nonce: crypto.randomUUID(),
+                      contract_version: CONTRACT_VERSION,
+                    },
+                  };
+                })()
               : {
                   contract_version: CONTRACT_VERSION,
-                  grant_id: crypto.randomUUID(),
+                  grant_id: fixtureGrantId,
                   reason: "ci staging fixture",
                   signer_credential_id: stack.credentialId,
                   operation: {
@@ -758,7 +791,7 @@ test("E2E-P7.2-09", async () => {
                     params: {
                       contract_version: CONTRACT_VERSION,
                       access_jwt: fixtureToken,
-                      grant_id: crypto.randomUUID(),
+                      grant_id: fixtureGrantId,
                       reason: "ci staging fixture",
                     },
                     actor_email: OPERATOR_EMAIL,

@@ -20,6 +20,7 @@ import {
   HARNESS_PERSIST,
   PLATFORM_PERSIST,
   REGISTRY_DIR,
+  prepareAboD1,
   preparePlatformD1,
   execPlatformD1Sql,
   queryPlatformD1One,
@@ -327,22 +328,6 @@ async function stopChild(child) {
   }
 }
 
-async function applyAboMigrations() {
-  runWrangler([
-    "d1",
-    "migrations",
-    "apply",
-    "abo-development",
-    "--local",
-    "--env",
-    "development",
-    "--config",
-    ABO_CONFIG,
-    "--persist-to",
-    ABO_PERSIST,
-  ]);
-}
-
 async function insertActiveOperatorCredential({
   credentialId,
   operatorEmail,
@@ -610,8 +595,8 @@ async function startStack() {
     await mkdir(PLATFORM_PERSIST, { recursive: true });
     await mkdir(HARNESS_PERSIST, { recursive: true });
     await mkdir(REGISTRY_DIR, { recursive: true });
-    await mkdir(ABO_PERSIST, { recursive: true });
     await preparePlatformD1({ platformConfig: PLATFORM_CONFIG });
+    await prepareAboD1({ aboConfig: ABO_CONFIG });
 
     const accessTeam = await createAccessTeam({
       issuer: `https://${ACCESS_TEAM_DOMAIN}`,
@@ -706,8 +691,8 @@ async function startStack() {
       diagnostics,
     });
 
-    phase = "apply ABO migrations";
-    await applyAboMigrations();
+    phase = "register platform ABO service key";
+    ensurePlatformAboServiceKey();
     phase = "spawn ABO worker on 8788";
     const abo = spawnDevProcess(
       [
@@ -1252,6 +1237,24 @@ function ensurePlatformInstallation(orgId, installationId) {
   `);
 }
 
+function ensurePlatformAboServiceKey() {
+  runPlatformD1Command(`
+    INSERT OR REPLACE INTO service_key (
+      kid, service, public_key, status, not_before, not_after,
+      registered_by, assertion_sha256
+    ) VALUES (
+      ${sqlLiteral(ABO_GRANT_KEY.kid)},
+      'abo',
+      ${sqlLiteral(ABO_GRANT_KEY.public_key)},
+      'active',
+      '2020-01-01T00:00:00.000Z',
+      '2099-01-01T00:00:00.000Z',
+      ${sqlLiteral(OPERATOR_EMAIL)},
+      'harness'
+    );
+  `);
+}
+
 function clearClinicAiCoverage(orgId) {
   psqlQuery(`
     DELETE FROM ai_internal.clinic_ai_coverage
@@ -1275,19 +1278,6 @@ function ensurePlatformGrantPrerequisites(orgId, installationId) {
       ${sqlLiteral(orgId)},
       ${sqlLiteral(installationId)},
       1, 'active', NULL, NULL, ${sqlLiteral(createdAt)}
-    );
-    INSERT OR REPLACE INTO service_key (
-      kid, service, public_key, status, not_before, not_after,
-      registered_by, assertion_sha256
-    ) VALUES (
-      ${sqlLiteral(ABO_GRANT_KEY.kid)},
-      'abo',
-      ${sqlLiteral(ABO_GRANT_KEY.public_key)},
-      'active',
-      '2020-01-01T00:00:00.000Z',
-      '2099-01-01T00:00:00.000Z',
-      ${sqlLiteral(OPERATOR_EMAIL)},
-      'harness'
     );
     INSERT OR IGNORE INTO plan_version (
       plan_id, version, display_name, capabilities, max_cost_class,
@@ -1487,30 +1477,63 @@ async function waitForSupabaseReady() {
 
 async function waitForPlatformGrantEvent(
   orgId,
-  { eventId, timeoutMs = 30_000 } = {},
+  installationId,
+  { timeoutMs = 30_000 } = {},
 ) {
   const deadline = Date.now() + timeoutMs;
+  let receiptSummary = "not observed";
+  let outcomeSummary = "not observed";
+  let platformEvents = [];
   while (Date.now() < deadline) {
-    const row = queryD1One(
-      eventId
-        ? `SELECT event_id FROM coverage_event
-           WHERE org_id = ${sqlLiteral(orgId)}
-             AND kind = 'grant_applied'
-             AND event_id = ${sqlLiteral(eventId)}
-           LIMIT 1`
-        : `SELECT event_id FROM coverage_event
-           WHERE org_id = ${sqlLiteral(orgId)} AND kind = 'grant_applied'
-           ORDER BY feed_seq DESC LIMIT 1`,
+    const outcome = queryAboD1One(
+      `SELECT go.result, go.receipt
+       FROM grant_request gr
+       JOIN grant_outcome go ON go.grant_id = gr.grant_id
+       WHERE gr.org_id = ${sqlLiteral(orgId)}
+       ORDER BY go.at DESC
+       LIMIT 1`,
     );
-    if (row?.event_id) {
-      return row.event_id;
+    let receipt = null;
+    try {
+      receipt = outcome?.receipt ? JSON.parse(outcome.receipt) : null;
+    } catch {
+      receipt = null;
     }
+    const receiptMatches =
+      outcome?.result === "applied" || outcome?.result === "already_applied";
+    outcomeSummary = outcome?.result ?? "not persisted";
+    const ledgerSeq = Number(receipt?.ledger_seq);
+    if (
+      receiptMatches &&
+      receipt?.org_id === orgId &&
+      receipt?.installation_id === installationId &&
+      Number.isSafeInteger(ledgerSeq) &&
+      ledgerSeq > 0
+    ) {
+      receiptSummary = `result=${outcome.result}, ledger_seq=${ledgerSeq}`;
+      const eventId = `${installationId}:${ledgerSeq}`;
+      const row = queryD1One(
+        `SELECT event_id FROM coverage_event
+         WHERE org_id = ${sqlLiteral(orgId)}
+           AND installation_id = ${sqlLiteral(installationId)}
+           AND clinic_seq = ${ledgerSeq}
+           AND kind = 'grant_applied'
+         LIMIT 1`,
+      );
+      if (row?.event_id) return row.event_id;
+    }
+    platformEvents = queryD1One(
+      `SELECT group_concat(kind || ':' || clinic_seq, ',') AS events
+       FROM coverage_event
+       WHERE org_id = ${sqlLiteral(orgId)}
+         AND installation_id = ${sqlLiteral(installationId)}`,
+    )?.events?.split(",") ?? [];
     await new Promise((resolve) => setTimeout(resolve, 250));
   }
   throw new Error(
-    eventId
-      ? `Timed out waiting for grant_applied ${eventId} on platform for ${orgId}`
-      : `Timed out waiting for grant_applied on platform for ${orgId}`,
+    `Timed out waiting for receipt-correlated grant_applied on platform for org ${orgId}, installation ${installationId}; ` +
+      `ABO outcome: ${safeDiagnosticText(outcomeSummary)}; receipt: ${receiptSummary}; ` +
+      `platform events: ${safeDiagnosticText(platformEvents.join(",") || "none")}`,
   );
 }
 
@@ -1848,8 +1871,6 @@ test("E2E-P5.2-10 Supabase stopped during a payment still provisions and status 
   assert.ok(checkoutId);
   await syncPaymobForCheckout(checkoutId);
 
-  const expectedGrantEventId = `${paymentInstallationId}:1`;
-
   console.log("[p5-2] restart-checkpoint=stop-supabase");
   let checkpointError = null;
   try {
@@ -1858,10 +1879,10 @@ test("E2E-P5.2-10 Supabase stopped during a payment still provisions and status 
     await postPaymobProcessedCallback(checkoutId);
     console.log("[p5-2] restart-checkpoint=paymob-callback-accepted");
     console.log(
-      `[p5-2] restart-checkpoint=grant-event-wait-started event_id=${expectedGrantEventId} timeout_ms=30000`,
+      `[p5-2] restart-checkpoint=grant-event-wait-started org_id=${orgId} installation_id=${paymentInstallationId} timeout_ms=30000`,
     );
-    await waitForPlatformGrantEvent(orgId, { eventId: expectedGrantEventId });
-    console.log("[p5-2] restart-checkpoint=grant-event-observed");
+    const grantEventId = await waitForPlatformGrantEvent(orgId, paymentInstallationId);
+    console.log(`[p5-2] restart-checkpoint=grant-event-observed event_id=${grantEventId}`);
   } catch (error) {
     checkpointError = error;
   } finally {
