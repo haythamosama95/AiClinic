@@ -23,6 +23,9 @@ _Phase = Literal["starting", "running", "between", "done"]
 _STEP_HEADER = re.compile(r"^==\s*\[(\d+)\]\s+(.+?)\s*==\s*$")
 _SEQUENCE_STEP = re.compile(r"^==\s+(?!\[\d+\])(.+?)\s*==\s*$")
 _VITEST_PASS = re.compile(r"^\s*(?:✓|✔)\s+(.+?)\s*$")
+_VITEST_PASS_AFTER_SOURCE_WARNING = re.compile(
+    r'^A header value for "MF-Vitest-Source".*?(?:✓|✔)\s+(.+?)\s*$'
+)
 _VITEST_FAIL = re.compile(r"^\s*(?:×|✗|x)\s+(.+?)\s*$", re.IGNORECASE)
 _VITEST_FAIL_FILE = re.compile(
     r"^\s*FAIL\s+(\S+\.test\.\S+)\s*>\s*(.+?)\s*$",
@@ -1734,6 +1737,12 @@ class VitestReporterParser(ProgressParser):
             self.display.set_current("Collecting tests…")
             return
         pass_match = _VITEST_PASS.match(stripped)
+        if pass_match is None:
+            # Miniflare can prefix a Vitest result with its warning when the
+            # MF-Vitest-Source header contains Unicode. Keep the result's
+            # file-qualified label instead of later accepting Vitest's
+            # suite-only summary line.
+            pass_match = _VITEST_PASS_AFTER_SOURCE_WARNING.match(stripped)
         if pass_match:
             self._finish_vitest(pass_match.group(1), "PASS", line)
             return
