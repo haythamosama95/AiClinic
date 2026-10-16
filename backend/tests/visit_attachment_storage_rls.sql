@@ -74,6 +74,13 @@ BEGIN
     (v_doctor_staff, v_doctor_user, 'Dr Visit', 'doctor', false, v_bootstrap_user, v_bootstrap_user)
   ON CONFLICT (id) DO NOTHING;
 
+  INSERT INTO ai_internal.membership (user_id, organization_id, role)
+  SELECT sm.auth_user_id, v_org_id, sm.role
+  FROM public.staff_members sm
+  WHERE sm.auth_user_id IN (v_admin_user)
+    AND sm.is_deleted = false
+  ON CONFLICT (user_id, organization_id) DO NOTHING;
+
   -- Administrator assigned only to primary; visit lives at satellite branch.
   INSERT INTO public.staff_branch_assignments (staff_member_id, branch_id, is_primary, created_by, updated_by)
   VALUES

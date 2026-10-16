@@ -1,0 +1,17 @@
+{
+  "id": "ds-trunc-001",
+  "object": "chat.completion",
+  "model": "deepseek-chat",
+  "choices": [
+    {
+      "index": 0,
+      "message": { "role": "assistant", "content": "Partial output that hit the token limit…" },
+      "finish_reason": "length"
+    }
+  ],
+  "usage": {
+    "prompt_tokens": 30,
+    "completion_tokens": 256,
+    "total_tokens": 286
+  }
+}

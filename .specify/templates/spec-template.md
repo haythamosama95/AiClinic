@@ -95,15 +95,14 @@
 ### Functional Requirements
 
 - **FR-001**: System MUST [identify which responsibilities belong in Flutter, Supabase,
-  PostgreSQL, and the AI service]
+  and PostgreSQL]
 - **FR-002**: System MUST [enforce tenant-scoped and branch-scoped permissions for
   protected data and actions]
 - **FR-003**: System MUST [keep domain validation, transactional correctness, and source
   of truth in PostgreSQL-backed mechanisms]
 - **FR-004**: System MUST [preserve auditability, shared schema conventions, and soft
   deletion where records are operationally significant]
-- **FR-005**: System MUST [degrade safely when AI or backend dependencies are
-  unavailable]
+- **FR-005**: System MUST [degrade safely when backend dependencies are unavailable]
 
 *Example of marking unclear requirements:*
 

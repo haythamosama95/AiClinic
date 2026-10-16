@@ -1,0 +1,16 @@
+{
+  "parts": [
+    { "role": "user", "content": "Stream a short summary." }
+  ],
+  "formatDirective": { "type": "text" },
+  "samplingConstraints": { "temperature": 0.2 },
+  "maxOutputTokens": 256,
+  "stopConditions": [],
+  "toolDeclarations": [],
+  "stream": true,
+  "deadline": 30000,
+  "correlationIds": {
+    "request_reference": "7QK4-STREAM",
+    "trace_id": "01ARZ3NDEKTSV4RRFFQ69G5FAV"
+  }
+}

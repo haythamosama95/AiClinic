@@ -358,4 +358,78 @@ class AppLocalizationsAr extends AppLocalizations {
 
   @override
   String get breadcrumbNotFound => 'غير موجود';
+
+  @override
+  String get aiBillingOffersTitle => 'عروض تغطية الذكاء الاصطناعي';
+
+  @override
+  String get aiBillingOffersDescription =>
+      'اختر خطة واقبل الشروط الحالية للمتابعة.';
+
+  @override
+  String get aiBillingTermsTitle => 'شروط الخدمة';
+
+  @override
+  String get aiBillingAcceptTerms => 'أوافق على الشروط الحالية';
+
+  @override
+  String get aiBillingContinue => 'متابعة';
+
+  @override
+  String get aiBillingContactTitle => 'جهة اتصال الفوترة';
+
+  @override
+  String get aiBillingContactName => 'الاسم';
+
+  @override
+  String get aiBillingContactEmail => 'البريد الإلكتروني';
+
+  @override
+  String get aiBillingContactPhone => 'الهاتف';
+
+  @override
+  String get aiBillingContactSave => 'حفظ جهة الاتصال';
+
+  @override
+  String get aiBillingCheckoutTitle => 'الدفع';
+
+  @override
+  String get aiBillingCheckoutSubmit => 'ادفع الآن';
+
+  @override
+  String get aiBillingCheckoutWaiting => 'Waiting';
+
+  @override
+  String get aiBillingCheckoutFailed => 'Failed';
+
+  @override
+  String get aiBillingCheckoutPaid => 'Paid';
+
+  @override
+  String get aiBillingCheckoutActive => 'Active';
+
+  @override
+  String get aiBillingCheckoutAbandoned => 'Abandoned';
+
+  @override
+  String get aiBillingStartsAfterCurrentTerm => 'starts after the current term';
+
+  @override
+  String get aiBillingErrorOfferUnavailable =>
+      'هذا العرض لم يعد متاحًا. راجع السعر المحدّث قبل الدفع.';
+
+  @override
+  String get aiBillingErrorBillingContactRequired =>
+      'أضف جهة اتصال للفوترة قبل الدفع.';
+
+  @override
+  String get aiBillingErrorTermsNotAccepted => 'اقبل الشروط الحالية قبل الدفع.';
+
+  @override
+  String get aiBillingErrorProviderUnavailable =>
+      'مزوّد الدفع غير متاح. حاول مرة أخرى لاحقًا.';
+
+  @override
+  String get aiBillingErrorRateLimited =>
+      'طلبات الفوترة كثيرة جدًا. حاول مرة أخرى لاحقًا.';
 }

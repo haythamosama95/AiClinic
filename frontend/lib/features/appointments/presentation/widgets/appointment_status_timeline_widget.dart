@@ -37,7 +37,9 @@ class AppointmentStatusTimelineWidget extends StatelessWidget {
         ? 'Step ${currentIndex + 1} of ${steps.length}'
         : null;
 
-    return DecoratedBox(
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final card = DecoratedBox(
       decoration: BoxDecoration(
         color: colors.surfaceDefault,
         borderRadius: BorderRadius.circular(AppRadius.lg),
@@ -173,7 +175,14 @@ class AppointmentStatusTimelineWidget extends StatelessWidget {
             ),
           ],
         ),
-      ),
+        ),
+        );
+        // The detail page embeds this card in its scrolling body. Give direct
+        // bounded uses a local scroll viewport so the full timeline is reachable.
+        return constraints.hasBoundedHeight
+            ? SingleChildScrollView(child: card)
+            : card;
+      },
     );
   }
 }

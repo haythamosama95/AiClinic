@@ -1,0 +1,37 @@
+{
+  "case_id": "requests_wrong_permitted_key",
+  "legs": [
+    {
+      "fixture": "requests_wrong_permitted_key/leg_1.json",
+      "append_before_fixture": [
+        {
+          "kind": "user",
+          "text": "I need the chief complaint, not demographics."
+        }
+      ]
+    },
+    {
+      "fixture": "requests_wrong_permitted_key/leg_2.json",
+      "append_before_fixture": [
+        {
+          "kind": "context_resolved",
+          "context": {
+            "patient.demographics@v1": {
+              "display_name": "Pat"
+            }
+          }
+        }
+      ]
+    }
+  ],
+  "scoring": {
+    "required_key_requests": ["visit.chief_complaint@v1"],
+    "forbidden_resolved_keys": [],
+    "expect_convergence": true
+  },
+  "expected_outcome": {
+    "right_keys": "fail",
+    "permitted_set": "pass",
+    "round_budget": "pass"
+  }
+}

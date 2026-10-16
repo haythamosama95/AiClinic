@@ -182,7 +182,9 @@ class _VisitServiceSelectionSidebarState
             ),
             child: Padding(
               padding: const EdgeInsets.only(top: AppSpacing.space4),
-              child: Row(
+              child: Wrap(
+                alignment: WrapAlignment.spaceBetween,
+                runSpacing: AppSpacing.space2,
                 children: [
                   Text(
                     'Subtotal',
@@ -190,7 +192,6 @@ class _VisitServiceSelectionSidebarState
                       context,
                     ).copyWith(color: colors.textSecondary),
                   ),
-                  const Spacer(),
                   AppMoneyDisplay(
                     amount: widget.subtotal,
                     currency: widget.currency,

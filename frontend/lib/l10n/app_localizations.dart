@@ -775,6 +775,144 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Not found'**
   String get breadcrumbNotFound;
+
+  /// No description provided for @aiBillingOffersTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'AI coverage offers'**
+  String get aiBillingOffersTitle;
+
+  /// No description provided for @aiBillingOffersDescription.
+  ///
+  /// In en, this message translates to:
+  /// **'Choose a plan and accept the current terms to continue.'**
+  String get aiBillingOffersDescription;
+
+  /// No description provided for @aiBillingTermsTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Terms of service'**
+  String get aiBillingTermsTitle;
+
+  /// No description provided for @aiBillingAcceptTerms.
+  ///
+  /// In en, this message translates to:
+  /// **'I accept the current terms'**
+  String get aiBillingAcceptTerms;
+
+  /// No description provided for @aiBillingContinue.
+  ///
+  /// In en, this message translates to:
+  /// **'Continue'**
+  String get aiBillingContinue;
+
+  /// No description provided for @aiBillingContactTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Billing contact'**
+  String get aiBillingContactTitle;
+
+  /// No description provided for @aiBillingContactName.
+  ///
+  /// In en, this message translates to:
+  /// **'Name'**
+  String get aiBillingContactName;
+
+  /// No description provided for @aiBillingContactEmail.
+  ///
+  /// In en, this message translates to:
+  /// **'Email'**
+  String get aiBillingContactEmail;
+
+  /// No description provided for @aiBillingContactPhone.
+  ///
+  /// In en, this message translates to:
+  /// **'Phone'**
+  String get aiBillingContactPhone;
+
+  /// No description provided for @aiBillingContactSave.
+  ///
+  /// In en, this message translates to:
+  /// **'Save contact'**
+  String get aiBillingContactSave;
+
+  /// No description provided for @aiBillingCheckoutTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Checkout'**
+  String get aiBillingCheckoutTitle;
+
+  /// No description provided for @aiBillingCheckoutSubmit.
+  ///
+  /// In en, this message translates to:
+  /// **'Pay now'**
+  String get aiBillingCheckoutSubmit;
+
+  /// No description provided for @aiBillingCheckoutWaiting.
+  ///
+  /// In en, this message translates to:
+  /// **'Waiting'**
+  String get aiBillingCheckoutWaiting;
+
+  /// No description provided for @aiBillingCheckoutFailed.
+  ///
+  /// In en, this message translates to:
+  /// **'Failed'**
+  String get aiBillingCheckoutFailed;
+
+  /// No description provided for @aiBillingCheckoutPaid.
+  ///
+  /// In en, this message translates to:
+  /// **'Paid'**
+  String get aiBillingCheckoutPaid;
+
+  /// No description provided for @aiBillingCheckoutActive.
+  ///
+  /// In en, this message translates to:
+  /// **'Active'**
+  String get aiBillingCheckoutActive;
+
+  /// No description provided for @aiBillingCheckoutAbandoned.
+  ///
+  /// In en, this message translates to:
+  /// **'Abandoned'**
+  String get aiBillingCheckoutAbandoned;
+
+  /// No description provided for @aiBillingStartsAfterCurrentTerm.
+  ///
+  /// In en, this message translates to:
+  /// **'starts after the current term'**
+  String get aiBillingStartsAfterCurrentTerm;
+
+  /// No description provided for @aiBillingErrorOfferUnavailable.
+  ///
+  /// In en, this message translates to:
+  /// **'This offer is no longer available. Review the updated price before paying.'**
+  String get aiBillingErrorOfferUnavailable;
+
+  /// No description provided for @aiBillingErrorBillingContactRequired.
+  ///
+  /// In en, this message translates to:
+  /// **'Add a billing contact before checkout.'**
+  String get aiBillingErrorBillingContactRequired;
+
+  /// No description provided for @aiBillingErrorTermsNotAccepted.
+  ///
+  /// In en, this message translates to:
+  /// **'Accept the current terms before checkout.'**
+  String get aiBillingErrorTermsNotAccepted;
+
+  /// No description provided for @aiBillingErrorProviderUnavailable.
+  ///
+  /// In en, this message translates to:
+  /// **'The payment provider is unavailable. Try again later.'**
+  String get aiBillingErrorProviderUnavailable;
+
+  /// No description provided for @aiBillingErrorRateLimited.
+  ///
+  /// In en, this message translates to:
+  /// **'Too many billing requests. Try again later.'**
+  String get aiBillingErrorRateLimited;
 }
 
 class _AppLocalizationsDelegate

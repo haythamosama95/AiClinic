@@ -1,0 +1,2 @@
+transaction_id,type,gross_minor,fee_minor,net_minor,settled_at
+99001,chargeback,5000,0,5000,2026-03-15T00:00:00.000Z

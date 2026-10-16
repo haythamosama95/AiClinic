@@ -1,0 +1,20 @@
+{
+  "id": "ds-visit-summary-regressed-001",
+  "object": "chat.completion",
+  "model": "deepseek-v4-flash",
+  "choices": [
+    {
+      "index": 0,
+      "message": {
+        "role": "assistant",
+        "content": "Patient was seen in clinic today. Documentation prepared for the chart without clinical detail."
+      },
+      "finish_reason": "stop"
+    }
+  ],
+  "usage": {
+    "prompt_tokens": 84,
+    "completion_tokens": 18,
+    "total_tokens": 102
+  }
+}

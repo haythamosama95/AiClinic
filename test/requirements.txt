@@ -1,0 +1,8 @@
+# Colorful live test-campaign progress (test/harness/live_progress.py).
+# Use the same interpreter as `python3 test/run_campaigns.py` (often /usr/bin/python3):
+#
+#   python3 -m pip install --user -r test/requirements.txt
+#
+# Plain `pip install -r test/requirements.txt` may install into Python 3.13 while
+# campaigns still run on Python 3.10.
+rich>=13.7,<14

@@ -1,0 +1,52 @@
+export type RoutingTier = "standard" | "degraded";
+
+export type AdmissionAllowResult = {
+  outcome: "admitted";
+  requestId: string;
+  degraded?: boolean;
+  band?: "ok" | "75" | "90" | "exhausted";
+};
+
+/**
+ * Client body / header keys that must never influence gateway routing (§4.3.7).
+ * Adapter ingress does not read these; they are listed so wire-boundary tests can
+ * prove injection attempts are ignored.
+ */
+export const CLIENT_ROUTING_INJECTION_KEYS = [
+  "routing_tier",
+  "degraded",
+  "degraded_notice",
+] as const;
+
+export type ClientRoutingInjectionKey =
+  (typeof CLIENT_ROUTING_INJECTION_KEYS)[number];
+
+export function routingTierFromAdmission(
+  admission: AdmissionAllowResult,
+): RoutingTier {
+  return admission.degraded ? "degraded" : "standard";
+}
+
+export function degradedNoticeFromAdmission(
+  admission: AdmissionAllowResult,
+): boolean | undefined {
+  if (admission.degraded !== undefined) {
+    return admission.degraded ? true : undefined;
+  }
+  if (
+    admission.degraded ||
+    admission.band === "75" ||
+    admission.band === "90" ||
+    admission.band === "exhausted"
+  ) {
+    return true;
+  }
+  return undefined;
+}
+
+/** Gateway-only: routing tier is derived solely from the admission answer. */
+export function resolveRoutingTier(
+  admission: AdmissionAllowResult,
+): RoutingTier {
+  return routingTierFromAdmission(admission);
+}

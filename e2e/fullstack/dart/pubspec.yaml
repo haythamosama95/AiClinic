@@ -1,0 +1,9 @@
+name: abo_p7_2_session_capture
+publish_to: none
+
+environment:
+  sdk: ^3.11.5
+
+dependencies:
+  ai_clinic:
+    path: ../../../frontend

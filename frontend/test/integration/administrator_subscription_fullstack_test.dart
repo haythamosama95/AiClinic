@@ -1,0 +1,1375 @@
+@Tags(['fullstack'])
+@Skip('Frontend fullstack tests are excluded globally.')
+library;
+
+// ignore_for_file: depend_on_referenced_packages
+
+import 'dart:async';
+import 'dart:convert';
+import 'dart:io';
+
+import 'package:ai_clinic/app/app_routes.dart';
+import 'package:ai_clinic/app/providers/auth_session_provider.dart';
+import 'package:ai_clinic/app/router.dart';
+import 'package:ai_clinic/core/config/supabase_config.dart';
+import 'package:ai_clinic/core/contract_versions.dart';
+import 'package:ai_clinic/core/ui/theme/app_theme.dart';
+import 'package:ai_clinic/features/ai/presentation/pages/ai_page.dart';
+import 'package:ai_clinic/features/auth/domain/auth_session.dart';
+import 'package:crypto/crypto.dart';
+import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter_test/flutter_test.dart';
+import 'package:go_router/go_router.dart';
+import 'package:http/http.dart' as http;
+import '../boundary/harness/boundary_test_context.dart';
+import '../boundary/harness/fixture_factory.dart';
+import '../boundary/harness/live_supabase_harness.dart' hide markTestSkipped;
+import '../boundary/harness/role_sessions.dart';
+import '../helpers/auth_test_support.dart';
+import '../widget/ai/ai_surface_test_harness.dart';
+
+final _aboUrl = Platform.environment['ABO_URL'] ?? 'http://127.0.0.1:8788';
+final _paymobUrl =
+    Platform.environment['PAYMOB_URL'] ?? 'http://127.0.0.1:8789';
+var _hfsStackReady = false;
+var _activeCase = 'suite-setup';
+const _operationTimeout = Duration(seconds: 30);
+// The 120 × 500ms retry schedule is nominally 60s; another 60s allows for
+// bounded local API latency without allowing a poll to consume a case timeout.
+const _pollTimeout = Duration(seconds: 120);
+const _billingHost = 'billing.vendor.test';
+const _paymobHmacSecret = 'paymob-hmac-unconfigured';
+
+const _subscriptionSummaryKey = Key('billing_subscription_summary');
+const _commercialNoticesKey = Key('billing_commercial_notices');
+const _paymentHistoryKey = Key('billing_payment_history');
+const _paymentHistoryNextKey = Key('billing_payment_history_next');
+const _renewNoticeKey = Key('ai_notice_renew');
+
+class _FullstackSubscriptionTestBinding
+    extends AutomatedTestWidgetsFlutterBinding {
+  @override
+  bool get overrideHttpClient => false;
+
+  @override
+  Timeout get defaultTestTimeout => const Timeout(Duration(seconds: 60));
+}
+
+const _paymobHmacFields = <String>[
+  'amount_cents',
+  'created_at',
+  'currency',
+  'error_occured',
+  'has_parent_transaction',
+  'id',
+  'integration_id',
+  'is_3d_secure',
+  'is_auth',
+  'is_capture',
+  'is_refunded',
+  'is_standalone_payment',
+  'is_voided',
+  'order.id',
+  'owner',
+  'pending',
+  'source_data.pan',
+  'source_data.sub_type',
+  'source_data.type',
+  'success',
+];
+
+void main() {
+  _FullstackSubscriptionTestBinding();
+
+  late BoundaryTestContext ctx;
+
+  setUpAll(() async {
+    _progress('stack readiness: probing ABO');
+    _hfsStackReady = await _probeHfsReady();
+    _progress('stack readiness: ${_hfsStackReady ? 'ready' : 'unavailable'}');
+    if (_hfsStackReady) {
+      _progress('stack readiness: initializing Supabase');
+      await _bounded(
+        'Supabase harness readiness',
+        LiveSupabaseHarness.ensureReady(),
+      );
+      _progress('stack readiness: Supabase ready');
+    }
+  });
+
+  setUp(() async {
+    _activeCase = 'setup';
+    if (!_hfsStackReady) {
+      return;
+    }
+    _progress('fixture setup: creating boundary context');
+    ctx = await _bounded(
+      'create boundary context',
+      BoundaryTestContext.create(),
+    );
+    _progress('fixture setup: resetting installation');
+    await _bounded('reset installation fixture', ctx.resetInstallation());
+  });
+
+  group('E2E-P6.4-01', () {
+    testWidgets('E2E-P6.4-01', (tester) async {
+      _activeCase = 'E2E-P6.4-01';
+      if (!_hfsStackReady) {
+        fail(
+          'H-FS stack unavailable (ABO at $_aboUrl). Start the H-FS stack before running fullstack subscription tests.',
+        );
+      }
+
+      _progress('fixture setup: clinic and coverage');
+      final clinic = (await _runLiveIo(
+        tester,
+        'bootstrap clinic fixture',
+        () => ctx.ensureClinic(label: 'p64_dup'),
+      ))!;
+      final installationId = _deterministicUuid('b641', clinic.suffix);
+      await _runLiveIo(
+        tester,
+        'seed low-allowance coverage fixture',
+        () => _seedAllowanceLowCoverage(
+          ctx: ctx,
+          orgId: clinic.organizationId,
+          installationId: installationId,
+        ),
+      );
+
+      final sessions = RoleSessions(ctx, clinic);
+      _progress('login: administrator');
+      await _runLiveIo(
+        tester,
+        'login administrator',
+        () => sessions.signInAs(StaffRole.administrator),
+      );
+
+      final billingToken = (await _runLiveIo(
+        tester,
+        'issue billing token',
+        _issueBillingToken,
+      ))!;
+      await _runLiveIo(
+        tester,
+        'save billing contact',
+        () => _putBillingContact(billingToken),
+      );
+      final offer = (await _runLiveIo(
+        tester,
+        'fetch first offer',
+        () => _fetchFirstOffer(billingToken),
+      ))!;
+
+      final checkouts = (await _runLiveIo(
+        tester,
+        'create duplicate-checkout fixtures',
+        () => Future.wait([
+          _createCheckout(
+            billingToken: billingToken,
+            offer: offer,
+            clientRequestId: 'p64-dup-1-${clinic.suffix}',
+          ),
+          _createCheckout(
+            billingToken: billingToken,
+            offer: offer,
+            clientRequestId: 'p64-dup-2-${clinic.suffix}',
+          ),
+        ]),
+      ))!;
+      final checkout1 = checkouts[0];
+      final checkout2 = checkouts[1];
+
+      await _runLiveIo(
+        tester,
+        'replay first duplicate payment fixture',
+        () => _replayPaymobFixtureForCheckout(
+          'success.json',
+          checkoutId: checkout1.checkoutId,
+        ),
+      );
+      await _runLiveIo(
+        tester,
+        'replay second duplicate payment fixture',
+        () => _replayPaymobFixtureForCheckout(
+          'success.json',
+          checkoutId: checkout2.checkoutId,
+        ),
+      );
+
+      final payments = (await _runLiveIo(
+        tester,
+        'wait for duplicate payments',
+        () => _waitForPayments(billingToken, count: 2),
+      ))!;
+      expect(payments.length, 2);
+      final second = payments.last;
+      expect(second['classification'], 'likely_duplicate');
+
+      final subscription = (await _runLiveIo(
+        tester,
+        'fetch duplicate subscription state',
+        () => _fetchSubscription(billingToken),
+      ))!;
+      expect(subscription['notices'], contains('duplicate_payment'));
+
+      final billingStatus = (await _runLiveIo(
+        tester,
+        'fetch billing status',
+        _fetchBillingStatus,
+      ))!;
+      expect(billingStatus['queued_count'], 1);
+
+      await _openSubscriptionPageFromRenew(tester, clinic: clinic);
+
+      expect(find.byKey(_subscriptionSummaryKey), findsOneWidget);
+      expect(find.byKey(_commercialNoticesKey), findsOneWidget);
+      expect(find.byKey(_paymentHistoryKey), findsOneWidget);
+      expect(find.text('duplicate_payment'), findsOneWidget);
+      expect(find.text('likely_duplicate'), findsOneWidget);
+      expect(find.text('${payments.first['reference']}'), findsOneWidget);
+      expect(find.text('${payments.last['reference']}'), findsOneWidget);
+      expect(find.text('${billingStatus['queued_count']}'), findsWidgets);
+    });
+  });
+
+  group('E2E-P6.4-02', () {
+    testWidgets('E2E-P6.4-02', (tester) async {
+      _activeCase = 'E2E-P6.4-02';
+      if (!_hfsStackReady) {
+        fail(
+          'H-FS stack unavailable (ABO at $_aboUrl). Start the H-FS stack before running fullstack subscription tests.',
+        );
+      }
+
+      _progress('fixture setup: clinic and coverage');
+      final clinic = (await _runLiveIo(
+        tester,
+        'bootstrap clinic fixture',
+        () => ctx.ensureClinic(label: 'p64_refund'),
+      ))!;
+      final installationId = _deterministicUuid('b642', clinic.suffix);
+      await _runLiveIo(
+        tester,
+        'seed refund coverage fixture',
+        () => _seedEndsSoonCoverage(
+          ctx: ctx,
+          orgId: clinic.organizationId,
+          installationId: installationId,
+        ),
+      );
+
+      final sessions = RoleSessions(ctx, clinic);
+      _progress('login: administrator');
+      await _runLiveIo(
+        tester,
+        'login administrator',
+        () => sessions.signInAs(StaffRole.administrator),
+      );
+
+      final billingToken = (await _runLiveIo(
+        tester,
+        'issue billing token',
+        _issueBillingToken,
+      ))!;
+      await _runLiveIo(
+        tester,
+        'save billing contact',
+        () => _putBillingContact(billingToken),
+      );
+      final offer = (await _runLiveIo(
+        tester,
+        'fetch first offer',
+        () => _fetchFirstOffer(billingToken),
+      ))!;
+
+      final checkout = (await _runLiveIo(
+        tester,
+        'create refund checkout fixture',
+        () => _createCheckout(
+          billingToken: billingToken,
+          offer: offer,
+          clientRequestId: 'p64-refund-${clinic.suffix}',
+        ),
+      ))!;
+      final txnId = _transactionIdForCheckout(checkout.checkoutId);
+      await _runLiveIo(
+        tester,
+        'replay successful refund payment fixture',
+        () => _replayPaymobFixtureForCheckout(
+          'success.json',
+          checkoutId: checkout.checkoutId,
+          transactionId: txnId,
+        ),
+      );
+      await _runLiveIo(
+        tester,
+        'wait for refund payment',
+        () => _waitForPayments(billingToken, count: 1),
+      );
+
+      await _runLiveIo(
+        tester,
+        'script reversed Paymob inquiry',
+        () => _scriptPaymobInquiry('reversed'),
+      );
+      await _runLiveIo(
+        tester,
+        'replay refund-parent payment fixture',
+        () => _replayPaymobFixtureForCheckout(
+          'refund-parent.json',
+          checkoutId: checkout.checkoutId,
+          transactionId: txnId,
+          inquiry: 'reversed',
+        ),
+      );
+      final reversalReference = (await _runLiveIo(
+        tester,
+        'wait for refund reversal',
+        () => _waitForReversal(billingToken),
+      ))!;
+
+      final subscription = (await _runLiveIo(
+        tester,
+        'fetch reversed subscription state',
+        () => _fetchSubscription(billingToken),
+      ))!;
+      expect(
+        subscription['notices'],
+        containsAll(['reversal_recorded', 'terms_held']),
+      );
+
+      final billingStatus = (await _runLiveIo(
+        tester,
+        'fetch billing status after reversal',
+        _fetchBillingStatus,
+      ))!;
+      final notices =
+          (billingStatus['notices'] as List?)?.cast<Map<String, dynamic>>() ??
+          const [];
+      expect(notices.map((entry) => entry['code']), contains('ended_reversed'));
+
+      await _openSubscriptionPageFromRenew(tester, clinic: clinic);
+
+      expect(find.byKey(_subscriptionSummaryKey), findsOneWidget);
+      expect(find.byKey(_commercialNoticesKey), findsOneWidget);
+      expect(find.byKey(_paymentHistoryKey), findsOneWidget);
+      expect(find.text('reversal_recorded'), findsOneWidget);
+      expect(find.text('terms_held'), findsOneWidget);
+      expect(find.text('ended_reversed'), findsOneWidget);
+      expect(find.text(reversalReference), findsOneWidget);
+    });
+  });
+
+  group('E2E-P6.4-03', () {
+    testWidgets('E2E-P6.4-03', (tester) async {
+      _activeCase = 'E2E-P6.4-03';
+      if (!_hfsStackReady) {
+        fail(
+          'H-FS stack unavailable (ABO at $_aboUrl). Start the H-FS stack before running fullstack subscription tests.',
+        );
+      }
+
+      _progress('fixture setup: clinic and coverage');
+      final clinic = (await _runLiveIo(
+        tester,
+        'bootstrap clinic fixture',
+        () => ctx.ensureClinic(label: 'p64_late'),
+      ))!;
+      final installationId = _deterministicUuid('b643', clinic.suffix);
+      await _runLiveIo(
+        tester,
+        'seed late-payment coverage fixture',
+        () => _seedEndsSoonCoverage(
+          ctx: ctx,
+          orgId: clinic.organizationId,
+          installationId: installationId,
+        ),
+      );
+
+      final sessions = RoleSessions(ctx, clinic);
+      _progress('login: administrator');
+      await _runLiveIo(
+        tester,
+        'login administrator',
+        () => sessions.signInAs(StaffRole.administrator),
+      );
+
+      final billingToken = (await _runLiveIo(
+        tester,
+        'issue billing token',
+        _issueBillingToken,
+      ))!;
+      await _runLiveIo(
+        tester,
+        'save billing contact',
+        () => _putBillingContact(billingToken),
+      );
+      final offer = (await _runLiveIo(
+        tester,
+        'fetch first offer',
+        () => _fetchFirstOffer(billingToken),
+      ))!;
+
+      final lateCheckout = (await _runLiveIo(
+        tester,
+        'create late-payment checkout fixture',
+        () => _createCheckout(
+          billingToken: billingToken,
+          offer: offer,
+          clientRequestId: 'p64-late-${clinic.suffix}',
+        ),
+      ))!;
+      await _runLiveIo(
+        tester,
+        'cancel late-payment checkout fixture',
+        () => _setCheckoutCancelled(lateCheckout.checkoutId),
+      );
+      await _runLiveIo(
+        tester,
+        'replay late-payment success fixture',
+        () => _replayPaymobFixtureForCheckout(
+          'success.json',
+          checkoutId: lateCheckout.checkoutId,
+        ),
+      );
+      await _runLiveIo(
+        tester,
+        'wait for late payment',
+        () => _waitForPayments(billingToken, count: 1),
+      );
+
+      final withheldCheckout = (await _runLiveIo(
+        tester,
+        'create withheld-payment checkout fixture',
+        () => _createCheckout(
+          billingToken: billingToken,
+          offer: offer,
+          clientRequestId: 'p64-withheld-${clinic.suffix}',
+        ),
+      ))!;
+      await _runLiveIo(
+        tester,
+        'replay withheld-payment fixture',
+        () => _replayPaymobFixtureForCheckout(
+          'success.json',
+          checkoutId: withheldCheckout.checkoutId,
+          inquiry: 'amount_mismatch',
+        ),
+      );
+
+      final subscription = (await _runLiveIo(
+        tester,
+        'fetch late-payment subscription state',
+        () => _fetchSubscription(billingToken),
+      ))!;
+      expect(
+        subscription['notices'],
+        containsAll(['late_payment_honoured', 'payment_withheld']),
+      );
+
+      await _openSubscriptionPageFromRenew(tester, clinic: clinic);
+
+      expect(find.byKey(_commercialNoticesKey), findsOneWidget);
+      expect(find.text('late_payment_honoured'), findsOneWidget);
+      expect(find.text('payment_withheld'), findsOneWidget);
+    });
+  });
+
+  group('E2E-P6.4-04', () {
+    testWidgets('E2E-P6.4-04', (tester) async {
+      _activeCase = 'E2E-P6.4-04';
+      if (!_hfsStackReady) {
+        fail(
+          'H-FS stack unavailable (ABO at $_aboUrl). Start the H-FS stack before running fullstack subscription tests.',
+        );
+      }
+
+      _progress('fixture setup: clinic and coverage');
+      final clinic = (await _runLiveIo(
+        tester,
+        'bootstrap clinic fixture',
+        () => ctx.ensureClinic(label: 'p64_page'),
+      ))!;
+      final installationId = _deterministicUuid('b644', clinic.suffix);
+      await _runLiveIo(
+        tester,
+        'seed payment-history coverage fixture',
+        () => _seedEndsSoonCoverage(
+          ctx: ctx,
+          orgId: clinic.organizationId,
+          installationId: installationId,
+        ),
+      );
+
+      final sessions = RoleSessions(ctx, clinic);
+      _progress('login: administrator');
+      await _runLiveIo(
+        tester,
+        'login administrator',
+        () => sessions.signInAs(StaffRole.administrator),
+      );
+
+      final billingToken = (await _runLiveIo(
+        tester,
+        'issue billing token',
+        _issueBillingToken,
+      ))!;
+      await _runLiveIo(
+        tester,
+        'save billing contact',
+        () => _putBillingContact(billingToken),
+      );
+      final offer = (await _runLiveIo(
+        tester,
+        'fetch first offer',
+        () => _fetchFirstOffer(billingToken),
+      ))!;
+
+      for (var batch = 0; batch < 3; batch++) {
+        final batchCheckoutIds = <String>[];
+        for (var i = 0; i < 10; i++) {
+          final checkout = (await _runLiveIo(
+            tester,
+            'create payment-history checkout fixture',
+            () => _createCheckout(
+              billingToken: billingToken,
+              offer: offer,
+              clientRequestId: 'p64-page-$batch-$i-${clinic.suffix}',
+            ),
+          ))!;
+          batchCheckoutIds.add(checkout.checkoutId);
+          await _runLiveIo(
+            tester,
+            'replay payment-history success fixture',
+            () => _replayPaymobFixtureForCheckout(
+              'success.json',
+              checkoutId: checkout.checkoutId,
+            ),
+          );
+        }
+        await _runLiveIo(
+          tester,
+          'wait for payment-history batch ${batch + 1}',
+          () => _waitForPayments(billingToken, count: (batch + 1) * 10),
+        );
+        if (batch < 2) {
+          await _runLiveIo(
+            tester,
+            'age payment-history checkout facts',
+            () => _ageCheckoutFacts(batchCheckoutIds),
+          );
+        }
+      }
+
+      final allReferences = <String>[];
+      String? cursor;
+      do {
+        final page = (await _runLiveIo(
+          tester,
+          'fetch payment-history page',
+          () => _fetchPayments(billingToken, cursor: cursor),
+        ))!;
+        final payments = (page['payments'] as List)
+            .cast<Map<String, dynamic>>();
+        for (final payment in payments) {
+          final reference = payment['reference']?.toString();
+          if (reference != null) {
+            allReferences.add(reference);
+          }
+        }
+        final hasMore = page['has_more'] == true;
+        cursor = hasMore ? page['next_cursor']?.toString() : null;
+      } while (cursor != null && cursor.isNotEmpty);
+
+      expect(allReferences.length, 30);
+
+      final firstPage = (await _runLiveIo(
+        tester,
+        'fetch first payment-history page',
+        () => _fetchPayments(billingToken),
+      ))!;
+      expect((firstPage['payments'] as List).length, 20);
+      expect(firstPage['has_more'], isTrue);
+      final nextCursor = firstPage['next_cursor'] as String;
+      expect(nextCursor, isNotEmpty);
+
+      await _openSubscriptionPageFromRenew(tester, clinic: clinic);
+
+      expect(find.byKey(_paymentHistoryKey), findsOneWidget);
+      expect(find.byKey(_paymentHistoryNextKey), findsOneWidget);
+      for (final reference in allReferences.take(20)) {
+        expect(find.text(reference), findsOneWidget);
+      }
+
+      await tester.tap(find.byKey(_paymentHistoryNextKey));
+      await _settle(tester);
+
+      for (final reference in allReferences) {
+        expect(find.text(reference), findsOneWidget);
+      }
+    });
+  });
+
+  group('E2E-P6.4-05', () {
+    testWidgets('E2E-P6.4-05', (tester) async {
+      _activeCase = 'E2E-P6.4-05';
+      _progress('fixture setup: two organization contexts');
+      if (!_hfsStackReady) {
+        fail(
+          'H-FS stack unavailable (ABO at $_aboUrl). Start the H-FS stack before running fullstack subscription tests.',
+        );
+      }
+
+      final orgA = (await _runLiveIo(
+        tester,
+        'bootstrap first organization fixture',
+        () => ctx.ensureClinic(label: 'p64_org_a'),
+      ))!;
+      final orgB = (await _runLiveIo(
+        tester,
+        'insert second organization fixture',
+        () => ctx.bootstrapSecondaryClinic('p64_org_b'),
+      ))!;
+
+      final orgARefs = (await _runLiveIo(
+        tester,
+        'arrange first organization paid subscription',
+        () => _arrangePaidSubscription(ctx, orgA),
+      ))!;
+      final orgBRefs = (await _runLiveIo(
+        tester,
+        'arrange second organization paid subscription',
+        () => _arrangePaidSubscription(ctx, orgB),
+      ))!;
+
+      final sessions = RoleSessions(ctx, orgA);
+      _progress('login: administrator');
+      await _runLiveIo(
+        tester,
+        'login administrator',
+        () => sessions.signInAs(StaffRole.administrator),
+      );
+
+      await _openSubscriptionPageFromRenew(tester, clinic: orgA);
+
+      expect(find.byKey(_subscriptionSummaryKey), findsOneWidget);
+      expect(find.byKey(_paymentHistoryKey), findsOneWidget);
+      expect(find.text(orgARefs.subscriptionRef), findsOneWidget);
+      expect(find.text(orgARefs.paymentReference), findsOneWidget);
+      expect(find.text(orgBRefs.subscriptionRef), findsNothing);
+      expect(find.text(orgBRefs.paymentReference), findsNothing);
+    });
+  });
+}
+
+class _PaidSubscriptionRefs {
+  const _PaidSubscriptionRefs({
+    required this.subscriptionRef,
+    required this.paymentReference,
+  });
+
+  final String subscriptionRef;
+  final String paymentReference;
+}
+
+Future<_PaidSubscriptionRefs> _arrangePaidSubscription(
+  BoundaryTestContext ctx,
+  BoundaryClinicFixture clinic,
+) async {
+  final installationId = _deterministicUuid('b645', clinic.suffix);
+  await _seedEndsSoonCoverage(
+    ctx: ctx,
+    orgId: clinic.organizationId,
+    installationId: installationId,
+  );
+
+  await ctx.signInAdminForClinic(clinic);
+  final billingToken = await _issueBillingToken();
+  await _putBillingContact(billingToken);
+  final offer = await _fetchFirstOffer(billingToken);
+  final checkout = await _createCheckout(
+    billingToken: billingToken,
+    offer: offer,
+    clientRequestId: 'p64-boundary-${clinic.suffix}',
+  );
+  await _replayPaymobFixtureForCheckout(
+    'success.json',
+    checkoutId: checkout.checkoutId,
+  );
+  final payments = await _waitForPayments(billingToken, count: 1);
+  final subscription = await _fetchSubscription(billingToken);
+  await ctx.signOut();
+  return _PaidSubscriptionRefs(
+    subscriptionRef: subscription['subscription_ref']?.toString() ?? '',
+    paymentReference: payments.first['reference']?.toString() ?? '',
+  );
+}
+
+Future<void> _openSubscriptionPageFromRenew(
+  WidgetTester tester, {
+  required BoundaryClinicFixture clinic,
+}) async {
+  _progress('UI wait: opening subscription page from renew');
+  final router = _billingRouter(
+    branchIds: [clinic.branchId],
+    activeBranchId: clinic.branchId,
+  );
+  final composition = buildLiveVisitSummaryComposition(
+    client: LiveSupabaseHarness.client,
+    visitId: testVisitId,
+    staffIsAdministrator: true,
+    reachabilityPort: FakePlatformReachabilityPort(reachable: false),
+  );
+
+  await tester.pumpWidget(
+    ProviderScope(
+      overrides: [
+        supabaseClientProvider.overrideWithValue(LiveSupabaseHarness.client),
+        authSessionProvider.overrideWith(
+          () => MutableAuthSessionNotifier(
+            AuthSessionState(
+              status: AuthSessionStatus.authenticated,
+              context: sampleAuthSessionContext(
+                role: StaffRole.administrator,
+                branchIds: [clinic.branchId],
+                activeBranchId: clinic.branchId,
+              ),
+            ),
+          ),
+        ),
+      ],
+      child: MaterialApp.router(theme: AppTheme.light(), routerConfig: router),
+    ),
+  );
+  await _settle(tester);
+  router.go(AppRoutes.aiFeatureHost, extra: composition.dependencies);
+  await _settle(tester);
+  expect(find.byKey(_renewNoticeKey), findsOneWidget);
+  await tester.tap(find.byKey(_renewNoticeKey));
+  await _settle(tester);
+  expect(find.byKey(_subscriptionSummaryKey), findsOneWidget);
+}
+
+void _progress(String message) {
+  // Flutter --machine emits this as a testID-attributed `print` event.
+  // Keep labels static and free of fixture values, tokens, or credentials.
+  // ignore: avoid_print
+  print('[HFS-PROGRESS] case=$_activeCase $message');
+}
+
+Future<T> _bounded<T>(
+  String operation,
+  Future<T> future, {
+  Duration timeout = _operationTimeout,
+}) async {
+  _progress('operation start: $operation');
+  try {
+    return await future.timeout(
+      timeout,
+      onTimeout: () => throw TimeoutException(
+        'Operation "$operation" exceeded $timeout',
+        timeout,
+      ),
+    );
+  } finally {
+    _progress('operation end: $operation');
+  }
+}
+
+Future<T?> _runLiveIo<T>(
+  WidgetTester tester,
+  String operation,
+  Future<T> Function() action,
+) async {
+  _progress('live I/O zone start: $operation');
+  try {
+    return await tester.runAsync(() => _bounded(operation, action()));
+  } finally {
+    _progress('live I/O zone end: $operation');
+  }
+}
+
+Future<void> _settle(WidgetTester tester) => _bounded(
+  'UI pumpAndSettle',
+  tester.pumpAndSettle(
+    const Duration(milliseconds: 100),
+    EnginePhase.sendSemanticsUpdate,
+    const Duration(seconds: 29),
+  ),
+);
+
+GoRouter _billingRouter({
+  StaffRole role = StaffRole.administrator,
+  List<String>? branchIds,
+  String? activeBranchId,
+}) {
+  final container = ProviderContainer(
+    overrides: [
+      supabaseClientProvider.overrideWithValue(LiveSupabaseHarness.client),
+      authSessionProvider.overrideWith(
+        () => MutableAuthSessionNotifier(
+          AuthSessionState(
+            status: AuthSessionStatus.authenticated,
+            context: sampleAuthSessionContext(
+              role: role,
+              branchIds:
+                  branchIds ?? const ['00000000-0000-4000-8000-000000000001'],
+              activeBranchId: activeBranchId,
+            ),
+          ),
+        ),
+      ),
+    ],
+  );
+  return container.read(appRouterProvider);
+}
+
+Future<bool> _probeHfsReady() async {
+  try {
+    final response = await _bounded(
+      'GET /v1/offers stack readiness',
+      http.get(
+        Uri.parse('$_aboUrl/v1/offers'),
+        headers: {'Host': _billingHost},
+      ),
+    );
+    return response.statusCode < 500;
+  } on Exception {
+    return false;
+  }
+}
+
+Future<String> _issueBillingToken() async {
+  final response = await _bounded(
+    'issue_billing_token',
+    LiveSupabaseHarness.client.rpc(
+      'issue_billing_token',
+      params: {'p_contract_version': backendRpc},
+    ),
+  );
+  final tokenMap = Map<String, dynamic>.from(response as Map);
+  final data = Map<String, dynamic>.from(tokenMap['data'] as Map);
+  return data['token'] as String;
+}
+
+Future<Map<String, dynamic>> _fetchBillingStatus() async {
+  final response = await _bounded(
+    'get_ai_billing_status',
+    LiveSupabaseHarness.client.rpc(
+      'get_ai_billing_status',
+      params: {'p_contract_version': backendRpc},
+    ),
+  );
+  final statusMap = Map<String, dynamic>.from(response as Map);
+  return Map<String, dynamic>.from(statusMap['data'] as Map);
+}
+
+Future<Map<String, dynamic>> _fetchFirstOffer(String billingToken) async {
+  final response = await _bounded(
+    'GET /v1/offers',
+    http.get(
+      Uri.parse('$_aboUrl/v1/offers'),
+      headers: _aboHeaders(billingToken),
+    ),
+  );
+  if (response.statusCode != 200) {
+    throw StateError(
+      'GET /v1/offers failed with HTTP ${response.statusCode}: ${response.body}',
+    );
+  }
+  final body = jsonDecode(response.body) as Map<String, dynamic>;
+  final offers = (body['offers'] as List).cast<Map<String, dynamic>>();
+  expect(offers, isNotEmpty);
+  return offers.first;
+}
+
+Future<void> _putBillingContact(String billingToken) async {
+  final response = await _bounded(
+    'PUT /v1/billing-contact',
+    http.put(
+      Uri.parse('$_aboUrl/v1/billing-contact'),
+      headers: {
+        ..._aboHeaders(billingToken),
+        'content-type': 'application/json',
+      },
+      body: jsonEncode({
+        'client_request_id':
+            'p64-contact-${DateTime.now().microsecondsSinceEpoch}',
+        'name': 'P6.4 Administrator',
+        'email': 'p64-admin@clinic.test',
+        'phone': '+201001234567',
+      }),
+    ),
+  );
+  expect(response.statusCode, 200);
+}
+
+class _CreatedCheckout {
+  const _CreatedCheckout({required this.checkoutId, required this.reference});
+
+  final String checkoutId;
+  final String reference;
+}
+
+Future<_CreatedCheckout> _createCheckout({
+  required String billingToken,
+  required Map<String, dynamic> offer,
+  required String clientRequestId,
+}) async {
+  final response = await _bounded(
+    'POST /v1/checkouts',
+    http.post(
+      Uri.parse('$_aboUrl/v1/checkouts'),
+      headers: {
+        ..._aboHeaders(billingToken),
+        'content-type': 'application/json',
+      },
+      body: jsonEncode({
+        'client_request_id': clientRequestId,
+        'offer_id': offer['offer_id'],
+        'offer_version': offer['version'],
+        'terms_version': (offer['terms'] as Map)['version'],
+      }),
+    ),
+  );
+  expect(response.statusCode, 201, reason: 'POST /v1/checkouts should succeed');
+  final body = jsonDecode(response.body) as Map<String, dynamic>;
+  return _CreatedCheckout(
+    checkoutId: body['checkout_id']?.toString() ?? '',
+    reference: body['reference']?.toString() ?? '',
+  );
+}
+
+Map<String, String> _aboHeaders(String billingToken) {
+  return {
+    'Authorization': 'Bearer $billingToken',
+    'Host': _billingHost,
+    'Abo-Contract-Version': '$aboClinic',
+    'accept': 'application/json',
+  };
+}
+
+Future<Map<String, dynamic>> _fetchSubscription(String billingToken) async {
+  final response = await _bounded(
+    'GET /v1/subscription',
+    http.get(
+      Uri.parse('$_aboUrl/v1/subscription'),
+      headers: _aboHeaders(billingToken),
+    ),
+  );
+  expect(response.statusCode, 200);
+  return jsonDecode(response.body) as Map<String, dynamic>;
+}
+
+Future<Map<String, dynamic>> _fetchPayments(
+  String billingToken, {
+  String? cursor,
+  Duration timeout = _operationTimeout,
+}) async {
+  final uri = cursor == null || cursor.isEmpty
+      ? Uri.parse('$_aboUrl/v1/payments')
+      : Uri.parse('$_aboUrl/v1/payments?cursor=${Uri.encodeComponent(cursor)}');
+  final response = await _bounded(
+    'GET /v1/payments',
+    http.get(uri, headers: _aboHeaders(billingToken)),
+    timeout: timeout,
+  );
+  expect(response.statusCode, 200);
+  return jsonDecode(response.body) as Map<String, dynamic>;
+}
+
+Future<List<Map<String, dynamic>>> _waitForPayments(
+  String billingToken, {
+  required int count,
+}) async {
+  const pollBound = _pollTimeout;
+  const pollInterval = Duration(milliseconds: 500);
+  final elapsed = Stopwatch()..start();
+  _progress(
+    'poll start: payments count $count (max 120 attempts, bound $pollBound)',
+  );
+  for (var attempt = 0; attempt < 120; attempt++) {
+    final remaining = pollBound - elapsed.elapsed;
+    if (remaining <= Duration.zero) {
+      break;
+    }
+    final requestBound = remaining < _operationTimeout
+        ? remaining
+        : _operationTimeout;
+    final page = await _fetchPayments(billingToken, timeout: requestBound);
+    final payments =
+        (page['payments'] as List?)?.cast<Map<String, dynamic>>() ?? const [];
+    if (payments.length >= count) {
+      _progress('poll complete: payments count $count');
+      return payments;
+    }
+    final delayRemaining = pollBound - elapsed.elapsed;
+    if (delayRemaining <= Duration.zero) {
+      break;
+    }
+    await Future<void>.delayed(
+      delayRemaining < pollInterval ? delayRemaining : pollInterval,
+    );
+  }
+  fail(
+    'Timed out polling payments count $count after $pollBound or 120 attempts',
+  );
+}
+
+Future<String> _waitForReversal(String billingToken) async {
+  const pollBound = _pollTimeout;
+  const pollInterval = Duration(milliseconds: 500);
+  final elapsed = Stopwatch()..start();
+  _progress(
+    'poll start: payment reversal (max 120 attempts, bound $pollBound)',
+  );
+  for (var attempt = 0; attempt < 120; attempt++) {
+    final remaining = pollBound - elapsed.elapsed;
+    if (remaining <= Duration.zero) {
+      break;
+    }
+    final requestBound = remaining < _operationTimeout
+        ? remaining
+        : _operationTimeout;
+    final page = await _fetchPayments(billingToken, timeout: requestBound);
+    final payments =
+        (page['payments'] as List?)?.cast<Map<String, dynamic>>() ?? const [];
+    if (payments.isNotEmpty) {
+      final reversals = payments.first['reversals'];
+      if (reversals is List && reversals.isNotEmpty) {
+        final reference = reversals.first['reference']?.toString();
+        if (reference != null && reference.isNotEmpty) {
+          _progress('poll complete: payment reversal');
+          return reference;
+        }
+      }
+    }
+    final delayRemaining = pollBound - elapsed.elapsed;
+    if (delayRemaining <= Duration.zero) {
+      break;
+    }
+    await Future<void>.delayed(
+      delayRemaining < pollInterval ? delayRemaining : pollInterval,
+    );
+  }
+  fail('Timed out polling payment reversal after $pollBound or 120 attempts');
+}
+
+Future<void> _replayPaymobFixtureForCheckout(
+  String fixtureName, {
+  required String checkoutId,
+  int? transactionId,
+  String inquiry = 'bound_success',
+}) async {
+  final orderId = await _readPaymobOrderId(checkoutId);
+  final txnId = transactionId ?? _transactionIdForCheckout(checkoutId);
+  final amountMinor = await _readCheckoutAmountMinor(checkoutId);
+  await _scriptPaymobStub(
+    orderId: orderId,
+    amountMinor: amountMinor,
+    inquiry: inquiry,
+  );
+
+  final repoRoot = File('pubspec.yaml').existsSync()
+      ? Directory.current.parent.path
+      : Directory.current.path;
+  final fixturePath = '$repoRoot/abo/test/fixtures/paymob/$fixtureName';
+  final fixture =
+      jsonDecode(File(fixturePath).readAsStringSync()) as Map<String, dynamic>;
+  final obj = Map<String, dynamic>.from(fixture['obj'] as Map);
+  obj['id'] = txnId;
+  obj['order'] = {'id': int.parse(orderId)};
+  final body = jsonEncode({'type': fixture['type'], 'obj': obj});
+  final hmac = _signPaymobObj(obj);
+  final response = await _bounded(
+    'POST /notify/paymob fixture',
+    http.post(
+      Uri.parse('$_aboUrl/notify/paymob?hmac=${Uri.encodeComponent(hmac)}'),
+      headers: {
+        'Host': _billingHost,
+        'content-type': 'application/json',
+        'cf-connecting-ip': '203.0.113.10',
+      },
+      body: body,
+    ),
+  );
+  expect(
+    response.statusCode,
+    200,
+    reason:
+        'paymob fixture $fixtureName should be accepted by the running stack',
+  );
+}
+
+Future<void> _scriptPaymobInquiry(String inquiry) async {
+  final response = await _bounded(
+    'POST Paymob inquiry script',
+    http.post(
+      Uri.parse('$_paymobUrl/__script'),
+      headers: {'content-type': 'application/json'},
+      body: jsonEncode({'inquiry': inquiry}),
+    ),
+  );
+  expect(response.statusCode, 204);
+}
+
+Future<void> _scriptPaymobStub({
+  required String orderId,
+  required int amountMinor,
+  String inquiry = 'bound_success',
+}) async {
+  final response = await _bounded(
+    'POST Paymob stub script',
+    http.post(
+      Uri.parse('$_paymobUrl/__script'),
+      headers: {'content-type': 'application/json'},
+      body: jsonEncode({
+        'amount_cents': '$amountMinor',
+        'intention_order_id': orderId,
+        'inquiry': inquiry,
+      }),
+    ),
+  );
+  expect(response.statusCode, 204);
+}
+
+String _signPaymobObj(Map<String, dynamic> obj) {
+  final concatenated = _paymobHmacFields
+      .map((field) => _paymobFieldValue(obj, field))
+      .join();
+  final digest = Hmac(
+    sha512,
+    utf8.encode(_paymobHmacSecret),
+  ).convert(utf8.encode(concatenated));
+  return digest.toString();
+}
+
+String _paymobFieldValue(Map<String, dynamic> obj, String field) {
+  if (field == 'order.id') {
+    return '${(obj['order'] as Map)['id']}';
+  }
+  if (field.startsWith('source_data.')) {
+    final key = field.split('.').last;
+    return '${(obj['source_data'] as Map)[key]}';
+  }
+  final raw = obj[field];
+  if (raw is bool) {
+    return raw ? 'true' : 'false';
+  }
+  return '$raw';
+}
+
+int _transactionIdForCheckout(String checkoutId) {
+  return 99000 + checkoutId.hashCode.abs() % 10000;
+}
+
+Future<String> _readPaymobOrderId(String checkoutId) async {
+  final row = await _queryAboD1(
+    "SELECT order_id FROM paymob_intention WHERE checkout_id = '${checkoutId.replaceAll("'", "''")}' LIMIT 1",
+  );
+  final orderId = row?['order_id']?.toString();
+  if (orderId == null || orderId.isEmpty) {
+    fail('paymob_intention.order_id missing for checkout $checkoutId');
+  }
+  return orderId;
+}
+
+Future<int> _readCheckoutAmountMinor(String checkoutId) async {
+  final row = await _queryAboD1(
+    "SELECT charged_price_minor FROM checkout WHERE checkout_id = '${checkoutId.replaceAll("'", "''")}' LIMIT 1",
+  );
+  return int.parse(row?['charged_price_minor']?.toString() ?? '800');
+}
+
+Future<void> _setCheckoutCancelled(String checkoutId) async {
+  await _executeAboD1(
+    "UPDATE checkout_status SET state = 'cancelled', last_event_at = datetime('now') WHERE checkout_id = '${checkoutId.replaceAll("'", "''")}'",
+  );
+}
+
+Future<void> _ageCheckoutFacts(List<String> checkoutIds) async {
+  if (checkoutIds.isEmpty) {
+    return;
+  }
+  final keys = checkoutIds
+      .map((id) => "'${id.replaceAll("'", "''")}'")
+      .join(', ');
+  await _executeAboD1(
+    "UPDATE fact_log SET created_at = datetime('now', '-2 hours') WHERE \"table\" = 'checkout' AND key IN ($keys)",
+  );
+}
+
+Future<String?> _aboSqlitePath() async {
+  final repoRoot = File('pubspec.yaml').existsSync()
+      ? Directory.current.parent.path
+      : Directory.current.path;
+  final dbDir = Directory(
+    '$repoRoot/e2e/fullstack/.wrangler/abo/v3/d1/miniflare-D1DatabaseObject',
+  );
+  if (!dbDir.existsSync()) {
+    return null;
+  }
+  final files = dbDir
+      .listSync()
+      .whereType<File>()
+      .where(
+        (file) =>
+            file.path.endsWith('.sqlite') &&
+            !file.path.endsWith('metadata.sqlite'),
+      )
+      .toList();
+  if (files.isEmpty) {
+    return null;
+  }
+  files.sort((a, b) => a.path.compareTo(b.path));
+  return files.first.path;
+}
+
+Future<Map<String, Object?>?> _queryAboD1(String sql) async {
+  final dbFile = await _aboSqlitePath();
+  if (dbFile == null) {
+    fail('Local ABO D1 database not found under e2e/fullstack/.wrangler/abo');
+  }
+  final result = await Process.run('sqlite3', ['-json', dbFile, sql]);
+  if (result.exitCode != 0) {
+    fail('sqlite3 query failed: ${result.stderr}');
+  }
+  final output = '${result.stdout}'.trim();
+  if (output.isEmpty) {
+    return null;
+  }
+  final rows = jsonDecode(output) as List;
+  if (rows.isEmpty) {
+    return null;
+  }
+  return Map<String, Object?>.from(rows.first as Map);
+}
+
+Future<void> _executeAboD1(String sql) async {
+  final dbFile = await _aboSqlitePath();
+  if (dbFile == null) {
+    fail('Local ABO D1 database not found under e2e/fullstack/.wrangler/abo');
+  }
+  final result = await Process.run('sqlite3', [dbFile, sql]);
+  if (result.exitCode != 0) {
+    fail('sqlite3 execute failed: ${result.stderr}');
+  }
+}
+
+String _deterministicUuid(String prefix, String label) {
+  final hash = '$prefix$label'.hashCode.abs();
+  final p1 = hash.toRadixString(16).padLeft(8, '0').substring(0, 8);
+  final p2 = (hash >> 4).toRadixString(16).padLeft(4, '0').substring(0, 4);
+  final p3 = (hash >> 8).toRadixString(16).padLeft(3, '0').substring(0, 3);
+  final p4 = (hash >> 12).toRadixString(16).padLeft(3, '0').substring(0, 3);
+  final p5 = hash.toRadixString(16).padLeft(12, '0').substring(0, 12);
+  return '$p1-$p2-4$p3-8$p4-$p5';
+}
+
+Future<void> _seedActiveCoverage({
+  required BoundaryTestContext ctx,
+  required String orgId,
+  required String installationId,
+}) async {
+  await ctx.sql.execute('''
+DELETE FROM ai_internal.clinic_ai_coverage WHERE organization_id = '$orgId'::uuid;
+
+INSERT INTO ai_internal.membership (user_id, organization_id, role)
+SELECT sm.auth_user_id, '$orgId'::uuid, sm.role
+FROM public.staff_members sm
+JOIN public.staff_branch_assignments sba
+  ON sba.staff_member_id = sm.id
+  AND sba.is_deleted = false
+JOIN public.branches b
+  ON b.id = sba.branch_id
+  AND b.organization_id = '$orgId'::uuid
+  AND b.is_deleted = false
+WHERE sm.is_deleted = false
+  AND sm.is_active = true
+ON CONFLICT (user_id, organization_id) DO NOTHING;
+
+INSERT INTO ai_internal.clinic_ai_coverage (
+  organization_id,
+  installation_id,
+  binding_epoch,
+  clinic_seq,
+  state,
+  reason,
+  term_ref,
+  plan_display_name,
+  starts_at,
+  ends_at,
+  grace_ends_at,
+  allowance,
+  used,
+  band,
+  queued_count,
+  held_count,
+  suspended,
+  event_at,
+  applied_at
+) VALUES (
+  '$orgId'::uuid,
+  '$installationId'::uuid,
+  1,
+  1,
+  'active',
+  NULL,
+  'TERM-P64',
+  'P6.4 Test Plan',
+  now() - interval '30 days',
+  now() + interval '30 days',
+  now() + interval '37 days',
+  10000,
+  0,
+  'ok',
+  0,
+  0,
+  false,
+  timestamp '2020-06-15 12:00:00+00',
+  timestamp '2021-03-20 08:00:00+00'
+);
+
+UPDATE ai_internal.feed_state
+SET last_success_at = now()
+WHERE singleton;
+''');
+}
+
+Future<void> _seedAllowanceLowCoverage({
+  required BoundaryTestContext ctx,
+  required String orgId,
+  required String installationId,
+}) async {
+  await _seedActiveCoverage(
+    ctx: ctx,
+    orgId: orgId,
+    installationId: installationId,
+  );
+  await ctx.sql.execute('''
+UPDATE ai_internal.clinic_ai_coverage
+SET band = '75'
+WHERE organization_id = '$orgId'::uuid;
+''');
+}
+
+Future<void> _seedEndsSoonCoverage({
+  required BoundaryTestContext ctx,
+  required String orgId,
+  required String installationId,
+}) async {
+  await _seedActiveCoverage(
+    ctx: ctx,
+    orgId: orgId,
+    installationId: installationId,
+  );
+  await ctx.sql.execute('''
+UPDATE ai_internal.clinic_ai_coverage
+SET ends_at = now() + interval '7 days',
+    grace_ends_at = now() + interval '14 days',
+    band = '75'
+WHERE organization_id = '$orgId'::uuid;
+''');
+}

@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io';
 
 import 'fixture_factory.dart';
@@ -7,11 +8,12 @@ class SqlFixtureHelper {
   static const _bootstrapUserId = 'a0000000-0000-4000-8000-000000000001';
   SqlFixtureHelper({
     this.host = '127.0.0.1',
-    this.port = 54322,
+    int? port,
     this.user = 'postgres',
     this.database = 'postgres',
     String? password,
-  }) : password = password ?? Platform.environment['POSTGRES_PASSWORD'] ?? 'postgres';
+  }) : port = port ?? int.tryParse(Platform.environment['SUPABASE_DB_PORT'] ?? '') ?? 54322,
+       password = password ?? Platform.environment['POSTGRES_PASSWORD'] ?? 'postgres';
 
   final String host;
   final int port;
@@ -21,14 +23,78 @@ class SqlFixtureHelper {
 
   static const _maxExecuteAttempts = 5;
   static const _executeRetryDelay = Duration(milliseconds: 200);
+  static const _processTimeout = Duration(seconds: 5);
+  static const _branchReadyTimeout = Duration(seconds: 20);
+
+  bool _isTransientPsqlFailure(String stderr) {
+    final message = stderr.toLowerCase();
+    return message.contains('could not connect to server') ||
+        message.contains('connection refused') ||
+        message.contains('the database system is starting up') ||
+        message.contains('the database system is in recovery mode') ||
+        message.contains('server closed the connection unexpectedly') ||
+        message.contains('connection timed out') ||
+        message.contains('could not translate host name');
+  }
+
+  Future<ProcessResult> _runPsql(String sql, {Duration? timeout}) async {
+    final process = await Process.start(
+      'psql',
+      [
+        '-h', host,
+        '-p', '$port',
+        '-U', user,
+        '-d', database,
+        '-t',
+        '-A',
+        '-v',
+        'ON_ERROR_STOP=1',
+        '-c',
+        sql,
+      ],
+      environment: {'PGPASSWORD': password},
+    );
+    final stdoutFuture = process.stdout
+        .transform(systemEncoding.decoder)
+        .join();
+    final stderrFuture = process.stderr
+        .transform(systemEncoding.decoder)
+        .join();
+    final commandTimeout = timeout ?? _processTimeout;
+
+    try {
+      final exitCode = await process.exitCode.timeout(commandTimeout);
+      return ProcessResult(
+        process.pid,
+        exitCode,
+        await stdoutFuture,
+        await stderrFuture,
+      );
+    } on TimeoutException {
+      process.kill(ProcessSignal.sigterm);
+      try {
+        await process.exitCode.timeout(const Duration(seconds: 1));
+      } on TimeoutException {
+        process.kill(ProcessSignal.sigkill);
+        try {
+          await process.exitCode.timeout(const Duration(seconds: 1));
+        } on TimeoutException {
+          // The process has received SIGKILL; report the original bounded timeout.
+        }
+      }
+      final stdout = await stdoutFuture;
+      final stderr = await stderrFuture;
+      throw TimeoutException(
+        'psql exceeded ${commandTimeout.inSeconds}s and was terminated. '
+        'stdout: ${stdout.trim()} stderr: ${stderr.trim()} SQL: $sql',
+        commandTimeout,
+      );
+    }
+  }
 
   Future<void> execute(String sql) async {
     for (var attempt = 1; attempt <= _maxExecuteAttempts; attempt++) {
-      final result = await Process.run(
-        'psql',
-        ['-h', host, '-p', '$port', '-U', user, '-d', database, '-v', 'ON_ERROR_STOP=1', '-c', sql],
-        environment: {'PGPASSWORD': password},
-      );
+      final result = await _runPsql(sql);
 
       if (result.exitCode == 0) {
         return;
@@ -88,32 +154,74 @@ SELECT pg_advisory_unlock(8675309);
     required String branchId,
     required String organizationId,
     int attempts = 40,
+    Duration? timeout,
   }) async {
-    for (var attempt = 0; attempt < attempts; attempt++) {
+    final attemptWindow = Duration(milliseconds: 500 * attempts);
+    final readinessTimeout = timeout == null || timeout > _branchReadyTimeout
+        ? (attemptWindow < _branchReadyTimeout
+              ? attemptWindow
+              : _branchReadyTimeout)
+        : timeout;
+    final deadline = DateTime.now().add(readinessTimeout);
+    String lastState = 'not checked';
+    Object? lastError;
+    while (DateTime.now().isBefore(deadline)) {
       try {
-        await execute('''
-DO \$\$
-BEGIN
-  IF NOT EXISTS (
-    SELECT 1
-    FROM public.branches b
-    WHERE b.id = '$branchId'::uuid
-      AND b.organization_id = '$organizationId'::uuid
-      AND b.is_active = true
-      AND b.is_deleted = false
-  ) THEN
-    RAISE EXCEPTION 'branch not ready';
-  END IF;
-END \$\$;
-''');
-        return;
-      } on StateError {
-        if (attempt == attempts - 1) {
-          rethrow;
+        final result = await _runPsql('''
+SELECT COALESCE((
+  SELECT CASE
+    WHEN b.organization_id <> '$organizationId'::uuid THEN 'wrong organization'
+    WHEN NOT b.is_active THEN 'inactive'
+    WHEN b.is_deleted THEN 'deleted'
+    ELSE 'ready'
+  END
+  FROM public.branches b
+  WHERE b.id = '$branchId'::uuid
+), 'missing');
+''', timeout: _remaining(deadline));
+        if (result.exitCode != 0) {
+          final stderr = '${result.stderr}'.trim();
+          if (!_isTransientPsqlFailure(stderr)) {
+            throw StateError(
+              'Branch readiness SQL failed (${result.exitCode}): '
+              '$stderr\nSQL: $branchId / $organizationId',
+            );
+          }
+          lastState = 'transient psql connection failure';
+          lastError = stderr;
+        } else {
+          lastState = '${result.stdout}'.trim();
+          lastError = null;
+          if (lastState == 'ready') return;
         }
-        await Future<void>.delayed(Duration(milliseconds: 200 * (attempt + 1)));
+      } on TimeoutException catch (error) {
+        throw TimeoutException(
+          'Branch readiness query exceeded the remaining deadline for '
+          'branch=$branchId organization=$organizationId. '
+          'Last observed state: $lastState; last error: $error',
+          readinessTimeout,
+        );
       }
+      final remaining = _remaining(deadline);
+      if (remaining <= Duration.zero) break;
+      await Future<void>.delayed(
+        remaining < const Duration(milliseconds: 350)
+            ? remaining
+            : const Duration(milliseconds: 350),
+      );
     }
+    throw TimeoutException(
+      'Branch readiness timed out after ${readinessTimeout.inSeconds}s for '
+      'branch=$branchId organization=$organizationId. '
+      'Last observed state: $lastState'
+      '${lastError == null ? '' : '; last error: $lastError'}',
+      readinessTimeout,
+    );
+  }
+
+  Duration _remaining(DateTime deadline) {
+    final remaining = deadline.difference(DateTime.now());
+    return remaining.isNegative ? Duration.zero : remaining;
   }
 
   /// Verifies [dev_reset] left no org/branch rows (shared DB isolation guard).
@@ -197,7 +305,13 @@ BEGIN
 END $$;
 
 DELETE FROM public.appointments WHERE true;
-DELETE FROM public.audit_log WHERE true;
+DO $$
+BEGIN
+  IF to_regclass('public.ai_accepted_output') IS NOT NULL THEN
+    DELETE FROM public.ai_accepted_output WHERE true;
+  END IF;
+  DELETE FROM public.audit_log WHERE true;
+END $$;
 
 DO $$
 BEGIN
@@ -240,12 +354,13 @@ WHERE sba.staff_member_id IN (
 );
 
 DELETE FROM public.staff_members WHERE NOT is_bootstrap_admin;
-DELETE FROM public.audit_log WHERE true;
-
-DELETE FROM auth.users au
-WHERE NOT EXISTS (
-  SELECT 1 FROM public.staff_members sm WHERE sm.auth_user_id = au.id
-);
+DO $$
+BEGIN
+  IF to_regclass('public.ai_accepted_output') IS NOT NULL THEN
+    DELETE FROM public.ai_accepted_output WHERE true;
+  END IF;
+  DELETE FROM public.audit_log WHERE true;
+END $$;
 
 DELETE FROM public.staff_branch_assignments WHERE true;
 DELETE FROM public.app_settings WHERE true;
@@ -266,6 +381,11 @@ END $$;
 
 DELETE FROM public.branches WHERE true;
 DELETE FROM public.organizations WHERE true;
+
+DELETE FROM auth.users au
+WHERE NOT EXISTS (
+  SELECT 1 FROM public.staff_members sm WHERE sm.auth_user_id = au.id
+);
 
 SELECT pg_advisory_unlock(8675310);
 ''');
@@ -464,11 +584,27 @@ WHERE sba.staff_member_id IN (
     await execute('''
 DELETE FROM public.staff_members WHERE NOT is_bootstrap_admin;
 ''');
-    await execute('DELETE FROM public.audit_log WHERE true;');
+    await execute(r'''
+DO $$
+BEGIN
+  IF to_regclass('public.ai_accepted_output') IS NOT NULL THEN
+    DELETE FROM public.ai_accepted_output WHERE true;
+  END IF;
+  DELETE FROM public.audit_log WHERE true;
+END $$;
+''');
     await execute('''
 DELETE FROM auth.users au
 WHERE NOT EXISTS (
   SELECT 1 FROM public.staff_members sm WHERE sm.auth_user_id = au.id
+)
+AND NOT EXISTS (
+  SELECT 1 FROM public.organizations o
+  WHERE o.created_by = au.id OR o.updated_by = au.id
+)
+AND NOT EXISTS (
+  SELECT 1 FROM public.branches b
+  WHERE b.created_by = au.id OR b.updated_by = au.id
 );
 ''');
   }

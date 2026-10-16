@@ -35,6 +35,7 @@ class AppPopover extends StatefulWidget {
     this.minWidth,
     this.width,
     this.estimatedContentHeight,
+    this.constrainContentToViewport = false,
     super.key,
   });
 
@@ -56,6 +57,9 @@ class AppPopover extends StatefulWidget {
 
   /// Hint for first-frame flip before overlay content is measured.
   final double? estimatedContentHeight;
+
+  /// Limits the surface to the viewport space available on its resolved side.
+  final bool constrainContentToViewport;
 
   @override
   State<AppPopover> createState() => _AppPopoverState();
@@ -203,6 +207,21 @@ class _AppPopoverState extends State<AppPopover> with SingleTickerProviderStateM
     };
   }
 
+  double? _availableHeightForResolvedSide() {
+    final triggerBox = _triggerKey.currentContext?.findRenderObject() as RenderBox?;
+    final mediaQuery = MediaQuery.maybeOf(context);
+    if (triggerBox == null || !triggerBox.hasSize || mediaQuery == null) return null;
+
+    final top = triggerBox.localToGlobal(Offset.zero).dy;
+    final bottom = top + triggerBox.size.height;
+    final viewportTop = mediaQuery.viewPadding.top;
+    final viewportBottom = mediaQuery.size.height - mediaQuery.viewPadding.bottom;
+    final available = _resolvedSide == AppPopoverSide.bottom
+        ? viewportBottom - bottom - widget.sideOffset
+        : top - viewportTop - widget.sideOffset;
+    return available < 0 ? 0 : available;
+  }
+
   void _close({bool notify = true}) {
     _overlayRefreshScheduled = false;
     _isClosing = true;
@@ -290,7 +309,14 @@ class _AppPopoverState extends State<AppPopover> with SingleTickerProviderStateM
                         context: overlayContext,
                         preset: AppMotionPreset.fadeScale,
                         animation: _controller,
-                        child: _PopoverSurface(key: _contentKey, width: contentWidth, child: widget.child),
+                        child: _PopoverSurface(
+                          key: _contentKey,
+                          width: contentWidth,
+                          maxHeight: widget.constrainContentToViewport
+                              ? _availableHeightForResolvedSide()
+                              : null,
+                          child: widget.child,
+                        ),
                       ),
                     ),
                   ),
@@ -345,10 +371,11 @@ class _AppPopoverState extends State<AppPopover> with SingleTickerProviderStateM
 }
 
 class _PopoverSurface extends StatelessWidget {
-  const _PopoverSurface({required this.child, this.width, super.key});
+  const _PopoverSurface({required this.child, this.width, this.maxHeight, super.key});
 
   final Widget child;
   final double? width;
+  final double? maxHeight;
 
   @override
   Widget build(BuildContext context) {
@@ -357,7 +384,9 @@ class _PopoverSurface extends StatelessWidget {
 
     return Material(
       color: Colors.transparent,
-      child: Container(
+      child: ConstrainedBox(
+        constraints: BoxConstraints(maxHeight: maxHeight ?? double.infinity),
+        child: Container(
         width: width,
         decoration: elevation.decoration(
           level: 2,
@@ -367,6 +396,7 @@ class _PopoverSurface extends StatelessWidget {
         ),
         clipBehavior: Clip.antiAlias,
         child: child,
+        ),
       ),
     );
   }

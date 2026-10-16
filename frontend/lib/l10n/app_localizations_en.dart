@@ -358,4 +358,79 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get breadcrumbNotFound => 'Not found';
+
+  @override
+  String get aiBillingOffersTitle => 'AI coverage offers';
+
+  @override
+  String get aiBillingOffersDescription =>
+      'Choose a plan and accept the current terms to continue.';
+
+  @override
+  String get aiBillingTermsTitle => 'Terms of service';
+
+  @override
+  String get aiBillingAcceptTerms => 'I accept the current terms';
+
+  @override
+  String get aiBillingContinue => 'Continue';
+
+  @override
+  String get aiBillingContactTitle => 'Billing contact';
+
+  @override
+  String get aiBillingContactName => 'Name';
+
+  @override
+  String get aiBillingContactEmail => 'Email';
+
+  @override
+  String get aiBillingContactPhone => 'Phone';
+
+  @override
+  String get aiBillingContactSave => 'Save contact';
+
+  @override
+  String get aiBillingCheckoutTitle => 'Checkout';
+
+  @override
+  String get aiBillingCheckoutSubmit => 'Pay now';
+
+  @override
+  String get aiBillingCheckoutWaiting => 'Waiting';
+
+  @override
+  String get aiBillingCheckoutFailed => 'Failed';
+
+  @override
+  String get aiBillingCheckoutPaid => 'Paid';
+
+  @override
+  String get aiBillingCheckoutActive => 'Active';
+
+  @override
+  String get aiBillingCheckoutAbandoned => 'Abandoned';
+
+  @override
+  String get aiBillingStartsAfterCurrentTerm => 'starts after the current term';
+
+  @override
+  String get aiBillingErrorOfferUnavailable =>
+      'This offer is no longer available. Review the updated price before paying.';
+
+  @override
+  String get aiBillingErrorBillingContactRequired =>
+      'Add a billing contact before checkout.';
+
+  @override
+  String get aiBillingErrorTermsNotAccepted =>
+      'Accept the current terms before checkout.';
+
+  @override
+  String get aiBillingErrorProviderUnavailable =>
+      'The payment provider is unavailable. Try again later.';
+
+  @override
+  String get aiBillingErrorRateLimited =>
+      'Too many billing requests. Try again later.';
 }

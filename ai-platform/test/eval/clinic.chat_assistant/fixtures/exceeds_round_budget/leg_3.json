@@ -1,0 +1,12 @@
+{
+  "leg_id": "leg_3",
+  "assistant_turn": {
+    "kind": "context_requested",
+    "requests": [
+      {
+        "key": "visit.chief_complaint@v1",
+        "arguments": {}
+      }
+    ]
+  }
+}

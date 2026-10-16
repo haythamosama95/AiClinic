@@ -1,0 +1,7 @@
+{
+  "leg_id": "leg_2",
+  "assistant_turn": {
+    "kind": "model",
+    "text": "I requested a medication key outside the permitted set."
+  }
+}

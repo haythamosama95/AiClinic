@@ -1,0 +1,14 @@
+{
+  "leg_id": "leg_1",
+  "assistant_turn": {
+    "kind": "context_requested",
+    "requests": [
+      {
+        "key": "visit.chief_complaint@v1",
+        "arguments": {
+          "visit_id": "550e8400-e29b-41d4-a716-446655440000"
+        }
+      }
+    ]
+  }
+}

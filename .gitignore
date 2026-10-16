@@ -61,3 +61,37 @@ app.*.map.json
 # Universal OS/editor clutter
 Thumbs.db
 *.tmp
+
+# Python
+__pycache__/
+.pytest_cache/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+dist/
+*.egg
+
+web-reference/node_modules
+
+# Shared packages (monorepo)
+packages/**/node_modules/
+
+# Cloudflare Wrangler / local worker harness caches
+.wrangler/
+**/.wrangler/
+.hxw-platform/
+**/.hxw-platform/
+
+# Node dependencies (packages not published from these trees)
+ai-platform/node_modules/
+abo/node_modules/
+e2e/fullstack/node_modules/
+
+# Test campaign governor / local run logs
+test-results/
+.test-run-reports/
+
+# Ad-hoc e2e wrangler smoke scripts (local debugging only)
+e2e/fullstack/test/_flow-test.mjs
+e2e/fullstack/test/_startworker-smoke.mjs

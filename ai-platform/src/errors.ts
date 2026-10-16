@@ -1,0 +1,287 @@
+export type TaxonomyCode =
+  | "unauthenticated"
+  | "installation_suspended"
+  | "suspended"
+  | "forbidden_capability"
+  | "rate_limited"
+  | "quota_exhausted"
+  | "allowance_exhausted"
+  | "coverage_lapsed"
+  | "concurrency_limited"
+  | "coverage_unknown"
+  | "request_too_large"
+  | "context_required"
+  | "context_invalid"
+  | "conversation_budget_exhausted"
+  | "idempotency_conflict"
+  | "capability_unknown"
+  | "capability_retired"
+  | "capability_disabled"
+  | "provider_unavailable"
+  | "provider_rejected"
+  | "validation_failed"
+  | "cancelled"
+  | "timeout"
+  | "internal_error";
+
+export interface TaxonomyEntry {
+  code: TaxonomyCode;
+  httpStatus: number;
+  retryable: string;
+  consumesQuota: string;
+}
+
+const TAXONOMY: Record<TaxonomyCode, TaxonomyEntry> = {
+  unauthenticated: {
+    code: "unauthenticated",
+    httpStatus: 401,
+    retryable: "After re-mint",
+    consumesQuota: "No",
+  },
+  installation_suspended: {
+    code: "installation_suspended",
+    httpStatus: 403,
+    retryable: "No",
+    consumesQuota: "No",
+  },
+  suspended: {
+    code: "suspended",
+    httpStatus: 403,
+    retryable: "No",
+    consumesQuota: "No",
+  },
+  forbidden_capability: {
+    code: "forbidden_capability",
+    httpStatus: 403,
+    retryable: "No",
+    consumesQuota: "No",
+  },
+  rate_limited: {
+    code: "rate_limited",
+    httpStatus: 429,
+    retryable: "Yes, after `retry_after`",
+    consumesQuota: "No",
+  },
+  quota_exhausted: {
+    code: "quota_exhausted",
+    httpStatus: 429,
+    retryable: "Not until period reset",
+    consumesQuota: "No",
+  },
+  allowance_exhausted: {
+    code: "allowance_exhausted",
+    httpStatus: 403,
+    retryable: "No",
+    consumesQuota: "No",
+  },
+  coverage_lapsed: {
+    code: "coverage_lapsed",
+    httpStatus: 403,
+    retryable: "No",
+    consumesQuota: "No",
+  },
+  concurrency_limited: {
+    code: "concurrency_limited",
+    httpStatus: 429,
+    retryable: "Yes, after `retry_after`",
+    consumesQuota: "No",
+  },
+  coverage_unknown: {
+    code: "coverage_unknown",
+    httpStatus: 503,
+    retryable: "Yes, after `retry_after`",
+    consumesQuota: "No",
+  },
+  request_too_large: {
+    code: "request_too_large",
+    httpStatus: 413,
+    retryable: "No",
+    consumesQuota: "No",
+  },
+  context_required: {
+    code: "context_required",
+    httpStatus: 422,
+    retryable: "Yes, after resolving",
+    consumesQuota: "No",
+  },
+  context_invalid: {
+    code: "context_invalid",
+    httpStatus: 422,
+    retryable: "No",
+    consumesQuota: "No",
+  },
+  conversation_budget_exhausted: {
+    code: "conversation_budget_exhausted",
+    httpStatus: 409,
+    retryable: "No, within this conversation",
+    consumesQuota: "No",
+  },
+  idempotency_conflict: {
+    code: "idempotency_conflict",
+    httpStatus: 409,
+    retryable: "No",
+    consumesQuota: "No",
+  },
+  capability_unknown: {
+    code: "capability_unknown",
+    httpStatus: 404,
+    retryable: "No",
+    consumesQuota: "No",
+  },
+  capability_retired: {
+    code: "capability_retired",
+    httpStatus: 404,
+    retryable: "No",
+    consumesQuota: "No",
+  },
+  capability_disabled: {
+    code: "capability_disabled",
+    httpStatus: 503,
+    retryable: "Later",
+    consumesQuota: "No",
+  },
+  provider_unavailable: {
+    code: "provider_unavailable",
+    httpStatus: 503,
+    retryable: "Yes",
+    consumesQuota: "Partially, recorded",
+  },
+  provider_rejected: {
+    code: "provider_rejected",
+    httpStatus: 422,
+    retryable: "No",
+    consumesQuota: "Yes",
+  },
+  validation_failed: {
+    code: "validation_failed",
+    httpStatus: 422,
+    retryable: "Yes, at user discretion",
+    consumesQuota: "Yes",
+  },
+  cancelled: {
+    code: "cancelled",
+    httpStatus: 499,
+    retryable: "—",
+    consumesQuota: "Partially, recorded",
+  },
+  timeout: {
+    code: "timeout",
+    httpStatus: 504,
+    retryable: "Yes",
+    consumesQuota: "Partially, recorded",
+  },
+  internal_error: {
+    code: "internal_error",
+    httpStatus: 500,
+    retryable: "Yes",
+    consumesQuota: "No",
+  },
+};
+
+/** Closed ordered list of every A2 taxonomy code — single source for exhaustiveness tests. */
+export const ALL_TAXONOMY_CODES = Object.keys(TAXONOMY) as TaxonomyCode[];
+
+const TAXONOMY_CODE_SET = new Set<string>(ALL_TAXONOMY_CODES);
+
+export function isTaxonomyCode(code: string): code is TaxonomyCode {
+  return TAXONOMY_CODE_SET.has(code);
+}
+
+export function classifyErrorCode(code: string): TaxonomyCode {
+  if (isTaxonomyCode(code)) {
+    return code;
+  }
+  return "internal_error";
+}
+
+export function getTaxonomyEntry(code: TaxonomyCode): TaxonomyEntry {
+  return TAXONOMY[code];
+}
+
+export function isRetrySafe(retryable: string): boolean {
+  return retryable !== "No" && retryable !== "—";
+}
+
+export function liveHttpStatusForCode(code: string): number | null {
+  const classified = classifyErrorCode(code);
+  if (classified === "cancelled") {
+    return null;
+  }
+  return getTaxonomyEntry(classified).httpStatus;
+}
+
+export type CoverageLapseReason =
+  | "none"
+  | "expired"
+  | "grace_exhausted"
+  | "reversed"
+  | "transferred"
+  | "transfer_pending";
+
+export interface SupplementaryFieldInput {
+  retryAfter?: number;
+  periodReset?: string;
+  coverageReason?: CoverageLapseReason;
+}
+
+/** §4.3.3 simple limiter window when the rate-limit binding supplies no retry hint. */
+export const DEFAULT_RATE_LIMITED_RETRY_AFTER_SECONDS = 60;
+
+/** Prefer a positive admission/binding retry hint; otherwise the simple-limiter window. */
+export function retryAfterSecondsForRateLimited(hint?: unknown): number {
+  if (typeof hint === "number" && Number.isFinite(hint) && hint > 0) {
+    return Math.ceil(hint);
+  }
+  return DEFAULT_RATE_LIMITED_RETRY_AFTER_SECONDS;
+}
+
+export function supplementaryFieldsForCode(
+  code: TaxonomyCode,
+  input: SupplementaryFieldInput,
+): Record<string, number | string> {
+  if (
+    code === "rate_limited" ||
+    code === "concurrency_limited" ||
+    code === "coverage_unknown"
+  ) {
+    return { retry_after: retryAfterSecondsForRateLimited(input.retryAfter) };
+  }
+  if (code === "coverage_lapsed" && input.coverageReason !== undefined) {
+    return { coverage_reason: input.coverageReason };
+  }
+  if (code === "quota_exhausted") {
+    const periodReset = input.periodReset?.trim();
+    if (periodReset) {
+      return { period_reset: periodReset };
+    }
+  }
+  return {};
+}
+
+export interface ErrorBodyInput {
+  code: string;
+  requestReference: string;
+  traceId: string;
+}
+
+export interface ErrorBody {
+  code: TaxonomyCode;
+  request_reference: string;
+  trace_id: string;
+  retry_safe: boolean;
+}
+
+export function buildErrorBody(input: ErrorBodyInput): ErrorBody {
+  // `context_requested` is a terminal SSE kind (§5.5), not a §5.4 taxonomy code.
+  // Unknown / non-taxonomy strings (including that literal) classify to
+  // `internal_error` — never throw from the error-body builder (A2 resilience).
+  const classified = classifyErrorCode(input.code);
+  const entry = getTaxonomyEntry(classified);
+
+  return {
+    code: classified,
+    request_reference: input.requestReference,
+    trace_id: input.traceId,
+    retry_safe: isRetrySafe(entry.retryable),
+  };
+}

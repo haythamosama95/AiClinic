@@ -27,6 +27,7 @@ import 'package:ai_clinic/features/appointments/presentation/pages/appointment_c
 import 'package:ai_clinic/features/appointments/presentation/pages/appointment_detail_page.dart';
 import 'package:ai_clinic/features/queue/presentation/pages/queue_page.dart';
 import 'package:ai_clinic/features/home/presentation/pages/home_page.dart';
+import 'package:ai_clinic/features/ai/presentation/pages/ai_page.dart';
 import 'package:ai_clinic/features/billing/presentation/navigation/invoice_detail_route_extra.dart';
 import 'package:ai_clinic/features/billing/presentation/navigation/visit_billing_route_extra.dart';
 import 'package:ai_clinic/features/billing/presentation/pages/invoice_detail_page.dart';
@@ -39,6 +40,9 @@ import 'package:ai_clinic/features/visits/presentation/pages/visit_detail_page.d
 import 'package:ai_clinic/features/visits/presentation/pages/visit_document_page.dart';
 import 'package:ai_clinic/features/settings/presentation/models/settings_screen.dart';
 import 'package:ai_clinic/features/settings/presentation/pages/settings_page.dart';
+import 'package:ai_clinic/features/ai/billing/administrator_billing_page.dart';
+import 'package:ai_clinic/features/ai/host/ai_feature_host_page.dart';
+import 'package:ai_clinic/features/auth/domain/auth_session.dart';
 
 String _redirectToClinicManagement(BuildContext context, GoRouterState state) => AppRoutes.clinicManagement;
 
@@ -95,7 +99,34 @@ final appRouterProvider = Provider<GoRouter>((ref) {
             path: AppRoutes.foundationDemo,
             builder: (context, state) => DesignSystemPage(initialSection: ShellNavConfig.devSectionForUri(state.uri)),
           ),
+          GoRoute(
+            path: AppRoutes.aiFeatureHost,
+            builder: (context, state) {
+              // CP3 / tests compose by passing [AiFeatureHostDependencies] via
+              // GoRouter extra (Clarification Q2). Production mint/submit adapters
+              // are supplied by the composer — E4 does not embed clinical screens.
+              final deps = state.extra;
+              if (deps is AiFeatureHostDependencies) {
+                return AiFeatureHostPage(dependencies: deps);
+              }
+              return const Scaffold(
+                body: Center(child: Text('AI feature host requires AiFeatureHostDependencies via route extra.')),
+              );
+            },
+          ),
           GoRoute(path: AppRoutes.home, builder: (context, state) => const HomePage()),
+          GoRoute(path: AppRoutes.ai, builder: (context, state) => const AiPage()),
+          GoRoute(
+            path: AppRoutes.aiAdministratorBilling,
+            redirect: (context, state) {
+              final auth = ref.read(authSessionProvider);
+              if (auth.context?.staffProfile.role != StaffRole.administrator) {
+                return AppRoutes.home;
+              }
+              return null;
+            },
+            builder: (context, state) => const AdministratorBillingPage(),
+          ),
           GoRoute(path: AppRoutes.dashboard, builder: shellPlaceholderPage),
           GoRoute(path: AppRoutes.encounters, builder: shellPlaceholderPage),
           GoRoute(path: AppRoutes.workspace, builder: shellPlaceholderPage),

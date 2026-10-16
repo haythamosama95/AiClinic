@@ -130,8 +130,6 @@ All records use soft delete (`is_deleted = true`). Hard deletes are never perfor
 | **No direct DB access**      | All access goes through PostgREST + RLS. No raw connection strings in the Flutter app. |
 | **JWT-based auth**           | Every API request carries a JWT. PostgREST validates it before processing.             |
 | **Defense in depth**         | Permission checks in Flutter UI + RPC functions + RLS policies. Three layers.          |
-| **AI isolation**             | AI service has no DB credentials. Cannot read or write data.                           |
-| **Approval-gated AI**        | All AI-generated commands require explicit human approval before execution.            |
 | **Encrypted backups**        | Tier 2 cloud backups are encrypted before upload.                                      |
 | **Subscription enforcement** | Cached locally with grace period. System degrades gracefully, never hard-locks.        |
 

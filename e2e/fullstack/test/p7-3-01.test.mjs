@@ -1,0 +1,398 @@
+// P7.3 is excluded globally, including direct `node --test` invocations.
+const ignoreTestRegistration = (..._registration) => null;
+const test = ignoreTestRegistration;
+const before = ignoreTestRegistration;
+const after = ignoreTestRegistration;
+import assert from "node:assert/strict";
+import {
+  billingFetch,
+  BILLING_HOST,
+  countAboTable,
+  countAboWork,
+  ensurePlatformGrantPrerequisites,
+  HARNESS_URL,
+  issueFeedToken,
+  mintAccessJwt,
+  mintHarnessBillingToken,
+  OFFER_ID,
+  OFFER_VERSION,
+  opsFetch,
+  PLATFORM_CONFIG,
+  PAYMOB_URL,
+  platformFetch,
+  putBillingContact,
+  queryAboD1One,
+  rpc,
+  seedAboOffers,
+  sqlLiteral,
+  startStack,
+  syncPaymobForCheckout,
+  TERMS_VERSION,
+  triggerAboScheduled,
+  openCheckout,
+} from "./p7-3-stack.mjs";
+
+// H-FS unit harness (P7.3 US1): node --import tsx --test test/p7-3-01.test.mjs
+
+const ABO_N_PLUS_1 = "test/variant/abo-n-plus-1.toml";
+const PLATFORM_N_PLUS_1 = "test/variant/platform-n-plus-1.toml";
+
+const RECEIVER_CURRENT = 2;
+const ACCEPTED_VERSIONS = [1, 2];
+const PAYMOB_ADAPTER_VERSION = 2;
+const PAYMOB_RETURN_VERSION = 2;
+
+let stack = null;
+
+before(async () => {
+  stack = await startStack({
+    aboConfig: ABO_N_PLUS_1,
+    platformConfig: PLATFORM_N_PLUS_1,
+  });
+});
+
+after(async () => {
+  await stack?.stop();
+  stack = null;
+});
+
+async function vendorCall(method, args) {
+  const response = await fetch(`${HARNESS_URL}/vendor-call`, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ method, args }),
+  });
+  const bodyText = await response.text();
+  assert.equal(
+    response.status,
+    200,
+    `POST /vendor-call for ${method} failed with HTTP ${response.status}: ${bodyText}`,
+  );
+  return JSON.parse(bodyText);
+}
+
+async function expectAboClinicRefusal(pathname, version) {
+  const headers = { authorization: "Bearer invalid-token" };
+  if (version !== undefined) {
+    headers["Abo-Contract-Version"] = String(version);
+  }
+  const notificationsBefore = countAboTable("notification");
+  const response = await billingFetch(pathname, {
+    headers,
+    omitContractVersionDefault: version === undefined,
+  });
+  assert.equal(response.status, 400);
+  const body = await response.json();
+  assert.equal(body.code, "contract_version_unsupported");
+  assert.deepEqual(body.accepted_versions, ACCEPTED_VERSIONS);
+  assert.equal(body.contract_version, RECEIVER_CURRENT);
+  assert.equal(response.headers.get("Abo-Contract-Version"), String(RECEIVER_CURRENT));
+  assert.equal(countAboTable("notification"), notificationsBefore);
+}
+
+async function expectAboConsoleRefusal(pathname, version) {
+  const headers = {};
+  if (version !== undefined) {
+    headers["Abo-Contract-Version"] = String(version);
+  }
+  const workBefore = countAboWork();
+  const response = await opsFetch(pathname, {
+    headers,
+    omitContractVersionDefault: version === undefined,
+  });
+  assert.equal(response.status, 400);
+  const body = await response.json();
+  assert.equal(body.code, "contract_version_unsupported");
+  assert.equal(body.reload, true);
+  assert.deepEqual(body.accepted_versions, ACCEPTED_VERSIONS);
+  assert.equal(countAboWork(), workBefore);
+}
+
+async function expectPlatformClinicRefusal(pathname, init = {}) {
+  const headers = new Headers(init.headers ?? {});
+  if (!headers.has("Aip-Contract-Version")) {
+    headers.delete("Aip-Contract-Version");
+  }
+  const response = await platformFetch(pathname, {
+    ...init,
+    headers,
+    omitContractVersionDefault: !headers.has("Aip-Contract-Version"),
+  });
+  assert.equal(response.status, 400);
+  const body = await response.json();
+  assert.equal(body.code, "contract_version_unsupported");
+  assert.deepEqual(body.accepted_versions, ACCEPTED_VERSIONS);
+}
+
+function paymentForCheckout(checkoutId) {
+  return queryAboD1One(
+    `SELECT payment_id FROM payment WHERE checkout_id = ${sqlLiteral(checkoutId)} LIMIT 1`,
+  )?.payment_id;
+}
+
+async function waitForPayment(checkoutId) {
+  const deadline = Date.now() + 10_000;
+  let paymentId = null;
+
+  while (Date.now() < deadline) {
+    paymentId = paymentForCheckout(checkoutId);
+    if (paymentId) return paymentId;
+    await new Promise((resolve) => setTimeout(resolve, 100));
+  }
+
+  assert.fail(`confirmation did not create a payment for checkout ${checkoutId}`);
+}
+
+async function waitForParkedGrant(paymentId) {
+  const deadline = Date.now() + 10_000;
+  let work = null;
+
+  while (Date.now() < deadline) {
+    work = queryAboD1One(
+      `SELECT state, last_error FROM work WHERE kind = 'grant' AND subject_id = ${sqlLiteral(paymentId)}`,
+    );
+    if (work?.state === "parked") return work;
+    await new Promise((resolve) => setTimeout(resolve, 100));
+  }
+
+  assert.fail(
+    `grant work for payment ${paymentId} was not parked; ` +
+      `state=${work?.state ?? "missing"}, last_error=${work?.last_error ?? "null"}`,
+  );
+}
+
+test("E2E-P7.3-01", async () => {
+  const { administrator, orgId, installationId } = stack.clinics.orgA;
+  ensurePlatformGrantPrerequisites(orgId, installationId);
+  seedAboOffers();
+
+  for (const version of [undefined, 0, 3]) {
+    await expectAboClinicRefusal("/v1/offers", version);
+    await expectAboConsoleRefusal("/ops/lookup", version);
+    await expectPlatformClinicRefusal("/v1/capabilities", {
+      headers: version === undefined
+        ? { authorization: "Bearer invalid-token" }
+        : {
+            authorization: "Bearer invalid-token",
+            "Aip-Contract-Version": String(version),
+          },
+    });
+    await expectPlatformClinicRefusal("/v1/coverage", {
+      headers: version === undefined
+        ? { authorization: "Bearer invalid-token" }
+        : {
+            authorization: "Bearer invalid-token",
+            "Aip-Contract-Version": String(version),
+          },
+    });
+    await expectPlatformClinicRefusal("/v1/requests", {
+      method: "POST",
+      headers: {
+        authorization: "Bearer invalid-token",
+        "content-type": "application/json",
+        "x-idempotency-key": crypto.randomUUID(),
+        "x-capability-version": "1.0.0",
+        ...(version === undefined ? {} : { "Aip-Contract-Version": String(version) }),
+      },
+      body: JSON.stringify({ capability_id: "clinic.visit_summary" }),
+    });
+  }
+
+  const aiToken = await rpc(administrator, "issue_ai_token", {
+    p_contract_version: 1,
+  });
+  assert.ok(aiToken);
+
+  const capabilitiesV2 = await platformFetch("/v1/capabilities", {
+    headers: {
+      authorization: `Bearer ${aiToken}`,
+      "Aip-Contract-Version": "2",
+    },
+  });
+  assert.equal(capabilitiesV2.status, 200);
+  assert.equal(capabilitiesV2.headers.get("Aip-Contract-Version"), "2");
+
+  const capabilitiesV1 = await platformFetch("/v1/capabilities", {
+    headers: {
+      authorization: `Bearer ${aiToken}`,
+      "Aip-Contract-Version": "1",
+    },
+  });
+  assert.equal(capabilitiesV1.status, 200);
+  assert.equal(capabilitiesV1.headers.get("Aip-Contract-Version"), "1");
+
+  const feedToken = issueFeedToken();
+  const feedRefused = await platformFetch("/v1/feed/coverage?after=0&limit=1", {
+    headers: {
+      authorization: `Bearer ${feedToken}`,
+      "Aip-Contract-Version": "0",
+    },
+  });
+  assert.equal(feedRefused.status, 400);
+  const feedRefusedBody = await feedRefused.json();
+  assert.equal(feedRefusedBody.code, "contract_version_unsupported");
+
+  const feedOk = await platformFetch("/v1/feed/coverage?after=0&limit=1", {
+    headers: {
+      authorization: `Bearer ${feedToken}`,
+      "Aip-Contract-Version": "2",
+    },
+  });
+  assert.equal(feedOk.status, 200);
+  assert.equal(feedOk.headers.get("Aip-Contract-Version"), "2");
+
+  const vendorMissing = await vendorCall("listOperatorCredentials", {});
+  assert.equal(vendorMissing.result, "rejected");
+  assert.equal(vendorMissing.code, "contract_version_unsupported");
+
+  const vendorOk = await vendorCall("listOperatorCredentials", {
+    contract_version: RECEIVER_CURRENT,
+  });
+  assert.equal(vendorOk.result, "ok");
+
+  const returnResponse = await billingFetch("/return/paymob?v=99");
+  assert.equal(returnResponse.status, 200);
+  const returnHtml = (await returnResponse.text()).toLowerCase();
+  assert.equal(returnHtml.includes("contract_version_unsupported"), false);
+
+  const billing = await rpc(administrator, "issue_billing_token", {
+    p_contract_version: 1,
+  });
+  assert.equal(billing.success, true);
+  await putBillingContact(billing.data.token);
+  const checkoutResponse = await billingFetch("/v1/checkouts", {
+    method: "POST",
+    headers: {
+      authorization: `Bearer ${billing.data.token}`,
+      "content-type": "application/json",
+      "Abo-Contract-Version": String(RECEIVER_CURRENT),
+    },
+    body: JSON.stringify({
+      client_request_id: crypto.randomUUID(),
+      offer_id: OFFER_ID,
+      offer_version: OFFER_VERSION,
+      terms_version: TERMS_VERSION,
+    }),
+  });
+  assert.equal(checkoutResponse.status, 201);
+  const capturedIntentionResponse = await fetch(`${PAYMOB_URL}/__last`);
+  assert.equal(capturedIntentionResponse.status, 200);
+  const capturedIntention = await capturedIntentionResponse.json();
+  assert.equal(
+    capturedIntention.redirection_url,
+    `https://${BILLING_HOST}/return/paymob?v=${PAYMOB_RETURN_VERSION}`,
+    "Paymob intention should receive the current return contract version",
+  );
+  assert.equal(
+    capturedIntention.notification_url,
+    `https://${BILLING_HOST}/notify/paymob`,
+  );
+
+  const { token: badVerToken } = await mintHarnessBillingToken(
+    stack,
+    { ver: "1", jti: crypto.randomUUID() },
+  );
+  const billingBadVer = await billingFetch("/v1/offers", {
+    headers: {
+      authorization: `Bearer ${badVerToken}`,
+      "Abo-Contract-Version": String(RECEIVER_CURRENT),
+    },
+  });
+  assert.equal(billingBadVer.status, 401);
+  const billingBadVerBody = await billingBadVer.json();
+  assert.equal(billingBadVerBody.code, "unauthenticated");
+  await stack.restartAbo(stack.issuerKeys);
+
+  const notificationsBefore = countAboTable("notification");
+  const paymentsBeforeUnparseable = countAboTable("payment");
+  const workBeforeUnparseable = countAboWork();
+  const unparseable = await billingFetch("/notify/paymob?hmac=deadbeef", {
+    method: "POST",
+    headers: {
+      "content-type": "application/json",
+      "cf-connecting-ip": "203.0.113.88",
+    },
+    body: JSON.stringify({ type: "TRANSACTION" }),
+  });
+  assert.equal(unparseable.status, 200);
+  assert.equal(countAboTable("notification"), notificationsBefore + 1);
+  const evidence = queryAboD1One(
+    "SELECT adapter_version, hmac_valid, disposition, checkout_id FROM notification ORDER BY notification_id DESC LIMIT 1",
+  );
+  assert.equal(evidence?.adapter_version, PAYMOB_ADAPTER_VERSION);
+  assert.equal(evidence?.hmac_valid, 0);
+  assert.equal(evidence?.disposition, "unparseable");
+  assert.equal(evidence?.checkout_id, null);
+  assert.equal(countAboTable("payment"), paymentsBeforeUnparseable);
+  assert.equal(countAboWork(), workBeforeUnparseable);
+  const alertRow = queryAboD1One(
+    `SELECT code FROM alert WHERE code = 'AL-23' ORDER BY alert_key DESC LIMIT 1`,
+  );
+  assert.equal(alertRow?.code, "AL-23");
+
+  const badHmacNotificationsBefore = countAboTable("notification");
+  const parseableBadHmac = await billingFetch("/notify/paymob?hmac=deadbeef", {
+    method: "POST",
+    headers: {
+      "content-type": "application/json",
+      "cf-connecting-ip": "203.0.113.89",
+    },
+    body: JSON.stringify({
+      type: "TRANSACTION",
+      obj: {
+        amount_cents: 100,
+        created_at: "2026-10-16T00:00:00Z",
+        currency: "EGP",
+        error_occured: false,
+        has_parent_transaction: false,
+        id: 7654321,
+        integration_id: 1,
+        is_3d_secure: false,
+        is_auth: false,
+        is_capture: true,
+        is_refunded: false,
+        is_standalone_payment: true,
+        is_voided: false,
+        order: { id: 8765432 },
+        owner: 1,
+        pending: false,
+        source_data: { pan: "0000", sub_type: "MasterCard", type: "card" },
+        success: true,
+      },
+    }),
+  });
+  assert.equal(parseableBadHmac.status, 401);
+  assert.equal(countAboTable("notification"), badHmacNotificationsBefore);
+
+  const billingForGrant = await rpc(administrator, "issue_billing_token", {
+    p_contract_version: 1,
+  });
+  assert.equal(billingForGrant.success, true);
+  await putBillingContact(billingForGrant.data.token);
+  const grantCheckout = await openCheckout(
+    billingForGrant.data.token,
+    "p73-grant-vendor",
+  );
+  await syncPaymobForCheckout(grantCheckout.checkoutId);
+  // The return handler schedules confirmations for every open checkout. Keep
+  // assertions scoped to this checkout because earlier cases may also be open
+  // and the Paymob harness can reuse order IDs.
+  await stack.restartPlatform({ platformConfig: PLATFORM_CONFIG });
+  const confirmationResponse = await billingFetch("/return/paymob?v=99");
+  assert.equal(confirmationResponse.status, 200);
+  await triggerAboScheduled("* * * * *");
+  const grantPaymentId = await waitForPayment(grantCheckout.checkoutId);
+  await triggerAboScheduled("* * * * *");
+  const parkedGrant = await waitForParkedGrant(grantPaymentId);
+  assert.equal(parkedGrant.state, "parked");
+  assert.match(
+    String(parkedGrant.last_error ?? ""),
+    /contract_version_unsupported|rejected/,
+  );
+  const storedGrantRequest = queryAboD1One(
+    `SELECT envelope FROM grant_request WHERE source_ref = ${sqlLiteral(grantPaymentId)} LIMIT 1`,
+  );
+  assert.ok(storedGrantRequest?.envelope, "grant_request should store the envelope");
+  const storedEnvelope = JSON.parse(storedGrantRequest.envelope);
+  assert.equal(storedEnvelope.contract_version, RECEIVER_CURRENT);
+});

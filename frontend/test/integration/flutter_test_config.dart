@@ -3,13 +3,15 @@ import 'dart:async';
 import '../boundary/harness/live_supabase_harness.dart';
 import '../boundary/harness/reset.dart';
 
-/// Initializes the local Supabase stack for boundary-gated integration tests.
+/// Boots integration tests. Harness setup stays in each file's [setUpAll] so
+/// widget tests can register [TestWidgetsFlutterBinding] before
+/// [LiveSupabaseHarness.ensureReady] runs inside a test zone.
 Future<void> testExecutable(FutureOr<void> Function() testMain) async {
-  await LiveSupabaseHarness.ensureReady();
-  await boundaryCampaignReset();
   try {
     await testMain();
   } finally {
-    await boundaryCampaignReset();
+    if (LiveSupabaseHarness.isAvailable) {
+      await boundaryCampaignReset();
+    }
   }
 }

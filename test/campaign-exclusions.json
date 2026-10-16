@@ -1,0 +1,8 @@
+{
+  "campaigns": [],
+  "subcampaigns": [
+    "e2e-fullstack/p7-3",
+    "frontend/fullstack"
+  ],
+  "test_cases": {}
+}

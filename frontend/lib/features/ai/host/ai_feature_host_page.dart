@@ -1,0 +1,559 @@
+import 'dart:async';
+import 'dart:convert';
+
+import 'package:flutter/material.dart';
+import 'package:go_router/go_router.dart';
+import 'package:http/http.dart' as http;
+import 'package:http/testing.dart';
+
+import 'package:ai_clinic/app/app_routes.dart';
+import 'package:ai_clinic/core/ai/ai_client_sdk.dart';
+import 'package:ai_clinic/core/ai/context_provider_port.dart';
+import 'package:ai_clinic/core/ai/context_required_self_heal.dart';
+import 'package:ai_clinic/core/ai/context_resolver.dart';
+import 'package:ai_clinic/core/ai/taxonomy.dart';
+import 'package:ai_clinic/core/ai/usage_summary_client.dart';
+import 'package:ai_clinic/core/ui/components/app_button.dart';
+import 'package:ai_clinic/core/ui/theme/app_typography.dart';
+
+import '../availability/ai_availability.dart';
+import '../degraded/ai_degraded_mode.dart';
+import '../degraded/ai_degraded_view.dart';
+import '../surface/first_ai_feature_surface.dart';
+import '../surface/usage_gauge.dart';
+
+/// Tracks AI-platform network calls for widget spies (T8; FR-009).
+abstract class PlatformNetworkSpy {
+  int get platformCallCount;
+
+  void recordPlatformCall(String url);
+}
+
+class InMemoryPlatformNetworkSpy implements PlatformNetworkSpy {
+  int _count = 0;
+  final List<String> urls = [];
+
+  @override
+  int get platformCallCount => _count;
+
+  @override
+  void recordPlatformCall(String url) {
+    _count++;
+    urls.add(url);
+  }
+}
+
+/// Dependencies injectable by widget tests and production / CP3 composition.
+///
+/// Production hosts SHOULD construct [contextProvider] as a per-visit
+/// `SupabaseContextProviderPort(client: …, visitId: visitId)` so the
+/// argument-free [ContextProviderPort.fetchVisitChiefComplaint] can reach
+/// `public.get_visit_chief_complaint`. Widget tests may inject
+/// `HarnessContextProviderPort` instead.
+///
+/// [requiredContextKeys] SHOULD come from capability discovery (§5.5); the
+/// default is the frozen first-capability key list.
+class AiFeatureHostDependencies {
+  const AiFeatureHostDependencies({
+    required this.availabilityReader,
+    required this.reachabilityPort,
+    required this.sdk,
+    required this.contextProvider,
+    required this.manifestRefreshPort,
+    required this.visitId,
+    this.requiredContextKeys = kFirstAiRequiredContextKeys,
+    this.networkSpy,
+    this.persistenceProbe,
+    this.exportProbe,
+    this.mintPort,
+    this.usageSummaryClient,
+    this.skipReachabilityProbe = false,
+    this.autoInvoke = true,
+    this.staffIsAdministrator = false,
+    this.onStatusRefresh,
+  });
+
+  final AiAvailabilityReader availabilityReader;
+  final PlatformReachabilityPort reachabilityPort;
+  final AiClientSdk sdk;
+  final ContextProviderPort contextProvider;
+  final ManifestRefreshPort manifestRefreshPort;
+  final String visitId;
+  final List<String> requiredContextKeys;
+  final PlatformNetworkSpy? networkSpy;
+  final AiPersistenceProbe? persistenceProbe;
+  final AiExportProbe? exportProbe;
+  final AatMintPort? mintPort;
+  final UsageSummaryClient? usageSummaryClient;
+  final bool skipReachabilityProbe;
+
+  /// When false, [FirstAiFeatureSurface] stays idle until the caller triggers invoke.
+  final bool autoInvoke;
+
+  /// When true, notice forms show the administrator renew control.
+  final bool staffIsAdministrator;
+
+  /// App-shell `get_ai_status` refresh after a coverage-code denial.
+  final Future<void> Function()? onStatusRefresh;
+}
+
+/// Standalone host composing availability gate + surface (Clarification Q2).
+class AiFeatureHostPage extends StatefulWidget {
+  const AiFeatureHostPage({super.key, required this.dependencies, this.embedded = false});
+
+  final AiFeatureHostDependencies dependencies;
+
+  /// When true, omit [Scaffold]/[AppBar] so the host can sit inside the app shell.
+  final bool embedded;
+
+  @override
+  State<AiFeatureHostPage> createState() => _AiFeatureHostPageState();
+}
+
+class _AiFeatureHostPageState extends State<AiFeatureHostPage> {
+  AiDegradedMode _mode = AiDegradedMode.nonEnrolled;
+  var _loading = true;
+  ContextResolver? _resolver;
+  bool _platformReachable = false;
+  int? _creditsUsed;
+  int? _creditBudget;
+  String? _subscriptionRef;
+  String? _planDisplayName;
+  List<AiStatusNotice> _notices = const [];
+  String? _denialWireCode;
+  String? _denialRetryAfter;
+
+  @override
+  void initState() {
+    super.initState();
+    unawaited(_bootstrap());
+  }
+
+  @override
+  void didUpdateWidget(AiFeatureHostPage oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.dependencies.staffIsAdministrator != widget.dependencies.staffIsAdministrator ||
+        oldWidget.dependencies.usageSummaryClient != widget.dependencies.usageSummaryClient) {
+      unawaited(_refreshAdministratorCoverage());
+    }
+  }
+
+  @override
+  void dispose() {
+    _resolver?.dispose();
+    _resolver = null;
+    super.dispose();
+  }
+
+  Future<void> _bootstrap() async {
+    try {
+      final availability = await widget.dependencies.availabilityReader.read();
+
+      if (!availability.available) {
+        if (!mounted) {
+          return;
+        }
+        setState(() {
+          _loading = false;
+          _mode = AiDegradedMode.nonEnrolled;
+          _platformReachable = false;
+          _notices = availability.notices;
+        });
+        return;
+      }
+
+      final baseUrl = availability.platformBaseUrl;
+      var reachable = false;
+      if (!widget.dependencies.skipReachabilityProbe && baseUrl != null && baseUrl.isNotEmpty) {
+        widget.dependencies.networkSpy?.recordPlatformCall('$baseUrl/health');
+        reachable = await widget.dependencies.reachabilityPort.isReachable(baseUrl);
+      }
+
+      final mode = resolveDegradedMode(availability: availability, platformReachable: reachable);
+
+      int? creditsUsed;
+      int? creditBudget;
+      String? subscriptionRef;
+      String? planDisplayName;
+      if (mode == AiDegradedMode.ready &&
+          widget.dependencies.staffIsAdministrator &&
+          baseUrl != null &&
+          baseUrl.isNotEmpty) {
+        final summary = await _fetchCoverage(baseUrl);
+        creditsUsed = summary?.creditsUsed;
+        creditBudget = summary?.creditBudget;
+        subscriptionRef = summary?.subscriptionRef;
+        planDisplayName = summary?.planDisplayName;
+      }
+
+      if (!mounted) {
+        return;
+      }
+      setState(() {
+        _loading = false;
+        _mode = mode;
+        _platformReachable = reachable;
+        _creditsUsed = creditsUsed;
+        _creditBudget = creditBudget;
+        _subscriptionRef = subscriptionRef;
+        _planDisplayName = planDisplayName;
+        _notices = availability.notices;
+        if (mode == AiDegradedMode.ready) {
+          _resolver = ContextResolver(providerPort: widget.dependencies.contextProvider);
+        }
+      });
+    } on ContractVersionUnsupportedException {
+      if (!mounted) {
+        return;
+      }
+      setState(() {
+        _loading = false;
+        _mode = AiDegradedMode.appUpdate;
+        _platformReachable = false;
+        _resolver = null;
+        _notices = const [];
+      });
+    } catch (e, st) {
+      debugPrint('AiFeatureHostPage bootstrap failed: $e\n$st');
+      if (!mounted) {
+        return;
+      }
+      // Fail-closed: treat as non-enrolled so clinical work is never blocked (A11).
+      setState(() {
+        _loading = false;
+        _mode = AiDegradedMode.nonEnrolled;
+        _platformReachable = false;
+        _resolver = null;
+        _notices = const [];
+      });
+    }
+  }
+
+  Future<void> _refreshAdministratorCoverage() async {
+    if (!widget.dependencies.staffIsAdministrator) {
+      if (!mounted) {
+        return;
+      }
+      setState(() {
+        _creditsUsed = null;
+        _creditBudget = null;
+        _subscriptionRef = null;
+        _planDisplayName = null;
+      });
+      return;
+    }
+
+    final availability = await widget.dependencies.availabilityReader.read();
+    final baseUrl = availability.platformBaseUrl;
+    if (baseUrl == null || baseUrl.isEmpty) {
+      return;
+    }
+
+    final summary = await _fetchCoverage(baseUrl);
+    if (!mounted) {
+      return;
+    }
+    setState(() {
+      _creditsUsed = summary?.creditsUsed;
+      _creditBudget = summary?.creditBudget;
+      _subscriptionRef = summary?.subscriptionRef;
+      _planDisplayName = summary?.planDisplayName;
+    });
+  }
+
+  UsageSummaryClient _resolveUsageSummaryClient() {
+    final override = widget.dependencies.usageSummaryClient;
+    if (override != null) {
+      return override;
+    }
+    if (widget.dependencies.networkSpy != null) {
+      return UsageSummaryClient(
+        httpClient: MockClient((request) async {
+          widget.dependencies.networkSpy?.recordPlatformCall(request.url.toString());
+          if (request.url.path.endsWith('/v1/coverage')) {
+            return http.Response(
+              jsonEncode({
+                'subscription_ref': 'sub-fixture-001',
+                'term': {
+                  'used': 42,
+                  'allowance': 10000,
+                  'plan_display_name': 'Fixture Plan',
+                },
+              }),
+              200,
+              headers: {'content-type': 'application/json'},
+            );
+          }
+          return http.Response('not found', 404);
+        }),
+      );
+    }
+    return UsageSummaryClient();
+  }
+
+  Future<UsageSummaryFetchResult?> _fetchCoverage(String platformBaseUrl) async {
+    final String? aat;
+    if (widget.dependencies.networkSpy != null) {
+      aat = 'widget-test-aat';
+    } else {
+      final mintPort = widget.dependencies.mintPort;
+      aat = mintPort != null ? await mintPort.mint() : null;
+    }
+    if (aat == null) {
+      return null;
+    }
+    try {
+      return await _resolveUsageSummaryClient().fetchUsage(
+        platformBaseUrl: platformBaseUrl,
+        aat: aat,
+      );
+    } on UsageSummaryAuthFailure {
+      return null;
+    } catch (e, st) {
+      debugPrint('Usage summary fetch failed: $e\n$st');
+      return null;
+    }
+  }
+
+  void _onTerminalFailure(
+    TaxonomyCode code, {
+    String? wireCode,
+    String? retryAfter,
+    bool networkFailure = false,
+  }) {
+    if (isCoverageDenialWireCode(wireCode)) {
+      unawaited(widget.dependencies.onStatusRefresh?.call());
+    }
+
+    final mode = resolveDegradedMode(
+      availability: const AiAvailability(enrolled: true, platformBaseUrl: null),
+      platformReachable: _platformReachable,
+      terminalFailureCode: code,
+      networkFailure: networkFailure,
+    );
+    if (mode == AiDegradedMode.ready) {
+      return;
+    }
+    setState(() {
+      _mode = mode;
+      _denialWireCode = wireCode;
+      _denialRetryAfter = retryAfter;
+      if (_hidesSurface(mode)) {
+        _resolver?.dispose();
+        _resolver = null;
+      }
+    });
+  }
+
+  void _onRetry() {
+    setState(() {
+      _mode = AiDegradedMode.ready;
+      _resolver ??= ContextResolver(providerPort: widget.dependencies.contextProvider);
+    });
+  }
+
+  static bool _hidesSurface(AiDegradedMode mode) =>
+      mode == AiDegradedMode.nonEnrolled ||
+      mode == AiDegradedMode.installationSuspended ||
+      mode == AiDegradedMode.forbiddenCapability ||
+      mode == AiDegradedMode.unreachable ||
+      mode == AiDegradedMode.quotaExhausted ||
+      mode == AiDegradedMode.aiUnavailable ||
+      mode == AiDegradedMode.appUpdate ||
+      mode == AiDegradedMode.providerUnavailable ||
+      mode == AiDegradedMode.safetyLimited;
+
+  Widget _body() {
+    if (_loading) {
+      return const Center(child: Text(key: Key('ai_host_loading'), 'Loading…'));
+    }
+
+    // Non-enrolled: hide AI chrome entirely (§4.2; A11) — no banner, no AI app bar.
+    // Status notices still render when the backend supplies them.
+    if (_mode == AiDegradedMode.nonEnrolled) {
+      if (_notices.isEmpty) {
+        return const SizedBox.shrink();
+      }
+      return _AiStatusNotices(
+        notices: _notices,
+        staffIsAdministrator: widget.dependencies.staffIsAdministrator,
+      );
+    }
+
+    final hideSurface = _hidesSurface(_mode);
+
+    final showUsageGauge = widget.dependencies.staffIsAdministrator &&
+        _mode == AiDegradedMode.ready &&
+        _creditsUsed != null &&
+        _creditBudget != null;
+
+    final degradedView = AiDegradedView(
+      mode: _mode,
+      onRetry: _mode == AiDegradedMode.providerUnavailable ? _onRetry : null,
+      staffIsAdministrator: widget.dependencies.staffIsAdministrator,
+      wireCode: _denialWireCode,
+      retryAfter: _denialRetryAfter,
+      subscriptionRef: _subscriptionRef,
+      planDisplayName: _planDisplayName,
+      child: hideSurface
+          ? const Text('Clinical workflows remain available.')
+          : _resolver != null
+          ? FirstAiFeatureSurface(
+              sdk: widget.dependencies.sdk,
+              resolver: _resolver!,
+              manifestRefreshPort: widget.dependencies.manifestRefreshPort,
+              visitId: widget.dependencies.visitId,
+              requiredContextKeys: widget.dependencies.requiredContextKeys,
+              persistenceProbe: widget.dependencies.persistenceProbe,
+              exportProbe: widget.dependencies.exportProbe,
+              onTerminalFailure: (
+                code, {
+                wireCode,
+                retryAfter,
+                coverageReason,
+                acceptedVersions,
+                networkFailure = false,
+              }) =>
+                  _onTerminalFailure(
+                    code,
+                    wireCode: wireCode,
+                    retryAfter: retryAfter,
+                    networkFailure: networkFailure,
+                  ),
+              autoInvoke: widget.dependencies.autoInvoke,
+            )
+          : null,
+    );
+
+    final chrome = <Widget>[
+      if (_notices.isNotEmpty) ...[
+        _AiStatusNotices(
+          notices: _notices,
+          staffIsAdministrator: widget.dependencies.staffIsAdministrator,
+        ),
+        const SizedBox(height: 16),
+      ],
+      if (showUsageGauge) ...[
+        UsageGauge(creditsUsed: _creditsUsed!, creditBudget: _creditBudget!),
+        const SizedBox(height: 16),
+      ],
+      if (_mode == AiDegradedMode.unreachable) const UsageGaugeUnreachableMarker(),
+    ];
+
+    if (widget.embedded) {
+      return Padding(
+        padding: EdgeInsets.zero,
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            ...chrome,
+            degradedView,
+          ],
+        ),
+      );
+    }
+
+    return Padding(
+      padding: const EdgeInsets.all(16),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          ...chrome,
+          Expanded(child: degradedView),
+        ],
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final body = _body();
+    if (widget.embedded) {
+      return body;
+    }
+    if (_loading) {
+      return Scaffold(body: body);
+    }
+    if (_mode == AiDegradedMode.nonEnrolled) {
+      if (_notices.isEmpty) {
+        return Scaffold(body: const UsageGaugeGate());
+      }
+      return Scaffold(
+        body: Padding(
+          padding: const EdgeInsets.all(16),
+          child: _AiStatusNotices(
+            notices: _notices,
+            staffIsAdministrator: widget.dependencies.staffIsAdministrator,
+          ),
+        ),
+      );
+    }
+    return Scaffold(
+      appBar: AppBar(title: const Text('AI Feature')),
+      body: body,
+    );
+  }
+}
+
+class _AiStatusNotices extends StatelessWidget {
+  const _AiStatusNotices({
+    required this.notices,
+    required this.staffIsAdministrator,
+  });
+
+  final List<AiStatusNotice> notices;
+  final bool staffIsAdministrator;
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        for (final notice in notices) _AiStatusNoticeBanner(notice: notice, staffIsAdministrator: staffIsAdministrator),
+      ],
+    );
+  }
+}
+
+class _AiStatusNoticeBanner extends StatelessWidget {
+  const _AiStatusNoticeBanner({
+    required this.notice,
+    required this.staffIsAdministrator,
+  });
+
+  final AiStatusNotice notice;
+  final bool staffIsAdministrator;
+
+  @override
+  Widget build(BuildContext context) {
+    if (staffIsAdministrator) {
+      return Padding(
+        padding: const EdgeInsets.only(bottom: 8),
+        child: Row(
+          children: [
+            Expanded(
+              child: Text(
+                notice.code,
+                style: AppTypography.bodySm(context),
+              ),
+            ),
+            AppButton(
+              key: const Key('ai_notice_renew'),
+              onPressed: () => context.push(AppRoutes.aiAdministratorBilling),
+              child: const Text('Renew'),
+            ),
+          ],
+        ),
+      );
+    }
+
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 8),
+      child: Text(
+        'ask your administrator',
+        style: AppTypography.bodySm(context),
+      ),
+    );
+  }
+}

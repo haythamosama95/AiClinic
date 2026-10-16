@@ -115,7 +115,7 @@ CREATE OR REPLACE FUNCTION auth_internal.issue_ai_token(p_scopes text[] DEFAULT 
 RETURNS text
 LANGUAGE plpgsql
 SECURITY DEFINER
-SET search_path = public, auth, ai_internal, pgsodium
+SET search_path = public, auth, ai_internal, pgsodium, auth_internal
 AS $$
 DECLARE
   v_uid uuid;
@@ -174,19 +174,29 @@ BEGIN
     RAISE EXCEPTION 'BRANCH_NOT_FOUND';
   END IF;
 
+  SELECT ik.installation_id
+  INTO v_installation_id
+  FROM ai_internal.installation_keys ik
+  WHERE ik.is_deleted = false
+  ORDER BY ik.valid_from ASC, ik.kid ASC
+  LIMIT 1;
+
+  IF v_installation_id IS NULL THEN
+    RAISE EXCEPTION 'INSTALLATION_NOT_ENROLLED';
+  END IF;
+
   SELECT ik.*
   INTO v_signing_key
   FROM ai_internal.installation_keys ik
-  WHERE ik.is_deleted = false
+  WHERE ik.installation_id = v_installation_id
+    AND ik.is_deleted = false
     AND ik.revoked_at IS NULL
-  ORDER BY ik.valid_from DESC
+  ORDER BY ik.valid_from DESC, ik.kid DESC
   LIMIT 1;
 
   IF NOT FOUND THEN
     RAISE EXCEPTION 'INSTALLATION_NOT_ENROLLED';
   END IF;
-
-  v_installation_id := v_signing_key.installation_id;
 
   v_lifetime_minutes := auth_internal.ai_app_setting_numeric('ai.aat.lifetime_minutes', 15);
   v_rate_ceiling := auth_internal.ai_app_setting_numeric('ai.issuer.rate_limit.ceiling', 100)::int;
@@ -194,6 +204,12 @@ BEGIN
     'ai.issuer.rate_limit.window_seconds',
     3600
   )::int;
+
+  -- Serialize per-actor mint counting against the ledger insert (§4.2 rate limit).
+  PERFORM pg_advisory_xact_lock(
+    87201401,
+    hashtext(v_staff.id::text)
+  );
 
   SELECT count(*)::int
   INTO v_recent_mints
@@ -281,14 +297,16 @@ RETURNS boolean
 LANGUAGE plpgsql
 STABLE
 SECURITY DEFINER
-SET search_path = ai_internal, pgsodium
+SET search_path = ai_internal, pgsodium, auth_internal
 AS $$
 DECLARE
   v_header_part text;
   v_payload_part text;
   v_signature_part text;
   v_header jsonb;
+  v_payload jsonb;
   v_kid text;
+  v_iss text;
   v_key ai_internal.installation_keys%ROWTYPE;
   v_signing_input text;
   v_signature bytea;
@@ -333,25 +351,55 @@ BEGIN
     RETURN false;
   END IF;
 
-  v_signing_input := v_header_part || '.' || v_payload_part;
-  v_signature := auth_internal.base64url_decode(v_signature_part);
+  BEGIN
+    v_payload := convert_from(
+      auth_internal.base64url_decode(v_payload_part),
+      'utf8'
+    )::jsonb;
+  EXCEPTION
+    WHEN OTHERS THEN
+      RETURN false;
+  END;
 
-  RETURN pgsodium.crypto_sign_verify_detached(
-    v_signature,
-    convert_to(v_signing_input, 'utf8'),
-    v_key.public_key
-  );
+  v_iss := v_payload ->> 'iss';
+  IF v_iss IS NULL OR v_iss IS DISTINCT FROM v_key.installation_id::text THEN
+    RETURN false;
+  END IF;
+
+  -- Clinic self-test does not evaluate exp; platform verifier (B3) enforces expiry (§4.2.1 / §5.6).
+
+  v_signing_input := v_header_part || '.' || v_payload_part;
+
+  BEGIN
+    v_signature := auth_internal.base64url_decode(v_signature_part);
+    RETURN pgsodium.crypto_sign_verify_detached(
+      v_signature,
+      convert_to(v_signing_input, 'utf8'),
+      v_key.public_key
+    );
+  EXCEPTION
+    WHEN OTHERS THEN
+      RETURN false;
+  END;
 END;
 $$;
 
 CREATE OR REPLACE FUNCTION public.issue_ai_token(p_scopes text[] DEFAULT NULL)
 RETURNS text
 LANGUAGE sql
-SECURITY INVOKER
+SECURITY DEFINER
 SET search_path = public, auth_internal
 AS $$
   SELECT auth_internal.issue_ai_token(p_scopes);
 $$;
+
+REVOKE EXECUTE ON FUNCTION auth_internal.base64url_encode(bytea) FROM PUBLIC, anon, authenticated;
+REVOKE EXECUTE ON FUNCTION auth_internal.base64url_decode(text) FROM PUBLIC, anon, authenticated;
+REVOKE EXECUTE ON FUNCTION auth_internal.ai_app_setting_numeric(text, numeric) FROM PUBLIC, anon, authenticated;
+REVOKE EXECUTE ON FUNCTION auth_internal.ai_app_setting_text(text, text) FROM PUBLIC, anon, authenticated;
+REVOKE EXECUTE ON FUNCTION auth_internal.assert_valid_ai_session() FROM PUBLIC, anon, authenticated;
+REVOKE EXECUTE ON FUNCTION auth_internal.issue_ai_token(text[]) FROM PUBLIC, anon, authenticated;
+REVOKE EXECUTE ON FUNCTION auth_internal.verify_aat(text) FROM PUBLIC, anon, authenticated;
 
 REVOKE EXECUTE ON FUNCTION public.issue_ai_token(text[]) FROM anon, PUBLIC;
 GRANT EXECUTE ON FUNCTION public.issue_ai_token(text[]) TO authenticated;

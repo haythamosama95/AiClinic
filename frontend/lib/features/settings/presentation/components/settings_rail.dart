@@ -185,14 +185,28 @@ class _SettingsRailButtonState extends State<_SettingsRailButton> {
                     children: [
                       Icon(widget.screen.icon, size: 16, color: iconColor),
                       const SizedBox(width: AppSpacing.space2 + AppSpacing.space05),
-                      Text(
-                        widget.screen.label,
-                        style: AppTypography.bodySm(context).copyWith(
-                          fontWeight: FontWeight.w500,
-                          height: 1.3,
-                          color: foreground,
+                      if (widget.horizontal)
+                        Text(
+                          widget.screen.label,
+                          style: AppTypography.bodySm(context).copyWith(
+                            fontWeight: FontWeight.w500,
+                            height: 1.3,
+                            color: foreground,
+                          ),
+                        )
+                      else
+                        Expanded(
+                          child: Text(
+                            widget.screen.label,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: AppTypography.bodySm(context).copyWith(
+                              fontWeight: FontWeight.w500,
+                              height: 1.3,
+                              color: foreground,
+                            ),
+                          ),
                         ),
-                      ),
                     ],
                   ),
                 ),

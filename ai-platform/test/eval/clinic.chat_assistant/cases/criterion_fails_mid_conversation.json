@@ -1,0 +1,46 @@
+{
+  "case_id": "criterion_fails_mid_conversation",
+  "legs": [
+    {
+      "fixture": "criterion_fails_mid_conversation/leg_1.json",
+      "append_before_fixture": [
+        {
+          "kind": "user",
+          "text": "Start with the chief complaint."
+        }
+      ]
+    },
+    {
+      "fixture": "criterion_fails_mid_conversation/leg_2.json",
+      "append_before_fixture": [
+        {
+          "kind": "context_resolved",
+          "context": {
+            "visit.chief_complaint@v1": {
+              "visit_id": "550e8400-e29b-41d4-a716-446655440000",
+              "complaint": "Persistent headache for three days."
+            }
+          }
+        },
+        {
+          "kind": "user",
+          "text": "Now also pull medications."
+        }
+      ]
+    },
+    {
+      "fixture": "criterion_fails_mid_conversation/leg_3.json",
+      "append_before_fixture": []
+    }
+  ],
+  "scoring": {
+    "required_key_requests": ["visit.chief_complaint@v1"],
+    "forbidden_resolved_keys": [],
+    "expect_convergence": true
+  },
+  "expected_outcome": {
+    "right_keys": "pass",
+    "permitted_set": "fail",
+    "round_budget": "pass"
+  }
+}

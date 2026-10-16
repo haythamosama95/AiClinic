@@ -91,16 +91,18 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
     return Semantics(
       liveRegion: true,
       label: 'Viewing ${activeScreen.label} settings',
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        spacing: AppSpacing.space6,
-        children: [
-          const AppPageHeader(
-            title: 'Settings',
-            description: 'Personal preferences for this workstation — theme, alerts, and security.',
-          ),
-          bodyLayout,
-        ],
+      child: SingleChildScrollView(
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          spacing: AppSpacing.space6,
+          children: [
+            const AppPageHeader(
+              title: 'Settings',
+              description: 'Personal preferences for this workstation — theme, alerts, and security.',
+            ),
+            bodyLayout,
+          ],
+        ),
       ),
     );
   }

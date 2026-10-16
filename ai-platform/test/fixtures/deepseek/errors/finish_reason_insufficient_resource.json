@@ -1,0 +1,17 @@
+{
+  "id": "ds-isr-001",
+  "object": "chat.completion",
+  "model": "deepseek-chat",
+  "choices": [
+    {
+      "index": 0,
+      "message": { "role": "assistant", "content": "" },
+      "finish_reason": "insufficient_system_resource"
+    }
+  ],
+  "usage": {
+    "prompt_tokens": 8,
+    "completion_tokens": 0,
+    "total_tokens": 8
+  }
+}

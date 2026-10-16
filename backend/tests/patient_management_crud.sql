@@ -71,6 +71,13 @@ BEGIN
     (v_lab_staff, v_lab_user, 'Lab Tech', 'lab_staff', false, v_bootstrap_user, v_bootstrap_user)
   ON CONFLICT (id) DO NOTHING;
 
+  INSERT INTO ai_internal.membership (user_id, organization_id, role)
+  SELECT sm.auth_user_id, v_org_id, sm.role
+  FROM public.staff_members sm
+  WHERE sm.auth_user_id IN (v_owner_user, v_lab_user)
+    AND sm.is_deleted = false
+  ON CONFLICT (user_id, organization_id) DO NOTHING;
+
   INSERT INTO public.staff_branch_assignments (staff_member_id, branch_id, is_primary, created_by, updated_by)
   SELECT s.id, v_branch_main, true, v_bootstrap_user, v_bootstrap_user
   FROM (VALUES (v_owner_staff), (v_receptionist_staff), (v_lab_staff)) AS s(id);
@@ -632,8 +639,10 @@ BEGIN
   PERFORM set_config('role', 'postgres', true);
   INSERT INTO patient_crud_results VALUES (
     'update_patient_cross_branch_same_org',
-    v_result.success,
-    COALESCE(v_result.error_code, '<null>')
+    v_result.success
+      AND (v_result.data ->> 'patient_id')::uuid = v_patient_main
+      AND (v_result.data ->> 'updated_at')::timestamptz IS NOT NULL,
+    COALESCE(v_result.error_code, v_result.data ->> 'updated_at', '<null>')
   );
   PERFORM set_config('role', 'authenticated', true);
 

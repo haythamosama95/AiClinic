@@ -1,0 +1,590 @@
+import test, { after, before } from "node:test";
+import assert from "node:assert/strict";
+import { CHANNEL_VERSIONS } from "vendor-contracts";
+import {
+  PAYMOB_HMAC_SECRET,
+  PAYMOB_URL,
+  billingFetch,
+  countAboTable,
+  countAboWork,
+  ensurePlatformActiveCoverage,
+  ensurePlatformGrantPrerequisites,
+  issueFeedToken,
+  openCheckout,
+  platformFetch,
+  pullSupabaseCoverageTwoPhase,
+  putBillingContact,
+  queryAboD1One,
+  readClinicAiCoverage,
+  readStatusRefreshRequestedAt,
+  rpc,
+  runAboD1Command,
+  seedAboOffers,
+  scriptPaymobAmount,
+  signPaymobObj,
+  sqlLiteral,
+  startStack,
+  syncPaymobForCheckout,
+  triggerAboScheduled,
+} from "./p7-2-stack.mjs";
+
+// H-FS unit harness (P7.2 US1): node --import tsx --test test/p7-2-untrusted-callers.test.mjs
+
+let stack = null;
+
+before(async () => {
+  stack = await startStack();
+});
+
+after(async () => {
+  await stack?.stop();
+  stack = null;
+});
+
+function junkNotifyBody(index = 0) {
+  return JSON.stringify({
+    type: "TRANSACTION",
+    obj: {
+      amount_cents: String(100 + index),
+      created_at: new Date().toISOString(),
+      currency: "EGP",
+      error_occured: false,
+      has_parent_transaction: false,
+      id: 88000 + index,
+      integration_id: 123456,
+      is_3d_secure: true,
+      is_auth: false,
+      is_capture: true,
+      is_refunded: false,
+      is_standalone_payment: true,
+      is_voided: false,
+      order: { id: 99000 + index },
+      owner: 0,
+      pending: false,
+      source_data: { pan: "2346", sub_type: "MasterCard", type: "card" },
+      success: true,
+    },
+  });
+}
+
+test("E2E-P7.2-01", async () => {
+  const notificationsBefore = countAboTable("notification");
+  const workBefore = countAboWork();
+
+  const junk = await billingFetch("/notify/paymob?hmac=deadbeef", {
+    method: "POST",
+    headers: {
+      "content-type": "application/json",
+      "cf-connecting-ip": "203.0.113.50",
+    },
+    body: junkNotifyBody(1),
+  });
+  assert.equal(junk.status, 401);
+  assert.equal(countAboTable("notification"), notificationsBefore);
+  assert.equal(countAboWork(), workBefore);
+
+  const oversizeBody = "x".repeat(1_048_577);
+  const oversize = await billingFetch("/notify/paymob", {
+    method: "POST",
+    headers: {
+      "content-type": "application/json",
+      "cf-connecting-ip": "203.0.113.51",
+    },
+    body: oversizeBody,
+  });
+  assert.equal(oversize.status, 413);
+  assert.equal(await oversize.text(), "");
+  assert.equal(countAboTable("notification"), notificationsBefore);
+  assert.equal(countAboWork(), workBefore);
+
+  runAboD1Command(`
+    CREATE TABLE IF NOT EXISTS harness_test_clock (
+      id TEXT PRIMARY KEY,
+      now_iso TEXT NOT NULL
+    );
+    INSERT OR REPLACE INTO harness_test_clock (id, now_iso)
+    VALUES ('default', '2026-10-16T10:00:00.000Z');
+  `);
+  try {
+    const rateIp = "203.0.113.52";
+    for (let index = 0; index < 60; index += 1) {
+      const response = await billingFetch("/notify/paymob?hmac=deadbeef", {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          "cf-connecting-ip": rateIp,
+        },
+        body: junkNotifyBody(100 + index),
+      });
+      assert.equal(response.status, 401);
+    }
+    const limited = await billingFetch("/notify/paymob?hmac=deadbeef", {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        "cf-connecting-ip": rateIp,
+      },
+      body: junkNotifyBody(999),
+    });
+    assert.equal(limited.status, 429);
+    assert.equal(await limited.text(), "");
+    assert.equal(countAboTable("notification"), notificationsBefore);
+    assert.equal(countAboWork(), workBefore);
+
+    const unknownKeyIp = "unknown";
+    for (let index = 0; index < 60; index += 1) {
+      await billingFetch("/notify/paymob?hmac=deadbeef", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: junkNotifyBody(200 + index),
+      });
+    }
+    const unknownLimited = await billingFetch("/notify/paymob?hmac=deadbeef", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: junkNotifyBody(299),
+    });
+    assert.equal(unknownLimited.status, 429);
+  } finally {
+    runAboD1Command(`
+      UPDATE harness_test_clock
+      SET now_iso = ${sqlLiteral(new Date().toISOString())}
+      WHERE id = 'default';
+    `);
+  }
+
+  const paymentsBeforeReturn = countAboTable("payment");
+  const coverageBeforeReturn = readClinicAiCoverage(stack.clinics.orgA.orgId);
+  const returnResponse = await billingFetch("/return/paymob?v=99");
+  assert.equal(returnResponse.status, 200);
+  assert.equal(countAboTable("payment"), paymentsBeforeReturn);
+  assert.deepEqual(
+    readClinicAiCoverage(stack.clinics.orgA.orgId),
+    coverageBeforeReturn,
+    "/return must not create or extend service",
+  );
+});
+
+test("E2E-P7.2-02", async () => {
+  const { staff, orgId } = stack.clinics.orgA;
+  const coverageBefore = readClinicAiCoverage(orgId);
+  const refreshBefore = readStatusRefreshRequestedAt(orgId);
+
+  const billing = await rpc(staff, "issue_billing_token", {
+    p_contract_version: 1,
+  });
+  assert.equal(billing.success, false);
+  assert.equal(billing.error_code, "FORBIDDEN_ROLE");
+
+  const aiToken = await rpc(staff, "issue_ai_token", {
+    p_contract_version: 1,
+  });
+  assert.ok(aiToken, "staff should still mint an AI token for coverage probe");
+
+  const coverage = await platformFetch("/v1/coverage", {
+    headers: { authorization: `Bearer ${aiToken}` },
+  });
+  assert.equal(coverage.status, 403);
+
+  const status = await rpc(staff, "get_ai_status", {
+    p_contract_version: 1,
+  });
+  assert.equal(status.success, true);
+
+  const refresh = await rpc(staff, "request_ai_status_refresh", {
+    p_contract_version: 1,
+  });
+  assert.equal(refresh.success, false);
+  assert.equal(refresh.error_code, "FORBIDDEN_ROLE");
+
+  assert.deepEqual(readClinicAiCoverage(orgId), coverageBefore);
+  assert.equal(readStatusRefreshRequestedAt(orgId), refreshBefore);
+});
+
+function tokenOrgClaim(token) {
+  const payload = token.split(".")[1];
+  const decoded = JSON.parse(Buffer.from(payload, "base64url").toString("utf8"));
+  return decoded.org;
+}
+
+async function assertAboNotFound(pathname, billingToken, label) {
+  const response = await billingFetch(pathname, {
+    headers: { authorization: `Bearer ${billingToken}` },
+  });
+  assert.equal(response.status, 404, `${label} should answer not_found`);
+  const body = await response.json();
+  assert.equal(body.code, "not_found");
+}
+
+async function waitForActiveClinicAiCoverage(orgId, { timeoutMs = 30_000 } = {}) {
+  const deadline = Date.now() + timeoutMs;
+  let coverage = null;
+  while (Date.now() < deadline) {
+    coverage = readClinicAiCoverage(orgId);
+    if (coverage?.state === "active" && coverage.term_ref) {
+      return coverage;
+    }
+    await new Promise((resolve) => setTimeout(resolve, 250));
+  }
+  throw new Error(
+    `Timed out after ${timeoutMs}ms waiting for active clinic AI coverage ` +
+      `(org=${orgId}, coverage=${JSON.stringify(coverage)})`,
+  );
+}
+
+test("E2E-P7.2-03", async () => {
+  const { orgA, orgB } = stack.clinics;
+  seedAboOffers();
+  ensurePlatformGrantPrerequisites(orgA.orgId, orgA.installationId);
+  ensurePlatformGrantPrerequisites(orgB.orgId, orgB.installationId);
+  // This request is intended to exercise the tenant binding check. Give Org B
+  // active coverage so its request context passes the earlier coverage gate.
+  await ensurePlatformActiveCoverage(
+    stack,
+    orgB.orgId,
+    orgB.installationId,
+  );
+
+  const billingB = await rpc(orgB.administrator, "issue_billing_token", {
+    p_contract_version: 1,
+  });
+  assert.equal(billingB.success, true);
+  const billingTokenB = billingB.data.token;
+
+  await putBillingContact(billingTokenB);
+  const checkoutB = await openCheckout(billingTokenB, "p72-org-b-checkout");
+  await syncPaymobForCheckout(checkoutB.checkoutId);
+
+  const billingA = await rpc(orgA.administrator, "issue_billing_token", {
+    p_contract_version: 1,
+  });
+  assert.equal(billingA.success, true);
+  const billingTokenA = billingA.data.token;
+  assert.equal(tokenOrgClaim(billingTokenA), orgA.orgId);
+  assert.notEqual(tokenOrgClaim(billingTokenA), orgB.orgId);
+
+  await putBillingContact(billingTokenA);
+  const checkoutA = await openCheckout(billingTokenA, "p72-org-a-checkout");
+
+  // Keep the checkout under test open, but give Org A an independent paid
+  // grant so its later request reaches tenant-context validation instead of
+  // being rejected first for missing coverage.
+  await ensurePlatformActiveCoverage(
+    stack,
+    orgA.orgId,
+    orgA.installationId,
+  );
+
+  await pullSupabaseCoverageTwoPhase("P7.2-03 baseline coverage pull");
+
+  // The vendor grant reaches the platform mirror before the independent
+  // Supabase status projection. Wait for that seeded row so the final equality
+  // check compares against the active term/sequence exercised by this case.
+  const coverageBBefore = await waitForActiveClinicAiCoverage(orgB.orgId);
+  assert.ok(
+    coverageBBefore.binding_epoch,
+    "Org B coverage should have a binding epoch",
+  );
+  assert.ok(
+    coverageBBefore.clinic_seq,
+    "Org B coverage should have a clinic sequence",
+  );
+  const paymentCountBBefore = countAboTable("payment");
+  const checkoutBStatusBefore = queryAboD1One(
+    `SELECT state FROM checkout_status WHERE checkout_id = ${sqlLiteral(checkoutB.checkoutId)}`,
+  );
+
+  await assertAboNotFound(
+    `/v1/checkouts/${checkoutB.checkoutId}`,
+    billingTokenA,
+    "GET /v1/checkouts/{id}",
+  );
+  await assertAboNotFound(
+    `/v1/checkouts/${checkoutB.reference}`,
+    billingTokenA,
+    "GET /v1/checkouts/{reference}",
+  );
+  await assertAboNotFound("/v1/checkouts", billingTokenA, "GET /v1/checkouts");
+
+  for (const route of [
+    "/v1/offers",
+    "/v1/subscription",
+    "/v1/payments",
+    "/v1/billing-contact",
+    "/v1/checkouts?open=1",
+  ]) {
+    const response = await billingFetch(route, {
+      headers: { authorization: `Bearer ${billingTokenA}` },
+    });
+    assert.equal(response.status, 200, `${route} should answer for org A session`);
+    const text = await response.text();
+    assert.ok(
+      !text.includes(checkoutB.checkoutId) && !text.includes(checkoutB.reference),
+      `${route} must not expose org B checkout ids`,
+    );
+  }
+
+  const switchOrg = await rpc(orgA.administrator, "set_active_organization", {
+    p_organization_id: orgB.orgId,
+  });
+  assert.equal(switchOrg.success, false);
+  assert.equal(switchOrg.error_code, "FORBIDDEN");
+
+  for (const [functionName, args, label] of [
+    [
+      "get_ai_status",
+      { p_contract_version: 1 },
+      "get_ai_status",
+    ],
+    [
+      "get_ai_billing_status",
+      { p_contract_version: 1 },
+      "get_ai_billing_status",
+    ],
+    [
+      "request_ai_status_refresh",
+      { p_contract_version: 1 },
+      "request_ai_status_refresh",
+    ],
+  ]) {
+    const result = await rpc(orgA.administrator, functionName, args);
+    if (functionName === "request_ai_status_refresh") {
+      assert.equal(result.success, true, `${label} should stay on org A`);
+      continue;
+    }
+    assert.equal(result.success, true, `${label} should stay scoped to org A`);
+    const payload = JSON.stringify(result.data ?? {});
+    assert.ok(
+      !payload.includes(orgB.orgId) &&
+        !payload.includes(checkoutB.checkoutId) &&
+        !payload.includes(checkoutB.reference),
+      `${label} must not expose org B ids`,
+    );
+  }
+
+  const aiTokenA = await rpc(orgA.administrator, "issue_ai_token", {
+    p_contract_version: 1,
+  });
+  assert.equal(tokenOrgClaim(aiTokenA), orgA.orgId);
+
+  const capabilities = await platformFetch(
+    `/v1/capabilities/${orgB.installationId}`,
+    {
+      headers: { authorization: `Bearer ${aiTokenA}` },
+    },
+  );
+  assert.equal(capabilities.status, 404);
+
+  const coverage = await platformFetch(`/v1/coverage/${orgB.orgId}`, {
+    headers: { authorization: `Bearer ${aiTokenA}` },
+  });
+  assert.equal(coverage.status, 404);
+
+  const feedToken = issueFeedToken();
+  const feed = await platformFetch(
+    `/v1/feed/coverage/${orgB.installationId}`,
+    {
+      headers: {
+        authorization: `Bearer ${feedToken}`,
+        "Aip-Contract-Version": String(CHANNEL_VERSIONS.platformFeed),
+      },
+    },
+  );
+  assert.equal(feed.status, 404);
+
+  const requestBody = {
+    contract_version: 1,
+    capability_id: "clinic.visit_summary",
+    capability_version: "1.0.0",
+    policy_id: "standard",
+    policy_version: "1",
+    idempotency_key: `p72-cross-tenant-${crypto.randomUUID()}`,
+    trace_id: crypto.randomUUID(),
+    // Supply a schema-valid Org B visit context so validation reaches the
+    // tenant binding check. A missing required context key would only prove
+    // the request-shape guard, not cross-tenant isolation.
+    context: {
+      org: orgB.orgId,
+      branch: orgB.branchId,
+      "visit.chief_complaint@v1": {
+        visit_id: orgB.branchId,
+        complaint: "Persistent headache for three days.",
+        recorded_at: "2026-07-31T12:00:00Z",
+      },
+    },
+  };
+  const request = await platformFetch("/v1/requests", {
+    method: "POST",
+    headers: {
+      authorization: `Bearer ${aiTokenA}`,
+      "content-type": "application/json",
+      "x-idempotency-key": requestBody.idempotency_key,
+      "x-trace-id": requestBody.trace_id,
+      "x-capability-version": requestBody.capability_version,
+    },
+    body: JSON.stringify(requestBody),
+  });
+  assert.notEqual(request.status, 201);
+  if (request.status < 500) {
+    const requestBodyText = await request.text();
+    assert.ok(
+      requestBodyText.length === 0 ||
+        /not_found|context_invalid|forbidden|unauthenticated/i.test(
+          requestBodyText,
+        ),
+      "POST /v1/requests must not create service for org B ids",
+    );
+  }
+
+  const foreignRequest = await platformFetch(
+    `/v1/requests/${encodeURIComponent(checkoutB.reference)}`,
+    {
+      headers: { authorization: `Bearer ${aiTokenA}` },
+    },
+  );
+  assert.equal(foreignRequest.status, 404);
+
+  const checkoutBStatusAfter = queryAboD1One(
+    `SELECT state FROM checkout_status WHERE checkout_id = ${sqlLiteral(checkoutB.checkoutId)}`,
+  );
+  assert.deepEqual(checkoutBStatusAfter, checkoutBStatusBefore);
+  assert.ok(
+    queryAboD1One(
+      `SELECT checkout_id FROM checkout WHERE checkout_id = ${sqlLiteral(checkoutA.checkoutId)} AND org_id = ${sqlLiteral(orgA.orgId)}`,
+    ),
+    "org A checkout stays under org A",
+  );
+  assert.equal(
+    queryAboD1One(
+      `SELECT checkout_id FROM checkout WHERE checkout_id = ${sqlLiteral(checkoutA.checkoutId)} AND org_id = ${sqlLiteral(orgB.orgId)}`,
+    ),
+    null,
+    "org A open checkout must not lock org B resources",
+  );
+
+  assert.deepEqual(readClinicAiCoverage(orgB.orgId), coverageBBefore);
+  assert.equal(countAboTable("payment"), paymentCountBBefore);
+});
+
+test("E2E-P7.2-04", async () => {
+  const { orgA } = stack.clinics;
+  seedAboOffers();
+  ensurePlatformGrantPrerequisites(orgA.orgId, orgA.installationId);
+
+  const billing = await rpc(orgA.administrator, "issue_billing_token", {
+    p_contract_version: 1,
+  });
+  assert.equal(billing.success, true);
+  const billingToken = billing.data.token;
+
+  await putBillingContact(billingToken);
+  // The local Paymob stub defaults every intention to order 9001. Give this
+  // checkout a unique numeric order id so callbacks cannot resolve to an
+  // earlier checkout that used the same stub default.
+  const paymobOrderId =
+    (Number.parseInt(crypto.randomUUID().slice(0, 8), 16) % 2_000_000_000) + 1;
+  await scriptPaymobAmount(1000, paymobOrderId);
+  const checkout = await openCheckout(billingToken, "p72-forged-callback");
+  await syncPaymobForCheckout(checkout.checkoutId);
+
+  const checkoutRow = queryAboD1One(
+    `SELECT c.charged_price_minor, c.currency, pi.order_id
+     FROM checkout c
+     LEFT JOIN paymob_intention pi ON pi.checkout_id = c.checkout_id
+     WHERE c.checkout_id = '${checkout.checkoutId}'`,
+  );
+  assert.ok(checkoutRow?.order_id, "checkout should have a stored Paymob order id");
+
+  const paymentsBefore = countAboTable("payment");
+  const notificationsBefore = countAboTable("notification");
+  const forgedObj = {
+    amount_cents: String(checkoutRow.charged_price_minor),
+    created_at: new Date().toISOString(),
+    currency: checkoutRow.currency,
+    error_occured: false,
+    has_parent_transaction: false,
+    id: 99123,
+    integration_id: 123456,
+    is_3d_secure: true,
+    is_auth: false,
+    is_capture: true,
+    is_refunded: false,
+    is_standalone_payment: true,
+    is_voided: false,
+    order: { id: Number(checkoutRow.order_id) },
+    owner: 0,
+    pending: false,
+    source_data: { pan: "2346", sub_type: "MasterCard", type: "card" },
+    success: true,
+  };
+  const hmac = await signPaymobObj(forgedObj, PAYMOB_HMAC_SECRET);
+  const inquiryScript = await fetch(`${PAYMOB_URL}/__script`, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({
+      inquiry: "unbound",
+      amount_cents: String(checkoutRow.charged_price_minor),
+      intention_order_id: String(checkoutRow.order_id),
+    }),
+  });
+  assert.equal(inquiryScript.status, 204);
+
+  const notify = await billingFetch(
+    `/notify/paymob?hmac=${encodeURIComponent(hmac)}`,
+    {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        "cf-connecting-ip": "203.0.113.60",
+      },
+      body: JSON.stringify({ type: "TRANSACTION", obj: forgedObj }),
+    },
+  );
+  assert.equal(notify.status, 200);
+
+  assert.equal(
+    countAboTable("notification"),
+    notificationsBefore + 1,
+    "HMAC-valid forged callback should be stored as evidence",
+  );
+  const notification = queryAboD1One(
+    `SELECT checkout_id, hmac_valid
+     FROM notification
+     WHERE checkout_id = ${sqlLiteral(checkout.checkoutId)}
+     ORDER BY rowid DESC
+     LIMIT 1`,
+  );
+  assert.equal(notification?.checkout_id, checkout.checkoutId);
+  assert.equal(Number(notification?.hmac_valid ?? 0), 1);
+  assert.equal(String(forgedObj.order.id), String(checkoutRow.order_id));
+  assert.equal(forgedObj.amount_cents, String(checkoutRow.charged_price_minor));
+  assert.equal(forgedObj.currency, checkoutRow.currency);
+
+  await triggerAboScheduled("* * * * *");
+
+  const confirmWork = queryAboD1One(
+    `SELECT state
+     FROM work
+     WHERE kind = 'confirm'
+       AND subject_id = ${sqlLiteral(checkout.checkoutId)}
+     ORDER BY rowid DESC
+     LIMIT 1`,
+  );
+  assert.equal(
+    confirmWork?.state,
+    "done",
+    "confirm work should run the Paymob inquiry for the stored checkout order",
+  );
+  assert.equal(
+    countAboTable("payment"),
+    paymentsBefore,
+    "unbound inquiry must not create a confirming payment",
+  );
+
+  await triggerAboScheduled("0 6 * * *");
+  assert.equal(
+    countAboTable("payment"),
+    paymentsBefore,
+    "reconciliation must not confirm a forged callback",
+  );
+});

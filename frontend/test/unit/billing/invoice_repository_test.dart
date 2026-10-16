@@ -366,7 +366,9 @@ void main() {
   group('InvoiceRepository voidInvoice', () {
     test('forwards trimmed reason and UTC expected timestamp', () async {
       client.issuedUpdatedAt = DateTime.utc(2026, 6, 2, 11, 0);
-      final localUpdatedAt = DateTime(2026, 6, 2, 14, 0);
+      // Derive the local representation from the UTC instant so this assertion
+      // is independent of the machine's configured timezone.
+      final localUpdatedAt = DateTime.utc(2026, 6, 2, 11, 0).toLocal();
 
       await repo.voidInvoice(
         invoiceId: BillingRpcTestClient.issuedInvoiceId,

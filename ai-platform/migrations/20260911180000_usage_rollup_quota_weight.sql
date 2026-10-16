@@ -1,0 +1,1 @@
+ALTER TABLE usage_rollup ADD COLUMN quota_weight INTEGER NOT NULL DEFAULT 0;

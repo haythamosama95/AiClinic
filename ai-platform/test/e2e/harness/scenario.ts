@@ -1,0 +1,75 @@
+import { generateTestKeypair } from "./crypto";
+import {
+  canaryPolicy,
+  DEFAULT_ENTITLE_PAYLOAD,
+  newClinic,
+  entitleInstallation,
+  fakePolicyDocument,
+  promotePolicy,
+  publishPolicy,
+  type EntitlePayload,
+} from "./control";
+import {
+  ensureE2eCoverageMirror,
+  ensureE2eQuotaDoCoverage,
+} from "./e2e-coverage-seed";
+import { POLICY_ID, POLICY_VERSION } from "./env";
+import type { Scenario } from "./types";
+
+export { ensureE2eCoverageMirror, ensureE2eQuotaDoCoverage };
+
+export type { Scenario };
+
+export async function newScenario(): Promise<Scenario> {
+  const kid = crypto.randomUUID();
+  const keypair = await generateTestKeypair(kid);
+  return {
+    installationId: crypto.randomUUID(),
+    orgId: crypto.randomUUID(),
+    branchId: crypto.randomUUID(),
+    actorId: crypto.randomUUID(),
+    kid,
+    keypair,
+  };
+}
+
+/**
+ * Issuer-token clinic setup (`newClinic`) + entitle + publish/promote a
+ * fake-provider routing policy. Use this to build prior state for clinic-facing
+ * journeys. Not `[SEED]`.
+ */
+export async function provisionHappyPath(
+  scenario?: Scenario,
+  entitle: EntitlePayload = DEFAULT_ENTITLE_PAYLOAD,
+): Promise<Scenario> {
+  const ready = scenario ?? (await newScenario());
+  await newClinic(ready);
+  const entitled = await entitleInstallation(ready, entitle);
+  if (entitled.status !== 200) {
+    throw new Error(
+      `provisionHappyPath: entitle failed (${entitled.status}): ${entitled.text}`,
+    );
+  }
+  const document = fakePolicyDocument(POLICY_ID, POLICY_VERSION);
+  const published = await publishPolicy(POLICY_ID, POLICY_VERSION, document);
+  if (published.status !== 200) {
+    throw new Error(
+      `provisionHappyPath: publish failed (${published.status}): ${published.text}`,
+    );
+  }
+  const promoted = await promotePolicy(POLICY_ID, POLICY_VERSION);
+  if (promoted.status !== 200) {
+    throw new Error(
+      `provisionHappyPath: promote failed (${promoted.status}): ${promoted.text}`,
+    );
+  }
+  await ensureE2eCoverageMirror(ready);
+  await ensureE2eQuotaDoCoverage(ready, {
+    period_start: entitle.period_start,
+    period_end: entitle.period_end,
+    request_quota: entitle.request_quota,
+  });
+  return ready;
+}
+
+export { CAPABILITY_ID, canaryPolicy };

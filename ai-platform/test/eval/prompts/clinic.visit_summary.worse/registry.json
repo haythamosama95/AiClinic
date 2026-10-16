@@ -1,0 +1,5 @@
+{
+  "clinic.visit_summary/system@v1": "eval-worse",
+  "clinic.visit_summary/rules-visit-summary@v1": "a0c19597",
+  "clinic.visit_summary/template-visit-summary@v1": "cd212d73"
+}

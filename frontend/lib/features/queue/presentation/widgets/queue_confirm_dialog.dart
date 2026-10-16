@@ -47,15 +47,16 @@ class QueueConfirmDialog extends StatelessWidget {
       description: '$patientName — this action requires confirmation.',
       size: AppDialogSize.sm,
       showCloseButton: false,
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.end,
+      child: Wrap(
+        alignment: WrapAlignment.end,
+        spacing: AppSpacing.space2,
+        runSpacing: AppSpacing.space2,
         children: [
           AppButton(
             variant: AppButtonVariant.secondary,
             onPressed: onCancel,
             child: const Text('Go back'),
           ),
-          const SizedBox(width: AppSpacing.space2),
           AppButton(
             variant: AppButtonVariant.danger,
             onPressed: onConfirm,

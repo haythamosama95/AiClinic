@@ -58,7 +58,8 @@ void main() {
 
     test('rolePermissions.INVALID_PERMISSION', () async {
       const ManifestScenario('rolePermissions.INVALID_PERMISSION');
-      await ctx.signInAdmin();
+      final clinic = await ctx.ensureClinic(label: 'role_invalid_permission');
+      await ctx.signInAdminForClinic(clinic);
       await expectRpcCode(
         () => ctx.rolePermissions.updateRolePermission(
           role: StaffRole.administrator,

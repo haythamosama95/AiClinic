@@ -32,6 +32,7 @@ abstract final class ShellNavConfig {
   static const Map<String, String> _routesByItemId = {
     'home': AppRoutes.home,
     'dashboard': AppRoutes.dashboard,
+    'ai': AppRoutes.ai,
     'patients': AppRoutes.patients,
     'appointments': AppRoutes.appointments,
     'appointments-queue': AppRoutes.appointmentsQueue,
@@ -269,6 +270,9 @@ abstract final class ShellNavConfig {
     }
     if (location == AppRoutes.dashboard) {
       return 'dashboard';
+    }
+    if (location == AppRoutes.ai || location.startsWith('${AppRoutes.ai}/')) {
+      return 'ai';
     }
     if (location == AppRoutes.encounters) {
       return 'encounters';

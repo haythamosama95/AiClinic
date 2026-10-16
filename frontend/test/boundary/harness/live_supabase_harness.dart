@@ -114,5 +114,8 @@ class LiveSupabaseHarness {
 }
 
 void markTestSkipped(String message) {
+  if (Platform.environment['AICLINIC_BOUNDARY_REQUIRE_LIVE'] == '1') {
+    throw StateError('Live Supabase stack required (AICLINIC_BOUNDARY_REQUIRE_LIVE=1): $message');
+  }
   throw Skip(message);
 }

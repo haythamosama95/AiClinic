@@ -1,0 +1,7 @@
+{
+  "leg_id": "leg_2",
+  "assistant_turn": {
+    "kind": "model",
+    "text": "I only have the chief complaint in permitted context; the medication list was not obtainable for this capability."
+  }
+}

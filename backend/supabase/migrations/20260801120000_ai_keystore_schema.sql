@@ -5,12 +5,14 @@
 CREATE EXTENSION IF NOT EXISTS pgsodium;
 
 GRANT USAGE ON SCHEMA pgsodium TO postgres;
+-- Enrollment SECURITY DEFINER owner must hold keymaker to call
+-- pgsodium.crypto_sign_new_keypair (§4.2.1 enrollment role).
 GRANT pgsodium_keymaker TO postgres;
 
 CREATE SCHEMA IF NOT EXISTS ai_internal;
 
-REVOKE ALL ON SCHEMA ai_internal FROM PUBLIC, anon, authenticated;
-GRANT USAGE ON SCHEMA ai_internal TO postgres, service_role;
+REVOKE ALL ON SCHEMA ai_internal FROM PUBLIC, anon, authenticated, service_role;
+GRANT USAGE ON SCHEMA ai_internal TO postgres;
 
 -- -----------------------------------------------------------------------------
 -- Config keys (global per installation; no org/branch scope).
@@ -44,6 +46,7 @@ ON CONFLICT (key) DO NOTHING;
 
 -- -----------------------------------------------------------------------------
 -- Installation signing keys (additive rotation; revocation via revoked_at).
+-- One installation id per clinic (§4.2 / §8.1).
 -- -----------------------------------------------------------------------------
 CREATE TABLE ai_internal.installation_keys (
   kid text PRIMARY KEY,
@@ -51,9 +54,9 @@ CREATE TABLE ai_internal.installation_keys (
   public_key bytea NOT NULL,
   secret_key bytea NOT NULL,
   algorithm text NOT NULL DEFAULT 'EdDSA',
-  valid_from timestamptz NOT NULL DEFAULT now(),
+  valid_from timestamptz NOT NULL DEFAULT clock_timestamp(),
   revoked_at timestamptz,
-  created_at timestamptz NOT NULL DEFAULT now(),
+  created_at timestamptz NOT NULL DEFAULT clock_timestamp(),
   created_by uuid REFERENCES auth.users (id),
   updated_at timestamptz,
   updated_by uuid REFERENCES auth.users (id),
@@ -67,8 +70,45 @@ CREATE INDEX installation_keys_installation_id_idx
   WHERE is_deleted = false;
 
 CREATE INDEX installation_keys_active_idx
-  ON ai_internal.installation_keys (installation_id, valid_from DESC)
+  ON ai_internal.installation_keys (installation_id, valid_from DESC, kid DESC)
   WHERE revoked_at IS NULL AND is_deleted = false;
+
+CREATE OR REPLACE FUNCTION ai_internal.enforce_single_installation()
+RETURNS trigger
+LANGUAGE plpgsql
+AS $$
+DECLARE
+  v_existing uuid;
+BEGIN
+  IF NEW.is_deleted THEN
+    RETURN NEW;
+  END IF;
+
+  SELECT ik.installation_id
+  INTO v_existing
+  FROM ai_internal.installation_keys ik
+  WHERE ik.is_deleted = false
+    AND ik.kid IS DISTINCT FROM NEW.kid
+  ORDER BY ik.valid_from ASC, ik.kid ASC
+  LIMIT 1;
+
+  IF v_existing IS NOT NULL AND v_existing IS DISTINCT FROM NEW.installation_id THEN
+    RAISE EXCEPTION 'SINGLE_INSTALLATION_VIOLATION'
+      USING ERRCODE = 'P0001';
+  END IF;
+
+  RETURN NEW;
+END;
+$$;
+
+DROP TRIGGER IF EXISTS installation_keys_single_installation
+  ON ai_internal.installation_keys;
+
+CREATE TRIGGER installation_keys_single_installation
+  BEFORE INSERT OR UPDATE OF installation_id, is_deleted
+  ON ai_internal.installation_keys
+  FOR EACH ROW
+  EXECUTE FUNCTION ai_internal.enforce_single_installation();
 
 ALTER TABLE ai_internal.installation_keys ENABLE ROW LEVEL SECURITY;
 
@@ -103,3 +143,33 @@ ALTER TABLE ai_internal.ai_token_issuance ENABLE ROW LEVEL SECURITY;
 CREATE POLICY ai_token_issuance_deny_all ON ai_internal.ai_token_issuance
   FOR ALL
   USING (false);
+
+-- Base64url helpers shared by keypair export and the AAT issuer.
+CREATE OR REPLACE FUNCTION auth_internal.base64url_encode(p_bytes bytea)
+RETURNS text
+LANGUAGE sql
+IMMUTABLE
+AS $$
+  SELECT rtrim(
+    translate(replace(encode(p_bytes, 'base64'), E'\n', ''), '+/', '-_'),
+    '='
+  );
+$$;
+
+CREATE OR REPLACE FUNCTION auth_internal.base64url_decode(p_text text)
+RETURNS bytea
+LANGUAGE sql
+IMMUTABLE
+AS $$
+  SELECT decode(
+    rpad(
+      translate(p_text, '-_', '+/'),
+      length(p_text) + ((4 - length(p_text) % 4) % 4),
+      '='
+    ),
+    'base64'
+  );
+$$;
+
+REVOKE EXECUTE ON FUNCTION auth_internal.base64url_encode(bytea) FROM PUBLIC, anon, authenticated;
+REVOKE EXECUTE ON FUNCTION auth_internal.base64url_decode(text) FROM PUBLIC, anon, authenticated;

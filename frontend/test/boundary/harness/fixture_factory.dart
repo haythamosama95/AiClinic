@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import 'package:ai_clinic/core/rpc/rpc_result.dart';
@@ -15,6 +17,36 @@ import 'package:ai_clinic/features/patients/domain/patient_gender.dart';
 import 'boundary_session.dart';
 import 'reset.dart';
 import 'sql_fixture_helper.dart';
+
+const _fixtureOperationTimeout = Duration(seconds: 12);
+
+/// Logs a fixture phase and bounds it so integration logs identify a stalled
+/// RPC or session operation before the outer widget-test timeout fires.
+Future<T> runFixturePhase<T>(
+  String phase,
+  Future<T> operation, {
+  Duration timeout = _fixtureOperationTimeout,
+}) async {
+  // ignore: avoid_print
+  print('[BOUNDARY-FIXTURE] start: $phase');
+  try {
+    final result = await operation.timeout(
+      timeout,
+      onTimeout: () => throw TimeoutException(
+        'Fixture phase "$phase" exceeded ${timeout.inSeconds}s. '
+        'Check Supabase/PostgREST readiness and the corresponding RPC.',
+        timeout,
+      ),
+    );
+    // ignore: avoid_print
+    print('[BOUNDARY-FIXTURE] complete: $phase');
+    return result;
+  } catch (error) {
+    // ignore: avoid_print
+    print('[BOUNDARY-FIXTURE] failed: $phase: $error');
+    rethrow;
+  }
+}
 
 /// Deterministic clinic fixture created via the same RPCs the app uses.
 class BoundaryClinicFixture {
@@ -73,11 +105,16 @@ class FixtureFactory {
   Future<BoundaryClinicFixture> bootstrapOnly({String? label}) async {
     for (var attempt = 0; attempt < 5; attempt++) {
       try {
+        // Each phase is bounded below; keep the existing ORG_ALREADY_EXISTS
+        // cleanup/retry behavior intact for transient installation residue.
         return await _bootstrapOnlyAttempt(label: label);
       } on RpcFailure catch (error) {
         if (error.code == 'ORG_ALREADY_EXISTS' && attempt < 4) {
           await SqlFixtureHelper().forcePurgeInstallation();
-          await devResetAsBootstrapAdmin(client);
+          await runFixturePhase(
+            'retry cleanup reset after ORG_ALREADY_EXISTS',
+            devResetAsBootstrapAdmin(client),
+          );
           await Future<void>.delayed(Duration(milliseconds: 100 * (attempt + 1)));
           continue;
         }
@@ -94,14 +131,30 @@ class FixtureFactory {
     final auth = AuthRepositoryImpl(client);
     final bootstrap = BootstrapRepositoryImpl(client);
 
-    await auth.signIn(username: 'admin', password: 'admin');
-    await auth.refreshSession();
+    await runFixturePhase(
+      'admin sign-in for clinic $suffix',
+      auth.signIn(username: 'admin', password: 'admin'),
+    );
+    await runFixturePhase(
+      'admin session refresh for clinic $suffix',
+      auth.refreshSession(),
+    );
 
     final orgName = 'Boundary Clinic $suffix';
-    final orgId = await bootstrap.createOrganization(BootstrapOrganizationInput(name: orgName));
+    final orgId = await runFixturePhase(
+      'create organization $suffix',
+      bootstrap.createOrganization(BootstrapOrganizationInput(name: orgName)),
+    );
     final branchCode = 'BD${suffix.hashCode.abs() % 100000}';
-    final branchId = await bootstrap.createBranch(
-      BootstrapBranchInput(organizationId: orgId, name: 'Main $suffix', code: branchCode),
+    final branchId = await runFixturePhase(
+      'create branch $suffix',
+      bootstrap.createBranch(
+        BootstrapBranchInput(
+          organizationId: orgId,
+          name: 'Main $suffix',
+          code: branchCode,
+        ),
+      ),
     );
 
     final clinic = BoundaryClinicFixture(
@@ -112,21 +165,34 @@ class FixtureFactory {
       organizationName: orgName,
       branchCode: branchCode,
     );
-    await SqlFixtureHelper().waitForActiveBranch(branchId: branchId, organizationId: orgId);
-    await boundaryRefreshSessionForClinic(
-      auth,
-      clinic,
-      username: 'admin',
-      password: 'admin',
+    await runFixturePhase(
+      'wait for active branch $branchId',
+      SqlFixtureHelper().waitForActiveBranch(
+        branchId: branchId,
+        organizationId: orgId,
+      ),
+      timeout: const Duration(seconds: 22),
     );
-    await auth.signOut();
+    await runFixturePhase(
+      'refresh admin session for branch $branchId',
+      boundaryRefreshSessionForClinic(
+        auth,
+        clinic,
+        username: 'admin',
+        password: 'admin',
+      ),
+    );
+    await runFixturePhase('admin sign-out after clinic $suffix', auth.signOut());
 
     return clinic;
   }
 
   /// Resets installation and bootstraps a fresh org + branch.
   Future<BoundaryClinicFixture> resetAndBootstrap({String? label}) async {
-    await devResetAsBootstrapAdmin(client);
+    await runFixturePhase(
+      'reset installation before clinic bootstrap',
+      devResetAsBootstrapAdmin(client),
+    );
     return bootstrapOnly(label: label);
   }
 

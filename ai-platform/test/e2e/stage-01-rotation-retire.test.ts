@@ -1,0 +1,393 @@
+import { beforeAll, beforeEach, describe, expect, it } from "vitest";
+import {
+  assertRequestReferenceShape,
+  assertTaxonomyBody,
+  assertUlidShape,
+  bootstrapE2e,
+  CAPABILITY_VERSION,
+  clearConfigCache,
+  controlFetch,
+  count,
+  getAudits,
+  invokeCron,
+  mintAat,
+  OPERATOR_ID,
+  postRequest,
+  provisionHappyPath,
+  queryAll,
+  queryOne,
+  resetE2eState,
+  seedSql,
+  visitSummaryInvokeBody,
+  type InvokeResult,
+} from "./harness";
+
+beforeAll(async () => {
+  await bootstrapE2e();
+});
+
+beforeEach(async () => {
+  await resetE2eState();
+});
+
+const TOKEN_CONTRACT_V1 = {
+  ver: "1",
+  added_at: "2026-08-03T00:00:00.000Z",
+  retired_at: "2026-10-03T13:00:00.000Z",
+  changed_by: "seed",
+} as const;
+
+const TOKEN_CONTRACT_V2 = {
+  ver: "2",
+  added_at: "2026-10-03T13:00:00.000Z",
+  retired_at: null,
+  changed_by: "seed",
+} as const;
+
+const ISO_8601 = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/;
+const UUID =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+const CLOCK_SKEW_MS = 15_000;
+
+// Catalog labels this “118 chars”; the quoted Action body is 132 chars.
+// Follow the quoted value (row + audit target must equal this string).
+const LONG_VER =
+  "2026-09-05-emergency-rotation-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
+
+type TokenContractRow = {
+  ver: string;
+  added_at: string;
+  retired_at: string | null;
+  changed_by: string;
+};
+
+type ControlAuditRow = {
+  audit_id: string;
+  operator_id: string;
+  action: string;
+  target: string;
+  before_pointer: string | null;
+  after_pointer: string | null;
+  recorded_at: string;
+};
+
+type PlatformCounterRow = {
+  dimension_set: string;
+  count: number;
+};
+
+async function beginRotation(ver: string) {
+  return controlFetch("/control/token-contract/begin-rotation", { body: { ver } });
+}
+
+async function retireVer(ver: string) {
+  return controlFetch("/control/token-contract/retire", { body: { ver } });
+}
+
+function assertIsoApproxNow(value: unknown): string {
+  expect(typeof value).toBe("string");
+  const iso = String(value);
+  expect(iso).toMatch(ISO_8601);
+  const parsed = Date.parse(iso);
+  expect(Number.isNaN(parsed)).toBe(false);
+  expect(Math.abs(Date.now() - parsed)).toBeLessThan(CLOCK_SKEW_MS);
+  return iso;
+}
+
+function expectControlError(
+  result: { status: number; json: unknown },
+  status: number,
+  error: string,
+): void {
+  expect(result.status).toBe(status);
+  expect(result.json).toEqual({ error });
+}
+
+async function tokenContractRows(): Promise<TokenContractRow[]> {
+  return queryAll<TokenContractRow>(
+    "SELECT ver, added_at, retired_at, changed_by FROM token_contract ORDER BY ver",
+  );
+}
+
+async function assertTokenContractSeedOnly(): Promise<void> {
+  const rows = await tokenContractRows();
+  expect(rows).toEqual([TOKEN_CONTRACT_V1, TOKEN_CONTRACT_V2]);
+}
+
+async function liveVers(): Promise<string[]> {
+  const rows = await queryAll<{ ver: string }>(
+    "SELECT ver FROM token_contract WHERE retired_at IS NULL ORDER BY ver",
+  );
+  return rows.map((row) => row.ver);
+}
+
+async function tokenContractAudits(): Promise<ControlAuditRow[]> {
+  return queryAll<ControlAuditRow>(
+    `SELECT audit_id, operator_id, action, target, before_pointer, after_pointer, recorded_at
+     FROM control_audit
+     WHERE action IN ('token_contract_begin_rotation', 'token_contract_retire')
+     ORDER BY recorded_at, action, target`,
+  );
+}
+
+function isIdentityUnauthenticated(result: InvokeResult): boolean {
+  return result.status === 401 && result.body?.code === "unauthenticated";
+}
+
+function dualAcceptClaims(
+  ver: string,
+  jti: string,
+): Record<string, unknown> {
+  return {
+    ver,
+    jti,
+    role: "doctor",
+    scopes: ["ai.visit_summary"],
+    aud: "ai-platform",
+  };
+}
+
+async function openNewRotation(): Promise<void> {
+  const opened = await beginRotation("3");
+  expect(opened.status).toBe(200);
+  expect(opened.json).toEqual({ ver: "2" });
+}
+
+async function seedLiveVer3(): Promise<void> {
+  const addedAt = new Date().toISOString();
+  await seedSql([
+    {
+      sql: `INSERT INTO token_contract (ver, added_at, retired_at, changed_by)
+            VALUES ('3', ?, NULL, 'seed')
+            ON CONFLICT(ver) DO UPDATE SET retired_at = NULL, changed_by = 'seed'`,
+      params: [addedAt],
+    },
+  ]);
+}
+
+async function retireVer2AfterOpen(): Promise<string> {
+  await openNewRotation();
+  const retired = await retireVer("2");
+  expect(retired.status).toBe(200);
+  const body = retired.json as { ver: string; retired_at: string };
+  expect(body.ver).toBe("2");
+  return body.retired_at;
+}
+
+function assertUnauthenticatedTaxonomy(json: unknown): void {
+  assertTaxonomyBody(json, { code: "unauthenticated", retry_safe: true });
+  const body = json as { request_reference: string; trace_id: string };
+  assertRequestReferenceShape(String(body.request_reference));
+  assertUlidShape(String(body.trace_id));
+}
+
+async function flushedUnauthenticatedMetrics(
+  installationId: string,
+): Promise<PlatformCounterRow[]> {
+  // recordGuardRejection is isolate-local until cron flush (Stage 00 S00-024).
+  await invokeCron("* * * * *");
+  const rows = await queryAll<PlatformCounterRow>(
+    "SELECT dimension_set, count FROM platform_counter",
+  );
+  return rows.filter((row) => {
+    let dims: { error_code?: string; installation_id?: string };
+    try {
+      dims = JSON.parse(row.dimension_set) as {
+        error_code?: string;
+        installation_id?: string;
+      };
+    } catch {
+      return false;
+    }
+    return (
+      dims.error_code === "unauthenticated" &&
+      dims.installation_id === installationId
+    );
+  });
+}
+
+describe("Stage 01 — rotation and retire (S01-017…S01-031)", () => {
+  it("S01-017 — retire with non-string ver returns invalid_ver", async () => {
+    // Catalog chapter C-05: HTTP 400 {"error":"invalid_ver"}. Register 5 #8 /
+    // Register 4 #10 still describe an uncaught TypeError; follow the chapter.
+    const before = await tokenContractRows();
+    const result = await controlFetch("/control/token-contract/retire", {
+      body: { ver: 1 },
+    });
+
+    expectControlError(result, 400, "invalid_ver");
+    expect(await tokenContractRows()).toEqual(before);
+    expect(await tokenContractAudits()).toHaveLength(0);
+  });
+
+  it("S01-018 — retire of a ver that was never inserted", async () => {
+    const result = await retireVer("never-existed");
+
+    expectControlError(result, 404, "ver_not_found");
+    await assertTokenContractSeedOnly();
+    expect(await tokenContractAudits()).toHaveLength(0);
+  });
+
+  it("S01-019 — retire of the sole live version is refused", async () => {
+    const result = await retireVer("2");
+
+    expectControlError(result, 409, "no_rotation_open");
+    const seed = await queryOne<TokenContractRow>(
+      "SELECT ver, added_at, retired_at, changed_by FROM token_contract WHERE ver = ?",
+      ["2"],
+    );
+    expect(seed).toEqual(TOKEN_CONTRACT_V2);
+    expect(seed?.retired_at).toBeNull();
+    expect(seed?.changed_by).toBe("seed");
+    expect(await tokenContractAudits()).toHaveLength(0);
+  });
+
+
+
+
+
+
+
+  it("S01-026 — AAT carrying an unknown ver is rejected as unauthenticated", async () => {
+    const scenario = await provisionHappyPath();
+    await openNewRotation();
+    clearConfigCache();
+
+    const before = await tokenContractRows();
+    const aatMissing = await mintAat(scenario, {
+      claims: dualAcceptClaims("99", "s01-026-missing"),
+    });
+
+    const result = await postRequest(scenario, {
+      token: aatMissing,
+      idempotencyKey: "s01-026-missing",
+      capabilityVersion: CAPABILITY_VERSION,
+      body: visitSummaryInvokeBody(scenario, {
+        user_intent: "token-contract missing-ver probe",
+      }),
+    });
+
+    expect(result.status).toBe(401);
+    assertUnauthenticatedTaxonomy(result.body);
+    expect(await tokenContractRows()).toEqual(before);
+
+    const metrics = await flushedUnauthenticatedMetrics("unverified");
+    expect(metrics.length).toBeGreaterThan(0);
+    expect(metrics.some((row) => row.count >= 1)).toBe(true);
+  });
+
+  it("S01-027 — retire happy path stamps ver=2 after a new version is open", async () => {
+    await seedLiveVer3();
+    await openNewRotation();
+    const ver3Before = await queryOne<TokenContractRow>(
+      "SELECT ver, added_at, retired_at, changed_by FROM token_contract WHERE ver = ?",
+      ["3"],
+    );
+
+    const result = await retireVer("2");
+
+    expect(result.status).toBe(200);
+    const body = result.json as { ver: string; retired_at: string };
+    expect(Object.keys(body).sort()).toEqual(["retired_at", "ver"]);
+    expect(body.ver).toBe("2");
+    const retiredAt = assertIsoApproxNow(body.retired_at);
+
+    const ver2 = await queryOne<TokenContractRow>(
+      "SELECT ver, added_at, retired_at, changed_by FROM token_contract WHERE ver = ?",
+      ["2"],
+    );
+    expect(ver2?.retired_at).toBe(retiredAt);
+    expect(ver2?.changed_by).toBe(OPERATOR_ID);
+
+    const ver3After = await queryOne<TokenContractRow>(
+      "SELECT ver, added_at, retired_at, changed_by FROM token_contract WHERE ver = ?",
+      ["3"],
+    );
+    expect(ver3After).toEqual(ver3Before);
+    expect(ver3After?.retired_at).toBeNull();
+
+    const audits = await getAudits("token_contract_retire", "2");
+    expect(audits).toHaveLength(1);
+    const audit = audits[0] as ControlAuditRow;
+    expect(audit.operator_id).toBe(OPERATOR_ID);
+    expect(audit.action).toBe("token_contract_retire");
+    expect(audit.target).toBe("2");
+    expect(audit.before_pointer).toBeNull();
+    expect(audit.after_pointer).toBeNull();
+    expect(String(audit.audit_id)).toMatch(UUID);
+    assertIsoApproxNow(audit.recorded_at);
+
+    expect(await count("token_contract", "retired_at IS NULL")).toBe(1);
+    expect(await liveVers()).toEqual(["3"]);
+  });
+
+  it("S01-028 — retire of an already-retired ver is a no-op conflict", async () => {
+    const result = await retireVer("1");
+
+    expectControlError(result, 409, "ver_already_retired");
+
+    const ver1 = await queryOne<TokenContractRow>(
+      "SELECT ver, retired_at, changed_by FROM token_contract WHERE ver = ?",
+      ["1"],
+    );
+    expect(ver1?.retired_at).toBe(TOKEN_CONTRACT_V1.retired_at);
+    expect(ver1?.changed_by).toBe("seed");
+    expect(await getAudits("token_contract_retire", "1")).toHaveLength(0);
+  });
+
+  it("S01-029 — Full path: retiring ver=2 breaks previously valid AATs at identity", async () => {
+    const scenario = await provisionHappyPath();
+    const aatV2 = await mintAat(scenario, {
+      claims: dualAcceptClaims("2", "s01-029-v2"),
+    });
+
+    const beforeRetire = await postRequest(scenario, {
+      token: aatV2,
+      idempotencyKey: "s01-029-v2",
+      capabilityVersion: CAPABILITY_VERSION,
+      body: visitSummaryInvokeBody(scenario, {
+        user_intent: "token-contract post-retire probe",
+      }),
+    });
+    expect(isIdentityUnauthenticated(beforeRetire)).toBe(false);
+
+    await seedLiveVer3();
+    await openNewRotation();
+    await retireVer("2");
+    clearConfigCache();
+
+    const contractAfterRetire = await tokenContractRows();
+
+    const afterRetire = await postRequest(scenario, {
+      token: aatV2,
+      idempotencyKey: "s01-029-after-retire",
+      capabilityVersion: CAPABILITY_VERSION,
+      body: visitSummaryInvokeBody(scenario, {
+        user_intent: "token-contract post-retire probe",
+      }),
+    });
+    expect(afterRetire.status).toBe(401);
+    assertUnauthenticatedTaxonomy(afterRetire.body);
+
+    const aatV3 = await mintAat(scenario, {
+      claims: dualAcceptClaims("3", "s01-029-v3"),
+    });
+    const followUp = await postRequest(scenario, {
+      token: aatV3,
+      idempotencyKey: "s01-029-v3",
+      capabilityVersion: CAPABILITY_VERSION,
+      body: visitSummaryInvokeBody(scenario, {
+        user_intent: "token-contract post-retire probe",
+      }),
+    });
+    expect(isIdentityUnauthenticated(followUp)).toBe(false);
+
+    expect(await tokenContractRows()).toEqual(contractAfterRetire);
+
+    const metrics = await flushedUnauthenticatedMetrics("unverified");
+    expect(metrics.length).toBeGreaterThan(0);
+    expect(metrics.some((row) => row.count >= 1)).toBe(true);
+  });
+
+
+});

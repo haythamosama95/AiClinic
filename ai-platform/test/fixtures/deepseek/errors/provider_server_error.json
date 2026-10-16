@@ -1,0 +1,10 @@
+{
+  "status": 503,
+  "body": {
+    "error": {
+      "message": "The server had an error processing your request",
+      "type": "server_error",
+      "code": "internal_server_error"
+    }
+  }
+}

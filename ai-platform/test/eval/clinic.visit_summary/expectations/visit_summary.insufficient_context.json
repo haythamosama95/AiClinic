@@ -1,0 +1,16 @@
+{
+  "case_id": "visit_summary.insufficient_context",
+  "system_instruction_must_contain": [
+    "advisory only",
+    "clinical documentation assistant",
+    "state what is missing"
+  ],
+  "output_must_contain": [
+    "insufficient",
+    "missing",
+    "chief complaint",
+    "timeline"
+  ],
+  "output_min_length": 60,
+  "output_mode": "prose"
+}

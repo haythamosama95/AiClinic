@@ -75,6 +75,13 @@ BEGIN
     (v_staff_reception, v_user_reception, 'Reception A', 'receptionist', v_user_owner, v_user_owner),
     (v_staff_owner_b, v_user_owner_b, 'Owner B', 'administrator', v_user_owner_b, v_user_owner_b);
 
+  INSERT INTO ai_internal.membership (user_id, organization_id, role)
+  SELECT sm.auth_user_id, v_org_a, sm.role
+  FROM public.staff_members sm
+  WHERE sm.auth_user_id IN (v_user_owner, v_user_reception)
+    AND sm.is_deleted = false
+  ON CONFLICT (user_id, organization_id) DO NOTHING;
+
   INSERT INTO public.staff_branch_assignments (staff_member_id, branch_id, is_primary, created_by, updated_by)
   VALUES
     (v_staff_owner, v_branch_a, true, v_user_owner, v_user_owner),

@@ -305,13 +305,12 @@ void main() {
       const ManifestScenario('appointments.getSettings.FORBIDDEN.unauthenticated');
       final clinic = await ctx.ensureClinic(label: 'appt_anon');
       await ctx.signOut();
+      expect(ctx.auth.currentSession, isNull);
 
-      try {
-        await ctx.appointments.getSettings(branchId: clinic.branchId);
-        fail('Expected auth failure when signed out');
-      } on RpcFailure catch (failure) {
-        expect(failure.code, anyOf(equals('FORBIDDEN'), equals('PGRST301')));
-      }
+      await expectRpcCode(
+        () => ctx.appointments.getSettings(branchId: clinic.branchId),
+        'FORBIDDEN',
+      );
     });
   });
 }

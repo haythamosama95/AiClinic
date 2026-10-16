@@ -14,7 +14,6 @@ _FOR_ENUM_VALUES = re.compile(
 )
 _ENUM_DECL = re.compile(r"enum\s+(\w+)\s*\{([^}]*)\}", re.DOTALL)
 _ENUM_LENGTH_CACHE: dict[str, int] = {
-    "StaffRole": 5,
     "StaffListFilter": 3,
     "PatientGender": 5,
     "PatientMaritalStatus": 4,
@@ -26,6 +25,8 @@ UNIT_TEST_ROOTS = ("test/unit", "test/widget", "test/integration")
 
 BOUNDARY_DEFAULT_ROOT = "test/boundary"
 
+FULLSTACK_INTEGRATION_DIR = "test/integration"
+
 BOUNDARY_SUBSET_ROOTS: dict[str, tuple[str, ...]] = {
     "auth": ("test/boundary/auth",),
     "settings": ("test/boundary/settings",),
@@ -33,6 +34,23 @@ BOUNDARY_SUBSET_ROOTS: dict[str, tuple[str, ...]] = {
     "appointments": ("test/boundary/appointments",),
     "postgrest": ("test/boundary/postgrest_reads_boundary_test.dart",),
 }
+
+# Live boundary tests can live under integration/ when they exercise a complete
+# user journey. Keep them in the boundary campaign and out of the unit campaign
+# by their Dart @Tags annotation rather than relying on file naming conventions.
+BOUNDARY_INTEGRATION_SUBSET_ROOTS: dict[str, tuple[str, ...]] = {
+    "patients": ("test/integration/patients",),
+}
+_BOUNDARY_TAG = re.compile(r"@Tags\s*\(\s*\[([^\]]*)\]\s*\)", re.DOTALL)
+
+
+def _is_boundary_tagged(cwd: Path, relative_path: str) -> bool:
+    source = (cwd / relative_path).read_text(encoding="utf-8")
+    tags = _BOUNDARY_TAG.search(source)
+    return (
+        tags is not None
+        and re.search(r"['\"]boundary['\"]", tags.group(1)) is not None
+    )
 
 
 def discover_test_files(cwd: Path, *roots: str) -> list[str]:
@@ -153,7 +171,28 @@ def count_expected_tests(cwd: Path, relative_paths: list[str]) -> int:
 
 
 def unit_test_files(cwd: Path) -> list[str]:
-    return discover_test_files(cwd, *UNIT_TEST_ROOTS)
+    fullstack = set(fullstack_test_files(cwd))
+    return [
+        path
+        for path in discover_test_files(cwd, *UNIT_TEST_ROOTS)
+        if path not in fullstack
+        and not _is_boundary_tagged(cwd, path)
+    ]
+
+
+def unit_test_shards(cwd: Path, shard_count: int = 2) -> list[list[str]]:
+    """Partition unit test files deterministically by estimated test count."""
+    if shard_count < 1:
+        raise ValueError("shard_count must be positive")
+    files = unit_test_files(cwd)
+    shards: list[list[str]] = [[] for _ in range(shard_count)]
+    loads = [0] * shard_count
+    weighted = [(count_expected_tests(cwd, [path]), path) for path in files]
+    for weight, path in sorted(weighted, key=lambda item: (-item[0], item[1])):
+        target = min(range(shard_count), key=lambda index: (loads[index], index))
+        shards[target].append(path)
+        loads[target] += weight
+    return [sorted(shard) for shard in shards]
 
 
 def boundary_test_files(cwd: Path, subset: str | None) -> list[str]:
@@ -161,5 +200,33 @@ def boundary_test_files(cwd: Path, subset: str | None) -> list[str]:
         roots = BOUNDARY_SUBSET_ROOTS.get(subset)
         if roots is None:
             raise ValueError(f"unknown boundary subset: {subset}")
-        return discover_test_files(cwd, *roots)
-    return discover_test_files(cwd, BOUNDARY_DEFAULT_ROOT)
+        integration_roots = BOUNDARY_INTEGRATION_SUBSET_ROOTS.get(subset, ())
+        integration_tests = [
+            path
+            for path in discover_test_files(cwd, *integration_roots)
+            if _is_boundary_tagged(cwd, path)
+        ]
+        return sorted(
+            set(discover_test_files(cwd, *roots)) | set(integration_tests)
+        )
+
+    boundary_tests = discover_test_files(cwd, BOUNDARY_DEFAULT_ROOT)
+    integration_tests = [
+        path
+        for roots in BOUNDARY_INTEGRATION_SUBSET_ROOTS.values()
+        for path in discover_test_files(cwd, *roots)
+        if _is_boundary_tagged(cwd, path)
+    ]
+    return sorted(set(boundary_tests) | set(integration_tests))
+
+
+def fullstack_test_files(cwd: Path) -> list[str]:
+    """Integration suites named *fullstack*_test.dart (H-FL / @Tags fullstack)."""
+    integration = cwd / FULLSTACK_INTEGRATION_DIR
+    if not integration.is_dir():
+        return []
+    return sorted(
+        path.relative_to(cwd).as_posix()
+        for path in integration.glob("*fullstack*_test.dart")
+        if path.is_file()
+    )

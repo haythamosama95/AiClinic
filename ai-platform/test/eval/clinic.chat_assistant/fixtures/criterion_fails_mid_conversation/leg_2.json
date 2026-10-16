@@ -1,0 +1,12 @@
+{
+  "leg_id": "leg_2",
+  "assistant_turn": {
+    "kind": "context_requested",
+    "requests": [
+      {
+        "key": "medication.active_list@v1",
+        "arguments": {}
+      }
+    ]
+  }
+}

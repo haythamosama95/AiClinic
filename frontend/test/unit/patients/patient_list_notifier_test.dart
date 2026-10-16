@@ -254,9 +254,7 @@ void main() {
     }
 
     setUp(() {
-      repository = FakePatientRepository(
-        patients: samplePatientList(count: 2),
-      );
+      repository = FakePatientRepository(patients: samplePatientList(count: 2));
     });
 
     test('initial build uses default filters and issues exactly one search', () async {
@@ -323,9 +321,7 @@ void main() {
       await container.read(patientListProvider.future);
       final callsBefore = repository.searchCallCount;
 
-      await container
-          .read(patientListProvider.notifier)
-          .applyFilters(const PatientListFilters(searchText: 'Sara'));
+      await container.read(patientListProvider.notifier).applyFilters(const PatientListFilters(searchText: 'Sara'));
 
       expect(repository.lastQuery, 'Sara');
       expect(repository.searchCallCount, callsBefore + 1);
@@ -345,9 +341,7 @@ void main() {
       final container = createContainer();
       addTearDown(container.dispose);
 
-      await container
-          .read(patientListProvider.notifier)
-          .applyFilters(const PatientListFilters(page: 2, pageSize: 20));
+      await container.read(patientListProvider.notifier).applyFilters(const PatientListFilters(page: 2, pageSize: 20));
 
       expect(repository.lastOffset, 20);
       expect(repository.lastLimit, 20);
@@ -369,9 +363,7 @@ void main() {
       final container = createContainer();
       addTearDown(container.dispose);
 
-      await container
-          .read(patientListProvider.notifier)
-          .applyFilters(const PatientListFilters(page: 2, pageSize: 20));
+      await container.read(patientListProvider.notifier).applyFilters(const PatientListFilters(page: 2, pageSize: 20));
 
       final state = container.read(patientListProvider).requireValue;
       expect(state.rows, isEmpty);
@@ -380,9 +372,7 @@ void main() {
     });
 
     test('search error surfaces as AsyncValue error then reload recovers', () async {
-      final failingRepository = _ToggleSearchPatientRepository(
-        patients: samplePatientList(count: 1),
-      );
+      final failingRepository = _ToggleSearchPatientRepository(patients: samplePatientList(count: 1));
       final container = ProviderContainer(
         overrides: [
           authSessionProvider.overrideWith(_PatientsAuthNotifier.new),
@@ -425,34 +415,31 @@ void main() {
       expect(repository.lastLimit, 10);
     });
 
-    test(
-      'concurrent applyFilters keeps the last-applied filters when earlier response is slower',
-      () async {
-        final delayedRepository = _SequentialDelayPatientRepository(
-          delays: const [Duration(milliseconds: 200), Duration.zero],
-        );
-        final container = ProviderContainer(
-          overrides: [
-            authSessionProvider.overrideWith(_PatientsAuthNotifier.new),
-            searchPatientsUseCaseProvider.overrideWith((ref) => SearchPatients(delayedRepository)),
-          ],
-        );
-        addTearDown(container.dispose);
-        final notifier = container.read(patientListProvider.notifier);
+    test('concurrent applyFilters keeps the last-applied filters when earlier response is slower', () async {
+      final delayedRepository = _SequentialDelayPatientRepository(
+        delays: const [Duration(milliseconds: 200), Duration.zero],
+      );
+      final container = ProviderContainer(
+        overrides: [
+          authSessionProvider.overrideWith(_PatientsAuthNotifier.new),
+          searchPatientsUseCaseProvider.overrideWith((ref) => SearchPatients(delayedRepository)),
+        ],
+      );
+      addTearDown(container.dispose);
+      final notifier = container.read(patientListProvider.notifier);
 
-        await container.read(patientListProvider.future);
-        final callsBefore = delayedRepository.searchCallCount;
+      await container.read(patientListProvider.future);
+      final callsBefore = delayedRepository.searchCallCount;
 
-        final first = notifier.applyFilters(const PatientListFilters(searchText: 'Alpha'));
-        final second = notifier.applyFilters(const PatientListFilters(searchText: 'Beta'));
-        await Future.wait([first, second]);
+      final first = notifier.applyFilters(const PatientListFilters(searchText: 'Alpha'));
+      final second = notifier.applyFilters(const PatientListFilters(searchText: 'Beta'));
+      await Future.wait([first, second]);
 
-        final state = container.read(patientListProvider).requireValue;
-        expect(state.filters.searchText, 'Beta');
-        expect(state.rows.single.item.fullName, contains('Beta'));
-        expect(delayedRepository.searchCallCount, callsBefore + 2);
-      },
-    );
+      final state = container.read(patientListProvider).requireValue;
+      expect(state.filters.searchText, 'Beta');
+      expect(state.rows.single.item.fullName, contains('Beta'));
+      expect(delayedRepository.searchCallCount, callsBefore + 2);
+    });
   });
 }
 

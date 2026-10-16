@@ -1,0 +1,174 @@
+name = "ai-platform-gateway"
+main = "src/worker.ts"
+compatibility_date = "2026-05-03"
+workers_dev = false
+preview_urls = false
+
+[observability]
+enabled = true
+
+[dev]
+ip = "127.0.0.1"
+port = 8787
+
+[triggers]
+crons = ["0 3 * * *", "0 4 * * *", "*/5 * * * *"]
+
+[[rules]]
+type = "Text"
+globs = ["**/prompts/**/*.md"]
+fallthrough = true
+
+[[migrations]]
+tag = "v1"
+new_sqlite_classes = ["GatewayObject"]
+
+[env.development]
+name = "ai-platform-gateway-development"
+
+[env.development.vars]
+BUILD_SHA = "local"
+ENVIRONMENT = "development"
+LOG_VERBOSITY = "2"
+CONFIG_CACHE_TTL_MS = "100"
+ACCESS_TEAM_DOMAIN = "access.test"
+ACCESS_AUD = "vendor-access-aud"
+WEBAUTHN_RP_ID = "ops.vendor.test"
+WEBAUTHN_ORIGIN = "https://ops.vendor.test"
+HEARTBEAT_URL = "https://heartbeat.test/ping"
+ALERT_EMAIL_TO = "alerts@clinic.invalid"
+ISSUER_ID = "issuer-test"
+PLATFORM_SIGNING_KEY = "{\"kid\":\"platform-test\",\"pkcs8\":\"MC4CAQAwBQYDK2VwBCIEIN2ndQQArm1dlsCuHaGGaUB8nnqfj7W2HaVbj_JJA9Lk\",\"public_key\":\"GNzxZ6Gymues_aeJArGyb3wDESTOUJeqhuZBfTByni0\"}"
+
+[[env.development.send_email]]
+name = "SEND_EMAIL"
+destination_address = "alerts@clinic.invalid"
+
+[[env.development.d1_databases]]
+binding = "DB"
+database_name = "ai-platform-development"
+database_id = "11111111-1111-1111-1111-111111111111"
+
+[[env.development.r2_buckets]]
+binding = "R2"
+bucket_name = "ai-platform-development"
+
+[[env.development.durable_objects.bindings]]
+name = "DO"
+class_name = "GatewayObject"
+
+[[env.development.ratelimits]]
+name = "RATE_LIMITER_INSTALLATION"
+namespace_id = "1001"
+simple = { limit = 600, period = 60 }
+
+[[env.development.ratelimits]]
+name = "RATE_LIMITER_INSTALLATION_ACTOR"
+namespace_id = "1002"
+simple = { limit = 120, period = 60 }
+
+[[env.development.ratelimits]]
+name = "RATE_LIMITER_INSTALLATION_CAPABILITY"
+namespace_id = "1003"
+simple = { limit = 300, period = 60 }
+
+[env.staging]
+name = "ai-platform-gateway-staging"
+workers_dev = false
+preview_urls = false
+
+[env.staging.vars]
+BUILD_SHA = "local"
+ENVIRONMENT = "staging"
+LOG_VERBOSITY = "1"
+CONFIG_CACHE_TTL_MS = "30000"
+ACCESS_TEAM_DOMAIN = "access.test"
+ACCESS_AUD = "vendor-access-aud"
+WEBAUTHN_RP_ID = "ops.vendor.test"
+WEBAUTHN_ORIGIN = "https://ops.vendor.test"
+HEARTBEAT_URL = "https://heartbeat.test/ping"
+ALERT_EMAIL_TO = "alerts@clinic.invalid"
+ISSUER_ID = "issuer-test"
+PLATFORM_SIGNING_KEY = "{\"kid\":\"platform-test\",\"pkcs8\":\"MC4CAQAwBQYDK2VwBCIEIN2ndQQArm1dlsCuHaGGaUB8nnqfj7W2HaVbj_JJA9Lk\",\"public_key\":\"GNzxZ6Gymues_aeJArGyb3wDESTOUJeqhuZBfTByni0\"}"
+DURATION_SCALE = "staging"
+
+[[env.staging.send_email]]
+name = "SEND_EMAIL"
+destination_address = "alerts@clinic.invalid"
+
+[[env.staging.d1_databases]]
+binding = "DB"
+database_name = "ai-platform-staging"
+database_id = "22222222-2222-2222-2222-222222222222"
+
+[[env.staging.r2_buckets]]
+binding = "R2"
+bucket_name = "ai-platform-staging"
+
+[[env.staging.durable_objects.bindings]]
+name = "DO"
+class_name = "GatewayObject"
+
+[[env.staging.ratelimits]]
+name = "RATE_LIMITER_INSTALLATION"
+namespace_id = "2001"
+simple = { limit = 600, period = 60 }
+
+[[env.staging.ratelimits]]
+name = "RATE_LIMITER_INSTALLATION_ACTOR"
+namespace_id = "2002"
+simple = { limit = 120, period = 60 }
+
+[[env.staging.ratelimits]]
+name = "RATE_LIMITER_INSTALLATION_CAPABILITY"
+namespace_id = "2003"
+simple = { limit = 300, period = 60 }
+
+[env.production]
+name = "ai-platform-gateway-production"
+
+[env.production.vars]
+BUILD_SHA = "local"
+ENVIRONMENT = "production"
+LOG_VERBOSITY = "0"
+CONFIG_CACHE_TTL_MS = "30000"
+ACCESS_TEAM_DOMAIN = "access.test"
+ACCESS_AUD = "vendor-access-aud"
+WEBAUTHN_RP_ID = "ops.vendor.test"
+WEBAUTHN_ORIGIN = "https://ops.vendor.test"
+HEARTBEAT_URL = "https://heartbeat.test/ping"
+ALERT_EMAIL_TO = "alerts@clinic.invalid"
+ISSUER_ID = "issuer-test"
+PLATFORM_SIGNING_KEY = "{\"kid\":\"platform-test\",\"pkcs8\":\"MC4CAQAwBQYDK2VwBCIEIN2ndQQArm1dlsCuHaGGaUB8nnqfj7W2HaVbj_JJA9Lk\",\"public_key\":\"GNzxZ6Gymues_aeJArGyb3wDESTOUJeqhuZBfTByni0\"}"
+
+[[env.production.send_email]]
+name = "SEND_EMAIL"
+destination_address = "alerts@clinic.invalid"
+
+[[env.production.d1_databases]]
+binding = "DB"
+database_name = "ai-platform-production"
+database_id = "33333333-3333-3333-3333-333333333333"
+
+[[env.production.r2_buckets]]
+binding = "R2"
+bucket_name = "ai-platform-production"
+
+[[env.production.durable_objects.bindings]]
+name = "DO"
+class_name = "GatewayObject"
+
+[[env.production.ratelimits]]
+name = "RATE_LIMITER_INSTALLATION"
+namespace_id = "3001"
+simple = { limit = 600, period = 60 }
+
+[[env.production.ratelimits]]
+name = "RATE_LIMITER_INSTALLATION_ACTOR"
+namespace_id = "3002"
+simple = { limit = 120, period = 60 }
+
+[[env.production.ratelimits]]
+name = "RATE_LIMITER_INSTALLATION_CAPABILITY"
+namespace_id = "3003"
+simple = { limit = 300, period = 60 }

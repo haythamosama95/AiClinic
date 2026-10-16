@@ -60,15 +60,16 @@ class _AppointmentCancelDialogState extends State<AppointmentCancelDialog> {
           ),
         ),
         const SizedBox(height: AppSpacing.space4),
-        Row(
-          mainAxisAlignment: MainAxisAlignment.end,
+        Wrap(
+          alignment: WrapAlignment.end,
+          spacing: AppSpacing.space2,
+          runSpacing: AppSpacing.space2,
           children: [
             AppButton(
               variant: AppButtonVariant.secondary,
               onPressed: () => Navigator.of(context).pop(),
               child: const Text('Keep appointment'),
             ),
-            const SizedBox(width: AppSpacing.space2),
             AppButton(
               variant: AppButtonVariant.danger,
               onPressed: _confirm,

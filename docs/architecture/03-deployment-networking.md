@@ -123,8 +123,6 @@ All API services are exposed to the LAN through Kong on port **54321**. The Flut
 
 PostgREST is configured with `PGRST_DB_PRE_REQUEST: public.local_dev_pre_request` for local development only.
 
-> **AI service:** not included in this compose file. When implemented (V2), Ollama + HTTP wrapper runs as a separate LAN service (default port 8090).
-
 ---
 
 ## Local Networking Architecture
@@ -136,17 +134,16 @@ Clinic LAN (e.g., 192.168.1.0/24)
 │
 ├── Receptionist PC (192.168.1.100) -- CLINIC SERVER NODE
 │   ├── Docker: Supabase stack (port 54321)
-│   ├── Docker/Service: AI Service (port 8090)
 │   └── Flutter desktop app
 │
 ├── Doctor PC 1 (192.168.1.101)
-│   └── Flutter desktop app → connects to 192.168.1.100:54321 and :8090
+│   └── Flutter desktop app → connects to 192.168.1.100:54321
 │
 ├── Doctor PC 2 (192.168.1.102)
-│   └── Flutter desktop app → connects to 192.168.1.100:54321 and :8090
+│   └── Flutter desktop app → connects to 192.168.1.100:54321
 │
 └── Lab PC (192.168.1.103)
-    └── Flutter desktop app → connects to 192.168.1.100:54321 and :8090
+    └── Flutter desktop app → connects to 192.168.1.100:54321
 ```
 
 ### Configuration
@@ -157,8 +154,7 @@ Each non-server clinic PC stores a local configuration file:
 {
   "deployment_mode": "local",
   "supabase_url": "http://192.168.1.100:54321",
-  "supabase_anon_key": "eyJ...",
-  "ai_service_url": "http://192.168.1.100:8090"
+  "supabase_anon_key": "eyJ..."
 }
 ```
 
@@ -169,10 +165,9 @@ This is configured during the initial setup wizard on each device. The setup wiz
 The receptionist PC serves as the clinic's local server. It runs:
 
 1. **Docker Engine** with the Supabase stack (always running as a Windows service).
-2. **AI Service** (Ollama as a system service + HTTP wrapper).
-3. **Flutter desktop app** (the receptionist also uses the application).
+2. **Flutter desktop app** (the receptionist also uses the application).
 
-A simple **system tray application** or **Windows service manager** monitors the health of Docker containers and Ollama, providing basic status indicators (green/red) and restart capability.
+A simple **system tray application** or **Windows service manager** monitors the health of Docker containers, providing basic status indicators (green/red) and restart capability.
 
 ### Network Resilience
 
@@ -181,6 +176,6 @@ A simple **system tray application** or **Windows service manager** monitors the
 | Server PC restarts  | Docker containers auto-restart (restart policy: `always`). Clients retry connections automatically.              |
 | Client PC loses LAN | Flutter shows "connection lost" banner. User can view cached data. Writes are blocked until connection restores. |
 | Server disk full    | PostgreSQL enters read-only mode. Flutter shows warning. Admin must free space.                                  |
-| Power outage        | On power restore, Docker + Ollama auto-start. Clients reconnect. PostgreSQL WAL ensures no data corruption.      |
+| Power outage        | On power restore, Docker auto-starts. Clients reconnect. PostgreSQL WAL ensures no data corruption.      |
 
 ---

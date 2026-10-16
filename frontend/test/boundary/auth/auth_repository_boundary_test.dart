@@ -65,6 +65,7 @@ void main() {
       const ManifestScenario('auth.aggressive.signOutThenRpc');
       final clinic = await ctx.ensureClinic(label: 'auth_signout_rpc');
       await ctx.signOut();
+      expect(ctx.auth.currentSession, isNull);
       await expectRpcCode(
         () => ctx.patients.searchPatients(scope: PatientListScope.thisBranch, branchId: clinic.branchId),
         'FORBIDDEN',

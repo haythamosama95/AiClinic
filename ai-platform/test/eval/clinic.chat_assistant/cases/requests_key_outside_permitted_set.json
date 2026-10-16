@@ -1,0 +1,28 @@
+{
+  "case_id": "requests_key_outside_permitted_set",
+  "legs": [
+    {
+      "fixture": "requests_key_outside_permitted_set/leg_1.json",
+      "append_before_fixture": [
+        {
+          "kind": "user",
+          "text": "Please fetch the medication list."
+        }
+      ]
+    },
+    {
+      "fixture": "requests_key_outside_permitted_set/leg_2.json",
+      "append_before_fixture": []
+    }
+  ],
+  "scoring": {
+    "required_key_requests": [],
+    "forbidden_resolved_keys": [],
+    "expect_convergence": true
+  },
+  "expected_outcome": {
+    "right_keys": "pass",
+    "permitted_set": "fail",
+    "round_budget": "pass"
+  }
+}
