@@ -1,10 +1,10 @@
 import path from "node:path";
 import { execFileSync } from "node:child_process";
-import { mkdtempSync, rmSync } from "node:fs";
+import { mkdtempSync, readdirSync, rmSync } from "node:fs";
 import os from "node:os";
 import { fileURLToPath } from "node:url";
 import { cloudflareTest } from "@cloudflare/vitest-plugin";
-import { kCurrentWorker } from "miniflare";
+import { compileModuleRules, kCurrentWorker } from "miniflare";
 import { unstable_getMiniflareWorkerOptions } from "wrangler";
 import { pinWorkerdCompatibilityDate } from "./test/pin-workerd-compatibility-date";
 import { defineConfig } from "vitest/config";
@@ -20,6 +20,47 @@ const doReceiverConfig = unstable_getMiniflareWorkerOptions(
   platformDoReceiverConfig,
   "development",
 );
+const {
+  modulesRules: doReceiverLegacyModuleRules,
+  ...doReceiverWorkerOptions
+} = doReceiverConfig.workerOptions;
+
+const doReceiverModuleRules = compileModuleRules(
+  (doReceiverLegacyModuleRules ?? []).map((rule) =>
+    // Wrangler emits imported prompt markdown beside worker.js using hashed
+    // root-level filenames. Extend the terminal Text rule to include them.
+    rule.type === "Text" && !rule.fallthrough
+      ? { ...rule, include: [...rule.include, "**/*.md"] }
+      : rule,
+  ),
+);
+
+function listBundleFiles(directory: string): string[] {
+  return readdirSync(directory, { withFileTypes: true }).flatMap((entry) => {
+    const entryPath = path.join(directory, entry.name);
+    return entry.isDirectory() ? listBundleFiles(entryPath) : [entryPath];
+  });
+}
+
+function getDoReceiverModules() {
+  const mainPath = path.join(doReceiverBundleDir, "worker.js");
+  const modules = listBundleFiles(doReceiverBundleDir).flatMap((filePath) => {
+    if (filePath === mainPath) return [];
+    const moduleName = path
+      .relative(doReceiverBundleDir, filePath)
+      .split(path.sep)
+      .join("/");
+    const rule = doReceiverModuleRules.find(({ include }) =>
+      include.some((pattern) => pattern.test(moduleName)),
+    );
+    return rule ? [{ type: rule.type, path: filePath }] : [];
+  });
+
+  // Miniflare 5 accepts an explicit module manifest but rejects Wrangler 4's
+  // legacy `modulesRules` option. Keep the bundled worker as the entry module,
+  // then add only assets matched by Wrangler's module rules.
+  return [{ type: "ESModule" as const, path: mainPath }, ...modules];
+}
 
 // Miniflare's secondary workers consume JavaScript modules directly; unlike
 // the primary worker configured through `wrangler.configPath`, they do not go
@@ -106,24 +147,13 @@ export default defineConfig({
         },
         workers: [
           {
-            ...doReceiverConfig.workerOptions,
+            ...doReceiverWorkerOptions,
             // Match Wrangler's env-specific script_name used by the DO
             // binding in platform-do-receiver.toml.
             name: "ai-platform-do-receiver-development",
             compatibilityDate,
-            modules: true,
-            scriptPath: path.join(doReceiverBundleDir, "worker.js"),
+            modules: getDoReceiverModules(),
             modulesRoot: doReceiverBundleDir,
-            modulesRules: doReceiverConfig.workerOptions.modulesRules.map(
-              (rule) =>
-                // Wrangler emits imported prompt markdown beside worker.js
-                // using hashed root-level filenames. Extend its terminal
-                // Text rule because Miniflare ignores later rules of a type
-                // after a non-fallthrough rule.
-                rule.type === "Text" && !rule.fallthrough
-                  ? { ...rule, include: [...rule.include, "**/*.md"] }
-                  : rule,
-            ),
           },
         ],
       },
