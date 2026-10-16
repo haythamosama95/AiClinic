@@ -21,7 +21,7 @@ export const capturedStubEmails: StubSendEmailMessage[] = [];
  * `Error: could not parse email: Cannot read properties of undefined (reading 'value')`
  * as an UNCAUGHT promise rejection — the rejection escapes workerd-internal
  * promises, so no `try/catch` around `env.SEND_EMAIL.send(...)` can observe it.
- * The resulting storm (~2000 per CI run) desyncs @cloudflare/vitest-pool-workers
+ * The resulting storm (~2000 per CI run) desyncs the Workers Vitest runner
  * per-test isolated-storage accounting and fails effectively random later tests
  * with "Isolated storage failed. There should be additional logs above."
  *

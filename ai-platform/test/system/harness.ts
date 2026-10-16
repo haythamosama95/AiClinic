@@ -61,6 +61,7 @@ vi.mock("../../src/prompt/registry", () => ({
 }));
 
 import { env, SELF, runDurableObjectAlarm } from "cloudflare:test";
+import { http, HttpResponse } from "msw";
 import { CHANNEL_VERSIONS, grantIdPaid, sha256Hex } from "vendor-contracts";
 import { createAboGrantSigner, createSoftwareAuthenticator } from "vendor-contracts/testkit";
 import migrationSql from "../../migrations/20260731120000_platform_schema.sql?raw";
@@ -87,6 +88,7 @@ import fallbackAdmissionFeedMigrationSql from "../../migrations/20261006160000_f
 import dropInvoicingSql from "../../migrations/20261006170000_drop_invoicing.sql?raw";
 import dropPlanEntitlementSql from "../../migrations/20261006170100_drop_plan_entitlement.sql?raw";
 import idempotencyFingerprintSql from "../../migrations/20261014120000_ai_request_idempotency_fingerprint.sql?raw";
+import { network } from "../setup-network";
 import { applySqlStatements } from "../split-sql-statements";
 import {
   createCapabilityRegistry,
@@ -1385,13 +1387,12 @@ export async function r2Exists(key: string): Promise<boolean> {
 
 /**
  * Trigger the worker scheduled handler for a cron expression.
- * `SELF.scheduled` is not exposed by @cloudflare/vitest-pool-workers 0.8.71 in
+ * `SELF.scheduled` is not exposed by the Workers Vitest integration in
  * this project — invoke the exported worker module `scheduled()` with pool env.
  */
 const vendorHeartbeatHarness = {
   capturedFetches: [] as string[],
   fetchThrows: false,
-  interceptReady: false,
 };
 
 export const vendorHarnessState = {
@@ -1420,24 +1421,16 @@ export const vendorSendEmailBinding = {
 
 async function ensureHeartbeatFetchMock(): Promise<void> {
   await ensureVendorAccessTeam();
-  if (vendorHeartbeatHarness.interceptReady) {
-    return;
-  }
-  const { fetchMock } = await import("cloudflare:test");
   const heartbeatUrl = env.HEARTBEAT_URL;
-  const parsed = new URL(heartbeatUrl);
-  fetchMock
-    .get(parsed.origin)
-    .intercept({ path: parsed.pathname, method: "GET" })
-    .reply(() => {
+  network.use(
+    http.get(heartbeatUrl, () => {
       vendorHeartbeatHarness.capturedFetches.push(heartbeatUrl);
       if (vendorHeartbeatHarness.fetchThrows) {
-        throw new Error("heartbeat fetch failure injected by harness");
+        return HttpResponse.error();
       }
-      return { statusCode: 200, data: "ok" };
-    })
-    .persist();
-  vendorHeartbeatHarness.interceptReady = true;
+      return new HttpResponse("ok", { status: 200 });
+    }),
+  );
 }
 
 export function setSendPlatformEmailThrows(throws: boolean): void {
@@ -1963,19 +1956,15 @@ export async function mintVendorAccessJwt(
 }
 
 async function ensureVendorAccessTeam(): Promise<void> {
-  if (vendorAccessTeam !== null) {
-    return;
+  if (vendorAccessTeam === null) {
+    const { createAccessTeam } = await import("vendor-contracts/testkit");
+    vendorAccessTeam = await createAccessTeam({ issuer: vendorAccessIssuer() });
   }
-  const { createAccessTeam } = await import("vendor-contracts/testkit");
-  const { fetchMock } = await import("cloudflare:test");
-  vendorAccessTeam = await createAccessTeam({ issuer: vendorAccessIssuer() });
-  fetchMock.activate();
-  fetchMock.disableNetConnect();
-  fetchMock
-    .get(vendorAccessIssuer())
-    .intercept({ path: "/cdn-cgi/access/certs", method: "GET" })
-    .reply(200, JSON.stringify({ keys: vendorAccessTeam.certs.keys }))
-    .persist();
+  network.use(
+    http.get(`${vendorAccessIssuer()}/cdn-cgi/access/certs`, () =>
+      HttpResponse.json({ keys: vendorAccessTeam!.certs.keys }),
+    ),
+  );
 }
 
 export async function setupVendorHarness(): Promise<void> {

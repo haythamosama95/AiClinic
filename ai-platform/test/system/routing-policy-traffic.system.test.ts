@@ -66,7 +66,7 @@ async function insertProviderKillSwitch(providerId: string): Promise<void> {
 }
 
 describe("routing policy traffic", () => {
-  it("SYS-4.1 — Publish validation & immutability", async () => {
+  it("SYS-4.1 - Publish validation & immutability", async () => {
     const probePolicyId = "probe-publish";
     const version = "1";
     const validDocument = fakePolicyDocument(probePolicyId, version);
@@ -165,7 +165,7 @@ describe("routing policy traffic", () => {
     ])).toBe(1);
   });
 
-  it("SYS-4.2 — Canary split two installations", async () => {
+  it("SYS-4.2 - Canary split two installations", async () => {
     const i0 = await newScenario();
     const i1 = await newScenario();
     await coverClinic(i0);
@@ -207,7 +207,7 @@ describe("routing policy traffic", () => {
     expect(i1Decision.rule_id).toBe("active-v1");
   });
 
-  it("SYS-4.3 — Promote & rollback semantics", async () => {
+  it("SYS-4.3 - Promote & rollback semantics", async () => {
     const scenario = await newScenario();
     await coverClinic(scenario);
     await newClinic(scenario);
@@ -249,7 +249,7 @@ describe("routing policy traffic", () => {
     expect(rollbackNoSuperseded.json.error).toBe("illegal_policy_transition");
   });
 
-  it("SYS-4.4 — Version tie-break", async () => {
+  it("SYS-4.4 - Version tie-break", async () => {
     const scenario = await newScenario();
     await coverClinic(scenario);
     await newClinic(scenario);
@@ -306,7 +306,7 @@ describe("routing policy traffic", () => {
     expect(supersededNine?.status).toBe("superseded");
   });
 
-  it("SYS-4.5 — Missing R2 document", async () => {
+  it("SYS-4.5 - Missing R2 document", async () => {
     const scenario = await newScenario();
     await setupPromotedFakePolicy(scenario);
 
@@ -335,7 +335,7 @@ describe("routing policy traffic", () => {
     expect(await r2Exists(pointer)).toBe(true);
   });
 
-  it("SYS-4.6 — Fail-closed target filters", async () => {
+  it("SYS-4.6 - Fail-closed target filters", async () => {
     const scenario = await newScenario();
     await coverClinic(scenario);
     await newClinic(scenario);
@@ -420,7 +420,7 @@ describe("routing policy traffic", () => {
     ).toBe(true);
   });
 
-  it("SYS-4.7 — Overrides & exclusions", async () => {
+  it("SYS-4.7 - Overrides & exclusions", async () => {
     const scenario = await newScenario();
     await coverClinic(scenario);
     await newClinic(scenario);
@@ -477,7 +477,7 @@ describe("routing policy traffic", () => {
     expect(forcedDecision.cost_class_source).toBe("installation_override");
   });
 
-  it("SYS-4.8 — Provider kill-switch failover", async () => {
+  it("SYS-4.8 - Provider kill-switch failover", async () => {
     const scenario = await newScenario();
     await coverClinic(scenario);
     await newClinic(scenario);

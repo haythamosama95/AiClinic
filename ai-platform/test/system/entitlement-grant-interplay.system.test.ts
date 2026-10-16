@@ -116,7 +116,7 @@ async function assertForbiddenCapability(
 }
 
 describe("entitlement-grant interplay", () => {
-  it("SYS-3.1 — Independent switches matrix", async () => {
+  it("SYS-3.1 - Independent switches matrix", async () => {
     const scenario = await newScenario();
     await setupPromotedFakePolicy(scenario);
     await assertInvokeBaselinePasses(scenario);
@@ -159,7 +159,7 @@ describe("entitlement-grant interplay", () => {
     await assertInvokeBaselinePasses(scenario);
   });
 
-  it("SYS-3.2 — Role & scope enforcement", async () => {
+  it("SYS-3.2 - Role & scope enforcement", async () => {
     const scenario = await newScenario();
     await setupPromotedFakePolicy(scenario);
 
@@ -191,7 +191,7 @@ describe("entitlement-grant interplay", () => {
     expect(passing.events.some((event) => event.event === "completed")).toBe(true);
   });
 
-  it("SYS-3.3 — Kill-switch scopes vs discovery/invoke", async () => {
+  it("SYS-3.3 - Kill-switch scopes vs discovery/invoke", async () => {
     const scenario = await newScenario();
     await setupPromotedFakePolicy(scenario);
     const token = await mintAat(scenario, {
@@ -249,7 +249,7 @@ describe("entitlement-grant interplay", () => {
     expect(restored.events.some((event) => event.event === "completed")).toBe(true);
   });
 
-  it("SYS-3.4 — Entitle does not overreach", async () => {
+  it("SYS-3.4 - Entitle does not overreach", async () => {
     const scenario = await newScenario();
     await newClinic(scenario);
 
@@ -278,7 +278,7 @@ describe("entitlement-grant interplay", () => {
     expect(entitlementAfter?.status).toBe("active");
   });
 
-  it("SYS-3.5 — Entitlement uniqueness & validation", async () => {
+  it("SYS-3.5 - Entitlement uniqueness & validation", async () => {
     const scenario = await newScenario();
     await newClinic(scenario);
 
@@ -387,7 +387,7 @@ describe("entitlement-grant interplay", () => {
     }
   });
 
-  it("SYS-3.6 — Multi-installation same-plan entitle", async () => {
+  it("SYS-3.6 - Multi-installation same-plan entitle", async () => {
     const i0 = await newScenario();
     const i1 = await newScenario();
     await newClinic(i0);

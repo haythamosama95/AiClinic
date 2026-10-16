@@ -3,10 +3,11 @@ import { execFileSync } from "node:child_process";
 import { mkdtempSync, rmSync } from "node:fs";
 import os from "node:os";
 import { fileURLToPath } from "node:url";
-import { defineWorkersConfig } from "@cloudflare/vitest-pool-workers/config";
+import { cloudflareTest } from "@cloudflare/vitest-plugin";
 import { kCurrentWorker } from "miniflare";
 import { unstable_getMiniflareWorkerOptions } from "wrangler";
 import { pinWorkerdCompatibilityDate } from "./test/pin-workerd-compatibility-date";
+import { defineConfig } from "vitest/config";
 
 const rootDir = path.dirname(fileURLToPath(import.meta.url));
 const compatibilityDate = pinWorkerdCompatibilityDate();
@@ -56,83 +57,82 @@ process.on("exit", () => {
   rmSync(doReceiverBundleDir, { recursive: true, force: true });
 });
 
-export default defineWorkersConfig({
+export default defineConfig({
+  plugins: [
+    cloudflareTest({
+      main: "./src/worker.ts",
+      wrangler: {
+        configPath: platformWorkerNConfig,
+        environment: "development",
+      },
+      miniflare: {
+        compatibilityDate,
+        // Share the migration-applied test database with the DO receiver
+        // worker, whose Wrangler config uses this same stable ID.
+        d1Databases: {
+          DB: "11111111-1111-1111-1111-111111111111",
+        },
+        r2Buckets: ["R2"],
+        ratelimits: {
+          RATE_LIMITER_INSTALLATION: {
+            simple: { limit: 600, period: 60 },
+          },
+          RATE_LIMITER_INSTALLATION_ACTOR: {
+            simple: { limit: 120, period: 60 },
+          },
+          RATE_LIMITER_INSTALLATION_CAPABILITY: {
+            simple: { limit: 300, period: 60 },
+          },
+        },
+        bindings: {
+          TEST_CLOCK: "1",
+          DURATION_SCALE: "staging",
+          ACCESS_TEAM_DOMAIN: "access.test",
+          ACCESS_AUD: "vendor-access-aud",
+          WEBAUTHN_RP_ID: "ops.vendor.test",
+          WEBAUTHN_ORIGIN: "https://ops.vendor.test",
+          HEARTBEAT_URL: "https://heartbeat.test/ping",
+          ALERT_EMAIL_TO: "alerts@clinic.invalid",
+          ISSUER_ID: "issuer-test",
+          PLATFORM_SIGNING_KEY:
+            '{"kid":"platform-test","pkcs8":"MC4CAQAwBQYDK2VwBCIEIN2ndQQArm1dlsCuHaGGaUB8nnqfj7W2HaVbj_JJA9Lk","public_key":"GNzxZ6Gymues_aeJArGyb3wDESTOUJeqhuZBfTByni0"}',
+        },
+        serviceBindings: {
+          VENDOR: { name: kCurrentWorker, entrypoint: "VendorEntrypoint" },
+        },
+        workers: [
+          {
+            ...doReceiverConfig.workerOptions,
+            // Match Wrangler's env-specific script_name used by the DO
+            // binding in platform-do-receiver.toml.
+            name: "ai-platform-do-receiver-development",
+            compatibilityDate,
+            modules: true,
+            scriptPath: path.join(doReceiverBundleDir, "worker.js"),
+            modulesRoot: doReceiverBundleDir,
+            modulesRules: doReceiverConfig.workerOptions.modulesRules.map(
+              (rule) =>
+                // Wrangler emits imported prompt markdown beside worker.js
+                // using hashed root-level filenames. Extend its terminal
+                // Text rule because Miniflare ignores later rules of a type
+                // after a non-fallthrough rule.
+                rule.type === "Text" && !rule.fallthrough
+                  ? { ...rule, include: [...rule.include, "**/*.md"] }
+                  : rule,
+            ),
+          },
+        ],
+      },
+    }),
+  ],
   test: {
     include: ["test/version-matrix/worker-do.system.test.ts"],
     fileParallelism: false,
     testTimeout: 120_000,
-    setupFiles: ["./test/setup-isolate-config-cache.ts"],
-    // Retry once to absorb residual "Isolated storage failed" flakiness from
-    // @cloudflare/vitest-pool-workers' per-test storage accounting. See the
-    // longer comment in vitest.workers.config.ts for the mechanism and why
-    // retries are safe with the campaign governor's stats.
+    setupFiles: ["./test/setup-isolate-config-cache.ts", "./test/setup-network.ts"],
+    // Retry once for transient Workers runtime/storage cleanup failures. See
+    // the longer comment in vitest.workers.config.ts for why retries are safe
+    // with the campaign governor's stats.
     retry: 1,
-    poolOptions: {
-      workers: {
-        main: "./src/worker.ts",
-        wrangler: {
-          configPath: platformWorkerNConfig,
-          environment: "development",
-        },
-        miniflare: {
-          compatibilityDate,
-          // Share the migration-applied test database with the DO receiver
-          // worker, whose Wrangler config uses this same stable ID.
-          d1Databases: {
-            DB: "11111111-1111-1111-1111-111111111111",
-          },
-          r2Buckets: ["R2"],
-          ratelimits: {
-            RATE_LIMITER_INSTALLATION: {
-              simple: { limit: 600, period: 60 },
-            },
-            RATE_LIMITER_INSTALLATION_ACTOR: {
-              simple: { limit: 120, period: 60 },
-            },
-            RATE_LIMITER_INSTALLATION_CAPABILITY: {
-              simple: { limit: 300, period: 60 },
-            },
-          },
-          bindings: {
-            TEST_CLOCK: "1",
-            DURATION_SCALE: "staging",
-            ACCESS_TEAM_DOMAIN: "access.test",
-            ACCESS_AUD: "vendor-access-aud",
-            WEBAUTHN_RP_ID: "ops.vendor.test",
-            WEBAUTHN_ORIGIN: "https://ops.vendor.test",
-            HEARTBEAT_URL: "https://heartbeat.test/ping",
-            ALERT_EMAIL_TO: "alerts@clinic.invalid",
-            ISSUER_ID: "issuer-test",
-            PLATFORM_SIGNING_KEY:
-              '{"kid":"platform-test","pkcs8":"MC4CAQAwBQYDK2VwBCIEIN2ndQQArm1dlsCuHaGGaUB8nnqfj7W2HaVbj_JJA9Lk","public_key":"GNzxZ6Gymues_aeJArGyb3wDESTOUJeqhuZBfTByni0"}',
-          },
-          serviceBindings: {
-            VENDOR: { name: kCurrentWorker, entrypoint: "VendorEntrypoint" },
-          },
-          workers: [
-            {
-              ...doReceiverConfig.workerOptions,
-              // Match Wrangler's env-specific script_name used by the DO
-              // binding in platform-do-receiver.toml.
-              name: "ai-platform-do-receiver-development",
-              compatibilityDate,
-              modules: true,
-              scriptPath: path.join(doReceiverBundleDir, "worker.js"),
-              modulesRoot: doReceiverBundleDir,
-              modulesRules: doReceiverConfig.workerOptions.modulesRules.map(
-                (rule) =>
-                  // Wrangler emits imported prompt markdown beside worker.js
-                  // using hashed root-level filenames. Extend its terminal
-                  // Text rule because Miniflare ignores later rules of a type
-                  // after a non-fallthrough rule.
-                  rule.type === "Text" && !rule.fallthrough
-                    ? { ...rule, include: [...rule.include, "**/*.md"] }
-                    : rule,
-              ),
-            },
-          ],
-        },
-      },
-    },
   },
 });

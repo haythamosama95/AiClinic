@@ -3,6 +3,7 @@
  */
 
 import { env } from "cloudflare:test";
+import { http, HttpResponse } from "msw";
 import { beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { CHANNEL_VERSIONS } from "vendor-contracts";
 import { createAccessTeam, createSoftwareAuthenticator } from "vendor-contracts/testkit";
@@ -12,6 +13,7 @@ import issuerKeyTenantBindingMigrationSql from "../migrations/20261003130000_iss
 import planVersionPaidGrantCoverageMigrationSql from "../migrations/20261003140000_plan_version_paid_grant_coverage.sql?raw";
 import dropInvoicingSql from "../migrations/20261006170000_drop_invoicing.sql?raw";
 import dropPlanEntitlementSql from "../migrations/20261006170100_drop_plan_entitlement.sql?raw";
+import { network } from "./setup-network";
 import { applySqlStatements } from "./split-sql-statements";
 
 declare module "cloudflare:test" {
@@ -114,15 +116,12 @@ async function mintVendorAccessJwt(): Promise<string> {
     accessTeam = await createAccessTeam({
       issuer: `https://${env.ACCESS_TEAM_DOMAIN}`,
     });
-    const { fetchMock } = await import("cloudflare:test");
-    fetchMock.activate();
-    fetchMock.disableNetConnect();
-    fetchMock
-      .get(`https://${env.ACCESS_TEAM_DOMAIN}`)
-      .intercept({ path: "/cdn-cgi/access/certs", method: "GET" })
-      .reply(200, JSON.stringify({ keys: accessTeam.certs.keys }))
-      .persist();
   }
+  network.use(
+    http.get(`https://${env.ACCESS_TEAM_DOMAIN}/cdn-cgi/access/certs`, () =>
+      HttpResponse.json({ keys: accessTeam!.certs.keys }),
+    ),
+  );
   const nowMs = vendorTestClockIso
     ? Date.parse(vendorTestClockIso)
     : Date.now();

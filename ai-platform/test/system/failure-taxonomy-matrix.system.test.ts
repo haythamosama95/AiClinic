@@ -222,7 +222,7 @@ function assertTaxonomyBody(
 }
 
 describe("failure taxonomy matrix", () => {
-  it("SYS-6.1 — AAT defect variants → unauthenticated", async () => {
+  it("SYS-6.1 - AAT defect variants -> unauthenticated", async () => {
     const scenario = await newScenario();
     await setupPromotedFakePolicy(scenario);
     const before = await count("ai_request");
@@ -378,7 +378,7 @@ describe("failure taxonomy matrix", () => {
     await assertJournalUnchanged(before);
   });
 
-  it("SYS-6.2 — Suspended installation → suspended", async () => {
+  it("SYS-6.2 - Suspended installation -> suspended", async () => {
     const scenario = await newScenario();
     await setupPromotedFakePolicy(scenario);
     const before = await count("ai_request");
@@ -403,7 +403,7 @@ describe("failure taxonomy matrix", () => {
     await assertJournalUnchanged(before);
   });
 
-  it("SYS-6.3 — Pending entitlement / plan / grants / role / scope → forbidden_capability", async () => {
+  it("SYS-6.3 - Pending entitlement / plan / grants / role / scope -> forbidden_capability", async () => {
     const pendingScenario = await newScenario();
     await newClinic(pendingScenario);
     const pendingToken = await mintAat(pendingScenario);
@@ -532,7 +532,7 @@ describe("failure taxonomy matrix", () => {
     }
   });
 
-  it("SYS-6.4 — Adapter 1 MiB gate → request_too_large empty reference", async () => {
+  it("SYS-6.4 - Adapter 1 MiB gate -> request_too_large empty reference", async () => {
     const scenario = await newScenario();
     await setupPromotedFakePolicy(scenario);
     const before = await count("ai_request");
@@ -575,7 +575,7 @@ describe("failure taxonomy matrix", () => {
     await assertJournalUnchanged(before);
   });
 
-  it("SYS-6.5 — Malformed ingress → 422 text/plain empty body", async () => {
+  it("SYS-6.5 - Malformed ingress -> 422 text/plain empty body", async () => {
     const scenario = await newScenario();
     await setupPromotedFakePolicy(scenario);
     const token = await mintAat(scenario);
@@ -634,7 +634,7 @@ describe("failure taxonomy matrix", () => {
     }
   });
 
-  it("SYS-6.6 — Missing capability_id → internal_error with reference", async () => {
+  it("SYS-6.6 - Missing capability_id -> internal_error with reference", async () => {
     const scenario = await newScenario();
     await setupPromotedFakePolicy(scenario);
     const before = await count("ai_request");
@@ -669,7 +669,7 @@ describe("failure taxonomy matrix", () => {
     await assertJournalUnchanged(before);
   });
 
-  it("SYS-6.7 — Stage-7 preflight oversize → request_too_large with reference", async () => {
+  it("SYS-6.7 - Stage-7 preflight oversize -> request_too_large with reference", async () => {
     const scenario = await newScenario();
     await setupPromotedFakePolicy(scenario);
     const before = await count("ai_request");
@@ -692,7 +692,7 @@ describe("failure taxonomy matrix", () => {
     await assertJournalUnchanged(before);
   });
 
-  it("SYS-6.8 — Missing required context → context_required", async () => {
+  it("SYS-6.8 - Missing required context -> context_required", async () => {
     const scenario = await newScenario();
     await setupPromotedFakePolicy(scenario);
     const before = await count("ai_request");
@@ -719,7 +719,7 @@ describe("failure taxonomy matrix", () => {
     await assertJournalUnchanged(before);
   });
 
-  it("SYS-6.9 — Invalid context → context_invalid", async () => {
+  it("SYS-6.9 - Invalid context -> context_invalid", async () => {
     const scenario = await newScenario();
     await setupPromotedFakePolicy(scenario);
     const token = await mintAat(scenario);
@@ -796,7 +796,7 @@ describe("failure taxonomy matrix", () => {
     }
   });
 
-  it("SYS-6.10 — Unknown capability / version → capability_unknown", async () => {
+  it("SYS-6.10 - Unknown capability / version -> capability_unknown", async () => {
     const scenario = await newScenario();
     await setupPromotedFakePolicy(scenario);
     const token = await mintAat(scenario);
@@ -855,7 +855,7 @@ describe("failure taxonomy matrix", () => {
     await assertJournalUnchanged(before);
   });
 
-  it("SYS-6.11 — Global retired overlay → capability_retired", async () => {
+  it("SYS-6.11 - Global retired overlay -> capability_retired", async () => {
     const scenario = await newScenario();
     await setupPromotedFakePolicy(scenario);
     const before = await count("ai_request");
@@ -889,7 +889,7 @@ describe("failure taxonomy matrix", () => {
     await assertJournalUnchanged(before);
   });
 
-  it("SYS-6.12 — Kill switch scopes → capability_disabled", async () => {
+  it("SYS-6.12 - Kill switch scopes -> capability_disabled", async () => {
     const scenario = await newScenario();
     await setupPromotedFakePolicy(scenario);
     const token = await mintAat(scenario);
@@ -928,7 +928,7 @@ describe("failure taxonomy matrix", () => {
     }
   });
 
-  it("SYS-6.13 — Empty routing chain → SSE failed provider_unavailable", async () => {
+  it("SYS-6.13 - Empty routing chain -> SSE failed provider_unavailable", async () => {
     const scenario = await newScenario();
     await setupPromotedFakePolicy(scenario);
     const document = fakePolicyDocument(POLICY_ID, "2", {
@@ -966,7 +966,7 @@ describe("failure taxonomy matrix", () => {
     expect(usage).toHaveLength(1);
   });
 
-  it("SYS-6.14 — No active routing policy → SSE failed internal_error", async () => {
+  it("SYS-6.14 - No active routing policy -> SSE failed internal_error", async () => {
     const scenario = await newScenario();
     await coverClinic(scenario);
     await newClinic(scenario);
@@ -983,7 +983,7 @@ describe("failure taxonomy matrix", () => {
     expect(failed?.data.code).toBe("internal_error");
   });
 
-  it("SYS-6.15 — Client abort mid-stream → Cancelled with usage", async () => {
+  it("SYS-6.15 - Client abort mid-stream -> Cancelled with usage", async () => {
     const fakeMod = await import("../../src/provider/fake");
     let invokeEntered = false;
     const invokeSpy = vi.spyOn(fakeMod, "FakeAdapter").mockImplementation(
@@ -1088,7 +1088,7 @@ describe("failure taxonomy matrix", () => {
     }
   });
 
-  it("SYS-6.16 — Rate-limit burst → rate_limited", async () => {
+  it("SYS-6.16 - Rate-limit burst -> rate_limited", async () => {
     const scenario = await newScenario();
     await setupPromotedFakePolicy(scenario);
     const before = await count("ai_request");

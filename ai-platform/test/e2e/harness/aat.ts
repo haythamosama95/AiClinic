@@ -1,5 +1,6 @@
 import { CHANNEL_VERSIONS } from "vendor-contracts";
 import { createSoftwareAuthenticator } from "vendor-contracts/testkit";
+import { http, HttpResponse } from "msw";
 import { queryOne } from "./d1";
 import {
   AAT_AUDIENCE,
@@ -15,6 +16,7 @@ import {
   type TestKeypair,
 } from "./crypto";
 import type { Scenario } from "./types";
+import { network } from "../../setup-network";
 
 export type AatClaims = {
   iss: string;
@@ -87,20 +89,15 @@ type AccessTeam = Awaited<
 let vendorAccessTeam: AccessTeam | null = null;
 
 async function ensureVendorAccessTeam(): Promise<AccessTeam> {
-  if (vendorAccessTeam !== null) {
-    return vendorAccessTeam;
+  if (vendorAccessTeam === null) {
+    const { createAccessTeam } = await import("vendor-contracts/testkit");
+    vendorAccessTeam = await createAccessTeam({ issuer: `https://${env.ACCESS_TEAM_DOMAIN}` });
   }
-  const { createAccessTeam } = await import("vendor-contracts/testkit");
-  const { fetchMock } = await import("cloudflare:test");
-  const issuer = `https://${env.ACCESS_TEAM_DOMAIN}`;
-  vendorAccessTeam = await createAccessTeam({ issuer });
-  fetchMock.activate();
-  fetchMock.disableNetConnect();
-  fetchMock
-    .get(issuer)
-    .intercept({ path: "/cdn-cgi/access/certs", method: "GET" })
-    .reply(200, JSON.stringify({ keys: vendorAccessTeam.certs.keys }))
-    .persist();
+  network.use(
+    http.get(`https://${env.ACCESS_TEAM_DOMAIN}/cdn-cgi/access/certs`, () =>
+      HttpResponse.json({ keys: vendorAccessTeam!.certs.keys }),
+    ),
+  );
   return vendorAccessTeam;
 }
 

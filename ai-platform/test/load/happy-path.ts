@@ -11,7 +11,7 @@
  * overlap (observed in-flight peak). No warm-up / discarded admissions.
  *
  * Prompt registry uses `import.meta.glob(..., { query: "?raw" })`, which breaks
- * under vitest-pool-workers text module rules. Mock the registry with the same
+ * under the Workers Vitest plugin's text module rules. Mock the registry with the same
  * prompt bytes so production `composeRequest` still runs for stage 10.
  */
 
