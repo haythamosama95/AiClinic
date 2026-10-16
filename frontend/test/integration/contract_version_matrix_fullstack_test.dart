@@ -105,45 +105,69 @@ void main() {
       }
 
       _progress('fixture setup: bootstrapping clinic');
-      final clinic = await ctx.ensureClinic(label: 'p73_desktop_window');
+      final clinic = (await _runLiveIo(
+        tester,
+        'bootstrap clinic fixture',
+        () => ctx.ensureClinic(label: 'p73_desktop_window'),
+      ))!;
       _progress('fixture setup: clinic ready; seeding active coverage');
       final installationId = _deterministicUuid('b73', clinic.suffix);
-      await _seedActiveCoverage(
-        ctx: ctx,
-        orgId: clinic.organizationId,
-        installationId: installationId,
+      await _runLiveIo(
+        tester,
+        'seed active coverage fixture',
+        () => _seedActiveCoverage(
+          ctx: ctx,
+          orgId: clinic.organizationId,
+          installationId: installationId,
+        ),
       );
 
       final sessions = RoleSessions(ctx, clinic);
       _progress('login: administrator');
-      await sessions.signInAs(StaffRole.administrator);
+      await _runLiveIo(
+        tester,
+        'login administrator',
+        () => sessions.signInAs(StaffRole.administrator),
+      );
 
       _progress('contract probe: ABO minimum version');
-      final aboProbe = await http.get(
-        Uri.parse('$_aboUrl/v1/offers'),
-        headers: {
-          'Host': _billingHost,
-          'Abo-Contract-Version': '$aboClinic',
-        },
-      );
+      final aboProbe = (await _runLiveIo(
+        tester,
+        'ABO minimum-version HTTP probe',
+        () => http.get(
+          Uri.parse('$_aboUrl/v1/offers'),
+          headers: {
+            'Host': _billingHost,
+            'Abo-Contract-Version': '$aboClinic',
+          },
+        ),
+      ))!;
       expect(aboProbe.statusCode, 400, reason: 'desktop Abo-Contract-Version should be below the worker minimum');
       final aboBody = _decodeJsonMap(aboProbe.body);
       expect(aboBody['code'], 'contract_version_unsupported');
 
       _progress('contract probe: Supabase RPC version');
-      final rpcProbe = await LiveSupabaseHarness.client.rpc(
-        'get_ai_status',
-        params: {'p_contract_version': backendRpc},
+      final rpcProbe = await _runLiveIo(
+        tester,
+        'Supabase contract version RPC probe',
+        () => LiveSupabaseHarness.client.rpc(
+          'get_ai_status',
+          params: {'p_contract_version': backendRpc},
+        ),
       );
       final rpcMap = Map<String, dynamic>.from(rpcProbe as Map);
       expect(rpcMap['success'], isFalse);
       expect(rpcMap['error_code'], 'CONTRACT_VERSION_UNSUPPORTED');
 
       _progress('contract probe: platform minimum version');
-      final platformProbe = await http.get(
-        Uri.parse('$_platformUrl/v1/capabilities'),
-        headers: {'Aip-Contract-Version': '$platformClinic'},
-      );
+      final platformProbe = (await _runLiveIo(
+        tester,
+        'platform minimum-version HTTP probe',
+        () => http.get(
+          Uri.parse('$_platformUrl/v1/capabilities'),
+          headers: {'Aip-Contract-Version': '$platformClinic'},
+        ),
+      ))!;
       expect(platformProbe.statusCode, 400, reason: 'desktop platform clinic version should be below the worker minimum');
       final platformBody = _decodeJsonMap(platformProbe.body);
       expect(platformBody['code'], 'contract_version_unsupported');
@@ -180,6 +204,28 @@ void main() {
 void _progress(String message) {
   // ignore: avoid_print
   print('[HFS-PROGRESS] case=$_activeCase $message');
+}
+
+Future<T?> _runLiveIo<T>(
+  WidgetTester tester,
+  String operation,
+  Future<T> Function() action,
+) async {
+  _progress('live I/O zone start: $operation');
+  const timeout = Duration(seconds: 30);
+  try {
+    return await tester.runAsync(
+      () => action().timeout(
+        timeout,
+        onTimeout: () => throw TimeoutException(
+          'Live operation "$operation" exceeded ${timeout.inSeconds}s.',
+          timeout,
+        ),
+      ),
+    );
+  } finally {
+    _progress('live I/O zone end: $operation');
+  }
 }
 
 Future<void> _startDesktopWindowStack() async {

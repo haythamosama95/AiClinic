@@ -121,58 +121,103 @@ void main() {
       }
 
       _progress('fixture setup: clinic and coverage');
-      final clinic = await ctx.ensureClinic(label: 'p64_dup');
+      final clinic = (await _runLiveIo(
+        tester,
+        'bootstrap clinic fixture',
+        () => ctx.ensureClinic(label: 'p64_dup'),
+      ))!;
       final installationId = _deterministicUuid('b641', clinic.suffix);
-      await _seedAllowanceLowCoverage(
-        ctx: ctx,
-        orgId: clinic.organizationId,
-        installationId: installationId,
+      await _runLiveIo(
+        tester,
+        'seed low-allowance coverage fixture',
+        () => _seedAllowanceLowCoverage(
+          ctx: ctx,
+          orgId: clinic.organizationId,
+          installationId: installationId,
+        ),
       );
 
       final sessions = RoleSessions(ctx, clinic);
       _progress('login: administrator');
-      await _bounded(
+      await _runLiveIo(
+        tester,
         'login administrator',
-        sessions.signInAs(StaffRole.administrator),
+        () => sessions.signInAs(StaffRole.administrator),
       );
 
-      final billingToken = await _issueBillingToken();
-      await _putBillingContact(billingToken);
-      final offer = await _fetchFirstOffer(billingToken);
+      final billingToken = (await _runLiveIo(
+        tester,
+        'issue billing token',
+        _issueBillingToken,
+      ))!;
+      await _runLiveIo(
+        tester,
+        'save billing contact',
+        () => _putBillingContact(billingToken),
+      );
+      final offer = (await _runLiveIo(
+        tester,
+        'fetch first offer',
+        () => _fetchFirstOffer(billingToken),
+      ))!;
 
-      final checkouts = await Future.wait([
-        _createCheckout(
-          billingToken: billingToken,
-          offer: offer,
-          clientRequestId: 'p64-dup-1-${clinic.suffix}',
-        ),
-        _createCheckout(
-          billingToken: billingToken,
-          offer: offer,
-          clientRequestId: 'p64-dup-2-${clinic.suffix}',
-        ),
-      ]);
+      final checkouts = (await _runLiveIo(
+        tester,
+        'create duplicate-checkout fixtures',
+        () => Future.wait([
+          _createCheckout(
+            billingToken: billingToken,
+            offer: offer,
+            clientRequestId: 'p64-dup-1-${clinic.suffix}',
+          ),
+          _createCheckout(
+            billingToken: billingToken,
+            offer: offer,
+            clientRequestId: 'p64-dup-2-${clinic.suffix}',
+          ),
+        ]),
+      ))!;
       final checkout1 = checkouts[0];
       final checkout2 = checkouts[1];
 
-      await _replayPaymobFixtureForCheckout(
-        'success.json',
-        checkoutId: checkout1.checkoutId,
+      await _runLiveIo(
+        tester,
+        'replay first duplicate payment fixture',
+        () => _replayPaymobFixtureForCheckout(
+          'success.json',
+          checkoutId: checkout1.checkoutId,
+        ),
       );
-      await _replayPaymobFixtureForCheckout(
-        'success.json',
-        checkoutId: checkout2.checkoutId,
+      await _runLiveIo(
+        tester,
+        'replay second duplicate payment fixture',
+        () => _replayPaymobFixtureForCheckout(
+          'success.json',
+          checkoutId: checkout2.checkoutId,
+        ),
       );
 
-      final payments = await _waitForPayments(billingToken, count: 2);
+      final payments = (await _runLiveIo(
+        tester,
+        'wait for duplicate payments',
+        () => _waitForPayments(billingToken, count: 2),
+      ))!;
       expect(payments.length, 2);
       final second = payments.last;
       expect(second['classification'], 'likely_duplicate');
 
-      final subscription = await _fetchSubscription(billingToken);
+      final subscription = (await _runLiveIo(
+        tester,
+        'fetch duplicate subscription state',
+        () => _fetchSubscription(billingToken),
+      ))!;
       expect(subscription['notices'], contains('duplicate_payment'));
 
-      final billingStatus = await _fetchBillingStatus();
+      final billingStatus = (await _runLiveIo(
+        tester,
+        'fetch billing status',
+        _fetchBillingStatus,
+      ))!;
       expect(billingStatus['queued_count'], 1);
 
       await _openSubscriptionPageFromRenew(tester, clinic: clinic);
@@ -198,54 +243,107 @@ void main() {
       }
 
       _progress('fixture setup: clinic and coverage');
-      final clinic = await ctx.ensureClinic(label: 'p64_refund');
+      final clinic = (await _runLiveIo(
+        tester,
+        'bootstrap clinic fixture',
+        () => ctx.ensureClinic(label: 'p64_refund'),
+      ))!;
       final installationId = _deterministicUuid('b642', clinic.suffix);
-      await _seedEndsSoonCoverage(
-        ctx: ctx,
-        orgId: clinic.organizationId,
-        installationId: installationId,
+      await _runLiveIo(
+        tester,
+        'seed refund coverage fixture',
+        () => _seedEndsSoonCoverage(
+          ctx: ctx,
+          orgId: clinic.organizationId,
+          installationId: installationId,
+        ),
       );
 
       final sessions = RoleSessions(ctx, clinic);
       _progress('login: administrator');
-      await _bounded(
+      await _runLiveIo(
+        tester,
         'login administrator',
-        sessions.signInAs(StaffRole.administrator),
+        () => sessions.signInAs(StaffRole.administrator),
       );
 
-      final billingToken = await _issueBillingToken();
-      await _putBillingContact(billingToken);
-      final offer = await _fetchFirstOffer(billingToken);
-
-      final checkout = await _createCheckout(
-        billingToken: billingToken,
-        offer: offer,
-        clientRequestId: 'p64-refund-${clinic.suffix}',
+      final billingToken = (await _runLiveIo(
+        tester,
+        'issue billing token',
+        _issueBillingToken,
+      ))!;
+      await _runLiveIo(
+        tester,
+        'save billing contact',
+        () => _putBillingContact(billingToken),
       );
+      final offer = (await _runLiveIo(
+        tester,
+        'fetch first offer',
+        () => _fetchFirstOffer(billingToken),
+      ))!;
+
+      final checkout = (await _runLiveIo(
+        tester,
+        'create refund checkout fixture',
+        () => _createCheckout(
+          billingToken: billingToken,
+          offer: offer,
+          clientRequestId: 'p64-refund-${clinic.suffix}',
+        ),
+      ))!;
       final txnId = _transactionIdForCheckout(checkout.checkoutId);
-      await _replayPaymobFixtureForCheckout(
-        'success.json',
-        checkoutId: checkout.checkoutId,
-        transactionId: txnId,
+      await _runLiveIo(
+        tester,
+        'replay successful refund payment fixture',
+        () => _replayPaymobFixtureForCheckout(
+          'success.json',
+          checkoutId: checkout.checkoutId,
+          transactionId: txnId,
+        ),
       );
-      await _waitForPayments(billingToken, count: 1);
-
-      await _scriptPaymobInquiry('reversed');
-      await _replayPaymobFixtureForCheckout(
-        'refund-parent.json',
-        checkoutId: checkout.checkoutId,
-        transactionId: txnId,
-        inquiry: 'reversed',
+      await _runLiveIo(
+        tester,
+        'wait for refund payment',
+        () => _waitForPayments(billingToken, count: 1),
       );
-      final reversalReference = await _waitForReversal(billingToken);
 
-      final subscription = await _fetchSubscription(billingToken);
+      await _runLiveIo(
+        tester,
+        'script reversed Paymob inquiry',
+        () => _scriptPaymobInquiry('reversed'),
+      );
+      await _runLiveIo(
+        tester,
+        'replay refund-parent payment fixture',
+        () => _replayPaymobFixtureForCheckout(
+          'refund-parent.json',
+          checkoutId: checkout.checkoutId,
+          transactionId: txnId,
+          inquiry: 'reversed',
+        ),
+      );
+      final reversalReference = (await _runLiveIo(
+        tester,
+        'wait for refund reversal',
+        () => _waitForReversal(billingToken),
+      ))!;
+
+      final subscription = (await _runLiveIo(
+        tester,
+        'fetch reversed subscription state',
+        () => _fetchSubscription(billingToken),
+      ))!;
       expect(
         subscription['notices'],
         containsAll(['reversal_recorded', 'terms_held']),
       );
 
-      final billingStatus = await _fetchBillingStatus();
+      final billingStatus = (await _runLiveIo(
+        tester,
+        'fetch billing status after reversal',
+        _fetchBillingStatus,
+      ))!;
       final notices =
           (billingStatus['notices'] as List?)?.cast<Map<String, dynamic>>() ??
           const [];
@@ -273,49 +371,98 @@ void main() {
       }
 
       _progress('fixture setup: clinic and coverage');
-      final clinic = await ctx.ensureClinic(label: 'p64_late');
+      final clinic = (await _runLiveIo(
+        tester,
+        'bootstrap clinic fixture',
+        () => ctx.ensureClinic(label: 'p64_late'),
+      ))!;
       final installationId = _deterministicUuid('b643', clinic.suffix);
-      await _seedEndsSoonCoverage(
-        ctx: ctx,
-        orgId: clinic.organizationId,
-        installationId: installationId,
+      await _runLiveIo(
+        tester,
+        'seed late-payment coverage fixture',
+        () => _seedEndsSoonCoverage(
+          ctx: ctx,
+          orgId: clinic.organizationId,
+          installationId: installationId,
+        ),
       );
 
       final sessions = RoleSessions(ctx, clinic);
       _progress('login: administrator');
-      await _bounded(
+      await _runLiveIo(
+        tester,
         'login administrator',
-        sessions.signInAs(StaffRole.administrator),
+        () => sessions.signInAs(StaffRole.administrator),
       );
 
-      final billingToken = await _issueBillingToken();
-      await _putBillingContact(billingToken);
-      final offer = await _fetchFirstOffer(billingToken);
+      final billingToken = (await _runLiveIo(
+        tester,
+        'issue billing token',
+        _issueBillingToken,
+      ))!;
+      await _runLiveIo(
+        tester,
+        'save billing contact',
+        () => _putBillingContact(billingToken),
+      );
+      final offer = (await _runLiveIo(
+        tester,
+        'fetch first offer',
+        () => _fetchFirstOffer(billingToken),
+      ))!;
 
-      final lateCheckout = await _createCheckout(
-        billingToken: billingToken,
-        offer: offer,
-        clientRequestId: 'p64-late-${clinic.suffix}',
+      final lateCheckout = (await _runLiveIo(
+        tester,
+        'create late-payment checkout fixture',
+        () => _createCheckout(
+          billingToken: billingToken,
+          offer: offer,
+          clientRequestId: 'p64-late-${clinic.suffix}',
+        ),
+      ))!;
+      await _runLiveIo(
+        tester,
+        'cancel late-payment checkout fixture',
+        () => _setCheckoutCancelled(lateCheckout.checkoutId),
       );
-      await _setCheckoutCancelled(lateCheckout.checkoutId);
-      await _replayPaymobFixtureForCheckout(
-        'success.json',
-        checkoutId: lateCheckout.checkoutId,
+      await _runLiveIo(
+        tester,
+        'replay late-payment success fixture',
+        () => _replayPaymobFixtureForCheckout(
+          'success.json',
+          checkoutId: lateCheckout.checkoutId,
+        ),
       );
-      await _waitForPayments(billingToken, count: 1);
+      await _runLiveIo(
+        tester,
+        'wait for late payment',
+        () => _waitForPayments(billingToken, count: 1),
+      );
 
-      final withheldCheckout = await _createCheckout(
-        billingToken: billingToken,
-        offer: offer,
-        clientRequestId: 'p64-withheld-${clinic.suffix}',
-      );
-      await _replayPaymobFixtureForCheckout(
-        'success.json',
-        checkoutId: withheldCheckout.checkoutId,
-        inquiry: 'amount_mismatch',
+      final withheldCheckout = (await _runLiveIo(
+        tester,
+        'create withheld-payment checkout fixture',
+        () => _createCheckout(
+          billingToken: billingToken,
+          offer: offer,
+          clientRequestId: 'p64-withheld-${clinic.suffix}',
+        ),
+      ))!;
+      await _runLiveIo(
+        tester,
+        'replay withheld-payment fixture',
+        () => _replayPaymobFixtureForCheckout(
+          'success.json',
+          checkoutId: withheldCheckout.checkoutId,
+          inquiry: 'amount_mismatch',
+        ),
       );
 
-      final subscription = await _fetchSubscription(billingToken);
+      final subscription = (await _runLiveIo(
+        tester,
+        'fetch late-payment subscription state',
+        () => _fetchSubscription(billingToken),
+      ))!;
       expect(
         subscription['notices'],
         containsAll(['late_payment_honoured', 'payment_withheld']),
@@ -339,49 +486,90 @@ void main() {
       }
 
       _progress('fixture setup: clinic and coverage');
-      final clinic = await ctx.ensureClinic(label: 'p64_page');
+      final clinic = (await _runLiveIo(
+        tester,
+        'bootstrap clinic fixture',
+        () => ctx.ensureClinic(label: 'p64_page'),
+      ))!;
       final installationId = _deterministicUuid('b644', clinic.suffix);
-      await _seedEndsSoonCoverage(
-        ctx: ctx,
-        orgId: clinic.organizationId,
-        installationId: installationId,
+      await _runLiveIo(
+        tester,
+        'seed payment-history coverage fixture',
+        () => _seedEndsSoonCoverage(
+          ctx: ctx,
+          orgId: clinic.organizationId,
+          installationId: installationId,
+        ),
       );
 
       final sessions = RoleSessions(ctx, clinic);
       _progress('login: administrator');
-      await _bounded(
+      await _runLiveIo(
+        tester,
         'login administrator',
-        sessions.signInAs(StaffRole.administrator),
+        () => sessions.signInAs(StaffRole.administrator),
       );
 
-      final billingToken = await _issueBillingToken();
-      await _putBillingContact(billingToken);
-      final offer = await _fetchFirstOffer(billingToken);
+      final billingToken = (await _runLiveIo(
+        tester,
+        'issue billing token',
+        _issueBillingToken,
+      ))!;
+      await _runLiveIo(
+        tester,
+        'save billing contact',
+        () => _putBillingContact(billingToken),
+      );
+      final offer = (await _runLiveIo(
+        tester,
+        'fetch first offer',
+        () => _fetchFirstOffer(billingToken),
+      ))!;
 
       for (var batch = 0; batch < 3; batch++) {
         final batchCheckoutIds = <String>[];
         for (var i = 0; i < 10; i++) {
-          final checkout = await _createCheckout(
-            billingToken: billingToken,
-            offer: offer,
-            clientRequestId: 'p64-page-$batch-$i-${clinic.suffix}',
-          );
+          final checkout = (await _runLiveIo(
+            tester,
+            'create payment-history checkout fixture',
+            () => _createCheckout(
+              billingToken: billingToken,
+              offer: offer,
+              clientRequestId: 'p64-page-$batch-$i-${clinic.suffix}',
+            ),
+          ))!;
           batchCheckoutIds.add(checkout.checkoutId);
-          await _replayPaymobFixtureForCheckout(
-            'success.json',
-            checkoutId: checkout.checkoutId,
+          await _runLiveIo(
+            tester,
+            'replay payment-history success fixture',
+            () => _replayPaymobFixtureForCheckout(
+              'success.json',
+              checkoutId: checkout.checkoutId,
+            ),
           );
         }
-        await _waitForPayments(billingToken, count: (batch + 1) * 10);
+        await _runLiveIo(
+          tester,
+          'wait for payment-history batch ${batch + 1}',
+          () => _waitForPayments(billingToken, count: (batch + 1) * 10),
+        );
         if (batch < 2) {
-          await _ageCheckoutFacts(batchCheckoutIds);
+          await _runLiveIo(
+            tester,
+            'age payment-history checkout facts',
+            () => _ageCheckoutFacts(batchCheckoutIds),
+          );
         }
       }
 
       final allReferences = <String>[];
       String? cursor;
       do {
-        final page = await _fetchPayments(billingToken, cursor: cursor);
+        final page = (await _runLiveIo(
+          tester,
+          'fetch payment-history page',
+          () => _fetchPayments(billingToken, cursor: cursor),
+        ))!;
         final payments = (page['payments'] as List)
             .cast<Map<String, dynamic>>();
         for (final payment in payments) {
@@ -396,7 +584,11 @@ void main() {
 
       expect(allReferences.length, 30);
 
-      final firstPage = await _fetchPayments(billingToken);
+      final firstPage = (await _runLiveIo(
+        tester,
+        'fetch first payment-history page',
+        () => _fetchPayments(billingToken),
+      ))!;
       expect((firstPage['payments'] as List).length, 20);
       expect(firstPage['has_more'], isTrue);
       final nextCursor = firstPage['next_cursor'] as String;
@@ -429,17 +621,34 @@ void main() {
         );
       }
 
-      final orgA = await ctx.fixtures.bootstrapOnly(label: 'p64_org_a');
-      final orgB = await ctx.fixtures.bootstrapOnly(label: 'p64_org_b');
+      final orgA = (await _runLiveIo(
+        tester,
+        'bootstrap first organization fixture',
+        () => ctx.fixtures.bootstrapOnly(label: 'p64_org_a'),
+      ))!;
+      final orgB = (await _runLiveIo(
+        tester,
+        'bootstrap second organization fixture',
+        () => ctx.fixtures.bootstrapOnly(label: 'p64_org_b'),
+      ))!;
 
-      final orgARefs = await _arrangePaidSubscription(ctx, orgA);
-      final orgBRefs = await _arrangePaidSubscription(ctx, orgB);
+      final orgARefs = (await _runLiveIo(
+        tester,
+        'arrange first organization paid subscription',
+        () => _arrangePaidSubscription(ctx, orgA),
+      ))!;
+      final orgBRefs = (await _runLiveIo(
+        tester,
+        'arrange second organization paid subscription',
+        () => _arrangePaidSubscription(ctx, orgB),
+      ))!;
 
       final sessions = RoleSessions(ctx, orgA);
       _progress('login: administrator');
-      await _bounded(
+      await _runLiveIo(
+        tester,
         'login administrator',
-        sessions.signInAs(StaffRole.administrator),
+        () => sessions.signInAs(StaffRole.administrator),
       );
 
       await _openSubscriptionPageFromRenew(tester, clinic: orgA);
@@ -565,6 +774,19 @@ Future<T> _bounded<T>(
     );
   } finally {
     _progress('operation end: $operation');
+  }
+}
+
+Future<T?> _runLiveIo<T>(
+  WidgetTester tester,
+  String operation,
+  Future<T> Function() action,
+) async {
+  _progress('live I/O zone start: $operation');
+  try {
+    return await tester.runAsync(() => _bounded(operation, action()));
+  } finally {
+    _progress('live I/O zone end: $operation');
   }
 }
 

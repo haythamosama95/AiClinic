@@ -135,23 +135,34 @@ void main() {
       }
 
       _progress('fixture setup: clinic and coverage');
-      final clinic = await ctx.ensureClinic(label: 'p63_purchase');
+      final clinic = (await _runLiveIo(
+        tester,
+        'bootstrap clinic fixture',
+        () => ctx.ensureClinic(label: 'p63_purchase'),
+      ))!;
       final installationId = _deterministicUuid('b63', clinic.suffix);
-      await _seedEndsSoonCoverage(
-        ctx: ctx,
-        orgId: clinic.organizationId,
-        installationId: installationId,
-      );
-      await _seedPlatformTenantBinding(
-        orgId: clinic.organizationId,
-        installationId: installationId,
+      await _runLiveIo(
+        tester,
+        'seed purchase coverage fixtures',
+        () async {
+          await _seedEndsSoonCoverage(
+            ctx: ctx,
+            orgId: clinic.organizationId,
+            installationId: installationId,
+          );
+          await _seedPlatformTenantBinding(
+            orgId: clinic.organizationId,
+            installationId: installationId,
+          );
+        },
       );
 
       final sessions = RoleSessions(ctx, clinic);
       _progress('login: administrator');
-      await _bounded(
+      await _runLiveIo(
+        tester,
         'login administrator',
-        sessions.signInAs(StaffRole.administrator),
+        () => sessions.signInAs(StaffRole.administrator),
       );
 
       final composition = buildLiveVisitSummaryComposition(
@@ -204,20 +215,29 @@ void main() {
       );
 
       final redirectUrl = urlLauncher.launchedUrls.last;
-      await _replayPaymobFixture('success.json', redirectUrl: redirectUrl);
+      await _runLiveIo(
+        tester,
+        'replay successful Paymob fixture',
+        () => _replayPaymobFixture('success.json', redirectUrl: redirectUrl),
+      );
 
       await _pumpUntilCheckoutShownState(tester, 'Active');
       expect(find.text('Active'), findsOneWidget);
 
       expect(
-        await _readStatusRefreshRequestedAt(clinic.organizationId),
+        await _runLiveIo(
+          tester,
+          'read status refresh request timestamp',
+          () => _readStatusRefreshRequestedAt(clinic.organizationId),
+        ),
         isNotNull,
         reason: 'Active should call request_ai_status_refresh once',
       );
 
-      final status = await _bounded(
+      final status = await _runLiveIo(
+        tester,
         'get_ai_status',
-        LiveSupabaseHarness.client.rpc(
+        () => LiveSupabaseHarness.client.rpc(
           'get_ai_status',
           params: {'p_contract_version': backendRpc},
         ),
@@ -228,9 +248,10 @@ void main() {
       expect(data['available'], isTrue);
       expect(data['state'], 'active');
 
-      final aat = await _bounded(
+      final aat = await _runLiveIo(
+        tester,
         'issue_ai_token',
-        LiveSupabaseHarness.client.rpc(
+        () => LiveSupabaseHarness.client.rpc(
           'issue_ai_token',
           params: {'p_contract_version': backendRpc},
         ),
@@ -248,23 +269,38 @@ void main() {
     testWidgets('E2E-P6.3-02', (tester) async {
       _activeCase = 'E2E-P6.3-02';
       _progress('fixture setup: clinic, branch, and coverage');
-      final clinic = await ctx.ensureClinic(label: 'p63_resume');
-      final secondBranchId = await _createSecondBranch(ctx, clinic);
+      final clinic = (await _runLiveIo(
+        tester,
+        'bootstrap clinic fixture',
+        () => ctx.ensureClinic(label: 'p63_resume'),
+      ))!;
+      final secondBranchId = (await _runLiveIo(
+        tester,
+        'create second branch fixture',
+        () => _createSecondBranch(ctx, clinic),
+      ))!;
       final installationId = _deterministicUuid('b632', clinic.suffix);
-      await _seedEndsSoonCoverage(
-        ctx: ctx,
-        orgId: clinic.organizationId,
-        installationId: installationId,
-      );
-      await _seedPlatformTenantBinding(
-        orgId: clinic.organizationId,
-        installationId: installationId,
+      await _runLiveIo(
+        tester,
+        'seed resume coverage fixtures',
+        () async {
+          await _seedEndsSoonCoverage(
+            ctx: ctx,
+            orgId: clinic.organizationId,
+            installationId: installationId,
+          );
+          await _seedPlatformTenantBinding(
+            orgId: clinic.organizationId,
+            installationId: installationId,
+          );
+        },
       );
       final sessions = RoleSessions(ctx, clinic);
       _progress('login: administrator');
-      await _bounded(
+      await _runLiveIo(
+        tester,
         'login administrator',
-        sessions.signInAs(StaffRole.administrator),
+        () => sessions.signInAs(StaffRole.administrator),
       );
 
       final firstSession = _BillingDesktopSession(
@@ -298,16 +334,21 @@ void main() {
             'second desktop should resume the open checkout by reference from GET /v1/checkouts?open=1',
       );
 
-      await _replayPaymobFixture(
-        'success.json',
-        redirectUrl: urlLauncher.launchedUrls.last,
+      await _runLiveIo(
+        tester,
+        'replay resumed checkout success fixture',
+        () => _replayPaymobFixture(
+          'success.json',
+          redirectUrl: urlLauncher.launchedUrls.last,
+        ),
       );
       await _pumpUntilCheckoutShownState(tester, 'Active');
       expect(find.text('Active'), findsOneWidget);
 
-      final statusOnOpen = await _bounded(
+      final statusOnOpen = await _runLiveIo(
+        tester,
         'get_ai_status',
-        LiveSupabaseHarness.client.rpc(
+        () => LiveSupabaseHarness.client.rpc(
           'get_ai_status',
           params: {'p_contract_version': backendRpc},
         ),
@@ -327,19 +368,28 @@ void main() {
     testWidgets('E2E-P6.3-03', (tester) async {
       _activeCase = 'E2E-P6.3-03';
       _progress('fixture setup: clinic and coverage');
-      final clinic = await ctx.ensureClinic(label: 'p63_queued');
+      final clinic = (await _runLiveIo(
+        tester,
+        'bootstrap clinic fixture',
+        () => ctx.ensureClinic(label: 'p63_queued'),
+      ))!;
       final installationId = _deterministicUuid('b633', clinic.suffix);
-      await _seedActiveCoverage(
-        ctx: ctx,
-        orgId: clinic.organizationId,
-        installationId: installationId,
+      await _runLiveIo(
+        tester,
+        'seed queued-term coverage fixture',
+        () => _seedActiveCoverage(
+          ctx: ctx,
+          orgId: clinic.organizationId,
+          installationId: installationId,
+        ),
       );
 
       final sessions = RoleSessions(ctx, clinic);
       _progress('login: administrator');
-      await _bounded(
+      await _runLiveIo(
+        tester,
         'login administrator',
-        sessions.signInAs(StaffRole.administrator),
+        () => sessions.signInAs(StaffRole.administrator),
       );
 
       final composition = buildLiveVisitSummaryComposition(
@@ -383,19 +433,28 @@ void main() {
     testWidgets('E2E-P6.3-04', (tester) async {
       _activeCase = 'E2E-P6.3-04';
       _progress('fixture setup: clinic and coverage');
-      final clinic = await ctx.ensureClinic(label: 'p63_price');
+      final clinic = (await _runLiveIo(
+        tester,
+        'bootstrap clinic fixture',
+        () => ctx.ensureClinic(label: 'p63_price'),
+      ))!;
       final installationId = _deterministicUuid('b634', clinic.suffix);
-      await _seedEndsSoonCoverage(
-        ctx: ctx,
-        orgId: clinic.organizationId,
-        installationId: installationId,
+      await _runLiveIo(
+        tester,
+        'seed price coverage fixture',
+        () => _seedEndsSoonCoverage(
+          ctx: ctx,
+          orgId: clinic.organizationId,
+          installationId: installationId,
+        ),
       );
 
       final sessions = RoleSessions(ctx, clinic);
       _progress('login: administrator');
-      await _bounded(
+      await _runLiveIo(
+        tester,
         'login administrator',
-        sessions.signInAs(StaffRole.administrator),
+        () => sessions.signInAs(StaffRole.administrator),
       );
 
       final composition = buildLiveVisitSummaryComposition(
@@ -416,8 +475,16 @@ void main() {
       await _acceptTermsAndContinue(tester);
       await _fillAndSaveBillingContact(tester);
 
-      final heldPriceMinor = await _readCurrentSellablePriceMinor();
-      await _bumpSellableOfferVersion();
+      final heldPriceMinor = (await _runLiveIo(
+        tester,
+        'read current sellable price',
+        _readCurrentSellablePriceMinor,
+      ))!;
+      await _runLiveIo(
+        tester,
+        'bump sellable offer version',
+        _bumpSellableOfferVersion,
+      );
       final newPriceMinor = heldPriceMinor + 100;
 
       await _submitCheckout(tester);
@@ -439,23 +506,34 @@ void main() {
     testWidgets('E2E-P6.3-05', (tester) async {
       _activeCase = 'E2E-P6.3-05';
       _progress('fixture setup: clinic and coverage');
-      final clinic = await ctx.ensureClinic(label: 'p63_decline');
+      final clinic = (await _runLiveIo(
+        tester,
+        'bootstrap clinic fixture',
+        () => ctx.ensureClinic(label: 'p63_decline'),
+      ))!;
       final installationId = _deterministicUuid('b635', clinic.suffix);
-      await _seedEndsSoonCoverage(
-        ctx: ctx,
-        orgId: clinic.organizationId,
-        installationId: installationId,
-      );
-      await _seedPlatformTenantBinding(
-        orgId: clinic.organizationId,
-        installationId: installationId,
+      await _runLiveIo(
+        tester,
+        'seed decline coverage fixtures',
+        () async {
+          await _seedEndsSoonCoverage(
+            ctx: ctx,
+            orgId: clinic.organizationId,
+            installationId: installationId,
+          );
+          await _seedPlatformTenantBinding(
+            orgId: clinic.organizationId,
+            installationId: installationId,
+          );
+        },
       );
 
       final sessions = RoleSessions(ctx, clinic);
       _progress('login: administrator');
-      await _bounded(
+      await _runLiveIo(
+        tester,
         'login administrator',
-        sessions.signInAs(StaffRole.administrator),
+        () => sessions.signInAs(StaffRole.administrator),
       );
 
       final composition = buildLiveVisitSummaryComposition(
@@ -478,7 +556,11 @@ void main() {
       await _submitCheckout(tester);
 
       final redirectUrl = urlLauncher.launchedUrls.last;
-      await _replayPaymobFixture('decline.json', redirectUrl: redirectUrl);
+      await _runLiveIo(
+        tester,
+        'replay Paymob decline fixture',
+        () => _replayPaymobFixture('decline.json', redirectUrl: redirectUrl),
+      );
       await _pumpUntilCheckoutShownState(tester, 'Failed');
       expect(
         find.text('Failed'),
@@ -486,7 +568,11 @@ void main() {
         reason: 'decline should leave the checkout page on Failed',
       );
 
-      await _replayPaymobFixture('success.json', redirectUrl: redirectUrl);
+      await _runLiveIo(
+        tester,
+        'replay later Paymob success fixture',
+        () => _replayPaymobFixture('success.json', redirectUrl: redirectUrl),
+      );
       await _pumpUntilCheckoutShownState(tester, 'Active');
       expect(
         find.text('Active'),
@@ -505,17 +591,29 @@ void main() {
     testWidgets('E2E-P6.3-06', (tester) async {
       _activeCase = 'E2E-P6.3-06';
       _progress('fixture setup: clinic and coverage');
-      final clinic = await ctx.ensureClinic(label: 'p63_staff_gate');
+      final clinic = (await _runLiveIo(
+        tester,
+        'bootstrap clinic fixture',
+        () => ctx.ensureClinic(label: 'p63_staff_gate'),
+      ))!;
       final installationId = _deterministicUuid('b636', clinic.suffix);
-      await _seedEndsSoonCoverage(
-        ctx: ctx,
-        orgId: clinic.organizationId,
-        installationId: installationId,
+      await _runLiveIo(
+        tester,
+        'seed staff-gate coverage fixture',
+        () => _seedEndsSoonCoverage(
+          ctx: ctx,
+          orgId: clinic.organizationId,
+          installationId: installationId,
+        ),
       );
 
       final sessions = RoleSessions(ctx, clinic);
       _progress('login: doctor');
-      await _bounded('login doctor', sessions.signInAs(StaffRole.doctor));
+      await _runLiveIo(
+        tester,
+        'login doctor',
+        () => sessions.signInAs(StaffRole.doctor),
+      );
 
       final recordingClient = _RecordingSessionSupabaseClient(
         LiveSupabaseHarness.client,
@@ -579,24 +677,34 @@ void main() {
     testWidgets('E2E-P6.3-07', (tester) async {
       _activeCase = 'E2E-P6.3-07';
       _progress('fixture setup: clinic and coverage');
-      final clinic = await ctx.ensureClinic(label: 'p63_contract');
+      final clinic = (await _runLiveIo(
+        tester,
+        'bootstrap clinic fixture',
+        () => ctx.ensureClinic(label: 'p63_contract'),
+      ))!;
       final installationId = _deterministicUuid('b637', clinic.suffix);
-      await _seedEndsSoonCoverage(
-        ctx: ctx,
-        orgId: clinic.organizationId,
-        installationId: installationId,
+      await _runLiveIo(
+        tester,
+        'seed contract coverage fixture',
+        () => _seedEndsSoonCoverage(
+          ctx: ctx,
+          orgId: clinic.organizationId,
+          installationId: installationId,
+        ),
       );
 
       final sessions = RoleSessions(ctx, clinic);
       _progress('login: administrator');
-      await _bounded(
+      await _runLiveIo(
+        tester,
         'login administrator',
-        sessions.signInAs(StaffRole.administrator),
+        () => sessions.signInAs(StaffRole.administrator),
       );
 
-      final tokenResponse = await _bounded(
+      final tokenResponse = await _runLiveIo(
+        tester,
         'issue_billing_token',
-        LiveSupabaseHarness.client.rpc(
+        () => LiveSupabaseHarness.client.rpc(
           'issue_billing_token',
           params: {'p_contract_version': backendRpc},
         ),
@@ -605,9 +713,10 @@ void main() {
       final data = Map<String, dynamic>.from(tokenMap['data'] as Map);
       final billingToken = data['token'] as String;
 
-      final unsupportedProbe = await _bounded(
+      final unsupportedProbe = await _runLiveIo(
+        tester,
         'GET /v1/offers contract probe',
-        http.get(
+        () => http.get(
           Uri.parse('$_aboUrl/v1/offers'),
           headers: {
             'Authorization': 'Bearer $billingToken',
@@ -941,6 +1050,19 @@ Future<T> _bounded<T>(String operation, Future<T> future) async {
     );
   } finally {
     _progress('operation end: $operation');
+  }
+}
+
+Future<T?> _runLiveIo<T>(
+  WidgetTester tester,
+  String operation,
+  Future<T> Function() action,
+) async {
+  _progress('live I/O zone start: $operation');
+  try {
+    return await tester.runAsync(() => _bounded(operation, action()));
+  } finally {
+    _progress('live I/O zone end: $operation');
   }
 }
 

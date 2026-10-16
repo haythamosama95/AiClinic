@@ -14,6 +14,7 @@ export async function createAccessTeam(input: {
     exp: number;
     iat: number;
     kid?: string;
+    jti?: string;
   }): Promise<string>;
 }> {
   void TESTKIT_MARKER;
@@ -64,6 +65,7 @@ export async function createAccessTeam(input: {
         email: mintInput.email,
         iat: mintInput.iat,
         exp: mintInput.exp,
+        ...(mintInput.jti === undefined ? {} : { jti: mintInput.jti }),
       };
       const headerSegment = base64UrlEncode(
         textEncoder.encode(JSON.stringify(header)),

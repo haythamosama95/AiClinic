@@ -56,7 +56,11 @@ class BoundaryTestContext {
   BoundaryClinicFixture? clinic;
 
   static Future<BoundaryTestContext> create() async {
-    await LiveSupabaseHarness.ensureReady();
+    await runFixturePhase(
+      'Supabase harness readiness',
+      LiveSupabaseHarness.ensureReady(),
+      timeout: const Duration(seconds: 30),
+    );
     return BoundaryTestContext._(LiveSupabaseHarness.client);
   }
 

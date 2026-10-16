@@ -215,6 +215,22 @@ async function assertAboNotFound(pathname, billingToken, label) {
   assert.equal(body.code, "not_found");
 }
 
+async function waitForActiveClinicAiCoverage(orgId, { timeoutMs = 30_000 } = {}) {
+  const deadline = Date.now() + timeoutMs;
+  let coverage = null;
+  while (Date.now() < deadline) {
+    coverage = readClinicAiCoverage(orgId);
+    if (coverage?.state === "active" && coverage.term_ref) {
+      return coverage;
+    }
+    await new Promise((resolve) => setTimeout(resolve, 250));
+  }
+  throw new Error(
+    `Timed out after ${timeoutMs}ms waiting for active clinic AI coverage ` +
+      `(org=${orgId}, coverage=${JSON.stringify(coverage)})`,
+  );
+}
+
 test("E2E-P7.2-03", async () => {
   const { orgA, orgB } = stack.clinics;
   seedAboOffers();
@@ -258,7 +274,18 @@ test("E2E-P7.2-03", async () => {
     orgA.installationId,
   );
 
-  const coverageBBefore = readClinicAiCoverage(orgB.orgId);
+  // The vendor grant reaches the platform mirror before the independent
+  // Supabase status projection. Wait for that seeded row so the final equality
+  // check compares against the active term/sequence exercised by this case.
+  const coverageBBefore = await waitForActiveClinicAiCoverage(orgB.orgId);
+  assert.ok(
+    coverageBBefore.binding_epoch,
+    "Org B coverage should have a binding epoch",
+  );
+  assert.ok(
+    coverageBBefore.clinic_seq,
+    "Org B coverage should have a clinic sequence",
+  );
   const paymentCountBBefore = countAboTable("payment");
   const checkoutBStatusBefore = queryAboD1One(
     `SELECT state FROM checkout_status WHERE checkout_id = ${sqlLiteral(checkoutB.checkoutId)}`,

@@ -171,6 +171,7 @@ async function runTwoPhaseCoveragePull(label = "coverage pull") {
   // Retain diagnostics from both phases so setup failures identify where the
   // feed request or response processing stopped progressing.
   runTwoPhaseCoveragePull.lastDiagnostics = `${firstPhaseDiagnostics}; ${formatPullDiagnostics(phase("second pull"), orgId)}`;
+  return pendingRequestId;
 }
 
 function formatLastPullDiagnostics() {
@@ -199,21 +200,21 @@ test("E2E-P7.3-03", async () => {
   assert.ok(feedStateBefore, "feed_state should exist");
   const cursorBefore = feedStateBefore.cursor;
   const failuresBefore = feedStateBefore.consecutive_failures;
-  const httpResponsesBefore = countHttpResponses();
-
-  await runTwoPhaseCoveragePull();
+  const pullRequestId = await runTwoPhaseCoveragePull();
+  assert.ok(pullRequestId, "pull_coverage_feed should record its pg_net request id");
 
   const lastResponse = psqlQuery(`
     SELECT row_to_json(t)::text
     FROM (
-      SELECT status_code, content
+      SELECT id::text, status_code, content
       FROM net._http_response
-      ORDER BY created DESC
+      WHERE id = ${pullRequestId}
       LIMIT 1
     ) t
   `);
-  assert.ok(lastResponse, "pull_coverage_feed should issue a pg_net request");
+  assert.ok(lastResponse, `pg_net request ${pullRequestId} should have a response`);
   const parsedResponse = JSON.parse(lastResponse);
+  assert.equal(parsedResponse.id, pullRequestId);
   assert.equal(Number(parsedResponse.status_code), 400);
 
   const feedStateAfter = readFeedState();
@@ -229,7 +230,6 @@ test("E2E-P7.3-03", async () => {
 
   assert.deepEqual(readClinicAiCoverage(orgId), projectionBefore);
   assert.equal(readPlatformFeedCurrent(), PUBLISHED_FEED_VERSION);
-  assert.equal(countHttpResponses(), httpResponsesBefore + 1);
 
   const status = await rpc(administrator, "get_ai_status", {
     p_contract_version: 1,

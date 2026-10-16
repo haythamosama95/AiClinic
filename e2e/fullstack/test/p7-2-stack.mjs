@@ -456,13 +456,17 @@ export function encodeVendorAssertion(assertion) {
   };
 }
 
-export async function mintAccessJwt(accessTeam) {
+export async function mintAccessJwt(
+  accessTeam,
+  { jti = crypto.randomUUID() } = {},
+) {
   const now = Math.floor(Date.now() / 1000);
   return accessTeam.mint({
     email: OPERATOR_EMAIL,
     aud: ACCESS_AUD,
     iat: now - 60,
     exp: now + 3600,
+    jti,
   });
 }
 
@@ -1253,9 +1257,21 @@ export async function ensurePlatformActiveCoverage(
       },
     }),
   });
-  const result = await response.json();
+  const responseBody = await response.text();
+  let result;
+  try {
+    result = JSON.parse(responseBody);
+  } catch {
+    throw new Error(
+      `Could not seed Org AI coverage: harness returned HTTP ${response.status} ` +
+        `with non-JSON body ${responseBody.slice(0, 1_200) || "[empty response body]"}`,
+    );
+  }
   if (response.status !== 200 || result.result !== "applied") {
-    throw new Error(`Could not seed Org AI coverage: ${JSON.stringify(result)}`);
+    throw new Error(
+      `Could not seed Org AI coverage: HTTP ${response.status}; ` +
+        `${JSON.stringify(result)}`,
+    );
   }
   // Grant application schedules the Durable Object outbox alarm. Wait until
   // both the feed event and the request-serving mirror have been published to

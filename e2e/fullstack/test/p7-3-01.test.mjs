@@ -2,6 +2,7 @@ import test, { after, before } from "node:test";
 import assert from "node:assert/strict";
 import {
   billingFetch,
+  BILLING_HOST,
   countAboTable,
   countAboWork,
   ensurePlatformGrantPrerequisites,
@@ -13,6 +14,7 @@ import {
   OFFER_VERSION,
   opsFetch,
   PLATFORM_CONFIG,
+  PAYMOB_URL,
   platformFetch,
   putBillingContact,
   queryAboD1One,
@@ -232,10 +234,17 @@ test("E2E-P7.3-01", async () => {
     }),
   });
   assert.equal(checkoutResponse.status, 201);
-  const checkoutBody = await checkoutResponse.json();
-  assert.ok(
-    String(checkoutBody.return_url ?? "").includes(`v=${PAYMOB_RETURN_VERSION}`),
-    "paymobReturnUrl should put the variant current in v",
+  const capturedIntentionResponse = await fetch(`${PAYMOB_URL}/__last`);
+  assert.equal(capturedIntentionResponse.status, 200);
+  const capturedIntention = await capturedIntentionResponse.json();
+  assert.equal(
+    capturedIntention.redirection_url,
+    `https://${BILLING_HOST}/return/paymob?v=${PAYMOB_RETURN_VERSION}`,
+    "Paymob intention should receive the current return contract version",
+  );
+  assert.equal(
+    capturedIntention.notification_url,
+    `https://${BILLING_HOST}/notify/paymob`,
   );
 
   const { token: badVerToken } = await mintHarnessBillingToken(

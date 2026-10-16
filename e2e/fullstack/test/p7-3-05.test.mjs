@@ -21,6 +21,7 @@ let stack = null;
 before(async () => {
   stack = await startStack({
     platformConfig: PLATFORM_WORKER_N,
+    platformDoReceiverConfig: "test/variant/platform-do-receiver.toml",
   });
 });
 
@@ -69,7 +70,10 @@ test("E2E-P7.3-05", async () => {
   ensurePlatformGrantPrerequisites(orgId, installationId);
   await ensurePlatformActiveCoverage(stack, orgId, installationId);
   const boundInstallationId = installationIdForOrg(orgId);
-  assert.ok(boundInstallationId);
+  assert.ok(
+    boundInstallationId,
+    `platform tenant binding should be ready for org=${orgId}, installation=${installationId}`,
+  );
 
   const token = await stack.mintPlatformToken(orgId, installationId);
   const accepted = await postAdmissionRequest({

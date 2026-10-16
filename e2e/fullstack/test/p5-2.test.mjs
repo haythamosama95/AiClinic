@@ -1471,7 +1471,7 @@ function stopSupabase() {
 }
 
 function startSupabase() {
-  return runSupabaseCommand("start", ["start"]);
+  return runSupabaseCommand("start", ["start"], { timeoutMs: 180_000 });
 }
 
 async function waitForSupabaseReady() {
@@ -1851,8 +1851,9 @@ test("E2E-P5.2-10 Supabase stopped during a payment still provisions and status 
   const expectedGrantEventId = `${paymentInstallationId}:1`;
 
   console.log("[p5-2] restart-checkpoint=stop-supabase");
-  await stopSupabase();
+  let checkpointError = null;
   try {
+    await stopSupabase();
     console.log("[p5-2] restart-checkpoint=paymob-callback-started");
     await postPaymobProcessedCallback(checkoutId);
     console.log("[p5-2] restart-checkpoint=paymob-callback-accepted");
@@ -1861,10 +1862,24 @@ test("E2E-P5.2-10 Supabase stopped during a payment still provisions and status 
     );
     await waitForPlatformGrantEvent(orgId, { eventId: expectedGrantEventId });
     console.log("[p5-2] restart-checkpoint=grant-event-observed");
+  } catch (error) {
+    checkpointError = error;
   } finally {
-    await startSupabase();
-    await waitForSupabaseReady();
+    try {
+      await startSupabase();
+      await waitForSupabaseReady();
+    } catch (cleanupError) {
+      if (checkpointError) {
+        throw new AggregateError(
+          [checkpointError, cleanupError],
+          "P5.2 grant-event checkpoint and Supabase restart cleanup both failed",
+          { cause: checkpointError },
+        );
+      }
+      throw cleanupError;
+    }
   }
+  if (checkpointError) throw checkpointError;
 
   console.log("[p5-2] restart-checkpoint=post-restart-status-started");
   const statusBeforePull = await rpc(administrator, "get_ai_status", {

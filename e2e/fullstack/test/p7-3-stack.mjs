@@ -377,6 +377,87 @@ function readIssuerKeyByStatus(status) {
   };
 }
 
+function requireSigningIssuerKey() {
+  const issuerKey = readIssuerKeyByStatus("signing");
+  if (issuerKey) return issuerKey;
+
+  const statuses = psqlQuery(
+    "SELECT COALESCE(string_agg(status || '=' || row_count, ', ' ORDER BY status), 'none') FROM (SELECT status, COUNT(*) AS row_count FROM ai_internal.issuer_key GROUP BY status) issuer_key_statuses",
+  );
+  throw new Error(
+    "P7.3 signing-key fixture gate failed: expected one active signing row in " +
+      `ai_internal.issuer_key; observed status counts: ${statuses}. ` +
+      "Apply the local Supabase migrations and signing-key fixture before starting the P7.3 stack.",
+  );
+}
+
+async function waitForHarnessPlatformBinding() {
+  const url = `${HARNESS_URL}/register-issuer-key`;
+  const deadline = Date.now() + 15_000;
+  let lastStatus = "none";
+  let lastBody = "none";
+  let lastRequestError = null;
+
+  while (Date.now() < deadline) {
+    try {
+      const response = await fetch(url, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ contract_version: 1 }),
+      });
+      lastStatus = String(response.status);
+      const body = await response.text();
+      lastBody = body.slice(0, 1_200) || "[empty response body]";
+      lastRequestError = null;
+
+      if (response.status === 200) {
+        let envelope;
+        try {
+          envelope = JSON.parse(body);
+        } catch {
+          throw new Error(
+            `P7.3 harness PLATFORM readiness probe returned non-JSON HTTP 200: ${lastBody}`,
+          );
+        }
+        if (
+          envelope === null ||
+          typeof envelope !== "object" ||
+          Array.isArray(envelope) ||
+          typeof envelope.result !== "string"
+        ) {
+          throw new Error(
+            `P7.3 harness PLATFORM readiness probe returned an unexpected response: ${lastBody}`,
+          );
+        }
+        return;
+      }
+      if (response.status === 404) {
+        throw new Error(
+          `P7.3 harness register-issuer-key route is unavailable (HTTP 404): ${lastBody}`,
+        );
+      }
+      if (response.status < 500) {
+        throw new Error(
+          `P7.3 harness PLATFORM readiness probe failed (HTTP ${response.status}): ${lastBody}`,
+        );
+      }
+    } catch (error) {
+      if (error.message?.startsWith("P7.3 harness ")) throw error;
+      lastRequestError = `${error.cause?.code ?? error.code ?? error.name}: ${error.message}`;
+      lastStatus = "unavailable";
+      lastBody = lastRequestError;
+    }
+
+    await new Promise((resolve) => setTimeout(resolve, 500));
+  }
+
+  throw new Error(
+    `Timed out waiting for P7.3 harness PLATFORM service binding at ${url}; ` +
+      `last HTTP status=${lastStatus}; last response body=${lastBody}` +
+      (lastRequestError ? `; last request error=${lastRequestError}` : ""),
+  );
+}
+
 function seedLocalPlatformIssuerKey(issuerKey) {
   execPlatformD1Sql(`
     INSERT OR REPLACE INTO issuer_key
@@ -394,6 +475,24 @@ function seedLocalPlatformIssuerKey(issuerKey) {
   `);
 }
 
+function seedPlatformAboGrantKeyIfMissing() {
+  execPlatformD1Sql(`
+    INSERT OR IGNORE INTO service_key (
+      kid, service, public_key, status, not_before, not_after,
+      registered_by, assertion_sha256
+    ) VALUES (
+      ${sqlLiteral(ABO_GRANT_KEY.kid)},
+      'abo',
+      ${sqlLiteral(ABO_GRANT_KEY.public_key)},
+      'active',
+      '2020-01-01T00:00:00.000Z',
+      '2099-01-01T00:00:00.000Z',
+      ${sqlLiteral(OPERATOR_EMAIL)},
+      'harness'
+    )
+  `);
+}
+
 export function encodeVendorAssertion(assertion) {
   return {
     alg: assertion.alg,
@@ -403,13 +502,17 @@ export function encodeVendorAssertion(assertion) {
   };
 }
 
-export async function mintAccessJwt(accessTeam) {
+export async function mintAccessJwt(
+  accessTeam,
+  { jti = crypto.randomUUID() } = {},
+) {
   const now = Math.floor(Date.now() / 1000);
   return accessTeam.mint({
     email: OPERATOR_EMAIL,
     aud: ACCESS_AUD,
     iat: now - 60,
     exp: now + 3600,
+    jti,
   });
 }
 
@@ -888,6 +991,13 @@ export async function startStack({
     await mkdir(ABO_PERSIST, { recursive: true });
     await mkdir(PAYMOB_PERSIST, { recursive: true });
     await preparePlatformD1({ platformConfig: activePlatformConfig });
+    // Seed only when absent. Existing revoked or rotated keys are deliberate
+    // fixture state and must survive stack startup.
+    seedPlatformAboGrantKeyIfMissing();
+    const signingKey = requireSigningIssuerKey();
+    const issuerKeys = [
+      { kid: signingKey.kid, public_key: signingKey.public_key },
+    ];
 
     if (registerIssuer) {
       accessTeam = await createAccessTeam({
@@ -932,20 +1042,7 @@ export async function startStack({
     await harnessWorker.ready;
 
     await waitForHttp(`${PLATFORM_URL}/health`);
-    const harnessProbe = await fetch(`${HARNESS_URL}/register-issuer-key`, {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({ contract_version: 1 }),
-    });
-    if (harnessProbe.status === 404) {
-      throw new Error("Harness register-issuer-key route is unavailable");
-    }
-
-    const signingKey = readIssuerKeyByStatus("signing");
-    if (!signingKey) {
-      throw new Error("No signing issuer key row found");
-    }
-    const issuerKeys = [{ kid: signingKey.kid, public_key: signingKey.public_key }];
+    await waitForHarnessPlatformBinding();
     if (!registerIssuer) {
       seedLocalPlatformIssuerKey(signingKey);
     }
@@ -1243,6 +1340,38 @@ export function ensurePlatformGrantPrerequisites(orgId, installationId) {
       ${sqlLiteral(OPERATOR_EMAIL)}, 'harness'
     );
   `);
+
+  const gateState = queryPlatformD1Row(`
+    SELECT
+      EXISTS (
+        SELECT 1 FROM service_key
+        WHERE kid = ${sqlLiteral(ABO_GRANT_KEY.kid)}
+          AND service = 'abo'
+          AND status = 'active'
+      ) AS abo_key_active,
+      EXISTS (
+        SELECT 1 FROM tenant_binding
+        WHERE org_id = ${sqlLiteral(orgId)}
+          AND installation_id = ${sqlLiteral(installationId)}
+          AND status = 'active'
+      ) AS tenant_binding_active,
+      EXISTS (
+        SELECT 1 FROM plan_version
+        WHERE plan_id = ${sqlLiteral(PLAN_ID)}
+          AND version = ${PLAN_VERSION}
+          AND status = 'published'
+      ) AS plan_published
+  `);
+  if (
+    Number(gateState?.abo_key_active) !== 1 ||
+    Number(gateState?.tenant_binding_active) !== 1 ||
+    Number(gateState?.plan_published) !== 1
+  ) {
+    throw new Error(
+      `P7.3 grant prerequisite gate failed for org=${orgId}, ` +
+        `installation=${installationId}; state=${JSON.stringify(gateState)}`,
+    );
+  }
 }
 
 export function seedPlatformGrantGlobals() {
