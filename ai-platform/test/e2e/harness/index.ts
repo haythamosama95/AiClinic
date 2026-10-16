@@ -114,7 +114,11 @@ export {
   type InvokeResult,
 } from "./clinic";
 
-export { gatewayObjectJson, gatewayObjectRpc } from "./gateway-object";
+export {
+  drainGatewayObjectOutbox,
+  gatewayObjectJson,
+  gatewayObjectRpc,
+} from "./gateway-object";
 
 export { CRON_RETENTION, CRON_ROLLUP, invokeCron } from "./cron";
 

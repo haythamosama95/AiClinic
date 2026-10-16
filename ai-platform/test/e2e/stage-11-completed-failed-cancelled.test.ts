@@ -8,6 +8,7 @@ import {
   clinicFetch,
   count,
   DEFAULT_ENTITLE_PAYLOAD,
+  drainGatewayObjectOutbox,
   newClinic,
   entitleInstallation,
   fakePolicyDocument,
@@ -880,7 +881,11 @@ describe("Stage 11 â€” terminal settlement completed/failed/cancelled (S11-001â€
 
         expect(await count("usage_event", "request_id = ?", [row.request_id])).toBe(1);
       } finally {
-        adapterSpy.mockRestore();
+        try {
+          await drainGatewayObjectOutbox(scenario.installationId);
+        } finally {
+          adapterSpy.mockRestore();
+        }
       }
     }
   });

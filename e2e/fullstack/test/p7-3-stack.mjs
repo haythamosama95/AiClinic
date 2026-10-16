@@ -116,6 +116,8 @@ let activePlatformConfig = PLATFORM_CONFIG;
 let activeAboConfig = ABO_CONFIG;
 
 const platformLogBuffer = [];
+const CHILD_LOG_LIMIT = 80;
+let activeAboProcess = null;
 
 function captureLogChunk(chunk) {
   const text = typeof chunk === "string" ? chunk : chunk.toString();
@@ -179,8 +181,8 @@ export function resolveHarnessConfig(configPath) {
   return path.join(FULLSTACK_ROOT, configPath);
 }
 
-export function runWrangler(args, { cwd = REPO_ROOT, env = {} } = {}) {
-  return runWranglerSync(args, { cwd, env });
+export function runWrangler(args, { cwd = REPO_ROOT, env = {}, input } = {}) {
+  return runWranglerSync(args, { cwd, env, input });
 }
 
 export function psqlQuery(sql) {
@@ -236,8 +238,17 @@ function spawnDevProcess(args, env = {}) {
     stdio: ["ignore", "pipe", "pipe"],
     detached: process.platform !== "win32",
   });
-  child.stdout.on("data", captureLogChunk);
-  child.stderr.on("data", captureLogChunk);
+  child.recentLogs = [];
+  const captureChildChunk = (chunk) => {
+    const text = typeof chunk === "string" ? chunk : chunk.toString();
+    captureLogChunk(text);
+    child.recentLogs.push(text);
+    if (child.recentLogs.length > CHILD_LOG_LIMIT) {
+      child.recentLogs.splice(0, child.recentLogs.length - CHILD_LOG_LIMIT);
+    }
+  };
+  child.stdout.on("data", captureChildChunk);
+  child.stderr.on("data", captureChildChunk);
   return child;
 }
 
@@ -925,7 +936,11 @@ export async function createTwoOrgClinics() {
   return { orgA, orgB };
 }
 
-function spawnAboProcess(issuerKeys, aboConfig = activeAboConfig) {
+function spawnAboProcess(
+  issuerKeys,
+  aboConfig = activeAboConfig,
+  { accessTeamDomain = ACCESS_TEAM_DOMAIN, accessAud = ACCESS_AUD, accessCertsJson } = {},
+) {
   return spawnDevProcess(
     [
       "dev",
@@ -949,6 +964,12 @@ function spawnAboProcess(issuerKeys, aboConfig = activeAboConfig) {
       `ABO_GRANT_KEY:${JSON.stringify(ABO_GRANT_KEY)}`,
       "--var",
       `PLATFORM_PUBLIC_KEYS:${JSON.stringify(PLATFORM_PUBLIC_KEYS)}`,
+      "--var",
+      `ACCESS_TEAM_DOMAIN:${accessTeamDomain}`,
+      "--var",
+      `ACCESS_AUD:${accessAud}`,
+      "--var",
+      `ACCESS_CERTS_JSON:${accessCertsJson ?? "{}"}`,
       "--test-scheduled",
     ],
   );
@@ -1115,7 +1136,12 @@ export async function startStack({
     await waitForHttp(`${PAYMOB_URL}/`, { accept: [200, 404] });
 
     await applyAboMigrations(activeAboConfig);
-    abo = spawnAboProcess(issuerKeys, activeAboConfig);
+    abo = spawnAboProcess(issuerKeys, activeAboConfig, {
+      accessTeamDomain: ACCESS_TEAM_DOMAIN,
+      accessAud: ACCESS_AUD,
+      accessCertsJson,
+    });
+    activeAboProcess = abo;
     await waitForHttp(`${ABO_URL}/v1/offers`, {
       accept: [401, 403, 400],
       fetcher: (url, init) => fetchLocalVirtualHost(url, BILLING_HOST, init),
@@ -1165,8 +1191,13 @@ export async function startStack({
       },
       async restartAbo(nextIssuerKeys = issuerKeys) {
         await stopChild(stackRef.abo);
-        const restarted = spawnAboProcess(nextIssuerKeys, activeAboConfig);
+        const restarted = spawnAboProcess(nextIssuerKeys, activeAboConfig, {
+          accessTeamDomain: ACCESS_TEAM_DOMAIN,
+          accessAud: ACCESS_AUD,
+          accessCertsJson,
+        });
         abo = restarted;
+        activeAboProcess = restarted;
         await waitForHttp(`${ABO_URL}/v1/offers`, {
           accept: [401, 403, 400],
           fetcher: (url, init) => fetchLocalVirtualHost(url, BILLING_HOST, init),
@@ -1279,10 +1310,49 @@ export async function platformFetch(pathname, init = {}) {
 }
 
 export async function triggerAboScheduled(cron = "0 6 * * *") {
-  const response = await fetch(
-    `${ABO_URL}/__scheduled?cron=${encodeURIComponent(cron)}`,
-  );
-  return response;
+  const url = `${ABO_URL}/__scheduled?cron=${encodeURIComponent(cron)}`;
+  const processState = () => {
+    const child = activeAboProcess;
+    return child
+      ? {
+          pid: child.pid ?? null,
+          exitCode: child.exitCode,
+          signalCode: child.signalCode,
+          killed: child.killed,
+          recentLogs: (child.recentLogs ?? []).join("").slice(-8_000),
+        }
+      : { state: "ABO process reference unavailable" };
+  };
+  const nestedCause = (error) => {
+    const causes = [];
+    let cause = error?.cause;
+    while (cause && causes.length < 5) {
+      causes.push({ name: cause.name, message: cause.message, code: cause.code });
+      cause = cause.cause;
+    }
+    return causes;
+  };
+
+  try {
+    const response = await fetch(url, { signal: AbortSignal.timeout(10_000) });
+    if (!response.ok) {
+      const responseBody = (await response.text()).slice(0, 8_000);
+      throw new Error(
+        `ABO scheduled trigger failed: cron=${JSON.stringify(cron)}, ` +
+          `status=${response.status} ${response.statusText}, body=${JSON.stringify(responseBody)}, ` +
+          `process=${JSON.stringify(processState())}`,
+      );
+    }
+    return response;
+  } catch (error) {
+    if (error?.message?.startsWith("ABO scheduled trigger failed:")) throw error;
+    throw new Error(
+      `ABO scheduled trigger request failed: cron=${JSON.stringify(cron)}, ` +
+        `url=${url}, error=${error?.name ?? "Error"}: ${error?.message ?? String(error)}, ` +
+        `cause=${JSON.stringify(nestedCause(error))}, process=${JSON.stringify(processState())}`,
+      { cause: error },
+    );
+  }
 }
 
 export function readClinicAiCoverage(orgId) {
@@ -1368,6 +1438,28 @@ export function seedAboOffers() {
       '2026-02-01T00:00:00.000Z', 1
     );
   `);
+  runWrangler(
+    [
+      "r2",
+      "object",
+      "put",
+      "abo-development/terms/en/1.txt",
+      "--local",
+      "--env",
+      "development",
+      "--config",
+      activeAboConfig,
+      "--persist-to",
+      ABO_PERSIST,
+      "--content-type",
+      "text/plain",
+      "--pipe",
+    ],
+    {
+      input:
+        "ABO fixture terms v1.\nBy subscribing you agree to clinic billing terms.",
+    },
+  );
 }
 
 export function ensurePlatformGrantPrerequisites(orgId, installationId) {

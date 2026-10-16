@@ -9,6 +9,7 @@ import 'dart:io';
 
 import 'package:ai_clinic/app/app_routes.dart';
 import 'package:ai_clinic/app/providers/auth_session_provider.dart';
+import 'package:ai_clinic/app/providers/startup_session_provider.dart';
 import 'package:ai_clinic/app/router.dart';
 import 'package:ai_clinic/core/ai/ports.dart';
 import 'package:ai_clinic/core/ai/sse_events.dart';
@@ -22,6 +23,7 @@ import 'package:ai_clinic/features/ai/presentation/pages/ai_page.dart';
 import 'package:ai_clinic/features/auth/domain/auth_session.dart';
 import 'package:ai_clinic/features/clinic-management/domain/branch_working_schedule.dart';
 import 'package:ai_clinic/features/clinic-management/domain/create_branch_input.dart';
+import 'package:ai_clinic/l10n/app_localizations.dart';
 import 'package:crypto/crypto.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -37,6 +39,7 @@ import '../boundary/harness/fixture_factory.dart';
 import '../boundary/harness/live_supabase_harness.dart' hide markTestSkipped;
 import '../boundary/harness/role_sessions.dart';
 import '../helpers/auth_test_support.dart';
+import '../helpers/startup_test_support.dart';
 import '../widget/ai/ai_surface_test_harness.dart';
 
 /// Route path T012 registers on [AppRoutes] and [router.dart].
@@ -765,6 +768,7 @@ GoRouter _billingRouter({
   final container = ProviderContainer(
     overrides: [
       supabaseClientProvider.overrideWithValue(LiveSupabaseHarness.client),
+      startupSessionProvider.overrideWith(_BillingStartupNotifier.new),
       authSessionProvider.overrideWith(
         () => MutableAuthSessionNotifier(
           AuthSessionState(
@@ -783,6 +787,17 @@ GoRouter _billingRouter({
   return container.read(appRouterProvider);
 }
 
+class _BillingStartupNotifier extends StartupSessionNotifier {
+  @override
+  StartupSessionState build() => StartupSessionState(
+    configurationStatus: StartupConfigurationStatus.valid,
+    connectivityStatus: StartupConnectivityStatus.healthy,
+    currentView: StartupCurrentView.unauthenticatedEntry,
+    themeMode: ThemeMode.light,
+    deploymentProfile: sampleDeploymentProfile(),
+  );
+}
+
 Future<void> _pumpAdministratorShell(
   WidgetTester tester, {
   required GoRouter router,
@@ -793,6 +808,7 @@ Future<void> _pumpAdministratorShell(
     ProviderScope(
       overrides: [
         supabaseClientProvider.overrideWithValue(LiveSupabaseHarness.client),
+        startupSessionProvider.overrideWith(_BillingStartupNotifier.new),
         authSessionProvider.overrideWith(
           () => MutableAuthSessionNotifier(
             AuthSessionState(
@@ -802,36 +818,25 @@ Future<void> _pumpAdministratorShell(
           ),
         ),
       ],
-      child: MaterialApp.router(theme: AppTheme.light(), routerConfig: router),
-    ),
-  );
-  if (boundedPumping) {
-    await _pumpBillingFrames(tester);
-  } else {
-    await _settle(tester);
-  }
-  router.go(AppRoutes.ai);
-  if (boundedPumping) {
-    await _pumpBillingFrames(tester);
-  } else {
-    await _settle(tester);
-  }
-  await tester.pumpWidget(
-    ProviderScope(
-      overrides: [
-        supabaseClientProvider.overrideWithValue(LiveSupabaseHarness.client),
-      ],
-      child: MaterialApp(
+      child: MaterialApp.router(
         theme: AppTheme.light(),
-        home: Scaffold(
-          body: liveVisitSummaryHostBody(
-            visitId: testVisitId,
-            composition: composition,
-          ),
-        ),
+        localizationsDelegates: AppLocalizations.localizationsDelegates,
+        supportedLocales: AppLocalizations.supportedLocales,
+        routerConfig: router,
       ),
     ),
   );
+  if (boundedPumping) {
+    await _pumpBillingFrames(tester);
+  } else {
+    await _settle(tester);
+  }
+  router.go(AppRoutes.aiFeatureHost, extra: composition.dependencies);
+  if (boundedPumping) {
+    await _pumpBillingFrames(tester);
+  } else {
+    await _settle(tester);
+  }
   if (boundedPumping) {
     await _pumpUntilFound(
       tester,
@@ -854,6 +859,7 @@ Future<void> _pumpStaffShell(
     ProviderScope(
       overrides: [
         supabaseClientProvider.overrideWithValue(LiveSupabaseHarness.client),
+        startupSessionProvider.overrideWith(_BillingStartupNotifier.new),
         authSessionProvider.overrideWith(
           () => MutableAuthSessionNotifier(
             AuthSessionState(
@@ -863,27 +869,18 @@ Future<void> _pumpStaffShell(
           ),
         ),
       ],
-      child: MaterialApp.router(theme: AppTheme.light(), routerConfig: router),
+      child: MaterialApp.router(
+        theme: AppTheme.light(),
+        localizationsDelegates: AppLocalizations.localizationsDelegates,
+        supportedLocales: AppLocalizations.supportedLocales,
+        routerConfig: router,
+      ),
     ),
   );
   await _settle(tester);
-  router.go(AppRoutes.ai);
-  await _settle(tester);
-  await tester.pumpWidget(
-    ProviderScope(
-      overrides: [
-        supabaseClientProvider.overrideWithValue(LiveSupabaseHarness.client),
-      ],
-      child: MaterialApp(
-        theme: AppTheme.light(),
-        home: Scaffold(
-          body: liveVisitSummaryHostBody(
-            visitId: testVisitId,
-            composition: composition,
-          ),
-        ),
-      ),
-    ),
+  router.go(
+    AppRoutes.aiFeatureHost,
+    extra: composition.dependencies,
   );
   await _settle(tester);
 }
@@ -896,6 +893,7 @@ Future<void> _pumpAdministratorBillingRoute(
     ProviderScope(
       overrides: [
         supabaseClientProvider.overrideWithValue(LiveSupabaseHarness.client),
+        startupSessionProvider.overrideWith(_BillingStartupNotifier.new),
         authSessionProvider.overrideWith(
           () => MutableAuthSessionNotifier(
             AuthSessionState(
@@ -905,7 +903,12 @@ Future<void> _pumpAdministratorBillingRoute(
           ),
         ),
       ],
-      child: MaterialApp.router(theme: AppTheme.light(), routerConfig: router),
+      child: MaterialApp.router(
+        theme: AppTheme.light(),
+        localizationsDelegates: AppLocalizations.localizationsDelegates,
+        supportedLocales: AppLocalizations.supportedLocales,
+        routerConfig: router,
+      ),
     ),
   );
   await _settle(tester);
@@ -1510,6 +1513,7 @@ class _BillingDesktopSession {
       ProviderScope(
         overrides: [
           supabaseClientProvider.overrideWithValue(LiveSupabaseHarness.client),
+          startupSessionProvider.overrideWith(_BillingStartupNotifier.new),
           authSessionProvider.overrideWith(
             () => MutableAuthSessionNotifier(
               AuthSessionState(
@@ -1525,6 +1529,8 @@ class _BillingDesktopSession {
         ],
         child: MaterialApp.router(
           theme: AppTheme.light(),
+          localizationsDelegates: AppLocalizations.localizationsDelegates,
+          supportedLocales: AppLocalizations.supportedLocales,
           routerConfig: _router,
         ),
       ),

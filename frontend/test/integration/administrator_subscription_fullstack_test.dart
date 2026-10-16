@@ -624,12 +624,12 @@ void main() {
       final orgA = (await _runLiveIo(
         tester,
         'bootstrap first organization fixture',
-        () => ctx.fixtures.bootstrapOnly(label: 'p64_org_a'),
+        () => ctx.ensureClinic(label: 'p64_org_a'),
       ))!;
       final orgB = (await _runLiveIo(
         tester,
-        'bootstrap second organization fixture',
-        () => ctx.fixtures.bootstrapOnly(label: 'p64_org_b'),
+        'insert second organization fixture',
+        () => ctx.bootstrapSecondaryClinic('p64_org_b'),
       ))!;
 
       final orgARefs = (await _runLiveIo(

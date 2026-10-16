@@ -1075,6 +1075,72 @@ export function issueFeedToken() {
   return psqlQuery("SELECT auth_internal.issue_feed_token()");
 }
 
+async function waitForCoverageFeedResponse(requestId, { timeoutMs = 10_000 } = {}) {
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    const responseId = psqlQuery(`
+      SELECT id::text
+      FROM net._http_response
+      WHERE id = ${requestId}
+      LIMIT 1
+    `);
+    if (responseId) return;
+    await new Promise((resolve) => setTimeout(resolve, 50));
+  }
+  throw new Error(
+    `Timed out after ${timeoutMs}ms waiting for coverage feed response ${requestId}`,
+  );
+}
+
+export async function pullSupabaseCoverageTwoPhase(
+  label = "Supabase coverage pull",
+  { timeoutMs = 10_000 } = {},
+) {
+  try {
+    psqlQuery("SELECT auth_internal.pull_coverage_feed()");
+    const requestId = psqlQuery(`
+      SELECT pending_request_id::text
+      FROM ai_internal.feed_state
+      WHERE singleton
+      LIMIT 1
+    `);
+    if (!requestId) {
+      throw new Error("pull_coverage_feed did not record a pending request id");
+    }
+    await waitForCoverageFeedResponse(requestId, { timeoutMs });
+    // The follow-up call consumes the completed pg_net response and applies
+    // its coverage events to ai_internal.clinic_ai_coverage.
+    psqlQuery("SELECT auth_internal.pull_coverage_feed()");
+  } catch (error) {
+    throw new Error(`${label} failed: ${error.message}`);
+  }
+}
+
+export async function waitForPlatformGrantLedger(
+  { grantId, orgId, installationId },
+  { timeoutMs = 20_000, pollIntervalMs = 100 } = {},
+) {
+  const deadline = Date.now() + timeoutMs;
+  let lastRow = null;
+  while (Date.now() < deadline) {
+    lastRow = queryPlatformD1Row(`
+      SELECT grant_id, org_id, installation_id
+      FROM grant_ledger
+      WHERE grant_id = ${sqlLiteral(grantId)}
+        AND org_id = ${sqlLiteral(orgId)}
+        AND installation_id = ${sqlLiteral(installationId)}
+      LIMIT 1
+    `);
+    if (lastRow) return lastRow;
+    await new Promise((resolve) => setTimeout(resolve, pollIntervalMs));
+  }
+  throw new Error(
+    `Timed out after ${timeoutMs}ms waiting for grant_ledger row ` +
+      `(grant=${grantId}, org=${orgId}, installation=${installationId}, ` +
+      `last row=${JSON.stringify(lastRow)})`,
+  );
+}
+
 export function countAboFindings(kind) {
   const row = queryAboD1One(
     `SELECT COUNT(*) AS n FROM finding WHERE kind = ${sqlLiteral(kind)}`,

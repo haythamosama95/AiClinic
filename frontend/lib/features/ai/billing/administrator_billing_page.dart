@@ -10,6 +10,7 @@ import 'package:ai_clinic/features/ai/billing/payment_history.dart';
 import 'package:ai_clinic/features/ai/billing/subscription_summary.dart';
 import 'package:ai_clinic/features/ai/degraded/ai_degraded_mode.dart';
 import 'package:ai_clinic/features/ai/degraded/ai_degraded_view.dart';
+import 'package:ai_clinic/features/ai/availability/ai_availability.dart';
 import 'package:ai_clinic/l10n/app_localizations.dart';
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
@@ -65,6 +66,11 @@ class _AdministratorBillingPageState extends State<AdministratorBillingPage> {
       }
       setState(() => _step = _BillingStep.offers);
     } on AboContractVersionUnsupportedException {
+      if (!mounted) {
+        return;
+      }
+      setState(() => _step = _BillingStep.appUpdate);
+    } on ContractVersionUnsupportedException {
       if (!mounted) {
         return;
       }

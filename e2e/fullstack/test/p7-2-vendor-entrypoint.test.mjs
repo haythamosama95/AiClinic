@@ -36,6 +36,7 @@ import {
   sqlLiteral,
   startStack,
   triggerAboScheduled,
+  waitForPlatformGrantLedger,
   WEBAUTHN_ORIGIN,
   WEBAUTHN_RP_ID,
 } from "./p7-2-stack.mjs";
@@ -450,6 +451,7 @@ test("E2E-P7.2-06", async () => {
     aboSignature: await aboGrantSigner.sign(knownGrantEnvelope),
   });
   assert.equal(knownGrant.result, "applied", "void probe uses an existing paid grant");
+  await waitForPlatformGrantLedger({ grantId: knownGrantId, orgId, installationId });
 
   const suspended = await vendorCall(
     "suspend",

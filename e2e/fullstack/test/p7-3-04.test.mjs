@@ -160,7 +160,12 @@ test("E2E-P7.3-04", async () => {
   const retry = await opsFetchWithAccess(`/ops/parked/${workId}/retry`, {
     method: "POST",
   });
-  assert.equal(retry.status, 200);
+  const retryBody = await retry.text();
+  assert.equal(
+    retry.status,
+    200,
+    `parked-work retry failed for work_id=${workId}: ${retryBody}`,
+  );
 
   await triggerAboScheduled("* * * * *");
   await waitForGrantWorkState(paymentId, "done");

@@ -8,13 +8,18 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'package:ai_clinic/app/providers/auth_session_provider.dart';
+import 'package:ai_clinic/app/providers/startup_session_provider.dart';
 import 'package:ai_clinic/app/router.dart';
+import 'package:ai_clinic/app/services/startup_health_service.dart';
 import 'package:ai_clinic/core/config/supabase_config.dart';
 import 'package:ai_clinic/core/contract_versions.dart';
 import 'package:ai_clinic/core/ui/theme/app_theme.dart';
+import 'package:ai_clinic/features/ai/availability/ai_availability.dart';
+import 'package:ai_clinic/features/ai/billing/administrator_billing_page.dart';
 import 'package:ai_clinic/features/ai/degraded/ai_degraded_view.dart';
 import 'package:ai_clinic/features/ai/presentation/pages/ai_page.dart';
 import 'package:ai_clinic/features/auth/domain/auth_session.dart';
+import 'package:ai_clinic/l10n/app_localizations.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -25,6 +30,7 @@ import '../boundary/harness/boundary_test_context.dart';
 import '../boundary/harness/live_supabase_harness.dart';
 import '../boundary/harness/role_sessions.dart';
 import '../helpers/auth_test_support.dart';
+import '../helpers/startup_test_support.dart';
 import '../widget/ai/ai_surface_test_harness.dart';
 
 const kAdministratorBillingPath = '/ai/administrator-billing';
@@ -173,7 +179,9 @@ void main() {
       expect(platformBody['code'], 'contract_version_unsupported');
 
       _progress('UI check: billing route update notice');
-      await _pumpAdministratorBillingRoute(tester, router: _billingRouter());
+      final billingHarness = _BillingRouteHarness.create();
+      addTearDown(billingHarness.dispose);
+      await _pumpAdministratorBillingRoute(tester, harness: billingHarness);
       expect(find.byType(AlertDialog), findsNothing);
       expect(find.byKey(kAiDegradedAppUpdateKey), findsOneWidget);
       expect(find.text(_appUpdateCopy), findsOneWidget);
@@ -192,7 +200,7 @@ void main() {
       expect(find.text(_appUpdateCopy), findsOneWidget);
 
       _progress('UI check: checkout update notice');
-      await _pumpAdministratorBillingRoute(tester, router: _billingRouter());
+      await _pumpAdministratorBillingRoute(tester, harness: billingHarness);
       await _advanceBillingToCheckout(tester);
       expect(find.byType(AlertDialog), findsNothing);
       expect(find.byKey(kAiDegradedAppUpdateKey), findsOneWidget);
@@ -321,31 +329,17 @@ Future<void> _stopDesktopWindowStack({required bool reportFailure}) async {
   }
 }
 
-GoRouter _billingRouter() {
-  final container = ProviderContainer(
-    overrides: [
-      supabaseClientProvider.overrideWithValue(LiveSupabaseHarness.client),
-      authSessionProvider.overrideWith(
-        () => MutableAuthSessionNotifier(
-          AuthSessionState(
-            status: AuthSessionStatus.authenticated,
-            context: sampleAuthSessionContext(role: StaffRole.administrator),
-          ),
-        ),
-      ),
-    ],
-  );
-  return container.read(appRouterProvider);
-}
+class _BillingRouteHarness {
+  _BillingRouteHarness(this.container, this.router);
 
-Future<void> _pumpAdministratorBillingRoute(
-  WidgetTester tester, {
-  required GoRouter router,
-}) async {
-  await tester.pumpWidget(
-    ProviderScope(
+  final ProviderContainer container;
+  final GoRouter router;
+
+  factory _BillingRouteHarness.create() {
+    final container = ProviderContainer(
       overrides: [
         supabaseClientProvider.overrideWithValue(LiveSupabaseHarness.client),
+        startupSessionProvider.overrideWith(_BillingStartupNotifier.new),
         authSessionProvider.overrideWith(
           () => MutableAuthSessionNotifier(
             AuthSessionState(
@@ -355,15 +349,47 @@ Future<void> _pumpAdministratorBillingRoute(
           ),
         ),
       ],
+    );
+    return _BillingRouteHarness(container, container.read(appRouterProvider));
+  }
+
+  void dispose() {
+    router.dispose();
+    container.dispose();
+  }
+}
+
+class _BillingStartupNotifier extends StartupSessionNotifier {
+  @override
+  StartupSessionState build() => StartupSessionState(
+        configurationStatus: StartupConfigurationStatus.valid,
+        connectivityStatus: StartupConnectivityStatus.healthy,
+        currentView: StartupCurrentView.unauthenticatedEntry,
+        themeMode: ThemeMode.light,
+        deploymentProfile: sampleDeploymentProfile(),
+      );
+}
+
+Future<void> _pumpAdministratorBillingRoute(
+  WidgetTester tester, {
+  required _BillingRouteHarness harness,
+}) async {
+  await tester.pumpWidget(
+    UncontrolledProviderScope(
+      container: harness.container,
       child: MaterialApp.router(
         theme: AppTheme.light(),
-        routerConfig: router,
+        localizationsDelegates: AppLocalizations.localizationsDelegates,
+        supportedLocales: AppLocalizations.supportedLocales,
+        routerConfig: harness.router,
       ),
     ),
   );
   await tester.pumpAndSettle();
-  router.go(kAdministratorBillingPath);
+  harness.router.go(kAdministratorBillingPath);
   await tester.pumpAndSettle();
+  expect(harness.router.routeInformationProvider.value.uri.path, kAdministratorBillingPath);
+  expect(find.byType(AdministratorBillingPage), findsOneWidget);
   await _pumpUntilAppUpdate(tester);
 }
 

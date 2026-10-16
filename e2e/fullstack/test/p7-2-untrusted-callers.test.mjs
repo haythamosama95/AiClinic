@@ -12,6 +12,7 @@ import {
   issueFeedToken,
   openCheckout,
   platformFetch,
+  pullSupabaseCoverageTwoPhase,
   putBillingContact,
   queryAboD1One,
   readClinicAiCoverage,
@@ -273,6 +274,8 @@ test("E2E-P7.2-03", async () => {
     orgA.orgId,
     orgA.installationId,
   );
+
+  await pullSupabaseCoverageTwoPhase("P7.2-03 baseline coverage pull");
 
   // The vendor grant reaches the platform mirror before the independent
   // Supabase status projection. Wait for that seeded row so the final equality

@@ -120,6 +120,43 @@ async function expectPlatformClinicRefusal(pathname, init = {}) {
   assert.deepEqual(body.accepted_versions, ACCEPTED_VERSIONS);
 }
 
+function paymentForCheckout(checkoutId) {
+  return queryAboD1One(
+    `SELECT payment_id FROM payment WHERE checkout_id = ${sqlLiteral(checkoutId)} LIMIT 1`,
+  )?.payment_id;
+}
+
+async function waitForPayment(checkoutId) {
+  const deadline = Date.now() + 10_000;
+  let paymentId = null;
+
+  while (Date.now() < deadline) {
+    paymentId = paymentForCheckout(checkoutId);
+    if (paymentId) return paymentId;
+    await new Promise((resolve) => setTimeout(resolve, 100));
+  }
+
+  assert.fail(`confirmation did not create a payment for checkout ${checkoutId}`);
+}
+
+async function waitForParkedGrant(paymentId) {
+  const deadline = Date.now() + 10_000;
+  let work = null;
+
+  while (Date.now() < deadline) {
+    work = queryAboD1One(
+      `SELECT state, last_error FROM work WHERE kind = 'grant' AND subject_id = ${sqlLiteral(paymentId)}`,
+    );
+    if (work?.state === "parked") return work;
+    await new Promise((resolve) => setTimeout(resolve, 100));
+  }
+
+  assert.fail(
+    `grant work for payment ${paymentId} was not parked; ` +
+      `state=${work?.state ?? "missing"}, last_error=${work?.last_error ?? "null"}`,
+  );
+}
+
 test("E2E-P7.3-01", async () => {
   const { administrator, orgId, installationId } = stack.clinics.orgA;
   ensurePlatformGrantPrerequisites(orgId, installationId);
@@ -333,19 +370,16 @@ test("E2E-P7.3-01", async () => {
     "p73-grant-vendor",
   );
   await syncPaymobForCheckout(grantCheckout.checkoutId);
-  const grantPaymentId = queryAboD1One(
-    `SELECT payment_id FROM payment WHERE checkout_id = ${sqlLiteral(grantCheckout.checkoutId)} LIMIT 1`,
-  )?.payment_id;
-  assert.ok(grantPaymentId, "paid checkout should create a payment row");
-
+  // The return handler schedules confirmations for every open checkout. Keep
+  // assertions scoped to this checkout because earlier cases may also be open
+  // and the Paymob harness can reuse order IDs.
   await stack.restartPlatform({ platformConfig: PLATFORM_CONFIG });
-
+  const confirmationResponse = await billingFetch("/return/paymob?v=99");
+  assert.equal(confirmationResponse.status, 200);
   await triggerAboScheduled("* * * * *");
-
-  const parkedGrant = queryAboD1One(
-    `SELECT state, last_error FROM work WHERE kind = 'grant' AND subject_id = ${sqlLiteral(grantPaymentId)}`,
-  );
-  assert.ok(parkedGrant, "runDueGrantWork should create grant work");
+  const grantPaymentId = await waitForPayment(grantCheckout.checkoutId);
+  await triggerAboScheduled("* * * * *");
+  const parkedGrant = await waitForParkedGrant(grantPaymentId);
   assert.equal(parkedGrant.state, "parked");
   assert.match(
     String(parkedGrant.last_error ?? ""),
