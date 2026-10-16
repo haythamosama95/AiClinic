@@ -35,6 +35,7 @@ final _aboUrl = Platform.environment['ABO_URL'] ?? 'http://127.0.0.1:8788';
 final _platformUrl = Platform.environment['PLATFORM_URL'] ?? 'http://127.0.0.1:8787';
 
 var _hfsStackReady = false;
+var _activeCase = 'suite-setup';
 Process? _desktopWindowPrepareProcess;
 String _desktopWindowPrepareStdout = '';
 String _desktopWindowPrepareStderr = '';
@@ -54,8 +55,10 @@ void main() {
   late BoundaryTestContext ctx;
 
   setUpAll(() async {
+    _progress('stack setup: starting desktop-window services');
     await _startDesktopWindowStack();
     try {
+      _progress('stack setup: probing ABO and platform');
       _hfsStackReady = await _probeDesktopWindowStackReady();
       if (!_hfsStackReady) {
         throw StateError(
@@ -63,7 +66,9 @@ void main() {
           'ABO/platform probes did not pass.',
         );
       }
+      _progress('stack setup: initializing Supabase');
       await LiveSupabaseHarness.ensureReady();
+      _progress('stack setup: ready');
     } catch (error, stackTrace) {
       await _stopDesktopWindowStack(reportFailure: true);
       Error.throwWithStackTrace(
@@ -78,15 +83,20 @@ void main() {
   });
 
   setUp(() async {
+    _activeCase = 'setup';
     if (!_hfsStackReady) {
       return;
     }
+    _progress('fixture setup: creating boundary context');
     ctx = await BoundaryTestContext.create();
+    _progress('fixture setup: resetting installation');
     await ctx.resetInstallation();
+    _progress('fixture setup: installation reset complete');
   });
 
   group('E2E-P7.3-06', () {
     testWidgets('E2E-P7.3-06', (tester) async {
+      _activeCase = 'E2E-P7.3-06';
       if (!_hfsStackReady) {
         fail(
           'H-FS desktop-window stack unavailable (ABO at $_aboUrl, platform at $_platformUrl). '
@@ -94,7 +104,9 @@ void main() {
         );
       }
 
+      _progress('fixture setup: bootstrapping clinic');
       final clinic = await ctx.ensureClinic(label: 'p73_desktop_window');
+      _progress('fixture setup: clinic ready; seeding active coverage');
       final installationId = _deterministicUuid('b73', clinic.suffix);
       await _seedActiveCoverage(
         ctx: ctx,
@@ -103,8 +115,10 @@ void main() {
       );
 
       final sessions = RoleSessions(ctx, clinic);
+      _progress('login: administrator');
       await sessions.signInAs(StaffRole.administrator);
 
+      _progress('contract probe: ABO minimum version');
       final aboProbe = await http.get(
         Uri.parse('$_aboUrl/v1/offers'),
         headers: {
@@ -116,6 +130,7 @@ void main() {
       final aboBody = _decodeJsonMap(aboProbe.body);
       expect(aboBody['code'], 'contract_version_unsupported');
 
+      _progress('contract probe: Supabase RPC version');
       final rpcProbe = await LiveSupabaseHarness.client.rpc(
         'get_ai_status',
         params: {'p_contract_version': backendRpc},
@@ -124,6 +139,7 @@ void main() {
       expect(rpcMap['success'], isFalse);
       expect(rpcMap['error_code'], 'CONTRACT_VERSION_UNSUPPORTED');
 
+      _progress('contract probe: platform minimum version');
       final platformProbe = await http.get(
         Uri.parse('$_platformUrl/v1/capabilities'),
         headers: {'Aip-Contract-Version': '$platformClinic'},
@@ -132,6 +148,7 @@ void main() {
       final platformBody = _decodeJsonMap(platformProbe.body);
       expect(platformBody['code'], 'contract_version_unsupported');
 
+      _progress('UI check: billing route update notice');
       await _pumpAdministratorBillingRoute(tester, router: _billingRouter());
       expect(find.byType(AlertDialog), findsNothing);
       expect(find.byKey(kAiDegradedAppUpdateKey), findsOneWidget);
@@ -144,11 +161,13 @@ void main() {
         reachabilityPort: FakePlatformReachabilityPort(reachable: true),
         autoInvoke: false,
       );
+      _progress('UI check: AI page update notice');
       await _pumpAiPage(tester, composition: composition);
       expect(find.byType(AlertDialog), findsNothing);
       expect(find.byKey(kAiDegradedAppUpdateKey), findsOneWidget);
       expect(find.text(_appUpdateCopy), findsOneWidget);
 
+      _progress('UI check: checkout update notice');
       await _pumpAdministratorBillingRoute(tester, router: _billingRouter());
       await _advanceBillingToCheckout(tester);
       expect(find.byType(AlertDialog), findsNothing);
@@ -156,6 +175,11 @@ void main() {
       expect(find.text(_appUpdateCopy), findsOneWidget);
     });
   });
+}
+
+void _progress(String message) {
+  // ignore: avoid_print
+  print('[HFS-PROGRESS] case=$_activeCase $message');
 }
 
 Future<void> _startDesktopWindowStack() async {

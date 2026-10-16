@@ -62,8 +62,11 @@ class BoundaryTestContext {
 
   /// Force-clears installation state. Per-test [setUp] calls this; clears cached clinic.
   Future<void> resetInstallation() async {
-    await signOut();
-    await devResetAsBootstrapAdmin(client);
+    await runFixturePhase('sign out before installation reset', signOut());
+    await runFixturePhase(
+      'reset clinic installation via dev_reset_clinic_installation RPC',
+      devResetAsBootstrapAdmin(client),
+    );
     clinic = null;
   }
 
@@ -72,7 +75,11 @@ class BoundaryTestContext {
     if (clinic != null && (requested == null || clinic!.suffix == requested)) {
       return clinic!;
     }
-    clinic = await fixtures.bootstrapOnly(label: requested);
+    clinic = await runFixturePhase(
+      'bootstrap clinic fixture${requested == null ? '' : ' $requested'}',
+      fixtures.bootstrapOnly(label: requested),
+      timeout: const Duration(seconds: 48),
+    );
     return clinic!;
   }
 
@@ -83,12 +90,15 @@ class BoundaryTestContext {
 
   /// Signs in bootstrap admin and waits until JWT org/branch claims match [clinic].
   Future<void> signInAdminForClinic(BoundaryClinicFixture clinic) async {
-    await signInAdmin();
-    await boundaryRefreshSessionForClinic(
-      auth,
-      clinic,
-      username: 'admin',
-      password: 'admin',
+    await runFixturePhase('admin sign-in for ${clinic.suffix}', signInAdmin());
+    await runFixturePhase(
+      'refresh admin session for ${clinic.suffix}',
+      boundaryRefreshSessionForClinic(
+        auth,
+        clinic,
+        username: 'admin',
+        password: 'admin',
+      ),
     );
   }
 
@@ -100,5 +110,6 @@ class BoundaryTestContext {
   Future<void> signOut() => auth.signOut();
 
   /// Second org in the same test (SQL insert; bootstrap RPC allows only one org per installation).
-  Future<BoundaryClinicFixture> bootstrapSecondaryClinic(String label) => sql.insertSecondaryClinic(label);
+  Future<BoundaryClinicFixture> bootstrapSecondaryClinic(String label) =>
+      runFixturePhase('insert secondary clinic $label', sql.insertSecondaryClinic(label));
 }
