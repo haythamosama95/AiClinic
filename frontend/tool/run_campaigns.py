@@ -25,6 +25,7 @@ from harness.campaign_config import (  # noqa: E402
 )
 from harness.common import (  # noqa: E402
     make_arg_parser,
+    RETRY_FAILED_ENV,
     resolve_campaign_log_dir,
     resolve_governor_run_id,
     resolve_subcampaign,
@@ -300,6 +301,10 @@ def main() -> int:
         description="Run frontend unit and boundary test campaigns.",
     )
     args = parser.parse_args()
+    if args.retry_failed:
+        os.environ[RETRY_FAILED_ENV] = "1"
+    else:
+        os.environ.pop(RETRY_FAILED_ENV, None)
     if args.list:
         from harness.campaign_catalog import list_subcampaign_ids
 

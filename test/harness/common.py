@@ -7,6 +7,7 @@ import contextlib
 import json
 import os
 import signal
+import shutil
 import subprocess
 import sys
 import threading
@@ -115,6 +116,7 @@ def test_results_root() -> Path:
 
 CAMPAIGN_LOG_DIR_ENV = "AICLINIC_CAMPAIGN_LOG_DIR"
 GOVERNOR_RUN_ID_ENV = "AICLINIC_TEST_RUN_ID"
+RETRY_FAILED_ENV = "AICLINIC_RETRY_FAILED"
 
 
 def campaign_log_dir(area: str, subcampaign: str, run_id: str) -> Path:
@@ -593,6 +595,7 @@ def run_subprocess_with_live_status(
     governor_run_id: str | None = None,
     governor_resume: bool = False,
     exclude_tests_file: Path | None = None,
+    _retry_pass: bool = True,
 ) -> int:
     """Run a command with live current-test line and finished-test table on stderr."""
     ensure_campaign_sigint_handler()
@@ -829,6 +832,60 @@ def run_subprocess_with_live_status(
         subcampaign=effective_sub,
         campaign_config=campaign_config,
     )
+    if (
+        _retry_pass
+        and os.environ.get(RETRY_FAILED_ENV) == "1"
+        and not interrupted
+        and not harness_error
+        and exit_code != 0
+        and campaign_config
+        and campaign_config.get("kind") in ("vitest", "node-test", "flutter")
+    ):
+        from harness.campaign_retry import (
+            filtered_retry_command,
+            merge_retry_passes,
+            retry_candidates,
+            temporary_retry_dir,
+        )
+
+        candidates = retry_candidates(log_dir)
+        retry_cmd = filtered_retry_command(
+            cmd_list, str(campaign_config.get("kind")), candidates
+        )
+        if retry_cmd:
+            retry_dir = temporary_retry_dir(log_dir.parent)
+            from harness.governor_console_log import GOVERNOR_CONSOLE_LOG_ENV
+
+            console_log = os.environ.pop(GOVERNOR_CONSOLE_LOG_ENV, None)
+            try:
+                run_subprocess_with_live_status(
+                    retry_cmd,
+                    cwd,
+                    retry_dir,
+                    status_label=f"{status_label} retry",
+                    poll_interval=poll_interval,
+                    campaign_config=campaign_config,
+                    config_area=config_area,
+                    governor_run_id=governor_run_id,
+                    _retry_pass=False,
+                )
+                remaining = merge_retry_passes(log_dir, retry_dir)
+                if remaining == 0:
+                    exit_code = 0
+                    try:
+                        payload = json.loads(
+                            (log_dir / "summary.json").read_text(encoding="utf-8")
+                        )
+                        payload["exit_code"] = 0
+                        (log_dir / "summary.json").write_text(
+                            json.dumps(payload, indent=2) + "\n", encoding="utf-8"
+                        )
+                    except (OSError, json.JSONDecodeError):
+                        pass
+            finally:
+                if console_log is not None:
+                    os.environ[GOVERNOR_CONSOLE_LOG_ENV] = console_log
+                shutil.rmtree(retry_dir, ignore_errors=True)
     if interrupted:
         raise SystemExit(130)
     return exit_code
@@ -1181,6 +1238,11 @@ def make_arg_parser(
         "--list",
         action="store_true",
         help="List available subcampaigns and exit.",
+    )
+    parser.add_argument(
+        "--retry-failed",
+        action="store_true",
+        help="Retry failed tests once, excluding failures identified as timeouts.",
     )
     return parser
 
@@ -1569,6 +1631,10 @@ def run_campaign_script(
     ensure_harness_import()
     parser = make_arg_parser(area, subcampaigns)
     args = parser.parse_args(list(argv) if argv is not None else None)
+    if args.retry_failed:
+        os.environ[RETRY_FAILED_ENV] = "1"
+    else:
+        os.environ.pop(RETRY_FAILED_ENV, None)
     chosen = resolve_subcampaign(args, subcampaigns, area=area)
     if chosen is None:
         return 0

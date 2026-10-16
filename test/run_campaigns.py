@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import argparse
+import os
 import sys
 from pathlib import Path
 
@@ -26,6 +27,7 @@ from harness.common import (  # noqa: E402
     governor_campaign_log_dir,
     governor_run_root,
     new_run_id,
+    RETRY_FAILED_ENV,
     run_subprocess_with_live_status,
 )
 from harness.governor_run_manifest import (  # noqa: E402
@@ -116,6 +118,8 @@ def _run_area(
     run_root.mkdir(parents=True, exist_ok=True)
     log_dir = governor_campaign_log_dir(run_root, area, effective)
     cmd = [sys.executable, "-u", str(script), effective]
+    if os.environ.get(RETRY_FAILED_ENV) == "1":
+        cmd.append("--retry-failed")
 
     label = f"[{area}/{effective}]"
     config_area = governor_config_area(area)
@@ -282,6 +286,11 @@ def main(argv: list[str] | None = None) -> int:
         ),
     )
     parser.add_argument(
+        "--retry-failed",
+        action="store_true",
+        help="Retry failed tests once, excluding failures identified as timeouts.",
+    )
+    parser.add_argument(
         "--full-area",
         metavar="AREA",
         choices=sorted(AREA_SCRIPTS.keys()),
@@ -291,6 +300,10 @@ def main(argv: list[str] | None = None) -> int:
         ),
     )
     args = parser.parse_args(argv)
+    if args.retry_failed:
+        os.environ[RETRY_FAILED_ENV] = "1"
+    else:
+        os.environ.pop(RETRY_FAILED_ENV, None)
 
     if args.stats:
         if (
