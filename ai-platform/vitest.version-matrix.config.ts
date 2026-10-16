@@ -26,12 +26,15 @@ export default defineConfig({
         r2Buckets: ["R2"],
         ratelimits: {
           RATE_LIMITER_INSTALLATION: {
+            namespace_id: "1001",
             simple: { limit: 600, period: 60 },
           },
           RATE_LIMITER_INSTALLATION_ACTOR: {
+            namespace_id: "1002",
             simple: { limit: 120, period: 60 },
           },
           RATE_LIMITER_INSTALLATION_CAPABILITY: {
+            namespace_id: "1003",
             simple: { limit: 300, period: 60 },
           },
         },
