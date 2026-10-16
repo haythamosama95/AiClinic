@@ -1,5 +1,4 @@
 import { env, SELF } from "cloudflare:test";
-import { http, HttpResponse } from "msw";
 import { CHANNEL_VERSIONS } from "vendor-contracts";
 import { createAccessTeam } from "vendor-contracts/testkit";
 import { beforeAll, describe, expect, it } from "vitest";
@@ -7,7 +6,6 @@ import migrationSql from "../migrations/20260731120000_platform_schema.sql?raw";
 import tokenContractMigrationSql from "../migrations/20260803120000_token_contract.sql?raw";
 import issuerKeyTenantBindingMigrationSql from "../migrations/20261003130000_issuer_key_tenant_binding.sql?raw";
 import operatorCredentialMigrationSql from "../migrations/20261003120000_operator_credential_and_platform_alert.sql?raw";
-import { network } from "./setup-network";
 import { applySqlStatements } from "./split-sql-statements";
 
 declare module "cloudflare:test" {
@@ -48,12 +46,15 @@ async function mintAccessJwt(): Promise<string> {
     accessTeam = await createAccessTeam({
       issuer: `https://${env.ACCESS_TEAM_DOMAIN}`,
     });
+    const { fetchMock } = await import("cloudflare:test");
+    fetchMock.activate();
+    fetchMock.disableNetConnect();
+    fetchMock
+      .get(`https://${env.ACCESS_TEAM_DOMAIN}`)
+      .intercept({ path: "/cdn-cgi/access/certs", method: "GET" })
+      .reply(200, JSON.stringify({ keys: accessTeam.certs.keys }))
+      .persist();
   }
-  network.use(
-    http.get(`https://${env.ACCESS_TEAM_DOMAIN}/cdn-cgi/access/certs`, () =>
-      HttpResponse.json({ keys: accessTeam!.certs.keys }),
-    ),
-  );
   const now = Math.floor(Date.now() / 1000);
   return accessTeam.mint({
     email: "operator@clinic.test",

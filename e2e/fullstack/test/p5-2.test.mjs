@@ -48,7 +48,7 @@ const SUPABASE_ANON_KEY =
   "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZS1kZW1vIiwicm9sZSI6ImFub24iLCJleHAiOjE5ODM4MTI5OTZ9.CRXP1A7WOeoJeXxjNni43kdQwgnWNReilDMblYTn_I0";
 const DB_URL =
   process.env.DB_URL ??
-  "postgresql://postgres:postgres@127.0.0.1:54322/postgres";
+  `postgresql://postgres:postgres@127.0.0.1:${process.env.SUPABASE_DB_PORT ?? "54322"}/postgres`;
 const PLATFORM_URL = process.env.PLATFORM_URL ?? "http://127.0.0.1:8787";
 const ABO_URL = process.env.ABO_URL ?? "http://127.0.0.1:8788";
 const HARNESS_URL = process.env.HARNESS_URL ?? "http://127.0.0.1:8790";

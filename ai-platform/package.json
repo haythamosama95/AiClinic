@@ -18,13 +18,10 @@
     "types": "wrangler types"
   },
   "devDependencies": {
-    "@cloudflare/vitest-plugin": "^1.4.3",
+    "@cloudflare/vitest-pool-workers": "0.12.21",
     "@cloudflare/workers-types": "^4.20250730.0",
-    "@msw/cloudflare": "^0.2.0",
-    "miniflare": "5.20261012.0-beta",
-    "msw": "^3.0.3",
     "typescript": "^5.9.2",
-    "vitest": "^4.1.12",
+    "vitest": "~3.2.4",
     "wrangler": "~4.86.0"
   },
   "dependencies": {

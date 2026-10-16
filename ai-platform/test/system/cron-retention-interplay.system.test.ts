@@ -37,7 +37,7 @@ beforeEach(async () => {
 });
 
 describe("cron retention interplay", () => {
-  it("SYS-8.1 - Retention purge keeps usage_event money row", async () => {
+  it("SYS-8.1 — Retention purge keeps usage_event money row", async () => {
     const scenario = await newScenario();
     await setupPromotedFakePolicy(scenario);
     const token = await mintAat(scenario);
@@ -98,7 +98,7 @@ describe("cron retention interplay", () => {
     expect(lookupBody.error).toBe("not_found");
   });
 
-  it("SYS-8.2 - Usage rollup upsert", async () => {
+  it("SYS-8.2 — Usage rollup upsert", async () => {
     const scenario = await newScenario();
     await setupPromotedFakePolicy(scenario);
 
@@ -171,7 +171,7 @@ describe("cron retention interplay", () => {
     expect(rollupAfter?.c).toBe(rollupCountBefore);
   });
 
-  it("SYS-8.3 - Fallback admission uniqueness and */5 drain", async () => {
+  it("SYS-8.3 — Fallback admission uniqueness and */5 drain", async () => {
     const scenario = await newScenario();
     await setupPromotedFakePolicy(scenario);
     await coverClinic(scenario);
@@ -275,7 +275,7 @@ describe("cron retention interplay", () => {
     expect(pendingAfter).toBe(pendingBefore);
   });
 
-  it("SYS-8.4 - Rejection counters lower bound", async () => {
+  it("SYS-8.4 — Rejection counters lower bound", async () => {
     const scenario = await newScenario();
     await setupPromotedFakePolicy(scenario);
     const token = await mintAat(scenario);

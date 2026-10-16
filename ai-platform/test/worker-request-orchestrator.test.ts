@@ -3,8 +3,6 @@
  * Live POST /v1/requests via SELF.fetch against production worker.ts.
  */
 
-import { vi } from "vitest";
-
 const { artifactByRef, resolveArtifactMock, resolvePromptVersionMock } =
   vi.hoisted(() => {
     const artifactByRef: Record<string, string> = {

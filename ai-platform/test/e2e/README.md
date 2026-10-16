@@ -16,7 +16,7 @@ npx vitest run --config vitest.e2e.config.ts
 
 Equivalent npm script: `npm run test:e2e -- test/e2e/stage-NN-*`.
 
-This suite uses `@cloudflare/vitest-plugin` against `src/worker.ts` and
+This suite uses `@cloudflare/vitest-pool-workers` against `src/worker.ts` and
 `wrangler.toml` `[env.development]`. It is excluded from the plain Node
 `vitest.config.ts` pool. Do not run E2E files with `npx vitest run` (no
 `--config`).
