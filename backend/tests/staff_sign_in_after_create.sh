@@ -6,6 +6,7 @@ script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 repo_root="$(cd "${script_dir}/../.." && pwd)"
 local_env="${repo_root}/backend/local/.env"
 example_env="${repo_root}/backend/local/.env.example"
+inherited_db_port="${SUPABASE_DB_PORT:-}"
 
 if [[ -f "${local_env}" ]]; then
   # shellcheck disable=SC1090
@@ -13,6 +14,10 @@ if [[ -f "${local_env}" ]]; then
 elif [[ -f "${example_env}" ]]; then
   # shellcheck disable=SC1090
   set -a && source "${example_env}" && set +a
+fi
+
+if [[ -n "${inherited_db_port}" ]]; then
+  export SUPABASE_DB_PORT="${inherited_db_port}"
 fi
 
 base_url="${SUPABASE_PUBLIC_URL:-http://127.0.0.1:54321}"

@@ -88,6 +88,45 @@ fi
 
 if [[ "${need_supabase}" -eq 1 ]]; then
   require_command supabase
+  if [[ -z "${SUPABASE_DB_PORT:-}" && "${CI:-}" == "true" ]]; then
+    # GitHub-hosted runners occasionally have the default Supabase port occupied.
+    # Ask the kernel for an available host port, then persist it for later steps.
+    SUPABASE_DB_PORT="$(python3 - <<'PY'
+import socket
+
+with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
+    sock.bind(("0.0.0.0", 0))
+    print(sock.getsockname()[1])
+PY
+)"
+    export SUPABASE_DB_PORT
+  else
+    export SUPABASE_DB_PORT="${SUPABASE_DB_PORT:-54322}"
+  fi
+
+  echo "Using Supabase database host port ${SUPABASE_DB_PORT}."
+  python3 - "${repo_root}/backend/supabase/config.toml" "${SUPABASE_DB_PORT}" <<'PY'
+from pathlib import Path
+import re
+import sys
+
+config_path = Path(sys.argv[1])
+port = int(sys.argv[2])
+text = config_path.read_text(encoding="utf-8")
+updated, count = re.subn(
+    r"(?ms)(^\[db\]\s*\n(?:(?!^\[).)*?^port\s*=\s*)\d+",
+    lambda match: f"{match.group(1)}{port}",
+    text,
+    count=1,
+)
+if count != 1:
+    raise SystemExit(f"Could not set [db].port in {config_path}")
+config_path.write_text(updated, encoding="utf-8")
+PY
+
+  if [[ -n "${GITHUB_ENV:-}" ]]; then
+    echo "SUPABASE_DB_PORT=${SUPABASE_DB_PORT}" >> "${GITHUB_ENV}"
+  fi
   echo "Starting local Supabase (backend/)..."
   (cd "${repo_root}/backend" && supabase start)
 fi

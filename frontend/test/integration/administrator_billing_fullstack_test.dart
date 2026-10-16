@@ -1343,7 +1343,7 @@ Future<String?> _readStatusRefreshRequestedAt(String orgId) async {
       '-h',
       '127.0.0.1',
       '-p',
-      '54322',
+      Platform.environment['SUPABASE_DB_PORT'] ?? '54322',
       '-U',
       'postgres',
       '-d',

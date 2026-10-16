@@ -7,11 +7,12 @@ class SqlFixtureHelper {
   static const _bootstrapUserId = 'a0000000-0000-4000-8000-000000000001';
   SqlFixtureHelper({
     this.host = '127.0.0.1',
-    this.port = 54322,
+    int? port,
     this.user = 'postgres',
     this.database = 'postgres',
     String? password,
-  }) : password = password ?? Platform.environment['POSTGRES_PASSWORD'] ?? 'postgres';
+  }) : port = port ?? int.tryParse(Platform.environment['SUPABASE_DB_PORT'] ?? '') ?? 54322,
+       password = password ?? Platform.environment['POSTGRES_PASSWORD'] ?? 'postgres';
 
   final String host;
   final int port;

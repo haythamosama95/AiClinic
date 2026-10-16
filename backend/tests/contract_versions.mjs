@@ -94,7 +94,7 @@ ROLLBACK;
 
 const dbUrl =
   process.env.DATABASE_URL ??
-  "postgresql://postgres:postgres@127.0.0.1:54322/postgres";
+  `postgresql://postgres:postgres@127.0.0.1:${process.env.SUPABASE_DB_PORT ?? "54322"}/postgres`;
 
 const result = spawnSync(
   "psql",
