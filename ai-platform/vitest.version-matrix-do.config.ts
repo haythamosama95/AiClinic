@@ -10,7 +10,8 @@ import { pinWorkerdCompatibilityDate } from "./test/pin-workerd-compatibility-da
 import { defineConfig } from "vitest/config";
 
 const rootDir = path.dirname(fileURLToPath(import.meta.url));
-const compatibilityDate = pinWorkerdCompatibilityDate();
+// Keep in sync with workerd 1.20261012.1 in package-lock.json.
+const compatibilityDate = pinWorkerdCompatibilityDate("2026-10-12");
 const variantDir = path.resolve(rootDir, "../e2e/fullstack/test/variant");
 const platformWorkerNConfig = path.join(variantDir, "platform-worker-n.toml");
 const platformDoReceiverConfig = path.join(variantDir, "platform-do-receiver.toml");

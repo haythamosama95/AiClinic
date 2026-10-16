@@ -12,7 +12,8 @@ const crossWorkerFetchMock = installCrossWorkerFetchMock();
 const platformWorkerFetchMock = installPlatformWorkerFetchMock();
 
 const rootDir = path.dirname(fileURLToPath(import.meta.url));
-const compatibilityDate = pinWorkerdCompatibilityDate();
+// Keep in sync with Miniflare 4.20250906.0 in this package's lockfile.
+const compatibilityDate = pinWorkerdCompatibilityDate("2025-09-06");
 const platformBundleDir = path.resolve(rootDir, ".hxw-platform");
 const platformBundle = path.join(platformBundleDir, "worker.js");
 const paymobStub = path.resolve(rootDir, "test/stubs/paymob/worker.ts");

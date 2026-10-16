@@ -4,7 +4,8 @@ import { defineWorkersConfig } from "@cloudflare/vitest-pool-workers/config";
 import { pinWorkerdCompatibilityDate } from "../ai-platform/test/pin-workerd-compatibility-date";
 
 const rootDir = path.dirname(fileURLToPath(import.meta.url));
-const compatibilityDate = pinWorkerdCompatibilityDate();
+// Keep in sync with Miniflare 4.20250906.0 in this package's lockfile.
+const compatibilityDate = pinWorkerdCompatibilityDate("2025-09-06");
 const platformThrowStub = path.resolve(
   rootDir,
   "test/stubs/platform-throw/worker.ts",

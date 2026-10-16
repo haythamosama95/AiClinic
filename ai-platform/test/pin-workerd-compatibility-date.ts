@@ -1,18 +1,19 @@
-import { supportedCompatibilityDate } from "miniflare";
-
 /**
- * Local workerd cannot honor wrangler.toml's production
- * `compatibility_date = "2026-05-03"` and would silently fall back.
- * Pin workers-pool harnesses to the date workerd actually supports, and
- * throw if a caller requests a newer date.
+ * Pin each Workers test harness to the compatibility date supported by its
+ * locked workerd version. Miniflare 5 no longer exports
+ * `supportedCompatibilityDate`, so callers supply the date recorded by their
+ * package lockfile. This also lets ABO use its own older Workers runtime.
  */
-export function pinWorkerdCompatibilityDate(requested?: string): string {
-  const date = requested ?? supportedCompatibilityDate;
-  if (date > supportedCompatibilityDate) {
+export function pinWorkerdCompatibilityDate(
+  supportedDate: string,
+  requested?: string,
+): string {
+  const date = requested ?? supportedDate;
+  if (date > supportedDate) {
     throw new Error(
-      `Requested compatibilityDate "${date}" is newer than workerd "${supportedCompatibilityDate}". ` +
-        `Miniflare would silently fall back to "${supportedCompatibilityDate}". ` +
-        `Pin the harness to "${supportedCompatibilityDate}" or upgrade wrangler/workerd.`,
+      `Requested compatibilityDate "${date}" is newer than workerd "${supportedDate}". ` +
+        `Miniflare may silently fall back to "${supportedDate}". ` +
+        `Pin the harness to "${supportedDate}" or upgrade wrangler/workerd.`,
     );
   }
   return date;

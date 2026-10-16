@@ -16,7 +16,8 @@ export default defineConfig({
         environment: "development",
       },
       miniflare: {
-        compatibilityDate: pinWorkerdCompatibilityDate(),
+        // Keep in sync with workerd 1.20261012.1 in package-lock.json.
+        compatibilityDate: pinWorkerdCompatibilityDate("2026-10-12"),
         d1Databases: ["DB"],
         r2Buckets: ["R2"],
         ratelimits: {
