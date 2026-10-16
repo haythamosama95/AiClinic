@@ -235,11 +235,13 @@ jobs:
           CURRENT_RUN_ID: ${{ github.run_id }}
           CURRENT_EVENT: ${{ github.event_name }}
         run: |
-          previous_run_id="$(gh api "repos/${GITHUB_REPOSITORY}/actions/workflows/ci.yml/runs" \
+          workflow_id="$(gh api "repos/${GITHUB_REPOSITORY}/actions/runs/${CURRENT_RUN_ID}" --jq '.workflow_id')"
+          jq_filter="[.workflow_runs[] | select((.id | tostring) != \"${CURRENT_RUN_ID}\" and .workflow_id == ${workflow_id} and .event == \"${CURRENT_EVENT}\")] | sort_by(.run_number) | last | .id // empty"
+          previous_run_id="$(gh api -X GET "repos/${GITHUB_REPOSITORY}/actions/runs" \
             -f "branch=${COMPARE_BRANCH}" \
             -f status=completed \
             -F per_page=100 \
-            --jq '[.workflow_runs[] | select((.id | tostring) != env.CURRENT_RUN_ID and .event == env.CURRENT_EVENT)] | sort_by(.run_number) | last | .id // empty')"
+            --jq "${jq_filter}")"
           echo "run_id=${previous_run_id}" >> "$GITHUB_OUTPUT"
 
       - name: Download campaign reports
