@@ -371,6 +371,7 @@ export function getCapturedEmails(): ReadonlyArray<{
 let paymobMockReady = false;
 let intakeR2PutThrows = false;
 let d1BatchThrows = false;
+let d1SuccessfulBatchesBeforeThrow = 0;
 let r2PutWrapped = false;
 let dbBatchWrapped = false;
 
@@ -452,8 +453,11 @@ function ensureD1BatchWrapper(): void {
     statements: D1PreparedStatement[],
   ): Promise<D1Result[]> => {
     if (d1BatchThrows) {
-      d1BatchThrows = false;
-      throw new Error("D1 batch failure injected by harness");
+      if (d1SuccessfulBatchesBeforeThrow === 0) {
+        d1BatchThrows = false;
+        throw new Error("D1 batch failure injected by harness");
+      }
+      d1SuccessfulBatchesBeforeThrow -= 1;
     }
     return originalBatch(statements);
   };
@@ -465,8 +469,14 @@ export function setIntakeR2PutThrows(active: boolean): void {
   ensureR2PutWrapper();
 }
 
-export function setD1BatchThrows(active: boolean): void {
+export function setD1BatchThrows(
+  active: boolean,
+  successfulBatchesBeforeThrow = 0,
+): void {
   d1BatchThrows = active;
+  d1SuccessfulBatchesBeforeThrow = active
+    ? Math.max(0, Math.floor(successfulBatchesBeforeThrow))
+    : 0;
   ensureD1BatchWrapper();
 }
 
@@ -516,6 +526,7 @@ export async function setupHarness(): Promise<void> {
   heartbeatHarness.fetchThrows = false;
   intakeR2PutThrows = false;
   d1BatchThrows = false;
+  d1SuccessfulBatchesBeforeThrow = 0;
   clearCapturedEmails();
   clearCapturedHeartbeatFetches();
   await setClock(new Date().toISOString());

@@ -3,7 +3,7 @@
  */
 
 import { env } from "cloudflare:test";
-import { beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { CHANNEL_VERSIONS, humanRef } from "vendor-contracts";
 import {
   createSoftwareAuthenticator,
@@ -27,9 +27,11 @@ import {
   setD1BatchThrows,
 } from "./harness";
 import {
+  drainPlatformDurableObjects,
   platformCall,
   resetCrossWorkerHarness,
   scriptPaymobStub,
+  settlePlatformDurableObjectAlarms,
   setClock,
   setupCrossWorkerHarness,
 } from "./cross-worker-harness";
@@ -1184,6 +1186,11 @@ beforeEach(async () => {
   parsePlatformPublicKeys();
 });
 
+afterEach(async () => {
+  await drainPlatformDurableObjects();
+  await settlePlatformDurableObjectAlarms();
+});
+
 describe("grant cross-worker", () => {
   it("E2E-P4.4-01 paid grant activates the term and completes an issuer request", async () => {
     const { expectations, offerVersions } = await setupGrantHarness();
@@ -1331,7 +1338,9 @@ describe("grant cross-worker", () => {
     expect(await grantOutcomeCount()).toBe(0);
 
     await refreshSigningKeyGate();
-    setD1BatchThrows(true);
+    // Let the grant request persist, then simulate losing the platform result
+    // while the grant outcome batch is being written.
+    setD1BatchThrows(true, 1);
     await runGrantStep();
     expect(await grantOutcomeCount()).toBe(0);
 

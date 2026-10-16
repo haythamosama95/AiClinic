@@ -19,6 +19,7 @@ import {
   ABO_PERSIST,
   HARNESS_PERSIST,
   PLATFORM_PERSIST,
+  PAYMOB_PERSIST,
   REGISTRY_DIR,
   preparePlatformD1,
   execPlatformD1Sql,
@@ -885,6 +886,7 @@ export async function startStack({
     await mkdir(HARNESS_PERSIST, { recursive: true });
     await mkdir(REGISTRY_DIR, { recursive: true });
     await mkdir(ABO_PERSIST, { recursive: true });
+    await mkdir(PAYMOB_PERSIST, { recursive: true });
     await preparePlatformD1({ platformConfig: activePlatformConfig });
 
     if (registerIssuer) {
@@ -957,6 +959,8 @@ export async function startStack({
       "127.0.0.1",
       "--inspector-port",
       "9230",
+      "--persist-to",
+      PAYMOB_PERSIST,
     ]);
     await waitForHttp(`${PAYMOB_URL}/`, { accept: [200, 404] });
 

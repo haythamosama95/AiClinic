@@ -794,7 +794,7 @@ async function processGrantWork(env: GrantEnv, work: WorkRow): Promise<void> {
            SET state = 'parked', lease_until = NULL, last_error = 'receipt_unverified'
            WHERE work_id = ? AND lease_until = ?`,
         ).bind(work.work_id, leaseUntil),
-      )];
+      ];
       await env.DB.batch(statements);
       await raiseAlert(env, "AL-07", `AL-07:${work.work_id}`, work.work_id);
       return;
