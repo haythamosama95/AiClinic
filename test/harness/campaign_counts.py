@@ -284,6 +284,7 @@ def _e2e_counts() -> dict[str, int]:
                 path
                 for path in all_manual
                 if path.name not in {"p5-1.test.mjs", "p5-2.test.mjs"}
+                and not path.name.startswith("p7-3-")
             ]
         ),
     }
@@ -338,16 +339,27 @@ def static_test_count(area: str, subcampaign: str) -> int | None:
 
 def test_count(area: str, subcampaign: str) -> int | None:
     """Fast static estimate (never spawns ``vitest list``)."""
-    return static_test_count(area, subcampaign)
+    count = static_test_count(area, subcampaign)
+    if count is None:
+        return None
+    from harness.campaign_exclusions import excluded_test_cases
+
+    return max(0, count - len(excluded_test_cases(area, subcampaign)))
 
 
 def catalog_list_test_count(area: str, subcampaign: str) -> int | None:
     """``--list`` table: optional accurate ``vitest list`` when env is set."""
+    from harness.campaign_exclusions import excluded_test_cases
+
     if _vitest_list_counts_enabled():
         from harness.dynamic_test_counts import discover_test_count
 
-        return discover_test_count(area, subcampaign)
-    return static_test_count(area, subcampaign)
+        count = discover_test_count(area, subcampaign)
+    else:
+        count = static_test_count(area, subcampaign)
+    if count is None:
+        return None
+    return max(0, count - len(excluded_test_cases(area, subcampaign)))
 
 
 def format_test_count(count: int | None) -> str:

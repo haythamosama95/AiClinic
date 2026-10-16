@@ -138,24 +138,46 @@ def write_campaign_exclude_file(log_dir: Path, exclude: set[str]) -> Path:
     return path
 
 
-def read_exclude_tests_file(path: Path | None) -> set[str]:
+def read_exclude_tests_file(
+    path: Path | None,
+    *,
+    area: str | None = None,
+    subcampaign: str | None = None,
+) -> set[str]:
     if path is None or not path.is_file():
         return set()
     try:
         data = json.loads(path.read_text(encoding="utf-8"))
     except json.JSONDecodeError:
         return set()
+    # Resume files use a flat ``exclude`` list. The shared user file scopes
+    # labels by ``area/subcampaign`` under ``test_cases``.
     items = data.get("exclude", [])
-    if not isinstance(items, list):
-        return set()
-    return {str(item) for item in items if item}
+    names = {str(item) for item in items if item} if isinstance(items, list) else set()
+    if area and subcampaign:
+        scoped = data.get("test_cases", {})
+        if isinstance(scoped, dict):
+            scoped_items = scoped.get(f"{area}/{subcampaign}", [])
+            if isinstance(scoped_items, list):
+                names.update(str(item) for item in scoped_items if item)
+        from harness.campaign_exclusions import excluded_test_cases
+
+        names.update(excluded_test_cases(area, subcampaign))
+    return names
 
 
-def exclude_tests_from_environ() -> set[str]:
+def exclude_tests_from_environ(
+    *, area: str | None = None, subcampaign: str | None = None
+) -> set[str]:
     path = os.environ.get(EXCLUDE_TESTS_FILE_ENV)
     if not path:
         return set()
-    return read_exclude_tests_file(Path(path))
+    names = read_exclude_tests_file(Path(path), area=area, subcampaign=subcampaign)
+    if area and subcampaign:
+        from harness.campaign_exclusions import excluded_test_cases
+
+        names.update(excluded_test_cases(area, subcampaign))
+    return names
 
 
 def campaign_resume_enabled() -> bool:

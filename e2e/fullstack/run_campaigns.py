@@ -261,6 +261,7 @@ def run_all_manual(_: str) -> int:
         file
         for file in _node_test_files("*.test.mjs")
         if Path(file).name not in {"p5-1.test.mjs", "p5-2.test.mjs"}
+        and not Path(file).name.startswith("p7-3-")
     ]
     return _run_node_steps("all-manual", _per_file_steps(files))
 

@@ -299,6 +299,7 @@ def _e2e_count(subcampaign: str) -> int | None:
             file
             for file in _e2e_files("*.test.mjs")
             if Path(file).name not in {"p5-1.test.mjs", "p5-2.test.mjs"}
+            and not Path(file).name.startswith("p7-3-")
         ]
         return _count_node_sources(root, files)
     return None

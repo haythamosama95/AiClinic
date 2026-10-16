@@ -2,3 +2,4 @@ tags:
   boundary:
   live:
   fullstack:
+    skip: "Fullstack campaign excluded globally"

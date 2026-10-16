@@ -52,11 +52,15 @@ AREA_SCRIPTS: dict[str, Path] = {
 
 
 def area_subcampaign_map() -> dict[str, list[str]]:
+    from harness.campaign_exclusions import subcampaign_is_excluded
+
     out: dict[str, list[str]] = {}
     for area in sorted(AREA_SCRIPTS.keys()):
         entry = CATALOG.get(area)
         if entry:
-            out[area] = sorted(entry.subcampaigns.keys())
+            out[area] = sorted(
+                sub for sub in entry.subcampaigns if not subcampaign_is_excluded(area, sub)
+            )
         else:
             out[area] = ["all"]
     return out
@@ -101,11 +105,15 @@ def _run_area(
     governor_run_id: str | None = None,
     governor_resume: bool = False,
 ) -> int:
+    from harness.campaign_exclusions import subcampaign_is_excluded
+
+    effective = subcampaign or AREA_DEFAULT_SUBCAMPAIGN.get(area, "all")
+    if subcampaign_is_excluded(area, effective):
+        print(f"[{area}/{effective}] excluded by test/campaign-exclusions.json")
+        return 0
     if not script.is_file():
         print(f"error: missing campaign script for {area}: {script}", file=sys.stderr)
         return 2
-
-    effective = subcampaign or AREA_DEFAULT_SUBCAMPAIGN.get(area, "all")
     if run_root is None:
         governor_run_id = governor_run_id or new_run_id()
         run_root = governor_run_root(governor_run_id)

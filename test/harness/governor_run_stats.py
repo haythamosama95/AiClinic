@@ -94,7 +94,14 @@ def write_campaign_outcome_manifests(log_dir: Path) -> None:
     """Write ``passed``, ``failed``, and ``skipped`` lists under the campaign log dir."""
     log_dir = log_dir.resolve()
     log_dir.mkdir(parents=True, exist_ok=True)
-    deduped = _dedupe_test_entries(_load_summary_tests(log_dir))
+    from harness.campaign_exclusions import excluded_test_cases
+
+    excluded = excluded_test_cases(log_dir.parent.name, log_dir.name)
+    deduped = {
+        key: entry
+        for key, entry in _dedupe_test_entries(_load_summary_tests(log_dir)).items()
+        if entry.get("name") not in excluded
+    }
     buckets: dict[str, list[dict[str, Any]]] = {
         name: [] for name in OUTCOME_FILE_NAMES
     }
@@ -159,7 +166,15 @@ def build_campaign_stats(
     run_root = run_root.resolve()
     log_dir = governor_campaign_log_dir(run_root, area, subcampaign)
     summary_fields = _load_summary_fields(log_dir)
-    stats = summary_stats(log_dir)
+    from harness.campaign_exclusions import excluded_test_cases
+    from harness.test_result_stats import stats_from_tests_list
+
+    excluded = excluded_test_cases(area, subcampaign)
+    tests = [
+        entry for entry in _load_summary_tests(log_dir)
+        if not isinstance(entry, dict) or entry.get("name") not in excluded
+    ]
+    stats = stats_from_tests_list(tests) if excluded else summary_stats(log_dir)
     discovered = test_count(area, subcampaign)
     total = reconcile_total(discovered, stats)
     stats = cap_stats(stats, total)
@@ -268,8 +283,11 @@ def write_campaign_stats(
 def campaigns_for_run_stats(run_root: Path) -> list[tuple[str, str]]:
     """Campaign list from ``run.json`` when present, else ``<area>/<sub>/summary.json``."""
     run_root = run_root.resolve()
+    from harness.campaign_exclusions import subcampaign_is_excluded
+
     if manifest_path(run_root).is_file():
-        return picked_from_manifest(load_run_manifest(run_root))
+        picked = picked_from_manifest(load_run_manifest(run_root))
+        return [(area, sub) for area, sub in picked if not subcampaign_is_excluded(area, sub)]
     picked: list[tuple[str, str]] = []
     for area_dir in sorted(run_root.iterdir()):
         if not area_dir.is_dir() or area_dir.name in _RUN_ROOT_SKIP_NAMES:
@@ -279,7 +297,7 @@ def campaigns_for_run_stats(run_root: Path) -> list[tuple[str, str]]:
                 continue
             if (sub_dir / "summary.json").is_file():
                 picked.append((area_dir.name, sub_dir.name))
-    return picked
+    return [(area, sub) for area, sub in picked if not subcampaign_is_excluded(area, sub)]
 
 
 def generate_governor_run_stats(

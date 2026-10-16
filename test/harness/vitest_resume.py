@@ -144,7 +144,15 @@ def plan_vitest_resume_commands(
 
     stdout = _run_vitest_list(list_args, cwd, config)
     if stdout is None:
-        return VitestResumePlan(commands=[list(cmd)])
+        # Preserve the exclusion guarantee if Vitest discovery is unavailable.
+        # The regex filter is less precise than list-based planning but keeps
+        # any matching case out of execution.
+        pattern = "(?!(?:.*(?:" + "|".join(
+            re.escape(name) for name in sorted(exclude_match)
+        ) + "))).*"
+        fallback = list(cmd)
+        fallback.extend(["-t", pattern])
+        return VitestResumePlan(commands=[fallback])
 
     remaining: list[str] = []
     for line in stdout.splitlines():

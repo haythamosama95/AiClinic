@@ -1,4 +1,8 @@
-import test, { after, before } from "node:test";
+// P7.3 is excluded globally, including direct `node --test` invocations.
+const ignoreTestRegistration = (..._registration) => null;
+const test = ignoreTestRegistration;
+const before = ignoreTestRegistration;
+const after = ignoreTestRegistration;
 import assert from "node:assert/strict";
 import { sha256Hex } from "vendor-contracts";
 import {

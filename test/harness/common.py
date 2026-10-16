@@ -202,6 +202,20 @@ def plan_vitest_execution_batches(
     if not exclude:
         return "run", [cmd]
     if not _is_vitest_run_cmd(cmd):
+        # Node's built-in runner and Flutter's test runner both accept a name
+        # regex. Keep this filter in the child command so excluded cases never
+        # execute; the live parser also suppresses their labels from reports.
+        import re
+
+        escaped = "|".join(re.escape(name) for name in sorted(exclude))
+        pattern = f"(?!(?:.*(?:{escaped}))).*"
+        out = list(cmd)
+        if "--test" in out and any(Path(arg).name == "node" for arg in out[:1]):
+            out.append(f"--test-name-pattern={pattern}")
+            return "run", [out]
+        if "test" in out and any(Path(arg).name == "flutter" for arg in out[:1]):
+            out.append(f"--plain-name={pattern}")
+            return "run", [out]
         return "run", [cmd]
     notify("Discovering remaining tests…")
     plan = plan_vitest_resume_commands(
@@ -621,14 +635,16 @@ def run_subprocess_with_live_status(
     started_at = utc_now_iso()
     start_mono = time.monotonic()
     session = CampaignLogSession(log_dir, resume=governor_resume)
-    exclude = (
-        read_exclude_tests_file(exclude_tests_file)
-        if exclude_tests_file is not None
-        else exclude_tests_from_environ()
-    )
     campaign_name, sub_name = _parse_status_label(status_label.strip())
     effective_area = config_area or campaign_name
     effective_sub = sub_name or campaign_name
+    exclude = (
+        read_exclude_tests_file(
+            exclude_tests_file, area=effective_area, subcampaign=effective_sub
+        )
+        if exclude_tests_file is not None
+        else exclude_tests_from_environ(area=effective_area, subcampaign=effective_sub)
+    )
     cmd_list = list(cmd)
 
     delegate_ui = live_progress_child_enabled() and not isinstance(
@@ -943,8 +959,6 @@ def run_subprocess_sequence(
 
     from harness.campaign_resume import campaign_resume_enabled, exclude_tests_from_environ
 
-    exclude_set = exclude_tests_from_environ() if campaign_resume_enabled() else set()
-    exclude_for_parser = exclude_set if exclude_set else None
     campaign_name, sub_name = (
         _parse_status_label(status_label.strip())
         if status_label
@@ -952,6 +966,10 @@ def run_subprocess_sequence(
     )
     effective_area = config_area or campaign_name
     effective_sub = sub_name or campaign_name
+    exclude_set = exclude_tests_from_environ(
+        area=effective_area, subcampaign=effective_sub
+    )
+    exclude_for_parser = exclude_set if exclude_set else None
 
     interrupted = False
     try:
@@ -1629,6 +1647,11 @@ def run_campaign_script(
 ) -> int:
     """Shared main() helper for area run_campaigns.py scripts."""
     ensure_harness_import()
+    from harness.campaign_exclusions import EXCLUSIONS_FILE, subcampaign_is_excluded
+    from harness.campaign_resume import EXCLUDE_TESTS_FILE_ENV
+
+    if EXCLUSIONS_FILE.is_file() and not os.environ.get(EXCLUDE_TESTS_FILE_ENV):
+        os.environ[EXCLUDE_TESTS_FILE_ENV] = str(EXCLUSIONS_FILE.resolve())
     parser = make_arg_parser(area, subcampaigns)
     args = parser.parse_args(list(argv) if argv is not None else None)
     if args.retry_failed:
@@ -1637,5 +1660,8 @@ def run_campaign_script(
         os.environ.pop(RETRY_FAILED_ENV, None)
     chosen = resolve_subcampaign(args, subcampaigns, area=area)
     if chosen is None:
+        return 0
+    if subcampaign_is_excluded(area, chosen):
+        print(f"[{area}/{chosen}] excluded by test/campaign-exclusions.json")
         return 0
     return subcampaigns[chosen](chosen)

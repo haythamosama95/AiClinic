@@ -203,7 +203,7 @@ CATALOG: dict[str, AreaCatalog] = {
             ),
             "all-ci": "Compatibility rollup for the P5.1 and P5.2 CI core pair.",
             "all-manual": (
-                "Remaining Node scenario files in one run; P5.1 and P5.2 are covered by all-ci."
+                "Remaining enabled Node scenario files in one run; P5.1 and P5.2 are covered by all-ci."
             ),
         },
     ),
@@ -357,10 +357,19 @@ def print_area_table(
     section_number: int | None = None,
 ) -> None:
     """One directory: heading plus a Subcampaign / Description table."""
+    from harness.campaign_exclusions import campaign_is_excluded, subcampaign_is_excluded
+
+    if campaign_is_excluded(area):
+        return
     entry = CATALOG.get(area)
     catalog_keys = set(entry.subcampaigns.keys()) if entry else set()
     ids = subcampaign_ids if subcampaign_ids else sorted(catalog_keys)
-    merged = sorted(catalog_keys | set(ids))
+    merged = sorted(
+        sub for sub in (catalog_keys | set(ids))
+        if not subcampaign_is_excluded(area, sub)
+    )
+    if not merged:
+        return
     rows = _subcampaign_rows(area, merged)
     title_count = area_root_tests_total(area, merged)
 
@@ -376,9 +385,22 @@ def print_area_table(
 
 def print_full_table(title: str = "AiClinic test campaigns") -> None:
     """One table per directory campaign."""
+    from harness.campaign_exclusions import (
+        campaign_is_excluded,
+        subcampaign_is_excluded,
+    )
+
     print(title)
     print()
-    areas = _sorted_area_keys()
+    areas = [
+        area
+        for area in _sorted_area_keys()
+        if not campaign_is_excluded(area)
+        and any(
+            not subcampaign_is_excluded(area, sub)
+            for sub in CATALOG[area].subcampaigns
+        )
+    ]
     for index, area in enumerate(areas):
         if index > 0:
             print()

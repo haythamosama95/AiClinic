@@ -1,4 +1,5 @@
 @Tags(['fullstack'])
+@Skip('Frontend fullstack tests are excluded globally.')
 library;
 
 import 'dart:io';

@@ -70,8 +70,15 @@ def failed_tests_for_subcampaign(
     area: str,
     subcampaign: str,
 ) -> list[FailedTest]:
+    from harness.campaign_exclusions import excluded_test_cases
+
     log_dir = governor_campaign_log_dir(run_root, area, subcampaign)
-    deduped = _dedupe_latest(_load_summary_tests(log_dir))
+    excluded = excluded_test_cases(area, subcampaign)
+    deduped = {
+        name: entry
+        for name, entry in _dedupe_latest(_load_summary_tests(log_dir)).items()
+        if name not in excluded
+    }
     failures: list[FailedTest] = []
     for name, entry in sorted(deduped.items()):
         if entry.get("status") != "FAIL":

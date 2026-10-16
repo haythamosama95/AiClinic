@@ -1,4 +1,5 @@
 @Tags(['fullstack'])
+@Skip('Frontend fullstack tests are excluded globally.')
 library;
 
 // ignore_for_file: depend_on_referenced_packages

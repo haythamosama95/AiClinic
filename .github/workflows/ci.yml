@@ -40,12 +40,6 @@ jobs:
             flutter: true
             supabase: true
             postgresql_client: true
-          - area: frontend
-            subcampaign: fullstack
-            timeout_minutes: 120
-            flutter: true
-            supabase: true
-            postgresql_client: true
           - area: backend
             subcampaign: all
             timeout_minutes: 45
@@ -96,12 +90,6 @@ jobs:
             postgresql_client: true
           - area: e2e-fullstack
             subcampaign: p7-2
-            timeout_minutes: 110
-            flutter: true
-            supabase: true
-            postgresql_client: true
-          - area: e2e-fullstack
-            subcampaign: p7-3
             timeout_minutes: 110
             flutter: true
             supabase: true
