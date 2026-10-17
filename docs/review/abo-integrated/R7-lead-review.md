@@ -1,0 +1,29 @@
+# R7 lead: ABO read projection and composition seams
+
+Target `db9244fddfddc1905335fb8c7105328c15a0cc5e`; workspace start `a2545299b82fd0c22f92d316fb4790ce47c159c9`. GPT-6.1 Sol, explicitly high. All 46 assigned tuples / 1,680 lines read through `git show T:path`; exact coverage in [JSON](R7-lead-coverage.json). No later workspace application source used.
+
+## R7-A1 — P2: concurrent ABO feed refresh can restore an older coverage snapshot
+
+**High confidence, implementation-ready.** `abo/src/coverage/view.ts:128–142` reads the old pair, compares in JavaScript, then unconditionally updates the row. Minute cron (`abo/src/worker.ts:393–404`) has no refresh lease; a slow refresh can overlap its successor. A reader of pair `(1,5)` can pause, another apply `(2,1)`, then the first overwrite it with `(1,6)`. Unconditional cursor assignment (`view.ts:75–81,186`) also races: the newer run can finish its cursor after the older run regresses the snapshot, leaving the cursor past the lost authoritative state. Display can remain active after transfer/reversal, and outage subscription/checkout fallback uses that stale row (`billing-reads.ts:43–78`; `checkouts.ts:273–345`). This violates 03§4's strict lexicographic ordering. SQL backend projection already uses an atomic upsert predicate; this is a separate ABO consumer defect, with display/checkout-preview impact rather than coverage enforcement.
+
+**Fix steps**
+1. In `abo/src/coverage/view.ts::applyFeedEvent`, move the comparison into the `ON CONFLICT DO UPDATE ... WHERE excluded.binding_epoch > coverage_view.binding_epoch OR (excluded.binding_epoch = coverage_view.binding_epoch AND excluded.clinic_seq > coverage_view.clinic_seq)` predicate; remove correctness dependence on the preliminary `loadStoredPair` read.
+2. In `refreshCoverageView`, prepare a page's validated event upserts and cursor update in one D1 batch. Set cursor with `MAX(feed_cursor.feed_seq, excluded.feed_seq)` for ordinary incremental refresh. Explicit rebuild/reset remains a separate authorized operation owned by R9; do not make ordinary refresh reset the cursor. Retain R2-C3's strict envelope/page/version decoder prerequisite, and do not advance past any rejected event.
+3. Completion: a late `(1,6)` can never overwrite `(2,1)` or `(1,7)`; retries/equal pairs do nothing; overlapping successful page batches leave the highest accepted cursor with the highest per-org pair. A fallback read after transfer observes the transferred/new-epoch snapshot.
+
+## R7-A2 — P2: payment history depends on today's sellable offer and terms availability
+
+**High confidence, implementation-ready.** `abo/src/clinic-api/billing-reads.ts:144–151,280–290` calls `listOffers` for every history page and keys names only by offer id. That helper selects the latest published/sellable catalogue and fetches current terms from R2 (`abo/src/clinic-api/offers.ts:74–119`). Publishing a renamed version rewrites the displayed name of earlier payments; retiring an offer replaces its real name with `Clinic subscription`. Missing/unavailable R2 terms can fail all payment-history reads even though the confirmed payment, checkout and immutable offer version exist in D1. This is a historical-read defect, distinct from R3-M3's displayed sale-term disagreement.
+
+**Fix steps**
+1. In `billing-reads.ts::loadPaymentPage`, join `offer_version` on the payment's exact `(offer_id, offer_version)` and return that version's `copy` (or its immutable display-name field if added). Preserve the existing tenant filter, `(paid_at,reference)` order, 21-row lookahead and reference cursor.
+2. Parse the exact version's English name using the catalogue's existing `copy.en.name` mapping. Remove `planDisplayNames`/`listOffers` and the terms/R2 dependency from payment history. Treat a missing/corrupt immutable version as a diagnosed unavailable history row/page, not a silently invented package name.
+3. Completion: version-1 payments retain their version-1 name after version-2 publication or retirement; history can load when terms R2 is unavailable; other-tenant cursors still refuse and reversal records remain attached to their original payment.
+
+## Confirmed boundaries and inherited roots
+
+Subscription live/fallback/null behavior and five commercial notice predicates match 079:2/3/5. Payment pagination is tenant-filtered, ordered ascending with a reference cursor and 20-row pages; full reversal flags map to booleans. Missing classifications/kinds throw in Dart rather than silently choosing normal. Worker read routes authenticate billing role before dispatch and take `org` only from claims. `get_ai_status` is the member-safe source; global compatibility-role display and backend membership drift remain R1-SQL-02/03/04, not new R7 counts.
+
+R2-C3 remains canonical for unvalidated response versions/envelopes in ABO live/feed and Dart client. `AboClient` does not add response generation/identity checks; production billing page lifetime and currently absent active-org switch caller prevent claiming a demonstrated cross-org data leak. `BillingTokenClient` lifetime/in-flight disposal is an R10 concurrency seam after UI composition fixes; the source does not establish a live production org switch. R6-DM5 aliases are accepted by ABO's generic string-kind validator (`packages/vendor-contracts/src/feed-event.ts:64`) and its permissive fallback; no consumer outage is claimed.
+
+App routing contains no AI-availability global guard on clinical routes. Auth resume reloads context (`app.dart:76`) and refreshes status independently (`77`); router refresh does not key the AI widget by identity. Narrow cross-read confirms UI review's wrong-visit composition reuse (`ai_page.dart:425,667–710,350`); UI owns its canonical recipe. Later HEAD changes to billing layouts are outside this snapshot result.

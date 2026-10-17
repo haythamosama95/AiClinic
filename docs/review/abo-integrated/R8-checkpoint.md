@@ -1,0 +1,13 @@
+# R8 checkpoint
+
+In progress, 2026-10-17 Africa/Cairo. Source target `db9244fddfddc1905335fb8c7105328c15a0cc5e`; workspace HEAD `a2545299b82fd0c22f92d316fb4790ce47c159c9` is newer and excluded. Static review only; no source changes or execution.
+
+Lead `/root/abo_r8_review`: GPT-6.1 Sol/high. Three disjoint bounded slices: console (medium), configuration (medium), legacy removal (medium); exact assignments partition all 239 manifest tuples (6,420 lines including 1,951 deleted). Initial coverage: zero read; all assigned tuples unread. Lead owns vendor methods, credential schema, support and seam synthesis. Each slice records exact completion and supporting expansions. No R9/R10 execution.
+
+Checkpoint 2: all four primary assignments have been read at pinned source coordinates: 239 tuples / 4,469 final + 1,951 deleted lines. Targeted consumer confirmation and finding synthesis remain; exact slice logs are being finalized. Major confirmed candidates are issuer retire/revoke resurrection and unclaimed R2 publication overwrite (terms/routing). Supporting expansion explicitly includes deleted bootstrap script because R0 metadata excluded it while R8 requires it. Existing R1–R7 roots stay canonical.
+
+Final checkpoint: **complete with findings**, 2026-10-17 Africa/Cairo. Canonical [report](R8-operator-control-configuration.md), [coverage](R8-coverage.md), [exact JSON](R8-coverage.json). All 239 exact assignment tuples verified as one disjoint manifest union; 4,469 final +1,951 deleted lines, zero unread, all 24 escalation dispositions. Additional deleted bootstrap 247 lines explicitly recorded. **0 P0, 3 P1, 11 P2**; canonical distinct IDs supersede colliding provisional slice labels. No remaining same-phase source/seam work. Forward recipes implementation-ready; historical unknown text/config/predecessor/actor/signers fail closed pending maintainer/frontier adjudication. Inherited R2-P4 and prior R1/R3/provider decisions unresolved. R9/R10 not started.
+
+Application unchanged relative to starting newer HEAD a2545299; source reads used pinned T/B, later HEAD excluded. Only review artifacts and R8 tracker row changed, preserving R7 artifacts. No tests/builds/lint/services/research/source edits/commits/pushes/branches/account-usage actions. Exact settings: lead /root/abo_r8_review GPT-6.1 Sol/high; console,configuration,legacy child reviewers each GPT-6.1 Sol/medium. Static limits and incidental unreviewed fixture display disclosed in report.
+
+Final targeted R6 handoff confirmation established R8-RETRY1 (P2): grant-only retry excludes parked reverse work. Exact original-command recovery recipe is canonical; no remaining seam. Adjacent R9 payout/finding code incidentally displayed during navigation was not analyzed or credited.

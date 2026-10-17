@@ -1,0 +1,667 @@
+{
+  "target": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+  "workspace_start": "a2545299b82fd0c22f92d316fb4790ce47c159c9",
+  "reviewer": {
+    "model": "gpt-6.1-sol",
+    "reasoning_effort": "high"
+  },
+  "status": "complete",
+  "source_access": "git show T:path with line-numbered bounded reads",
+  "completed_regions": [
+    {
+      "path": "abo/src/clinic-api/billing-reads.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 1,
+      "end": 4,
+      "symbol": "preamble / imports / shared declarations",
+      "primary_owner": "R7",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": []
+    },
+    {
+      "path": "abo/src/clinic-api/billing-reads.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 5,
+      "end": 6,
+      "symbol": "PAYMENTS_PAGE_SIZE",
+      "primary_owner": "R7",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": []
+    },
+    {
+      "path": "abo/src/clinic-api/billing-reads.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 7,
+      "end": 13,
+      "symbol": "BillingReadsEnv",
+      "primary_owner": "R7",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": []
+    },
+    {
+      "path": "abo/src/clinic-api/billing-reads.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 14,
+      "end": 15,
+      "symbol": "CoverageSnapshot",
+      "primary_owner": "R7",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": []
+    },
+    {
+      "path": "abo/src/clinic-api/billing-reads.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 16,
+      "end": 28,
+      "symbol": "PaymentRow",
+      "primary_owner": "R7",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": []
+    },
+    {
+      "path": "abo/src/clinic-api/billing-reads.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 29,
+      "end": 35,
+      "symbol": "ReversalRow",
+      "primary_owner": "R7",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": []
+    },
+    {
+      "path": "abo/src/clinic-api/billing-reads.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 36,
+      "end": 42,
+      "symbol": "parseSnapshot",
+      "primary_owner": "R7",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": []
+    },
+    {
+      "path": "abo/src/clinic-api/billing-reads.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 43,
+      "end": 61,
+      "symbol": "loadCoverageViewSnapshot",
+      "primary_owner": "R7",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": []
+    },
+    {
+      "path": "abo/src/clinic-api/billing-reads.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 62,
+      "end": 80,
+      "symbol": "resolveSnapshot",
+      "primary_owner": "R7",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": []
+    },
+    {
+      "path": "abo/src/clinic-api/billing-reads.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 81,
+      "end": 143,
+      "symbol": "buildNotices",
+      "primary_owner": "R7",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": []
+    },
+    {
+      "path": "abo/src/clinic-api/billing-reads.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 144,
+      "end": 154,
+      "symbol": "planDisplayNames",
+      "primary_owner": "R7",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": []
+    },
+    {
+      "path": "abo/src/clinic-api/billing-reads.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 155,
+      "end": 181,
+      "symbol": "loadReversals",
+      "primary_owner": "R7",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": []
+    },
+    {
+      "path": "abo/src/clinic-api/billing-reads.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 182,
+      "end": 200,
+      "symbol": "handleGetSubscription",
+      "primary_owner": "R7",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": []
+    },
+    {
+      "path": "abo/src/clinic-api/billing-reads.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 201,
+      "end": 216,
+      "symbol": "validateCursor",
+      "primary_owner": "R7",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": []
+    },
+    {
+      "path": "abo/src/clinic-api/billing-reads.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 217,
+      "end": 258,
+      "symbol": "loadPaymentPage",
+      "primary_owner": "R7",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": []
+    },
+    {
+      "path": "abo/src/clinic-api/billing-reads.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 259,
+      "end": 312,
+      "symbol": "handleGetPayments",
+      "primary_owner": "R7",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": []
+    },
+    {
+      "path": "abo/src/coverage/view.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 1,
+      "end": 6,
+      "symbol": "preamble / imports / shared declarations",
+      "primary_owner": "R7",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": []
+    },
+    {
+      "path": "abo/src/coverage/view.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 7,
+      "end": 15,
+      "symbol": "CoverageViewEnv",
+      "primary_owner": "R7",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": []
+    },
+    {
+      "path": "abo/src/coverage/view.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 16,
+      "end": 20,
+      "symbol": "CoveragePair",
+      "primary_owner": "R7",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": []
+    },
+    {
+      "path": "abo/src/coverage/view.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 21,
+      "end": 27,
+      "symbol": "FeedPage",
+      "primary_owner": "R7",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": []
+    },
+    {
+      "path": "abo/src/coverage/view.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 28,
+      "end": 37,
+      "symbol": "isNewerPair",
+      "primary_owner": "R7",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": []
+    },
+    {
+      "path": "abo/src/coverage/view.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 38,
+      "end": 67,
+      "symbol": "parseFeedPage",
+      "primary_owner": "R7",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": []
+    },
+    {
+      "path": "abo/src/coverage/view.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 68,
+      "end": 74,
+      "symbol": "readFeedCursor",
+      "primary_owner": "R7",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": []
+    },
+    {
+      "path": "abo/src/coverage/view.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 75,
+      "end": 83,
+      "symbol": "writeFeedCursor",
+      "primary_owner": "R7",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": []
+    },
+    {
+      "path": "abo/src/coverage/view.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 84,
+      "end": 95,
+      "symbol": "loadStoredPair",
+      "primary_owner": "R7",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": []
+    },
+    {
+      "path": "abo/src/coverage/view.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 96,
+      "end": 112,
+      "symbol": "feedEventAccepted",
+      "primary_owner": "R7",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": []
+    },
+    {
+      "path": "abo/src/coverage/view.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 113,
+      "end": 152,
+      "symbol": "applyFeedEvent",
+      "primary_owner": "R7",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": []
+    },
+    {
+      "path": "abo/src/coverage/view.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 153,
+      "end": 187,
+      "symbol": "refreshCoverageView",
+      "primary_owner": "R7",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": []
+    },
+    {
+      "path": "abo/src/worker.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 231,
+      "end": 238,
+      "symbol": "handleBillingV1: subscription/payments read routes",
+      "primary_owner": "R7",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": [
+        "R2",
+        "R3",
+        "R5",
+        "R8",
+        "R9"
+      ]
+    },
+    {
+      "path": "frontend/lib/app/app.dart",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 1,
+      "end": 19,
+      "symbol": "preamble / imports / shared declarations",
+      "primary_owner": "R7",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": []
+    },
+    {
+      "path": "frontend/lib/app/app.dart",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 20,
+      "end": 26,
+      "symbol": "AiClinicApp",
+      "primary_owner": "R7",
+      "changed": false,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": []
+    },
+    {
+      "path": "frontend/lib/app/app.dart",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 27,
+      "end": 115,
+      "symbol": "_AiClinicAppState",
+      "primary_owner": "R7",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": []
+    },
+    {
+      "path": "frontend/lib/app/app_routes.dart",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 1,
+      "end": 168,
+      "symbol": "preamble / imports / shared declarations",
+      "primary_owner": "R7",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": []
+    },
+    {
+      "path": "frontend/lib/app/router.dart",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 1,
+      "end": 384,
+      "symbol": "preamble / imports / shared declarations",
+      "primary_owner": "R7",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": []
+    },
+    {
+      "path": "frontend/lib/features/ai/billing/abo_client.dart",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 1,
+      "end": 8,
+      "symbol": "preamble / imports / shared declarations",
+      "primary_owner": "R7",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": []
+    },
+    {
+      "path": "frontend/lib/features/ai/billing/abo_client.dart",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 9,
+      "end": 9,
+      "symbol": "_contractVersionOverrideKey",
+      "primary_owner": "R7",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": []
+    },
+    {
+      "path": "frontend/lib/features/ai/billing/abo_client.dart",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 10,
+      "end": 10,
+      "symbol": "_billingHostOverrideKey",
+      "primary_owner": "R7",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": []
+    },
+    {
+      "path": "frontend/lib/features/ai/billing/abo_client.dart",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 11,
+      "end": 17,
+      "symbol": "_localBillingHost",
+      "primary_owner": "R7",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": []
+    },
+    {
+      "path": "frontend/lib/features/ai/billing/abo_client.dart",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 339,
+      "end": 360,
+      "symbol": "PaymentClassification",
+      "primary_owner": "R7",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": []
+    },
+    {
+      "path": "frontend/lib/features/ai/billing/abo_client.dart",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 361,
+      "end": 385,
+      "symbol": "ReversalKind",
+      "primary_owner": "R7",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": []
+    },
+    {
+      "path": "frontend/lib/features/ai/billing/abo_client.dart",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 386,
+      "end": 409,
+      "symbol": "PaymentReversal",
+      "primary_owner": "R7",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": []
+    },
+    {
+      "path": "frontend/lib/features/ai/billing/abo_client.dart",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 410,
+      "end": 457,
+      "symbol": "PaymentRecord",
+      "primary_owner": "R7",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": []
+    },
+    {
+      "path": "frontend/lib/features/ai/billing/abo_client.dart",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 458,
+      "end": 487,
+      "symbol": "PaymentsResponse",
+      "primary_owner": "R7",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": []
+    },
+    {
+      "path": "frontend/lib/features/ai/billing/abo_client.dart",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 488,
+      "end": 516,
+      "symbol": "SubscriptionResponse",
+      "primary_owner": "R7",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": []
+    },
+    {
+      "path": "frontend/lib/features/ai/billing/abo_client.dart",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 517,
+      "end": 577,
+      "symbol": "AboApiException",
+      "primary_owner": "R7",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": []
+    },
+    {
+      "path": "frontend/lib/features/ai/billing/abo_client.dart",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 578,
+      "end": 827,
+      "symbol": "AboClient",
+      "primary_owner": "R7",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": []
+    }
+  ],
+  "unread_regions": [],
+  "supporting_ranges": [
+    {
+      "path": "abo/src/worker.ts",
+      "ranges": [
+        [
+          207,
+          240
+        ],
+        [
+          392,
+          405
+        ]
+      ]
+    },
+    {
+      "path": "frontend/lib/features/ai/billing/billing_token_client.dart",
+      "ranges": [
+        [
+          1,
+          128
+        ]
+      ]
+    },
+    {
+      "path": "abo/src/clinic-api/offers.ts",
+      "ranges": [
+        [
+          1,
+          145
+        ]
+      ]
+    },
+    {
+      "path": "frontend/lib/features/ai/presentation/pages/ai_page.dart",
+      "ranges": [
+        [
+          330,
+          353
+        ],
+        [
+          412,
+          435
+        ],
+        [
+          650,
+          716
+        ]
+      ]
+    },
+    {
+      "path": "abo/src/clinic-api/checkouts.ts",
+      "ranges": [
+        [
+          273,
+          345
+        ]
+      ]
+    },
+    {
+      "path": "packages/vendor-contracts/src/feed-event.ts",
+      "ranges": [
+        [
+          1,
+          71
+        ]
+      ]
+    },
+    {
+      "path": "packages/vendor-contracts/src/coverage-snapshot.ts",
+      "ranges": [
+        [
+          1,
+          123
+        ]
+      ]
+    },
+    {
+      "path": "abo/migrations/0002_checkout.sql",
+      "ranges": [
+        [
+          1,
+          97
+        ]
+      ]
+    },
+    {
+      "path": "abo/migrations/0004_grant.sql",
+      "ranges": [
+        [
+          1,
+          72
+        ]
+      ]
+    },
+    {
+      "path": "ai-platform/src/quota-do/coverage.ts",
+      "ranges": [
+        [
+          381,
+          461
+        ],
+        [
+          2057,
+          2073
+        ],
+        [
+          3100,
+          3118
+        ]
+      ],
+      "purpose": "high synthesis snapshot and pending precedence confirmation"
+    },
+    {
+      "path": "ai-platform/src/coverage/transfer.ts",
+      "ranges": [
+        [
+          651,
+          680
+        ]
+      ],
+      "purpose": "high synthesis producer-to-display deletion seam"
+    },
+    {
+      "path": "backend/supabase/migrations/20261007230000_coverage_feed_puller_status.sql",
+      "ranges": [
+        [
+          487,
+          533
+        ]
+      ],
+      "purpose": "high synthesis conditional refresh claim confirmation"
+    }
+  ],
+  "notes": [
+    "Primary reads T-only; current HEAD later source excluded.",
+    "R2-C3 remains canonical permissive-version decoder finding; R6-DM5 alias consumed by ABO fallback validator.",
+    "Investigating coverage_view non-atomic pair/cursor writes and history live catalogue dependency."
+  ],
+  "findings": [
+    "R7-A1",
+    "R7-A2"
+  ]
+}

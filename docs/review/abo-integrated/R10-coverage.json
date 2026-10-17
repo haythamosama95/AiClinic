@@ -1,0 +1,460 @@
+{
+  "phase": "R10",
+  "target": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+  "baseline": "c6cf2c3809a38e2a348f373e926cf2585cfcf291",
+  "history": "d2e7666f59d8ea7b37a5e05fae89f34d96ba1a3f",
+  "date": "2026-10-18 Africa/Cairo",
+  "status": "complete with inherited findings",
+  "reviewers": [
+    {
+      "name": "lead",
+      "model": "GPT-6.1 Sol",
+      "effort": "high",
+      "explicit": true
+    },
+    {
+      "name": "value_recovery",
+      "model": "GPT-6.1 Sol",
+      "effort": "medium",
+      "explicit": true
+    },
+    {
+      "name": "authority_channels",
+      "model": "GPT-6.1 Sol",
+      "effort": "medium",
+      "explicit": true
+    }
+  ],
+  "unique_selected_production_lines": 4805,
+  "ranges": [
+    {
+      "reader": "R10-value-recovery-coverage.json",
+      "path": "abo/src/work/runner.ts",
+      "start": 1,
+      "end": 110,
+      "lines": 110,
+      "sha256": "6487e46de40f1ce9da3cbb7eae72eb42ac0dd79d0b4fa411d4547cf92692a99c",
+      "source": "git show db9244fddfddc1905335fb8c7105328c15a0cc5e:abo/src/work/runner.ts",
+      "status": "read",
+      "type": "selected_actual_production_source",
+      "exclusions": []
+    },
+    {
+      "reader": "R10-value-recovery-coverage.json",
+      "path": "abo/src/work/runner.ts",
+      "start": 369,
+      "end": 517,
+      "lines": 149,
+      "sha256": "f1ddaff9257c4ced96a28b1089e42684a75bb7a8ad2891bcfe869a951b6e00a0",
+      "source": "git show db9244fddfddc1905335fb8c7105328c15a0cc5e:abo/src/work/runner.ts",
+      "status": "read",
+      "type": "selected_actual_production_source",
+      "exclusions": []
+    },
+    {
+      "reader": "R10-value-recovery-coverage.json",
+      "path": "abo/src/work/grant.ts",
+      "start": 600,
+      "end": 942,
+      "lines": 343,
+      "sha256": "2fda4249384a58b01a9c9a92646b25ebf43860de8dbee7d6f870ea7276d80adb",
+      "source": "git show db9244fddfddc1905335fb8c7105328c15a0cc5e:abo/src/work/grant.ts",
+      "status": "read",
+      "type": "selected_actual_production_source",
+      "exclusions": []
+    },
+    {
+      "reader": "R10-value-recovery-coverage.json",
+      "path": "abo/src/work/reversal.ts",
+      "start": 703,
+      "end": 798,
+      "lines": 96,
+      "sha256": "83b712871dee3e475d6143672a67e81b64d84bd571369348cb8c64686578a3f3",
+      "source": "git show db9244fddfddc1905335fb8c7105328c15a0cc5e:abo/src/work/reversal.ts",
+      "status": "read",
+      "type": "selected_actual_production_source",
+      "exclusions": []
+    },
+    {
+      "reader": "R10-value-recovery-coverage.json",
+      "path": "abo/src/work/reversal.ts",
+      "start": 958,
+      "end": 1004,
+      "lines": 47,
+      "sha256": "21c2548f2a05c1114d6719fa40c61ffa39c6b936d0ff37afc254ac9ef9f7cb45",
+      "source": "git show db9244fddfddc1905335fb8c7105328c15a0cc5e:abo/src/work/reversal.ts",
+      "status": "read",
+      "type": "selected_actual_production_source",
+      "exclusions": []
+    },
+    {
+      "reader": "R10-value-recovery-coverage.json",
+      "path": "abo/src/notify/intake.ts",
+      "start": 350,
+      "end": 423,
+      "lines": 74,
+      "sha256": "0aa7436d7197a91a9394efd051b20b9dba02e9575ccbbdfcbc5639697dfb52ca",
+      "source": "git show db9244fddfddc1905335fb8c7105328c15a0cc5e:abo/src/notify/intake.ts",
+      "status": "read",
+      "type": "selected_actual_production_source",
+      "exclusions": []
+    },
+    {
+      "reader": "R10-value-recovery-coverage.json",
+      "path": "ai-platform/src/quota-do/index.ts",
+      "start": 939,
+      "end": 1216,
+      "lines": 278,
+      "sha256": "99481dc72fa9415b9011baad19879d84fa880a888e1e4c64a5b730ac0575a00f",
+      "source": "git show db9244fddfddc1905335fb8c7105328c15a0cc5e:ai-platform/src/quota-do/index.ts",
+      "status": "read",
+      "type": "selected_actual_production_source",
+      "exclusions": []
+    },
+    {
+      "reader": "R10-value-recovery-coverage.json",
+      "path": "ai-platform/src/quota-do/index.ts",
+      "start": 1226,
+      "end": 1567,
+      "lines": 342,
+      "sha256": "b56930c3bc5739d9022e1dc3478844241ed095ba58a3add5b8c52f737108ea03",
+      "source": "git show db9244fddfddc1905335fb8c7105328c15a0cc5e:ai-platform/src/quota-do/index.ts",
+      "status": "read",
+      "type": "selected_actual_production_source",
+      "exclusions": []
+    },
+    {
+      "reader": "R10-value-recovery-coverage.json",
+      "path": "ai-platform/src/quota-do/index.ts",
+      "start": 1575,
+      "end": 1653,
+      "lines": 79,
+      "sha256": "6ec02f71b08927417980e64db93aaca2e359b66080fdc1ff97a7a7df4487a715",
+      "source": "git show db9244fddfddc1905335fb8c7105328c15a0cc5e:ai-platform/src/quota-do/index.ts",
+      "status": "read",
+      "type": "selected_actual_production_source",
+      "exclusions": []
+    },
+    {
+      "reader": "R10-value-recovery-coverage.json",
+      "path": "ai-platform/src/quota-do/index.ts",
+      "start": 1688,
+      "end": 1794,
+      "lines": 107,
+      "sha256": "996c7db4a5bcfbbaf79c0f7c8eb610f38381a32e2e5d02dfadce5456c4e9194b",
+      "source": "git show db9244fddfddc1905335fb8c7105328c15a0cc5e:ai-platform/src/quota-do/index.ts",
+      "status": "read",
+      "type": "selected_actual_production_source",
+      "exclusions": []
+    },
+    {
+      "reader": "R10-value-recovery-coverage.json",
+      "path": "ai-platform/src/quota-do/coverage.ts",
+      "start": 810,
+      "end": 918,
+      "lines": 109,
+      "sha256": "5235ec8d5d2db0d53d1e1354d28f6b75854da16e4deb248dc9451db141efdf54",
+      "source": "git show db9244fddfddc1905335fb8c7105328c15a0cc5e:ai-platform/src/quota-do/coverage.ts",
+      "status": "read",
+      "type": "selected_actual_production_source",
+      "exclusions": []
+    },
+    {
+      "reader": "R10-value-recovery-coverage.json",
+      "path": "ai-platform/src/quota-do/coverage.ts",
+      "start": 1575,
+      "end": 1640,
+      "lines": 66,
+      "sha256": "c66c5d25bf13b16017509cd9330df9fae577252ef182e13b828f7df8a2b61757",
+      "source": "git show db9244fddfddc1905335fb8c7105328c15a0cc5e:ai-platform/src/quota-do/coverage.ts",
+      "status": "read",
+      "type": "selected_actual_production_source",
+      "exclusions": []
+    },
+    {
+      "reader": "R10-value-recovery-coverage.json",
+      "path": "ai-platform/src/quota-do/coverage.ts",
+      "start": 2111,
+      "end": 2272,
+      "lines": 162,
+      "sha256": "814f048f3dcd944845d0b7a269c900b554964dff9ed60b81ce752ac590e57282",
+      "source": "git show db9244fddfddc1905335fb8c7105328c15a0cc5e:ai-platform/src/quota-do/coverage.ts",
+      "status": "read",
+      "type": "selected_actual_production_source",
+      "exclusions": []
+    },
+    {
+      "reader": "R10-value-recovery-coverage.json",
+      "path": "ai-platform/src/quota-do/coverage.ts",
+      "start": 2690,
+      "end": 2790,
+      "lines": 101,
+      "sha256": "06c4c0011f65f02b9a03dc807c599cc33577e2cb7a98a2668129607761fcdad0",
+      "source": "git show db9244fddfddc1905335fb8c7105328c15a0cc5e:ai-platform/src/quota-do/coverage.ts",
+      "status": "read",
+      "type": "selected_actual_production_source",
+      "exclusions": []
+    },
+    {
+      "reader": "R10-value-recovery-coverage.json",
+      "path": "ai-platform/src/quota-do/coverage.ts",
+      "start": 3840,
+      "end": 3940,
+      "lines": 101,
+      "sha256": "e5981194e477db8e26cd213274c19e499849a2b4c618ddb3c8df9081535f6cce",
+      "source": "git show db9244fddfddc1905335fb8c7105328c15a0cc5e:ai-platform/src/quota-do/coverage.ts",
+      "status": "read",
+      "type": "selected_actual_production_source",
+      "exclusions": []
+    },
+    {
+      "reader": "R10-authority-channels-coverage.json",
+      "path": "ai-platform/src/identity/index.ts",
+      "start": 199,
+      "end": 555,
+      "line_count": 357,
+      "sha256": "a06f636ec4a6e847f8cb813de4e67a530c12f70e6dbc772bc3fdad8d05fe8310",
+      "role": "selected-source seam"
+    },
+    {
+      "reader": "R10-authority-channels-coverage.json",
+      "path": "ai-platform/src/coverage/transfer.ts",
+      "start": 231,
+      "end": 309,
+      "line_count": 79,
+      "sha256": "68a93cd6dad84e4666e1bc70560942c3ce587473cf0765c146ca789e8d494ae7",
+      "role": "selected-source seam"
+    },
+    {
+      "reader": "R10-authority-channels-coverage.json",
+      "path": "ai-platform/src/coverage/transfer.ts",
+      "start": 320,
+      "end": 520,
+      "line_count": 201,
+      "sha256": "2b1c5f589f8ea512a44a95ec8229f481212e717b9c3b3fad7c8b2fd36eea814e",
+      "role": "selected-source seam"
+    },
+    {
+      "reader": "R10-authority-channels-coverage.json",
+      "path": "ai-platform/src/coverage/transfer.ts",
+      "start": 617,
+      "end": 750,
+      "line_count": 134,
+      "sha256": "ddbcfce974b088c4d72630dabb969a0b32ad05cd73dfec228553ed33606ded89",
+      "role": "selected-source seam"
+    },
+    {
+      "reader": "R10-authority-channels-coverage.json",
+      "path": "abo/src/clinic-api/auth.ts",
+      "start": 1,
+      "end": 310,
+      "line_count": 310,
+      "sha256": "455b71aa952b6c84aa5ed84c56fe92bc5503e7b145f2376e671d0ec618008de0",
+      "role": "selected-source seam"
+    },
+    {
+      "reader": "R10-authority-channels-coverage.json",
+      "path": "abo/src/clinic-api/version.ts",
+      "start": 1,
+      "end": 142,
+      "line_count": 142,
+      "sha256": "5950d50ce5fa08889b0fc7eaf5587596fc6520d97f6b28b4429135278980a44d",
+      "role": "selected-source seam"
+    },
+    {
+      "reader": "R10-authority-channels-coverage.json",
+      "path": "ai-platform/src/vendor/contract-version.ts",
+      "start": 1,
+      "end": 49,
+      "line_count": 49,
+      "sha256": "dde4941b6cadd94133d718444931f5760348f64cc4212a3189124396f54d36fc",
+      "role": "selected-source seam"
+    },
+    {
+      "reader": "R10-authority-channels-coverage.json",
+      "path": "frontend/lib/features/ai/billing/billing_token_client.dart",
+      "start": 1,
+      "end": 128,
+      "line_count": 128,
+      "sha256": "2e6371fa1edd6952dcc14804714a75870c5b0b080c3df3e57b98f2bb2fc9b219",
+      "role": "selected-source seam"
+    },
+    {
+      "reader": "R10-authority-channels-coverage.json",
+      "path": "frontend/lib/core/ai/ai_client_sdk.dart",
+      "start": 1,
+      "end": 145,
+      "line_count": 145,
+      "sha256": "44e8b3261eca6f6e50040fad672d02b4815c8c72ba50211d3a267cf0216cdace",
+      "role": "selected-source seam"
+    },
+    {
+      "reader": "R10-authority-channels-coverage.json",
+      "path": "frontend/lib/app/providers/ai_shell_status_provider.dart",
+      "start": 1,
+      "end": 85,
+      "line_count": 85,
+      "sha256": "6fb2a0fc4de9b0b7178caa19f13a2f20e68e1021b318a50f68eda5275c75d608",
+      "role": "selected-source seam"
+    },
+    {
+      "reader": "R10-authority-channels-coverage.json",
+      "path": "abo/src/ops/index.ts",
+      "start": 677,
+      "end": 775,
+      "line_count": 99,
+      "sha256": "0edf14eae3b144fee00658c9f1f2af0972dc325186bb831458181717d5cd9674",
+      "role": "selected-source seam"
+    },
+    {
+      "reader": "R10-authority-channels-coverage.json",
+      "path": "ai-platform/src/vendor/entrypoint.ts",
+      "start": 333,
+      "end": 390,
+      "line_count": 58,
+      "sha256": "eb8387dc4fa5cf13f8740ccb1dd301629065a18467454ab430f12a993b6c71e4",
+      "role": "selected-source seam"
+    },
+    {
+      "reader": "R10-authority-channels-coverage.json",
+      "path": "ai-platform/src/vendor/entrypoint.ts",
+      "start": 620,
+      "end": 686,
+      "line_count": 67,
+      "sha256": "a4bb6258526f360ea598db93864cafe16058c18fd782a4c7fa5f4ea301ef4abf",
+      "role": "selected-source seam"
+    },
+    {
+      "reader": "R10-authority-channels-coverage.json",
+      "path": "ai-platform/src/vendor/entrypoint.ts",
+      "start": 750,
+      "end": 880,
+      "line_count": 131,
+      "sha256": "c3b259609184a965c6292b94ab0b3ce0750685476a133f2e36a5f789d7f2d0c6",
+      "role": "selected-source seam"
+    },
+    {
+      "reader": "R10-authority-channels-coverage.json",
+      "path": "ai-platform/src/vendor/entrypoint.ts",
+      "start": 1129,
+      "end": 1284,
+      "line_count": 156,
+      "sha256": "6017da6416f38763379c27b645a51a4e1cf4432c78019860344cecc80871ca52",
+      "role": "selected-source seam"
+    },
+    {
+      "reader": "R10-authority-channels-coverage.json",
+      "path": "ai-platform/src/vendor/entrypoint.ts",
+      "start": 3490,
+      "end": 3535,
+      "line_count": 46,
+      "sha256": "92bbfcedc77cd0334c9e5b36969fe38117f105c94ea94c23577b5c6a8df0b1ab",
+      "role": "selected-source seam"
+    },
+    {
+      "reader": "R10-authority-channels-coverage.json",
+      "path": "ai-platform/src/vendor/entrypoint.ts",
+      "start": 3970,
+      "end": 4000,
+      "line_count": 31,
+      "sha256": "10fdd0c6e350b8c51521940d9c91f68fd8c9e56c70139c5ccf5d54759fe32592",
+      "role": "selected-source seam"
+    },
+    {
+      "reader": "R10-authority-channels-coverage.json",
+      "path": "ai-platform/src/coverage/transfer.ts",
+      "start": 92,
+      "end": 114,
+      "line_count": 23,
+      "sha256": "33029355eb7b06abe72594408af6a0429cd1af1c6e05ee273189e633aff1e0e9",
+      "role": "selected-source seam"
+    },
+    {
+      "reader": "lead high",
+      "path": "abo/src/coverage/view.ts",
+      "start": 1,
+      "end": 187,
+      "sha256": "d0ec85c870d0c2ff0dd002572fafe40b2ef79965fb13dd104b4f2960162b0c5c",
+      "role": "selected actual source; projection/epoch, version/order and reset-versus-refresh integration"
+    },
+    {
+      "reader": "lead high",
+      "path": "backend/supabase/migrations/20261007230000_coverage_feed_puller_status.sql",
+      "start": 105,
+      "end": 317,
+      "sha256": "5d0c542fc8e44a781ff84c61efdf3b3f305fdebaa2a279de5001f58794248724",
+      "role": "selected actual source; projection/epoch, version/order and reset-versus-refresh integration"
+    }
+  ],
+  "duplicate_primary_lines": 0,
+  "raw_range_hash_checks": {
+    "checked": 33,
+    "failures": []
+  },
+  "narratives": {
+    "1": {
+      "owner": "value_recovery",
+      "status": "complete with inherited findings"
+    },
+    "2": {
+      "owner": "authority_channels",
+      "status": "complete with inherited findings"
+    },
+    "3": {
+      "owner": "value_recovery",
+      "status": "complete with inherited findings"
+    },
+    "4": {
+      "owner": "value_recovery",
+      "status": "complete with inherited findings"
+    },
+    "5": {
+      "owner": "authority_channels",
+      "status": "complete with inherited findings"
+    },
+    "6": {
+      "owner": "authority_channels",
+      "status": "complete with inherited findings"
+    },
+    "7": {
+      "owner": "value_recovery",
+      "status": "complete with inherited findings"
+    },
+    "8": {
+      "owner": "authority_channels",
+      "status": "complete with inherited findings"
+    }
+  },
+  "global_closure": "R10-global-closure.json",
+  "unread_assigned_ranges": [],
+  "new_findings": {
+    "P0": 0,
+    "P1": 0,
+    "P2": 0,
+    "P3": 0
+  },
+  "inherited_canonical_count": 111,
+  "inherited_counts": {
+    "P0": 0,
+    "P1": 57,
+    "P2": 52,
+    "P3": 2
+  },
+  "historical_effort_limit": "R1\u2013R3 launches were not explicitly pinned; do not retroactively credit high/medium. R4 credited replacement source/synthesis contexts and R5\u2013R10 settings recorded.",
+  "source_only": true,
+  "tests_build_lint_services_executed": false,
+  "application_unchanged_relative_to_start_head": true,
+  "workspace_head_start": "a2545299b82fd0c22f92d316fb4790ce47c159c9",
+  "workspace_head_end": "a2545299b82fd0c22f92d316fb4790ce47c159c9",
+  "prior_review_artifact_hash_changes": [],
+  "unexpected_new_paths": [],
+  "final_gates": {
+    "all_candidate_paths_owned": true,
+    "all_manifest_tuple_multisets_closed": true,
+    "all_75_escalation_routes_dispositioned": true,
+    "all_eight_narratives_source_backed": true,
+    "canonical_recipes_present": true,
+    "limits_and_decision_owners_explicit": true
+  },
+  "report": "R10-integrated-final-review.md"
+}

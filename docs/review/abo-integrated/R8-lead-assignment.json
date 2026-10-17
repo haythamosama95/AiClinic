@@ -1,0 +1,1018 @@
+{
+  "target": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+  "baseline": "c6cf2c3809a38e2a348f373e926cf2585cfcf291",
+  "model": "GPT-6.1 Sol",
+  "effort": "high",
+  "regions": [
+    {
+      "path": "ai-platform/migrations/20261003120000_operator_credential_and_platform_alert.sql",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 1,
+      "end": 2,
+      "symbol": "preamble / imports / shared declarations",
+      "primary_owner": "R8",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": [],
+      "tuple_index": 46
+    },
+    {
+      "path": "ai-platform/migrations/20261003120000_operator_credential_and_platform_alert.sql",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 3,
+      "end": 13,
+      "symbol": "operator_credential",
+      "primary_owner": "R8",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": [],
+      "tuple_index": 47
+    },
+    {
+      "path": "ai-platform/migrations/20261003120000_operator_credential_and_platform_alert.sql",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 14,
+      "end": 19,
+      "symbol": "assertion_used",
+      "primary_owner": "R8",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": [],
+      "tuple_index": 48
+    },
+    {
+      "path": "ai-platform/migrations/20261003120000_operator_credential_and_platform_alert.sql",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 20,
+      "end": 33,
+      "symbol": "platform_alert",
+      "primary_owner": "R8",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": [],
+      "tuple_index": 49
+    },
+    {
+      "path": "ai-platform/src/support/index.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 1,
+      "end": 9,
+      "symbol": "preamble / imports / shared declarations",
+      "primary_owner": "R8",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": [],
+      "tuple_index": 181
+    },
+    {
+      "path": "ai-platform/src/support/index.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 10,
+      "end": 27,
+      "symbol": "SupportLookupRequestTrace",
+      "primary_owner": "R8",
+      "changed": false,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": [],
+      "tuple_index": 182
+    },
+    {
+      "path": "ai-platform/src/support/index.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 28,
+      "end": 40,
+      "symbol": "SupportLookupAttemptTrace",
+      "primary_owner": "R8",
+      "changed": false,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": [],
+      "tuple_index": 183
+    },
+    {
+      "path": "ai-platform/src/support/index.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 41,
+      "end": 49,
+      "symbol": "SupportLookupResult",
+      "primary_owner": "R8",
+      "changed": false,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": [],
+      "tuple_index": 184
+    },
+    {
+      "path": "ai-platform/src/support/index.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 50,
+      "end": 55,
+      "symbol": "SupportLookupListEntry",
+      "primary_owner": "R8",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": [],
+      "tuple_index": 185
+    },
+    {
+      "path": "ai-platform/src/support/index.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 56,
+      "end": 59,
+      "symbol": "SupportLookupListResult",
+      "primary_owner": "R8",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": [],
+      "tuple_index": 186
+    },
+    {
+      "path": "ai-platform/src/support/index.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 60,
+      "end": 67,
+      "symbol": "SupportLookupQuery",
+      "primary_owner": "R8",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": [],
+      "tuple_index": 187
+    },
+    {
+      "path": "ai-platform/src/support/index.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 68,
+      "end": 74,
+      "symbol": "SupportLookupBindings",
+      "primary_owner": "R8",
+      "changed": false,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": [],
+      "tuple_index": 188
+    },
+    {
+      "path": "ai-platform/src/support/index.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 75,
+      "end": 102,
+      "symbol": "LookupRow",
+      "primary_owner": "R8",
+      "changed": false,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": [],
+      "tuple_index": 189
+    },
+    {
+      "path": "ai-platform/src/support/index.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 103,
+      "end": 113,
+      "symbol": "LOOKUP_BY_REFERENCE_SQL",
+      "primary_owner": "R8",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": [],
+      "tuple_index": 190
+    },
+    {
+      "path": "ai-platform/src/support/index.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 114,
+      "end": 125,
+      "symbol": "LOOKUP_BY_INSTALLATION_SQL",
+      "primary_owner": "R8",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": [],
+      "tuple_index": 191
+    },
+    {
+      "path": "ai-platform/src/support/index.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 126,
+      "end": 129,
+      "symbol": "envelopeKey",
+      "primary_owner": "R8",
+      "changed": false,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": [],
+      "tuple_index": 192
+    },
+    {
+      "path": "ai-platform/src/support/index.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 130,
+      "end": 149,
+      "symbol": "requestTraceFromRow",
+      "primary_owner": "R8",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": [],
+      "tuple_index": 193
+    },
+    {
+      "path": "ai-platform/src/support/index.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 150,
+      "end": 171,
+      "symbol": "attemptsFromRows",
+      "primary_owner": "R8",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": [],
+      "tuple_index": 194
+    },
+    {
+      "path": "ai-platform/src/support/index.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 172,
+      "end": 193,
+      "symbol": "loadEnvelopeIfWithinRetention",
+      "primary_owner": "R8",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": [],
+      "tuple_index": 195
+    },
+    {
+      "path": "ai-platform/src/support/index.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 194,
+      "end": 203,
+      "symbol": "groupRowsByRequest",
+      "primary_owner": "R8",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": [],
+      "tuple_index": 196
+    },
+    {
+      "path": "ai-platform/src/support/index.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 204,
+      "end": 230,
+      "symbol": "buildSingleLookupFromRows",
+      "primary_owner": "R8",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": [],
+      "tuple_index": 197
+    },
+    {
+      "path": "ai-platform/src/support/index.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 231,
+      "end": 263,
+      "symbol": "resolveInstallationId",
+      "primary_owner": "R8",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": [],
+      "tuple_index": 198
+    },
+    {
+      "path": "ai-platform/src/support/index.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 264,
+      "end": 280,
+      "symbol": "normalizeQuery",
+      "primary_owner": "R8",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": [],
+      "tuple_index": 199
+    },
+    {
+      "path": "ai-platform/src/support/index.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 281,
+      "end": 344,
+      "symbol": "supportLookup",
+      "primary_owner": "R8",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": [],
+      "tuple_index": 200
+    },
+    {
+      "path": "ai-platform/src/vendor/entrypoint.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 79,
+      "end": 79,
+      "symbol": "VENDOR_CHANNEL",
+      "primary_owner": "R8",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": [
+        "R1",
+        "R2",
+        "R4",
+        "R6",
+        "R7",
+        "R9"
+      ],
+      "tuple_index": 201
+    },
+    {
+      "path": "ai-platform/src/vendor/entrypoint.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 80,
+      "end": 80,
+      "symbol": "ACTIVATION_MS",
+      "primary_owner": "R8",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": [
+        "R1",
+        "R2",
+        "R4",
+        "R6",
+        "R7",
+        "R9"
+      ],
+      "tuple_index": 202
+    },
+    {
+      "path": "ai-platform/src/vendor/entrypoint.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 129,
+      "end": 130,
+      "symbol": "VendorMethod",
+      "primary_owner": "R8",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": [
+        "R1",
+        "R2",
+        "R4",
+        "R6",
+        "R7",
+        "R9"
+      ],
+      "tuple_index": 203
+    },
+    {
+      "path": "ai-platform/src/vendor/entrypoint.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 131,
+      "end": 134,
+      "symbol": "HpVendorMethod",
+      "primary_owner": "R8",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": [
+        "R1",
+        "R2",
+        "R4",
+        "R6",
+        "R7",
+        "R9"
+      ],
+      "tuple_index": 204
+    },
+    {
+      "path": "ai-platform/src/vendor/entrypoint.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 137,
+      "end": 149,
+      "symbol": "CeilingPolicyRow",
+      "primary_owner": "R8",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": [
+        "R1",
+        "R2",
+        "R4",
+        "R6",
+        "R7",
+        "R9"
+      ],
+      "tuple_index": 205
+    },
+    {
+      "path": "ai-platform/src/vendor/entrypoint.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 150,
+      "end": 156,
+      "symbol": "VendorResultEnvelope",
+      "primary_owner": "R8",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": [
+        "R1",
+        "R2",
+        "R4",
+        "R6",
+        "R7",
+        "R9"
+      ],
+      "tuple_index": 206
+    },
+    {
+      "path": "ai-platform/src/vendor/entrypoint.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 172,
+      "end": 173,
+      "symbol": "HEX64_RE",
+      "primary_owner": "R8",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": [
+        "R1",
+        "R2",
+        "R4",
+        "R6",
+        "R7",
+        "R9"
+      ],
+      "tuple_index": 207
+    },
+    {
+      "path": "ai-platform/src/vendor/entrypoint.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 174,
+      "end": 197,
+      "symbol": "VendorEnv",
+      "primary_owner": "R8",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": [
+        "R1",
+        "R2",
+        "R4",
+        "R6",
+        "R7",
+        "R9"
+      ],
+      "tuple_index": 208
+    },
+    {
+      "path": "ai-platform/src/vendor/entrypoint.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 198,
+      "end": 208,
+      "symbol": "OperatorCredentialRow",
+      "primary_owner": "R8",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": [
+        "R1",
+        "R2",
+        "R4",
+        "R6",
+        "R7",
+        "R9"
+      ],
+      "tuple_index": 209
+    },
+    {
+      "path": "ai-platform/src/vendor/entrypoint.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 323,
+      "end": 327,
+      "symbol": "isValidEd25519PublicKeyEncoding",
+      "primary_owner": "R8",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": [
+        "R1",
+        "R2",
+        "R4",
+        "R6",
+        "R7",
+        "R9"
+      ],
+      "tuple_index": 210
+    },
+    {
+      "path": "ai-platform/src/vendor/entrypoint.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 748,
+      "end": 764,
+      "symbol": "decodeAttestation",
+      "primary_owner": "R8",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": [
+        "R1",
+        "R2",
+        "R4",
+        "R6",
+        "R7",
+        "R9"
+      ],
+      "tuple_index": 211
+    },
+    {
+      "path": "ai-platform/src/vendor/entrypoint.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 1048,
+      "end": 1063,
+      "symbol": "ceilingPolicyRowToDetail",
+      "primary_owner": "R8",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": [
+        "R1",
+        "R2",
+        "R4",
+        "R6",
+        "R7",
+        "R9"
+      ],
+      "tuple_index": 212
+    },
+    {
+      "path": "ai-platform/src/vendor/entrypoint.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 1064,
+      "end": 1076,
+      "symbol": "readCurrentCeilingPolicy",
+      "primary_owner": "R8",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": [
+        "R1",
+        "R2",
+        "R4",
+        "R6",
+        "R7",
+        "R9"
+      ],
+      "tuple_index": 213
+    },
+    {
+      "path": "ai-platform/src/vendor/entrypoint.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 1306,
+      "end": 1313,
+      "symbol": "envelopeWithoutCeilingOverride",
+      "primary_owner": "R8",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": [
+        "R1",
+        "R2",
+        "R4",
+        "R6",
+        "R7",
+        "R9"
+      ],
+      "tuple_index": 214
+    },
+    {
+      "path": "ai-platform/src/vendor/entrypoint.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 1314,
+      "end": 1333,
+      "symbol": "buildCeilingOverrideOperation",
+      "primary_owner": "R8",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": [
+        "R1",
+        "R2",
+        "R4",
+        "R6",
+        "R7",
+        "R9"
+      ],
+      "tuple_index": 215
+    },
+    {
+      "path": "ai-platform/src/vendor/entrypoint.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 1639,
+      "end": 1642,
+      "symbol": "isHex64",
+      "primary_owner": "R8",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": [
+        "R1",
+        "R2",
+        "R4",
+        "R6",
+        "R7",
+        "R9"
+      ],
+      "tuple_index": 216
+    },
+    {
+      "path": "ai-platform/src/vendor/entrypoint.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 1643,
+      "end": 1647,
+      "symbol": "PlatformSigningMaterial",
+      "primary_owner": "R8",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": [
+        "R1",
+        "R2",
+        "R4",
+        "R6",
+        "R7",
+        "R9"
+      ],
+      "tuple_index": 217
+    },
+    {
+      "path": "ai-platform/src/vendor/entrypoint.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 1929,
+      "end": 1929,
+      "symbol": "VendorEntrypoint",
+      "primary_owner": "R8",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": [
+        "R1",
+        "R2",
+        "R4",
+        "R6",
+        "R7",
+        "R9"
+      ],
+      "tuple_index": 218
+    },
+    {
+      "path": "ai-platform/src/vendor/entrypoint.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 1930,
+      "end": 2079,
+      "symbol": "registerOperatorCredential",
+      "primary_owner": "R8",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": [
+        "R1",
+        "R2",
+        "R4",
+        "R6",
+        "R7",
+        "R9"
+      ],
+      "tuple_index": 219
+    },
+    {
+      "path": "ai-platform/src/vendor/entrypoint.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 2080,
+      "end": 2164,
+      "symbol": "revokeOperatorCredential",
+      "primary_owner": "R8",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": [
+        "R1",
+        "R2",
+        "R4",
+        "R6",
+        "R7",
+        "R9"
+      ],
+      "tuple_index": 220
+    },
+    {
+      "path": "ai-platform/src/vendor/entrypoint.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 2165,
+      "end": 2192,
+      "symbol": "listOperatorCredentials",
+      "primary_owner": "R8",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": [
+        "R1",
+        "R2",
+        "R4",
+        "R6",
+        "R7",
+        "R9"
+      ],
+      "tuple_index": 221
+    },
+    {
+      "path": "ai-platform/src/vendor/entrypoint.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 2999,
+      "end": 3112,
+      "symbol": "setCeilingPolicy",
+      "primary_owner": "R8",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": [
+        "R1",
+        "R2",
+        "R4",
+        "R6",
+        "R7",
+        "R9"
+      ],
+      "tuple_index": 222
+    },
+    {
+      "path": "ai-platform/src/vendor/entrypoint.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 4459,
+      "end": 4462,
+      "symbol": "resume",
+      "primary_owner": "R8",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": [
+        "R1",
+        "R2",
+        "R4",
+        "R6",
+        "R7",
+        "R9"
+      ],
+      "tuple_index": 223
+    },
+    {
+      "path": "ai-platform/src/vendor/entrypoint.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 4746,
+      "end": 4764,
+      "symbol": "invokeClassH",
+      "primary_owner": "R8",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": [
+        "R1",
+        "R2",
+        "R4",
+        "R6",
+        "R7",
+        "R9"
+      ],
+      "tuple_index": 224
+    },
+    {
+      "path": "ai-platform/src/vendor/entrypoint.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 4765,
+      "end": 4781,
+      "symbol": "publishRoutingPolicy",
+      "primary_owner": "R8",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": [
+        "R1",
+        "R2",
+        "R4",
+        "R6",
+        "R7",
+        "R9"
+      ],
+      "tuple_index": 225
+    },
+    {
+      "path": "ai-platform/src/vendor/entrypoint.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 4782,
+      "end": 4808,
+      "symbol": "canaryRoutingPolicy",
+      "primary_owner": "R8",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": [
+        "R1",
+        "R2",
+        "R4",
+        "R6",
+        "R7",
+        "R9"
+      ],
+      "tuple_index": 226
+    },
+    {
+      "path": "ai-platform/src/vendor/entrypoint.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 4809,
+      "end": 4827,
+      "symbol": "promoteRoutingPolicy",
+      "primary_owner": "R8",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": [
+        "R1",
+        "R2",
+        "R4",
+        "R6",
+        "R7",
+        "R9"
+      ],
+      "tuple_index": 227
+    },
+    {
+      "path": "ai-platform/src/vendor/entrypoint.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 4828,
+      "end": 4846,
+      "symbol": "rollbackRoutingPolicy",
+      "primary_owner": "R8",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": [
+        "R1",
+        "R2",
+        "R4",
+        "R6",
+        "R7",
+        "R9"
+      ],
+      "tuple_index": 228
+    },
+    {
+      "path": "ai-platform/src/vendor/entrypoint.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 4847,
+      "end": 4865,
+      "symbol": "armKillSwitch",
+      "primary_owner": "R8",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": [
+        "R1",
+        "R2",
+        "R4",
+        "R6",
+        "R7",
+        "R9"
+      ],
+      "tuple_index": 229
+    },
+    {
+      "path": "ai-platform/src/vendor/entrypoint.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 4866,
+      "end": 4884,
+      "symbol": "disarmKillSwitch",
+      "primary_owner": "R8",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": [
+        "R1",
+        "R2",
+        "R4",
+        "R6",
+        "R7",
+        "R9"
+      ],
+      "tuple_index": 230
+    },
+    {
+      "path": "ai-platform/src/vendor/entrypoint.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 4885,
+      "end": 4897,
+      "symbol": "deprecateCapability",
+      "primary_owner": "R8",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": [
+        "R1",
+        "R2",
+        "R4",
+        "R6",
+        "R7",
+        "R9"
+      ],
+      "tuple_index": 231
+    },
+    {
+      "path": "ai-platform/src/vendor/entrypoint.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 4898,
+      "end": 4910,
+      "symbol": "retireCapability",
+      "primary_owner": "R8",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": [
+        "R1",
+        "R2",
+        "R4",
+        "R6",
+        "R7",
+        "R9"
+      ],
+      "tuple_index": 232
+    },
+    {
+      "path": "ai-platform/src/vendor/entrypoint.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 4911,
+      "end": 4922,
+      "symbol": "beginTokenContractRotation",
+      "primary_owner": "R8",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": [
+        "R1",
+        "R2",
+        "R4",
+        "R6",
+        "R7",
+        "R9"
+      ],
+      "tuple_index": 233
+    },
+    {
+      "path": "ai-platform/src/vendor/entrypoint.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 4923,
+      "end": 4935,
+      "symbol": "retireTokenContract",
+      "primary_owner": "R8",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": [
+        "R1",
+        "R2",
+        "R4",
+        "R6",
+        "R7",
+        "R9"
+      ],
+      "tuple_index": 234
+    },
+    {
+      "path": "ai-platform/src/vendor/entrypoint.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 4936,
+      "end": 4948,
+      "symbol": "activateCohort",
+      "primary_owner": "R8",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": [
+        "R1",
+        "R2",
+        "R4",
+        "R6",
+        "R7",
+        "R9"
+      ],
+      "tuple_index": 235
+    },
+    {
+      "path": "ai-platform/src/vendor/entrypoint.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 4949,
+      "end": 4961,
+      "symbol": "promoteCohort",
+      "primary_owner": "R8",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": [
+        "R1",
+        "R2",
+        "R4",
+        "R6",
+        "R7",
+        "R9"
+      ],
+      "tuple_index": 236
+    },
+    {
+      "path": "ai-platform/src/vendor/entrypoint.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 5040,
+      "end": 5071,
+      "symbol": "recordOperatorAction",
+      "primary_owner": "R8",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": [
+        "R1",
+        "R2",
+        "R4",
+        "R6",
+        "R7",
+        "R9"
+      ],
+      "tuple_index": 237
+    },
+    {
+      "path": "ai-platform/src/vendor/entrypoint.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 5072,
+      "end": 5125,
+      "symbol": "supportLookup",
+      "primary_owner": "R8",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": [
+        "R1",
+        "R2",
+        "R4",
+        "R6",
+        "R7",
+        "R9"
+      ],
+      "tuple_index": 238
+    }
+  ]
+}

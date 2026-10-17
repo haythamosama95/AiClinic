@@ -1,0 +1,431 @@
+{
+  "target": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+  "workspace_start": "a2545299b82fd0c22f92d316fb4790ce47c159c9",
+  "reviewer": {
+    "model": "gpt-6.1-sol",
+    "reasoning_effort": "medium"
+  },
+  "status": "complete_with_findings",
+  "primary_region_count": 25,
+  "primary_line_count": 1646,
+  "completed_regions": [
+    {
+      "path": "frontend/lib/features/ai/billing/administrator_billing_page.dart",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 1,
+      "end": 17,
+      "symbol": "preamble / imports / shared declarations",
+      "primary_owner": "R7",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": []
+    },
+    {
+      "path": "frontend/lib/features/ai/billing/administrator_billing_page.dart",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 18,
+      "end": 20,
+      "symbol": "_BillingStep",
+      "primary_owner": "R7",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": []
+    },
+    {
+      "path": "frontend/lib/features/ai/billing/administrator_billing_page.dart",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 21,
+      "end": 29,
+      "symbol": "AdministratorBillingPage",
+      "primary_owner": "R7",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": []
+    },
+    {
+      "path": "frontend/lib/features/ai/billing/administrator_billing_page.dart",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 30,
+      "end": 173,
+      "symbol": "_AdministratorBillingPageState",
+      "primary_owner": "R7",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": []
+    },
+    {
+      "path": "frontend/lib/features/ai/billing/commercial_notices.dart",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 1,
+      "end": 5,
+      "symbol": "preamble / imports / shared declarations",
+      "primary_owner": "R7",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": []
+    },
+    {
+      "path": "frontend/lib/features/ai/billing/commercial_notices.dart",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 6,
+      "end": 17,
+      "symbol": "CommercialNotices",
+      "primary_owner": "R7",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": []
+    },
+    {
+      "path": "frontend/lib/features/ai/billing/commercial_notices.dart",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 18,
+      "end": 87,
+      "symbol": "_CommercialNoticesState",
+      "primary_owner": "R7",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": []
+    },
+    {
+      "path": "frontend/lib/features/ai/billing/payment_history.dart",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 1,
+      "end": 4,
+      "symbol": "preamble / imports / shared declarations",
+      "primary_owner": "R7",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": []
+    },
+    {
+      "path": "frontend/lib/features/ai/billing/payment_history.dart",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 5,
+      "end": 16,
+      "symbol": "PaymentHistory",
+      "primary_owner": "R7",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": []
+    },
+    {
+      "path": "frontend/lib/features/ai/billing/payment_history.dart",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 17,
+      "end": 150,
+      "symbol": "_PaymentHistoryState",
+      "primary_owner": "R7",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": []
+    },
+    {
+      "path": "frontend/lib/features/ai/billing/subscription_summary.dart",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 1,
+      "end": 14,
+      "symbol": "preamble / imports / shared declarations",
+      "primary_owner": "R7",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": []
+    },
+    {
+      "path": "frontend/lib/features/ai/billing/subscription_summary.dart",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 15,
+      "end": 41,
+      "symbol": "SubscriptionSummaryData",
+      "primary_owner": "R7",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": []
+    },
+    {
+      "path": "frontend/lib/features/ai/billing/subscription_summary.dart",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 42,
+      "end": 57,
+      "symbol": "SubscriptionSummary",
+      "primary_owner": "R7",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": []
+    },
+    {
+      "path": "frontend/lib/features/ai/billing/subscription_summary.dart",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 58,
+      "end": 242,
+      "symbol": "_SubscriptionSummaryState",
+      "primary_owner": "R7",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": []
+    },
+    {
+      "path": "frontend/lib/features/ai/presentation/pages/ai_page.dart",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 1,
+      "end": 32,
+      "symbol": "preamble / imports / shared declarations",
+      "primary_owner": "R7",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": []
+    },
+    {
+      "path": "frontend/lib/features/ai/presentation/pages/ai_page.dart",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 33,
+      "end": 277,
+      "symbol": "LiveVisitSummaryComposition",
+      "primary_owner": "R7",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": []
+    },
+    {
+      "path": "frontend/lib/features/ai/presentation/pages/ai_page.dart",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 278,
+      "end": 287,
+      "symbol": "LiveVisitSummaryHostWidget",
+      "primary_owner": "R7",
+      "changed": false,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": []
+    },
+    {
+      "path": "frontend/lib/features/ai/presentation/pages/ai_page.dart",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 288,
+      "end": 355,
+      "symbol": "_LiveVisitSummaryHostWidgetState",
+      "primary_owner": "R7",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": []
+    },
+    {
+      "path": "frontend/lib/features/ai/presentation/pages/ai_page.dart",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 356,
+      "end": 362,
+      "symbol": "AiPage",
+      "primary_owner": "R7",
+      "changed": false,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": []
+    },
+    {
+      "path": "frontend/lib/features/ai/presentation/pages/ai_page.dart",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 363,
+      "end": 619,
+      "symbol": "_AiPageState",
+      "primary_owner": "R7",
+      "changed": false,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": []
+    },
+    {
+      "path": "frontend/lib/features/ai/presentation/pages/ai_page.dart",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 620,
+      "end": 652,
+      "symbol": "_AiFeatureSection",
+      "primary_owner": "R7",
+      "changed": false,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": []
+    },
+    {
+      "path": "frontend/lib/features/ai/presentation/pages/ai_page.dart",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 653,
+      "end": 661,
+      "symbol": "_LiveVisitSummaryHost",
+      "primary_owner": "R7",
+      "changed": false,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": []
+    },
+    {
+      "path": "frontend/lib/features/ai/presentation/pages/ai_page.dart",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 662,
+      "end": 716,
+      "symbol": "_LiveVisitSummaryHostState",
+      "primary_owner": "R7",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": []
+    },
+    {
+      "path": "frontend/lib/l10n/app_ar.arb",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 1,
+      "end": 139,
+      "symbol": "preamble / imports / shared declarations",
+      "primary_owner": "R7",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": []
+    },
+    {
+      "path": "frontend/lib/l10n/app_en.arb",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 1,
+      "end": 139,
+      "symbol": "preamble / imports / shared declarations",
+      "primary_owner": "R7",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": []
+    }
+  ],
+  "unread_regions": [],
+  "supporting_ranges": [
+    {
+      "path": "frontend/lib/features/ai/billing/checkout_screen.dart",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 1,
+      "end": 95,
+      "purpose": "Bounded live composition, current role/resume, checkout refresh and consumer causality"
+    },
+    {
+      "path": "frontend/lib/features/ai/billing/checkout_screen.dart",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 110,
+      "end": 165,
+      "purpose": "Bounded live composition, current role/resume, checkout refresh and consumer causality"
+    },
+    {
+      "path": "frontend/lib/features/ai/billing/checkout_screen.dart",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 250,
+      "end": 380,
+      "purpose": "Bounded live composition, current role/resume, checkout refresh and consumer causality"
+    },
+    {
+      "path": "frontend/lib/features/ai/host/ai_feature_host_page.dart",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 120,
+      "end": 214,
+      "purpose": "Bounded live composition, current role/resume, checkout refresh and consumer causality"
+    },
+    {
+      "path": "frontend/lib/features/ai/host/ai_feature_host_page.dart",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 232,
+      "end": 268,
+      "purpose": "Bounded live composition, current role/resume, checkout refresh and consumer causality"
+    },
+    {
+      "path": "frontend/lib/features/ai/host/ai_feature_host_page.dart",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 290,
+      "end": 291,
+      "purpose": "Bounded live composition, current role/resume, checkout refresh and consumer causality"
+    },
+    {
+      "path": "frontend/lib/features/ai/host/ai_feature_host_page.dart",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 338,
+      "end": 465,
+      "purpose": "Bounded live composition, current role/resume, checkout refresh and consumer causality"
+    },
+    {
+      "path": "frontend/lib/features/ai/host/ai_feature_host_page.dart",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 470,
+      "end": 545,
+      "purpose": "Bounded live composition, current role/resume, checkout refresh and consumer causality"
+    },
+    {
+      "path": "frontend/lib/features/ai/surface/first_ai_feature_surface.dart",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 174,
+      "end": 202,
+      "purpose": "Bounded live composition, current role/resume, checkout refresh and consumer causality"
+    },
+    {
+      "path": "frontend/lib/core/ai/usage_summary_client.dart",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 45,
+      "end": 100,
+      "purpose": "Bounded live composition, current role/resume, checkout refresh and consumer causality"
+    },
+    {
+      "path": "frontend/lib/app/app.dart",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 44,
+      "end": 94,
+      "purpose": "Bounded live composition, current role/resume, checkout refresh and consumer causality"
+    },
+    {
+      "path": "frontend/lib/app/router.dart",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 28,
+      "end": 44,
+      "purpose": "Bounded live composition, current role/resume, checkout refresh and consumer causality"
+    },
+    {
+      "path": "frontend/lib/app/router.dart",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 110,
+      "end": 134,
+      "purpose": "Bounded live composition, current role/resume, checkout refresh and consumer causality"
+    },
+    {
+      "path": "frontend/lib/features/ai/availability/ai_availability.dart",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 1,
+      "end": 55,
+      "purpose": "Verify AiStatusNotice graceDaysLeft property and wire mapping for UI3 recipe"
+    }
+  ],
+  "findings": [
+    {
+      "id": "R7-UI1",
+      "severity": "P1",
+      "implementation_ready": true
+    },
+    {
+      "id": "R7-UI2",
+      "severity": "P2",
+      "implementation_ready": true
+    },
+    {
+      "id": "R7-UI3",
+      "severity": "P3",
+      "optional": true,
+      "implementation_ready": true
+    }
+  ],
+  "escalations": {
+    "079:2": "Desktop consumer disposition in report; producer/parser lead-owned",
+    "079:3": "Desktop consumer disposition in report; producer/parser lead-owned",
+    "079:5": "Desktop consumer disposition in report; producer/parser lead-owned",
+    "088:2": "Desktop consumer disposition in report; producer/parser lead-owned",
+    "088:4": "Desktop consumer disposition in report; producer/parser lead-owned",
+    "088:5": "Desktop consumer disposition in report; producer/parser lead-owned",
+    "091:1": "Desktop consumer disposition in report; producer/parser lead-owned"
+  },
+  "excluded_reference_escalations": [
+    "092:1"
+  ],
+  "canonical_prior_findings": [
+    "R3-C1",
+    "R3-M6"
+  ],
+  "open_seams": [],
+  "notes": [
+    "Static target-only review. No tests/builds/lint/services/research/source edits.",
+    "All 25 assigned tuples read; source correctness claims exclude test-only adapter behavior.",
+    "Embedded fixture host269\u2013289 incidentally displayed, not analyzed or used, excluded from support correctness coverage.",
+    "Usage snapshot consumer and reactive host status are desktop_transport-owned; ABO/AboClient are lead-owned.",
+    "No asserted production org-switch exposure; no persisted wrong-patient write claim; current term-parser failure masks gauge/ref/plan leak."
+  ]
+}

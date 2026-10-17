@@ -1,0 +1,614 @@
+{
+  "target": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+  "workspace_start": "a2545299b82fd0c22f92d316fb4790ce47c159c9",
+  "reviewer": {
+    "model": "gpt-6.1-sol",
+    "reasoning_effort": "medium"
+  },
+  "regions": [
+    {
+      "path": "ai-platform/src/coverage-read/index.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 1,
+      "end": 19,
+      "symbol": "preamble / imports / shared declarations",
+      "primary_owner": "R7",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": []
+    },
+    {
+      "path": "ai-platform/src/coverage-read/index.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 20,
+      "end": 21,
+      "symbol": "QUOTA_DO_RPC_URL",
+      "primary_owner": "R7",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": []
+    },
+    {
+      "path": "ai-platform/src/coverage-read/index.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 22,
+      "end": 29,
+      "symbol": "CoverageReadEnv",
+      "primary_owner": "R7",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": []
+    },
+    {
+      "path": "ai-platform/src/coverage-read/index.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 30,
+      "end": 41,
+      "symbol": "unauthenticatedResponse",
+      "primary_owner": "R7",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": []
+    },
+    {
+      "path": "ai-platform/src/coverage-read/index.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 42,
+      "end": 68,
+      "symbol": "callReadCoverage",
+      "primary_owner": "R7",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": []
+    },
+    {
+      "path": "ai-platform/src/coverage-read/index.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 69,
+      "end": 145,
+      "symbol": "handleCoverageReadRequest",
+      "primary_owner": "R7",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": []
+    },
+    {
+      "path": "ai-platform/src/quota-do/coverage.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 88,
+      "end": 96,
+      "symbol": "PlanSnapshot",
+      "primary_owner": "R7",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": [
+        "R4",
+        "R5",
+        "R6",
+        "R9"
+      ]
+    },
+    {
+      "path": "ai-platform/src/quota-do/coverage.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 146,
+      "end": 152,
+      "symbol": "ReadCoverageRequest",
+      "primary_owner": "R7",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": [
+        "R4",
+        "R5",
+        "R6",
+        "R9"
+      ]
+    },
+    {
+      "path": "ai-platform/src/quota-do/coverage.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 153,
+      "end": 159,
+      "symbol": "ReadCoverageResponse",
+      "primary_owner": "R7",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": [
+        "R4",
+        "R5",
+        "R6",
+        "R9"
+      ]
+    },
+    {
+      "path": "ai-platform/src/quota-do/coverage.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 288,
+      "end": 314,
+      "symbol": "snapshotTermObject",
+      "primary_owner": "R7",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": [
+        "R4",
+        "R5",
+        "R6",
+        "R9"
+      ]
+    },
+    {
+      "path": "ai-platform/src/quota-do/coverage.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 315,
+      "end": 324,
+      "symbol": "lastEndedTermForSnapshot",
+      "primary_owner": "R7",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": [
+        "R4",
+        "R5",
+        "R6",
+        "R9"
+      ]
+    },
+    {
+      "path": "ai-platform/src/quota-do/coverage.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 325,
+      "end": 335,
+      "symbol": "lapsedSnapshotReason",
+      "primary_owner": "R7",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": [
+        "R4",
+        "R5",
+        "R6",
+        "R9"
+      ]
+    },
+    {
+      "path": "ai-platform/src/quota-do/coverage.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 336,
+      "end": 351,
+      "symbol": "coverageSnapshotHotFields",
+      "primary_owner": "R7",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": [
+        "R4",
+        "R5",
+        "R6",
+        "R9"
+      ]
+    },
+    {
+      "path": "ai-platform/src/quota-do/coverage.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 352,
+      "end": 380,
+      "symbol": "buildSnapshotTermsArray",
+      "primary_owner": "R7",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": [
+        "R4",
+        "R5",
+        "R6",
+        "R9"
+      ]
+    },
+    {
+      "path": "ai-platform/src/quota-do/coverage.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 381,
+      "end": 461,
+      "symbol": "buildCoverageSnapshot",
+      "primary_owner": "R7",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": [
+        "R4",
+        "R5",
+        "R6",
+        "R9"
+      ]
+    },
+    {
+      "path": "ai-platform/src/quota-do/coverage.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 2035,
+      "end": 2087,
+      "symbol": "readCoverageRPC",
+      "primary_owner": "R7",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": [
+        "R4",
+        "R5",
+        "R6",
+        "R9"
+      ]
+    },
+    {
+      "path": "ai-platform/src/quota-do/coverage.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 2552,
+      "end": 2557,
+      "symbol": "MirrorTermView",
+      "primary_owner": "R7",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": [
+        "R4",
+        "R5",
+        "R6",
+        "R9"
+      ]
+    },
+    {
+      "path": "ai-platform/src/quota-do/coverage.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 2558,
+      "end": 2588,
+      "symbol": "mirrorTermViewFromSnapshot",
+      "primary_owner": "R7",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": [
+        "R4",
+        "R5",
+        "R6",
+        "R9"
+      ]
+    },
+    {
+      "path": "ai-platform/src/quota-do/coverage.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 2589,
+      "end": 2657,
+      "symbol": "mirrorFromSnapshot",
+      "primary_owner": "R7",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": [
+        "R4",
+        "R5",
+        "R6",
+        "R9"
+      ]
+    },
+    {
+      "path": "ai-platform/src/quota-do/coverage.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 3076,
+      "end": 3082,
+      "symbol": "sqlNullableString",
+      "primary_owner": "R7",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": [
+        "R4",
+        "R5",
+        "R6",
+        "R9"
+      ]
+    },
+    {
+      "path": "ai-platform/src/quota-do/coverage.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 3083,
+      "end": 3089,
+      "symbol": "sqlNullableNumber",
+      "primary_owner": "R7",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": [
+        "R4",
+        "R5",
+        "R6",
+        "R9"
+      ]
+    },
+    {
+      "path": "ai-platform/src/quota-do/coverage.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 3305,
+      "end": 3306,
+      "symbol": "SnapshotTermEntry",
+      "primary_owner": "R7",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": [
+        "R4",
+        "R5",
+        "R6",
+        "R9"
+      ]
+    },
+    {
+      "path": "ai-platform/src/quota-do/coverage.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 3719,
+      "end": 3745,
+      "symbol": "findGrantAppliedSnapshotForGrant",
+      "primary_owner": "R7",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": [
+        "R4",
+        "R5",
+        "R6",
+        "R9"
+      ]
+    },
+    {
+      "path": "ai-platform/src/vendor/entrypoint.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 4516,
+      "end": 4557,
+      "symbol": "inspectCoverage",
+      "primary_owner": "R7",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": [
+        "R1",
+        "R2",
+        "R4",
+        "R6",
+        "R8",
+        "R9"
+      ]
+    },
+    {
+      "path": "ai-platform/src/vendor/entrypoint.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 4558,
+      "end": 4596,
+      "symbol": "getCoverage",
+      "primary_owner": "R7",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": [
+        "R1",
+        "R2",
+        "R4",
+        "R6",
+        "R8",
+        "R9"
+      ]
+    },
+    {
+      "path": "ai-platform/src/vendor/entrypoint.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 4597,
+      "end": 4666,
+      "symbol": "listGrants",
+      "primary_owner": "R7",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": [
+        "R1",
+        "R2",
+        "R4",
+        "R6",
+        "R8",
+        "R9"
+      ]
+    },
+    {
+      "path": "ai-platform/src/vendor/entrypoint.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 4667,
+      "end": 4745,
+      "symbol": "readCoverageEvents",
+      "primary_owner": "R7",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": [
+        "R1",
+        "R2",
+        "R4",
+        "R6",
+        "R8",
+        "R9"
+      ]
+    },
+    {
+      "path": "ai-platform/src/vendor/entrypoint.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 5126,
+      "end": 5146,
+      "symbol": "feedConsumerHealth",
+      "primary_owner": "R7",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": [
+        "R1",
+        "R2",
+        "R4",
+        "R6",
+        "R8",
+        "R9"
+      ]
+    },
+    {
+      "path": "backend/supabase/migrations/20261007230000_coverage_feed_puller_status.sql",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 1,
+      "end": 11,
+      "symbol": "preamble / imports / shared declarations",
+      "primary_owner": "R7",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": []
+    },
+    {
+      "path": "backend/supabase/migrations/20261007230000_coverage_feed_puller_status.sql",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 12,
+      "end": 35,
+      "symbol": "ai_internal.clinic_ai_coverage",
+      "primary_owner": "R7",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": []
+    },
+    {
+      "path": "backend/supabase/migrations/20261007230000_coverage_feed_puller_status.sql",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 36,
+      "end": 41,
+      "symbol": "clinic_ai_coverage_deny_all",
+      "primary_owner": "R7",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": []
+    },
+    {
+      "path": "backend/supabase/migrations/20261007230000_coverage_feed_puller_status.sql",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 42,
+      "end": 52,
+      "symbol": "ai_internal.feed_state",
+      "primary_owner": "R7",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": []
+    },
+    {
+      "path": "backend/supabase/migrations/20261007230000_coverage_feed_puller_status.sql",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 53,
+      "end": 75,
+      "symbol": "feed_state_deny_all",
+      "primary_owner": "R7",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": []
+    },
+    {
+      "path": "backend/supabase/migrations/20261007230000_coverage_feed_puller_status.sql",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 76,
+      "end": 82,
+      "symbol": "ai_internal.status_refresh",
+      "primary_owner": "R7",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": []
+    },
+    {
+      "path": "backend/supabase/migrations/20261007230000_coverage_feed_puller_status.sql",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 83,
+      "end": 104,
+      "symbol": "status_refresh_deny_all",
+      "primary_owner": "R7",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": []
+    },
+    {
+      "path": "backend/supabase/migrations/20261007230000_coverage_feed_puller_status.sql",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 105,
+      "end": 378,
+      "symbol": "auth_internal.pull_coverage_feed",
+      "primary_owner": "R7",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": []
+    },
+    {
+      "path": "backend/supabase/migrations/20261007230000_coverage_feed_puller_status.sql",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 379,
+      "end": 441,
+      "symbol": "auth_internal.get_ai_status",
+      "primary_owner": "R7",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": []
+    },
+    {
+      "path": "backend/supabase/migrations/20261007230000_coverage_feed_puller_status.sql",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 442,
+      "end": 470,
+      "symbol": "public.get_ai_status",
+      "primary_owner": "R7",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": []
+    },
+    {
+      "path": "backend/supabase/migrations/20261007230000_coverage_feed_puller_status.sql",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 471,
+      "end": 533,
+      "symbol": "auth_internal.request_ai_status_refresh",
+      "primary_owner": "R7",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": []
+    },
+    {
+      "path": "backend/supabase/migrations/20261007230000_coverage_feed_puller_status.sql",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 534,
+      "end": 557,
+      "symbol": "public.request_ai_status_refresh",
+      "primary_owner": "R7",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": []
+    },
+    {
+      "path": "backend/supabase/migrations/20261008010000_read_time_status_notices.sql",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 1,
+      "end": 8,
+      "symbol": "preamble / imports / shared declarations",
+      "primary_owner": "R7",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": []
+    },
+    {
+      "path": "backend/supabase/migrations/20261008010000_read_time_status_notices.sql",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 9,
+      "end": 320,
+      "symbol": "auth_internal.get_ai_status",
+      "primary_owner": "R7",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": []
+    },
+    {
+      "path": "backend/supabase/migrations/20261008010000_read_time_status_notices.sql",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 321,
+      "end": 349,
+      "symbol": "public.get_ai_status",
+      "primary_owner": "R7",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": []
+    },
+    {
+      "path": "backend/supabase/migrations/20261008010000_read_time_status_notices.sql",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 350,
+      "end": 463,
+      "symbol": "public.get_ai_billing_status",
+      "primary_owner": "R7",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": []
+    }
+  ]
+}

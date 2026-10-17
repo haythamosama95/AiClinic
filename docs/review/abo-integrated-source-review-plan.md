@@ -1,6 +1,6 @@
 # ABO integrated source-code review plan
 
-Status: review in progress. Prepared: 2026-10-16.
+Status: review complete. Prepared: 2026-10-16. Completed: 2026-10-18 (Africa/Cairo). Review completion does not approve launch or resolve findings.
 Reviewer for **every review phase R1–R10: GPT-6.1 Sol at explicitly selected high or medium reasoning effort only**, in a fresh context per phase. Light/low effort and unpinned defaults are not permitted for review or synthesis.
 Track execution in the [phase status table](#8-phase-status-tracker). Each agent must update its row when starting, checkpointing or completing its phase.
 
@@ -417,10 +417,10 @@ This table is the shared execution record. All rows below refer to target `T` pi
 | R4 | Grants, coverage and term lifecycle | complete with findings | [Report](abo-integrated/R4-grants-coverage-term-lifecycle.md) · [Coverage](abo-integrated/R4-coverage.md) | 2026-10-17 | 0 P0, 8 P1, 3 P2; all 148 primary regions closed by explicitly GPT-6.1 Sol/high reviewers and synthesis. Historical ambiguous-data adjudication remains a fail-closed limit; source unchanged. |
 | R5 | Admission, accounting and fallback | complete with findings | [Report](abo-integrated/R5-admission-accounting-fallback.md) · [Coverage](abo-integrated/R5-coverage.md) | 2026-10-17 | 0 P0, 6 P1, 5 P2; all 555 regions/10,234 final+303 deleted lines closed by explicit high lead and two medium reviewers. Outage replay policy and historical attribution decisions remain explicit; source unchanged. |
 | R6 | Reversals, transfer and deletion | complete with findings | [Report](abo-integrated/R6-reversals-transfer-deletion.md) · [Coverage](abo-integrated/R6-coverage.md) · [Checkpoint](abo-integrated/R6-checkpoint.md) | 2026-10-17 | 0 P0, 10 P1, 3 P2; all 230 regions/6,044 lines closed by explicit Sol/high lead and three Sol/medium reviewers. Provider cumulative and historical-data adjudication limits explicit; source unchanged. |
-| R7 | Feed, projection and desktop state | not started | — | — | — |
-| R8 | Operator control and configuration | not started | — | — | — |
-| R9 | Durability, recovery and operations | not started | — | — | — |
-| R10 | Integrated review and final synthesis | not started | — | — | — |
+| R7 | Feed, projection and desktop state | complete with findings | [Report](abo-integrated/R7-feed-projection-desktop-state.md) · [Coverage](abo-integrated/R7-coverage.md) · [Checkpoint](abo-integrated/R7-checkpoint.md) | 2026-10-17 | 0 P0, 1 P1, 10 P2, 1 optional P3; all 204 tuples/7,969 lines and 27 escalations closed by explicit Sol/high lead + three Sol/medium slices. Pinned T read via git source; later workspace HEAD a2545299 source excluded; application unchanged. |
+| R8 | Operator control and configuration | complete with findings | [Report](abo-integrated/R8-operator-control-configuration.md) · [Coverage](abo-integrated/R8-coverage.md) · [Checkpoint](abo-integrated/R8-checkpoint.md) | 2026-10-17 | 0 P0, 3 P1, 11 P2; all 239 tuples/4,469 final+1,951 deleted lines and 24 escalations closed by Sol/high lead + three Sol/medium slices. Pinned T/B source; later workspace HEAD excluded; application unchanged. Historical evidence stops explicit. |
+| R9 | Durability, recovery and operations | complete with findings | [Report](abo-integrated/R9-durability-recovery-operations.md) · [Coverage](abo-integrated/R9-coverage.md) · [Checkpoint](abo-integrated/R9-checkpoint.md) | 2026-10-18 | 0 P0, 13 P1, 7 P2, 1 optional P3; all457 tuples accounted:7,529 actual primary lines+252 excluded embedded-fixture lines;13,800 supporting lines separated as actual/parsed metadata,135 operational expansion lines;37 escalations closed by Sol/high lead+three Sol/medium slices. Historical/external adapter decisions explicit; pinned T source, newer HEAD unchanged. |
+| R10 | Integrated review and final synthesis | complete with findings | [Final report](abo-integrated/R10-integrated-final-review.md) · [Coverage](abo-integrated/R10-coverage.md) · [Global closure](abo-integrated/R10-global-closure.json) | 2026-10-18 | All eight narratives source-backed; 4,805 unique selected T lines; 2,540 regions and all 75 escalation routes reconciled with zero gaps. No new findings; 111 canonical inherited IDs (0 P0/57 P1/52 P2/2 optional P3). Explicit high lead + two medium reviewers; source unchanged. Review complete, no launch approval. |
 
 **Agent update rules:**
 

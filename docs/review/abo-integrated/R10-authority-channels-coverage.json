@@ -1,0 +1,185 @@
+{
+  "target": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+  "reviewer": "/root/abo_r10_final/authority_channels",
+  "model": "GPT-6.1 Sol",
+  "reasoning_effort": "medium",
+  "status": "complete with inherited findings",
+  "narratives": [
+    2,
+    5,
+    6,
+    8
+  ],
+  "unique_production_lines": 2241,
+  "reads": [
+    {
+      "path": "ai-platform/src/identity/index.ts",
+      "start": 199,
+      "end": 555,
+      "line_count": 357,
+      "sha256": "a06f636ec4a6e847f8cb813de4e67a530c12f70e6dbc772bc3fdad8d05fe8310",
+      "role": "selected-source seam"
+    },
+    {
+      "path": "ai-platform/src/coverage/transfer.ts",
+      "start": 231,
+      "end": 309,
+      "line_count": 79,
+      "sha256": "68a93cd6dad84e4666e1bc70560942c3ce587473cf0765c146ca789e8d494ae7",
+      "role": "selected-source seam"
+    },
+    {
+      "path": "ai-platform/src/coverage/transfer.ts",
+      "start": 320,
+      "end": 520,
+      "line_count": 201,
+      "sha256": "2b1c5f589f8ea512a44a95ec8229f481212e717b9c3b3fad7c8b2fd36eea814e",
+      "role": "selected-source seam"
+    },
+    {
+      "path": "ai-platform/src/coverage/transfer.ts",
+      "start": 617,
+      "end": 750,
+      "line_count": 134,
+      "sha256": "ddbcfce974b088c4d72630dabb969a0b32ad05cd73dfec228553ed33606ded89",
+      "role": "selected-source seam"
+    },
+    {
+      "path": "abo/src/clinic-api/auth.ts",
+      "start": 1,
+      "end": 310,
+      "line_count": 310,
+      "sha256": "455b71aa952b6c84aa5ed84c56fe92bc5503e7b145f2376e671d0ec618008de0",
+      "role": "selected-source seam"
+    },
+    {
+      "path": "abo/src/clinic-api/version.ts",
+      "start": 1,
+      "end": 142,
+      "line_count": 142,
+      "sha256": "5950d50ce5fa08889b0fc7eaf5587596fc6520d97f6b28b4429135278980a44d",
+      "role": "selected-source seam"
+    },
+    {
+      "path": "ai-platform/src/vendor/contract-version.ts",
+      "start": 1,
+      "end": 49,
+      "line_count": 49,
+      "sha256": "dde4941b6cadd94133d718444931f5760348f64cc4212a3189124396f54d36fc",
+      "role": "selected-source seam"
+    },
+    {
+      "path": "frontend/lib/features/ai/billing/billing_token_client.dart",
+      "start": 1,
+      "end": 128,
+      "line_count": 128,
+      "sha256": "2e6371fa1edd6952dcc14804714a75870c5b0b080c3df3e57b98f2bb2fc9b219",
+      "role": "selected-source seam"
+    },
+    {
+      "path": "frontend/lib/core/ai/ai_client_sdk.dart",
+      "start": 1,
+      "end": 145,
+      "line_count": 145,
+      "sha256": "44e8b3261eca6f6e50040fad672d02b4815c8c72ba50211d3a267cf0216cdace",
+      "role": "selected-source seam"
+    },
+    {
+      "path": "frontend/lib/app/providers/ai_shell_status_provider.dart",
+      "start": 1,
+      "end": 85,
+      "line_count": 85,
+      "sha256": "6fb2a0fc4de9b0b7178caa19f13a2f20e68e1021b318a50f68eda5275c75d608",
+      "role": "selected-source seam"
+    },
+    {
+      "path": "abo/src/ops/index.ts",
+      "start": 677,
+      "end": 775,
+      "line_count": 99,
+      "sha256": "0edf14eae3b144fee00658c9f1f2af0972dc325186bb831458181717d5cd9674",
+      "role": "selected-source seam"
+    },
+    {
+      "path": "ai-platform/src/vendor/entrypoint.ts",
+      "start": 333,
+      "end": 390,
+      "line_count": 58,
+      "sha256": "eb8387dc4fa5cf13f8740ccb1dd301629065a18467454ab430f12a993b6c71e4",
+      "role": "selected-source seam"
+    },
+    {
+      "path": "ai-platform/src/vendor/entrypoint.ts",
+      "start": 620,
+      "end": 686,
+      "line_count": 67,
+      "sha256": "a4bb6258526f360ea598db93864cafe16058c18fd782a4c7fa5f4ea301ef4abf",
+      "role": "selected-source seam"
+    },
+    {
+      "path": "ai-platform/src/vendor/entrypoint.ts",
+      "start": 750,
+      "end": 880,
+      "line_count": 131,
+      "sha256": "c3b259609184a965c6292b94ab0b3ce0750685476a133f2e36a5f789d7f2d0c6",
+      "role": "selected-source seam"
+    },
+    {
+      "path": "ai-platform/src/vendor/entrypoint.ts",
+      "start": 1129,
+      "end": 1284,
+      "line_count": 156,
+      "sha256": "6017da6416f38763379c27b645a51a4e1cf4432c78019860344cecc80871ca52",
+      "role": "selected-source seam"
+    },
+    {
+      "path": "ai-platform/src/vendor/entrypoint.ts",
+      "start": 3490,
+      "end": 3535,
+      "line_count": 46,
+      "sha256": "92bbfcedc77cd0334c9e5b36969fe38117f105c94ea94c23577b5c6a8df0b1ab",
+      "role": "selected-source seam"
+    },
+    {
+      "path": "ai-platform/src/vendor/entrypoint.ts",
+      "start": 3970,
+      "end": 4000,
+      "line_count": 31,
+      "sha256": "10fdd0c6e350b8c51521940d9c91f68fd8c9e56c70139c5ccf5d54759fe32592",
+      "role": "selected-source seam"
+    },
+    {
+      "path": "ai-platform/src/coverage/transfer.ts",
+      "start": 92,
+      "end": 114,
+      "line_count": 23,
+      "sha256": "33029355eb7b06abe72594408af6a0429cd1af1c6e05ee273189e633aff1e0e9",
+      "role": "selected-source seam"
+    }
+  ],
+  "unread": [],
+  "exclusions": [
+    "tests",
+    "fixtures",
+    "vectors",
+    "builds",
+    "live operations",
+    "DO mutation bodies owned by value reviewer"
+  ],
+  "new_findings": [],
+  "source_execution": "git show reads only; no runtime/build/test execution",
+  "supporting_reports": [
+    "R1-consumer-review.md",
+    "R1-sql-review.md",
+    "R2-contracts-perimeter-human-approval.md",
+    "R6-reversals-transfer-deletion.md",
+    "R6-do-mutations.md",
+    "R7-feed-projection-desktop-state.md",
+    "R8-operator-control-configuration.md",
+    "R9-durability-recovery-operations.md"
+  ],
+  "integration_handoffs": {
+    "value_reviewer": "late grant/void/settlement and DO replay body evidence; original signed version preservation",
+    "lead": "SQL status/feed/perimeter and epoch page application source"
+  }
+}

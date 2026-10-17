@@ -1,0 +1,1852 @@
+{
+  "phase": "R9",
+  "target": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+  "slice": "aboops",
+  "model": "GPT-6.1 Sol",
+  "effort": "medium",
+  "reviewer": "GPT-6.1 Sol",
+  "reasoning_effort": "medium (explicit launch)",
+  "status": "complete with findings",
+  "completed_regions": [
+    {
+      "path": "abo/src/alert/index.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 1,
+      "end": 2,
+      "symbol": "preamble / imports / shared declarations",
+      "primary_owner": "R9",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": [],
+      "status": "complete",
+      "read_method": "git show T:path, numbered bounded source"
+    },
+    {
+      "path": "abo/src/alert/index.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 3,
+      "end": 18,
+      "symbol": "AlertEnv",
+      "primary_owner": "R9",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": [],
+      "status": "complete",
+      "read_method": "git show T:path, numbered bounded source"
+    },
+    {
+      "path": "abo/src/alert/index.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 19,
+      "end": 19,
+      "symbol": "ONE_HOUR_MS",
+      "primary_owner": "R9",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": [],
+      "status": "complete",
+      "read_method": "git show T:path, numbered bounded source"
+    },
+    {
+      "path": "abo/src/alert/index.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 20,
+      "end": 21,
+      "symbol": "ONE_DAY_MS",
+      "primary_owner": "R9",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": [],
+      "status": "complete",
+      "read_method": "git show T:path, numbered bounded source"
+    },
+    {
+      "path": "abo/src/alert/index.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 22,
+      "end": 22,
+      "symbol": "EXPORT_LAG_ALERT_KEY",
+      "primary_owner": "R9",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": [],
+      "status": "complete",
+      "read_method": "git show T:path, numbered bounded source"
+    },
+    {
+      "path": "abo/src/alert/index.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 23,
+      "end": 23,
+      "symbol": "R2_LOCK_ALERT_KEY",
+      "primary_owner": "R9",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": [],
+      "status": "complete",
+      "read_method": "git show T:path, numbered bounded source"
+    },
+    {
+      "path": "abo/src/alert/index.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 24,
+      "end": 25,
+      "symbol": "ALERT_CODE",
+      "primary_owner": "R9",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": [],
+      "status": "complete",
+      "read_method": "git show T:path, numbered bounded source"
+    },
+    {
+      "path": "abo/src/alert/index.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 26,
+      "end": 42,
+      "symbol": "AlertCode",
+      "primary_owner": "R9",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": [],
+      "status": "complete",
+      "read_method": "git show T:path, numbered bounded source"
+    },
+    {
+      "path": "abo/src/alert/index.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 43,
+      "end": 52,
+      "symbol": "AlertRow",
+      "primary_owner": "R9",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": [],
+      "status": "complete",
+      "read_method": "git show T:path, numbered bounded source"
+    },
+    {
+      "path": "abo/src/alert/index.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 53,
+      "end": 56,
+      "symbol": "alertEmailText",
+      "primary_owner": "R9",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": [],
+      "status": "complete",
+      "read_method": "git show T:path, numbered bounded source"
+    },
+    {
+      "path": "abo/src/alert/index.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 57,
+      "end": 77,
+      "symbol": "nextSendAtForCode",
+      "primary_owner": "R9",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": [],
+      "status": "complete",
+      "read_method": "git show T:path, numbered bounded source"
+    },
+    {
+      "path": "abo/src/alert/index.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 78,
+      "end": 90,
+      "symbol": "readAlert",
+      "primary_owner": "R9",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": [],
+      "status": "complete",
+      "read_method": "git show T:path, numbered bounded source"
+    },
+    {
+      "path": "abo/src/alert/index.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 91,
+      "end": 122,
+      "symbol": "activateExportLagAlert",
+      "primary_owner": "R9",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": [],
+      "status": "complete",
+      "read_method": "git show T:path, numbered bounded source"
+    },
+    {
+      "path": "abo/src/alert/index.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 123,
+      "end": 134,
+      "symbol": "clearAlert",
+      "primary_owner": "R9",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": [],
+      "status": "complete",
+      "read_method": "git show T:path, numbered bounded source"
+    },
+    {
+      "path": "abo/src/alert/index.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 135,
+      "end": 139,
+      "symbol": "OldestUnexported",
+      "primary_owner": "R9",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": [],
+      "status": "complete",
+      "read_method": "git show T:path, numbered bounded source"
+    },
+    {
+      "path": "abo/src/alert/index.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 140,
+      "end": 154,
+      "symbol": "oldestUnexportedFact",
+      "primary_owner": "R9",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": [],
+      "status": "complete",
+      "read_method": "git show T:path, numbered bounded source"
+    },
+    {
+      "path": "abo/src/alert/index.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 155,
+      "end": 165,
+      "symbol": "clearExportLagWhenResolved",
+      "primary_owner": "R9",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": [],
+      "status": "complete",
+      "read_method": "git show T:path, numbered bounded source"
+    },
+    {
+      "path": "abo/src/alert/index.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 166,
+      "end": 181,
+      "symbol": "markExportLagIfDue",
+      "primary_owner": "R9",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": [],
+      "status": "complete",
+      "read_method": "git show T:path, numbered bounded source"
+    },
+    {
+      "path": "abo/src/alert/index.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 182,
+      "end": 199,
+      "symbol": "markRepeatDueIfNeeded",
+      "primary_owner": "R9",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": [],
+      "status": "complete",
+      "read_method": "git show T:path, numbered bounded source"
+    },
+    {
+      "path": "abo/src/alert/index.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 200,
+      "end": 233,
+      "symbol": "raiseAlert",
+      "primary_owner": "R9",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": [],
+      "status": "complete",
+      "read_method": "git show T:path, numbered bounded source"
+    },
+    {
+      "path": "abo/src/alert/index.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 234,
+      "end": 261,
+      "symbol": "sendAlertRow",
+      "primary_owner": "R9",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": [],
+      "status": "complete",
+      "read_method": "git show T:path, numbered bounded source"
+    },
+    {
+      "path": "abo/src/alert/index.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 262,
+      "end": 281,
+      "symbol": "sendDueAlerts",
+      "primary_owner": "R9",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": [],
+      "status": "complete",
+      "read_method": "git show T:path, numbered bounded source"
+    },
+    {
+      "path": "abo/src/alert/lock.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 1,
+      "end": 2,
+      "symbol": "preamble / imports / shared declarations",
+      "primary_owner": "R9",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": [],
+      "status": "complete",
+      "read_method": "git show T:path, numbered bounded source"
+    },
+    {
+      "path": "abo/src/alert/lock.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 3,
+      "end": 3,
+      "symbol": "R2_LOCK_ALERT_KEY",
+      "primary_owner": "R9",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": [],
+      "status": "complete",
+      "read_method": "git show T:path, numbered bounded source"
+    },
+    {
+      "path": "abo/src/alert/lock.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 4,
+      "end": 5,
+      "symbol": "ALERT_CODE",
+      "primary_owner": "R9",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": [],
+      "status": "complete",
+      "read_method": "git show T:path, numbered bounded source"
+    },
+    {
+      "path": "abo/src/alert/lock.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 6,
+      "end": 11,
+      "symbol": "LockRule",
+      "primary_owner": "R9",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": [],
+      "status": "complete",
+      "read_method": "git show T:path, numbered bounded source"
+    },
+    {
+      "path": "abo/src/alert/lock.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 12,
+      "end": 16,
+      "symbol": "LockResponse",
+      "primary_owner": "R9",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": [],
+      "status": "complete",
+      "read_method": "git show T:path, numbered bounded source"
+    },
+    {
+      "path": "abo/src/alert/lock.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 17,
+      "end": 29,
+      "symbol": "lockIsPresent",
+      "primary_owner": "R9",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": [],
+      "status": "complete",
+      "read_method": "git show T:path, numbered bounded source"
+    },
+    {
+      "path": "abo/src/alert/lock.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 30,
+      "end": 37,
+      "symbol": "clearR2LockAlert",
+      "primary_owner": "R9",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": [],
+      "status": "complete",
+      "read_method": "git show T:path, numbered bounded source"
+    },
+    {
+      "path": "abo/src/alert/lock.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 38,
+      "end": 62,
+      "symbol": "markR2LockAlertDue",
+      "primary_owner": "R9",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": [],
+      "status": "complete",
+      "read_method": "git show T:path, numbered bounded source"
+    },
+    {
+      "path": "abo/src/alert/lock.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 63,
+      "end": 84,
+      "symbol": "checkR2BucketLock",
+      "primary_owner": "R9",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": [],
+      "status": "complete",
+      "read_method": "git show T:path, numbered bounded source"
+    },
+    {
+      "path": "abo/src/digest/run.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 1,
+      "end": 4,
+      "symbol": "preamble / imports / shared declarations",
+      "primary_owner": "R9",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": [],
+      "status": "complete",
+      "read_method": "git show T:path, numbered bounded source"
+    },
+    {
+      "path": "abo/src/digest/run.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 5,
+      "end": 5,
+      "symbol": "ONE_DAY_MS",
+      "primary_owner": "R9",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": [],
+      "status": "complete",
+      "read_method": "git show T:path, numbered bounded source"
+    },
+    {
+      "path": "abo/src/digest/run.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 6,
+      "end": 6,
+      "symbol": "THIRTY_DAYS_MS",
+      "primary_owner": "R9",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": [],
+      "status": "complete",
+      "read_method": "git show T:path, numbered bounded source"
+    },
+    {
+      "path": "abo/src/digest/run.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 7,
+      "end": 7,
+      "symbol": "EXPORT_LAG_ALERT_KEY",
+      "primary_owner": "R9",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": [],
+      "status": "complete",
+      "read_method": "git show T:path, numbered bounded source"
+    },
+    {
+      "path": "abo/src/digest/run.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 8,
+      "end": 9,
+      "symbol": "R2_LOCK_ALERT_KEY",
+      "primary_owner": "R9",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": [],
+      "status": "complete",
+      "read_method": "git show T:path, numbered bounded source"
+    },
+    {
+      "path": "abo/src/digest/run.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 10,
+      "end": 17,
+      "symbol": "IssuerKeyRow",
+      "primary_owner": "R9",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": [],
+      "status": "complete",
+      "read_method": "git show T:path, numbered bounded source"
+    },
+    {
+      "path": "abo/src/digest/run.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 18,
+      "end": 24,
+      "symbol": "ServiceKeyRow",
+      "primary_owner": "R9",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": [],
+      "status": "complete",
+      "read_method": "git show T:path, numbered bounded source"
+    },
+    {
+      "path": "abo/src/digest/run.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 25,
+      "end": 30,
+      "symbol": "GrantRow",
+      "primary_owner": "R9",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": [],
+      "status": "complete",
+      "read_method": "git show T:path, numbered bounded source"
+    },
+    {
+      "path": "abo/src/digest/run.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 31,
+      "end": 38,
+      "symbol": "FindingRow",
+      "primary_owner": "R9",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": [],
+      "status": "complete",
+      "read_method": "git show T:path, numbered bounded source"
+    },
+    {
+      "path": "abo/src/digest/run.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 39,
+      "end": 46,
+      "symbol": "WorkRow",
+      "primary_owner": "R9",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": [],
+      "status": "complete",
+      "read_method": "git show T:path, numbered bounded source"
+    },
+    {
+      "path": "abo/src/digest/run.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 47,
+      "end": 53,
+      "symbol": "AlertRow",
+      "primary_owner": "R9",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": [],
+      "status": "complete",
+      "read_method": "git show T:path, numbered bounded source"
+    },
+    {
+      "path": "abo/src/digest/run.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 54,
+      "end": 58,
+      "symbol": "JobRunRow",
+      "primary_owner": "R9",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": [],
+      "status": "complete",
+      "read_method": "git show T:path, numbered bounded source"
+    },
+    {
+      "path": "abo/src/digest/run.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 59,
+      "end": 65,
+      "symbol": "ChannelVersionRow",
+      "primary_owner": "R9",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": [],
+      "status": "complete",
+      "read_method": "git show T:path, numbered bounded source"
+    },
+    {
+      "path": "abo/src/digest/run.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 66,
+      "end": 70,
+      "symbol": "CountRow",
+      "primary_owner": "R9",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": [],
+      "status": "complete",
+      "read_method": "git show T:path, numbered bounded source"
+    },
+    {
+      "path": "abo/src/digest/run.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 71,
+      "end": 86,
+      "symbol": "DigestEnv",
+      "primary_owner": "R9",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": [],
+      "status": "complete",
+      "read_method": "git show T:path, numbered bounded source"
+    },
+    {
+      "path": "abo/src/digest/run.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 87,
+      "end": 94,
+      "symbol": "keyExpiresWithin30Days",
+      "primary_owner": "R9",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": [],
+      "status": "complete",
+      "read_method": "git show T:path, numbered bounded source"
+    },
+    {
+      "path": "abo/src/digest/run.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 95,
+      "end": 133,
+      "symbol": "raiseAl14ForExpiringKeys",
+      "primary_owner": "R9",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": [],
+      "status": "complete",
+      "read_method": "git show T:path, numbered bounded source"
+    },
+    {
+      "path": "abo/src/digest/run.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 134,
+      "end": 142,
+      "symbol": "countSince",
+      "primary_owner": "R9",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": [],
+      "status": "complete",
+      "read_method": "git show T:path, numbered bounded source"
+    },
+    {
+      "path": "abo/src/digest/run.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 143,
+      "end": 156,
+      "symbol": "oldestUnexportedFactSeq",
+      "primary_owner": "R9",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": [],
+      "status": "complete",
+      "read_method": "git show T:path, numbered bounded source"
+    },
+    {
+      "path": "abo/src/digest/run.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 157,
+      "end": 175,
+      "symbol": "readFeedConsumerHealth",
+      "primary_owner": "R9",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": [],
+      "status": "complete",
+      "read_method": "git show T:path, numbered bounded source"
+    },
+    {
+      "path": "abo/src/digest/run.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 176,
+      "end": 207,
+      "symbol": "grantEnvelopeDetails",
+      "primary_owner": "R9",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": [],
+      "status": "complete",
+      "read_method": "git show T:path, numbered bounded source"
+    },
+    {
+      "path": "abo/src/digest/run.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 208,
+      "end": 406,
+      "symbol": "buildDigestBody",
+      "primary_owner": "R9",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": [],
+      "status": "complete",
+      "read_method": "git show T:path, numbered bounded source"
+    },
+    {
+      "path": "abo/src/digest/run.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 407,
+      "end": 420,
+      "symbol": "sendDigestEmail",
+      "primary_owner": "R9",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": [],
+      "status": "complete",
+      "read_method": "git show T:path, numbered bounded source"
+    },
+    {
+      "path": "abo/src/digest/run.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 421,
+      "end": 426,
+      "symbol": "runDailyDigest",
+      "primary_owner": "R9",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": [],
+      "status": "complete",
+      "read_method": "git show T:path, numbered bounded source"
+    },
+    {
+      "path": "abo/src/housekeeping/run.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 1,
+      "end": 2,
+      "symbol": "preamble / imports / shared declarations",
+      "primary_owner": "R9",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": [],
+      "status": "complete",
+      "read_method": "git show T:path, numbered bounded source"
+    },
+    {
+      "path": "abo/src/housekeeping/run.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 3,
+      "end": 3,
+      "symbol": "ONE_DAY_MS",
+      "primary_owner": "R9",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": [],
+      "status": "complete",
+      "read_method": "git show T:path, numbered bounded source"
+    },
+    {
+      "path": "abo/src/housekeeping/run.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 4,
+      "end": 4,
+      "symbol": "RETENTION_DAYS_MS",
+      "primary_owner": "R9",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": [],
+      "status": "complete",
+      "read_method": "git show T:path, numbered bounded source"
+    },
+    {
+      "path": "abo/src/housekeeping/run.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 5,
+      "end": 6,
+      "symbol": "HMAC_INVALID_RETENTION_DAYS",
+      "primary_owner": "R9",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": [],
+      "status": "complete",
+      "read_method": "git show T:path, numbered bounded source"
+    },
+    {
+      "path": "abo/src/housekeeping/run.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 7,
+      "end": 11,
+      "symbol": "HousekeepingEnv",
+      "primary_owner": "R9",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": [],
+      "status": "complete",
+      "read_method": "git show T:path, numbered bounded source"
+    },
+    {
+      "path": "abo/src/housekeeping/run.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 12,
+      "end": 43,
+      "symbol": "runHousekeeping",
+      "primary_owner": "R9",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": [],
+      "status": "complete",
+      "read_method": "git show T:path, numbered bounded source"
+    },
+    {
+      "path": "abo/src/ops/index.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 1631,
+      "end": 1645,
+      "symbol": "handleGetFindings",
+      "primary_owner": "R9",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": [
+        "R2",
+        "R3",
+        "R4",
+        "R6",
+        "R8"
+      ],
+      "status": "complete",
+      "read_method": "git show T:path, numbered bounded source"
+    },
+    {
+      "path": "abo/src/ops/index.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 1688,
+      "end": 1697,
+      "symbol": "handleGetPayoutImports",
+      "primary_owner": "R9",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": [
+        "R2",
+        "R3",
+        "R4",
+        "R6",
+        "R8"
+      ],
+      "status": "complete",
+      "read_method": "git show T:path, numbered bounded source"
+    },
+    {
+      "path": "abo/src/ops/index.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 1705,
+      "end": 1712,
+      "symbol": "periodFromSettledAt",
+      "primary_owner": "R9",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": [
+        "R2",
+        "R3",
+        "R4",
+        "R6",
+        "R8"
+      ],
+      "status": "complete",
+      "read_method": "git show T:path, numbered bounded source"
+    },
+    {
+      "path": "abo/src/ops/index.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 1713,
+      "end": 1838,
+      "symbol": "handlePostPayoutImport",
+      "primary_owner": "R9",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": [
+        "R2",
+        "R3",
+        "R4",
+        "R6",
+        "R8"
+      ],
+      "status": "complete",
+      "read_method": "git show T:path, numbered bounded source"
+    },
+    {
+      "path": "abo/src/ops/index.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 1839,
+      "end": 1928,
+      "symbol": "handlePostResolveFinding",
+      "primary_owner": "R9",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": [
+        "R2",
+        "R3",
+        "R4",
+        "R6",
+        "R8"
+      ],
+      "status": "complete",
+      "read_method": "git show T:path, numbered bounded source"
+    },
+    {
+      "path": "abo/src/reconciliation/run.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 1,
+      "end": 16,
+      "symbol": "preamble / imports / shared declarations",
+      "primary_owner": "R9",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": [],
+      "status": "complete",
+      "read_method": "git show T:path, numbered bounded source"
+    },
+    {
+      "path": "abo/src/reconciliation/run.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 17,
+      "end": 17,
+      "symbol": "FIFTEEN_MINUTES_MS",
+      "primary_owner": "R9",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": [],
+      "status": "complete",
+      "read_method": "git show T:path, numbered bounded source"
+    },
+    {
+      "path": "abo/src/reconciliation/run.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 18,
+      "end": 18,
+      "symbol": "ONE_DAY_MS",
+      "primary_owner": "R9",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": [],
+      "status": "complete",
+      "read_method": "git show T:path, numbered bounded source"
+    },
+    {
+      "path": "abo/src/reconciliation/run.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 19,
+      "end": 20,
+      "symbol": "SEVEN_DAYS_MS",
+      "primary_owner": "R9",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": [],
+      "status": "complete",
+      "read_method": "git show T:path, numbered bounded source"
+    },
+    {
+      "path": "abo/src/reconciliation/run.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 21,
+      "end": 36,
+      "symbol": "ReconciliationEnv",
+      "primary_owner": "R9",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": [],
+      "status": "complete",
+      "read_method": "git show T:path, numbered bounded source"
+    },
+    {
+      "path": "abo/src/reconciliation/run.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 37,
+      "end": 38,
+      "symbol": "PlatformGrant",
+      "primary_owner": "R9",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": [],
+      "status": "complete",
+      "read_method": "git show T:path, numbered bounded source"
+    },
+    {
+      "path": "abo/src/reconciliation/run.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 39,
+      "end": 45,
+      "symbol": "newId",
+      "primary_owner": "R9",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": [],
+      "status": "complete",
+      "read_method": "git show T:path, numbered bounded source"
+    },
+    {
+      "path": "abo/src/reconciliation/run.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 46,
+      "end": 58,
+      "symbol": "findingExists",
+      "primary_owner": "R9",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": [],
+      "status": "complete",
+      "read_method": "git show T:path, numbered bounded source"
+    },
+    {
+      "path": "abo/src/reconciliation/run.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 59,
+      "end": 86,
+      "symbol": "insertFinding",
+      "primary_owner": "R9",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": [],
+      "status": "complete",
+      "read_method": "git show T:path, numbered bounded source"
+    },
+    {
+      "path": "abo/src/reconciliation/run.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 87,
+      "end": 99,
+      "symbol": "parsePlatformGrants",
+      "primary_owner": "R9",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": [],
+      "status": "complete",
+      "read_method": "git show T:path, numbered bounded source"
+    },
+    {
+      "path": "abo/src/reconciliation/run.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 100,
+      "end": 112,
+      "symbol": "paidGrantIdsFromPayments",
+      "primary_owner": "R9",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": [],
+      "status": "complete",
+      "read_method": "git show T:path, numbered bounded source"
+    },
+    {
+      "path": "abo/src/reconciliation/run.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 113,
+      "end": 125,
+      "symbol": "complimentaryActionGrantIds",
+      "primary_owner": "R9",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": [],
+      "status": "complete",
+      "read_method": "git show T:path, numbered bounded source"
+    },
+    {
+      "path": "abo/src/reconciliation/run.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 126,
+      "end": 172,
+      "symbol": "checkPaymentWithoutGrant",
+      "primary_owner": "R9",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": [],
+      "status": "complete",
+      "read_method": "git show T:path, numbered bounded source"
+    },
+    {
+      "path": "abo/src/reconciliation/run.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 173,
+      "end": 190,
+      "symbol": "checkGrantWithoutPayment",
+      "primary_owner": "R9",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": [],
+      "status": "complete",
+      "read_method": "git show T:path, numbered bounded source"
+    },
+    {
+      "path": "abo/src/reconciliation/run.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 191,
+      "end": 210,
+      "symbol": "checkGrantWithoutOperatorAction",
+      "primary_owner": "R9",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": [],
+      "status": "complete",
+      "read_method": "git show T:path, numbered bounded source"
+    },
+    {
+      "path": "abo/src/reconciliation/run.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 211,
+      "end": 270,
+      "symbol": "checkTransferWithoutAuthorisation",
+      "primary_owner": "R9",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": [],
+      "status": "complete",
+      "read_method": "git show T:path, numbered bounded source"
+    },
+    {
+      "path": "abo/src/reconciliation/run.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 271,
+      "end": 296,
+      "symbol": "checkReversalNotApplied",
+      "primary_owner": "R9",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": [],
+      "status": "complete",
+      "read_method": "git show T:path, numbered bounded source"
+    },
+    {
+      "path": "abo/src/reconciliation/run.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 297,
+      "end": 328,
+      "symbol": "checkPayoutUnmatched",
+      "primary_owner": "R9",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": [],
+      "status": "complete",
+      "read_method": "git show T:path, numbered bounded source"
+    },
+    {
+      "path": "abo/src/reconciliation/run.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 329,
+      "end": 335,
+      "symbol": "periodEndMs",
+      "primary_owner": "R9",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": [],
+      "status": "complete",
+      "read_method": "git show T:path, numbered bounded source"
+    },
+    {
+      "path": "abo/src/reconciliation/run.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 336,
+      "end": 399,
+      "symbol": "checkPaymentNotInPayout",
+      "primary_owner": "R9",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": [],
+      "status": "complete",
+      "read_method": "git show T:path, numbered bounded source"
+    },
+    {
+      "path": "abo/src/reconciliation/run.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 400,
+      "end": 430,
+      "symbol": "checkUnrecordedReversal",
+      "primary_owner": "R9",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": [],
+      "status": "complete",
+      "read_method": "git show T:path, numbered bounded source"
+    },
+    {
+      "path": "abo/src/reconciliation/run.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 431,
+      "end": 491,
+      "symbol": "checkCallbackWithoutConfirmation",
+      "primary_owner": "R9",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": [],
+      "status": "complete",
+      "read_method": "git show T:path, numbered bounded source"
+    },
+    {
+      "path": "abo/src/reconciliation/run.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 492,
+      "end": 534,
+      "symbol": "clinicsWithRecentCoverageEvents",
+      "primary_owner": "R9",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": [],
+      "status": "complete",
+      "read_method": "git show T:path, numbered bounded source"
+    },
+    {
+      "path": "abo/src/reconciliation/run.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 535,
+      "end": 546,
+      "symbol": "canonicalEqual",
+      "primary_owner": "R9",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": [],
+      "status": "complete",
+      "read_method": "git show T:path, numbered bounded source"
+    },
+    {
+      "path": "abo/src/reconciliation/run.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 547,
+      "end": 564,
+      "symbol": "receiptObject",
+      "primary_owner": "R9",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": [],
+      "status": "complete",
+      "read_method": "git show T:path, numbered bounded source"
+    },
+    {
+      "path": "abo/src/reconciliation/run.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 565,
+      "end": 600,
+      "symbol": "checkFeedDivergence",
+      "primary_owner": "R9",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": [],
+      "status": "complete",
+      "read_method": "git show T:path, numbered bounded source"
+    },
+    {
+      "path": "abo/src/reconciliation/run.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 601,
+      "end": 649,
+      "symbol": "checkReceiptMismatch",
+      "primary_owner": "R9",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": [],
+      "status": "complete",
+      "read_method": "git show T:path, numbered bounded source"
+    },
+    {
+      "path": "abo/src/reconciliation/run.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 650,
+      "end": 662,
+      "symbol": "runReconciliation",
+      "primary_owner": "R9",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": [],
+      "status": "complete",
+      "read_method": "git show T:path, numbered bounded source"
+    },
+    {
+      "path": "abo/src/watch/hourly.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 1,
+      "end": 5,
+      "symbol": "preamble / imports / shared declarations",
+      "primary_owner": "R9",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": [],
+      "status": "complete",
+      "read_method": "git show T:path, numbered bounded source"
+    },
+    {
+      "path": "abo/src/watch/hourly.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 6,
+      "end": 7,
+      "symbol": "FIVE_MINUTES_MS",
+      "primary_owner": "R9",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": [],
+      "status": "complete",
+      "read_method": "git show T:path, numbered bounded source"
+    },
+    {
+      "path": "abo/src/watch/hourly.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 8,
+      "end": 15,
+      "symbol": "IssuerKeyRow",
+      "primary_owner": "R9",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": [],
+      "status": "complete",
+      "read_method": "git show T:path, numbered bounded source"
+    },
+    {
+      "path": "abo/src/watch/hourly.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 16,
+      "end": 21,
+      "symbol": "OperatorCredentialRow",
+      "primary_owner": "R9",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": [],
+      "status": "complete",
+      "read_method": "git show T:path, numbered bounded source"
+    },
+    {
+      "path": "abo/src/watch/hourly.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 22,
+      "end": 38,
+      "symbol": "WatchEnv",
+      "primary_owner": "R9",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": [],
+      "status": "complete",
+      "read_method": "git show T:path, numbered bounded source"
+    },
+    {
+      "path": "abo/src/watch/hourly.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 39,
+      "end": 64,
+      "symbol": "rememberOperatorCredential",
+      "primary_owner": "R9",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": [],
+      "status": "complete",
+      "read_method": "git show T:path, numbered bounded source"
+    },
+    {
+      "path": "abo/src/watch/hourly.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 65,
+      "end": 92,
+      "symbol": "raiseAl15IfFeedStale",
+      "primary_owner": "R9",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": [],
+      "status": "complete",
+      "read_method": "git show T:path, numbered bounded source"
+    },
+    {
+      "path": "abo/src/watch/hourly.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 93,
+      "end": 124,
+      "symbol": "raiseAl22ForIssuerPinMismatch",
+      "primary_owner": "R9",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": [],
+      "status": "complete",
+      "read_method": "git show T:path, numbered bounded source"
+    },
+    {
+      "path": "abo/src/watch/hourly.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 125,
+      "end": 175,
+      "symbol": "raiseAl22ForUnannouncedCredentials",
+      "primary_owner": "R9",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": [],
+      "status": "complete",
+      "read_method": "git show T:path, numbered bounded source"
+    },
+    {
+      "path": "abo/src/watch/hourly.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 176,
+      "end": 182,
+      "symbol": "runHourlyWatch",
+      "primary_owner": "R9",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": [],
+      "status": "complete",
+      "read_method": "git show T:path, numbered bounded source"
+    }
+  ],
+  "unread_regions": [],
+  "assigned_line_count": 1927,
+  "assigned_tuple_count": 104,
+  "supporting_expansions": [
+    {
+      "path": "abo/src/coverage/view.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "ranges": [
+        {
+          "start": 1,
+          "end": 187
+        }
+      ],
+      "purpose": "Exact owned-consumer trace; primary ownership remains prior phase or R9 lead/sibling."
+    },
+    {
+      "path": "abo/src/ops/index.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "ranges": [
+        {
+          "start": 1646,
+          "end": 1687
+        },
+        {
+          "start": 1698,
+          "end": 1704
+        },
+        {
+          "start": 2181,
+          "end": 2248
+        },
+        {
+          "start": 2404,
+          "end": 2441
+        },
+        {
+          "start": 2550,
+          "end": 2633
+        },
+        {
+          "start": 2970,
+          "end": 3043
+        },
+        {
+          "start": 3080,
+          "end": 3194
+        },
+        {
+          "start": 3320,
+          "end": 3362
+        }
+      ],
+      "purpose": "Exact owned-consumer trace; primary ownership remains prior phase or R9 lead/sibling."
+    },
+    {
+      "path": "abo/src/provider/registry.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "ranges": [
+        {
+          "start": 1,
+          "end": 24
+        }
+      ],
+      "purpose": "Exact owned-consumer trace; primary ownership remains prior phase or R9 lead/sibling."
+    },
+    {
+      "path": "abo/src/provider/port.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "ranges": [
+        {
+          "start": 100,
+          "end": 138
+        }
+      ],
+      "purpose": "Exact owned-consumer trace; primary ownership remains prior phase or R9 lead/sibling."
+    },
+    {
+      "path": "abo/src/provider/paymob/adapter.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "ranges": [
+        {
+          "start": 775,
+          "end": 947
+        }
+      ],
+      "purpose": "Exact owned-consumer trace; primary ownership remains prior phase or R9 lead/sibling."
+    },
+    {
+      "path": "abo/src/work/reversal.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "ranges": [
+        {
+          "start": 408,
+          "end": 462
+        },
+        {
+          "start": 700,
+          "end": 822
+        }
+      ],
+      "purpose": "Exact owned-consumer trace; primary ownership remains prior phase or R9 lead/sibling."
+    },
+    {
+      "path": "abo/src/notify/intake.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "ranges": [
+        {
+          "start": 330,
+          "end": 422
+        }
+      ],
+      "purpose": "Exact owned-consumer trace; primary ownership remains prior phase or R9 lead/sibling."
+    },
+    {
+      "path": "abo/src/worker.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "ranges": [
+        {
+          "start": 1,
+          "end": 130
+        },
+        {
+          "start": 340,
+          "end": 446
+        }
+      ],
+      "purpose": "Exact owned-consumer trace; primary ownership remains prior phase or R9 lead/sibling."
+    },
+    {
+      "path": "abo/migrations/0001_records.sql",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "ranges": [
+        {
+          "start": 1,
+          "end": 142
+        }
+      ],
+      "purpose": "Exact owned-consumer trace; primary ownership remains prior phase or R9 lead/sibling."
+    },
+    {
+      "path": "abo/migrations/0004_grant.sql",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "ranges": [
+        {
+          "start": 1,
+          "end": 72
+        }
+      ],
+      "purpose": "Exact owned-consumer trace; primary ownership remains prior phase or R9 lead/sibling."
+    },
+    {
+      "path": "abo/migrations/0005_reversal.sql",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "ranges": [
+        {
+          "start": 1,
+          "end": 53
+        }
+      ],
+      "purpose": "Exact owned-consumer trace; primary ownership remains prior phase or R9 lead/sibling."
+    },
+    {
+      "path": "abo/migrations/0008_reconciliation.sql",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "ranges": [
+        {
+          "start": 1,
+          "end": 67
+        }
+      ],
+      "purpose": "Exact owned-consumer trace; primary ownership remains prior phase or R9 lead/sibling."
+    },
+    {
+      "path": "abo/migrations/0009_digest_watch.sql",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "ranges": [
+        {
+          "start": 1,
+          "end": 21
+        }
+      ],
+      "purpose": "Exact owned-consumer trace; primary ownership remains prior phase or R9 lead/sibling."
+    },
+    {
+      "path": "ai-platform/src/vendor/entrypoint.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "ranges": [
+        {
+          "start": 4558,
+          "end": 4744
+        }
+      ],
+      "purpose": "Exact owned-consumer trace; primary ownership remains prior phase or R9 lead/sibling."
+    },
+    {
+      "path": "ai-platform/src/alert/index.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "ranges": [
+        {
+          "start": 1,
+          "end": 205
+        }
+      ],
+      "purpose": "Exact owned-consumer trace; primary ownership remains prior phase or R9 lead/sibling."
+    },
+    {
+      "path": "ai-platform/src/alert/email.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "ranges": [
+        {
+          "start": 1,
+          "end": 19
+        }
+      ],
+      "purpose": "Exact owned-consumer trace; primary ownership remains prior phase or R9 lead/sibling."
+    },
+    {
+      "path": "abo/wrangler.toml",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "ranges": [
+        {
+          "start": 1,
+          "end": 130
+        }
+      ],
+      "purpose": "Exact owned-consumer trace; primary ownership remains prior phase or R9 lead/sibling."
+    }
+  ],
+  "escalation_dispositions": [
+    {
+      "id": "066:2",
+      "scope": "explicit inherited/reference/delegated disposition",
+      "disposition": "No identity writer in slice; R1-C2 canonical, rebuild propagation lead/platform owner."
+    },
+    {
+      "id": "066:3",
+      "scope": "explicit inherited/reference/delegated disposition",
+      "disposition": "AL20 platform producer/creation cap delegated platform slice; no ABO mapping amendment."
+    },
+    {
+      "id": "066:4",
+      "scope": "owned consumer checked",
+      "disposition": "Owned issuer-watch reads listIssuerKeys and compares public key maps; retirement authority remains R1/R8 canonical. AO5 healthy comparison lifecycle."
+    },
+    {
+      "id": "066:10",
+      "scope": "explicit inherited/reference/delegated disposition",
+      "disposition": "Reference-only harness wait effect excluded; no harness code reviewed."
+    },
+    {
+      "id": "067:5",
+      "scope": "owned consumer checked",
+      "disposition": "listGrants4558\u20134664 producer (method4597 onward) and owned receipt/origin consumers read. Applied-at/grant ordering/detail object mapping preserved; R2-C3 decoder caveat inherited."
+    },
+    {
+      "id": "067:6",
+      "scope": "explicit inherited/reference/delegated disposition",
+      "disposition": "Distinct grant/void R2 object rebuild owned platform slice; ABO receipt consumer does not conflate void with grant receipts."
+    },
+    {
+      "id": "067:8",
+      "scope": "owned consumer checked",
+      "disposition": "Owned canonical equality includes full compact signature/ledger_seq. Business/signature validation remains R4-A2; originals never rewritten."
+    },
+    {
+      "id": "067:10",
+      "scope": "owned consumer checked",
+      "disposition": "Owned reconciliation feed uses limit200; actual receiver4667\u20134685 rejects outside1\u2013200. No clamping introduced."
+    },
+    {
+      "id": "067:12",
+      "scope": "explicit inherited/reference/delegated disposition",
+      "disposition": "Reference re-transcription only; consumer effects retained under067:5/6/8/10, no new independent requirement."
+    },
+    {
+      "id": "068:1",
+      "scope": "explicit inherited/reference/delegated disposition",
+      "disposition": "Calendar/staging scale production gating outside slice; runtime/platform owners. No harness source reviewed."
+    },
+    {
+      "id": "071:1",
+      "scope": "owned consumer checked",
+      "disposition": "Void receipts excluded from grant receipt comparison. AO1 requires actual void outcome for requested tombstone; object/window validation producer remains R6/platform slice."
+    },
+    {
+      "id": "071:2",
+      "scope": "owned consumer checked",
+      "disposition": "Same amended void contract as071:1; no independent source exception. Preserve exact original receipt/replay inputs."
+    },
+    {
+      "id": "071:3",
+      "scope": "owned consumer checked",
+      "disposition": "AO1 explicitly accepts legitimate nilUUID/seq0/emptyterms pregrant tombstone without feed event; intent alone not proof."
+    },
+    {
+      "id": "072:1",
+      "scope": "explicit inherited/reference/delegated disposition",
+      "disposition": "Transfer source-request/outcome supporting reads retain ordered package. R6-DM2/O1 remain canonical; full rebuild ownership platform/lead."
+    },
+    {
+      "id": "075:1",
+      "scope": "explicit inherited/reference/delegated disposition",
+      "disposition": "Historical dirty-file workflow exception only; excluded effect, file untouched."
+    },
+    {
+      "id": "075:2",
+      "scope": "explicit inherited/reference/delegated disposition",
+      "disposition": "Live classH ledger-rebuild entry and separate snapshot refresh delegated platform slice; no ABO route replacement inferred."
+    },
+    {
+      "id": "076:1",
+      "scope": "explicit inherited/reference/delegated disposition",
+      "disposition": "Owned ops uses established version response helper; export object/host startup side-effects lead/runtime ownership; canonical R2-C2/C3 inherited."
+    },
+    {
+      "id": "076:2",
+      "scope": "owned consumer checked",
+      "disposition": "Fully checked lock.ts1\u201384 against exact API/path/token/body/prefix predicate. Non-success deliberately unraised; explicit operational detection limit, not finding."
+    },
+    {
+      "id": "077:1",
+      "scope": "explicit inherited/reference/delegated disposition",
+      "disposition": "Stored JTI/return-version producer prior R1/R3, rebuild consumer lead. No new local payout/finding token authority."
+    },
+    {
+      "id": "077:2",
+      "scope": "explicit inherited/reference/delegated disposition",
+      "disposition": "External provider expiry assumption retained unresolved; no live-provider lookup or calls."
+    },
+    {
+      "id": "078:1",
+      "scope": "explicit inherited/reference/delegated disposition",
+      "disposition": "Notify/work ingress prior R3, supporting330\u2013422 read for raw evidence shape only. No excluded harness inspected; rebuild lease propagation lead."
+    },
+    {
+      "id": "079:2",
+      "scope": "owned consumer checked",
+      "disposition": "Owned feed divergence uses getCoverage.detail.snapshot matching producer4558\u20134595; AO3 missing view, R7-A1 ordering inherited; desktop shape unchanged."
+    },
+    {
+      "id": "079:4",
+      "scope": "owned consumer checked",
+      "disposition": "Unverified grant parking remains R4-A2 producer fix; reconciliation exact-copy check is additional detector, not cryptographic replacement."
+    },
+    {
+      "id": "080:1",
+      "scope": "explicit inherited/reference/delegated disposition",
+      "disposition": "Workflow/reference amendment, source recovery R3-C5 canonical and lead rebuild; no scenario implementation reviewed."
+    },
+    {
+      "id": "080:2",
+      "scope": "owned consumer checked",
+      "disposition": "R6-BR1/BR2/BR3 cumulative/source/kind roots retained. AO1/AO2 are distinct missing reconciliation detectors; no automatic CSV void."
+    },
+    {
+      "id": "080:3",
+      "scope": "explicit inherited/reference/delegated disposition",
+      "disposition": "R3-C7 canonical shared budget; no owned new provider inquiry, lead must apply rebuild reservations."
+    },
+    {
+      "id": "081:1",
+      "scope": "owned consumer checked",
+      "disposition": "Both owned H handlers call recordPlatformOperatorAction after local action. R6-O1 canonical for atomic acceptance/resumable cross-store audit; not new finding."
+    },
+    {
+      "id": "081:2",
+      "scope": "owned consumer checked",
+      "disposition": "Thin platform recordOperatorAction remains frozen producer under R2/R8; owned call ordering checked, durability inherited R6-O1."
+    },
+    {
+      "id": "083:1",
+      "scope": "owned consumer checked",
+      "disposition": "Supporting writeTransferGrantRequests zero-based n plus source_ref=transferID read; exact package reconstruction remains R6-DM2/O1, no receipt-mismatch rule expanded to transfer."
+    },
+    {
+      "id": "085:1",
+      "scope": "owned consumer checked",
+      "disposition": "Every joined nontransfer applied/already_applied outcome compared canonically including signature; missing platform row fails. AO3 flags orphan-outcome omission from inner join. Void/transfer receipts intentionally excluded."
+    },
+    {
+      "id": "086:1",
+      "scope": "owned consumer checked",
+      "disposition": "Housekeeping primary43lines read, scheduled invocation worker438\u2013442 supporting; no new cron. AO6 pagination, commercial prefixes/facts preserved; job false-health lead."
+    },
+    {
+      "id": "086:2",
+      "scope": "owned consumer checked",
+      "disposition": "Registration producer ops2404\u20132441 and rememberOperatorCredential39\u201363 plus comparison125\u2013173 read. Pending triple stored only from own successful register detail; active list cannot bootstrap trust. R6-O1 must retain/retry exact triple if baseline write fails. AO5 handles recovery clearing."
+    },
+    {
+      "id": "088:1",
+      "scope": "explicit inherited/reference/delegated disposition",
+      "disposition": "Status refresh RPC/tenant clock prior R7-PS3 canonical; outside owned operations; no singleton clock conflation."
+    },
+    {
+      "id": "088:6",
+      "scope": "owned consumer checked",
+      "disposition": "ABO coverage_view retains snapshot version via complete snapshot JSON; flattened backend version exception remains prior R7. AO3 does not rewrite versions."
+    },
+    {
+      "id": "088:7",
+      "scope": "explicit inherited/reference/delegated disposition",
+      "disposition": "Delivery split provenance only; final combined R7 ownership retained, no test/review exclusion invented."
+    },
+    {
+      "id": "093:1",
+      "scope": "explicit inherited/reference/delegated disposition",
+      "disposition": "Runtime residue guard delegated runtime slice; viewer/test/doc scan correctness excluded. Bounded roots amendment retained."
+    },
+    {
+      "id": "097:1",
+      "scope": "explicit inherited/reference/delegated disposition",
+      "disposition": "Historical local-noise workflow exception only; no runtime effect; paths untouched."
+    }
+  ],
+  "checkpoint": "Complete. No unread assigned source; no runtime validation.",
+  "completed_on": "2026-10-17",
+  "finding_ids": [
+    "R9-AO1",
+    "R9-AO2",
+    "R9-AO3",
+    "R9-AO4",
+    "R9-AO5",
+    "R9-AO6",
+    "R9-AO7",
+    "R9-AO8"
+  ],
+  "severity_counts": {
+    "P0": 0,
+    "P1": 0,
+    "P2": 7,
+    "P3": 1
+  },
+  "excluded": [
+    "tests",
+    "testkit",
+    "fixtures",
+    "harnesses",
+    "campaigns",
+    "viewer implementation"
+  ],
+  "prohibited_actions_performed": false,
+  "reference_reads": [
+    "AGENTS.md",
+    "complete bounded docs/review/abo-integrated-source-review-plan.md",
+    "packet-R9.md",
+    "system-map.md",
+    "pinned constitution",
+    "Architecture 05 sections1\u20137; 02 sections1.4,4\u20136; 03 sections1,2.1,2.10,3,8",
+    "R1/R2 canonical roots and R9 handoffs; R3/R4/R5/R6/R7/R8 relevant canonical findings/handoffs only",
+    "escalations-R9.json all entry routing; exact relevant resolution text"
+  ],
+  "unresolved_limits": [
+    "Historical payout-to-reversal matching needs retained evidence approved by maintainer/provider owner plus frontier reviewer; no automatic ambiguous legacy linkage.",
+    "Native email binding compatibility delegated lead/runtime slice.",
+    "No deployed lock/ACL/key/monitor/provider/cron state attested.",
+    "Inherited accepted-command and historical adjudication decisions remain canonical R1\u2013R8; AL19 semantics preserved."
+  ]
+}

@@ -1,0 +1,3585 @@
+{
+  "target": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+  "status": "global primary ownership and all escalation dispositions reconciled; no gaps",
+  "candidates": {
+    "total": 1180,
+    "counts": {
+      "reference": 351,
+      "supporting runtime artifact": 15,
+      "excluded": 659,
+      "primary source": 155
+    },
+    "all_have_reasons": true,
+    "in_scope_paths": 170,
+    "paths_without_owner": [],
+    "owned_outside_candidates": []
+  },
+  "regions": {
+    "total": 2540,
+    "phase_closure": [
+      {
+        "phase": "R1",
+        "manifest_tuples": 176,
+        "completed_tuples": 176,
+        "missing": [],
+        "unexpected": [],
+        "multiset_equal": true,
+        "read_proof": [
+          "R1-consumer-coverage.md",
+          "R1-sql-coverage.md",
+          "R1-sql-dependencies-coverage.md",
+          "R1-coverage.md"
+        ],
+        "canonical_report": "R1-tenant-identity-authorization.md"
+      },
+      {
+        "phase": "R2",
+        "manifest_tuples": 243,
+        "completed_tuples": 243,
+        "missing": [],
+        "unexpected": [],
+        "multiset_equal": true,
+        "read_proof": [
+          "R2-coverage.json"
+        ],
+        "canonical_report": "R2-contracts-perimeter-human-approval.md"
+      },
+      {
+        "phase": "R3",
+        "manifest_tuples": 288,
+        "completed_tuples": 288,
+        "missing": [],
+        "unexpected": [],
+        "multiset_equal": true,
+        "read_proof": [
+          "R3-coverage.json"
+        ],
+        "canonical_report": "R3-checkout-confirmed-payment.md"
+      },
+      {
+        "phase": "R4",
+        "manifest_tuples": 148,
+        "completed_tuples": 148,
+        "missing": [],
+        "unexpected": [],
+        "multiset_equal": true,
+        "read_proof": [
+          "R4-coverage.json"
+        ],
+        "canonical_report": "R4-grants-coverage-term-lifecycle.md"
+      },
+      {
+        "phase": "R5",
+        "manifest_tuples": 555,
+        "completed_tuples": 555,
+        "missing": [],
+        "unexpected": [],
+        "multiset_equal": true,
+        "read_proof": [
+          "R5-admission-medium-coverage.json",
+          "R5-accounting-medium-coverage.json"
+        ],
+        "canonical_report": "R5-admission-accounting-fallback.md"
+      },
+      {
+        "phase": "R6",
+        "manifest_tuples": 230,
+        "completed_tuples": 230,
+        "missing": [],
+        "unexpected": [],
+        "multiset_equal": true,
+        "read_proof": [
+          "R6-coverage.json"
+        ],
+        "canonical_report": "R6-reversals-transfer-deletion.md"
+      },
+      {
+        "phase": "R7",
+        "manifest_tuples": 204,
+        "completed_tuples": 204,
+        "missing": [],
+        "unexpected": [],
+        "multiset_equal": true,
+        "read_proof": [
+          "R7-coverage.json"
+        ],
+        "canonical_report": "R7-feed-projection-desktop-state.md"
+      },
+      {
+        "phase": "R8",
+        "manifest_tuples": 239,
+        "completed_tuples": 239,
+        "missing": [],
+        "unexpected": [],
+        "multiset_equal": true,
+        "read_proof": [
+          "R8-coverage.json"
+        ],
+        "canonical_report": "R8-operator-control-configuration.md"
+      },
+      {
+        "phase": "R9",
+        "manifest_tuples": 457,
+        "completed_tuples": 457,
+        "missing": [],
+        "unexpected": [],
+        "multiset_equal": true,
+        "read_proof": [
+          "R9-coverage.json"
+        ],
+        "canonical_report": "R9-durability-recovery-operations.md"
+      }
+    ],
+    "global_missing": 0,
+    "expansions": {
+      "R8_deleted_bootstrap_lines": 247,
+      "R9_operational_program_lines": 135
+    },
+    "R9_inventory_correction": {
+      "exact_manifest_tuples": 457,
+      "primary_inventory_lines": 7781,
+      "actual_primary_source_lines": 7529,
+      "excluded_embedded_fixture_lines": 252,
+      "supporting_inventory_lines": 13800,
+      "actual_non_lock_supporting_lines": 1166,
+      "parsed_lock_metadata_inventory_lines": 12634,
+      "operational_executable_expansion_lines": 135
+    }
+  },
+  "escalations": {
+    "entries": 75,
+    "files": 30,
+    "routed_disposition_counts": {
+      "R1": 14,
+      "R2": 33,
+      "R6": 18,
+      "R3": 10,
+      "R4": 20,
+      "R5": 9,
+      "R7": 27,
+      "R8": 24,
+      "R9": 37
+    },
+    "gaps": [],
+    "dispositions": [
+      {
+        "id": "066:1",
+        "classification": "source-contract",
+        "amended_paths": [
+          "docs/architecture/ai-billing-orchestration/04-abo-contracts.md"
+        ],
+        "amended_sections": "`docs/architecture/ai-billing-orchestration/04-abo-contracts.md` (\u00a71.2, \u00a71.3 rows `listIssuerKeys`, `registerIssuerKey`, `revokeIssuerKey`, \u00a71.6).",
+        "producer_consumer_route": "Issuer registry register/revoke/list producers \u2192 backend key pins and ABO issuer-key console decoders",
+        "routed_owners": [
+          "R1",
+          "R2",
+          "R8"
+        ],
+        "missing_routed_dispositions": [],
+        "global_status": "closed with recorded findings/external limits",
+        "completed_dispositions": {
+          "R1": {
+            "evidence": "R1-tenant-identity-authorization.md",
+            "disposition_present": true
+          },
+          "R2": {
+            "evidence": "R2-coverage.md",
+            "disposition_present": true
+          },
+          "R8": {
+            "evidence": "R8-coverage.json",
+            "disposition_present": true
+          }
+        },
+        "final_phase_result": {
+          "phase": "R8",
+          "disposition": "checked; inherited R1-C3",
+          "producer_consumer_result": "registerIssuerKey raw32 base64url and immutable kid/key -> row/list -> platform verifier and ABO pins. Missing/different public key errors preserved; malformed issuer validity remains R1-C3."
+        }
+      },
+      {
+        "id": "066:2",
+        "classification": "source-contract",
+        "amended_paths": [
+          "docs/architecture/ai-billing-orchestration/03-abo-data-model-and-lifecycle.md",
+          "docs/architecture/ai-billing-orchestration/04-abo-contracts.md"
+        ],
+        "amended_sections": "`docs/architecture/ai-billing-orchestration/03-abo-data-model-and-lifecycle.md` (\u00a73.2 rows `installation` and `tenant_binding`); `docs/architecture/ai-billing-orchestration/04-abo-contracts.md` (\u00a72.1).",
+        "producer_consumer_route": "Identity first-token insertion \u2192 tenant-binding epoch lookup, creation-cap count and rebuild records",
+        "routed_owners": [
+          "R1",
+          "R9"
+        ],
+        "missing_routed_dispositions": [],
+        "global_status": "closed with recorded findings/external limits",
+        "completed_dispositions": {
+          "R1": {
+            "evidence": "R1-tenant-identity-authorization.md",
+            "disposition_present": true
+          },
+          "R9": {
+            "evidence": "R9-coverage.json",
+            "disposition_present": true
+          }
+        },
+        "final_phase_result": {
+          "phase": "R9",
+          "disposition": "checked; inherited R1-C2",
+          "producer_consumer_result": "First-token binding/defaults/epoch-one cap producer \u2192 AL-20 count and recovery mapping. R9 restores no binding from ledger; PD1 requires authoritative restored mapping, never a new epoch."
+        }
+      },
+      {
+        "id": "066:3",
+        "classification": "source-contract",
+        "amended_paths": [
+          "docs/architecture/ai-billing-orchestration/04-abo-contracts.md",
+          "docs/architecture/ai-billing-orchestration/06-abo-delivery-plan.md"
+        ],
+        "amended_sections": "`docs/architecture/ai-billing-orchestration/04-abo-contracts.md` (\u00a72.1); `docs/architecture/ai-billing-orchestration/06-abo-delivery-plan.md` (E2E-P3.2-05).",
+        "producer_consumer_route": "Identity creation limiter \u2192 clinic HTTP unauthenticated mapping, desktop denial handling and AL-20",
+        "routed_owners": [
+          "R1",
+          "R7",
+          "R9"
+        ],
+        "missing_routed_dispositions": [],
+        "global_status": "closed with recorded findings/external limits",
+        "completed_dispositions": {
+          "R1": {
+            "evidence": "R1-tenant-identity-authorization.md",
+            "disposition_present": true
+          },
+          "R7": {
+            "evidence": "R7-coverage.json",
+            "disposition_present": true
+          },
+          "R9": {
+            "evidence": "R9-coverage.json",
+            "disposition_present": true
+          }
+        },
+        "final_phase_result": {
+          "phase": "R9",
+          "disposition": "checked; inherited R1-C2",
+          "producer_consumer_result": "Limiter refusal \u2192 no principal/401 and AL-20 sender/retry; R9 preserves canonical refusal and dispatches security notices under PAL1."
+        }
+      },
+      {
+        "id": "066:4",
+        "classification": "source-contract",
+        "amended_paths": [
+          "docs/architecture/ai-billing-orchestration/04-abo-contracts.md",
+          "docs/architecture/ai-billing-orchestration/03-abo-data-model-and-lifecycle.md",
+          "docs/architecture/ai-billing-orchestration/02-abo-architecture-and-threat-model.md",
+          "docs/architecture/ai-billing-orchestration/05-abo-operations-and-traceability.md",
+          "docs/architecture/ai-billing-orchestration/06-abo-delivery-plan.md"
+        ],
+        "amended_sections": "`docs/architecture/ai-billing-orchestration/04-abo-contracts.md` (\u00a71.2, \u00a71.3 rows `registerIssuerKey`, `retireIssuerKey`, `revokeIssuerKey`); `docs/architecture/ai-billing-orchestration/03-abo-data-model-and-lifecycle.md` (\u00a73.2 row `issuer_key`); `docs/architecture/ai-billing-orchestration/02-abo-architecture-and-threat-model.md` (\u00a76 row K-2); `docs/architecture/ai-billing-orchestration/05-abo-operations-and-traceability.md` (AL-13 and the issuer-key action row); `docs/architecture/ai-billing-orchestration/06-abo-delivery-plan.md` (P3.2 implements and read; P4.9 implements and read).",
+        "producer_consumer_route": "Issuer-key retirement method \u2192 token verifier, ABO rotation relay and AL-13 audit/alert",
+        "routed_owners": [
+          "R1",
+          "R2",
+          "R8",
+          "R9"
+        ],
+        "missing_routed_dispositions": [],
+        "global_status": "closed with recorded findings/external limits",
+        "completed_dispositions": {
+          "R1": {
+            "evidence": "R1-tenant-identity-authorization.md",
+            "disposition_present": true
+          },
+          "R2": {
+            "evidence": "R2-coverage.md",
+            "disposition_present": true
+          },
+          "R8": {
+            "evidence": "R8-coverage.json",
+            "disposition_present": true
+          },
+          "R9": {
+            "evidence": "R9-coverage.json",
+            "disposition_present": true
+          }
+        },
+        "final_phase_result": {
+          "phase": "R9",
+          "disposition": "checked; inherited R8-KEY1",
+          "producer_consumer_result": "retire/register/revoke \u2192 AL-13 original operation/retry; PAL1 retains original actor/version, never recreates key authority from current alert text."
+        }
+      },
+      {
+        "id": "066:5",
+        "classification": "reference-propagation",
+        "amended_paths": [
+          "specs/066-abo-p3-2-issuer-tokens-registry-tenant-bindings/spec.md"
+        ],
+        "amended_sections": "`specs/066-abo-p3-2-issuer-tokens-registry-tenant-bindings/spec.md`",
+        "producer_consumer_route": "Spec re-transcription of 066:1\u20134 \u2192 same registry, verifier and console consumers; no new design rule",
+        "routed_owners": [
+          "R1",
+          "R2",
+          "R8"
+        ],
+        "missing_routed_dispositions": [],
+        "global_status": "closed with recorded findings/external limits",
+        "completed_dispositions": {
+          "R1": {
+            "evidence": "R1-tenant-identity-authorization.md",
+            "disposition_present": true
+          },
+          "R2": {
+            "evidence": "R2-coverage.md",
+            "disposition_present": true
+          },
+          "R8": {
+            "evidence": "R8-coverage.json",
+            "disposition_present": true
+          }
+        },
+        "final_phase_result": {
+          "phase": "R8",
+          "disposition": "reference-only transcription; production checked",
+          "producer_consumer_result": "No new runtime rule; amended 066:1/4 registry fields/statuses checked at entrypoint, identity consumer and ops field allowlists."
+        }
+      },
+      {
+        "id": "066:6",
+        "classification": "source-contract",
+        "amended_paths": [
+          "specs/066-abo-p3-2-issuer-tokens-registry-tenant-bindings/spec.md"
+        ],
+        "amended_sections": "`specs/066-abo-p3-2-issuer-tokens-registry-tenant-bindings/spec.md`",
+        "producer_consumer_route": "Temporary cache/tier retention \u2192 final P3.4 admission/capability coverage readers and P3.10 table/control removals; review final replacements",
+        "routed_owners": [
+          "R1",
+          "R5",
+          "R8"
+        ],
+        "missing_routed_dispositions": [],
+        "global_status": "closed with recorded findings/external limits",
+        "completed_dispositions": {
+          "R1": {
+            "evidence": "R1-tenant-identity-authorization.md",
+            "disposition_present": true
+          },
+          "R5": {
+            "evidence": "R5-coverage.json",
+            "disposition_present": true
+          },
+          "R8": {
+            "evidence": "R8-coverage.json",
+            "disposition_present": true
+          }
+        },
+        "final_phase_result": {
+          "phase": "R8",
+          "disposition": "checked final replacement",
+          "producer_consumer_result": "Transitional entitlement/tier behavior superseded; final removed control and dropped plan/entitlement traced to plan_version/coverage, miss-only legacy cache readers and no HTTP authority."
+        }
+      },
+      {
+        "id": "066:7",
+        "classification": "reference-only / excluded effect",
+        "amended_paths": [
+          "specs/066-abo-p3-2-issuer-tokens-registry-tenant-bindings/spec.md",
+          "specs/066-abo-p3-2-issuer-tokens-registry-tenant-bindings/plan.md",
+          "specs/066-abo-p3-2-issuer-tokens-registry-tenant-bindings/tasks.md"
+        ],
+        "amended_sections": "`specs/066-abo-p3-2-issuer-tokens-registry-tenant-bindings/spec.md`; `specs/066-abo-p3-2-issuer-tokens-registry-tenant-bindings/plan.md`; `specs/066-abo-p3-2-issuer-tokens-registry-tenant-bindings/tasks.md`",
+        "producer_consumer_route": "Harness credential reset and assertion-seed expectations only; runtime rules are context, no new source amendment",
+        "routed_owners": [
+          "R1",
+          "R2",
+          "R8"
+        ],
+        "missing_routed_dispositions": [],
+        "global_status": "closed with recorded findings/external limits",
+        "completed_dispositions": {
+          "R1": {
+            "evidence": "R1-tenant-identity-authorization.md",
+            "disposition_present": true
+          },
+          "R2": {
+            "evidence": "R2-coverage.md",
+            "disposition_present": true
+          },
+          "R8": {
+            "evidence": "R8-coverage.json",
+            "disposition_present": true
+          }
+        },
+        "final_phase_result": {
+          "phase": "R8",
+          "disposition": "excluded harness effect; final runtime context checked",
+          "producer_consumer_result": "No harness implementation read. Later 074:2 explicit no-ver/current2 begin semantics governs final production, preserving pending credential activation."
+        }
+      },
+      {
+        "id": "066:8",
+        "classification": "reference-only / excluded effect",
+        "amended_paths": [
+          "specs/066-abo-p3-2-issuer-tokens-registry-tenant-bindings/tasks.md",
+          "specs/066-abo-p3-2-issuer-tokens-registry-tenant-bindings/spec.md"
+        ],
+        "amended_sections": "`specs/066-abo-p3-2-issuer-tokens-registry-tenant-bindings/tasks.md` (T023); `specs/066-abo-p3-2-issuer-tokens-registry-tenant-bindings/spec.md` (FR-017).",
+        "producer_consumer_route": "Harness/assertion repairs for version seed and platform-assigned installation IDs only",
+        "routed_owners": [
+          "R1",
+          "R5",
+          "R8"
+        ],
+        "missing_routed_dispositions": [],
+        "global_status": "closed with recorded findings/external limits",
+        "completed_dispositions": {
+          "R1": {
+            "evidence": "R1-tenant-identity-authorization.md",
+            "disposition_present": true
+          },
+          "R5": {
+            "evidence": "R5-coverage.json",
+            "disposition_present": true
+          },
+          "R8": {
+            "evidence": "R8-coverage.json",
+            "disposition_present": true
+          }
+        },
+        "final_phase_result": {
+          "phase": "R8",
+          "disposition": "excluded harness effect",
+          "producer_consumer_result": "No seed/vector/case implementation reviewed. Final issuer token version and binding replacement inherited R1/R2; later 074:2 rotation rule controls."
+        }
+      },
+      {
+        "id": "066:9",
+        "classification": "reference-only / excluded effect",
+        "amended_paths": [
+          "specs/066-abo-p3-2-issuer-tokens-registry-tenant-bindings/tasks.md",
+          "specs/066-abo-p3-2-issuer-tokens-registry-tenant-bindings/spec.md"
+        ],
+        "amended_sections": "`specs/066-abo-p3-2-issuer-tokens-registry-tenant-bindings/tasks.md` (T023); `specs/066-abo-p3-2-issuer-tokens-registry-tenant-bindings/spec.md` (FR-017).",
+        "producer_consumer_route": "Harness replacement signer uses existing credential; second-registration runtime policy remains unchanged",
+        "routed_owners": [
+          "R1",
+          "R2",
+          "R8"
+        ],
+        "missing_routed_dispositions": [],
+        "global_status": "closed with recorded findings/external limits",
+        "completed_dispositions": {
+          "R1": {
+            "evidence": "R1-tenant-identity-authorization.md",
+            "disposition_present": true
+          },
+          "R2": {
+            "evidence": "R2-coverage.md",
+            "disposition_present": true
+          },
+          "R8": {
+            "evidence": "R8-coverage.json",
+            "disposition_present": true
+          }
+        },
+        "final_phase_result": {
+          "phase": "R8",
+          "disposition": "excluded harness effect; runtime boundary checked",
+          "producer_consumer_result": "Existing registry requires assertion on second operator registration; issuer kid replacement is distinct from credential registration. No bypass borrowed from harness."
+        }
+      },
+      {
+        "id": "066:10",
+        "classification": "reference-only / excluded effect",
+        "amended_paths": [
+          "specs/066-abo-p3-2-issuer-tokens-registry-tenant-bindings/tasks.md",
+          "specs/066-abo-p3-2-issuer-tokens-registry-tenant-bindings/spec.md"
+        ],
+        "amended_sections": "`specs/066-abo-p3-2-issuer-tokens-registry-tenant-bindings/tasks.md` (T023); `specs/066-abo-p3-2-issuer-tokens-registry-tenant-bindings/spec.md` (FR-017).",
+        "producer_consumer_route": "Harness waits for existing asynchronous R2 payload write; no production write rule changed",
+        "routed_owners": [
+          "R5",
+          "R9"
+        ],
+        "missing_routed_dispositions": [],
+        "global_status": "closed with recorded findings/external limits",
+        "completed_dispositions": {
+          "R5": {
+            "evidence": "R5-coverage.json",
+            "disposition_present": true
+          },
+          "R9": {
+            "evidence": "R9-coverage.json",
+            "disposition_present": true
+          }
+        },
+        "final_phase_result": {
+          "phase": "R9",
+          "disposition": "reference-only excluded effect",
+          "producer_consumer_result": "Harness wait amendment only; underlying completed payload R2 write/retention reviewed as production journal dependency; no harness correctness credit."
+        }
+      },
+      {
+        "id": "067:1",
+        "classification": "source-contract",
+        "amended_paths": [
+          "docs/architecture/ai-billing-orchestration/04-abo-contracts.md",
+          "docs/architecture/ai-billing-orchestration/06-abo-delivery-plan.md"
+        ],
+        "amended_sections": "`docs/architecture/ai-billing-orchestration/04-abo-contracts.md` (\u00a77.1 row \u201cPlatform Worker \u2192 per-clinic DO RPC\u201d); `docs/architecture/ai-billing-orchestration/06-abo-delivery-plan.md` (P3.3 E2E-P3.3-11, E2E-P3.3-12).",
+        "producer_consumer_route": "Worker RPC version producer \u2192 DO accept/echo gate \u2192 Worker coverage_unknown refusal mapping",
+        "routed_owners": [
+          "R2",
+          "R5"
+        ],
+        "missing_routed_dispositions": [],
+        "global_status": "closed with recorded findings/external limits",
+        "completed_dispositions": {
+          "R2": {
+            "evidence": "R2-coverage.md",
+            "disposition_present": true
+          },
+          "R5": {
+            "evidence": "R5-coverage.json",
+            "disposition_present": true
+          }
+        },
+        "final_phase_result": {
+          "phase": "R5",
+          "disposition": "sender/gate/echo/mapping traced; reply laxity inherited R2-C3",
+          "producer_consumer_result": "See exact ID in linked phase disposition table."
+        }
+      },
+      {
+        "id": "067:2",
+        "classification": "source-contract",
+        "amended_paths": [
+          "docs/architecture/ai-billing-orchestration/03-abo-data-model-and-lifecycle.md",
+          "docs/architecture/ai-billing-orchestration/04-abo-contracts.md",
+          "docs/architecture/ai-billing-orchestration/02-abo-architecture-and-threat-model.md"
+        ],
+        "amended_sections": "`docs/architecture/ai-billing-orchestration/03-abo-data-model-and-lifecycle.md` (\u00a73.2 row `service_key`); `docs/architecture/ai-billing-orchestration/04-abo-contracts.md` (\u00a71.2, \u00a71.3 rows `registerServiceKey`, `revokeServiceKey`, `listServiceKeys`, \u00a71.4 validation step 2); `docs/architecture/ai-billing-orchestration/02-abo-architecture-and-threat-model.md` (\u00a76 row K-4).",
+        "producer_consumer_route": "Service registry register/revoke/list \u2192 ABO signer usability check and platform paid-envelope signature verification",
+        "routed_owners": [
+          "R2",
+          "R4",
+          "R8"
+        ],
+        "missing_routed_dispositions": [],
+        "global_status": "closed with recorded findings/external limits",
+        "completed_dispositions": {
+          "R2": {
+            "evidence": "R2-coverage.md",
+            "disposition_present": true
+          },
+          "R4": {
+            "evidence": "R4-coverage.json",
+            "disposition_present": true
+          },
+          "R8": {
+            "evidence": "R8-coverage.json",
+            "disposition_present": true
+          }
+        },
+        "final_phase_result": {
+          "phase": "R8",
+          "disposition": "checked",
+          "producer_consumer_result": "HP service registry raw32 active/revoked validity -> listServiceKeys -> ABO signing gate, and grant verifier unknown transient/revoked invalid. Original stored envelope is re-signed with current key."
+        }
+      },
+      {
+        "id": "067:3",
+        "classification": "source-contract",
+        "amended_paths": [
+          "docs/architecture/ai-billing-orchestration/04-abo-contracts.md",
+          "docs/architecture/ai-billing-orchestration/03-abo-data-model-and-lifecycle.md"
+        ],
+        "amended_sections": "`docs/architecture/ai-billing-orchestration/04-abo-contracts.md` (\u00a71.2, \u00a71.3 rows `publishPlanVersion`, `retirePlanVersion`); `docs/architecture/ai-billing-orchestration/03-abo-data-model-and-lifecycle.md` (\u00a73.2 row `plan_version`).",
+        "producer_consumer_route": "Plan publish/retire method \u2192 immutable plan snapshots, grant placement and console decoders",
+        "routed_owners": [
+          "R4",
+          "R8"
+        ],
+        "missing_routed_dispositions": [],
+        "global_status": "closed with recorded findings/external limits",
+        "completed_dispositions": {
+          "R4": {
+            "evidence": "R4-coverage.json",
+            "disposition_present": true
+          },
+          "R8": {
+            "evidence": "R8-coverage.json",
+            "disposition_present": true
+          }
+        },
+        "final_phase_result": {
+          "phase": "R8",
+          "disposition": "checked",
+          "producer_consumer_result": "HP plan immutable content/same-content replay preserving retired -> R4 snapshotted grant consumer. Ops relays exact content field allowlist and retire identity."
+        }
+      },
+      {
+        "id": "067:4",
+        "classification": "source-contract",
+        "amended_paths": [
+          "docs/architecture/ai-billing-orchestration/04-abo-contracts.md"
+        ],
+        "amended_sections": "`docs/architecture/ai-billing-orchestration/04-abo-contracts.md` (\u00a71.3 row `getCoverage`, \u00a71.7).",
+        "producer_consumer_route": "getCoverage DO/state producer \u2192 platform coverage HTTP and ABO subscription/desktop queued/recent-term consumers",
+        "routed_owners": [
+          "R4",
+          "R7"
+        ],
+        "missing_routed_dispositions": [],
+        "global_status": "closed with recorded findings/external limits",
+        "completed_dispositions": {
+          "R4": {
+            "evidence": "R4-coverage.json",
+            "disposition_present": true
+          },
+          "R7": {
+            "evidence": "R7-coverage.json",
+            "disposition_present": true
+          }
+        },
+        "final_phase_result": {
+          "phase": "R7",
+          "disposition": "verified with findings",
+          "producer_consumer_result": "Queued unheld ascending and recent last12 descending-position fields match getCoverage/HTTP. PS1/PS2 snapshot fidelity and T2 snapshot.term consumer findings qualify live display."
+        }
+      },
+      {
+        "id": "067:5",
+        "classification": "source-contract",
+        "amended_paths": [
+          "docs/architecture/ai-billing-orchestration/04-abo-contracts.md",
+          "docs/architecture/ai-billing-orchestration/03-abo-data-model-and-lifecycle.md"
+        ],
+        "amended_sections": "`docs/architecture/ai-billing-orchestration/04-abo-contracts.md` (\u00a71.2, \u00a71.3 row `listGrants`); `docs/architecture/ai-billing-orchestration/03-abo-data-model-and-lifecycle.md` (\u00a73.2 row `grant_ledger`).",
+        "producer_consumer_route": "listGrants query/envelope \u2192 console grant lookup, credential void workflows and reconciliation receipt reader",
+        "routed_owners": [
+          "R4",
+          "R6",
+          "R8",
+          "R9"
+        ],
+        "missing_routed_dispositions": [],
+        "global_status": "closed with recorded findings/external limits",
+        "completed_dispositions": {
+          "R4": {
+            "evidence": "R4-coverage.json",
+            "disposition_present": true
+          },
+          "R6": {
+            "evidence": "R6-coverage.md",
+            "disposition_present": true
+          },
+          "R8": {
+            "evidence": "R8-coverage.json",
+            "disposition_present": true
+          },
+          "R9": {
+            "evidence": "R9-coverage.json",
+            "disposition_present": true
+          }
+        },
+        "final_phase_result": {
+          "phase": "R9",
+          "disposition": "checked; REC2/AO3",
+          "producer_consumer_result": "listGrants canonical row fields/order/filter \u2192 recovery/reconciliation. No source.ref exists in its row: REC2 cannot discover a payment from that invented field. AO3 reports missing copy/receipt."
+        }
+      },
+      {
+        "id": "067:6",
+        "classification": "source-contract",
+        "amended_paths": [
+          "docs/architecture/ai-billing-orchestration/03-abo-data-model-and-lifecycle.md"
+        ],
+        "amended_sections": "`docs/architecture/ai-billing-orchestration/03-abo-data-model-and-lifecycle.md` (\u00a73.3).",
+        "producer_consumer_route": "Grant/void ledger object writers \u2192 D1 grant_ledger/grant_void rebuild readers; grant and void objects remain distinct",
+        "routed_owners": [
+          "R4",
+          "R6",
+          "R9"
+        ],
+        "missing_routed_dispositions": [],
+        "global_status": "closed with recorded findings/external limits",
+        "completed_dispositions": {
+          "R4": {
+            "evidence": "R4-coverage.json",
+            "disposition_present": true
+          },
+          "R6": {
+            "evidence": "R6-coverage.md",
+            "disposition_present": true
+          },
+          "R9": {
+            "evidence": "R9-coverage.json",
+            "disposition_present": true
+          }
+        },
+        "final_phase_result": {
+          "phase": "R9",
+          "disposition": "checked; REC1/PDO1/PD1",
+          "producer_consumer_result": "Separate grant-id and .void objects \u2192 schema/key/receipt-validated D1 import and DO hydration; original envelope absent in old summary remains R4-D5 recovery addendum stop."
+        }
+      },
+      {
+        "id": "067:7",
+        "classification": "source-contract",
+        "amended_paths": [
+          "docs/architecture/ai-billing-orchestration/03-abo-data-model-and-lifecycle.md",
+          "docs/architecture/ai-billing-orchestration/04-abo-contracts.md"
+        ],
+        "amended_sections": "`docs/architecture/ai-billing-orchestration/03-abo-data-model-and-lifecycle.md` (\u00a73.2 row `coverage_event`, \u00a76.7); `docs/architecture/ai-billing-orchestration/04-abo-contracts.md` (\u00a74.1 event object).",
+        "producer_consumer_route": "Grant/lifecycle/usage event producers \u2192 ordered feed, backend projection, ABO coverage view and desktop status",
+        "routed_owners": [
+          "R4",
+          "R5",
+          "R6",
+          "R7"
+        ],
+        "missing_routed_dispositions": [],
+        "global_status": "closed with recorded findings/external limits",
+        "completed_dispositions": {
+          "R4": {
+            "evidence": "R4-coverage.json",
+            "disposition_present": true
+          },
+          "R5": {
+            "evidence": "R5-coverage.json",
+            "disposition_present": true
+          },
+          "R6": {
+            "evidence": "R6-coverage.md",
+            "disposition_present": true
+          },
+          "R7": {
+            "evidence": "R7-coverage.json",
+            "disposition_present": true
+          }
+        },
+        "final_phase_result": {
+          "phase": "R7",
+          "disposition": "verified / inherited roots",
+          "producer_consumer_result": "Feed carries ordered full snapshots and SQL lexicographic pairs; ABO atomicity gap A1. Final post-grant state R4-D1, band/lifecycle R5 and suspension kind R6-DM5 remain canonical."
+        }
+      },
+      {
+        "id": "067:8",
+        "classification": "source-contract",
+        "amended_paths": [
+          "docs/architecture/ai-billing-orchestration/04-abo-contracts.md",
+          "docs/architecture/ai-billing-orchestration/02-abo-architecture-and-threat-model.md"
+        ],
+        "amended_sections": "`docs/architecture/ai-billing-orchestration/04-abo-contracts.md` (\u00a71.6); `docs/architecture/ai-billing-orchestration/02-abo-architecture-and-threat-model.md` (\u00a76 row K-3).",
+        "producer_consumer_route": "Platform receipt signing and event clinic_seq \u2192 ABO verification/outcome, void handling and reconciliation/rebuild",
+        "routed_owners": [
+          "R2",
+          "R4",
+          "R6",
+          "R7",
+          "R9"
+        ],
+        "missing_routed_dispositions": [],
+        "global_status": "closed with recorded findings/external limits",
+        "completed_dispositions": {
+          "R2": {
+            "evidence": "R2-coverage.md",
+            "disposition_present": true
+          },
+          "R4": {
+            "evidence": "R4-coverage.json",
+            "disposition_present": true
+          },
+          "R6": {
+            "evidence": "R6-coverage.md",
+            "disposition_present": true
+          },
+          "R7": {
+            "evidence": "R7-coverage.json",
+            "disposition_present": true
+          },
+          "R9": {
+            "evidence": "R9-coverage.json",
+            "disposition_present": true
+          }
+        },
+        "final_phase_result": {
+          "phase": "R9",
+          "disposition": "checked; inherited R4-A2; PAL1/RT3 limits",
+          "producer_consumer_result": "DO clinic_seq/JWS receipt producer \u2192 original receipt in ABO outcomes/list comparison/rebuild. Signature equality alone is not binding; preserve original bytes/version, with exposed-key history explicit."
+        }
+      },
+      {
+        "id": "067:9",
+        "classification": "source-contract",
+        "amended_paths": [
+          "docs/architecture/ai-billing-orchestration/03-abo-data-model-and-lifecycle.md"
+        ],
+        "amended_sections": "`docs/architecture/ai-billing-orchestration/03-abo-data-model-and-lifecycle.md` (\u00a73.1 `term` row, \u00a73.2 row `plan_version`).",
+        "producer_consumer_route": "Plan capabilities publisher \u2192 term.plan_snapshot copy \u2192 admission/capability and coverage-display readers",
+        "routed_owners": [
+          "R4",
+          "R5",
+          "R7",
+          "R8"
+        ],
+        "missing_routed_dispositions": [],
+        "global_status": "closed with recorded findings/external limits",
+        "completed_dispositions": {
+          "R4": {
+            "evidence": "R4-coverage.json",
+            "disposition_present": true
+          },
+          "R5": {
+            "evidence": "R5-coverage.json",
+            "disposition_present": true
+          },
+          "R7": {
+            "evidence": "R7-coverage.json",
+            "disposition_present": true
+          },
+          "R8": {
+            "evidence": "R8-coverage.json",
+            "disposition_present": true
+          }
+        },
+        "final_phase_result": {
+          "phase": "R8",
+          "disposition": "checked",
+          "producer_consumer_result": "Published capability string array -> plan snapshot -> cohort published-plan parser and mirror capability parser/discovery; no legacy allowed_capabilities economics authority restored."
+        }
+      },
+      {
+        "id": "067:10",
+        "classification": "source-contract",
+        "amended_paths": [
+          "docs/architecture/ai-billing-orchestration/04-abo-contracts.md"
+        ],
+        "amended_sections": "`docs/architecture/ai-billing-orchestration/04-abo-contracts.md` (\u00a71.3 row `readCoverageEvents`).",
+        "producer_consumer_route": "readCoverageEvents limit gate \u2192 feed pull pagination/refusal and cursor recovery consumers",
+        "routed_owners": [
+          "R2",
+          "R7",
+          "R9"
+        ],
+        "missing_routed_dispositions": [],
+        "global_status": "closed with recorded findings/external limits",
+        "completed_dispositions": {
+          "R2": {
+            "evidence": "R2-coverage.md",
+            "disposition_present": true
+          },
+          "R7": {
+            "evidence": "R7-coverage.json",
+            "disposition_present": true
+          },
+          "R9": {
+            "evidence": "R9-coverage.json",
+            "disposition_present": true
+          }
+        },
+        "final_phase_result": {
+          "phase": "R9",
+          "disposition": "checked; inherited R7",
+          "producer_consumer_result": "Feed gate bound1..200 \u2192 ABO recovery/view/reconciliation request200 and backend pagination. No implicit clamping or limit bypass; recovery resets separate from ordinary advancement."
+        }
+      },
+      {
+        "id": "067:11",
+        "classification": "source-contract",
+        "amended_paths": [
+          "docs/architecture/ai-billing-orchestration/04-abo-contracts.md"
+        ],
+        "amended_sections": "`docs/architecture/ai-billing-orchestration/04-abo-contracts.md` (\u00a71.4 evidence row and validation step 1).",
+        "producer_consumer_route": "Grant approvals field producers \u2192 shared validator and platform validation step 1; read with later paid exception 079:1/6",
+        "routed_owners": [
+          "R2",
+          "R4",
+          "R6"
+        ],
+        "missing_routed_dispositions": [],
+        "global_status": "closed with recorded findings/external limits",
+        "completed_dispositions": {
+          "R2": {
+            "evidence": "R2-coverage.md",
+            "disposition_present": true
+          },
+          "R4": {
+            "evidence": "R4-coverage.json",
+            "disposition_present": true
+          },
+          "R6": {
+            "evidence": "R6-coverage.md",
+            "disposition_present": true
+          }
+        },
+        "final_phase_result": {
+          "phase": "R6",
+          "disposition": "Public grant minimum/paid exception inherited R2/R4 with079:6; internal out/in requires existing HP-authorized transfer row. Read transfer authorization\u2192internal per-element receipts/lineage; DM2 retains canonical per-term package/evidence, without inventing a new unauthenticated grant entry.",
+          "producer_consumer_result": "See exact ID in linked phase disposition table."
+        }
+      },
+      {
+        "id": "067:12",
+        "classification": "reference-propagation",
+        "amended_paths": [
+          ".cursor/skills/abo-clarify/SKILL.md"
+        ],
+        "amended_sections": "`.cursor/skills/abo-clarify/SKILL.md`",
+        "producer_consumer_route": "Spec re-transcription of 067:2\u201311 \u2192 same affected source consumers; no new design decision",
+        "routed_owners": [
+          "R2",
+          "R4",
+          "R6",
+          "R7",
+          "R8",
+          "R9"
+        ],
+        "missing_routed_dispositions": [],
+        "global_status": "closed with recorded findings/external limits",
+        "completed_dispositions": {
+          "R2": {
+            "evidence": "R2-coverage.md",
+            "disposition_present": true
+          },
+          "R4": {
+            "evidence": "R4-coverage.json",
+            "disposition_present": true
+          },
+          "R6": {
+            "evidence": "R6-coverage.md",
+            "disposition_present": true
+          },
+          "R7": {
+            "evidence": "R7-coverage.json",
+            "disposition_present": true
+          },
+          "R8": {
+            "evidence": "R8-coverage.json",
+            "disposition_present": true
+          },
+          "R9": {
+            "evidence": "R9-coverage.json",
+            "disposition_present": true
+          }
+        },
+        "final_phase_result": {
+          "phase": "R9",
+          "disposition": "reference-only excluded effect",
+          "producer_consumer_result": "Stale-spec retranscription/workflow has no new runtime rule; amended producer/consumer contracts remain controlling, no clarify workflow implementation reviewed."
+        }
+      },
+      {
+        "id": "068:1",
+        "classification": "source-contract",
+        "amended_paths": [
+          "specs/067-abo-p3-3-plan-versions-paid-grant-coverage-ledger/plan.md",
+          "ai-platform/src/coverage/calendar.ts"
+        ],
+        "amended_sections": "`specs/067-abo-p3-3-plan-versions-paid-grant-coverage-ledger/plan.md` (Files, `ai-platform/src/coverage/calendar.ts`).",
+        "producer_consumer_route": "coverage/calendar.ts addDuration restoration \u2192 vendor paid placement and DO lifecycle consumers; staging scale production exposure belongs R9",
+        "routed_owners": [
+          "R4",
+          "R5",
+          "R9"
+        ],
+        "missing_routed_dispositions": [],
+        "global_status": "closed with recorded findings/external limits",
+        "completed_dispositions": {
+          "R4": {
+            "evidence": "R4-coverage.json",
+            "disposition_present": true
+          },
+          "R5": {
+            "evidence": "R5-coverage.json",
+            "disposition_present": true
+          },
+          "R9": {
+            "evidence": "R9-coverage.json",
+            "disposition_present": true
+          }
+        },
+        "final_phase_result": {
+          "phase": "R9",
+          "disposition": "checked; inherited R4; runtime isolation",
+          "producer_consumer_result": "addDuration production calendar \u2192 placement/DO rebuild/refresh. Staging scale is environment-bound, omitted from production config; restoration keeps original dates and units. Harness restoration effect excluded."
+        }
+      },
+      {
+        "id": "069:1",
+        "classification": "reference-only / excluded effect",
+        "amended_paths": [
+          "specs/069-abo-p3-5-term-boundaries-grace-renewal/plan.md",
+          "specs/069-abo-p3-5-term-boundaries-grace-renewal/tasks.md"
+        ],
+        "amended_sections": "`specs/069-abo-p3-5-term-boundaries-grace-renewal/plan.md` (Test Layout, Sequencing step 18); `specs/069-abo-p3-5-term-boundaries-grace-renewal/tasks.md` (section 3 Tests purpose, T018).",
+        "producer_consumer_route": "Test-clock setup and assertion expiry arrangement only; no production clock behavior amendment",
+        "routed_owners": [
+          "R4"
+        ],
+        "missing_routed_dispositions": [],
+        "global_status": "closed with recorded findings/external limits",
+        "completed_dispositions": {
+          "R4": {
+            "evidence": "R4-coverage.json",
+            "disposition_present": true
+          }
+        },
+        "final_phase_result": {
+          "phase": "R4",
+          "disposition": "Reference-only test-clock/harness instruction; no excluded test/harness source analyzed. Production override isolation remains R9.",
+          "producer_consumer_result": "See exact ID in linked phase disposition table."
+        }
+      },
+      {
+        "id": "070:1",
+        "classification": "source-contract",
+        "amended_paths": [
+          "docs/architecture/ai-billing-orchestration/03-abo-data-model-and-lifecycle.md",
+          "docs/architecture/ai-billing-orchestration/04-abo-contracts.md"
+        ],
+        "amended_sections": "`docs/architecture/ai-billing-orchestration/03-abo-data-model-and-lifecycle.md` (\u00a73.2 row `ceiling_policy`); `docs/architecture/ai-billing-orchestration/04-abo-contracts.md` (\u00a71.3 row `setCeilingPolicy`, \u00a71.4 validation step 4).",
+        "producer_consumer_route": "setCeilingPolicy versioned writer \u2192 complimentary/adjustment rolling-window validation and paid grace-cap validation",
+        "routed_owners": [
+          "R4",
+          "R6",
+          "R8"
+        ],
+        "missing_routed_dispositions": [],
+        "global_status": "closed with recorded findings/external limits",
+        "completed_dispositions": {
+          "R4": {
+            "evidence": "R4-coverage.json",
+            "disposition_present": true
+          },
+          "R6": {
+            "evidence": "R6-coverage.md",
+            "disposition_present": true
+          },
+          "R8": {
+            "evidence": "R8-coverage.json",
+            "disposition_present": true
+          }
+        },
+        "final_phase_result": {
+          "phase": "R8",
+          "disposition": "checked; R8-CEILING1; inherited R2-P2/R4-D5",
+          "producer_consumer_result": "All seven ceiling inputs -> stored version/greatest row -> grant/DO limits. Version allocation races; rolling per-org history and separate override binding remain prior roots."
+        }
+      },
+      {
+        "id": "071:1",
+        "classification": "source-contract",
+        "amended_paths": [
+          "docs/architecture/ai-billing-orchestration/04-abo-contracts.md",
+          "docs/architecture/ai-billing-orchestration/03-abo-data-model-and-lifecycle.md",
+          "docs/architecture/ai-billing-orchestration/06-abo-delivery-plan.md"
+        ],
+        "amended_sections": "`docs/architecture/ai-billing-orchestration/04-abo-contracts.md` (\u00a71.2 `ok` lists, \u00a71.3 rows `voidForReversal`, `voidGrant`, `listGrantsForVoid`, \u00a71.6 receipt exclusion); `docs/architecture/ai-billing-orchestration/03-abo-data-model-and-lifecycle.md` (\u00a73.2 row `grant_void`, \u00a73.3 void object, \u00a75.5 partial row); `docs/architecture/ai-billing-orchestration/06-abo-delivery-plan.md` (P3.7 Read line).",
+        "producer_consumer_route": "ABO reversal/console void arguments \u2192 platform partial/window/evidence validation \u2192 void ledger/R2 rebuild and list consumers",
+        "routed_owners": [
+          "R2",
+          "R6",
+          "R8",
+          "R9"
+        ],
+        "missing_routed_dispositions": [],
+        "global_status": "closed with recorded findings/external limits",
+        "completed_dispositions": {
+          "R2": {
+            "evidence": "R2-coverage.md",
+            "disposition_present": true
+          },
+          "R6": {
+            "evidence": "R6-coverage.md",
+            "disposition_present": true
+          },
+          "R8": {
+            "evidence": "R8-coverage.json",
+            "disposition_present": true
+          },
+          "R9": {
+            "evidence": "R9-coverage.json",
+            "disposition_present": true
+          }
+        },
+        "final_phase_result": {
+          "phase": "R9",
+          "disposition": "checked; inherited R6; REC1/AO1",
+          "producer_consumer_result": "Full-only reversal and operator evidence/list window \u2192 separate void objects and reconstruction. Preserve original source/evidence/receipt and revoked-credential listing; no inferred void success."
+        }
+      },
+      {
+        "id": "071:2",
+        "classification": "reference-propagation",
+        "amended_paths": [
+          "specs/071-abo-p3-7-reversal-voids-tombstones-held-terms/spec.md"
+        ],
+        "amended_sections": "`specs/071-abo-p3-7-reversal-voids-tombstones-held-terms/spec.md`",
+        "producer_consumer_route": "Void spec re-transcription including replay argument equality \u2192 same reversal, tombstone and rebuild consumers as 071:1",
+        "routed_owners": [
+          "R2",
+          "R6",
+          "R9"
+        ],
+        "missing_routed_dispositions": [],
+        "global_status": "closed with recorded findings/external limits",
+        "completed_dispositions": {
+          "R2": {
+            "evidence": "R2-coverage.md",
+            "disposition_present": true
+          },
+          "R6": {
+            "evidence": "R6-coverage.md",
+            "disposition_present": true
+          },
+          "R9": {
+            "evidence": "R9-coverage.json",
+            "disposition_present": true
+          }
+        },
+        "final_phase_result": {
+          "phase": "R9",
+          "disposition": "checked; inherited R6",
+          "producer_consumer_result": "Same reversal ID exact-argument replay \u2192 original void receipt and rebuild. Partial refusal consumes nothing; REC1 rejects conflicting restored identities; spec retranscription excluded."
+        }
+      },
+      {
+        "id": "071:3",
+        "classification": "source-contract",
+        "amended_paths": [
+          "specs/071-abo-p3-7-reversal-voids-tombstones-held-terms/spec.md"
+        ],
+        "amended_sections": "`specs/071-abo-p3-7-reversal-voids-tombstones-held-terms/spec.md`",
+        "producer_consumer_route": "Pre-grant tombstone receipt with nil clinic IDs and ledger_seq 0 \u2192 ABO reversal receipt consumer and rebuild; no coverage-event emission",
+        "routed_owners": [
+          "R2",
+          "R6",
+          "R7",
+          "R9"
+        ],
+        "missing_routed_dispositions": [],
+        "global_status": "closed with recorded findings/external limits",
+        "completed_dispositions": {
+          "R2": {
+            "evidence": "R2-coverage.md",
+            "disposition_present": true
+          },
+          "R6": {
+            "evidence": "R6-coverage.md",
+            "disposition_present": true
+          },
+          "R7": {
+            "evidence": "R7-coverage.json",
+            "disposition_present": true
+          },
+          "R9": {
+            "evidence": "R9-coverage.json",
+            "disposition_present": true
+          }
+        },
+        "final_phase_result": {
+          "phase": "R9",
+          "disposition": "checked; AO1",
+          "producer_consumer_result": "Pregrant nil-UUID/seq0/empty-term tombstone producer \u2192 reconciliation/rebuild. No coverage event expected, but verified original outcome mandatory; requested effect alone insufficient."
+        }
+      },
+      {
+        "id": "072:1",
+        "classification": "source-contract",
+        "amended_paths": [
+          "docs/architecture/ai-billing-orchestration/04-abo-contracts.md",
+          "docs/architecture/ai-billing-orchestration/03-abo-data-model-and-lifecycle.md",
+          "docs/architecture/ai-billing-orchestration/06-abo-delivery-plan.md"
+        ],
+        "amended_sections": "`docs/architecture/ai-billing-orchestration/04-abo-contracts.md` (\u00a71.2 `ok` list and `transient` details, \u00a71.3 rows `beginTransfer`, `transferOut`, `transferIn`, `deleteInstallation`, \u00a71.6 transfer receipt); `docs/architecture/ai-billing-orchestration/03-abo-data-model-and-lifecycle.md` (\u00a73.2 rows `transfer`, `transfer_step`); `docs/architecture/ai-billing-orchestration/06-abo-delivery-plan.md` (P3.8 Read line).",
+        "producer_consumer_route": "beginTransfer/deleteInstallation/transferOut/In producers \u2192 saga retry, package import, receipt verification, binding/feed and rebuild consumers",
+        "routed_owners": [
+          "R2",
+          "R6",
+          "R7",
+          "R9"
+        ],
+        "missing_routed_dispositions": [],
+        "global_status": "closed with recorded findings/external limits",
+        "completed_dispositions": {
+          "R2": {
+            "evidence": "R2-coverage.md",
+            "disposition_present": true
+          },
+          "R6": {
+            "evidence": "R6-coverage.md",
+            "disposition_present": true
+          },
+          "R7": {
+            "evidence": "R7-coverage.json",
+            "disposition_present": true
+          },
+          "R9": {
+            "evidence": "R9-coverage.json",
+            "disposition_present": true
+          }
+        },
+        "final_phase_result": {
+          "phase": "R9",
+          "disposition": "checked; inherited R6-DM2/PT; PDO1/REC2",
+          "producer_consumer_result": "Transfer package position/order and deterministic replay receipt \u2192 recovered commands/DO terms/lineage. No current-binding reattribution or fabricated transfer receipt; both step identities retained."
+        }
+      },
+      {
+        "id": "073:1",
+        "classification": "source-contract",
+        "amended_paths": [
+          "docs/architecture/ai-billing-orchestration/06-abo-delivery-plan.md"
+        ],
+        "amended_sections": "`docs/architecture/ai-billing-orchestration/06-abo-delivery-plan.md` (P3.9 Read line).",
+        "producer_consumer_route": "getCoverage queued/recent terms \u2192 GET /v1/coverage \u2192 Flutter administrator coverage presentation",
+        "routed_owners": [
+          "R4",
+          "R7"
+        ],
+        "missing_routed_dispositions": [],
+        "global_status": "closed with recorded findings/external limits",
+        "completed_dispositions": {
+          "R4": {
+            "evidence": "R4-coverage.json",
+            "disposition_present": true
+          },
+          "R7": {
+            "evidence": "R7-coverage.json",
+            "disposition_present": true
+          }
+        },
+        "final_phase_result": {
+          "phase": "R7",
+          "disposition": "verified with findings",
+          "producer_consumer_result": "HTTP queued/recent list shapes match vendor list; current used from hot, historical from used_final. T2 rejects valid snapshot.term in desktop."
+        }
+      },
+      {
+        "id": "073:2",
+        "classification": "source-contract",
+        "amended_paths": [
+          "specs/073-abo-p3-9-fallback-admission-coverage-feed-administrator/spec.md",
+          "docs/architecture/ai-billing-orchestration/06-abo-delivery-plan.md"
+        ],
+        "amended_sections": "`specs/073-abo-p3-9-fallback-admission-coverage-feed-administrator/spec.md` (Implements Read line, coverage sentence, user story 3, FR-008, Assumptions); `docs/architecture/ai-billing-orchestration/06-abo-delivery-plan.md` (P3.9 Read line).",
+        "producer_consumer_route": "Platform org-derived subscription_ref \u2192 coverage HTTP, ABO subscription and desktop reference display consistency",
+        "routed_owners": [
+          "R7"
+        ],
+        "missing_routed_dispositions": [],
+        "global_status": "closed with recorded findings/external limits",
+        "completed_dispositions": {
+          "R7": {
+            "evidence": "R7-coverage.json",
+            "disposition_present": true
+          }
+        },
+        "final_phase_result": {
+          "phase": "R7",
+          "disposition": "verified",
+          "producer_consumer_result": "Platform/shared helper and backend deterministic AIC reference use org-derived SHA-256/Crockford recipe; no lookup or token-provided display reference authority."
+        }
+      },
+      {
+        "id": "074:1",
+        "classification": "reference-only / excluded effect",
+        "amended_paths": [
+          "specs/074-abo-p3-10-control-plane-port-vendor-entrypoint-removal/plan.md",
+          "plan-catalogue.test.ts",
+          "specs/074-abo-p3-10-control-plane-port-vendor-entrypoint-removal/tasks.md"
+        ],
+        "amended_sections": "`specs/074-abo-p3-10-control-plane-port-vendor-entrypoint-removal/plan.md` (Files paragraph, Test Layout `plan-catalogue.test.ts` mapping, Sequencing step 28); `specs/074-abo-p3-10-control-plane-port-vendor-entrypoint-removal/tasks.md` (T029).",
+        "producer_consumer_route": "Plan-catalogue test remapping/deletion only; publish/retire result rules explicitly unchanged",
+        "routed_owners": [
+          "R8"
+        ],
+        "missing_routed_dispositions": [],
+        "global_status": "closed with recorded findings/external limits",
+        "completed_dispositions": {
+          "R8": {
+            "evidence": "R8-coverage.json",
+            "disposition_present": true
+          }
+        },
+        "final_phase_result": {
+          "phase": "R8",
+          "disposition": "excluded test migration effect; semantic removal checked",
+          "producer_consumer_result": "Mutable plan/entitle/override and legacy quota behavior intentionally not ported. Actual final HTTP removal/replacement established without reading cases."
+        }
+      },
+      {
+        "id": "074:2",
+        "classification": "reference-only / excluded effect",
+        "amended_paths": [
+          "specs/074-abo-p3-10-control-plane-port-vendor-entrypoint-removal/plan.md",
+          "specs/074-abo-p3-10-control-plane-port-vendor-entrypoint-removal/tasks.md"
+        ],
+        "amended_sections": "`specs/074-abo-p3-10-control-plane-port-vendor-entrypoint-removal/plan.md` (Files paragraph, Test Layout T027 e2e mapping, Sequencing step 26); `specs/074-abo-p3-10-control-plane-port-vendor-entrypoint-removal/tasks.md` (T027).",
+        "producer_consumer_route": "E2E case retention/remapping only; frozen platform method rules remain unchanged",
+        "routed_owners": [
+          "R8"
+        ],
+        "missing_routed_dispositions": [],
+        "global_status": "closed with recorded findings/external limits",
+        "completed_dispositions": {
+          "R8": {
+            "evidence": "R8-coverage.json",
+            "disposition_present": true
+          }
+        },
+        "final_phase_result": {
+          "phase": "R8",
+          "disposition": "excluded cases; explicit runtime amendment checked",
+          "producer_consumer_result": "Final no-ver beginTokenContractRotation current2 idempotence checked in producer/entrypoint/handler; removed control validation/quota bodies intentionally not restored. Supersedes earlier harness-only future-ver narrative."
+        }
+      },
+      {
+        "id": "075:1",
+        "classification": "reference-only / excluded effect",
+        "amended_paths": [],
+        "amended_sections": "none (no design document amended).",
+        "producer_consumer_route": "Historical dirty-tree workflow exception only; no runtime consumer",
+        "routed_owners": [
+          "R9"
+        ],
+        "missing_routed_dispositions": [],
+        "global_status": "closed with recorded findings/external limits",
+        "completed_dispositions": {
+          "R9": {
+            "evidence": "R9-coverage.json",
+            "disposition_present": true
+          }
+        },
+        "final_phase_result": {
+          "phase": "R9",
+          "disposition": "reference-only excluded effect",
+          "producer_consumer_result": "Historical dirty workflow-file exception only; no runtime producer/consumer. No workflow source reviewed or changed."
+        }
+      },
+      {
+        "id": "075:2",
+        "classification": "source-contract",
+        "amended_paths": [
+          "docs/architecture/ai-billing-orchestration/06-abo-delivery-plan.md"
+        ],
+        "amended_sections": "`docs/architecture/ai-billing-orchestration/06-abo-delivery-plan.md` (P3.11 Implements line: `a D1 rebuild (H)`).",
+        "producer_consumer_route": "Class-H ledger rebuild service-binding entry \u2192 R2 grant/void object reader \u2192 D1 rebuild, then separate snapshot refresh",
+        "routed_owners": [
+          "R2",
+          "R9"
+        ],
+        "missing_routed_dispositions": [],
+        "global_status": "closed with recorded findings/external limits",
+        "completed_dispositions": {
+          "R2": {
+            "evidence": "R2-coverage.md",
+            "disposition_present": true
+          },
+          "R9": {
+            "evidence": "R9-coverage.json",
+            "disposition_present": true
+          }
+        },
+        "final_phase_result": {
+          "phase": "R9",
+          "disposition": "checked; PD1/REC1",
+          "producer_consumer_result": "Class-H service-binding rebuildGrantLedger \u2192 R2 import, then separate H fresh snapshot. Entry exists; snapshot bootstrap circularity and unchecked import remain findings."
+        }
+      },
+      {
+        "id": "076:1",
+        "classification": "source-contract",
+        "amended_paths": [
+          "docs/architecture/ai-billing-orchestration/04-abo-contracts.md",
+          "docs/architecture/ai-billing-orchestration/02-abo-architecture-and-threat-model.md",
+          "docs/architecture/ai-billing-orchestration/03-abo-data-model-and-lifecycle.md"
+        ],
+        "amended_sections": "`docs/architecture/ai-billing-orchestration/04-abo-contracts.md` (\u00a72.3); `docs/architecture/ai-billing-orchestration/02-abo-architecture-and-threat-model.md` (\u00a71.4); `docs/architecture/ai-billing-orchestration/03-abo-data-model-and-lifecycle.md` (\u00a72.1).",
+        "producer_consumer_route": "Host/version gates and record exporter \u2192 clinic error/header decoders, cross-host callers and ledger replay reader",
+        "routed_owners": [
+          "R1",
+          "R2",
+          "R3",
+          "R9"
+        ],
+        "missing_routed_dispositions": [],
+        "global_status": "closed with recorded findings/external limits",
+        "completed_dispositions": {
+          "R1": {
+            "evidence": "R1-tenant-identity-authorization.md",
+            "disposition_present": true
+          },
+          "R2": {
+            "evidence": "R2-coverage.md",
+            "disposition_present": true
+          },
+          "R3": {
+            "evidence": "R3-coverage.json",
+            "disposition_present": true
+          },
+          "R9": {
+            "evidence": "R9-coverage.json",
+            "disposition_present": true
+          }
+        },
+        "final_phase_result": {
+          "phase": "R9",
+          "disposition": "checked; inherited R2; REC1",
+          "producer_consumer_result": "Host-before-version/accepted-version response producer \u2192 clinic decoders; exporter ledger/<decimal fact_seq>.ndjson \u2192 exact replay identity. Telemetry/startup bookkeeping is not value mutation."
+        }
+      },
+      {
+        "id": "076:2",
+        "classification": "source-contract",
+        "amended_paths": [
+          "specs/076-abo-p4-1-abo-skeleton-records-layer-billing-token/spec.md"
+        ],
+        "amended_sections": "`specs/076-abo-p4-1-abo-skeleton-records-layer-billing-token/spec.md` (FR-009, \u00a72.6 edge case).",
+        "producer_consumer_route": "Daily lock check configured Cloudflare read API \u2192 enabled Indefinite ledger/ lock predicate \u2192 AL-16; failed API is explicit operational limit",
+        "routed_owners": [
+          "R9"
+        ],
+        "missing_routed_dispositions": [],
+        "global_status": "closed with recorded findings/external limits",
+        "completed_dispositions": {
+          "R9": {
+            "evidence": "R9-coverage.json",
+            "disposition_present": true
+          }
+        },
+        "final_phase_result": {
+          "phase": "R9",
+          "disposition": "checked; explicit detection limit",
+          "producer_consumer_result": "Daily lock-read vars/token/API \u2192 enabled Indefinite ledger/ or empty-prefix predicate \u2192 AL-16. API failure intentionally means unknown, not a newly raised missing-lock condition; no deployed lock attested."
+        }
+      },
+      {
+        "id": "077:1",
+        "classification": "source-contract",
+        "amended_paths": [
+          "docs/architecture/ai-billing-orchestration/03-abo-data-model-and-lifecycle.md",
+          "docs/architecture/ai-billing-orchestration/04-abo-contracts.md"
+        ],
+        "amended_sections": "`docs/architecture/ai-billing-orchestration/03-abo-data-model-and-lifecycle.md` (\u00a72.4); `docs/architecture/ai-billing-orchestration/04-abo-contracts.md` (\u00a77.1).",
+        "producer_consumer_route": "Billing JWT jti and checkout producer \u2192 immutable billing_token_jti fact; return URL v \u2192 browser-return version receiver and replay",
+        "routed_owners": [
+          "R1",
+          "R2",
+          "R3",
+          "R9"
+        ],
+        "missing_routed_dispositions": [],
+        "global_status": "closed with recorded findings/external limits",
+        "completed_dispositions": {
+          "R1": {
+            "evidence": "R1-tenant-identity-authorization.md",
+            "disposition_present": true
+          },
+          "R2": {
+            "evidence": "R2-coverage.md",
+            "disposition_present": true
+          },
+          "R3": {
+            "evidence": "R3-coverage.json",
+            "disposition_present": true
+          },
+          "R9": {
+            "evidence": "R9-coverage.json",
+            "disposition_present": true
+          }
+        },
+        "final_phase_result": {
+          "phase": "R9",
+          "disposition": "checked; inherited R3/R2; FACT1/REC2",
+          "producer_consumer_result": "Billing jti \u2192 immutable checkout row/export/replay, preserving original value. Normal return v belongs R2/R3; recovery must remove newly created replacement return/orders."
+        }
+      },
+      {
+        "id": "077:2",
+        "classification": "external-assumption",
+        "amended_paths": [
+          "docs/architecture/ai-billing-orchestration/06-abo-delivery-plan.md",
+          "docs/architecture/ai-billing-orchestration/01-abo-design-decisions.md",
+          "docs/architecture/ai-billing-orchestration/05-abo-operations-and-traceability.md"
+        ],
+        "amended_sections": "`docs/architecture/ai-billing-orchestration/06-abo-delivery-plan.md` (\u00a72 S6; \u00a76 OQ-3); `docs/architecture/ai-billing-orchestration/01-abo-design-decisions.md` (\u00a77 R-2); `docs/architecture/ai-billing-orchestration/05-abo-operations-and-traceability.md` (\u00a710 Spike-dependent items).",
+        "producer_consumer_route": "Paymob intention expiration=1800 sender \u2192 provider expiry assumed honored; checkout expiry and operational spike/launch limits. No live-provider verification in R0",
+        "routed_owners": [
+          "R3",
+          "R9"
+        ],
+        "missing_routed_dispositions": [],
+        "global_status": "closed with recorded findings/external limits",
+        "completed_dispositions": {
+          "R3": {
+            "evidence": "R3-coverage.json",
+            "disposition_present": true
+          },
+          "R9": {
+            "evidence": "R9-coverage.json",
+            "disposition_present": true
+          }
+        },
+        "final_phase_result": {
+          "phase": "R9",
+          "disposition": "external assumption retained",
+          "producer_consumer_result": "Intention expiration1800 and checkout30min \u2192 original provider correlation/expiry. Static review does not verify live provider expiry; RT1 cannot turn supplied flags into provider assurance."
+        }
+      },
+      {
+        "id": "078:1",
+        "classification": "source-contract",
+        "amended_paths": [
+          "docs/architecture/ai-billing-orchestration/02-abo-architecture-and-threat-model.md",
+          "docs/architecture/ai-billing-orchestration/06-abo-delivery-plan.md",
+          "docs/architecture/ai-billing-orchestration/03-abo-data-model-and-lifecycle.md"
+        ],
+        "amended_sections": "`docs/architecture/ai-billing-orchestration/02-abo-architecture-and-threat-model.md` (\u00a72 TB-1); `docs/architecture/ai-billing-orchestration/06-abo-delivery-plan.md` (P4.3 Implements); `docs/architecture/ai-billing-orchestration/03-abo-data-model-and-lifecycle.md` (\u00a72.9, \u00a75.6).",
+        "producer_consumer_route": "Paymob notify ingress body/IP gate \u2192 evidence/work enqueue; runner lease take \u2192 retry/sweep recovery consumers",
+        "routed_owners": [
+          "R2",
+          "R3",
+          "R9"
+        ],
+        "missing_routed_dispositions": [],
+        "global_status": "closed with recorded findings/external limits",
+        "completed_dispositions": {
+          "R2": {
+            "evidence": "R2-coverage.md",
+            "disposition_present": true
+          },
+          "R3": {
+            "evidence": "R3-coverage.json",
+            "disposition_present": true
+          },
+          "R9": {
+            "evidence": "R9-coverage.json",
+            "disposition_present": true
+          }
+        },
+        "final_phase_result": {
+          "phase": "R9",
+          "disposition": "checked; inherited R3-C5/M5; REC2/FACT1",
+          "producer_consumer_result": "Notify cap/IP refusal \u2192 no evidence/work; lease60s \u2192 original due-command recovery. Rebuild does not reuse a lost lease as authority; fact/dedupe transaction repair remains R3-C5."
+        }
+      },
+      {
+        "id": "079:1",
+        "classification": "source-contract",
+        "amended_paths": [
+          "docs/architecture/ai-billing-orchestration/04-abo-contracts.md"
+        ],
+        "amended_sections": "`docs/architecture/ai-billing-orchestration/04-abo-contracts.md` (\u00a71.4 evidence row).",
+        "producer_consumer_route": "abo/src/work/grant.ts paid operation-object approval producer \u2192 packages/vendor-contracts/src/grant-envelope.ts validateApproval \u2192 platform grant validation; no paid WebAuthn ceremony",
+        "routed_owners": [
+          "R2",
+          "R4"
+        ],
+        "missing_routed_dispositions": [],
+        "global_status": "closed with recorded findings/external limits",
+        "completed_dispositions": {
+          "R2": {
+            "evidence": "R2-coverage.md",
+            "disposition_present": true
+          },
+          "R4": {
+            "evidence": "R4-coverage.json",
+            "disposition_present": true
+          }
+        },
+        "final_phase_result": {
+          "phase": "R4",
+          "disposition": "ABO constructs one paid grant operation with base envelope sans approvals, empty actor, paid_at, deterministic nonce/version; shared acceptance and machine signature receiver traced; no WebAuthn requirement applied to paid path.",
+          "producer_consumer_result": "See exact ID in linked phase disposition table."
+        }
+      },
+      {
+        "id": "079:2",
+        "classification": "source-contract",
+        "amended_paths": [
+          "docs/architecture/ai-billing-orchestration/04-abo-contracts.md"
+        ],
+        "amended_sections": "`docs/architecture/ai-billing-orchestration/04-abo-contracts.md` (\u00a72.2 rows `GET /v1/subscription` and `GET /v1/payments`).",
+        "producer_consumer_route": "ABO subscription/payment response producers and live/fallback coverage readers \u2192 Flutter subscription/history/notices pagination; reversal producer supplies notices",
+        "routed_owners": [
+          "R3",
+          "R4",
+          "R6",
+          "R7",
+          "R9"
+        ],
+        "missing_routed_dispositions": [],
+        "global_status": "closed with recorded findings/external limits",
+        "completed_dispositions": {
+          "R3": {
+            "evidence": "R3-coverage.json",
+            "disposition_present": true
+          },
+          "R4": {
+            "evidence": "R4-coverage.json",
+            "disposition_present": true
+          },
+          "R6": {
+            "evidence": "R6-coverage.md",
+            "disposition_present": true
+          },
+          "R7": {
+            "evidence": "R7-coverage.json",
+            "disposition_present": true
+          },
+          "R9": {
+            "evidence": "R9-coverage.json",
+            "disposition_present": true
+          }
+        },
+        "final_phase_result": {
+          "phase": "R9",
+          "disposition": "checked; inherited R7",
+          "producer_consumer_result": "Payment/subscription immutable snapshot/notices \u2192 coverage_view/feed fallback \u2192 digest/recovery. Rebuild preserves original offer/version/payment classification; no use of current sellable catalogue."
+        }
+      },
+      {
+        "id": "079:3",
+        "classification": "reference-propagation",
+        "amended_paths": [
+          "specs/079-abo-p4-4-grant-pipeline-to-platform-purchase/spec.md"
+        ],
+        "amended_sections": "`specs/079-abo-p4-4-grant-pipeline-to-platform-purchase/spec.md` (Implements notice list, FR-005, and the reversal-notices out-of-scope lines).",
+        "producer_consumer_route": "Spec closed-set notice re-transcription \u2192 ABO subscription notice producer and desktop notice consumer, retaining reversal workflow ownership",
+        "routed_owners": [
+          "R6",
+          "R7"
+        ],
+        "missing_routed_dispositions": [],
+        "global_status": "closed with recorded findings/external limits",
+        "completed_dispositions": {
+          "R6": {
+            "evidence": "R6-coverage.md",
+            "disposition_present": true
+          },
+          "R7": {
+            "evidence": "R7-coverage.json",
+            "disposition_present": true
+          }
+        },
+        "final_phase_result": {
+          "phase": "R7",
+          "disposition": "verified with minor finding",
+          "producer_consumer_result": "Producer emits duplicate_payment,late_payment_honoured,payment_withheld,reversal_recorded,terms_held only. UI3 raw code rendering; no invented grant/denial authority."
+        }
+      },
+      {
+        "id": "079:4",
+        "classification": "source-contract",
+        "amended_paths": [
+          "docs/architecture/ai-billing-orchestration/04-abo-contracts.md"
+        ],
+        "amended_sections": "`docs/architecture/ai-billing-orchestration/04-abo-contracts.md` (\u00a71.6).",
+        "producer_consumer_route": "Platform grant receipt signer \u2192 ABO verifier \u2192 no grant_outcome on unverified receipt, parked work and AL-07",
+        "routed_owners": [
+          "R2",
+          "R4",
+          "R9"
+        ],
+        "missing_routed_dispositions": [],
+        "global_status": "closed with recorded findings/external limits",
+        "completed_dispositions": {
+          "R2": {
+            "evidence": "R2-coverage.md",
+            "disposition_present": true
+          },
+          "R4": {
+            "evidence": "R4-coverage.json",
+            "disposition_present": true
+          },
+          "R9": {
+            "evidence": "R9-coverage.json",
+            "disposition_present": true
+          }
+        },
+        "final_phase_result": {
+          "phase": "R9",
+          "disposition": "checked; inherited R4-A2/A1; REC2",
+          "producer_consumer_result": "Platform receipt \u2192 configured-key and business-link verification \u2192 no outcome on invalid receipt, parked AL-07; recovery uses same consumer, never synthetic successful outcome."
+        }
+      },
+      {
+        "id": "079:5",
+        "classification": "source-contract",
+        "amended_paths": [
+          "docs/architecture/ai-billing-orchestration/04-abo-contracts.md"
+        ],
+        "amended_sections": "`docs/architecture/ai-billing-orchestration/04-abo-contracts.md` (\u00a72.2 row `GET /v1/subscription`).",
+        "producer_consumer_route": "ABO subscription live/fallback miss \u2192 successful null snapshot response \u2192 desktop null handling and omitted terms_held",
+        "routed_owners": [
+          "R7"
+        ],
+        "missing_routed_dispositions": [],
+        "global_status": "closed with recorded findings/external limits",
+        "completed_dispositions": {
+          "R7": {
+            "evidence": "R7-coverage.json",
+            "disposition_present": true
+          }
+        },
+        "final_phase_result": {
+          "phase": "R7",
+          "disposition": "verified",
+          "producer_consumer_result": "Missing fallback row yields snapshot null; no terms_held notice without held_count>0; flat nullable backend billing fields keep summary safe."
+        }
+      },
+      {
+        "id": "079:6",
+        "classification": "source-contract",
+        "amended_paths": [
+          "packages/vendor-contracts/src/grant-envelope.ts"
+        ],
+        "amended_sections": "`packages/vendor-contracts/src/grant-envelope.ts` (`validateApproval`).",
+        "producer_consumer_route": "Paid grant operation-object producer \u2192 shared validateApproval acceptance \u2192 platform paid grant; complimentary/transfer assertion consumers retain credential/assertion requirement",
+        "routed_owners": [
+          "R2",
+          "R4",
+          "R6"
+        ],
+        "missing_routed_dispositions": [],
+        "global_status": "closed with recorded findings/external limits",
+        "completed_dispositions": {
+          "R2": {
+            "evidence": "R2-coverage.md",
+            "disposition_present": true
+          },
+          "R4": {
+            "evidence": "R4-coverage.json",
+            "disposition_present": true
+          },
+          "R6": {
+            "evidence": "R6-coverage.md",
+            "disposition_present": true
+          }
+        },
+        "final_phase_result": {
+          "phase": "R6",
+          "disposition": "Paid operation-object approval exception remains canonical R2/R4. Machine-signed reversal bodies are separate from grant approval; transfer authorization retains HP. No testkit/vector implementation read.",
+          "producer_consumer_result": "See exact ID in linked phase disposition table."
+        }
+      },
+      {
+        "id": "080:1",
+        "classification": "reference-propagation",
+        "amended_paths": [
+          "docs/architecture/ai-billing-orchestration/06-abo-delivery-plan.md"
+        ],
+        "amended_sections": "`docs/architecture/ai-billing-orchestration/06-abo-delivery-plan.md` (P4.5 E2E list; \u00a75 D1 owner row for 05 \u00a74).",
+        "producer_consumer_route": "Failure-mode scenario reference added; underlying callback/work/sweep crash-recovery source remains R3/R9, no new scenario content inspected",
+        "routed_owners": [
+          "R3",
+          "R9"
+        ],
+        "missing_routed_dispositions": [],
+        "global_status": "closed with recorded findings/external limits",
+        "completed_dispositions": {
+          "R3": {
+            "evidence": "R3-coverage.json",
+            "disposition_present": true
+          },
+          "R9": {
+            "evidence": "R9-coverage.json",
+            "disposition_present": true
+          }
+        },
+        "final_phase_result": {
+          "phase": "R9",
+          "disposition": "reference-only scenario effect; production seam checked",
+          "producer_consumer_result": "FM-01 scenario amendment excluded; actual callback/work/sweep recovery remains R3-C5/C4 and REC2/FACT1. No scenario code inspected."
+        }
+      },
+      {
+        "id": "080:2",
+        "classification": "source-contract",
+        "amended_paths": [
+          "docs/architecture/ai-billing-orchestration/03-abo-data-model-and-lifecycle.md"
+        ],
+        "amended_sections": "`docs/architecture/ai-billing-orchestration/03-abo-data-model-and-lifecycle.md` (\u00a72.7 reversal identity and `is_full`; \u00a75.5 effect rule).",
+        "producer_consumer_route": "Provider child/parent reversal normalization \u2192 cumulative fullness/dedupe key \u2192 reversal insertion and void eligibility consumers",
+        "routed_owners": [
+          "R3",
+          "R6",
+          "R9"
+        ],
+        "missing_routed_dispositions": [],
+        "global_status": "closed with recorded findings/external limits",
+        "completed_dispositions": {
+          "R3": {
+            "evidence": "R3-coverage.json",
+            "disposition_present": true
+          },
+          "R6": {
+            "evidence": "R6-coverage.md",
+            "disposition_present": true
+          },
+          "R9": {
+            "evidence": "R9-coverage.json",
+            "disposition_present": true
+          }
+        },
+        "final_phase_result": {
+          "phase": "R9",
+          "disposition": "checked; inherited R6-BR1/BR2; AO2",
+          "producer_consumer_result": "Parent/cumulative reversal identity/fullness \u2192 recorder/void \u2192 restored evidence and payout matching. An unrelated partial refund cannot prove a later chargeback."
+        }
+      },
+      {
+        "id": "080:3",
+        "classification": "source-contract",
+        "amended_paths": [
+          "specs/080-abo-p4-5-sweeps-reversals-inquiry-budget/spec.md"
+        ],
+        "amended_sections": "`specs/080-abo-p4-5-sweeps-reversals-inquiry-budget/spec.md` (Clarifications; User Story 4; E2E-P4.5-10; FR-010; Assumptions).",
+        "producer_consumer_route": "Shared inquiry-budget producer \u2192 confirmation/grant work, sweep and reversal inquiry callers; due work retained outside cap",
+        "routed_owners": [
+          "R3",
+          "R6",
+          "R9"
+        ],
+        "missing_routed_dispositions": [],
+        "global_status": "closed with recorded findings/external limits",
+        "completed_dispositions": {
+          "R3": {
+            "evidence": "R3-coverage.json",
+            "disposition_present": true
+          },
+          "R6": {
+            "evidence": "R6-coverage.md",
+            "disposition_present": true
+          },
+          "R9": {
+            "evidence": "R9-coverage.json",
+            "disposition_present": true
+          }
+        },
+        "final_phase_result": {
+          "phase": "R9",
+          "disposition": "checked; inherited R3-C7",
+          "producer_consumer_result": "Shared reserved two/minute budget \u2192 confirm/grant/sweep/reversal/rebuild inquiry. REC2 routes recovery through shared admission and keeps excess work due, never direct unbudgeted loops."
+        }
+      },
+      {
+        "id": "081:1",
+        "classification": "source-contract",
+        "amended_paths": [
+          "docs/architecture/ai-billing-orchestration/05-abo-operations-and-traceability.md"
+        ],
+        "amended_sections": "`docs/architecture/ai-billing-orchestration/05-abo-operations-and-traceability.md` (\u00a73.2, sentence after the action table).",
+        "producer_consumer_route": "ABO operator_action commit \u2192 recordOperatorAction class-H relay \u2192 platform control_audit; cancel/retry callers, auth and action_id dedupe",
+        "routed_owners": [
+          "R2",
+          "R3",
+          "R8",
+          "R9"
+        ],
+        "missing_routed_dispositions": [],
+        "global_status": "closed with recorded findings/external limits",
+        "completed_dispositions": {
+          "R2": {
+            "evidence": "R2-coverage.md",
+            "disposition_present": true
+          },
+          "R3": {
+            "evidence": "R3-coverage.json",
+            "disposition_present": true
+          },
+          "R8": {
+            "evidence": "R8-coverage.json",
+            "disposition_present": true
+          },
+          "R9": {
+            "evidence": "R9-coverage.json",
+            "disposition_present": true
+          }
+        },
+        "final_phase_result": {
+          "phase": "R9",
+          "disposition": "checked; inherited R6-O1/R8-CONSOLE3",
+          "producer_consumer_result": "ABO immutable action \u2192 H recordOperatorAction audit dedupe \u2192 recovery. Payout/resolution/registration must preserve original accepted command, actor/action_id; PAL1 retains its alert payload separately."
+        }
+      },
+      {
+        "id": "081:2",
+        "classification": "source-contract",
+        "amended_paths": [
+          "docs/architecture/ai-billing-orchestration/06-abo-delivery-plan.md"
+        ],
+        "amended_sections": "`docs/architecture/ai-billing-orchestration/06-abo-delivery-plan.md` (rule S3 wiring-exception list; rule S7 freeze sentence; rule S10 concurrency exception; P4.6 codebase, Implements, Outputs / freezes; D1 04 \u00a71.3).",
+        "producer_consumer_route": "P4.6 thin platform recordOperatorAction implementation \u2192 ABO console relay; preserve source ownership despite originating ABO-only unit",
+        "routed_owners": [
+          "R2",
+          "R8",
+          "R9"
+        ],
+        "missing_routed_dispositions": [],
+        "global_status": "closed with recorded findings/external limits",
+        "completed_dispositions": {
+          "R2": {
+            "evidence": "R2-coverage.md",
+            "disposition_present": true
+          },
+          "R8": {
+            "evidence": "R8-coverage.json",
+            "disposition_present": true
+          },
+          "R9": {
+            "evidence": "R9-coverage.json",
+            "disposition_present": true
+          }
+        },
+        "final_phase_result": {
+          "phase": "R9",
+          "disposition": "checked; inherited R6-O1",
+          "producer_consumer_result": "Frozen actual platform H relay exists \u2192 ABO post-commit caller. Remote audit completion remains durable accepted-command obligation, not assumed local batch atomicity."
+        }
+      },
+      {
+        "id": "081:3",
+        "classification": "source-contract",
+        "amended_paths": [
+          "specs/081-abo-p4-6-operator-console-access-perimeter-lookup/spec.md"
+        ],
+        "amended_sections": "`specs/081-abo-p4-6-operator-console-access-perimeter-lookup/spec.md` (Clarifications; \u00a72.1 narrative and acceptance scenario 4; E2E-P4.6-07; FR-003).",
+        "producer_consumer_route": "ABO inspectCoverage Access JWT forwarding \u2192 platform frozen email authentication \u2192 clinic page terms/grants/reservations; no audit write",
+        "routed_owners": [
+          "R2",
+          "R8"
+        ],
+        "missing_routed_dispositions": [],
+        "global_status": "closed with recorded findings/external limits",
+        "completed_dispositions": {
+          "R2": {
+            "evidence": "R2-coverage.md",
+            "disposition_present": true
+          },
+          "R8": {
+            "evidence": "R8-coverage.json",
+            "disposition_present": true
+          }
+        },
+        "final_phase_result": {
+          "phase": "R8",
+          "disposition": "checked explicit exception",
+          "producer_consumer_result": "Clinic handler forwards Access to inspectCoverage and displays returned ledger. No platform audit/email echo required by amended exception; support is separately audited by AUDIT1 remedy."
+        }
+      },
+      {
+        "id": "082:1",
+        "classification": "source-contract",
+        "amended_paths": [
+          "specs/082-abo-p4-7-console-passkey-ceremony-abo-side-hp/spec.md"
+        ],
+        "amended_sections": "`specs/082-abo-p4-7-console-passkey-ceremony-abo-side-hp/spec.md` (Clarifications; User Story 1 acceptance scenario 2; E2E-P4.7-07; \u00a72.5 edge cases; FR-002; FR-004; \u00a74.1 Failure Handling).",
+        "producer_consumer_route": "Platform active-only credential list \u2192 ABO HP credential lookup/refusal \u2192 operator value-change and transfer relay; platform own revoked code stays distinct",
+        "routed_owners": [
+          "R2",
+          "R6",
+          "R8"
+        ],
+        "missing_routed_dispositions": [],
+        "global_status": "closed with recorded findings/external limits",
+        "completed_dispositions": {
+          "R2": {
+            "evidence": "R2-coverage.md",
+            "disposition_present": true
+          },
+          "R6": {
+            "evidence": "R6-coverage.md",
+            "disposition_present": true
+          },
+          "R8": {
+            "evidence": "R8-coverage.json",
+            "disposition_present": true
+          }
+        },
+        "final_phase_result": {
+          "phase": "R8",
+          "disposition": "checked inherited R2",
+          "producer_consumer_result": "Local HP refetches active-only registry; missing pending/revoked/unknown credential maps credential_not_active; platform retains credential_revoked distinction."
+        }
+      },
+      {
+        "id": "083:1",
+        "classification": "source-contract",
+        "amended_paths": [
+          "docs/architecture/ai-billing-orchestration/03-abo-data-model-and-lifecycle.md"
+        ],
+        "amended_sections": "`docs/architecture/ai-billing-orchestration/03-abo-data-model-and-lifecycle.md` (\u00a77 `grant_id` transfer form).",
+        "producer_consumer_route": "Ordered transfer package \u2192 ABO zero-based deterministic per-term grant IDs/grant_request rows \u2192 platform transfer/grant lineage and recovery",
+        "routed_owners": [
+          "R4",
+          "R6",
+          "R9"
+        ],
+        "missing_routed_dispositions": [],
+        "global_status": "closed with recorded findings/external limits",
+        "completed_dispositions": {
+          "R4": {
+            "evidence": "R4-coverage.json",
+            "disposition_present": true
+          },
+          "R6": {
+            "evidence": "R6-coverage.md",
+            "disposition_present": true
+          },
+          "R9": {
+            "evidence": "R9-coverage.json",
+            "disposition_present": true
+          }
+        },
+        "final_phase_result": {
+          "phase": "R9",
+          "disposition": "checked; inherited R6-DM2/PT; REC2",
+          "producer_consumer_result": "Position-ordered transfer package \u2192 zero-based deterministic per-term grant IDs and requests \u2192 exact replay recovery. No synthetic transfer ID/term creation from today\u2019s binding."
+        }
+      },
+      {
+        "id": "085:1",
+        "classification": "source-contract",
+        "amended_paths": [
+          "docs/architecture/ai-billing-orchestration/05-abo-operations-and-traceability.md",
+          "docs/architecture/ai-billing-orchestration/06-abo-delivery-plan.md"
+        ],
+        "amended_sections": "`docs/architecture/ai-billing-orchestration/05-abo-operations-and-traceability.md` (\u00a73.3 check and `finding.kind` `receipt_mismatch`); `docs/architecture/ai-billing-orchestration/06-abo-delivery-plan.md` (P4.10 Implements: eleven checks; E2E-P4.10-09 names `receipt_mismatch`).",
+        "producer_consumer_route": "ABO applied grant_outcome receipt and platform listGrants receipt \u2192 field-equality reconciliation \u2192 receipt_mismatch finding and AL-10",
+        "routed_owners": [
+          "R4",
+          "R9"
+        ],
+        "missing_routed_dispositions": [],
+        "global_status": "closed with recorded findings/external limits",
+        "completed_dispositions": {
+          "R4": {
+            "evidence": "R4-coverage.json",
+            "disposition_present": true
+          },
+          "R9": {
+            "evidence": "R9-coverage.json",
+            "disposition_present": true
+          }
+        },
+        "final_phase_result": {
+          "phase": "R9",
+          "disposition": "checked; AO3/FACT1",
+          "producer_consumer_result": "Every applied/already-applied grant outcome \u2192 listGrants field-for-field receipt comparison including signature; missing platform row fails. Explicit transfers excluded, orphan missing request cannot silently disappear."
+        }
+      },
+      {
+        "id": "086:1",
+        "classification": "source-contract",
+        "amended_paths": [
+          "docs/architecture/ai-billing-orchestration/05-abo-operations-and-traceability.md",
+          "docs/architecture/ai-billing-orchestration/06-abo-delivery-plan.md"
+        ],
+        "amended_sections": "`docs/architecture/ai-billing-orchestration/05-abo-operations-and-traceability.md` (\u00a71 ABO daily row: `scheduled()`, `0 6 * * *`, housekeeping deletion); `docs/architecture/ai-billing-orchestration/06-abo-delivery-plan.md` (P4.11 Implements and E2E-P4.11-05 name that same cron).",
+        "producer_consumer_route": "06:00 UTC scheduled handler \u2192 housekeeping retention deletes; commercial fact retention consumers remain untouched",
+        "routed_owners": [
+          "R9"
+        ],
+        "missing_routed_dispositions": [],
+        "global_status": "closed with recorded findings/external limits",
+        "completed_dispositions": {
+          "R9": {
+            "evidence": "R9-coverage.json",
+            "disposition_present": true
+          }
+        },
+        "final_phase_result": {
+          "phase": "R9",
+          "disposition": "checked; AO6/CRON1",
+          "producer_consumer_result": "Daily06:00 same schedule \u2192 completed work/sent alert90d and invalid-HMAC30d deletion, no commercial facts deleted. Pagination/checkpoint and true completion remain required."
+        }
+      },
+      {
+        "id": "086:2",
+        "classification": "source-contract",
+        "amended_paths": [
+          "docs/architecture/ai-billing-orchestration/05-abo-operations-and-traceability.md",
+          "docs/architecture/ai-billing-orchestration/06-abo-delivery-plan.md"
+        ],
+        "amended_sections": "`docs/architecture/ai-billing-orchestration/05-abo-operations-and-traceability.md` (\u00a71 ABO hourly row; \u00a72 row AL-22); `docs/architecture/ai-billing-orchestration/06-abo-delivery-plan.md` (P4.11 Implements and E2E-P4.11-04). 04 was not amended.",
+        "producer_consumer_route": "ABO successful credential registration detail \u2192 stored last-seen credential triples \u2192 hourly active list comparison and AL-22; AL-13 announcement path",
+        "routed_owners": [
+          "R2",
+          "R8",
+          "R9"
+        ],
+        "missing_routed_dispositions": [],
+        "global_status": "closed with recorded findings/external limits",
+        "completed_dispositions": {
+          "R2": {
+            "evidence": "R2-coverage.md",
+            "disposition_present": true
+          },
+          "R8": {
+            "evidence": "R8-coverage.json",
+            "disposition_present": true
+          },
+          "R9": {
+            "evidence": "R9-coverage.json",
+            "disposition_present": true
+          }
+        },
+        "final_phase_result": {
+          "phase": "R9",
+          "disposition": "checked; inherited R6-O1; AO5",
+          "producer_consumer_result": "Successful registration original detail triple \u2192 stored last-seen baseline \u2192 hourly active comparison/AL-22. Pending promotion known; never trust hourly response or platform email as baseline; errors stay unknown."
+        }
+      },
+      {
+        "id": "087:1",
+        "classification": "source-contract",
+        "amended_paths": [
+          "docs/architecture/ai-billing-orchestration/03-abo-data-model-and-lifecycle.md",
+          "docs/architecture/ai-billing-orchestration/02-abo-architecture-and-threat-model.md",
+          "docs/architecture/ai-billing-orchestration/06-abo-delivery-plan.md"
+        ],
+        "amended_sections": "`docs/architecture/ai-billing-orchestration/03-abo-data-model-and-lifecycle.md` (\u00a74 row `ai_internal.issuer_key`); `docs/architecture/ai-billing-orchestration/02-abo-architecture-and-threat-model.md` (\u00a76 row K-2); `docs/architecture/ai-billing-orchestration/06-abo-delivery-plan.md` (P5.1 Implements).",
+        "producer_consumer_route": "Backend private generate/switch issuer signing key \u2192 token minting signer \u2192 platform verifier registry statuses and ABO rotation console; no public switch RPC",
+        "routed_owners": [
+          "R1",
+          "R2",
+          "R8"
+        ],
+        "missing_routed_dispositions": [],
+        "global_status": "closed with recorded findings/external limits",
+        "completed_dispositions": {
+          "R1": {
+            "evidence": "R1-tenant-identity-authorization.md",
+            "disposition_present": true
+          },
+          "R2": {
+            "evidence": "R2-coverage.md",
+            "disposition_present": true
+          },
+          "R8": {
+            "evidence": "R8-coverage.json",
+            "disposition_present": true
+          }
+        },
+        "final_phase_result": {
+          "phase": "R8",
+          "disposition": "checked inherited R1 custody",
+          "producer_consumer_result": "Backend next/signing/retired privileged switch differs from verifier active/retiring/revoked. Console only platform registry relay; pins + signer switch deployment order retained."
+        }
+      },
+      {
+        "id": "087:2",
+        "classification": "reference-only / excluded effect",
+        "amended_paths": [
+          "specs/087-abo-p5-1-issuer-key-custody-token-issuance/spec.md"
+        ],
+        "amended_sections": "`specs/087-abo-p5-1-issuer-key-custody-token-issuance/spec.md`",
+        "producer_consumer_route": "Local full-stack Access/key bootstrap only; source/config/24-hour pending semantics explicitly unchanged",
+        "routed_owners": [
+          "R1",
+          "R8"
+        ],
+        "missing_routed_dispositions": [],
+        "global_status": "closed with recorded findings/external limits",
+        "completed_dispositions": {
+          "R1": {
+            "evidence": "R1-tenant-identity-authorization.md",
+            "disposition_present": true
+          },
+          "R8": {
+            "evidence": "R8-coverage.json",
+            "disposition_present": true
+          }
+        },
+        "final_phase_result": {
+          "phase": "R8",
+          "disposition": "excluded harness-only effect",
+          "producer_consumer_result": "No mockFetch/testkit/local seed reviewed; no production activation or Access bypass inferred. Platform 24-hour registration remains."
+        }
+      },
+      {
+        "id": "088:1",
+        "classification": "source-contract",
+        "amended_paths": [
+          "docs/architecture/ai-billing-orchestration/03-abo-data-model-and-lifecycle.md",
+          "docs/architecture/ai-billing-orchestration/04-abo-contracts.md",
+          "docs/architecture/ai-billing-orchestration/06-abo-delivery-plan.md"
+        ],
+        "amended_sections": "`docs/architecture/ai-billing-orchestration/03-abo-data-model-and-lifecycle.md` (\u00a74 row `ai_internal.status_refresh`); `docs/architecture/ai-billing-orchestration/04-abo-contracts.md` (\u00a73.1 rows `get_ai_billing_status`, `request_ai_status_refresh`); `docs/architecture/ai-billing-orchestration/06-abo-delivery-plan.md` (P5.2 Read, Implements, E2E-P5.2-02, E2E-P5.2-04; \u00a7 coverage map row 03 \u00a74).",
+        "producer_consumer_route": "Role-checked status_refresh RPC clock/upsert \u2192 immediate pull and projection \u2192 desktop success/rate/role handling; singleton feed cursor remains separate",
+        "routed_owners": [
+          "R1",
+          "R2",
+          "R7",
+          "R9"
+        ],
+        "missing_routed_dispositions": [],
+        "global_status": "closed with recorded findings/external limits",
+        "completed_dispositions": {
+          "R1": {
+            "evidence": "R1-tenant-identity-authorization.md",
+            "disposition_present": true
+          },
+          "R2": {
+            "evidence": "R2-coverage.md",
+            "disposition_present": true
+          },
+          "R7": {
+            "evidence": "R7-coverage.json",
+            "disposition_present": true
+          },
+          "R9": {
+            "evidence": "R9-coverage.json",
+            "disposition_present": true
+          }
+        },
+        "final_phase_result": {
+          "phase": "R9",
+          "disposition": "checked; inherited R7-PS3 and R1 authority",
+          "producer_consumer_result": "Per-org status_refresh10s role-checked RPC \u2192 immediate pull/projection \u2192 health/digest. R9 never merges this clock with singleton cursor or claims freshness from a pre-work stamp."
+        }
+      },
+      {
+        "id": "088:2",
+        "classification": "source-contract",
+        "amended_paths": [
+          "docs/architecture/ai-billing-orchestration/04-abo-contracts.md",
+          "docs/architecture/ai-billing-orchestration/06-abo-delivery-plan.md"
+        ],
+        "amended_sections": "`docs/architecture/ai-billing-orchestration/04-abo-contracts.md` (\u00a73.2); `docs/architecture/ai-billing-orchestration/06-abo-delivery-plan.md` (P5.2 Implements).",
+        "producer_consumer_route": "Status RPC notice objects and floored grace days \u2192 Flutter member and billing-status notice decoders/presentation",
+        "routed_owners": [
+          "R7"
+        ],
+        "missing_routed_dispositions": [],
+        "global_status": "closed with recorded findings/external limits",
+        "completed_dispositions": {
+          "R7": {
+            "evidence": "R7-coverage.json",
+            "disposition_present": true
+          }
+        },
+        "final_phase_result": {
+          "phase": "R7",
+          "disposition": "verified with findings",
+          "producer_consumer_result": "SQL emits member/in_app records and grace-only integer grace_days_left; model parses them. T1 disconnected fresh notices; UI3 raw administrator code/grace omission."
+        }
+      },
+      {
+        "id": "088:3",
+        "classification": "source-contract",
+        "amended_paths": [
+          "docs/architecture/ai-billing-orchestration/04-abo-contracts.md",
+          "docs/architecture/ai-billing-orchestration/06-abo-delivery-plan.md"
+        ],
+        "amended_sections": "`docs/architecture/ai-billing-orchestration/04-abo-contracts.md` (\u00a73.2); `docs/architecture/ai-billing-orchestration/06-abo-delivery-plan.md` (P5.2 Implements).",
+        "producer_consumer_route": "Projection ends_at and PostgreSQL read-time now \u2192 days_left/null computation \u2192 desktop ends-soon display; grace days separate",
+        "routed_owners": [
+          "R7"
+        ],
+        "missing_routed_dispositions": [],
+        "global_status": "closed with recorded findings/external limits",
+        "completed_dispositions": {
+          "R7": {
+            "evidence": "R7-coverage.json",
+            "disposition_present": true
+          }
+        },
+        "final_phase_result": {
+          "phase": "R7",
+          "disposition": "verified",
+          "producer_consumer_result": "Final SQL floors days toward ends_at only; absent/past dates null; no ends_soon from null. No consumer recomputes grace into term days."
+        }
+      },
+      {
+        "id": "088:4",
+        "classification": "source-contract",
+        "amended_paths": [
+          "docs/architecture/ai-billing-orchestration/03-abo-data-model-and-lifecycle.md",
+          "docs/architecture/ai-billing-orchestration/04-abo-contracts.md",
+          "docs/architecture/ai-billing-orchestration/06-abo-delivery-plan.md"
+        ],
+        "amended_sections": "`docs/architecture/ai-billing-orchestration/03-abo-data-model-and-lifecycle.md` (\u00a74 row `ai_internal.clinic_ai_coverage`); `docs/architecture/ai-billing-orchestration/04-abo-contracts.md` (\u00a73.2, \u00a73.3); `docs/architecture/ai-billing-orchestration/06-abo-delivery-plan.md` (P5.2 Implements).",
+        "producer_consumer_route": "Feed snapshot.reason \u2192 clinic_ai_coverage upsert \u2192 read-time suspension/clock reason mapping \u2192 desktop reason decoder",
+        "routed_owners": [
+          "R7"
+        ],
+        "missing_routed_dispositions": [],
+        "global_status": "closed with recorded findings/external limits",
+        "completed_dispositions": {
+          "R7": {
+            "evidence": "R7-coverage.json",
+            "disposition_present": true
+          }
+        },
+        "final_phase_result": {
+          "phase": "R7",
+          "disposition": "verified with upstream finding",
+          "producer_consumer_result": "Final SQL stores snapshot reason, reads suspended before clock, nulls available/suspended reason and uses expired at read-time lapse. PS2 incorrect producer terminal reasons propagate unchanged."
+        }
+      },
+      {
+        "id": "088:5",
+        "classification": "source-contract",
+        "amended_paths": [
+          "docs/architecture/ai-billing-orchestration/04-abo-contracts.md",
+          "docs/architecture/ai-billing-orchestration/06-abo-delivery-plan.md"
+        ],
+        "amended_sections": "`docs/architecture/ai-billing-orchestration/04-abo-contracts.md` (\u00a73.1 row `get_ai_billing_status`); `docs/architecture/ai-billing-orchestration/06-abo-delivery-plan.md` (P5.2 Implements).",
+        "producer_consumer_route": "get_ai_billing_status flattened projection fields \u2192 Flutter billing state and allowance-minus-used display including null/negative result",
+        "routed_owners": [
+          "R7"
+        ],
+        "missing_routed_dispositions": [],
+        "global_status": "closed with recorded findings/external limits",
+        "completed_dispositions": {
+          "R7": {
+            "evidence": "R7-coverage.json",
+            "disposition_present": true
+          }
+        },
+        "final_phase_result": {
+          "phase": "R7",
+          "disposition": "verified",
+          "producer_consumer_result": "Billing guards membership administrator then extends shared status with flat nullable plan/dates/allowance/used/counts/reference/URLs. Desktop uses flat fields; no nested term or remaining wire field invented."
+        }
+      },
+      {
+        "id": "088:6",
+        "classification": "source-contract",
+        "amended_paths": [
+          "docs/architecture/ai-billing-orchestration/03-abo-data-model-and-lifecycle.md",
+          "docs/architecture/ai-billing-orchestration/04-abo-contracts.md"
+        ],
+        "amended_sections": "`docs/architecture/ai-billing-orchestration/03-abo-data-model-and-lifecycle.md` (\u00a74 row `ai_internal.clinic_ai_coverage`); `docs/architecture/ai-billing-orchestration/04-abo-contracts.md` (\u00a71.7 row `contract_version`).",
+        "producer_consumer_route": "Accepted versioned snapshot \u2192 flattened versionless backend projection \u2192 request-version RPC result; platform mirror/ABO coverage_view retain version",
+        "routed_owners": [
+          "R2",
+          "R7",
+          "R9"
+        ],
+        "missing_routed_dispositions": [],
+        "global_status": "closed with recorded findings/external limits",
+        "completed_dispositions": {
+          "R2": {
+            "evidence": "R2-coverage.md",
+            "disposition_present": true
+          },
+          "R7": {
+            "evidence": "R7-coverage.json",
+            "disposition_present": true
+          },
+          "R9": {
+            "evidence": "R9-coverage.json",
+            "disposition_present": true
+          }
+        },
+        "final_phase_result": {
+          "phase": "R9",
+          "disposition": "checked; inherited R7",
+          "producer_consumer_result": "Versioned snapshot \u2192 flattened versionless backend table/request-version RPC; mirror/view retain stored snapshot version. REC1/PDO1 retain original payload version; no new projection version column invented."
+        }
+      },
+      {
+        "id": "088:7",
+        "classification": "reference-propagation",
+        "amended_paths": [
+          "docs/architecture/ai-billing-orchestration/06-abo-delivery-plan.md"
+        ],
+        "amended_sections": "`docs/architecture/ai-billing-orchestration/06-abo-delivery-plan.md` (unit index; rule S4 table and the unit total; S6 R-4; S10; S11 CP-D; H-FS; P5.1 scope; P5.2 replaced by P5.2a and P5.2b; P6.1 depends; coverage map; OQ-3).",
+        "producer_consumer_route": "Delivery split provenance only: P5.2a feed/refresh \u2192 P5.2b read-time status/notices \u2192 P6.1 desktop; preserve combined final ownership",
+        "routed_owners": [
+          "R7",
+          "R9"
+        ],
+        "missing_routed_dispositions": [],
+        "global_status": "closed with recorded findings/external limits",
+        "completed_dispositions": {
+          "R7": {
+            "evidence": "R7-coverage.json",
+            "disposition_present": true
+          },
+          "R9": {
+            "evidence": "R9-coverage.json",
+            "disposition_present": true
+          }
+        },
+        "final_phase_result": {
+          "phase": "R9",
+          "disposition": "reference-only delivery split preserved",
+          "producer_consumer_result": "088/088b provenance split retains final feed/read responsibilities; no independent runtime amendment or test-story correctness review."
+        }
+      },
+      {
+        "id": "088b:1",
+        "classification": "source-contract",
+        "amended_paths": [
+          "docs/architecture/ai-billing-orchestration/04-abo-contracts.md",
+          "docs/architecture/ai-billing-orchestration/06-abo-delivery-plan.md"
+        ],
+        "amended_sections": "`docs/architecture/ai-billing-orchestration/04-abo-contracts.md` (\u00a73.2); `docs/architecture/ai-billing-orchestration/06-abo-delivery-plan.md` (P5.2b Implements).",
+        "producer_consumer_route": "PostgreSQL status read-time now() \u2192 shared status/billing as_of field \u2192 Flutter freshness/time presentation, including missing projection",
+        "routed_owners": [
+          "R7"
+        ],
+        "missing_routed_dispositions": [],
+        "global_status": "closed with recorded findings/external limits",
+        "completed_dispositions": {
+          "R7": {
+            "evidence": "R7-coverage.json",
+            "disposition_present": true
+          }
+        },
+        "final_phase_result": {
+          "phase": "R7",
+          "disposition": "verified",
+          "producer_consumer_result": "Shared status as_of is read-time now(), present even absent projection, reused by billing; no write/readback timestamp confusion."
+        }
+      },
+      {
+        "id": "089:1",
+        "classification": "source-contract",
+        "amended_paths": [
+          "docs/architecture/ai-billing-orchestration/04-abo-contracts.md",
+          "docs/architecture/ai-billing-orchestration/06-abo-delivery-plan.md"
+        ],
+        "amended_sections": "`docs/architecture/ai-billing-orchestration/04-abo-contracts.md` (\u00a73.4 first bullet \u201cWhen to read status\u201d); `docs/architecture/ai-billing-orchestration/06-abo-delivery-plan.md` (P6.1 Implements).",
+        "producer_consumer_route": "AI allowance_exhausted/coverage_lapsed/coverage_unknown denial producer \u2192 Flutter get_ai_status refresh trigger and refreshed status consumer",
+        "routed_owners": [
+          "R5",
+          "R7"
+        ],
+        "missing_routed_dispositions": [],
+        "global_status": "closed with recorded findings/external limits",
+        "completed_dispositions": {
+          "R5": {
+            "evidence": "R5-coverage.json",
+            "disposition_present": true
+          },
+          "R7": {
+            "evidence": "R7-coverage.json",
+            "disposition_present": true
+          }
+        },
+        "final_phase_result": {
+          "phase": "R7",
+          "disposition": "verified with finding",
+          "producer_consumer_result": "Exact allowance_exhausted/coverage_lapsed/coverage_unknown raw codes survive HTTP/SSE to callback. T1 shows successful refresh updates disconnected state, not open host."
+        }
+      },
+      {
+        "id": "091:1",
+        "classification": "source-contract",
+        "amended_paths": [
+          "docs/architecture/ai-billing-orchestration/04-abo-contracts.md",
+          "docs/architecture/ai-billing-orchestration/06-abo-delivery-plan.md"
+        ],
+        "amended_sections": "`docs/architecture/ai-billing-orchestration/04-abo-contracts.md` (\u00a72.2 rows `GET /v1/checkouts/{id}` and `GET /v1/checkouts?open=1`); `docs/architecture/ai-billing-orchestration/06-abo-delivery-plan.md` (P6.3 Implements).",
+        "producer_consumer_route": "ABO checkout detail/open-list JSON producer \u2192 Flutter checkout polling/resume/reference parsing and shown-state display",
+        "routed_owners": [
+          "R3",
+          "R7"
+        ],
+        "missing_routed_dispositions": [],
+        "global_status": "closed with recorded findings/external limits",
+        "completed_dispositions": {
+          "R3": {
+            "evidence": "R3-coverage.json",
+            "disposition_present": true
+          },
+          "R7": {
+            "evidence": "R7-coverage.json",
+            "disposition_present": true
+          }
+        },
+        "final_phase_result": {
+          "phase": "R7",
+          "disposition": "verified / inherited limit",
+          "producer_consumer_result": "Checkout detail/open list parsed and resumed via CK reference; snapshot fields and null references handled. UI2 completion read refresh; lost redirect remains R3 frozen-contract recovery limit."
+        }
+      },
+      {
+        "id": "092:1",
+        "classification": "reference-only / excluded effect",
+        "amended_paths": [
+          "specs/092-abo-p6-4-administrator-subscription-payment-history-notices/spec.md"
+        ],
+        "amended_sections": "`specs/092-abo-p6-4-administrator-subscription-payment-history-notices/spec.md` (Clarifications, Session 2026-10-08; \u00a77 Assumptions).",
+        "producer_consumer_route": "Local checkout fixture backdating/cancellation and 30-payment arrangement only; production limit and classification rules unchanged",
+        "routed_owners": [
+          "R7"
+        ],
+        "missing_routed_dispositions": [],
+        "global_status": "closed with recorded findings/external limits",
+        "completed_dispositions": {
+          "R7": {
+            "evidence": "R7-coverage.json",
+            "disposition_present": true
+          }
+        },
+        "final_phase_result": {
+          "phase": "R7",
+          "disposition": "reference-only / excluded effect",
+          "producer_consumer_result": "Harness local cancellation/backdating/30-payments setup only. No harness/fixture implementation correctness review."
+        }
+      },
+      {
+        "id": "093:1",
+        "classification": "mixed source guard / excluded scan effects",
+        "amended_paths": [
+          "specs/093-abo-p7-1-clean-up-dependent-paths-control-residue/spec.md"
+        ],
+        "amended_sections": "`specs/093-abo-p7-1-clean-up-dependent-paths-control-residue/spec.md` (Clarifications, Session 2026-10-08; \u00a72.2; FR-004; FR-005; \u00a74.1; \u00a75; \u00a77 Assumptions).",
+        "producer_consumer_route": "Executable residue guard bounded roots \u2192 operational evidence limits; actual platform/backend/frontend removed-route replacement ownership remains R1/R5/R7/R8. Viewer/test/doc scan effects excluded",
+        "routed_owners": [
+          "R8",
+          "R9"
+        ],
+        "missing_routed_dispositions": [],
+        "global_status": "closed with recorded findings/external limits",
+        "completed_dispositions": {
+          "R8": {
+            "evidence": "R8-coverage.json",
+            "disposition_present": true
+          },
+          "R9": {
+            "evidence": "R9-coverage.json",
+            "disposition_present": true
+          }
+        },
+        "final_phase_result": {
+          "phase": "R9",
+          "disposition": "checked; bounded guard effect",
+          "producer_consumer_result": "Literal guard roots/skip-migrations \u2192 operational evidence limit; guard read, not executed. Viewer/test/doc scan effects excluded; actual route removal remains canonical R1/R5/R7/R8."
+        }
+      },
+      {
+        "id": "094:1",
+        "classification": "reference-only / excluded effect",
+        "amended_paths": [
+          "docs/architecture/ai-billing-orchestration/06-abo-delivery-plan.md"
+        ],
+        "amended_sections": "`docs/architecture/ai-billing-orchestration/06-abo-delivery-plan.md` (P7.2 Implements).",
+        "producer_consumer_route": "Security-suite story grouping only; no production contract amendment",
+        "routed_owners": [
+          "R2"
+        ],
+        "missing_routed_dispositions": [],
+        "global_status": "closed with recorded findings/external limits",
+        "completed_dispositions": {
+          "R2": {
+            "evidence": "R2-coverage.md",
+            "disposition_present": true
+          }
+        },
+        "final_phase_result": {
+          "phase": "R2",
+          "disposition": "Reference-only scenario grouping excluded; runtime authority boundaries reviewed independently.",
+          "producer_consumer_result": "See exact ID in linked phase disposition table."
+        }
+      },
+      {
+        "id": "095:1",
+        "classification": "source-contract",
+        "amended_paths": [
+          "docs/architecture/ai-billing-orchestration/06-abo-delivery-plan.md"
+        ],
+        "amended_sections": "`docs/architecture/ai-billing-orchestration/06-abo-delivery-plan.md` (E2E-P7.3-05).",
+        "producer_consumer_route": "Worker N sender \u2192 DO N+1 accepts and echoes N \u2192 Worker coverage/refusal mapping and downstream desktop safe status",
+        "routed_owners": [
+          "R2",
+          "R5",
+          "R7"
+        ],
+        "missing_routed_dispositions": [],
+        "global_status": "closed with recorded findings/external limits",
+        "completed_dispositions": {
+          "R2": {
+            "evidence": "R2-coverage.md",
+            "disposition_present": true
+          },
+          "R5": {
+            "evidence": "R5-coverage.json",
+            "disposition_present": true
+          },
+          "R7": {
+            "evidence": "R7-coverage.json",
+            "disposition_present": true
+          }
+        },
+        "final_phase_result": {
+          "phase": "R7",
+          "disposition": "verified / inherited decoder limit",
+          "producer_consumer_result": "N to N+1 accepted/echoed N is intended; no false rollout failure claim. Unsupported/malformed DO reply handling remains R2-C2/C3; T2 separately fixes shape."
+        }
+      },
+      {
+        "id": "095:2",
+        "classification": "reference-only / excluded effect",
+        "amended_paths": [
+          "specs/095-abo-p7-3-contract-version-matrix/spec.md"
+        ],
+        "amended_sections": "`specs/095-abo-p7-3-contract-version-matrix/spec.md` (FR-001, E2E-P7.3-01, \u00a77).",
+        "producer_consumer_route": "Backend receiver-version test variant only; published RPC hardcoded accepted versions unchanged",
+        "routed_owners": [
+          "R2",
+          "R7"
+        ],
+        "missing_routed_dispositions": [],
+        "global_status": "closed with recorded findings/external limits",
+        "completed_dispositions": {
+          "R2": {
+            "evidence": "R2-coverage.md",
+            "disposition_present": true
+          },
+          "R7": {
+            "evidence": "R7-coverage.json",
+            "disposition_present": true
+          }
+        },
+        "final_phase_result": {
+          "phase": "R7",
+          "disposition": "reference-only / excluded effect",
+          "producer_consumer_result": "Test-only public RPC receiver replacement changes no published production gate. Final published gates reviewed; no variant implementation inspected."
+        }
+      },
+      {
+        "id": "097:1",
+        "classification": "reference-only / excluded effect",
+        "amended_paths": [
+          "docs/architecture/ai-billing-orchestration/06-abo-delivery-plan.md"
+        ],
+        "amended_sections": "`docs/architecture/ai-billing-orchestration/06-abo-delivery-plan.md` (P8.2 \u2014 Staging acceptance A1\u2013A36).",
+        "producer_consumer_route": "Historical local-noise workflow exception only; no runtime consumer",
+        "routed_owners": [
+          "R9"
+        ],
+        "missing_routed_dispositions": [],
+        "global_status": "closed with recorded findings/external limits",
+        "completed_dispositions": {
+          "R9": {
+            "evidence": "R9-coverage.json",
+            "disposition_present": true
+          }
+        },
+        "final_phase_result": {
+          "phase": "R9",
+          "disposition": "reference-only excluded effect",
+          "producer_consumer_result": "Historical untracked noise exception only, no runtime producer/consumer; does not waive operational live-state requirements."
+        }
+      }
+    ],
+    "join_method": "Original amended section/producer-consumer route is retained per ID; every assigned phase has an exact-ID disposition in the linked evidence. The final affected phase result is retained; full earlier prose is linked rather than copied."
+  },
+  "inherited_canonical_findings": [
+    {
+      "id": "R1-C1",
+      "severity": "P1",
+      "title": "expired billing and feed tokens remain accepted",
+      "canonical_report": "R1-tenant-identity-authorization.md",
+      "line": 30,
+      "canonical_ordered_recipe_present": true
+    },
+    {
+      "id": "R1-SQL-01",
+      "severity": "P1",
+      "title": "Any tenant member can modify staff authority directly",
+      "canonical_report": "R1-tenant-identity-authorization.md",
+      "line": 43,
+      "canonical_ordered_recipe_present": true
+    },
+    {
+      "id": "R1-SQL-02",
+      "severity": "P1",
+      "title": "Staff demotion never updates membership billing authority",
+      "canonical_report": "R1-tenant-identity-authorization.md",
+      "line": 55,
+      "canonical_ordered_recipe_present": true
+    },
+    {
+      "id": "R1-SQL-03",
+      "severity": "P1",
+      "title": "Deactivated/deleted staff retain tenant membership on backend reads",
+      "canonical_report": "R1-tenant-identity-authorization.md",
+      "line": 65,
+      "canonical_ordered_recipe_present": true
+    },
+    {
+      "id": "R1-SQL-05",
+      "severity": "P1",
+      "title": "Inherited permission helpers borrow another tenant's grants",
+      "canonical_report": "R1-tenant-identity-authorization.md",
+      "line": 75,
+      "canonical_ordered_recipe_present": true
+    },
+    {
+      "id": "R1-SQL-04",
+      "severity": "P2",
+      "title": "Backend administrative permission checks use global staff role",
+      "canonical_report": "R1-tenant-identity-authorization.md",
+      "line": 98,
+      "canonical_ordered_recipe_present": true
+    },
+    {
+      "id": "R1-SQL-06",
+      "severity": "P2",
+      "title": "Final AI issuer drops its issuance rate limit",
+      "canonical_report": "R1-tenant-identity-authorization.md",
+      "line": 108,
+      "canonical_ordered_recipe_present": true
+    },
+    {
+      "id": "R1-C2",
+      "severity": "P2",
+      "title": "first-tenant admission cap races and blocks higher epochs",
+      "canonical_report": "R1-tenant-identity-authorization.md",
+      "line": 117,
+      "canonical_ordered_recipe_present": true
+    },
+    {
+      "id": "R1-C3",
+      "severity": "P2",
+      "title": "malformed registered issuer validity fails open",
+      "canonical_report": "R1-tenant-identity-authorization.md",
+      "line": 128,
+      "canonical_ordered_recipe_present": true
+    },
+    {
+      "id": "R2-P1",
+      "severity": "P1",
+      "title": "local passkey authorization can be retargeted by URL",
+      "canonical_report": "R2-contracts-perimeter-human-approval.md",
+      "line": 37,
+      "canonical_ordered_recipe_present": true
+    },
+    {
+      "id": "R2-P2",
+      "severity": "P1",
+      "title": "ceiling override accepts an unrelated or stale second approval",
+      "canonical_report": "R2-contracts-perimeter-human-approval.md",
+      "line": 49,
+      "canonical_ordered_recipe_present": true
+    },
+    {
+      "id": "R2-P3",
+      "severity": "P1",
+      "title": "concurrent bootstrap admits multiple unapproved passkeys",
+      "canonical_report": "R2-contracts-perimeter-human-approval.md",
+      "line": 60,
+      "canonical_ordered_recipe_present": true
+    },
+    {
+      "id": "R2-P4",
+      "severity": "P1",
+      "title": "production operator approval has no browser ceremony",
+      "canonical_report": "R2-contracts-perimeter-human-approval.md",
+      "line": 70,
+      "canonical_ordered_recipe_present": true
+    },
+    {
+      "id": "R2-C1",
+      "severity": "P2",
+      "title": "exact HP binding depends on JSON insertion order",
+      "canonical_report": "R2-contracts-perimeter-human-approval.md",
+      "line": 81,
+      "canonical_ordered_recipe_present": true
+    },
+    {
+      "id": "R2-C2",
+      "severity": "P2",
+      "title": "receivers lose negotiated response metadata",
+      "canonical_report": "R2-contracts-perimeter-human-approval.md",
+      "line": 87,
+      "canonical_ordered_recipe_present": true
+    },
+    {
+      "id": "R2-C3",
+      "severity": "P2",
+      "title": "several senders interpret unrecognized replies as current protocol",
+      "canonical_report": "R2-contracts-perimeter-human-approval.md",
+      "line": 98,
+      "canonical_ordered_recipe_present": true
+    },
+    {
+      "id": "R3-C1",
+      "severity": "P1",
+      "title": "real administrator billing layout fails before purchasing",
+      "canonical_report": "R3-checkout-confirmed-payment.md",
+      "line": 19,
+      "canonical_ordered_recipe_present": true
+    },
+    {
+      "id": "R3-C2",
+      "severity": "P1",
+      "title": "provider creation precedes durable checkout identity and retry ownership",
+      "canonical_report": "R3-checkout-confirmed-payment.md",
+      "line": 28,
+      "canonical_ordered_recipe_present": true
+    },
+    {
+      "id": "R3-C3",
+      "severity": "P1",
+      "title": "supplied Paymob configuration composes the wrong endpoints",
+      "canonical_report": "R3-checkout-confirmed-payment.md",
+      "line": 39,
+      "canonical_ordered_recipe_present": true
+    },
+    {
+      "id": "R3-C4",
+      "severity": "P1",
+      "title": "callback-free recovery queries a hardcoded unrelated transaction",
+      "canonical_report": "R3-checkout-confirmed-payment.md",
+      "line": 48,
+      "canonical_ordered_recipe_present": true
+    },
+    {
+      "id": "R3-C5",
+      "severity": "P1",
+      "title": "dedupe markers can commit without the payment/work they suppress",
+      "canonical_report": "R3-checkout-confirmed-payment.md",
+      "line": 58,
+      "canonical_ordered_recipe_present": true
+    },
+    {
+      "id": "R3-C6",
+      "severity": "P1",
+      "title": "already-paid checkout silently loses another successful charge",
+      "canonical_report": "R3-checkout-confirmed-payment.md",
+      "line": 69,
+      "canonical_ordered_recipe_present": true
+    },
+    {
+      "id": "R3-C7",
+      "severity": "P1",
+      "title": "shared inquiry cap is bypassed and cannot reserve concurrent work",
+      "canonical_report": "R3-checkout-confirmed-payment.md",
+      "line": 79,
+      "canonical_ordered_recipe_present": true
+    },
+    {
+      "id": "R3-M1",
+      "severity": "P2",
+      "title": "one-second polling outlives its token's use budget",
+      "canonical_report": "R3-checkout-confirmed-payment.md",
+      "line": 92,
+      "canonical_ordered_recipe_present": true
+    },
+    {
+      "id": "R3-M2",
+      "severity": "P2",
+      "title": "request and checkout admission bounds race",
+      "canonical_report": "R3-checkout-confirmed-payment.md",
+      "line": 98,
+      "canonical_ordered_recipe_present": true
+    },
+    {
+      "id": "R3-M3",
+      "severity": "P2",
+      "title": "displayed, accepted and stored sale terms disagree",
+      "canonical_report": "R3-checkout-confirmed-payment.md",
+      "line": 104,
+      "canonical_ordered_recipe_present": true
+    },
+    {
+      "id": "R3-M4",
+      "severity": "P2",
+      "title": "offer recovery substitutes an undisplayed package",
+      "canonical_report": "R3-checkout-confirmed-payment.md",
+      "line": 110,
+      "canonical_ordered_recipe_present": true
+    },
+    {
+      "id": "R3-M5",
+      "severity": "P2",
+      "title": "notification byte cap checks characters after unbounded allocation",
+      "canonical_report": "R3-checkout-confirmed-payment.md",
+      "line": 116,
+      "canonical_ordered_recipe_present": true
+    },
+    {
+      "id": "R3-M6",
+      "severity": "P2",
+      "title": "checkout shows minor units as full currency amounts",
+      "canonical_report": "R3-checkout-confirmed-payment.md",
+      "line": 122,
+      "canonical_ordered_recipe_present": true
+    },
+    {
+      "id": "R4-PG1",
+      "severity": "P1",
+      "title": "grant identity is lost when the live installation changes",
+      "canonical_report": "R4-grants-coverage-term-lifecycle.md",
+      "line": 50,
+      "canonical_ordered_recipe_present": true
+    },
+    {
+      "id": "R4-D1",
+      "severity": "P1",
+      "title": "Grant value changes can commit before their receipt/idempotency record",
+      "canonical_report": "R4-grants-coverage-term-lifecycle.md",
+      "line": 67,
+      "canonical_ordered_recipe_present": true
+    },
+    {
+      "id": "R4-PG2",
+      "severity": "P1",
+      "title": "ordinary DO unavailability permanently parks paid grants",
+      "canonical_report": "R4-grants-coverage-term-lifecycle.md",
+      "line": 79,
+      "canonical_ordered_recipe_present": true
+    },
+    {
+      "id": "R4-A1",
+      "severity": "P1",
+      "title": "a parked rejection makes successful retry unrecordable",
+      "canonical_report": "R4-grants-coverage-term-lifecycle.md",
+      "line": 89,
+      "canonical_ordered_recipe_present": true
+    },
+    {
+      "id": "R4-D4",
+      "severity": "P1",
+      "title": "Applied-grant replay does not recover a missing shipment/lifecycle alarm",
+      "canonical_report": "R4-grants-coverage-term-lifecycle.md",
+      "line": 101,
+      "canonical_ordered_recipe_present": true
+    },
+    {
+      "id": "R4-D2",
+      "severity": "P1",
+      "title": "Complimentary grants during grace can become permanently stranded",
+      "canonical_report": "R4-grants-coverage-term-lifecycle.md",
+      "line": 111,
+      "canonical_ordered_recipe_present": true
+    },
+    {
+      "id": "R4-D3",
+      "severity": "P1",
+      "title": "Grant placement uses stale lifecycle state after a delayed alarm",
+      "canonical_report": "R4-grants-coverage-term-lifecycle.md",
+      "line": 121,
+      "canonical_ordered_recipe_present": true
+    },
+    {
+      "id": "R4-PG4",
+      "severity": "P1",
+      "title": "grant containment is indexed under an unverified credential",
+      "canonical_report": "R4-grants-coverage-term-lifecycle.md",
+      "line": 131,
+      "canonical_ordered_recipe_present": true
+    },
+    {
+      "id": "R4-A2",
+      "severity": "P2",
+      "title": "complimentary relay can record a different tenant/grant than the authorized mutation",
+      "canonical_report": "R4-grants-coverage-term-lifecycle.md",
+      "line": 144,
+      "canonical_ordered_recipe_present": true
+    },
+    {
+      "id": "R4-D5",
+      "severity": "P2",
+      "title": "The per-org 90-day complimentary ceiling resets with its installation",
+      "canonical_report": "R4-grants-coverage-term-lifecycle.md",
+      "line": 154,
+      "canonical_ordered_recipe_present": true
+    },
+    {
+      "id": "R4-PG3",
+      "severity": "P2",
+      "title": "a complimentary touch can be consumed without an accepted grant",
+      "canonical_report": "R4-grants-coverage-term-lifecycle.md",
+      "line": 165,
+      "canonical_ordered_recipe_present": true
+    },
+    {
+      "id": "R5-A1",
+      "severity": "P1",
+      "title": "predecessor reservations consume successor allowance",
+      "canonical_report": "R5-admission-accounting-fallback.md",
+      "line": 35,
+      "canonical_ordered_recipe_present": true
+    },
+    {
+      "id": "R5-A2",
+      "severity": "P1",
+      "title": "late original-term consumption disappears or is subtracted",
+      "canonical_report": "R5-admission-accounting-fallback.md",
+      "line": 44,
+      "canonical_ordered_recipe_present": true
+    },
+    {
+      "id": "R5-A3",
+      "severity": "P1",
+      "title": "fallback recovery repeats authoritative charges",
+      "canonical_report": "R5-admission-accounting-fallback.md",
+      "line": 54,
+      "canonical_ordered_recipe_present": true
+    },
+    {
+      "id": "R5-A4",
+      "severity": "P1",
+      "title": "fallback loses term attribution before provider settlement",
+      "canonical_report": "R5-admission-accounting-fallback.md",
+      "line": 64,
+      "canonical_ordered_recipe_present": true
+    },
+    {
+      "id": "R5-A5",
+      "severity": "P1",
+      "title": "fallback exhaustion strands paid successors",
+      "canonical_report": "R5-admission-accounting-fallback.md",
+      "line": 73,
+      "canonical_ordered_recipe_present": true
+    },
+    {
+      "id": "R5-ADM1",
+      "severity": "P1",
+      "title": "concurrent mirror admissions exceed the outage cap",
+      "canonical_report": "R5-admission-accounting-fallback.md",
+      "line": 82,
+      "canonical_ordered_recipe_present": true
+    },
+    {
+      "id": "R5-A6",
+      "severity": "P2",
+      "title": "journaled fallback rows permanently occupy pending headroom",
+      "canonical_report": "R5-admission-accounting-fallback.md",
+      "line": 91,
+      "canonical_ordered_recipe_present": true
+    },
+    {
+      "id": "R5-A7",
+      "severity": "P2",
+      "title": "temporary refusals become sticky and write hot",
+      "canonical_report": "R5-admission-accounting-fallback.md",
+      "line": 100,
+      "canonical_ordered_recipe_present": true
+    },
+    {
+      "id": "R5-ADM2",
+      "severity": "P2",
+      "title": "fallback raises an economy plan's provider ceiling",
+      "canonical_report": "R5-admission-accounting-fallback.md",
+      "line": 109,
+      "canonical_ordered_recipe_present": true
+    },
+    {
+      "id": "R5-ADM3",
+      "severity": "P2",
+      "title": "DO outage bypasses one-use token replay protection",
+      "canonical_report": "R5-admission-accounting-fallback.md",
+      "line": 118,
+      "canonical_ordered_recipe_present": true
+    },
+    {
+      "id": "R5-J1",
+      "severity": "P2",
+      "title": "usage journal records released quota as consumed",
+      "canonical_report": "R5-admission-accounting-fallback.md",
+      "line": 127,
+      "canonical_ordered_recipe_present": true
+    },
+    {
+      "id": "R6-DM1",
+      "severity": "P1",
+      "title": "transfer restores spent allowance",
+      "canonical_report": "R6-reversals-transfer-deletion.md",
+      "line": 23,
+      "canonical_ordered_recipe_present": true
+    },
+    {
+      "id": "R6-DM2",
+      "severity": "P1",
+      "title": "lost transfer replies lose or duplicate moved terms",
+      "canonical_report": "R6-reversals-transfer-deletion.md",
+      "line": 32,
+      "canonical_ordered_recipe_present": true
+    },
+    {
+      "id": "R6-PT1",
+      "severity": "P1",
+      "title": "refunds can miss applied, transferred or held value",
+      "canonical_report": "R6-reversals-transfer-deletion.md",
+      "line": 41,
+      "canonical_ordered_recipe_present": true
+    },
+    {
+      "id": "R6-BR1",
+      "severity": "P1",
+      "title": "partial child/callback evidence can trigger a full void",
+      "canonical_report": "R6-reversals-transfer-deletion.md",
+      "line": 50,
+      "canonical_ordered_recipe_present": true
+    },
+    {
+      "id": "R6-BR2",
+      "severity": "P1",
+      "title": "partial or dismissed reversal disables later refund discovery",
+      "canonical_report": "R6-reversals-transfer-deletion.md",
+      "line": 59,
+      "canonical_ordered_recipe_present": true
+    },
+    {
+      "id": "R6-PT2",
+      "severity": "P1",
+      "title": "destination becomes live before transfer admission fences exist",
+      "canonical_report": "R6-reversals-transfer-deletion.md",
+      "line": 68,
+      "canonical_ordered_recipe_present": true
+    },
+    {
+      "id": "R6-PT3",
+      "severity": "P1",
+      "title": "deletion retires unknown coverage and skips unfinished purge",
+      "canonical_report": "R6-reversals-transfer-deletion.md",
+      "line": 77,
+      "canonical_ordered_recipe_present": true
+    },
+    {
+      "id": "R6-DM3",
+      "severity": "P1",
+      "title": "void/release effects precede replayable evidence",
+      "canonical_report": "R6-reversals-transfer-deletion.md",
+      "line": 86,
+      "canonical_ordered_recipe_present": true
+    },
+    {
+      "id": "R6-DM4",
+      "severity": "P1",
+      "title": "held release during grace creates two current terms",
+      "canonical_report": "R6-reversals-transfer-deletion.md",
+      "line": 95,
+      "canonical_ordered_recipe_present": true
+    },
+    {
+      "id": "R6-O1",
+      "severity": "P1",
+      "title": "operator acceptance can lose the mutation or transfer runner",
+      "canonical_report": "R6-reversals-transfer-deletion.md",
+      "line": 104,
+      "canonical_ordered_recipe_present": true
+    },
+    {
+      "id": "R6-BR3",
+      "severity": "P2",
+      "title": "voids are recorded as refunds.",
+      "canonical_report": "R6-reversals-transfer-deletion.md",
+      "line": 115,
+      "canonical_ordered_recipe_present": true
+    },
+    {
+      "id": "R6-DM5",
+      "severity": "P2",
+      "title": "suspension event token violates closed contract.",
+      "canonical_report": "R6-reversals-transfer-deletion.md",
+      "line": 117,
+      "canonical_ordered_recipe_present": true
+    },
+    {
+      "id": "R6-O2",
+      "severity": "P2",
+      "title": "late callback recreates erased raw payer evidence.",
+      "canonical_report": "R6-reversals-transfer-deletion.md",
+      "line": 119,
+      "canonical_ordered_recipe_present": true
+    },
+    {
+      "id": "R7-UI1",
+      "severity": "P1",
+      "title": "a new visit label retains the previous visit's AI context",
+      "canonical_report": "R7-feed-projection-desktop-state.md",
+      "line": 42,
+      "canonical_ordered_recipe_present": true
+    },
+    {
+      "id": "R7-A1",
+      "severity": "P2",
+      "title": "concurrent ABO refresh can restore an older snapshot.",
+      "canonical_report": "R7-feed-projection-desktop-state.md",
+      "line": 50,
+      "canonical_ordered_recipe_present": true
+    },
+    {
+      "id": "R7-A2",
+      "severity": "P2",
+      "title": "history uses the current sellable catalogue and terms R2.",
+      "canonical_report": "R7-feed-projection-desktop-state.md",
+      "line": 52,
+      "canonical_ordered_recipe_present": true
+    },
+    {
+      "id": "R7-PS1",
+      "severity": "P2",
+      "title": "held deletion publishes no unavailable transition.",
+      "canonical_report": "R7-feed-projection-desktop-state.md",
+      "line": 54,
+      "canonical_ordered_recipe_present": true
+    },
+    {
+      "id": "R7-PS2",
+      "severity": "P2",
+      "title": "empty and terminal snapshots have false state/reason.",
+      "canonical_report": "R7-feed-projection-desktop-state.md",
+      "line": 56,
+      "canonical_ordered_recipe_present": true
+    },
+    {
+      "id": "R7-PS3",
+      "severity": "P2",
+      "title": "concurrent administrator refresh bypasses the throttle.",
+      "canonical_report": "R7-feed-projection-desktop-state.md",
+      "line": 58,
+      "canonical_ordered_recipe_present": true
+    },
+    {
+      "id": "R7-PS4",
+      "severity": "P2",
+      "title": "suspension prevents administrator diagnostic coverage reads.",
+      "canonical_report": "R7-feed-projection-desktop-state.md",
+      "line": 60,
+      "canonical_ordered_recipe_present": true
+    },
+    {
+      "id": "R7-T1",
+      "severity": "P2",
+      "title": "scheduled/denial status refresh never updates the open AI host.",
+      "canonical_report": "R7-feed-projection-desktop-state.md",
+      "line": 62,
+      "canonical_ordered_recipe_present": true
+    },
+    {
+      "id": "R7-T2",
+      "severity": "P2",
+      "title": "every valid live administrator coverage response is rejected.",
+      "canonical_report": "R7-feed-projection-desktop-state.md",
+      "line": 64,
+      "canonical_ordered_recipe_present": true
+    },
+    {
+      "id": "R7-T3",
+      "severity": "P2",
+      "title": "network chunk splits break Arabic SSE.",
+      "canonical_report": "R7-feed-projection-desktop-state.md",
+      "line": 66,
+      "canonical_ordered_recipe_present": true
+    },
+    {
+      "id": "R7-UI2",
+      "severity": "P2",
+      "title": "checkout completion leaves sibling billing reads frozen.",
+      "canonical_report": "R7-feed-projection-desktop-state.md",
+      "line": 68,
+      "canonical_ordered_recipe_present": true
+    },
+    {
+      "id": "R7-UI3",
+      "severity": "P3",
+      "title": "notice records are displayed as raw codes and omit grace days.",
+      "canonical_report": "R7-feed-projection-desktop-state.md",
+      "line": 70,
+      "canonical_ordered_recipe_present": true
+    },
+    {
+      "id": "R8-KEY1",
+      "severity": "P1",
+      "title": "retirement can restore a revoked issuer key",
+      "canonical_report": "R8-operator-control-configuration.md",
+      "line": 45,
+      "canonical_ordered_recipe_present": true
+    },
+    {
+      "id": "R8-PUB1",
+      "severity": "P1",
+      "title": "rejected publications overwrite accepted immutable R2 content",
+      "canonical_report": "R8-operator-control-configuration.md",
+      "line": 54,
+      "canonical_ordered_recipe_present": true
+    },
+    {
+      "id": "R8-ROUTE1",
+      "severity": "P1",
+      "title": "malformed routing configuration can be promoted globally",
+      "canonical_report": "R8-operator-control-configuration.md",
+      "line": 64,
+      "canonical_ordered_recipe_present": true
+    },
+    {
+      "id": "R8-ROLLBACK1",
+      "severity": "P2",
+      "title": "rollback can activate a never-promoted canary",
+      "canonical_report": "R8-operator-control-configuration.md",
+      "line": 75,
+      "canonical_ordered_recipe_present": true
+    },
+    {
+      "id": "R8-AUDIT1",
+      "severity": "P2",
+      "title": "configuration and sensitive support audits are incomplete",
+      "canonical_report": "R8-operator-control-configuration.md",
+      "line": 84,
+      "canonical_ordered_recipe_present": true
+    },
+    {
+      "id": "R8-CONSOLE1",
+      "severity": "P2",
+      "title": "reinstatement succeeds but leaves an offer unsellable",
+      "canonical_report": "R8-operator-control-configuration.md",
+      "line": 94,
+      "canonical_ordered_recipe_present": true
+    },
+    {
+      "id": "R8-CONSOLE2",
+      "severity": "P2",
+      "title": "console can arm a switch but cannot disarm it",
+      "canonical_report": "R8-operator-control-configuration.md",
+      "line": 103,
+      "canonical_ordered_recipe_present": true
+    },
+    {
+      "id": "R8-CONSOLE3",
+      "severity": "P2",
+      "title": "reused action ID hides a different executed relay",
+      "canonical_report": "R8-operator-control-configuration.md",
+      "line": 112,
+      "canonical_ordered_recipe_present": true
+    },
+    {
+      "id": "R8-CONSOLE4",
+      "severity": "P2",
+      "title": "clinic action history omits payment/grant actions",
+      "canonical_report": "R8-operator-control-configuration.md",
+      "line": 121,
+      "canonical_ordered_recipe_present": true
+    },
+    {
+      "id": "R8-CONSOLE5",
+      "severity": "P2",
+      "title": "malformed offer copy breaks the entire catalogue",
+      "canonical_report": "R8-operator-control-configuration.md",
+      "line": 130,
+      "canonical_ordered_recipe_present": true
+    },
+    {
+      "id": "R8-CEILING1",
+      "severity": "P2",
+      "title": "concurrent ceiling updates allocate the same version",
+      "canonical_report": "R8-operator-control-configuration.md",
+      "line": 139,
+      "canonical_ordered_recipe_present": true
+    },
+    {
+      "id": "R8-SUPPORT1",
+      "severity": "P2",
+      "title": "clinic support lookup has no resource bound",
+      "canonical_report": "R8-operator-control-configuration.md",
+      "line": 148,
+      "canonical_ordered_recipe_present": true
+    },
+    {
+      "id": "R8-RETRY1",
+      "severity": "P2",
+      "title": "parked reversals have no operator retry path",
+      "canonical_report": "R8-operator-control-configuration.md",
+      "line": 157,
+      "canonical_ordered_recipe_present": true
+    },
+    {
+      "id": "R8-LEGACY1",
+      "severity": "P2",
+      "title": "bootstrap package command references a deleted script",
+      "canonical_report": "R8-operator-control-configuration.md",
+      "line": 166,
+      "canonical_ordered_recipe_present": true
+    },
+    {
+      "id": "R9-REC1",
+      "severity": "P1",
+      "title": "",
+      "canonical_report": "R9-durability-recovery-operations.md",
+      "line": 27,
+      "canonical_ordered_recipe_present": true
+    },
+    {
+      "id": "R9-REC2",
+      "severity": "P1",
+      "title": "",
+      "canonical_report": "R9-durability-recovery-operations.md",
+      "line": 28,
+      "canonical_ordered_recipe_present": true
+    },
+    {
+      "id": "R9-REC3",
+      "severity": "P1",
+      "title": "",
+      "canonical_report": "R9-durability-recovery-operations.md",
+      "line": 29,
+      "canonical_ordered_recipe_present": true
+    },
+    {
+      "id": "R9-FACT1",
+      "severity": "P1",
+      "title": "",
+      "canonical_report": "R9-durability-recovery-operations.md",
+      "line": 30,
+      "canonical_ordered_recipe_present": true
+    },
+    {
+      "id": "R9-CRON1",
+      "severity": "P1",
+      "title": "",
+      "canonical_report": "R9-durability-recovery-operations.md",
+      "line": 31,
+      "canonical_ordered_recipe_present": true
+    },
+    {
+      "id": "R9-PDO1",
+      "severity": "P1",
+      "title": "",
+      "canonical_report": "R9-durability-recovery-operations.md",
+      "line": 32,
+      "canonical_ordered_recipe_present": true
+    },
+    {
+      "id": "R9-PUS1",
+      "severity": "P1",
+      "title": "",
+      "canonical_report": "R9-durability-recovery-operations.md",
+      "line": 33,
+      "canonical_ordered_recipe_present": true
+    },
+    {
+      "id": "R9-PRET1",
+      "severity": "P1",
+      "title": "",
+      "canonical_report": "R9-durability-recovery-operations.md",
+      "line": 34,
+      "canonical_ordered_recipe_present": true
+    },
+    {
+      "id": "R9-PD1",
+      "severity": "P1",
+      "title": "",
+      "canonical_report": "R9-durability-recovery-operations.md",
+      "line": 35,
+      "canonical_ordered_recipe_present": true
+    },
+    {
+      "id": "R9-PAL1",
+      "severity": "P1",
+      "title": "",
+      "canonical_report": "R9-durability-recovery-operations.md",
+      "line": 36,
+      "canonical_ordered_recipe_present": true
+    },
+    {
+      "id": "R9-RT1",
+      "severity": "P1",
+      "title": "",
+      "canonical_report": "R9-durability-recovery-operations.md",
+      "line": 37,
+      "canonical_ordered_recipe_present": true
+    },
+    {
+      "id": "R9-RT2",
+      "severity": "P1",
+      "title": "",
+      "canonical_report": "R9-durability-recovery-operations.md",
+      "line": 38,
+      "canonical_ordered_recipe_present": true
+    },
+    {
+      "id": "R9-RT3",
+      "severity": "P1",
+      "title": "",
+      "canonical_report": "R9-durability-recovery-operations.md",
+      "line": 39,
+      "canonical_ordered_recipe_present": true
+    },
+    {
+      "id": "R9-AO1",
+      "severity": "P2",
+      "title": "planned tombstone accepted without completed receipt",
+      "canonical_report": "R9-durability-recovery-operations.md",
+      "line": 43,
+      "canonical_ordered_recipe_present": true
+    },
+    {
+      "id": "R9-AO2",
+      "severity": "P2",
+      "title": "earlier partial refund masks a distinct payout chargeback",
+      "canonical_report": "R9-durability-recovery-operations.md",
+      "line": 51,
+      "canonical_ordered_recipe_present": true
+    },
+    {
+      "id": "R9-AO3",
+      "severity": "P2",
+      "title": "missing local projection/request copies escape reconciliation",
+      "canonical_report": "R9-durability-recovery-operations.md",
+      "line": 59,
+      "canonical_ordered_recipe_present": true
+    },
+    {
+      "id": "R9-AO4",
+      "severity": "P2",
+      "title": "committed finding loses its AL-10 permanently",
+      "canonical_report": "R9-durability-recovery-operations.md",
+      "line": 67,
+      "canonical_ordered_recipe_present": true
+    },
+    {
+      "id": "R9-AO5",
+      "severity": "P2",
+      "title": "recovered/resolved conditions keep repeating as active alerts",
+      "canonical_report": "R9-durability-recovery-operations.md",
+      "line": 75,
+      "canonical_ordered_recipe_present": true
+    },
+    {
+      "id": "R9-AO6",
+      "severity": "P2",
+      "title": "invalid-HMAC retention ignores subsequent R2 pages",
+      "canonical_report": "R9-durability-recovery-operations.md",
+      "line": 83,
+      "canonical_ordered_recipe_present": true
+    },
+    {
+      "id": "R9-AO7",
+      "severity": "P2",
+      "title": "malformed/partial/mixed-period payout files become accepted imports",
+      "canonical_report": "R9-durability-recovery-operations.md",
+      "line": 91,
+      "canonical_ordered_recipe_present": true
+    },
+    {
+      "id": "R9-AO8",
+      "severity": "P3",
+      "title": "payout-import list always returns empty",
+      "canonical_report": "R9-durability-recovery-operations.md",
+      "line": 99,
+      "canonical_ordered_recipe_present": true
+    }
+  ],
+  "inherited_counts": {
+    "P0": 0,
+    "P1": 57,
+    "P2": 52,
+    "P3": 2
+  },
+  "new_R10_counts": {
+    "P0": 0,
+    "P1": 0,
+    "P2": 0,
+    "P3": 0
+  },
+  "recipe_metadata_audit": {
+    "canonical_entries": 111,
+    "missing_ordered_instructions": [],
+    "scope": "presence check of canonical ordered fix/completion instructions; no rewrite or new implementation claims"
+  }
+}
