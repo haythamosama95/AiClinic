@@ -1,0 +1,457 @@
+{
+  "target": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+  "phase": "R6",
+  "entries": [
+    {
+      "id": "067:5",
+      "spec": "067",
+      "entry_number": 5,
+      "title": "listGrants window and success envelope",
+      "source_path": "specs/067-abo-p3-3-plan-versions-paid-grant-coverage-ledger/escalations.md",
+      "source_line": 45,
+      "target": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "question": "What are the argument names for `listGrants`' time window, and what `result` / `code` / `detail` does a successful call return?",
+      "resolution": "The filter arguments are `org_id`, `source_kind`, `credential_id`, `applied_from`, and `applied_to`. `credential_id` matches `operator_credential_id`. `applied_from` and `applied_to` are inclusive UTC ISO-8601 bounds on `applied_at`. An omitted filter does not constrain that column. A successful call is `ok`, with `code` empty and the envelope `receipt` absent. `detail` is the JSON text of the matching `grant_ledger` rows, ordered by `applied_at` then `grant_id` ascending. Each row is `{grant_id, origin_grant_id, org_id, installation_id, kind, source_kind, operator_credential_id, envelope_sha256, receipt, applied_at}`, and `receipt` is the \u00a71.6 object.",
+      "rationale": "The ledger is indexed on `(org_id, applied_at)` and `(operator_credential_id, applied_at)`, so the window is two bounds on `applied_at`. A read uses the same `ok` / empty `code` / JSON `detail` envelope as `listIssuerKeys`. SR-25 lists by credential and window, so each filter is optional.",
+      "amended_paths_sections": "`docs/architecture/ai-billing-orchestration/04-abo-contracts.md` (\u00a71.2, \u00a71.3 row `listGrants`); `docs/architecture/ai-billing-orchestration/03-abo-data-model-and-lifecycle.md` (\u00a73.2 row `grant_ledger`).",
+      "amended_paths": [
+        "docs/architecture/ai-billing-orchestration/04-abo-contracts.md",
+        "docs/architecture/ai-billing-orchestration/03-abo-data-model-and-lifecycle.md"
+      ],
+      "owning_review_phases": [
+        "R4",
+        "R6",
+        "R8",
+        "R9"
+      ],
+      "disposition": "source-contract",
+      "producer_consumer_trace": "listGrants query/envelope \u2192 console grant lookup, credential void workflows and reconciliation receipt reader",
+      "review_status": "routed; source correctness and propagation not yet reviewed"
+    },
+    {
+      "id": "067:6",
+      "spec": "067",
+      "entry_number": 6,
+      "title": "R2 grant-ledger object",
+      "source_path": "specs/067-abo-p3-3-plan-versions-paid-grant-coverage-ledger/escalations.md",
+      "source_line": 55,
+      "target": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "question": "What is the R2 object key under `grant-ledger/`, and what NDJSON fields does each object contain besides the receipt?",
+      "resolution": "One grant is the object `grant-ledger/<grant_id>.ndjson`: a single JSON line `{grant_id, origin_grant_id, org_id, installation_id, kind, source_kind, operator_credential_id, envelope_sha256, applied_at, receipt}`. `receipt` is the \u00a71.6 object. The other fields are the `grant_ledger` columns. A rebuild copies that line into `grant_ledger`. A void is a different object, `grant-ledger/<grant_id>.void.ndjson`: one JSON line `{grant_id, reason, source, evidence_sha256, at, receipt}` and it does not replace the grant object.",
+      "rationale": "The prefix is already `grant-ledger/`, one object per grant, and that object is the rebuild source for `grant_ledger`. The line is the ledger row plus the receipt the section already requires. The void suffix keeps the per-void object in the same prefix from overwriting the grant object.",
+      "amended_paths_sections": "`docs/architecture/ai-billing-orchestration/03-abo-data-model-and-lifecycle.md` (\u00a73.3).",
+      "amended_paths": [
+        "docs/architecture/ai-billing-orchestration/03-abo-data-model-and-lifecycle.md"
+      ],
+      "owning_review_phases": [
+        "R4",
+        "R6",
+        "R9"
+      ],
+      "disposition": "source-contract",
+      "producer_consumer_trace": "Grant/void ledger object writers \u2192 D1 grant_ledger/grant_void rebuild readers; grant and void objects remain distinct",
+      "review_status": "routed; source correctness and propagation not yet reviewed"
+    },
+    {
+      "id": "067:7",
+      "spec": "067",
+      "entry_number": 7,
+      "title": "coverage_event.kind",
+      "source_path": "specs/067-abo-p3-3-plan-versions-paid-grant-coverage-ledger/escalations.md",
+      "source_line": 65,
+      "target": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "question": "What stored values does `coverage_event.kind` take?",
+      "resolution": "`kind` is one of `grant_applied`, `grant_voided`, `term_activated`, `term_ended`, `term_held`, `term_released`, `grace_started`, `band_crossed`, `suspension_changed`, or `transfer`. `band_crossed` is both the 75 % crossing and the 90 % crossing; the snapshot carries the band. A paid grant emits `grant_applied`, plus `term_activated` when placement leaves the new term `active`, plus `term_ended` when placement ends the grace term. A grant that only queues emits `grant_applied` alone. Those events are written in the order `term_ended`, `term_activated`, `grant_applied`, skipping any the grant does not emit.",
+      "rationale": "\u00a76.7 already names those changes and no others. One token per change matches the closed `kind` lists on `offer_event` and `checkout_event`. The paid-grant subset is the placement this unit performs; the other tokens are the same column for the later changes in that list. The feed event's `kind` is that stored value.",
+      "amended_paths_sections": "`docs/architecture/ai-billing-orchestration/03-abo-data-model-and-lifecycle.md` (\u00a73.2 row `coverage_event`, \u00a76.7); `docs/architecture/ai-billing-orchestration/04-abo-contracts.md` (\u00a74.1 event object).",
+      "amended_paths": [
+        "docs/architecture/ai-billing-orchestration/03-abo-data-model-and-lifecycle.md",
+        "docs/architecture/ai-billing-orchestration/04-abo-contracts.md"
+      ],
+      "owning_review_phases": [
+        "R4",
+        "R5",
+        "R6",
+        "R7"
+      ],
+      "disposition": "source-contract",
+      "producer_consumer_trace": "Grant/lifecycle/usage event producers \u2192 ordered feed, backend projection, ABO coverage view and desktop status",
+      "review_status": "routed; source correctness and propagation not yet reviewed"
+    },
+    {
+      "id": "067:8",
+      "spec": "067",
+      "entry_number": 8,
+      "title": "Receipt signature and ledger_seq",
+      "source_path": "specs/067-abo-p3-3-plan-versions-paid-grant-coverage-ledger/escalations.md",
+      "source_line": 75,
+      "target": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "question": "How is the receipt `signature` encoded, and which counter is `ledger_seq`?",
+      "resolution": "`signature` is a compact JWS (RFC 7515): base64url header, payload, and signature joined by `.`. The header is `{alg: \"EdDSA\", kid}` for the platform signing key. The payload is the RFC 8785 canonical receipt with the `signature` member omitted. The third segment is the base64url Ed25519 signature. `ledger_seq` is the integer `clinic_seq` on the coverage event for this grant (`kind` `grant_applied`) or void (`kind` `grant_voided`). It is not a `grant_ledger` column.",
+      "rationale": "\u00a71.1 already serialises Ed25519 signatures, including K-3, as compact JWS over the canonical bytes. The receipt is known when the DO applies the grant, which is when it assigns `clinic_seq`; `feed_seq` is the D1 autoincrement assigned later, when the alarm inserts the row. The receipt is stored inside `grant_ledger.receipt`, so `ledger_seq` does not need its own column.",
+      "amended_paths_sections": "`docs/architecture/ai-billing-orchestration/04-abo-contracts.md` (\u00a71.6); `docs/architecture/ai-billing-orchestration/02-abo-architecture-and-threat-model.md` (\u00a76 row K-3).",
+      "amended_paths": [
+        "docs/architecture/ai-billing-orchestration/04-abo-contracts.md",
+        "docs/architecture/ai-billing-orchestration/02-abo-architecture-and-threat-model.md"
+      ],
+      "owning_review_phases": [
+        "R2",
+        "R4",
+        "R6",
+        "R7",
+        "R9"
+      ],
+      "disposition": "source-contract",
+      "producer_consumer_trace": "Platform receipt signing and event clinic_seq \u2192 ABO verification/outcome, void handling and reconciliation/rebuild",
+      "review_status": "routed; source correctness and propagation not yet reviewed"
+    },
+    {
+      "id": "067:11",
+      "spec": "067",
+      "entry_number": 11,
+      "title": "Approvals minimum on every grant",
+      "source_path": "specs/067-abo-p3-3-plan-versions-paid-grant-coverage-ledger/escalations.md",
+      "source_line": 105,
+      "target": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "question": "`evidence.approvals` has a policy minimum of 1, and the ordered `grant` validation steps name no check and no code for a short `approvals` list. Which grants does the minimum bind, and what is the failure result?",
+      "resolution": "The minimum of 1 binds every grant: `paid`, `complimentary`, and `transfer`. It is checked in validation step 1 and does not renumber steps 2\u20135. A shorter `evidence.approvals` list is `rejected` with code `approvals_required` and `detail` empty. `receipt` is absent.",
+      "rationale": "X-09 already sets the policy minimum at 1 on grant evidence, and the evidence field is on every grant. `assertion_required` is the existing code for a missing approval. Putting the check in step 1 leaves the cited step numbers 2\u20135 as they are.",
+      "amended_paths_sections": "`docs/architecture/ai-billing-orchestration/04-abo-contracts.md` (\u00a71.4 evidence row and validation step 1).",
+      "amended_paths": [
+        "docs/architecture/ai-billing-orchestration/04-abo-contracts.md"
+      ],
+      "owning_review_phases": [
+        "R2",
+        "R4",
+        "R6"
+      ],
+      "disposition": "source-contract",
+      "producer_consumer_trace": "Grant approvals field producers \u2192 shared validator and platform validation step 1; read with later paid exception 079:1/6",
+      "review_status": "routed; source correctness and propagation not yet reviewed"
+    },
+    {
+      "id": "067:12",
+      "spec": "067",
+      "entry_number": 12,
+      "title": "Spec sentences that still contradict the amended spans",
+      "source_path": "specs/067-abo-p3-3-plan-versions-paid-grant-coverage-ledger/escalations.md",
+      "source_line": 115,
+      "target": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "question": "`spec.md` still transcribes the pre-amendment design, after the design assumptions in entries 2 through 11 were written into the cited sections. Those questions stay closed. Re-transcribe only the sentences that contradict the amended spans: FR-004 and the `service_key` entity; FR-005; FR-006 and the `plan_version` entity; FR-007 step 1 and FR-009; FR-011, FR-012, and the `coverage_event` and R2 entities; FR-014; FR-016; and the edge cases and Failure Handling that cite 04 \u00a71.3, 04 \u00a71.4, 04 \u00a71.6, 03 \u00a73.3, and 03 \u00a76.7.",
+      "resolution": "Entries 2 through 11 stay closed. Clarify, on continuation, re-transcribes only the contradicting sentences named in this escalation from the amended spans, then finishes. Stop condition 3 does not fire again for those sentences. A fresh clarify run still stops on a real contradiction.",
+      "rationale": "Entries 2 through 11 already wrote those contract answers into 02, 03, and 04. The spec still quotes the earlier sentences of the same sections, so the contradiction is a stale transcription, not an open design question. Re-transcription belongs to clarify: it copies only the named sentences from those amended spans and does not decide a new fact. Stop condition 3 firing again would send the same closed facts back to the resolver. The waiver names only those sentences, and only when the prompt continues after this amendment. Any other contradiction, including on a fresh clarify run, still stops.",
+      "amended_paths_sections": "`.cursor/skills/abo-clarify/SKILL.md`",
+      "amended_paths": [
+        ".cursor/skills/abo-clarify/SKILL.md"
+      ],
+      "owning_review_phases": [
+        "R2",
+        "R4",
+        "R6",
+        "R7",
+        "R8",
+        "R9"
+      ],
+      "disposition": "reference-propagation",
+      "producer_consumer_trace": "Spec re-transcription of 067:2\u201311 \u2192 same affected source consumers; no new design decision",
+      "review_status": "routed; source correctness and propagation not yet reviewed"
+    },
+    {
+      "id": "070:1",
+      "spec": "070",
+      "entry_number": 1,
+      "title": "ceiling_policy columns, setCeilingPolicy, and the 90-day window",
+      "source_path": "specs/070-abo-p3-6-complimentary-grants-ceilings-adjustments-suspension/escalations.md",
+      "source_line": 5,
+      "target": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "question": "`ceiling_policy` is versioned and states the numeric ceilings plus `set_by` and `assertion_sha256`, and `setCeilingPolicy` takes \u201cCeiling fields\u201d and returns a policy version, but the cited sections do not name the stored columns, the method inputs, or the returned version, and they do not say how the per-clinic 90-day window is anchored or how a `month` complimentary grant counts toward the 62-day cap.",
+      "resolution": "`ceiling_policy` stores `version`, `per_grant_max_days`, `per_grant_max_allowance_months`, `window_days`, `window_max_days`, `window_max_allowance_months`, `max_paid_grace_days`, `paid_cap_rule`, `set_by`, and `assertion_sha256`. `version` is an integer: 1 for the first row, then one greater for each later row. The greatest `version` is the policy in force. Launch values are 31, 1, 90, 62, 2, 7, and `proportional`, which are the ceilings already stated for a complimentary grant, the per-clinic window, and paid grace. `setCeilingPolicy` takes those ceiling fields (HP already supplies `access_jwt` and `assertion`). On `ok` it inserts the next `version`, sets `set_by` to the Access email and `assertion_sha256` to the assertion challenge hash, and stores the supplied fields. The same assertion challenge is `ok` again and does not insert another row. `detail` is the JSON text of that row; its `version` is the returned policy version. `code` is empty and `receipt` is absent. The per-clinic window is anchored at this grant's `applied_at` (the time of the check) for its `org_id`: `window_days` \u00d7 24 hours ending at that instant. Earlier complimentary grants and `term_adjustment` rows for that `org_id` count when their `applied_at` is greater than this `applied_at` minus that span and less than or equal to this `applied_at`. A complimentary `duration` of `day` contributes `count` days toward the per-grant and window day ceilings. A `month` contributes `count` \u00d7 31 days toward those same day ceilings. Allowance stays in months of the plan's `max_allowance_per_month`.",
+      "rationale": "01 I-10 and 03 \u00a73.2 already fix the launch numbers (\u2264 31 days and \u2264 1 month of allowance per grant; \u2264 62 days and \u2264 2 months of allowance per clinic per 90 days; paid `grace.days` \u2264 7 and `cap_rule = proportional`) and already name `set_by` and `assertion_sha256`. 04 \u00a71.3 already returns a policy version and is idempotent by assertion challenge, and sibling HP writes store the Access email and the assertion challenge hash and return the row as `detail`. `grant_ledger` is already indexed by `(org_id, applied_at)`, and 03 \u00a76.1 defines a day as 24 hours. A queued complimentary term has no `calendar_start` at validation, so a `month` cannot be measured from the calendar. Counting each month as 31 days uses the per-grant day ceiling already stated, so a calendar month cannot sit under the 62-day cap.",
+      "amended_paths_sections": "`docs/architecture/ai-billing-orchestration/03-abo-data-model-and-lifecycle.md` (\u00a73.2 row `ceiling_policy`); `docs/architecture/ai-billing-orchestration/04-abo-contracts.md` (\u00a71.3 row `setCeilingPolicy`, \u00a71.4 validation step 4).",
+      "amended_paths": [
+        "docs/architecture/ai-billing-orchestration/03-abo-data-model-and-lifecycle.md",
+        "docs/architecture/ai-billing-orchestration/04-abo-contracts.md"
+      ],
+      "owning_review_phases": [
+        "R4",
+        "R6",
+        "R8"
+      ],
+      "disposition": "source-contract",
+      "producer_consumer_trace": "setCeilingPolicy versioned writer \u2192 complimentary/adjustment rolling-window validation and paid grace-cap validation",
+      "review_status": "routed; source correctness and propagation not yet reviewed"
+    },
+    {
+      "id": "071:1",
+      "spec": "071",
+      "entry_number": 1,
+      "title": "Void listing window, partial rejection, operator evidence, and the R2 void object",
+      "source_path": "specs/071-abo-p3-7-reversal-voids-tombstones-held-terms/escalations.md",
+      "source_line": 5,
+      "target": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "question": "The cited spans require this unit to freeze contracts they do not name. (1) `listGrantsForVoid` takes `credential_id` and a window and returns \u201cGrants, for SR-25\u201d (04 \u00a71.3), but the window\u2019s fields and bounds, and the result envelope and grant fields, are not stated. (2) A partial void is rejected and not applied (03 \u00a75.5 effect `review_partial`; E2E-P3.7-08), but `voidForReversal`\u2019s inputs are only `grant_id`, `reversal_id`, `reason`, `evidence_sha256`, `abo_kid`, and `abo_signature` (04 \u00a71.3), so nothing marks the call partial and no rejection `code` is named. (3) `voidGrant` writes `grant_void` with source `operator` (03 \u00a73.2), and that row includes `evidence_sha256`, but `voidGrant`\u2019s inputs are only `grant_id` and `reason`. (4) Implements requires an R2 object for the void (E2E-P3.7-09), and the object key and JSON line are not in the cited spans (03 \u00a73.2 row `grant_void` names only the D1 columns).",
+      "resolution": "`listGrantsForVoid` takes `credential_id` and `window` `{applied_from, applied_to}`. Both window fields are required UTC ISO-8601 timestamps and are inclusive bounds on `grant_ledger.applied_at`. `applied_from` must be less than or equal to `applied_to`. The span has no maximum. `credential_id` matches `operator_credential_id`, including when that credential is not `active`. A successful call is `ok`: `detail` is the JSON text of an array of `{grant_id, origin_grant_id, org_id, installation_id, kind, source_kind, operator_credential_id, envelope_sha256, receipt, applied_at}` for matching rows, in ascending `applied_at` then `grant_id`, and each `receipt` is the \u00a71.6 receipt object. An empty array is `ok`. `code` is empty and the envelope `receipt` is absent. A missing window field, a non-timestamp, or `applied_from` greater than `applied_to` is `rejected` with code `window_invalid` and `detail` empty. `voidForReversal` takes a required boolean `partial`. `partial` true is `rejected` with code `partial_void` and `detail` empty, and writes no `grant_void` row, no R2 object, no coverage event, and no tombstone. A missing or non-boolean `partial` is `rejected` with code `partial_invalid` and writes nothing. A rejected call does not consume `reversal_id`. `partial` false is the full void already described, writes `grant_void` with `source` `reversal` and the call's `evidence_sha256`, and writes the R2 object. `voidGrant` still takes only `grant_id` and `reason`; `grant_void.source` is `operator` and `evidence_sha256` is the assertion challenge (04 \u00a71.5). An applied void's R2 object is `grant-ledger/<grant_id>.void.ndjson`, one JSON line `{grant_id, reason, source, evidence_sha256, at, receipt}`. P3.7 writes that object only for an applied `voidForReversal` (`partial` false) or `voidGrant`.",
+      "rationale": "01 \u00a75 X-01 already says the platform void accepts `partial` and rejects it at launch, and 03 \u00a75.5 already leaves a partial reversal unapplied. The ABO reversal record already carries `is_full` (03 \u00a72.7, 04 \u00a75.2); the platform marker is the boolean the seam names, `partial`, so a full void cannot be implied by omitting it. `grant_ledger` is already indexed by `(operator_credential_id, applied_at)`, and `listGrants` already returns those columns as JSON `detail` on `ok` with an empty code and no envelope receipt, ordered by `applied_at` then `grant_id`. SR-25 lists every grant of a credential, so the window has no maximum span and does not require the credential to still be `active`. HP writes already store the assertion challenge, and `voidGrant` is HP, so that challenge fills `evidence_sha256` without a new input. 03 \u00a73.3 already names the void object key and JSON line; this unit writes that object, and a rejected partial must not.",
+      "amended_paths_sections": "`docs/architecture/ai-billing-orchestration/04-abo-contracts.md` (\u00a71.2 `ok` lists, \u00a71.3 rows `voidForReversal`, `voidGrant`, `listGrantsForVoid`, \u00a71.6 receipt exclusion); `docs/architecture/ai-billing-orchestration/03-abo-data-model-and-lifecycle.md` (\u00a73.2 row `grant_void`, \u00a73.3 void object, \u00a75.5 partial row); `docs/architecture/ai-billing-orchestration/06-abo-delivery-plan.md` (P3.7 Read line).",
+      "amended_paths": [
+        "docs/architecture/ai-billing-orchestration/04-abo-contracts.md",
+        "docs/architecture/ai-billing-orchestration/03-abo-data-model-and-lifecycle.md",
+        "docs/architecture/ai-billing-orchestration/06-abo-delivery-plan.md"
+      ],
+      "owning_review_phases": [
+        "R2",
+        "R6",
+        "R8",
+        "R9"
+      ],
+      "disposition": "source-contract",
+      "producer_consumer_trace": "ABO reversal/console void arguments \u2192 platform partial/window/evidence validation \u2192 void ledger/R2 rebuild and list consumers",
+      "review_status": "routed; source correctness and propagation not yet reviewed"
+    },
+    {
+      "id": "071:2",
+      "spec": "071",
+      "entry_number": 2,
+      "title": "Spec re-transcription of the amended void contract",
+      "source_path": "specs/071-abo-p3-7-reversal-voids-tombstones-held-terms/escalations.md",
+      "source_line": 15,
+      "target": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "question": "`spec.md` still transcribes the pre-amendment design. The closed assumption in section 1 stays closed. The Unit Contract Read line omits `03 \u00a73.3` void object, which the delivery-plan P3.7 Read line now includes. FR-001 lists `voidForReversal` inputs without required boolean `partial`. FR-006 says every replayed `reversal_id` is `already_applied` and that a partial void is rejected, but it does not say `partial` true is `rejected` with code `partial_void` and writes nothing, a missing or non-boolean `partial` is `rejected` with code `partial_invalid` and writes nothing, a rejected call does not consume `reversal_id`, or that `already_applied` requires the same `grant_id`, `reason`, `evidence_sha256`, and `partial` false while any difference in those four is `conflict`. FR-007 and the `grant_void` entity do not name R2 object `grant-ledger/<grant_id>.void.ndjson` or the JSON line `{grant_id, reason, source, evidence_sha256, at, receipt}`, and they do not limit that write to an applied `voidForReversal` (`partial` false) or `voidGrant`. FR-009 does not set operator `evidence_sha256` to the assertion challenge. FR-010 does not state `window` `{applied_from, applied_to}` as required inclusive UTC ISO-8601 bounds on `applied_at`, `window_invalid`, the `ok` `detail` array of `grant_ledger` columns ordered by `applied_at` then `grant_id`, an empty array as `ok`, or that `credential_id` matches even when the credential is not `active`.",
+      "resolution": "Section 1 stays closed. No design document is amended again: 04 \u00a71.2, \u00a71.3, and \u00a71.6, 03 \u00a73.2, \u00a73.3, and \u00a75.5, and the P3.7 Read line already record every fact in that assumption. `spec.md` is re-transcribed from those spans. The Unit Contract Read line includes `03 \u00a73.3` void object. `voidForReversal` takes required boolean `partial`. `partial` true is `rejected` with code `partial_void` and `detail` empty, and writes no `grant_void` row, no R2 object, no coverage event, and no tombstone. A missing or non-boolean `partial` is `rejected` with code `partial_invalid` and `detail` empty, and writes nothing. A rejected call stores nothing, so it does not consume `reversal_id`. `already_applied` requires the same `grant_id`, `reason`, `evidence_sha256`, and `partial` false and returns the original receipt; any difference in those four is `conflict` and changes nothing. An applied `voidForReversal` (`partial` false) or `voidGrant` writes R2 object `grant-ledger/<grant_id>.void.ndjson`, one JSON line `{grant_id, reason, source, evidence_sha256, at, receipt}`. `voidGrant` sets `evidence_sha256` to the assertion challenge and takes no `evidence_sha256` input. `listGrantsForVoid` takes `window` `{applied_from, applied_to}` as required inclusive UTC ISO-8601 bounds on `applied_at`, with no maximum span. A successful call is `ok`: `detail` is the `grant_ledger` column array ordered by `applied_at` then `grant_id`, each `receipt` is the \u00a71.6 receipt object, an empty array is `ok`, `code` is empty, and the envelope `receipt` is absent. A bad window is `rejected` with code `window_invalid` and `detail` empty. `credential_id` matches `operator_credential_id` even when the credential is not `active`.",
+      "rationale": "Section 1 already wrote those contract answers into 03, 04, and the P3.7 Read line. The spec still quoted the earlier sentences of the same sections, so the contradiction was a stale transcription, not an open design question. Re-transcription copies those sentences into `spec.md` and does not decide a new fact.",
+      "amended_paths_sections": "`specs/071-abo-p3-7-reversal-voids-tombstones-held-terms/spec.md`",
+      "amended_paths": [
+        "specs/071-abo-p3-7-reversal-voids-tombstones-held-terms/spec.md"
+      ],
+      "owning_review_phases": [
+        "R2",
+        "R6",
+        "R9"
+      ],
+      "disposition": "reference-propagation",
+      "producer_consumer_trace": "Void spec re-transcription including replay argument equality \u2192 same reversal, tombstone and rebuild consumers as 071:1",
+      "review_status": "routed; source correctness and propagation not yet reviewed"
+    },
+    {
+      "id": "071:3",
+      "spec": "071",
+      "entry_number": 3,
+      "title": "Tombstone receipt clinic ids and coverage event",
+      "source_path": "specs/071-abo-p3-7-reversal-voids-tombstones-held-terms/escalations.md",
+      "source_line": 25,
+      "target": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "question": "A `partial` false `voidForReversal` returns a \u00a71.6 receipt, and an applied void emits coverage events. A tombstone is that call before any grant exists, so `grant_ledger` has no row and the method inputs do not include `org_id` or `installation_id`. The receipt requires UUID `installation_id` and `org_id`, and `coverage_event` requires the same ids. Which `installation_id` and `org_id` does the tombstone receipt use, and does that call emit a coverage event?",
+      "resolution": "A tombstone is a `partial` false `voidForReversal` stored before any `grant_ledger` row for that `grant_id`. The receipt uses the nil UUID `00000000-0000-0000-0000-000000000000` for both `installation_id` and `org_id`. `ledger_seq` is 0 and `term_ids` is empty. That call writes the `grant_void` row and the R2 void object and does not emit a coverage event. A void of a grant that already has a `grant_ledger` row still emits coverage events, and that receipt's `installation_id` and `org_id` are that row's ids.",
+      "rationale": "03 \u00a75.5 stores the void first and 04 \u00a71.4 step 5 refuses the later grant before the DO applies it, so clinic coverage does not change. 03 \u00a76.7 emits a coverage event only on a coverage change, and `coverage_event` plus its `event_id` (`installation_id` \u2016 `\":\"` \u2016 `clinic_seq`) require a real installation. `grant_void` has neither id, and section 1 already fixed `voidForReversal` inputs, so the call cannot carry them. 04 \u00a71.6 still requires UUID `installation_id` and `org_id` on the receipt that `partial` false returns. The nil UUID is a UUID and names no installation. `clinic_seq` starts at 1, so `ledger_seq` 0 is not a clinic sequence. No term exists, so `term_ids` is empty.",
+      "amended_paths_sections": "`specs/071-abo-p3-7-reversal-voids-tombstones-held-terms/spec.md`",
+      "amended_paths": [
+        "specs/071-abo-p3-7-reversal-voids-tombstones-held-terms/spec.md"
+      ],
+      "owning_review_phases": [
+        "R2",
+        "R6",
+        "R7",
+        "R9"
+      ],
+      "disposition": "source-contract",
+      "producer_consumer_trace": "Pre-grant tombstone receipt with nil clinic IDs and ledger_seq 0 \u2192 ABO reversal receipt consumer and rebuild; no coverage-event emission",
+      "review_status": "routed; source correctness and propagation not yet reviewed"
+    },
+    {
+      "id": "072:1",
+      "spec": "072",
+      "entry_number": 1,
+      "title": "Transfer success results, package columns, and the early transferIn detail",
+      "source_path": "specs/072-abo-p3-8-transfer-deletion-with-coverage-left/escalations.md",
+      "source_line": 5,
+      "target": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "question": "`beginTransfer` returns `transfer_id` and `deleteInstallation` describes effects only, but neither is in the 04 \u00a71.2 `ok` list and neither output includes a receipt, so the success `result` is not defined. `transferOut` / `transferIn` return \"Package; receipt\", but 03 \u00a73.2 gives `transfer` and `transfer_step` no columns and no package field list. `transferIn` before `transferOut` is `transient`, and that `detail` is not one of `unavailable`, `unknown_kid`, `awaiting_transfer`, or `transfer_pending`.",
+      "resolution": "`beginTransfer` and `deleteInstallation` do not record a grant or a reversal, so a successful call is `ok`: `code` is empty and `receipt` is absent. `beginTransfer` `detail` is the JSON text of the `transfer` row, which includes `transfer_id`. The same assertion challenge is `ok` again and does not insert another row or create another binding. `deleteInstallation` `detail` is the JSON text of `{installation, tenant_binding}` for those rows after the call. It is `ok` again when the installation is already `deleted` and the binding is already in the status that call left it in; a repeat does not create a binding and does not raise AL-18 again. `transferOut` and `transferIn` return `applied` or, on a retry of the same `transfer_id`, `already_applied` with the original receipt. `detail` is the JSON text of the package. The receipt is the \u00a71.6 object with `transfer_id` as the id member, `installation_id` the installation that step wrote, `envelope_sha256` the SHA-256 of the RFC 8785 canonical package, `ledger_seq` the `clinic_seq` of the `transfer` coverage event that step wrote, and `term_ids` the terms that step ended (`transferOut`) or created (`transferIn`). `transferIn` before `transferOut` has applied is `transient` with `detail` `awaiting_transfer_out` and changes nothing. `transfer` columns are `transfer_id` (ULID), `org_id`, `from_installation_id`, `to_installation_id`, `reason`, `assertion_sha256`, `package` (JSON, null until `transferOut`), and `created_at`. `beginTransfer` inserts that row with `package` null and `to_installation_id` set to the new binding. The package is a JSON array ordered by `position`, one object per term that has not ended: `{origin_grant_id, position, state, plan_snapshot, allowance, duration_unit, duration_count, grace_days, grace_cap, calendar_start, starts_at, ends_at, grace_ends_at}`. Queued and held objects copy the stored term. An active object's `allowance` is that term's `allowance` minus `hot.used`; a grace object's `allowance` is min(`allowance` \u2212 `grace_base_used`, `grace_cap`) \u2212 (`hot.used` \u2212 `grace_base_used`). Remaining days are the unelapsed time until the stored `ends_at` (active) or `grace_ends_at` (grace). `transfer_step` columns are `transfer_id`, `step` (`transfer_out`, `transfer_in`), `receipt`, and `applied_at`, unique on (`transfer_id`, `step`), inserted only when that step returns `applied`.",
+      "rationale": "The result envelope has no key beyond `contract_version`, `result`, `code`, `detail`, and `receipt`, and `receipt` is present only for `applied` or `already_applied`. Methods that do not record a grant or a reversal already succeed as `ok` with the stored row as JSON `detail`. `beginTransfer` records the authorisation and returns `transfer_id`; the saga then retries `transferOut` and `transferIn` until both report `applied` or `already_applied`, so only those two steps carry a receipt. `deleteInstallation` is idempotent by target state, and the effects it already describes are the installation row and the binding row. 03 \u00a75.4 already puts each not-ended term into the package with its `origin_grant_id`, the active term's remaining days and allowance, and queued and held terms as stored. Grace is not ended, and \u00a76.4 already defines the unused grace allowance from `hot.used` and `grace_base_used`. Later steps take only `transfer_id`, so the authorisation row holds `to_installation_id`. `transferIn` before `transferOut` is a state that clears when `transferOut` applies, which is what `transient` is for; the four existing details name other states, so the detail is `awaiting_transfer_out`.",
+      "amended_paths_sections": "`docs/architecture/ai-billing-orchestration/04-abo-contracts.md` (\u00a71.2 `ok` list and `transient` details, \u00a71.3 rows `beginTransfer`, `transferOut`, `transferIn`, `deleteInstallation`, \u00a71.6 transfer receipt); `docs/architecture/ai-billing-orchestration/03-abo-data-model-and-lifecycle.md` (\u00a73.2 rows `transfer`, `transfer_step`); `docs/architecture/ai-billing-orchestration/06-abo-delivery-plan.md` (P3.8 Read line).",
+      "amended_paths": [
+        "docs/architecture/ai-billing-orchestration/04-abo-contracts.md",
+        "docs/architecture/ai-billing-orchestration/03-abo-data-model-and-lifecycle.md",
+        "docs/architecture/ai-billing-orchestration/06-abo-delivery-plan.md"
+      ],
+      "owning_review_phases": [
+        "R2",
+        "R6",
+        "R7",
+        "R9"
+      ],
+      "disposition": "source-contract",
+      "producer_consumer_trace": "beginTransfer/deleteInstallation/transferOut/In producers \u2192 saga retry, package import, receipt verification, binding/feed and rebuild consumers",
+      "review_status": "routed; source correctness and propagation not yet reviewed"
+    },
+    {
+      "id": "079:2",
+      "spec": "079",
+      "entry_number": 2,
+      "title": "Subscription and payments response shape",
+      "source_path": "specs/079-abo-p4-4-grant-pipeline-to-platform-purchase/escalations.md",
+      "source_line": 15,
+      "target": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "question": "This unit freezes `GET /v1/subscription` and `GET /v1/payments` (04 \u00a72.2). Those rows name `subscription_ref`, commercial notices, the \u00a71.7 snapshot, and payment page fields, but they do not say what `subscription_ref` is, how notices are shaped, where the snapshot is read from, the JSON keys for offer name and version, term covered, and reversals, or the payments cursor page size and encoding. What are those values?",
+      "resolution": "`GET /v1/subscription` returns `{contract_version, subscription_ref, snapshot, notices}`. `subscription_ref` is `AIC-` plus the leading 8 Crockford base-32 characters of SHA-256(`\"sub-ref:\"` \u2016 the token's `org`), computed with no lookup. `snapshot` is the \u00a71.7 object from a live `getCoverage` (`detail.snapshot`), and this tenant's `coverage_view.snapshot` when that call fails. `notices` is an array of code strings: `duplicate_payment` when a payment of this tenant is `likely_duplicate`; `late_payment_honoured` when one is `late`; `payment_withheld` when a disposition is `withheld_mismatch`; `reversal_recorded` when a reversal is recorded for this tenant; `terms_held` when `snapshot.held_count` > 0. `GET /v1/payments` returns `{contract_version, payments, next_cursor, has_more}`. Each payment is `{reference, paid_at, amount_minor, currency, plan_display_name, offer_version, term_unit, term_count, classification, reversals}`. `plan_display_name` and `offer_version` are the offer name and version. `term_unit` and `term_count` are the term covered, from the checkout snapshot. `classification` is `normal`, `likely_duplicate`, or `late`. `reversals` is an array of `{reference, amount_minor, kind, is_full}` with `kind` one of `refund`, `void`, `chargeback`, `unknown`. A page holds 20 payments, ordered by `paid_at` ascending then `reference` ascending. The `cursor` query is omitted or empty on the first page; otherwise it is the previous page's last `reference`, that `PAY-` string unchanged. `next_cursor` is this page's last `reference`, or empty when `payments` is empty. `has_more` is true when another payment of this tenant follows the page. A `cursor` that is not a `reference` of this tenant is the existing `invalid_request`.",
+      "rationale": "`subscription_ref` is the subscription reference already fixed in 03 \u00a77, which both systems compute from `org_id` and which this row and `GET /v1/coverage` already return. The snapshot fallback is the one this section already uses for checkout `starts`: live `getCoverage`, then `coverage_view`. Notice values are the five codes already named on the row, carried as strings the way \u00a73.2 carries notice codes, and each code is tied to a classification, disposition, reversal row, or `held_count` already named beside it. Offer name and version use `plan_display_name` from `GET /v1/offers` and `offer_version` from the payment. Term covered uses `term_unit` and `term_count` from the checkout snapshot. Reversals use the quotable `reference`, `amount_minor`, `kind`, and `is_full` from the reversal record. The route names only `cursor`, so the page size stays fixed at 20 and the cursor is the existing `reference` string with no second encoding. `invalid_request` is the field-validation code already in \u00a72.3. No new error code, endpoint, or operator step.",
+      "amended_paths_sections": "`docs/architecture/ai-billing-orchestration/04-abo-contracts.md` (\u00a72.2 rows `GET /v1/subscription` and `GET /v1/payments`).",
+      "amended_paths": [
+        "docs/architecture/ai-billing-orchestration/04-abo-contracts.md"
+      ],
+      "owning_review_phases": [
+        "R3",
+        "R4",
+        "R6",
+        "R7",
+        "R9"
+      ],
+      "disposition": "source-contract",
+      "producer_consumer_trace": "ABO subscription/payment response producers and live/fallback coverage readers \u2192 Flutter subscription/history/notices pagination; reversal producer supplies notices",
+      "review_status": "routed; source correctness and propagation not yet reviewed"
+    },
+    {
+      "id": "079:3",
+      "spec": "079",
+      "entry_number": 3,
+      "title": "Subscription notice closed set",
+      "source_path": "specs/079-abo-p4-4-grant-pipeline-to-platform-purchase/escalations.md",
+      "source_line": 25,
+      "target": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "question": "FR-005 says this unit's notice codes are only `duplicate_payment`, `late_payment_honoured`, and `payment_withheld`, and Out of Scope sends reversal notices to P4.5. The amended 04 \u00a72.2 `GET /v1/subscription` row makes `notices` a closed set that also includes `reversal_recorded` and `terms_held` under the conditions in that row. The spec should follow that row. How should FR-005 and the reversal-notices out-of-scope line be aligned to it?",
+      "resolution": "`spec.md` follows the amended 04 \u00a72.2 `GET /v1/subscription` row. `notices` is an array of code strings from that closed set: `duplicate_payment` when a payment of this tenant is classified `likely_duplicate`; `late_payment_honoured` when one is `late`; `payment_withheld` when a payment disposition is `withheld_mismatch`; `reversal_recorded` when a reversal is recorded for this tenant; `terms_held` when `snapshot.held_count` > 0. The out-of-scope reversal-notices lines no longer exclude `reversal_recorded` and `terms_held` from this unit's subscription response. P4.5 still owns reversal processing; this unit only returns those notice codes.",
+      "rationale": "Entry 2 already binds `notices` to the five codes and conditions on the amended \u00a72.2 row. FR-005 and the out-of-scope lines named only the first three and sent reversal notices to P4.5, which contradicted that row. Returning `reversal_recorded` and `terms_held` is the response the row already names. It does not move reversal workflows into P4.4.",
+      "amended_paths_sections": "`specs/079-abo-p4-4-grant-pipeline-to-platform-purchase/spec.md` (Implements notice list, FR-005, and the reversal-notices out-of-scope lines).",
+      "amended_paths": [
+        "specs/079-abo-p4-4-grant-pipeline-to-platform-purchase/spec.md"
+      ],
+      "owning_review_phases": [
+        "R6",
+        "R7"
+      ],
+      "disposition": "reference-propagation",
+      "producer_consumer_trace": "Spec closed-set notice re-transcription \u2192 ABO subscription notice producer and desktop notice consumer, retaining reversal workflow ownership",
+      "review_status": "routed; source correctness and propagation not yet reviewed"
+    },
+    {
+      "id": "079:6",
+      "spec": "079",
+      "entry_number": 6,
+      "title": "Paid operation-object approval validation",
+      "source_path": "specs/079-abo-p4-4-grant-pipeline-to-platform-purchase/escalations.md",
+      "source_line": 55,
+      "target": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "question": "Paid grant envelopes use escalation-1 operation-object `evidence.approvals` (`{op, params, actor_email, issued_at, nonce, contract_version}`) in `abo/src/work/grant.ts`, but frozen platform `grant` calls `validateGrantEnvelope` from `vendor-contracts`, which only accepts `{credential_id, assertion}` (`validateApproval` in `packages/vendor-contracts/src/grant-envelope.ts`; vector in `packages/vendor-contracts/vectors/grant-envelope.json`). Platform returns `rejected` / `unit_not_allowed`. Should `vendor-contracts` `validateApproval` accept paid operation objects per escalation 1, or should `grant.ts` emit `credential_id`/`assertion` approvals like the vector?",
+      "resolution": "`validateApproval` accepts the paid operation-object element from entry 1 and counts it toward the minimum of one, and does not require WebAuthn `credential_id`/`assertion` for that paid element. Complimentary assertions keep their existing checks. The frozen grant-envelope vector keeps its `{credential_id, assertion}` element.",
+      "rationale": "Entry 1 already binds the paid element to the \u00a71.5 operation object `{op, params, actor_email, issued_at, nonce, contract_version}` with `op` `grant`, and the amended 04 \u00a71.4 evidence row says the platform counts that element toward the minimum of one and does not apply the \u00a71.5 WebAuthn checks. On the paid path the platform maps a failed `validateGrantEnvelope` to `rejected` / `unit_not_allowed`, so accepting that element in `validateApproval` is what lets the entry-1 envelope through. `grant.ts` stays on that object. Complimentary and transfer approvals still require `credential_id` and `assertion`. The vector's paid envelope still uses that assertion shape, which remains valid, so its `hash_hex` and the receipt and result-envelope `envelope_sha256` values stay the same.",
+      "amended_paths_sections": "`packages/vendor-contracts/src/grant-envelope.ts` (`validateApproval`).",
+      "amended_paths": [
+        "packages/vendor-contracts/src/grant-envelope.ts"
+      ],
+      "owning_review_phases": [
+        "R2",
+        "R4",
+        "R6"
+      ],
+      "disposition": "source-contract",
+      "producer_consumer_trace": "Paid grant operation-object producer \u2192 shared validateApproval acceptance \u2192 platform paid grant; complimentary/transfer assertion consumers retain credential/assertion requirement",
+      "review_status": "routed; source correctness and propagation not yet reviewed"
+    },
+    {
+      "id": "080:2",
+      "spec": "080",
+      "entry_number": 2,
+      "title": "Full versus partial, and the reversal dedupe key",
+      "source_path": "specs/080-abo-p4-5-sweeps-reversals-inquiry-budget/escalations.md",
+      "source_line": 15,
+      "target": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "question": "For a provider refund, when is the reversal full (`is_full`, effects `tombstone`, `end_current`, `remove_queued`, or `none`) rather than partial (`review_partial`), and what dedupe key makes a parent-flag notification and a child-transaction notification of the same refund a single `reversal`? 03 \u00a72.7 names `cumulative_reversed_minor` and `is_full` but gives no comparison. 03 \u00a75.5 selects the effect from \"Full\" and \"Partial\" but does not define them. The P4.5 line for E2E-P4.5-05 requires that dedupe key and does not name its parts.",
+      "resolution": "A reversal is full when `cumulative_reversed_minor` is at least the payment's `amount_minor`, and partial when `cumulative_reversed_minor` is below that amount. The reversal's own `amount_minor` is not the test. The dedupe key is the SR-02 state-change key with the transaction part fixed as the parent: `provider`, the parent transaction (the reference inside `payment_id`, never the child transaction id), normalized state `reversal`, and `cumulative_reversed_minor`. A child notification is rewritten onto that parent before the key is formed, so both notifications of the same refund insert one `reversal`.",
+      "rationale": "\u00a72.6 already stores the payment's `amount_minor`, and \u00a72.7 already stores `cumulative_reversed_minor` beside `is_full`. \u00a77 already names the state-change key as provider, transaction, normalized state, and cumulative reversed amount (SR-02; 01 \u00a73.3), and 01 \u00a73.6 already says the adapter folds a parent-flag resend and a child transaction into one reversal against the parent payment. 04 \u00a75.3 already takes the cumulative from the inquiry. The missing sentences were only the comparison and the rule that the key's transaction is the parent. E2E-P4.5-05 keeps the words \"the dedupe key\"; those four parts now live in \u00a72.7, which P4.5 already reads.",
+      "amended_paths_sections": "`docs/architecture/ai-billing-orchestration/03-abo-data-model-and-lifecycle.md` (\u00a72.7 reversal identity and `is_full`; \u00a75.5 effect rule).",
+      "amended_paths": [
+        "docs/architecture/ai-billing-orchestration/03-abo-data-model-and-lifecycle.md"
+      ],
+      "owning_review_phases": [
+        "R3",
+        "R6",
+        "R9"
+      ],
+      "disposition": "source-contract",
+      "producer_consumer_trace": "Provider child/parent reversal normalization \u2192 cumulative fullness/dedupe key \u2192 reversal insertion and void eligibility consumers",
+      "review_status": "routed; source correctness and propagation not yet reviewed"
+    },
+    {
+      "id": "080:3",
+      "spec": "080",
+      "entry_number": 3,
+      "title": "Per-minute provider-inquiry budget",
+      "source_path": "specs/080-abo-p4-5-sweeps-reversals-inquiry-budget/escalations.md",
+      "source_line": 25,
+      "target": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "question": "What integer is the shared per-minute provider-inquiry budget (FR-010, 05 \u00a71 budget sentence, E2E-P4.5-10)? The cited sentence only says the cap is set from Paymob's rate limit. P4.3 R-2 recorded that Paymob's numeric inquiry limit was not observed, and this unit's Spikes cell is None, so the plan cannot measure or invent that cap.",
+      "resolution": "The shared per-minute provider-inquiry budget is 2. Sweeps and work rows share that one cap. When more than 2 provider inquiries are due, confirmation and grant work rows are served first, and every inquiry that does not fit stays due.",
+      "rationale": "05 \u00a71 sets the cap from Paymob's rate limit and does not state an integer. P4.3 R-2 records that Paymob's numeric inquiry limit was not observed, and this unit's Spikes cell is None. 05 \u00a77's worked example is under 2 reversal inquiries a minute before checkout sweeps, so 2 is the smallest integer that covers that steady reversal rate. E2E-P4.5-10 proves the rule by scheduling more than 2 due provider inquiries, including confirm and grant work rows: those rows are served first and none are dropped. No spike, config surface, or second cap is added.",
+      "amended_paths_sections": "`specs/080-abo-p4-5-sweeps-reversals-inquiry-budget/spec.md` (Clarifications; User Story 4; E2E-P4.5-10; FR-010; Assumptions).",
+      "amended_paths": [
+        "specs/080-abo-p4-5-sweeps-reversals-inquiry-budget/spec.md"
+      ],
+      "owning_review_phases": [
+        "R3",
+        "R6",
+        "R9"
+      ],
+      "disposition": "source-contract",
+      "producer_consumer_trace": "Shared inquiry-budget producer \u2192 confirmation/grant work, sweep and reversal inquiry callers; due work retained outside cap",
+      "review_status": "routed; source correctness and propagation not yet reviewed"
+    },
+    {
+      "id": "082:1",
+      "spec": "082",
+      "entry_number": 1,
+      "title": "Refusal code when the credential id is absent from the active list",
+      "source_path": "specs/082-abo-p4-7-console-passkey-ceremony-abo-side-hp/escalations.md",
+      "source_line": 5,
+      "target": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "question": "`listOperatorCredentials` returns only active `{credential_id, public_key_cose, alg}` rows. FR-002 and the edge cases require `credential_revoked` when a credential is revoked and `credential_not_active` when it is not active. Which refusal code does an ABO-side HP check use when the credential id is absent from that list?",
+      "resolution": "`credential_not_active`. The ABO-side HP check looks up the assertion's `credential_id` in that active-only array. An id that is absent is `rejected` with `credential_not_active`. A still-`pending` row, a `revoked` row, and an unknown id are all omitted, so they all use that code. `credential_revoked` stays the platform's code when its own credential read sees `status` `revoked` (04 \u00a71.5). This unit does not call another platform method to learn that status. After a revoke, the next HP check loads the list again and refuses with `credential_not_active`.",
+      "rationale": "04 \u00a71.3 returns only active `{credential_id, public_key_cose, alg}` rows, and that array is what the ABO uses to verify its own HP actions. The list has no status, so the ABO cannot tell a revoked row from a pending row or an unknown id. 04 \u00a71.5 assigns `credential_revoked` only when a credential read sees `status` `revoked`, which is the platform's own HP path. Using `credential_revoked` on the ABO would claim a status the list does not show and would need a new platform method. E2E-P4.7-07 requires refusal after refresh, and `credential_not_active` is that refusal.",
+      "amended_paths_sections": "`specs/082-abo-p4-7-console-passkey-ceremony-abo-side-hp/spec.md` (Clarifications; User Story 1 acceptance scenario 2; E2E-P4.7-07; \u00a72.5 edge cases; FR-002; FR-004; \u00a74.1 Failure Handling).",
+      "amended_paths": [
+        "specs/082-abo-p4-7-console-passkey-ceremony-abo-side-hp/spec.md"
+      ],
+      "owning_review_phases": [
+        "R2",
+        "R6",
+        "R8"
+      ],
+      "disposition": "source-contract",
+      "producer_consumer_trace": "Platform active-only credential list \u2192 ABO HP credential lookup/refusal \u2192 operator value-change and transfer relay; platform own revoked code stays distinct",
+      "review_status": "routed; source correctness and propagation not yet reviewed"
+    },
+    {
+      "id": "083:1",
+      "spec": "083",
+      "entry_number": 1,
+      "title": "Transfer `grant_id` index n",
+      "source_path": "specs/083-abo-p4-8-console-relays-complimentary-grants-adjustments/escalations.md",
+      "source_line": 5,
+      "target": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "question": "In the transfer `grant_id` (03 \u00a77), what is `n` in SHA-256 over `\"grant:transfer:\"` \u2016 `transfer_id` \u2016 `\":\"` \u2016 n? The cited formula does not define its meaning, its domain, or how many `grant_request` rows one transfer records.",
+      "resolution": "`n` is the 0-based index of that element in the transfer `package` (\u00a73.2), written as decimal digits with no leading zeros. The package is a JSON array ordered by `position`, one object per term that has not ended, so `n` runs through the integers 0 \u2026 k\u22121 where k is that count. One transfer records one `grant_request` per such term (k rows, and none when the package is empty).",
+      "rationale": "03 \u00a73.2 already stores the package as one object per not-ended term, ordered by `position`, and \u00a75.3 recreates those moved terms as transfer grants. The `n` suffix exists so each of those terms has its own deterministic `grant_id`; a single id per `transfer_id` would not. P4.8 records transfer grant requests (plural), one per package element. The index in that position order is stable across retries, which is what the \u00a77 idempotency note requires.",
+      "amended_paths_sections": "`docs/architecture/ai-billing-orchestration/03-abo-data-model-and-lifecycle.md` (\u00a77 `grant_id` transfer form).",
+      "amended_paths": [
+        "docs/architecture/ai-billing-orchestration/03-abo-data-model-and-lifecycle.md"
+      ],
+      "owning_review_phases": [
+        "R4",
+        "R6",
+        "R9"
+      ],
+      "disposition": "source-contract",
+      "producer_consumer_trace": "Ordered transfer package \u2192 ABO zero-based deterministic per-term grant IDs/grant_request rows \u2192 platform transfer/grant lineage and recovery",
+      "review_status": "routed; source correctness and propagation not yet reviewed"
+    }
+  ]
+}

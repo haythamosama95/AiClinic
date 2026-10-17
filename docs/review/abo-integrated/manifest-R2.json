@@ -1,0 +1,3148 @@
+{
+  "target": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+  "baseline": "c6cf2c3809a38e2a348f373e926cf2585cfcf291",
+  "phase": "R2",
+  "regions": [
+    {
+      "path": "abo/src/clinic-api/version.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 1,
+      "end": 6,
+      "symbol": "preamble / imports / shared declarations",
+      "primary_owner": "R2",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": []
+    },
+    {
+      "path": "abo/src/clinic-api/version.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 7,
+      "end": 8,
+      "symbol": "ContractChannel",
+      "primary_owner": "R2",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": []
+    },
+    {
+      "path": "abo/src/clinic-api/version.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 9,
+      "end": 12,
+      "symbol": "VersionEnv",
+      "primary_owner": "R2",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": []
+    },
+    {
+      "path": "abo/src/clinic-api/version.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 13,
+      "end": 26,
+      "symbol": "parseContractVersionHeader",
+      "primary_owner": "R2",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": []
+    },
+    {
+      "path": "abo/src/clinic-api/version.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 27,
+      "end": 30,
+      "symbol": "currentChannelVersion",
+      "primary_owner": "R2",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": []
+    },
+    {
+      "path": "abo/src/clinic-api/version.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 31,
+      "end": 36,
+      "symbol": "VersionGateSuccess",
+      "primary_owner": "R2",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": []
+    },
+    {
+      "path": "abo/src/clinic-api/version.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 37,
+      "end": 41,
+      "symbol": "VersionGateFailure",
+      "primary_owner": "R2",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": []
+    },
+    {
+      "path": "abo/src/clinic-api/version.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 42,
+      "end": 70,
+      "symbol": "recordChannelVersionSeen",
+      "primary_owner": "R2",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": []
+    },
+    {
+      "path": "abo/src/clinic-api/version.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 71,
+      "end": 111,
+      "symbol": "checkContractVersion",
+      "primary_owner": "R2",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": []
+    },
+    {
+      "path": "abo/src/clinic-api/version.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 112,
+      "end": 125,
+      "symbol": "clinicJsonResponse",
+      "primary_owner": "R2",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": []
+    },
+    {
+      "path": "abo/src/clinic-api/version.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 126,
+      "end": 142,
+      "symbol": "clinicErrorResponse",
+      "primary_owner": "R2",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": []
+    },
+    {
+      "path": "abo/src/ops/index.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 35,
+      "end": 36,
+      "symbol": "ASSERTION_MAX_AGE_MS",
+      "primary_owner": "R2",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": [
+        "R3",
+        "R4",
+        "R6",
+        "R8",
+        "R9"
+      ]
+    },
+    {
+      "path": "abo/src/ops/index.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 185,
+      "end": 190,
+      "symbol": "HpCredential",
+      "primary_owner": "R2",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": [
+        "R3",
+        "R4",
+        "R6",
+        "R8",
+        "R9"
+      ]
+    },
+    {
+      "path": "abo/src/ops/index.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 208,
+      "end": 213,
+      "symbol": "VerifiedAccess",
+      "primary_owner": "R2",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": [
+        "R3",
+        "R4",
+        "R6",
+        "R8",
+        "R9"
+      ]
+    },
+    {
+      "path": "abo/src/ops/index.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 214,
+      "end": 234,
+      "symbol": "parseJwtPayload",
+      "primary_owner": "R2",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": [
+        "R3",
+        "R4",
+        "R6",
+        "R8",
+        "R9"
+      ]
+    },
+    {
+      "path": "abo/src/ops/index.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 235,
+      "end": 261,
+      "symbol": "loadAccessCerts",
+      "primary_owner": "R2",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": [
+        "R3",
+        "R4",
+        "R6",
+        "R8",
+        "R9"
+      ]
+    },
+    {
+      "path": "abo/src/ops/index.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 262,
+      "end": 296,
+      "symbol": "verifyOpsAccess",
+      "primary_owner": "R2",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": [
+        "R3",
+        "R4",
+        "R6",
+        "R8",
+        "R9"
+      ]
+    },
+    {
+      "path": "abo/src/ops/index.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 399,
+      "end": 411,
+      "symbol": "base64UrlDecode",
+      "primary_owner": "R2",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": [
+        "R3",
+        "R4",
+        "R6",
+        "R8",
+        "R9"
+      ]
+    },
+    {
+      "path": "abo/src/ops/index.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 412,
+      "end": 445,
+      "symbol": "decodeAssertion",
+      "primary_owner": "R2",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": [
+        "R3",
+        "R4",
+        "R6",
+        "R8",
+        "R9"
+      ]
+    },
+    {
+      "path": "abo/src/ops/index.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 446,
+      "end": 467,
+      "symbol": "listActiveHpCredentials",
+      "primary_owner": "R2",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": [
+        "R3",
+        "R4",
+        "R6",
+        "R8",
+        "R9"
+      ]
+    },
+    {
+      "path": "abo/src/ops/index.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 468,
+      "end": 511,
+      "symbol": "verifyMatchingCredential",
+      "primary_owner": "R2",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": [
+        "R3",
+        "R4",
+        "R6",
+        "R8",
+        "R9"
+      ]
+    },
+    {
+      "path": "abo/src/ops/index.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 512,
+      "end": 523,
+      "symbol": "assertionChallengeUsed",
+      "primary_owner": "R2",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": [
+        "R3",
+        "R4",
+        "R6",
+        "R8",
+        "R9"
+      ]
+    },
+    {
+      "path": "abo/src/ops/index.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 524,
+      "end": 534,
+      "symbol": "insertAssertionUsed",
+      "primary_owner": "R2",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": [
+        "R3",
+        "R4",
+        "R6",
+        "R8",
+        "R9"
+      ]
+    },
+    {
+      "path": "abo/src/ops/index.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 595,
+      "end": 623,
+      "symbol": "refuseHpAction",
+      "primary_owner": "R2",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": [
+        "R3",
+        "R4",
+        "R6",
+        "R8",
+        "R9"
+      ]
+    },
+    {
+      "path": "abo/src/ops/index.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 624,
+      "end": 749,
+      "symbol": "verifyHpRequest",
+      "primary_owner": "R2",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": [
+        "R3",
+        "R4",
+        "R6",
+        "R8",
+        "R9"
+      ]
+    },
+    {
+      "path": "abo/src/ops/index.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 750,
+      "end": 773,
+      "symbol": "commitAcceptedHp",
+      "primary_owner": "R2",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": [
+        "R3",
+        "R4",
+        "R6",
+        "R8",
+        "R9"
+      ]
+    },
+    {
+      "path": "abo/src/ops/index.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 778,
+      "end": 788,
+      "symbol": "parseHpRequestBody",
+      "primary_owner": "R2",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": [
+        "R3",
+        "R4",
+        "R6",
+        "R8",
+        "R9"
+      ]
+    },
+    {
+      "path": "abo/src/ops/index.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 1372,
+      "end": 1403,
+      "symbol": "handleHpPost",
+      "primary_owner": "R2",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": [
+        "R3",
+        "R4",
+        "R6",
+        "R8",
+        "R9"
+      ]
+    },
+    {
+      "path": "abo/src/ops/index.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 2358,
+      "end": 2443,
+      "symbol": "handlePostRegisterOperatorCredential",
+      "primary_owner": "R2",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": [
+        "R3",
+        "R4",
+        "R6",
+        "R8",
+        "R9"
+      ]
+    },
+    {
+      "path": "abo/src/ops/index.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 2444,
+      "end": 2478,
+      "symbol": "handlePostRevokeOperatorCredential",
+      "primary_owner": "R2",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": [
+        "R3",
+        "R4",
+        "R6",
+        "R8",
+        "R9"
+      ]
+    },
+    {
+      "path": "abo/src/worker.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 131,
+      "end": 132,
+      "symbol": "SIGNING_KEY_GATE_ROW_ID",
+      "primary_owner": "R2",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": [
+        "R3",
+        "R5",
+        "R7",
+        "R8",
+        "R9"
+      ]
+    },
+    {
+      "path": "abo/src/worker.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 155,
+      "end": 158,
+      "symbol": "emptyNotFound",
+      "primary_owner": "R2",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": [
+        "R3",
+        "R5",
+        "R7",
+        "R8",
+        "R9"
+      ]
+    },
+    {
+      "path": "abo/src/worker.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 179,
+      "end": 188,
+      "symbol": "isCrossHostRejection",
+      "primary_owner": "R2",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": [
+        "R3",
+        "R5",
+        "R7",
+        "R8",
+        "R9"
+      ]
+    },
+    {
+      "path": "abo/src/worker.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 189,
+      "end": 192,
+      "symbol": "isKnownHost",
+      "primary_owner": "R2",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": [
+        "R3",
+        "R5",
+        "R7",
+        "R8",
+        "R9"
+      ]
+    },
+    {
+      "path": "abo/src/worker.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 193,
+      "end": 206,
+      "symbol": "isAcceptedPath",
+      "primary_owner": "R2",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": [
+        "R3",
+        "R5",
+        "R7",
+        "R8",
+        "R9"
+      ]
+    },
+    {
+      "path": "abo/src/worker.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 207,
+      "end": 226,
+      "symbol": "handleBillingV1: version/auth/rate gate",
+      "primary_owner": "R2",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": [
+        "R3",
+        "R5",
+        "R7",
+        "R8",
+        "R9"
+      ]
+    },
+    {
+      "path": "abo/src/worker.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 294,
+      "end": 314,
+      "symbol": "handleOps",
+      "primary_owner": "R2",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": [
+        "R3",
+        "R5",
+        "R7",
+        "R8",
+        "R9"
+      ]
+    },
+    {
+      "path": "abo/src/worker.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 315,
+      "end": 359,
+      "symbol": "fetch",
+      "primary_owner": "R2",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": [
+        "R3",
+        "R5",
+        "R7",
+        "R8",
+        "R9"
+      ]
+    },
+    {
+      "path": "ai-platform/src/quota-do/index.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 92,
+      "end": 93,
+      "symbol": "JtiReplayEntry",
+      "primary_owner": "R2",
+      "changed": false,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": [
+        "R4",
+        "R5",
+        "R6",
+        "R7",
+        "R9"
+      ]
+    },
+    {
+      "path": "ai-platform/src/quota-do/index.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 226,
+      "end": 230,
+      "symbol": "AdmissionReplay",
+      "primary_owner": "R2",
+      "changed": false,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": [
+        "R4",
+        "R5",
+        "R6",
+        "R7",
+        "R9"
+      ]
+    },
+    {
+      "path": "ai-platform/src/quota-do/index.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 809,
+      "end": 814,
+      "symbol": "StoredReplayEntry",
+      "primary_owner": "R2",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": [
+        "R4",
+        "R5",
+        "R6",
+        "R7",
+        "R9"
+      ]
+    },
+    {
+      "path": "ai-platform/src/vendor/contract-version.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 1,
+      "end": 2,
+      "symbol": "preamble / imports / shared declarations",
+      "primary_owner": "R2",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": []
+    },
+    {
+      "path": "ai-platform/src/vendor/contract-version.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 3,
+      "end": 4,
+      "symbol": "AIP_CONTRACT_VERSION_HEADER",
+      "primary_owner": "R2",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": []
+    },
+    {
+      "path": "ai-platform/src/vendor/contract-version.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 5,
+      "end": 15,
+      "symbol": "parseRequestedVersion",
+      "primary_owner": "R2",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": []
+    },
+    {
+      "path": "ai-platform/src/vendor/contract-version.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 16,
+      "end": 37,
+      "symbol": "requireAipContractVersion",
+      "primary_owner": "R2",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": []
+    },
+    {
+      "path": "ai-platform/src/vendor/contract-version.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 38,
+      "end": 49,
+      "symbol": "withAipContractVersion",
+      "primary_owner": "R2",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": []
+    },
+    {
+      "path": "ai-platform/src/vendor/entrypoint.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 1,
+      "end": 78,
+      "symbol": "preamble / imports / shared declarations",
+      "primary_owner": "R2",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": [
+        "R1",
+        "R4",
+        "R6",
+        "R7",
+        "R8",
+        "R9"
+      ]
+    },
+    {
+      "path": "ai-platform/src/vendor/entrypoint.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 81,
+      "end": 82,
+      "symbol": "ASSERTION_FRESHNESS_MS",
+      "primary_owner": "R2",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": [
+        "R1",
+        "R4",
+        "R6",
+        "R7",
+        "R8",
+        "R9"
+      ]
+    },
+    {
+      "path": "ai-platform/src/vendor/entrypoint.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 83,
+      "end": 128,
+      "symbol": "METHOD_CLASS",
+      "primary_owner": "R2",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": [
+        "R1",
+        "R4",
+        "R6",
+        "R7",
+        "R8",
+        "R9"
+      ]
+    },
+    {
+      "path": "ai-platform/src/vendor/entrypoint.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 135,
+      "end": 136,
+      "symbol": "HpAssertionMethod",
+      "primary_owner": "R2",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": [
+        "R1",
+        "R4",
+        "R6",
+        "R7",
+        "R8",
+        "R9"
+      ]
+    },
+    {
+      "path": "ai-platform/src/vendor/entrypoint.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 231,
+      "end": 234,
+      "symbol": "isRecord",
+      "primary_owner": "R2",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": [
+        "R1",
+        "R4",
+        "R6",
+        "R7",
+        "R8",
+        "R9"
+      ]
+    },
+    {
+      "path": "ai-platform/src/vendor/entrypoint.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 235,
+      "end": 247,
+      "symbol": "parseRequestedVersion",
+      "primary_owner": "R2",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": [
+        "R1",
+        "R4",
+        "R6",
+        "R7",
+        "R8",
+        "R9"
+      ]
+    },
+    {
+      "path": "ai-platform/src/vendor/entrypoint.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 248,
+      "end": 260,
+      "symbol": "rejected",
+      "primary_owner": "R2",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": [
+        "R1",
+        "R4",
+        "R6",
+        "R7",
+        "R8",
+        "R9"
+      ]
+    },
+    {
+      "path": "ai-platform/src/vendor/entrypoint.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 261,
+      "end": 269,
+      "symbol": "ok",
+      "primary_owner": "R2",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": [
+        "R1",
+        "R4",
+        "R6",
+        "R7",
+        "R8",
+        "R9"
+      ]
+    },
+    {
+      "path": "ai-platform/src/vendor/entrypoint.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 270,
+      "end": 278,
+      "symbol": "conflict",
+      "primary_owner": "R2",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": [
+        "R1",
+        "R4",
+        "R6",
+        "R7",
+        "R8",
+        "R9"
+      ]
+    },
+    {
+      "path": "ai-platform/src/vendor/entrypoint.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 279,
+      "end": 294,
+      "symbol": "envelopeFromControlResult",
+      "primary_owner": "R2",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": [
+        "R1",
+        "R4",
+        "R6",
+        "R7",
+        "R8",
+        "R9"
+      ]
+    },
+    {
+      "path": "ai-platform/src/vendor/entrypoint.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 295,
+      "end": 308,
+      "symbol": "rowToDetail",
+      "primary_owner": "R2",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": [
+        "R1",
+        "R4",
+        "R6",
+        "R7",
+        "R8",
+        "R9"
+      ]
+    },
+    {
+      "path": "ai-platform/src/vendor/entrypoint.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 451,
+      "end": 458,
+      "symbol": "jwsPayloadBytes",
+      "primary_owner": "R2",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": [
+        "R1",
+        "R4",
+        "R6",
+        "R7",
+        "R8",
+        "R9"
+      ]
+    },
+    {
+      "path": "ai-platform/src/vendor/entrypoint.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 459,
+      "end": 503,
+      "symbol": "verifyJwsAgainstWirePayload",
+      "primary_owner": "R2",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": [
+        "R1",
+        "R4",
+        "R6",
+        "R7",
+        "R8",
+        "R9"
+      ]
+    },
+    {
+      "path": "ai-platform/src/vendor/entrypoint.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 504,
+      "end": 515,
+      "symbol": "bytesEqual",
+      "primary_owner": "R2",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": [
+        "R1",
+        "R4",
+        "R6",
+        "R7",
+        "R8",
+        "R9"
+      ]
+    },
+    {
+      "path": "ai-platform/src/vendor/entrypoint.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 516,
+      "end": 531,
+      "symbol": "importEd25519VerifyKey",
+      "primary_owner": "R2",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": [
+        "R1",
+        "R4",
+        "R6",
+        "R7",
+        "R8",
+        "R9"
+      ]
+    },
+    {
+      "path": "ai-platform/src/vendor/entrypoint.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 689,
+      "end": 694,
+      "symbol": "isStringArray",
+      "primary_owner": "R2",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": [
+        "R1",
+        "R4",
+        "R6",
+        "R7",
+        "R8",
+        "R9"
+      ]
+    },
+    {
+      "path": "ai-platform/src/vendor/entrypoint.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 695,
+      "end": 712,
+      "symbol": "base64UrlDecode",
+      "primary_owner": "R2",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": [
+        "R1",
+        "R4",
+        "R6",
+        "R7",
+        "R8",
+        "R9"
+      ]
+    },
+    {
+      "path": "ai-platform/src/vendor/entrypoint.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 713,
+      "end": 747,
+      "symbol": "decodeAssertion",
+      "primary_owner": "R2",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": [
+        "R1",
+        "R4",
+        "R6",
+        "R7",
+        "R8",
+        "R9"
+      ]
+    },
+    {
+      "path": "ai-platform/src/vendor/entrypoint.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 765,
+      "end": 792,
+      "symbol": "loadAccessCerts",
+      "primary_owner": "R2",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": [
+        "R1",
+        "R4",
+        "R6",
+        "R7",
+        "R8",
+        "R9"
+      ]
+    },
+    {
+      "path": "ai-platform/src/vendor/entrypoint.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 793,
+      "end": 812,
+      "symbol": "verifyHpAccess",
+      "primary_owner": "R2",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": [
+        "R1",
+        "R4",
+        "R6",
+        "R7",
+        "R8",
+        "R9"
+      ]
+    },
+    {
+      "path": "ai-platform/src/vendor/entrypoint.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 813,
+      "end": 819,
+      "symbol": "operatorCredentialCount",
+      "primary_owner": "R2",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": [
+        "R1",
+        "R4",
+        "R6",
+        "R7",
+        "R8",
+        "R9"
+      ]
+    },
+    {
+      "path": "ai-platform/src/vendor/entrypoint.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 820,
+      "end": 833,
+      "symbol": "readOperatorCredential",
+      "primary_owner": "R2",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": [
+        "R1",
+        "R4",
+        "R6",
+        "R7",
+        "R8",
+        "R9"
+      ]
+    },
+    {
+      "path": "ai-platform/src/vendor/entrypoint.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 834,
+      "end": 854,
+      "symbol": "promoteCredentialIfDue",
+      "primary_owner": "R2",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": [
+        "R1",
+        "R4",
+        "R6",
+        "R7",
+        "R8",
+        "R9"
+      ]
+    },
+    {
+      "path": "ai-platform/src/vendor/entrypoint.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 855,
+      "end": 864,
+      "symbol": "promoteAllDueCredentials",
+      "primary_owner": "R2",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": [
+        "R1",
+        "R4",
+        "R6",
+        "R7",
+        "R8",
+        "R9"
+      ]
+    },
+    {
+      "path": "ai-platform/src/vendor/entrypoint.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 865,
+      "end": 870,
+      "symbol": "operationAssertionSha256",
+      "primary_owner": "R2",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": [
+        "R1",
+        "R4",
+        "R6",
+        "R7",
+        "R8",
+        "R9"
+      ]
+    },
+    {
+      "path": "ai-platform/src/vendor/entrypoint.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 871,
+      "end": 881,
+      "symbol": "assertionChallengeUsed",
+      "primary_owner": "R2",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": [
+        "R1",
+        "R4",
+        "R6",
+        "R7",
+        "R8",
+        "R9"
+      ]
+    },
+    {
+      "path": "ai-platform/src/vendor/entrypoint.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 882,
+      "end": 895,
+      "symbol": "insertAssertionUsed",
+      "primary_owner": "R2",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": [
+        "R1",
+        "R4",
+        "R6",
+        "R7",
+        "R8",
+        "R9"
+      ]
+    },
+    {
+      "path": "ai-platform/src/vendor/entrypoint.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 896,
+      "end": 913,
+      "symbol": "importSignerPublicKey",
+      "primary_owner": "R2",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": [
+        "R1",
+        "R4",
+        "R6",
+        "R7",
+        "R8",
+        "R9"
+      ]
+    },
+    {
+      "path": "ai-platform/src/vendor/entrypoint.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 914,
+      "end": 917,
+      "symbol": "stableJson",
+      "primary_owner": "R2",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": [
+        "R1",
+        "R4",
+        "R6",
+        "R7",
+        "R8",
+        "R9"
+      ]
+    },
+    {
+      "path": "ai-platform/src/vendor/entrypoint.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 918,
+      "end": 1001,
+      "symbol": "operationParamsMatch",
+      "primary_owner": "R2",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": [
+        "R1",
+        "R4",
+        "R6",
+        "R7",
+        "R8",
+        "R9"
+      ]
+    },
+    {
+      "path": "ai-platform/src/vendor/entrypoint.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 1002,
+      "end": 1047,
+      "symbol": "hpAuditTarget",
+      "primary_owner": "R2",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": [
+        "R1",
+        "R4",
+        "R6",
+        "R7",
+        "R8",
+        "R9"
+      ]
+    },
+    {
+      "path": "ai-platform/src/vendor/entrypoint.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 1077,
+      "end": 1094,
+      "symbol": "readCeilingPolicyByAssertionSha256",
+      "primary_owner": "R2",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": [
+        "R1",
+        "R4",
+        "R6",
+        "R7",
+        "R8",
+        "R9"
+      ]
+    },
+    {
+      "path": "ai-platform/src/vendor/entrypoint.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 1095,
+      "end": 1106,
+      "symbol": "assertionIssuedAtFresh",
+      "primary_owner": "R2",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": [
+        "R1",
+        "R4",
+        "R6",
+        "R7",
+        "R8",
+        "R9"
+      ]
+    },
+    {
+      "path": "ai-platform/src/vendor/entrypoint.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 1107,
+      "end": 1113,
+      "symbol": "HpAssertionReject",
+      "primary_owner": "R2",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": [
+        "R1",
+        "R4",
+        "R6",
+        "R7",
+        "R8",
+        "R9"
+      ]
+    },
+    {
+      "path": "ai-platform/src/vendor/entrypoint.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 1114,
+      "end": 1121,
+      "symbol": "HpAssertionOk",
+      "primary_owner": "R2",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": [
+        "R1",
+        "R4",
+        "R6",
+        "R7",
+        "R8",
+        "R9"
+      ]
+    },
+    {
+      "path": "ai-platform/src/vendor/entrypoint.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 1122,
+      "end": 1123,
+      "symbol": "HpAssertionResult",
+      "primary_owner": "R2",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": [
+        "R1",
+        "R4",
+        "R6",
+        "R7",
+        "R8",
+        "R9"
+      ]
+    },
+    {
+      "path": "ai-platform/src/vendor/entrypoint.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 1124,
+      "end": 1289,
+      "symbol": "runHpAssertionChecks",
+      "primary_owner": "R2",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": [
+        "R1",
+        "R4",
+        "R6",
+        "R7",
+        "R8",
+        "R9"
+      ]
+    },
+    {
+      "path": "ai-platform/src/vendor/entrypoint.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 1290,
+      "end": 1305,
+      "symbol": "finishHpAssertion",
+      "primary_owner": "R2",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": [
+        "R1",
+        "R4",
+        "R6",
+        "R7",
+        "R8",
+        "R9"
+      ]
+    },
+    {
+      "path": "ai-platform/src/vendor/entrypoint.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 1334,
+      "end": 1451,
+      "symbol": "verifyCeilingOverrideAssertion",
+      "primary_owner": "R2",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": [
+        "R1",
+        "R4",
+        "R6",
+        "R7",
+        "R8",
+        "R9"
+      ]
+    },
+    {
+      "path": "ai-platform/src/vendor/entrypoint.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 1858,
+      "end": 1873,
+      "symbol": "rejectHpAssertion",
+      "primary_owner": "R2",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": [
+        "R1",
+        "R4",
+        "R6",
+        "R7",
+        "R8",
+        "R9"
+      ]
+    },
+    {
+      "path": "ai-platform/src/vendor/entrypoint.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 1874,
+      "end": 1928,
+      "symbol": "bootstrapRegister",
+      "primary_owner": "R2",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": [
+        "R1",
+        "R4",
+        "R6",
+        "R7",
+        "R8",
+        "R9"
+      ]
+    },
+    {
+      "path": "frontend/lib/core/contract_versions.dart",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 1,
+      "end": 4,
+      "symbol": "preamble / imports / shared declarations",
+      "primary_owner": "R2",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": []
+    },
+    {
+      "path": "frontend/lib/core/contract_versions.dart",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 5,
+      "end": 5,
+      "symbol": "int",
+      "primary_owner": "R2",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": []
+    },
+    {
+      "path": "frontend/lib/core/contract_versions.dart",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 6,
+      "end": 6,
+      "symbol": "int",
+      "primary_owner": "R2",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": []
+    },
+    {
+      "path": "frontend/lib/core/contract_versions.dart",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 7,
+      "end": 7,
+      "symbol": "int",
+      "primary_owner": "R2",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": []
+    },
+    {
+      "path": "frontend/lib/core/contract_versions.dart",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 8,
+      "end": 8,
+      "symbol": "int",
+      "primary_owner": "R2",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": []
+    },
+    {
+      "path": "frontend/lib/core/contract_versions.dart",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 9,
+      "end": 9,
+      "symbol": "int",
+      "primary_owner": "R2",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": []
+    },
+    {
+      "path": "frontend/lib/core/contract_versions.dart",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 10,
+      "end": 10,
+      "symbol": "int",
+      "primary_owner": "R2",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": []
+    },
+    {
+      "path": "frontend/lib/core/contract_versions.dart",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 11,
+      "end": 11,
+      "symbol": "int",
+      "primary_owner": "R2",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": []
+    },
+    {
+      "path": "frontend/lib/core/contract_versions.dart",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 12,
+      "end": 12,
+      "symbol": "int",
+      "primary_owner": "R2",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": []
+    },
+    {
+      "path": "frontend/lib/core/contract_versions.dart",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 13,
+      "end": 13,
+      "symbol": "int",
+      "primary_owner": "R2",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": []
+    },
+    {
+      "path": "packages/vendor-contracts/src/access-jwt.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 1,
+      "end": 2,
+      "symbol": "preamble / imports / shared declarations",
+      "primary_owner": "R2",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": []
+    },
+    {
+      "path": "packages/vendor-contracts/src/access-jwt.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 3,
+      "end": 4,
+      "symbol": "textEncoder",
+      "primary_owner": "R2",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": []
+    },
+    {
+      "path": "packages/vendor-contracts/src/access-jwt.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 5,
+      "end": 15,
+      "symbol": "AccessCertsDocument",
+      "primary_owner": "R2",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": []
+    },
+    {
+      "path": "packages/vendor-contracts/src/access-jwt.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 16,
+      "end": 19,
+      "symbol": "fail",
+      "primary_owner": "R2",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": []
+    },
+    {
+      "path": "packages/vendor-contracts/src/access-jwt.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 20,
+      "end": 38,
+      "symbol": "base64UrlDecode",
+      "primary_owner": "R2",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": []
+    },
+    {
+      "path": "packages/vendor-contracts/src/access-jwt.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 39,
+      "end": 47,
+      "symbol": "parseJsonUtf8",
+      "primary_owner": "R2",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": []
+    },
+    {
+      "path": "packages/vendor-contracts/src/access-jwt.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 48,
+      "end": 57,
+      "symbol": "audMatches",
+      "primary_owner": "R2",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": []
+    },
+    {
+      "path": "packages/vendor-contracts/src/access-jwt.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 58,
+      "end": 146,
+      "symbol": "verifyAccessJwt",
+      "primary_owner": "R2",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": []
+    },
+    {
+      "path": "packages/vendor-contracts/src/base64url.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 1,
+      "end": 1,
+      "symbol": "preamble / imports / shared declarations",
+      "primary_owner": "R2",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": []
+    },
+    {
+      "path": "packages/vendor-contracts/src/base64url.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 2,
+      "end": 12,
+      "symbol": "base64UrlEncode",
+      "primary_owner": "R2",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": []
+    },
+    {
+      "path": "packages/vendor-contracts/src/base64url.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 13,
+      "end": 19,
+      "symbol": "hexToBytes",
+      "primary_owner": "R2",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": []
+    },
+    {
+      "path": "packages/vendor-contracts/src/canonical.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 1,
+      "end": 2,
+      "symbol": "preamble / imports / shared declarations",
+      "primary_owner": "R2",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": []
+    },
+    {
+      "path": "packages/vendor-contracts/src/canonical.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 3,
+      "end": 8,
+      "symbol": "comparePropertyNames",
+      "primary_owner": "R2",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": []
+    },
+    {
+      "path": "packages/vendor-contracts/src/canonical.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 9,
+      "end": 18,
+      "symbol": "serializeNumber",
+      "primary_owner": "R2",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": []
+    },
+    {
+      "path": "packages/vendor-contracts/src/canonical.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 19,
+      "end": 22,
+      "symbol": "serializeString",
+      "primary_owner": "R2",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": []
+    },
+    {
+      "path": "packages/vendor-contracts/src/canonical.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 23,
+      "end": 51,
+      "symbol": "serializeJsonValue",
+      "primary_owner": "R2",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": []
+    },
+    {
+      "path": "packages/vendor-contracts/src/canonical.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 52,
+      "end": 56,
+      "symbol": "canonicalize",
+      "primary_owner": "R2",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": []
+    },
+    {
+      "path": "packages/vendor-contracts/src/canonical.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 57,
+      "end": 65,
+      "symbol": "sha256Hex",
+      "primary_owner": "R2",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": []
+    },
+    {
+      "path": "packages/vendor-contracts/src/coverage-snapshot.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 1,
+      "end": 3,
+      "symbol": "preamble / imports / shared declarations",
+      "primary_owner": "R2",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": []
+    },
+    {
+      "path": "packages/vendor-contracts/src/coverage-snapshot.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 4,
+      "end": 4,
+      "symbol": "TERM_BANDS",
+      "primary_owner": "R2",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": []
+    },
+    {
+      "path": "packages/vendor-contracts/src/coverage-snapshot.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 5,
+      "end": 14,
+      "symbol": "REASONS",
+      "primary_owner": "R2",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": []
+    },
+    {
+      "path": "packages/vendor-contracts/src/coverage-snapshot.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 15,
+      "end": 26,
+      "symbol": "SNAPSHOT_KEYS",
+      "primary_owner": "R2",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": []
+    },
+    {
+      "path": "packages/vendor-contracts/src/coverage-snapshot.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 27,
+      "end": 37,
+      "symbol": "TERM_KEYS",
+      "primary_owner": "R2",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": []
+    },
+    {
+      "path": "packages/vendor-contracts/src/coverage-snapshot.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 38,
+      "end": 41,
+      "symbol": "isRecord",
+      "primary_owner": "R2",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": []
+    },
+    {
+      "path": "packages/vendor-contracts/src/coverage-snapshot.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 42,
+      "end": 45,
+      "symbol": "fail",
+      "primary_owner": "R2",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": []
+    },
+    {
+      "path": "packages/vendor-contracts/src/coverage-snapshot.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 46,
+      "end": 49,
+      "symbol": "isUuid",
+      "primary_owner": "R2",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": []
+    },
+    {
+      "path": "packages/vendor-contracts/src/coverage-snapshot.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 50,
+      "end": 62,
+      "symbol": "hasOnlyKeys",
+      "primary_owner": "R2",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": []
+    },
+    {
+      "path": "packages/vendor-contracts/src/coverage-snapshot.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 63,
+      "end": 77,
+      "symbol": "validateTerm",
+      "primary_owner": "R2",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": []
+    },
+    {
+      "path": "packages/vendor-contracts/src/coverage-snapshot.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 78,
+      "end": 123,
+      "symbol": "validateCoverageSnapshot",
+      "primary_owner": "R2",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": []
+    },
+    {
+      "path": "packages/vendor-contracts/src/feed-event.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 1,
+      "end": 2,
+      "symbol": "preamble / imports / shared declarations",
+      "primary_owner": "R2",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": []
+    },
+    {
+      "path": "packages/vendor-contracts/src/feed-event.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 3,
+      "end": 5,
+      "symbol": "UUID_RE",
+      "primary_owner": "R2",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": []
+    },
+    {
+      "path": "packages/vendor-contracts/src/feed-event.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 6,
+      "end": 17,
+      "symbol": "FEED_EVENT_KEYS",
+      "primary_owner": "R2",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": []
+    },
+    {
+      "path": "packages/vendor-contracts/src/feed-event.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 18,
+      "end": 21,
+      "symbol": "isRecord",
+      "primary_owner": "R2",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": []
+    },
+    {
+      "path": "packages/vendor-contracts/src/feed-event.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 22,
+      "end": 25,
+      "symbol": "fail",
+      "primary_owner": "R2",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": []
+    },
+    {
+      "path": "packages/vendor-contracts/src/feed-event.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 26,
+      "end": 29,
+      "symbol": "isUuid",
+      "primary_owner": "R2",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": []
+    },
+    {
+      "path": "packages/vendor-contracts/src/feed-event.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 30,
+      "end": 42,
+      "symbol": "hasOnlyKeys",
+      "primary_owner": "R2",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": []
+    },
+    {
+      "path": "packages/vendor-contracts/src/feed-event.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 43,
+      "end": 71,
+      "symbol": "validateFeedEvent",
+      "primary_owner": "R2",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": []
+    },
+    {
+      "path": "packages/vendor-contracts/src/grant-envelope.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 1,
+      "end": 4,
+      "symbol": "preamble / imports / shared declarations",
+      "primary_owner": "R2",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": []
+    },
+    {
+      "path": "packages/vendor-contracts/src/grant-envelope.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 5,
+      "end": 6,
+      "symbol": "UUID_RE",
+      "primary_owner": "R2",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": []
+    },
+    {
+      "path": "packages/vendor-contracts/src/grant-envelope.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 7,
+      "end": 8,
+      "symbol": "HEX64_RE",
+      "primary_owner": "R2",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": []
+    },
+    {
+      "path": "packages/vendor-contracts/src/grant-envelope.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 9,
+      "end": 9,
+      "symbol": "PAID_MONTH_COUNTS",
+      "primary_owner": "R2",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": []
+    },
+    {
+      "path": "packages/vendor-contracts/src/grant-envelope.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 10,
+      "end": 11,
+      "symbol": "ADJUSTMENT_KEYS",
+      "primary_owner": "R2",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": []
+    },
+    {
+      "path": "packages/vendor-contracts/src/grant-envelope.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 12,
+      "end": 15,
+      "symbol": "isRecord",
+      "primary_owner": "R2",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": []
+    },
+    {
+      "path": "packages/vendor-contracts/src/grant-envelope.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 16,
+      "end": 19,
+      "symbol": "fail",
+      "primary_owner": "R2",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": []
+    },
+    {
+      "path": "packages/vendor-contracts/src/grant-envelope.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 20,
+      "end": 23,
+      "symbol": "placementNotSupported",
+      "primary_owner": "R2",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": []
+    },
+    {
+      "path": "packages/vendor-contracts/src/grant-envelope.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 24,
+      "end": 27,
+      "symbol": "isUuid",
+      "primary_owner": "R2",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": []
+    },
+    {
+      "path": "packages/vendor-contracts/src/grant-envelope.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 28,
+      "end": 31,
+      "symbol": "isHex64",
+      "primary_owner": "R2",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": []
+    },
+    {
+      "path": "packages/vendor-contracts/src/grant-envelope.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 32,
+      "end": 44,
+      "symbol": "hasOnlyKeys",
+      "primary_owner": "R2",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": []
+    },
+    {
+      "path": "packages/vendor-contracts/src/grant-envelope.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 45,
+      "end": 55,
+      "symbol": "validatePlan",
+      "primary_owner": "R2",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": []
+    },
+    {
+      "path": "packages/vendor-contracts/src/grant-envelope.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 56,
+      "end": 75,
+      "symbol": "validateGrace",
+      "primary_owner": "R2",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": []
+    },
+    {
+      "path": "packages/vendor-contracts/src/grant-envelope.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 76,
+      "end": 79,
+      "symbol": "isPaidOperationApproval",
+      "primary_owner": "R2",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": []
+    },
+    {
+      "path": "packages/vendor-contracts/src/grant-envelope.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 80,
+      "end": 92,
+      "symbol": "validateApproval",
+      "primary_owner": "R2",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": []
+    },
+    {
+      "path": "packages/vendor-contracts/src/grant-envelope.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 93,
+      "end": 108,
+      "symbol": "validateEvidence",
+      "primary_owner": "R2",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": []
+    },
+    {
+      "path": "packages/vendor-contracts/src/grant-envelope.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 109,
+      "end": 139,
+      "symbol": "validateSource",
+      "primary_owner": "R2",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": []
+    },
+    {
+      "path": "packages/vendor-contracts/src/grant-envelope.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 140,
+      "end": 161,
+      "symbol": "validateDuration",
+      "primary_owner": "R2",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": []
+    },
+    {
+      "path": "packages/vendor-contracts/src/grant-envelope.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 162,
+      "end": 203,
+      "symbol": "validateAdjustment",
+      "primary_owner": "R2",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": []
+    },
+    {
+      "path": "packages/vendor-contracts/src/grant-envelope.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 204,
+      "end": 314,
+      "symbol": "validateGrantEnvelope",
+      "primary_owner": "R2",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": []
+    },
+    {
+      "path": "packages/vendor-contracts/src/grant-envelope.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 315,
+      "end": 318,
+      "symbol": "grantEnvelopeHash",
+      "primary_owner": "R2",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": []
+    },
+    {
+      "path": "packages/vendor-contracts/src/grant-envelope.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 319,
+      "end": 340,
+      "symbol": "payloadBytesFromJws",
+      "primary_owner": "R2",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": []
+    },
+    {
+      "path": "packages/vendor-contracts/src/grant-envelope.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 341,
+      "end": 352,
+      "symbol": "bytesEqual",
+      "primary_owner": "R2",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": []
+    },
+    {
+      "path": "packages/vendor-contracts/src/grant-envelope.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 353,
+      "end": 372,
+      "symbol": "verifyGrantSignature",
+      "primary_owner": "R2",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": []
+    },
+    {
+      "path": "packages/vendor-contracts/src/identifiers.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 1,
+      "end": 2,
+      "symbol": "preamble / imports / shared declarations",
+      "primary_owner": "R2",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": []
+    },
+    {
+      "path": "packages/vendor-contracts/src/identifiers.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 3,
+      "end": 4,
+      "symbol": "CROCKFORD_ALPHABET",
+      "primary_owner": "R2",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": []
+    },
+    {
+      "path": "packages/vendor-contracts/src/identifiers.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 5,
+      "end": 6,
+      "symbol": "textEncoder",
+      "primary_owner": "R2",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": []
+    },
+    {
+      "path": "packages/vendor-contracts/src/identifiers.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 7,
+      "end": 29,
+      "symbol": "crockfordEncode",
+      "primary_owner": "R2",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": []
+    },
+    {
+      "path": "packages/vendor-contracts/src/identifiers.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 30,
+      "end": 33,
+      "symbol": "crockfordPrefix8",
+      "primary_owner": "R2",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": []
+    },
+    {
+      "path": "packages/vendor-contracts/src/identifiers.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 34,
+      "end": 37,
+      "symbol": "sha256Utf8Hex",
+      "primary_owner": "R2",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": []
+    },
+    {
+      "path": "packages/vendor-contracts/src/identifiers.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 38,
+      "end": 59,
+      "symbol": "ulid",
+      "primary_owner": "R2",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": []
+    },
+    {
+      "path": "packages/vendor-contracts/src/identifiers.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 60,
+      "end": 67,
+      "symbol": "subscriptionRef",
+      "primary_owner": "R2",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": []
+    },
+    {
+      "path": "packages/vendor-contracts/src/identifiers.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 68,
+      "end": 74,
+      "symbol": "paymentId",
+      "primary_owner": "R2",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": []
+    },
+    {
+      "path": "packages/vendor-contracts/src/identifiers.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 75,
+      "end": 78,
+      "symbol": "grantIdPaid",
+      "primary_owner": "R2",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": []
+    },
+    {
+      "path": "packages/vendor-contracts/src/identifiers.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 79,
+      "end": 82,
+      "symbol": "grantIdComp",
+      "primary_owner": "R2",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": []
+    },
+    {
+      "path": "packages/vendor-contracts/src/identifiers.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 83,
+      "end": 89,
+      "symbol": "grantIdTransfer",
+      "primary_owner": "R2",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": []
+    },
+    {
+      "path": "packages/vendor-contracts/src/identifiers.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 90,
+      "end": 96,
+      "symbol": "coverageEventId",
+      "primary_owner": "R2",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": []
+    },
+    {
+      "path": "packages/vendor-contracts/src/identifiers.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 97,
+      "end": 102,
+      "symbol": "humanRef",
+      "primary_owner": "R2",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": []
+    },
+    {
+      "path": "packages/vendor-contracts/src/index.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 1,
+      "end": 41,
+      "symbol": "preamble / imports / shared declarations",
+      "primary_owner": "R2",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": []
+    },
+    {
+      "path": "packages/vendor-contracts/src/jws.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 1,
+      "end": 2,
+      "symbol": "preamble / imports / shared declarations",
+      "primary_owner": "R2",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": []
+    },
+    {
+      "path": "packages/vendor-contracts/src/jws.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 3,
+      "end": 4,
+      "symbol": "textEncoder",
+      "primary_owner": "R2",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": []
+    },
+    {
+      "path": "packages/vendor-contracts/src/jws.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 5,
+      "end": 15,
+      "symbol": "base64UrlEncode",
+      "primary_owner": "R2",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": []
+    },
+    {
+      "path": "packages/vendor-contracts/src/jws.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 16,
+      "end": 29,
+      "symbol": "base64UrlDecode",
+      "primary_owner": "R2",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": []
+    },
+    {
+      "path": "packages/vendor-contracts/src/jws.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 30,
+      "end": 38,
+      "symbol": "parseJsonUtf8",
+      "primary_owner": "R2",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": []
+    },
+    {
+      "path": "packages/vendor-contracts/src/jws.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 39,
+      "end": 50,
+      "symbol": "bytesEqual",
+      "primary_owner": "R2",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": []
+    },
+    {
+      "path": "packages/vendor-contracts/src/jws.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 51,
+      "end": 65,
+      "symbol": "parseHeader",
+      "primary_owner": "R2",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": []
+    },
+    {
+      "path": "packages/vendor-contracts/src/jws.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 66,
+      "end": 83,
+      "symbol": "signCompactJws",
+      "primary_owner": "R2",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": []
+    },
+    {
+      "path": "packages/vendor-contracts/src/jws.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 84,
+      "end": 124,
+      "symbol": "verifyCompactJws",
+      "primary_owner": "R2",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": []
+    },
+    {
+      "path": "packages/vendor-contracts/src/operation.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 1,
+      "end": 3,
+      "symbol": "preamble / imports / shared declarations",
+      "primary_owner": "R2",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": []
+    },
+    {
+      "path": "packages/vendor-contracts/src/operation.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 4,
+      "end": 12,
+      "symbol": "OPERATION_KEYS",
+      "primary_owner": "R2",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": []
+    },
+    {
+      "path": "packages/vendor-contracts/src/operation.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 13,
+      "end": 16,
+      "symbol": "isRecord",
+      "primary_owner": "R2",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": []
+    },
+    {
+      "path": "packages/vendor-contracts/src/operation.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 17,
+      "end": 20,
+      "symbol": "fail",
+      "primary_owner": "R2",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": []
+    },
+    {
+      "path": "packages/vendor-contracts/src/operation.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 21,
+      "end": 33,
+      "symbol": "hasOnlyKeys",
+      "primary_owner": "R2",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": []
+    },
+    {
+      "path": "packages/vendor-contracts/src/operation.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 34,
+      "end": 58,
+      "symbol": "validateOperation",
+      "primary_owner": "R2",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": []
+    },
+    {
+      "path": "packages/vendor-contracts/src/operation.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 59,
+      "end": 65,
+      "symbol": "operationChallenge",
+      "primary_owner": "R2",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": []
+    },
+    {
+      "path": "packages/vendor-contracts/src/receipt.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 1,
+      "end": 3,
+      "symbol": "preamble / imports / shared declarations",
+      "primary_owner": "R2",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": []
+    },
+    {
+      "path": "packages/vendor-contracts/src/receipt.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 4,
+      "end": 5,
+      "symbol": "UUID_RE",
+      "primary_owner": "R2",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": []
+    },
+    {
+      "path": "packages/vendor-contracts/src/receipt.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 6,
+      "end": 7,
+      "symbol": "HEX64_RE",
+      "primary_owner": "R2",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": []
+    },
+    {
+      "path": "packages/vendor-contracts/src/receipt.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 8,
+      "end": 20,
+      "symbol": "RECEIPT_BASE_KEYS",
+      "primary_owner": "R2",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": []
+    },
+    {
+      "path": "packages/vendor-contracts/src/receipt.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 21,
+      "end": 24,
+      "symbol": "isRecord",
+      "primary_owner": "R2",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": []
+    },
+    {
+      "path": "packages/vendor-contracts/src/receipt.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 25,
+      "end": 28,
+      "symbol": "fail",
+      "primary_owner": "R2",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": []
+    },
+    {
+      "path": "packages/vendor-contracts/src/receipt.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 29,
+      "end": 32,
+      "symbol": "isUuid",
+      "primary_owner": "R2",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": []
+    },
+    {
+      "path": "packages/vendor-contracts/src/receipt.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 33,
+      "end": 36,
+      "symbol": "isHex64",
+      "primary_owner": "R2",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": []
+    },
+    {
+      "path": "packages/vendor-contracts/src/receipt.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 37,
+      "end": 49,
+      "symbol": "hasOnlyKeys",
+      "primary_owner": "R2",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": []
+    },
+    {
+      "path": "packages/vendor-contracts/src/receipt.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 50,
+      "end": 56,
+      "symbol": "validateTermIds",
+      "primary_owner": "R2",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": []
+    },
+    {
+      "path": "packages/vendor-contracts/src/receipt.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 57,
+      "end": 109,
+      "symbol": "validateReceipt",
+      "primary_owner": "R2",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": []
+    },
+    {
+      "path": "packages/vendor-contracts/src/receipt.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 110,
+      "end": 118,
+      "symbol": "receiptSigningBytes",
+      "primary_owner": "R2",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": []
+    },
+    {
+      "path": "packages/vendor-contracts/src/receipt.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 119,
+      "end": 145,
+      "symbol": "payloadBytesFromJws",
+      "primary_owner": "R2",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": []
+    },
+    {
+      "path": "packages/vendor-contracts/src/receipt.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 146,
+      "end": 157,
+      "symbol": "bytesEqual",
+      "primary_owner": "R2",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": []
+    },
+    {
+      "path": "packages/vendor-contracts/src/receipt.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 158,
+      "end": 182,
+      "symbol": "verifyReceiptSignature",
+      "primary_owner": "R2",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": []
+    },
+    {
+      "path": "packages/vendor-contracts/src/result-envelope.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 1,
+      "end": 2,
+      "symbol": "preamble / imports / shared declarations",
+      "primary_owner": "R2",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": []
+    },
+    {
+      "path": "packages/vendor-contracts/src/result-envelope.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 3,
+      "end": 11,
+      "symbol": "RESULT_NAMES",
+      "primary_owner": "R2",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": []
+    },
+    {
+      "path": "packages/vendor-contracts/src/result-envelope.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 12,
+      "end": 18,
+      "symbol": "TRANSIENT_DETAILS",
+      "primary_owner": "R2",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": []
+    },
+    {
+      "path": "packages/vendor-contracts/src/result-envelope.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 19,
+      "end": 22,
+      "symbol": "isRecord",
+      "primary_owner": "R2",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": []
+    },
+    {
+      "path": "packages/vendor-contracts/src/result-envelope.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 23,
+      "end": 26,
+      "symbol": "fail",
+      "primary_owner": "R2",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": []
+    },
+    {
+      "path": "packages/vendor-contracts/src/result-envelope.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 27,
+      "end": 39,
+      "symbol": "hasOnlyKeys",
+      "primary_owner": "R2",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": []
+    },
+    {
+      "path": "packages/vendor-contracts/src/result-envelope.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 40,
+      "end": 80,
+      "symbol": "validateResultEnvelope",
+      "primary_owner": "R2",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": []
+    },
+    {
+      "path": "packages/vendor-contracts/src/token-claims.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 1,
+      "end": 2,
+      "symbol": "preamble / imports / shared declarations",
+      "primary_owner": "R2",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": []
+    },
+    {
+      "path": "packages/vendor-contracts/src/token-claims.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 3,
+      "end": 4,
+      "symbol": "textEncoder",
+      "primary_owner": "R2",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": []
+    },
+    {
+      "path": "packages/vendor-contracts/src/token-claims.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 5,
+      "end": 7,
+      "symbol": "UUID_RE",
+      "primary_owner": "R2",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": []
+    },
+    {
+      "path": "packages/vendor-contracts/src/token-claims.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 8,
+      "end": 13,
+      "symbol": "LIFETIME_MAX",
+      "primary_owner": "R2",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": []
+    },
+    {
+      "path": "packages/vendor-contracts/src/token-claims.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 14,
+      "end": 15,
+      "symbol": "TokenAudience",
+      "primary_owner": "R2",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": []
+    },
+    {
+      "path": "packages/vendor-contracts/src/token-claims.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 16,
+      "end": 34,
+      "symbol": "base64UrlDecode",
+      "primary_owner": "R2",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": []
+    },
+    {
+      "path": "packages/vendor-contracts/src/token-claims.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 35,
+      "end": 43,
+      "symbol": "parseJsonUtf8",
+      "primary_owner": "R2",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": []
+    },
+    {
+      "path": "packages/vendor-contracts/src/token-claims.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 44,
+      "end": 55,
+      "symbol": "bytesEqual",
+      "primary_owner": "R2",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": []
+    },
+    {
+      "path": "packages/vendor-contracts/src/token-claims.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 56,
+      "end": 59,
+      "symbol": "isRecord",
+      "primary_owner": "R2",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": []
+    },
+    {
+      "path": "packages/vendor-contracts/src/token-claims.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 60,
+      "end": 63,
+      "symbol": "fail",
+      "primary_owner": "R2",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": []
+    },
+    {
+      "path": "packages/vendor-contracts/src/token-claims.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 64,
+      "end": 76,
+      "symbol": "hasOnlyKeys",
+      "primary_owner": "R2",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": []
+    },
+    {
+      "path": "packages/vendor-contracts/src/token-claims.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 77,
+      "end": 102,
+      "symbol": "parseJwtHeader",
+      "primary_owner": "R2",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": []
+    },
+    {
+      "path": "packages/vendor-contracts/src/token-claims.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 103,
+      "end": 128,
+      "symbol": "validateCommonClaims",
+      "primary_owner": "R2",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": []
+    },
+    {
+      "path": "packages/vendor-contracts/src/token-claims.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 129,
+      "end": 149,
+      "symbol": "validateAiClaims",
+      "primary_owner": "R2",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": []
+    },
+    {
+      "path": "packages/vendor-contracts/src/token-claims.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 150,
+      "end": 162,
+      "symbol": "validateBillingClaims",
+      "primary_owner": "R2",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": []
+    },
+    {
+      "path": "packages/vendor-contracts/src/token-claims.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 163,
+      "end": 173,
+      "symbol": "validateFeedClaims",
+      "primary_owner": "R2",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": []
+    },
+    {
+      "path": "packages/vendor-contracts/src/token-claims.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 174,
+      "end": 189,
+      "symbol": "validateAudienceClaims",
+      "primary_owner": "R2",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": []
+    },
+    {
+      "path": "packages/vendor-contracts/src/token-claims.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 190,
+      "end": 244,
+      "symbol": "validateTokenClaims",
+      "primary_owner": "R2",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": []
+    },
+    {
+      "path": "packages/vendor-contracts/src/version.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 1,
+      "end": 12,
+      "symbol": "preamble / imports / shared declarations",
+      "primary_owner": "R2",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": []
+    },
+    {
+      "path": "packages/vendor-contracts/src/version.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 13,
+      "end": 16,
+      "symbol": "acceptedVersions",
+      "primary_owner": "R2",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": []
+    },
+    {
+      "path": "packages/vendor-contracts/src/version.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 17,
+      "end": 43,
+      "symbol": "negotiate",
+      "primary_owner": "R2",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": []
+    },
+    {
+      "path": "packages/vendor-contracts/src/webauthn.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 1,
+      "end": 4,
+      "symbol": "preamble / imports / shared declarations",
+      "primary_owner": "R2",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": []
+    },
+    {
+      "path": "packages/vendor-contracts/src/webauthn.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 5,
+      "end": 11,
+      "symbol": "Assertion",
+      "primary_owner": "R2",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": []
+    },
+    {
+      "path": "packages/vendor-contracts/src/webauthn.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 12,
+      "end": 13,
+      "symbol": "textEncoder",
+      "primary_owner": "R2",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": []
+    },
+    {
+      "path": "packages/vendor-contracts/src/webauthn.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 14,
+      "end": 17,
+      "symbol": "fail",
+      "primary_owner": "R2",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": []
+    },
+    {
+      "path": "packages/vendor-contracts/src/webauthn.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 18,
+      "end": 29,
+      "symbol": "bytesEqual",
+      "primary_owner": "R2",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": []
+    },
+    {
+      "path": "packages/vendor-contracts/src/webauthn.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 30,
+      "end": 58,
+      "symbol": "parseClientDataJson",
+      "primary_owner": "R2",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": []
+    },
+    {
+      "path": "packages/vendor-contracts/src/webauthn.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 59,
+      "end": 99,
+      "symbol": "derEcdsaDerToRaw",
+      "primary_owner": "R2",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": []
+    },
+    {
+      "path": "packages/vendor-contracts/src/webauthn.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 100,
+      "end": 115,
+      "symbol": "leftPadInteger",
+      "primary_owner": "R2",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": []
+    },
+    {
+      "path": "packages/vendor-contracts/src/webauthn.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 116,
+      "end": 135,
+      "symbol": "derEcdsaRawToDer",
+      "primary_owner": "R2",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": []
+    },
+    {
+      "path": "packages/vendor-contracts/src/webauthn.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 136,
+      "end": 209,
+      "symbol": "verifyAssertion",
+      "primary_owner": "R2",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": []
+    },
+    {
+      "path": "packages/vendor-contracts/src/webauthn.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 210,
+      "end": 248,
+      "symbol": "parseRegistrationAttestation",
+      "primary_owner": "R2",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": []
+    }
+  ],
+  "unchanged_dependencies": []
+}

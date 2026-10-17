@@ -1,0 +1,256 @@
+{
+  "target": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+  "phase": "R3",
+  "entries": [
+    {
+      "id": "076:1",
+      "spec": "076",
+      "entry_number": 1,
+      "title": "Unsupported-version body, cross-host rejection, and the ledger object key",
+      "source_path": "specs/076-abo-p4-1-abo-skeleton-records-layer-billing-token/escalations.md",
+      "source_line": 5,
+      "target": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "question": "Three contract values are unnamed in the cited spans. (1) On HTTP 400 `contract_version_unsupported`, 04 \u00a72.3 says the body is `{code, message, contract_version}` and that it lists the accepted versions. It does not say which field holds that list, or what `contract_version` is when the header is missing or outside N and N\u22121. (2) 02 \u00a71.4 says the ABO rejects `/ops/*` on the billing host and `/v1/*` on the ops host, and E2E-P4.1-06 only says \u201crejected\u201d. Status and body are unnamed. (3) 03 \u00a72.1 says the minute exporter writes one NDJSON object per fact under the R2 prefix `ledger/` in `fact_seq` order. The object key is unnamed.",
+      "resolution": "(1) The accepted-version list is `accepted_versions`, `[N\u22121, N]` with N\u22121 first. `contract_version` is N both when `Abo-Contract-Version` is missing and when it is outside N and N\u22121, and the response header `Abo-Contract-Version` is that same N. The body is `{code, message, contract_version, accepted_versions}`. (2) Both cross-host crossings answer HTTP 404 with an empty body, before the contract-version check and before authentication. That body is not an 04 \u00a72.3 error. (3) Each fact is the object `ledger/<fact_seq>.ndjson`, where `<fact_seq>` is that fact's `fact_seq` in decimal with no padding, and the object is one JSON line.",
+      "rationale": "04 \u00a77.2 and the 04 \u00a74.2 row already name `accepted_versions` for this refusal, in the order `acceptedVersions` returns. NFR-09 says the response states the version it answers in, and \u00a77.2 answers in the request's version only when that version was accepted, so a missing or rejected header is answered as N. A 404 with an empty body is the status already used when a route is not served, and it leaves `not_found` meaning an unknown or other-tenant id. The host check comes first so this 404 stays distinct from the version refusal. `grant-ledger/<grant_id>.ndjson` is already one object per record, one JSON line, so the fact copy uses `fact_seq` the same way. Replay already walks `fact_seq` order, so the key needs no padding.",
+      "amended_paths_sections": "`docs/architecture/ai-billing-orchestration/04-abo-contracts.md` (\u00a72.3); `docs/architecture/ai-billing-orchestration/02-abo-architecture-and-threat-model.md` (\u00a71.4); `docs/architecture/ai-billing-orchestration/03-abo-data-model-and-lifecycle.md` (\u00a72.1).",
+      "amended_paths": [
+        "docs/architecture/ai-billing-orchestration/04-abo-contracts.md",
+        "docs/architecture/ai-billing-orchestration/02-abo-architecture-and-threat-model.md",
+        "docs/architecture/ai-billing-orchestration/03-abo-data-model-and-lifecycle.md"
+      ],
+      "owning_review_phases": [
+        "R1",
+        "R2",
+        "R3",
+        "R9"
+      ],
+      "disposition": "source-contract",
+      "producer_consumer_trace": "Host/version gates and record exporter \u2192 clinic error/header decoders, cross-host callers and ledger replay reader",
+      "review_status": "routed; source correctness and propagation not yet reviewed"
+    },
+    {
+      "id": "077:1",
+      "spec": "077",
+      "entry_number": 1,
+      "title": "Checkout billing-token jti and the Paymob return `v`",
+      "source_path": "specs/077-abo-p4-2-checkout-paymob-intention/escalations.md",
+      "source_line": 5,
+      "target": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "question": "04 \u00a72.2 Rules require the billing token\u2019s `jti` to be stored on the checkout fact, but the 03 \u00a72.4 `checkout` field list names no column for it. The unit row also requires `return_url` with `v`, and the cited spans do not say what value `v` carries.",
+      "resolution": "The checkout fact stores that `jti` in `billing_token_jti`. On the Paymob return URL, `v` is the browser-return channel's integer contract version, set to the current version when the ABO builds `return_url` (1 at launch).",
+      "rationale": "04 \u00a72.2 already requires the billing token `jti` on the checkout fact, and 02 records that `jti` on every checkout; the missing piece was the column name on the append-only fact. `v` is the same kind of integer contract version \u00a77.1 gives every channel, carried as a query parameter because the browser return is a redirect, and every channel starts at 1.",
+      "amended_paths_sections": "`docs/architecture/ai-billing-orchestration/03-abo-data-model-and-lifecycle.md` (\u00a72.4); `docs/architecture/ai-billing-orchestration/04-abo-contracts.md` (\u00a77.1).",
+      "amended_paths": [
+        "docs/architecture/ai-billing-orchestration/03-abo-data-model-and-lifecycle.md",
+        "docs/architecture/ai-billing-orchestration/04-abo-contracts.md"
+      ],
+      "owning_review_phases": [
+        "R1",
+        "R2",
+        "R3",
+        "R9"
+      ],
+      "disposition": "source-contract",
+      "producer_consumer_trace": "Billing JWT jti and checkout producer \u2192 immutable billing_token_jti fact; return URL v \u2192 browser-return version receiver and replay",
+      "review_status": "routed; source correctness and propagation not yet reviewed"
+    },
+    {
+      "id": "077:2",
+      "spec": "077",
+      "entry_number": 2,
+      "title": "R-2 intention expiry without a Paymob test account",
+      "source_path": "specs/077-abo-p4-2-checkout-paymob-intention/escalations.md",
+      "source_line": 15,
+      "target": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "question": "The R-2 spike must confirm, on the Paymob test integration, that `POST /v1/intention/` with `expiration` = 1800 s is the expiry the API honors, so checkout `expires_at` is creation plus 30 minutes. No Paymob secret key, card integration id, or public key is present in the environment or in `abo` config. OQ-3 says that if that integration is not provisioned, P4.2 stops at the spike step.",
+      "resolution": "`POST /v1/intention/` with `expiration` = 1800 s is the expiry that call is taken to honor, and checkout `expires_at` is creation plus 30 minutes. P4.2 records that outcome and verifies `expiration` and `expires_at` against the H-PAY stub. A live Paymob test account is not required for this unit.",
+      "rationale": "01 \u00a73.3 already sets checkout expiry explicitly to 30 minutes, and 04 \u00a75.3 already sends `expiration` = 1800 s. The missing piece was whether the API honors that field, which OQ-3 would not let P4.2 assume without a provisioned test integration. No such integration is available here. The stub can check that the adapter sends 1800 s and that `expires_at` is creation plus 30 minutes. The other R-2 items stay with P4.3. P5.2 still stops if the staging Supabase project is missing.",
+      "amended_paths_sections": "`docs/architecture/ai-billing-orchestration/06-abo-delivery-plan.md` (\u00a72 S6; \u00a76 OQ-3); `docs/architecture/ai-billing-orchestration/01-abo-design-decisions.md` (\u00a77 R-2); `docs/architecture/ai-billing-orchestration/05-abo-operations-and-traceability.md` (\u00a710 Spike-dependent items).",
+      "amended_paths": [
+        "docs/architecture/ai-billing-orchestration/06-abo-delivery-plan.md",
+        "docs/architecture/ai-billing-orchestration/01-abo-design-decisions.md",
+        "docs/architecture/ai-billing-orchestration/05-abo-operations-and-traceability.md"
+      ],
+      "owning_review_phases": [
+        "R3",
+        "R9"
+      ],
+      "disposition": "external-assumption",
+      "producer_consumer_trace": "Paymob intention expiration=1800 sender \u2192 provider expiry assumed honored; checkout expiry and operational spike/launch limits. No live-provider verification in R0",
+      "review_status": "routed; source correctness and propagation not yet reviewed"
+    },
+    {
+      "id": "078:1",
+      "spec": "078",
+      "entry_number": 1,
+      "title": "Notify body cap, rate limit, and work-row lease",
+      "source_path": "specs/078-abo-p4-3-notification-intake-inquiry-work-pipeline/escalations.md",
+      "source_line": 5,
+      "target": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "question": "`POST /notify/paymob` must apply a body-size cap and a rate limit (unit Implements; 02 \u00a72 TB-1). No cited section states the cap size, the rate (count, window, or key), or the HTTP response when either trips. The work-row lease length on `lease_until` is also unset (03 \u00a72.9, 03 \u00a75.6).",
+      "resolution": "`POST /notify/paymob` accepts a body of at most 1_048_576 bytes (1 MiB). A larger body answers HTTP 413 with an empty body. The same route allows 60 requests per 60 seconds per `CF-Connecting-IP`; a missing header uses the single key `unknown`. The request that exceeds that limit answers HTTP 429 with an empty body. Either refusal stores nothing and enqueues nothing. A work-row take sets `lease_until` 60 seconds ahead and succeeds only when `lease_until` is null or already past.",
+      "rationale": "The platform ingress gate already refuses a body over 1_048_576 bytes with HTTP 413, and the ABO clinic API already refuses an excess of requests with HTTP 429. The count 60 is the clinic API's per-token request limit, and 60 seconds is the period on every platform rate limiter. The notify caller has no tenant and no token (TB-1, AD-1), so the key is the connecting IP. The notify channel is provider-controlled, so the refusal is an empty body rather than a clinic-API error. The work runner's cron and its first backoff step are both one minute, so the lease is 60 seconds and a crashed runner is eligible on the next minute.",
+      "amended_paths_sections": "`docs/architecture/ai-billing-orchestration/02-abo-architecture-and-threat-model.md` (\u00a72 TB-1); `docs/architecture/ai-billing-orchestration/06-abo-delivery-plan.md` (P4.3 Implements); `docs/architecture/ai-billing-orchestration/03-abo-data-model-and-lifecycle.md` (\u00a72.9, \u00a75.6).",
+      "amended_paths": [
+        "docs/architecture/ai-billing-orchestration/02-abo-architecture-and-threat-model.md",
+        "docs/architecture/ai-billing-orchestration/06-abo-delivery-plan.md",
+        "docs/architecture/ai-billing-orchestration/03-abo-data-model-and-lifecycle.md"
+      ],
+      "owning_review_phases": [
+        "R2",
+        "R3",
+        "R9"
+      ],
+      "disposition": "source-contract",
+      "producer_consumer_trace": "Paymob notify ingress body/IP gate \u2192 evidence/work enqueue; runner lease take \u2192 retry/sweep recovery consumers",
+      "review_status": "routed; source correctness and propagation not yet reviewed"
+    },
+    {
+      "id": "079:2",
+      "spec": "079",
+      "entry_number": 2,
+      "title": "Subscription and payments response shape",
+      "source_path": "specs/079-abo-p4-4-grant-pipeline-to-platform-purchase/escalations.md",
+      "source_line": 15,
+      "target": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "question": "This unit freezes `GET /v1/subscription` and `GET /v1/payments` (04 \u00a72.2). Those rows name `subscription_ref`, commercial notices, the \u00a71.7 snapshot, and payment page fields, but they do not say what `subscription_ref` is, how notices are shaped, where the snapshot is read from, the JSON keys for offer name and version, term covered, and reversals, or the payments cursor page size and encoding. What are those values?",
+      "resolution": "`GET /v1/subscription` returns `{contract_version, subscription_ref, snapshot, notices}`. `subscription_ref` is `AIC-` plus the leading 8 Crockford base-32 characters of SHA-256(`\"sub-ref:\"` \u2016 the token's `org`), computed with no lookup. `snapshot` is the \u00a71.7 object from a live `getCoverage` (`detail.snapshot`), and this tenant's `coverage_view.snapshot` when that call fails. `notices` is an array of code strings: `duplicate_payment` when a payment of this tenant is `likely_duplicate`; `late_payment_honoured` when one is `late`; `payment_withheld` when a disposition is `withheld_mismatch`; `reversal_recorded` when a reversal is recorded for this tenant; `terms_held` when `snapshot.held_count` > 0. `GET /v1/payments` returns `{contract_version, payments, next_cursor, has_more}`. Each payment is `{reference, paid_at, amount_minor, currency, plan_display_name, offer_version, term_unit, term_count, classification, reversals}`. `plan_display_name` and `offer_version` are the offer name and version. `term_unit` and `term_count` are the term covered, from the checkout snapshot. `classification` is `normal`, `likely_duplicate`, or `late`. `reversals` is an array of `{reference, amount_minor, kind, is_full}` with `kind` one of `refund`, `void`, `chargeback`, `unknown`. A page holds 20 payments, ordered by `paid_at` ascending then `reference` ascending. The `cursor` query is omitted or empty on the first page; otherwise it is the previous page's last `reference`, that `PAY-` string unchanged. `next_cursor` is this page's last `reference`, or empty when `payments` is empty. `has_more` is true when another payment of this tenant follows the page. A `cursor` that is not a `reference` of this tenant is the existing `invalid_request`.",
+      "rationale": "`subscription_ref` is the subscription reference already fixed in 03 \u00a77, which both systems compute from `org_id` and which this row and `GET /v1/coverage` already return. The snapshot fallback is the one this section already uses for checkout `starts`: live `getCoverage`, then `coverage_view`. Notice values are the five codes already named on the row, carried as strings the way \u00a73.2 carries notice codes, and each code is tied to a classification, disposition, reversal row, or `held_count` already named beside it. Offer name and version use `plan_display_name` from `GET /v1/offers` and `offer_version` from the payment. Term covered uses `term_unit` and `term_count` from the checkout snapshot. Reversals use the quotable `reference`, `amount_minor`, `kind`, and `is_full` from the reversal record. The route names only `cursor`, so the page size stays fixed at 20 and the cursor is the existing `reference` string with no second encoding. `invalid_request` is the field-validation code already in \u00a72.3. No new error code, endpoint, or operator step.",
+      "amended_paths_sections": "`docs/architecture/ai-billing-orchestration/04-abo-contracts.md` (\u00a72.2 rows `GET /v1/subscription` and `GET /v1/payments`).",
+      "amended_paths": [
+        "docs/architecture/ai-billing-orchestration/04-abo-contracts.md"
+      ],
+      "owning_review_phases": [
+        "R3",
+        "R4",
+        "R6",
+        "R7",
+        "R9"
+      ],
+      "disposition": "source-contract",
+      "producer_consumer_trace": "ABO subscription/payment response producers and live/fallback coverage readers \u2192 Flutter subscription/history/notices pagination; reversal producer supplies notices",
+      "review_status": "routed; source correctness and propagation not yet reviewed"
+    },
+    {
+      "id": "080:1",
+      "spec": "080",
+      "entry_number": 1,
+      "title": "FM-01 callback crash sweep",
+      "source_path": "specs/080-abo-p4-5-sweeps-reversals-inquiry-budget/escalations.md",
+      "source_line": 5,
+      "target": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "question": "Section 5 D1 assigns FM-01, FM-02, FM-03, and FM-18 to P4.5. The P4.5 E2E list names FM-02 (E2E-P4.5-01), FM-03, and FM-18 (E2E-P4.5-02) only. FM-01 (ABO crashes after receiving a callback: the callback was answered with 5xx or the work row is open, and the sweep inquires within 2\u201320 minutes) has no E2E id. Specify cannot add an E2E id. Which existing E2E-P4.5 scenario covers FM-01, or which new scenario id should the delivery plan add?",
+      "resolution": "No existing P4.5 scenario covers FM-01. E2E-P4.5-12 is the scenario. ABO crashes after receiving a callback, the callback was answered with 5xx or the work row is open, and the sweep inquires within 2\u201320 minutes. \u00a75 D1 names that scenario as `FM-01 P4.5-12`.",
+      "rationale": "E2E-P4.5-01 is a blocked callback (FM-02 / A3) found by the +2 min sweep. E2E-P4.5-02 is HMAC failure on every callback (FM-03 / FM-18 / A23). Neither states a crash after a received callback, a 5xx answer, or an open work row. The next free id on the P4.5 list is E2E-P4.5-12, and the 05 \u00a74 owner cell names a scenario the same way `P4.4-04` is named: `P4.5-12`. The FM-01 row in 05 \u00a74 already states that recovery and does not carry E2E ids.",
+      "amended_paths_sections": "`docs/architecture/ai-billing-orchestration/06-abo-delivery-plan.md` (P4.5 E2E list; \u00a75 D1 owner row for 05 \u00a74).",
+      "amended_paths": [
+        "docs/architecture/ai-billing-orchestration/06-abo-delivery-plan.md"
+      ],
+      "owning_review_phases": [
+        "R3",
+        "R9"
+      ],
+      "disposition": "reference-propagation",
+      "producer_consumer_trace": "Failure-mode scenario reference added; underlying callback/work/sweep crash-recovery source remains R3/R9, no new scenario content inspected",
+      "review_status": "routed; source correctness and propagation not yet reviewed"
+    },
+    {
+      "id": "080:2",
+      "spec": "080",
+      "entry_number": 2,
+      "title": "Full versus partial, and the reversal dedupe key",
+      "source_path": "specs/080-abo-p4-5-sweeps-reversals-inquiry-budget/escalations.md",
+      "source_line": 15,
+      "target": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "question": "For a provider refund, when is the reversal full (`is_full`, effects `tombstone`, `end_current`, `remove_queued`, or `none`) rather than partial (`review_partial`), and what dedupe key makes a parent-flag notification and a child-transaction notification of the same refund a single `reversal`? 03 \u00a72.7 names `cumulative_reversed_minor` and `is_full` but gives no comparison. 03 \u00a75.5 selects the effect from \"Full\" and \"Partial\" but does not define them. The P4.5 line for E2E-P4.5-05 requires that dedupe key and does not name its parts.",
+      "resolution": "A reversal is full when `cumulative_reversed_minor` is at least the payment's `amount_minor`, and partial when `cumulative_reversed_minor` is below that amount. The reversal's own `amount_minor` is not the test. The dedupe key is the SR-02 state-change key with the transaction part fixed as the parent: `provider`, the parent transaction (the reference inside `payment_id`, never the child transaction id), normalized state `reversal`, and `cumulative_reversed_minor`. A child notification is rewritten onto that parent before the key is formed, so both notifications of the same refund insert one `reversal`.",
+      "rationale": "\u00a72.6 already stores the payment's `amount_minor`, and \u00a72.7 already stores `cumulative_reversed_minor` beside `is_full`. \u00a77 already names the state-change key as provider, transaction, normalized state, and cumulative reversed amount (SR-02; 01 \u00a73.3), and 01 \u00a73.6 already says the adapter folds a parent-flag resend and a child transaction into one reversal against the parent payment. 04 \u00a75.3 already takes the cumulative from the inquiry. The missing sentences were only the comparison and the rule that the key's transaction is the parent. E2E-P4.5-05 keeps the words \"the dedupe key\"; those four parts now live in \u00a72.7, which P4.5 already reads.",
+      "amended_paths_sections": "`docs/architecture/ai-billing-orchestration/03-abo-data-model-and-lifecycle.md` (\u00a72.7 reversal identity and `is_full`; \u00a75.5 effect rule).",
+      "amended_paths": [
+        "docs/architecture/ai-billing-orchestration/03-abo-data-model-and-lifecycle.md"
+      ],
+      "owning_review_phases": [
+        "R3",
+        "R6",
+        "R9"
+      ],
+      "disposition": "source-contract",
+      "producer_consumer_trace": "Provider child/parent reversal normalization \u2192 cumulative fullness/dedupe key \u2192 reversal insertion and void eligibility consumers",
+      "review_status": "routed; source correctness and propagation not yet reviewed"
+    },
+    {
+      "id": "080:3",
+      "spec": "080",
+      "entry_number": 3,
+      "title": "Per-minute provider-inquiry budget",
+      "source_path": "specs/080-abo-p4-5-sweeps-reversals-inquiry-budget/escalations.md",
+      "source_line": 25,
+      "target": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "question": "What integer is the shared per-minute provider-inquiry budget (FR-010, 05 \u00a71 budget sentence, E2E-P4.5-10)? The cited sentence only says the cap is set from Paymob's rate limit. P4.3 R-2 recorded that Paymob's numeric inquiry limit was not observed, and this unit's Spikes cell is None, so the plan cannot measure or invent that cap.",
+      "resolution": "The shared per-minute provider-inquiry budget is 2. Sweeps and work rows share that one cap. When more than 2 provider inquiries are due, confirmation and grant work rows are served first, and every inquiry that does not fit stays due.",
+      "rationale": "05 \u00a71 sets the cap from Paymob's rate limit and does not state an integer. P4.3 R-2 records that Paymob's numeric inquiry limit was not observed, and this unit's Spikes cell is None. 05 \u00a77's worked example is under 2 reversal inquiries a minute before checkout sweeps, so 2 is the smallest integer that covers that steady reversal rate. E2E-P4.5-10 proves the rule by scheduling more than 2 due provider inquiries, including confirm and grant work rows: those rows are served first and none are dropped. No spike, config surface, or second cap is added.",
+      "amended_paths_sections": "`specs/080-abo-p4-5-sweeps-reversals-inquiry-budget/spec.md` (Clarifications; User Story 4; E2E-P4.5-10; FR-010; Assumptions).",
+      "amended_paths": [
+        "specs/080-abo-p4-5-sweeps-reversals-inquiry-budget/spec.md"
+      ],
+      "owning_review_phases": [
+        "R3",
+        "R6",
+        "R9"
+      ],
+      "disposition": "source-contract",
+      "producer_consumer_trace": "Shared inquiry-budget producer \u2192 confirmation/grant work, sweep and reversal inquiry callers; due work retained outside cap",
+      "review_status": "routed; source correctness and propagation not yet reviewed"
+    },
+    {
+      "id": "081:1",
+      "spec": "081",
+      "entry_number": 1,
+      "title": "Class-H ABO `control_audit` write",
+      "source_path": "specs/081-abo-p4-6-operator-console-access-perimeter-lookup/escalations.md",
+      "source_line": 5,
+      "target": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "question": "Class-H ABO actions (retry parked work, cancel an open checkout) must write `control_audit` on the platform with the Access email as actor (05 \u00a73.2, sentence after the action table). That sentence does not name a platform method, argument, or other write path. Cancel is verified by the ABO and does not otherwise call the platform. Which existing frozen call writes that audit row, or where is the write specified?",
+      "resolution": "No frozen `VendorEntrypoint` call writes `control_audit` for an ABO-verified action. After the ABO commits `operator_action`, it calls class-H `recordOperatorAction` with `access_jwt`, `action`, `subject`, and `action_id` copied from that row. The call inserts one `control_audit` row and leaves every other platform table unchanged: `actor` and `operator_id` are the Access email, `action` is the `action` argument, `target` is the `action_id`, and `assertion_sha256` is null. The same `action_id` again is `ok` and inserts no second row. `ok` has an empty `code`, an empty `detail`, and no `receipt`. A missing, expired, or wrong-`aud` Access JWT is `rejected` with code `unauthenticated` and inserts no row. Retry parked work and cancel an open checkout use this call. Cancel an open checkout has this call as its only platform call. A platform-verified action still writes `control_audit` inside its own class-H or class-HP call.",
+      "rationale": "04 \u00a71.3 has no method whose effect is an audit row for an ABO-local action. `grant` is class M and does not record the Access email. `inspectCoverage` is a lookup, and cancel does not call it. `operator_action` is the ABO table, so it cannot be the platform row. `recordOperatorAction` is one class-H insert, idempotent on `action_id`, using the `control_audit` columns the H/HP entrypoint audit already fills.",
+      "amended_paths_sections": "`docs/architecture/ai-billing-orchestration/05-abo-operations-and-traceability.md` (\u00a73.2, sentence after the action table).",
+      "amended_paths": [
+        "docs/architecture/ai-billing-orchestration/05-abo-operations-and-traceability.md"
+      ],
+      "owning_review_phases": [
+        "R2",
+        "R3",
+        "R8",
+        "R9"
+      ],
+      "disposition": "source-contract",
+      "producer_consumer_trace": "ABO operator_action commit \u2192 recordOperatorAction class-H relay \u2192 platform control_audit; cancel/retry callers, auth and action_id dedupe",
+      "review_status": "routed; source correctness and propagation not yet reviewed"
+    },
+    {
+      "id": "091:1",
+      "spec": "091",
+      "entry_number": 1,
+      "title": "Checkout read JSON fields",
+      "source_path": "specs/091-abo-p6-3-administrator-billing-offers-contact-checkout/escalations.md",
+      "source_line": 5,
+      "target": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "question": "What are the JSON field names and shapes for the shown state and the offer summary on `GET /v1/checkouts/{id}`, and for the body of `GET /v1/checkouts?open=1`, including which field identifies a checkout so another desktop can resume it?",
+      "resolution": "`GET /v1/checkouts/{id}` returns `{contract_version, reference, shown_state, offer, payment_reference, term_ref, updated_at}`. `shown_state` is `Waiting`, `Failed`, `Paid`, `Active`, or `Abandoned` (03 \u00a75.1). `offer` is `{offer_id, version, term_unit, term_count, charged_price_minor, currency}`, with `version` the checkout's `offer_version`. `payment_reference` and `term_ref` are JSON null. `updated_at` is `checkout_status.last_event_at`. The path `{id}` is the POST `checkout_id` ULID and is not a field of this body. `GET /v1/checkouts?open=1` returns `{contract_version, checkouts}`: the same object for each checkout whose `checkout_status.state` is `open`, `paid`, or `paid_late`. Another desktop resumes by `reference`.",
+      "rationale": "The \u00a72.2 rows named a shown state and an offer summary and left the list body unnamed. The frozen checkout read already uses `shown_state`, `offer` with those six snapshot fields, JSON null for `payment_reference` and `term_ref`, and `updated_at` from `last_event_at`. The list is that object under `checkouts`, limited to `open`, `paid`, and `paid_late`. `reference` is the `CK-` field on each element; the list does not carry `checkout_id`.",
+      "amended_paths_sections": "`docs/architecture/ai-billing-orchestration/04-abo-contracts.md` (\u00a72.2 rows `GET /v1/checkouts/{id}` and `GET /v1/checkouts?open=1`); `docs/architecture/ai-billing-orchestration/06-abo-delivery-plan.md` (P6.3 Implements).",
+      "amended_paths": [
+        "docs/architecture/ai-billing-orchestration/04-abo-contracts.md",
+        "docs/architecture/ai-billing-orchestration/06-abo-delivery-plan.md"
+      ],
+      "owning_review_phases": [
+        "R3",
+        "R7"
+      ],
+      "disposition": "source-contract",
+      "producer_consumer_trace": "ABO checkout detail/open-list JSON producer \u2192 Flutter checkout polling/resume/reference parsing and shown-state display",
+      "review_status": "routed; source correctness and propagation not yet reviewed"
+    }
+  ]
+}

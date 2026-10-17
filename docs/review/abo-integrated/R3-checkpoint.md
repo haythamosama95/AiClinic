@@ -1,0 +1,10 @@
+**Closed checkpoint:** canonical [report](R3-checkout-confirmed-payment.md) and [coverage](R3-coverage.md) supersede the in-progress notes below. R3 complete with findings, 2026-10-16.
+
+# R3 checkpoint — in progress
+Target db9244fddfddc1905335fb8c7105328c15a0cc5e; 2026-10-16 Africa/Cairo.
+
+Coordinator completed reads: AGENTS, complete plan (first command output truncation supplemented required sections), R3 packet/manifest, system map/packet index, R1/R2 canonical reports; runner.ts 1–1009; migrations0002/0003 complete; 0004/0005 eligibility schema; worker.ts1–446 routing/scheduling; sweep.ts1–393 checkout recovery; grant.ts350–398,640–745 eligibility only; ops/index.ts864–882,1965–2095; quota-do/index.ts301–321,1795–1806,1836–1894 (manifest appears unrelated admission rollback; hand off R5); records/append.ts1–38 insertFactLog only analyzed (full file accidentally displayed mixed excluded fixture helpers; excluded helpers not analyzed).
+
+Verified findings being finalized: runner state_seen/inquiry commit at816–818 precedes payment/grant commit819–826; crash makes retry595–597 drop payment. Runner565–567 drops a second genuine success solely because checkout is already paid; payment PK is per transaction and lifecycle allows paid→paid. Provider agent verifies callback-less literal99001 fallback, configured URL prefix mismatch and shared budget bypass/accounting. Checkout agent verifies checkout provider-before-key claim, stale terms retry, unbounded UI flex and polling token exhaustion. Severity and compact fix recipes under synthesis; no findings yet count as canonical.
+
+Remaining: finish cross-component source spot checks and architecture/escalation dispositions; obtain/save bounded subreport actual coverage (provider/notify/budget and checkout/UI); close manifest against read ranges; canonical report/fix recipes; aggregate coverage JSON/MD; final target/source status gate and tracker. No blocked agent and no runtime/test activity. Scope is R3 only. Supporting reversal/grant algorithms remain future owners R6/R4; durable rebuild R9.

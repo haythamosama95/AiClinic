@@ -1,0 +1,3222 @@
+{
+  "target": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+  "baseline": "c6cf2c3809a38e2a348f373e926cf2585cfcf291",
+  "phase": "R8",
+  "regions": [
+    {
+      "path": "abo/migrations/0006_operator_action.sql",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 1,
+      "end": 11,
+      "symbol": "preamble / imports / shared declarations",
+      "primary_owner": "R8",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": []
+    },
+    {
+      "path": "abo/migrations/0006_operator_action.sql",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 12,
+      "end": 17,
+      "symbol": "operator_action_abort_update",
+      "primary_owner": "R8",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": []
+    },
+    {
+      "path": "abo/migrations/0006_operator_action.sql",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 18,
+      "end": 22,
+      "symbol": "operator_action_abort_delete",
+      "primary_owner": "R8",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": []
+    },
+    {
+      "path": "abo/migrations/0007_hp_actions.sql",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 1,
+      "end": 4,
+      "symbol": "preamble / imports / shared declarations",
+      "primary_owner": "R8",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": []
+    },
+    {
+      "path": "abo/migrations/0007_hp_actions.sql",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 5,
+      "end": 10,
+      "symbol": "payment_release",
+      "primary_owner": "R8",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": []
+    },
+    {
+      "path": "abo/migrations/0007_hp_actions.sql",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 11,
+      "end": 16,
+      "symbol": "assertion_used_abort_update",
+      "primary_owner": "R8",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": []
+    },
+    {
+      "path": "abo/migrations/0007_hp_actions.sql",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 17,
+      "end": 22,
+      "symbol": "assertion_used_abort_delete",
+      "primary_owner": "R8",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": []
+    },
+    {
+      "path": "abo/migrations/0007_hp_actions.sql",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 23,
+      "end": 28,
+      "symbol": "payment_release_abort_update",
+      "primary_owner": "R8",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": []
+    },
+    {
+      "path": "abo/migrations/0007_hp_actions.sql",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 29,
+      "end": 33,
+      "symbol": "payment_release_abort_delete",
+      "primary_owner": "R8",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": []
+    },
+    {
+      "path": "abo/src/ops/index.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 1,
+      "end": 34,
+      "symbol": "preamble / imports / shared declarations",
+      "primary_owner": "R8",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": [
+        "R2",
+        "R3",
+        "R4",
+        "R6",
+        "R9"
+      ]
+    },
+    {
+      "path": "abo/src/ops/index.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 37,
+      "end": 160,
+      "symbol": "OpsEnv",
+      "primary_owner": "R8",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": [
+        "R2",
+        "R3",
+        "R4",
+        "R6",
+        "R9"
+      ]
+    },
+    {
+      "path": "abo/src/ops/index.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 161,
+      "end": 184,
+      "symbol": "RelayPlatformMethod",
+      "primary_owner": "R8",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": [
+        "R2",
+        "R3",
+        "R4",
+        "R6",
+        "R9"
+      ]
+    },
+    {
+      "path": "abo/src/ops/index.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 191,
+      "end": 199,
+      "symbol": "HpOperation",
+      "primary_owner": "R8",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": [
+        "R2",
+        "R3",
+        "R4",
+        "R6",
+        "R9"
+      ]
+    },
+    {
+      "path": "abo/src/ops/index.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 200,
+      "end": 207,
+      "symbol": "VerifiedHpContext",
+      "primary_owner": "R8",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": [
+        "R2",
+        "R3",
+        "R4",
+        "R6",
+        "R9"
+      ]
+    },
+    {
+      "path": "abo/src/ops/index.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 297,
+      "end": 313,
+      "symbol": "distinctOrgIds",
+      "primary_owner": "R8",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": [
+        "R2",
+        "R3",
+        "R4",
+        "R6",
+        "R9"
+      ]
+    },
+    {
+      "path": "abo/src/ops/index.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 314,
+      "end": 398,
+      "symbol": "lookupOrgId",
+      "primary_owner": "R8",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": [
+        "R2",
+        "R3",
+        "R4",
+        "R6",
+        "R9"
+      ]
+    },
+    {
+      "path": "abo/src/ops/index.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 535,
+      "end": 578,
+      "symbol": "insertOperatorAction",
+      "primary_owner": "R8",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": [
+        "R2",
+        "R3",
+        "R4",
+        "R6",
+        "R9"
+      ]
+    },
+    {
+      "path": "abo/src/ops/index.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 579,
+      "end": 594,
+      "symbol": "recordPlatformOperatorAction",
+      "primary_owner": "R8",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": [
+        "R2",
+        "R3",
+        "R4",
+        "R6",
+        "R9"
+      ]
+    },
+    {
+      "path": "abo/src/ops/index.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 774,
+      "end": 777,
+      "symbol": "isRecord",
+      "primary_owner": "R8",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": [
+        "R2",
+        "R3",
+        "R4",
+        "R6",
+        "R9"
+      ]
+    },
+    {
+      "path": "abo/src/ops/index.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 789,
+      "end": 802,
+      "symbol": "latestPublishedOfferVersion",
+      "primary_owner": "R8",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": [
+        "R2",
+        "R3",
+        "R4",
+        "R6",
+        "R9"
+      ]
+    },
+    {
+      "path": "abo/src/ops/index.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 803,
+      "end": 814,
+      "symbol": "nextOfferVersionNumber",
+      "primary_owner": "R8",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": [
+        "R2",
+        "R3",
+        "R4",
+        "R6",
+        "R9"
+      ]
+    },
+    {
+      "path": "abo/src/ops/index.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 815,
+      "end": 821,
+      "symbol": "nextTermsVersionNumber",
+      "primary_owner": "R8",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": [
+        "R2",
+        "R3",
+        "R4",
+        "R6",
+        "R9"
+      ]
+    },
+    {
+      "path": "abo/src/ops/index.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 822,
+      "end": 863,
+      "symbol": "appendOfferEvent",
+      "primary_owner": "R8",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": [
+        "R2",
+        "R3",
+        "R4",
+        "R6",
+        "R9"
+      ]
+    },
+    {
+      "path": "abo/src/ops/index.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 883,
+      "end": 1078,
+      "symbol": "handleHpCatalogueAction",
+      "primary_owner": "R8",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": [
+        "R2",
+        "R3",
+        "R4",
+        "R6",
+        "R9"
+      ]
+    },
+    {
+      "path": "abo/src/ops/index.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 1404,
+      "end": 1419,
+      "symbol": "handleGetLookup",
+      "primary_owner": "R8",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": [
+        "R2",
+        "R3",
+        "R4",
+        "R6",
+        "R9"
+      ]
+    },
+    {
+      "path": "abo/src/ops/index.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 1420,
+      "end": 1432,
+      "symbol": "loadCheckoutEvents",
+      "primary_owner": "R8",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": [
+        "R2",
+        "R3",
+        "R4",
+        "R6",
+        "R9"
+      ]
+    },
+    {
+      "path": "abo/src/ops/index.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 1433,
+      "end": 1613,
+      "symbol": "handleGetClinic",
+      "primary_owner": "R8",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": [
+        "R2",
+        "R3",
+        "R4",
+        "R6",
+        "R9"
+      ]
+    },
+    {
+      "path": "abo/src/ops/index.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 1614,
+      "end": 1630,
+      "symbol": "handleGetParked",
+      "primary_owner": "R8",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": [
+        "R2",
+        "R3",
+        "R4",
+        "R6",
+        "R9"
+      ]
+    },
+    {
+      "path": "abo/src/ops/index.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 1698,
+      "end": 1704,
+      "symbol": "newOpsId",
+      "primary_owner": "R8",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": [
+        "R2",
+        "R3",
+        "R4",
+        "R6",
+        "R9"
+      ]
+    },
+    {
+      "path": "abo/src/ops/index.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 1929,
+      "end": 1940,
+      "symbol": "parsePlatformList",
+      "primary_owner": "R8",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": [
+        "R2",
+        "R3",
+        "R4",
+        "R6",
+        "R9"
+      ]
+    },
+    {
+      "path": "abo/src/ops/index.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 1941,
+      "end": 1964,
+      "symbol": "handleGetRegistries",
+      "primary_owner": "R8",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": [
+        "R2",
+        "R3",
+        "R4",
+        "R6",
+        "R9"
+      ]
+    },
+    {
+      "path": "abo/src/ops/index.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 2110,
+      "end": 2121,
+      "symbol": "operatorActionExists",
+      "primary_owner": "R8",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": [
+        "R2",
+        "R3",
+        "R4",
+        "R6",
+        "R9"
+      ]
+    },
+    {
+      "path": "abo/src/ops/index.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 2134,
+      "end": 2143,
+      "symbol": "relayFactLogStatement",
+      "primary_owner": "R8",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": [
+        "R2",
+        "R3",
+        "R4",
+        "R6",
+        "R9"
+      ]
+    },
+    {
+      "path": "abo/src/ops/index.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 2163,
+      "end": 2180,
+      "symbol": "relayGrantOutcomeCanonical",
+      "primary_owner": "R8",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": [
+        "R2",
+        "R3",
+        "R4",
+        "R6",
+        "R9"
+      ]
+    },
+    {
+      "path": "abo/src/ops/index.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 2199,
+      "end": 2218,
+      "symbol": "insertRelayOperatorAction",
+      "primary_owner": "R8",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": [
+        "R2",
+        "R3",
+        "R4",
+        "R6",
+        "R9"
+      ]
+    },
+    {
+      "path": "abo/src/ops/index.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 2323,
+      "end": 2357,
+      "symbol": "forwardPlatformRelay",
+      "primary_owner": "R8",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": [
+        "R2",
+        "R3",
+        "R4",
+        "R6",
+        "R9"
+      ]
+    },
+    {
+      "path": "abo/src/ops/index.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 2479,
+      "end": 2491,
+      "symbol": "pickBodyFields",
+      "primary_owner": "R8",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": [
+        "R2",
+        "R3",
+        "R4",
+        "R6",
+        "R9"
+      ]
+    },
+    {
+      "path": "abo/src/ops/index.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 2492,
+      "end": 2498,
+      "symbol": "planVersionSubject",
+      "primary_owner": "R8",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": [
+        "R2",
+        "R3",
+        "R4",
+        "R6",
+        "R9"
+      ]
+    },
+    {
+      "path": "abo/src/ops/index.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 2499,
+      "end": 2504,
+      "symbol": "routingPolicySubject",
+      "primary_owner": "R8",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": [
+        "R2",
+        "R3",
+        "R4",
+        "R6",
+        "R9"
+      ]
+    },
+    {
+      "path": "abo/src/ops/index.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 2505,
+      "end": 2518,
+      "symbol": "publishedRoutingPolicySubject",
+      "primary_owner": "R8",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": [
+        "R2",
+        "R3",
+        "R4",
+        "R6",
+        "R9"
+      ]
+    },
+    {
+      "path": "abo/src/ops/index.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 2519,
+      "end": 2524,
+      "symbol": "killSwitchSubject",
+      "primary_owner": "R8",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": [
+        "R2",
+        "R3",
+        "R4",
+        "R6",
+        "R9"
+      ]
+    },
+    {
+      "path": "abo/src/ops/index.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 2525,
+      "end": 2571,
+      "symbol": "handlePostConfigurationHpRelay",
+      "primary_owner": "R8",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": [
+        "R2",
+        "R3",
+        "R4",
+        "R6",
+        "R9"
+      ]
+    },
+    {
+      "path": "abo/src/ops/index.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 2572,
+      "end": 2611,
+      "symbol": "handlePostConfigurationClassHRelay",
+      "primary_owner": "R8",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": [
+        "R2",
+        "R3",
+        "R4",
+        "R6",
+        "R9"
+      ]
+    },
+    {
+      "path": "abo/src/ops/index.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 2612,
+      "end": 2632,
+      "symbol": "handleGetSupportLookup",
+      "primary_owner": "R8",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": [
+        "R2",
+        "R3",
+        "R4",
+        "R6",
+        "R9"
+      ]
+    },
+    {
+      "path": "abo/src/ops/index.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 2633,
+      "end": 2652,
+      "symbol": "platformResponseJson",
+      "primary_owner": "R8",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": [
+        "R2",
+        "R3",
+        "R4",
+        "R6",
+        "R9"
+      ]
+    },
+    {
+      "path": "abo/src/ops/index.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 3303,
+      "end": 3825,
+      "symbol": "handleOps",
+      "primary_owner": "R8",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": [
+        "R2",
+        "R3",
+        "R4",
+        "R6",
+        "R9"
+      ]
+    },
+    {
+      "path": "ai-platform/migrations/20261003120000_operator_credential_and_platform_alert.sql",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 1,
+      "end": 2,
+      "symbol": "preamble / imports / shared declarations",
+      "primary_owner": "R8",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": []
+    },
+    {
+      "path": "ai-platform/migrations/20261003120000_operator_credential_and_platform_alert.sql",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 3,
+      "end": 13,
+      "symbol": "operator_credential",
+      "primary_owner": "R8",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": []
+    },
+    {
+      "path": "ai-platform/migrations/20261003120000_operator_credential_and_platform_alert.sql",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 14,
+      "end": 19,
+      "symbol": "assertion_used",
+      "primary_owner": "R8",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": []
+    },
+    {
+      "path": "ai-platform/migrations/20261003120000_operator_credential_and_platform_alert.sql",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 20,
+      "end": 33,
+      "symbol": "platform_alert",
+      "primary_owner": "R8",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": []
+    },
+    {
+      "path": "ai-platform/src/control/audit.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 1,
+      "end": 4,
+      "symbol": "preamble / imports / shared declarations",
+      "primary_owner": "R8",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": []
+    },
+    {
+      "path": "ai-platform/src/control/audit.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 5,
+      "end": 8,
+      "symbol": "newId",
+      "primary_owner": "R8",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": []
+    },
+    {
+      "path": "ai-platform/src/control/audit.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 9,
+      "end": 24,
+      "symbol": "writeAudit",
+      "primary_owner": "R8",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": []
+    },
+    {
+      "path": "ai-platform/src/control/audit.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 25,
+      "end": 52,
+      "symbol": "writeEntrypointAudit",
+      "primary_owner": "R8",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": []
+    },
+    {
+      "path": "ai-platform/src/control/auth.ts",
+      "revision": "c6cf2c3809a38e2a348f373e926cf2585cfcf291",
+      "start": 1,
+      "end": 3,
+      "symbol": "preamble / imports / shared declarations",
+      "primary_owner": "R8",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": []
+    },
+    {
+      "path": "ai-platform/src/control/auth.ts",
+      "revision": "c6cf2c3809a38e2a348f373e926cf2585cfcf291",
+      "start": 4,
+      "end": 25,
+      "symbol": "timingSafeEqualString",
+      "primary_owner": "R8",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": []
+    },
+    {
+      "path": "ai-platform/src/control/auth.ts",
+      "revision": "c6cf2c3809a38e2a348f373e926cf2585cfcf291",
+      "start": 26,
+      "end": 51,
+      "symbol": "createSecretOperatorAuth",
+      "primary_owner": "R8",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": []
+    },
+    {
+      "path": "ai-platform/src/control/capability-lifecycle.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 1,
+      "end": 9,
+      "symbol": "preamble / imports / shared declarations",
+      "primary_owner": "R8",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": []
+    },
+    {
+      "path": "ai-platform/src/control/capability-lifecycle.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 10,
+      "end": 26,
+      "symbol": "loadGlobalOverlay",
+      "primary_owner": "R8",
+      "changed": false,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": []
+    },
+    {
+      "path": "ai-platform/src/control/capability-lifecycle.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 27,
+      "end": 36,
+      "symbol": "requireRegisteredVersion",
+      "primary_owner": "R8",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": []
+    },
+    {
+      "path": "ai-platform/src/control/capability-lifecycle.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 37,
+      "end": 45,
+      "symbol": "overlapWindowStillActive",
+      "primary_owner": "R8",
+      "changed": false,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": []
+    },
+    {
+      "path": "ai-platform/src/control/capability-lifecycle.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 46,
+      "end": 57,
+      "symbol": "runControlBatch",
+      "primary_owner": "R8",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": []
+    },
+    {
+      "path": "ai-platform/src/control/capability-lifecycle.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 58,
+      "end": 140,
+      "symbol": "deprecateCapabilityAction",
+      "primary_owner": "R8",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": []
+    },
+    {
+      "path": "ai-platform/src/control/capability-lifecycle.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 141,
+      "end": 214,
+      "symbol": "retireCapabilityAction",
+      "primary_owner": "R8",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": []
+    },
+    {
+      "path": "ai-platform/src/control/cohort.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 1,
+      "end": 7,
+      "symbol": "preamble / imports / shared declarations",
+      "primary_owner": "R8",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": []
+    },
+    {
+      "path": "ai-platform/src/control/cohort.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 8,
+      "end": 30,
+      "symbol": "parseAllowedCapabilities",
+      "primary_owner": "R8",
+      "changed": false,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": []
+    },
+    {
+      "path": "ai-platform/src/control/cohort.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 31,
+      "end": 34,
+      "symbol": "parseTermSnapshotCapabilities",
+      "primary_owner": "R8",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": []
+    },
+    {
+      "path": "ai-platform/src/control/cohort.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 35,
+      "end": 52,
+      "symbol": "assertInstallationsExist",
+      "primary_owner": "R8",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": []
+    },
+    {
+      "path": "ai-platform/src/control/cohort.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 53,
+      "end": 64,
+      "symbol": "runControlBatch",
+      "primary_owner": "R8",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": []
+    },
+    {
+      "path": "ai-platform/src/control/cohort.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 65,
+      "end": 87,
+      "symbol": "installationIdsWithCapability",
+      "primary_owner": "R8",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": []
+    },
+    {
+      "path": "ai-platform/src/control/cohort.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 88,
+      "end": 107,
+      "symbol": "publishedPlansAllowingCapability",
+      "primary_owner": "R8",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": []
+    },
+    {
+      "path": "ai-platform/src/control/cohort.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 108,
+      "end": 212,
+      "symbol": "activateCohortAction",
+      "primary_owner": "R8",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": []
+    },
+    {
+      "path": "ai-platform/src/control/cohort.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 213,
+      "end": 403,
+      "symbol": "promoteCohortAction",
+      "primary_owner": "R8",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": []
+    },
+    {
+      "path": "ai-platform/src/control/credit-price.ts",
+      "revision": "c6cf2c3809a38e2a348f373e926cf2585cfcf291",
+      "start": 1,
+      "end": 15,
+      "symbol": "preamble / imports / shared declarations",
+      "primary_owner": "R8",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": []
+    },
+    {
+      "path": "ai-platform/src/control/credit-price.ts",
+      "revision": "c6cf2c3809a38e2a348f373e926cf2585cfcf291",
+      "start": 16,
+      "end": 27,
+      "symbol": "runControlBatch",
+      "primary_owner": "R8",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": []
+    },
+    {
+      "path": "ai-platform/src/control/credit-price.ts",
+      "revision": "c6cf2c3809a38e2a348f373e926cf2585cfcf291",
+      "start": 28,
+      "end": 67,
+      "symbol": "validateCreditPricePayload",
+      "primary_owner": "R8",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": []
+    },
+    {
+      "path": "ai-platform/src/control/credit-price.ts",
+      "revision": "c6cf2c3809a38e2a348f373e926cf2585cfcf291",
+      "start": 68,
+      "end": 114,
+      "symbol": "handleCreditPriceActivate",
+      "primary_owner": "R8",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": []
+    },
+    {
+      "path": "ai-platform/src/control/entitle.ts",
+      "revision": "c6cf2c3809a38e2a348f373e926cf2585cfcf291",
+      "start": 1,
+      "end": 22,
+      "symbol": "preamble / imports / shared declarations",
+      "primary_owner": "R8",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": []
+    },
+    {
+      "path": "ai-platform/src/control/entitle.ts",
+      "revision": "c6cf2c3809a38e2a348f373e926cf2585cfcf291",
+      "start": 23,
+      "end": 29,
+      "symbol": "parseInstallationId",
+      "primary_owner": "R8",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": []
+    },
+    {
+      "path": "ai-platform/src/control/entitle.ts",
+      "revision": "c6cf2c3809a38e2a348f373e926cf2585cfcf291",
+      "start": 30,
+      "end": 36,
+      "symbol": "parseOverrideInstallationId",
+      "primary_owner": "R8",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": []
+    },
+    {
+      "path": "ai-platform/src/control/entitle.ts",
+      "revision": "c6cf2c3809a38e2a348f373e926cf2585cfcf291",
+      "start": 37,
+      "end": 48,
+      "symbol": "runControlBatch",
+      "primary_owner": "R8",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": []
+    },
+    {
+      "path": "ai-platform/src/control/entitle.ts",
+      "revision": "c6cf2c3809a38e2a348f373e926cf2585cfcf291",
+      "start": 49,
+      "end": 51,
+      "symbol": "ISO8601_INSTANT_RE",
+      "primary_owner": "R8",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": []
+    },
+    {
+      "path": "ai-platform/src/control/entitle.ts",
+      "revision": "c6cf2c3809a38e2a348f373e926cf2585cfcf291",
+      "start": 52,
+      "end": 62,
+      "symbol": "parseIsoInstant",
+      "primary_owner": "R8",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": []
+    },
+    {
+      "path": "ai-platform/src/control/entitle.ts",
+      "revision": "c6cf2c3809a38e2a348f373e926cf2585cfcf291",
+      "start": 63,
+      "end": 74,
+      "symbol": "validatePeriodBounds",
+      "primary_owner": "R8",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": []
+    },
+    {
+      "path": "ai-platform/src/control/entitle.ts",
+      "revision": "c6cf2c3809a38e2a348f373e926cf2585cfcf291",
+      "start": 75,
+      "end": 93,
+      "symbol": "validateGrantInput",
+      "primary_owner": "R8",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": []
+    },
+    {
+      "path": "ai-platform/src/control/entitle.ts",
+      "revision": "c6cf2c3809a38e2a348f373e926cf2585cfcf291",
+      "start": 94,
+      "end": 160,
+      "symbol": "validateEntitlePayload",
+      "primary_owner": "R8",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": []
+    },
+    {
+      "path": "ai-platform/src/control/entitle.ts",
+      "revision": "c6cf2c3809a38e2a348f373e926cf2585cfcf291",
+      "start": 161,
+      "end": 334,
+      "symbol": "handleEntitle",
+      "primary_owner": "R8",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": []
+    },
+    {
+      "path": "ai-platform/src/control/entitle.ts",
+      "revision": "c6cf2c3809a38e2a348f373e926cf2585cfcf291",
+      "start": 335,
+      "end": 405,
+      "symbol": "validateOverridePayload",
+      "primary_owner": "R8",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": []
+    },
+    {
+      "path": "ai-platform/src/control/entitle.ts",
+      "revision": "c6cf2c3809a38e2a348f373e926cf2585cfcf291",
+      "start": 406,
+      "end": 545,
+      "symbol": "handleOverride",
+      "primary_owner": "R8",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": []
+    },
+    {
+      "path": "ai-platform/src/control/http.ts",
+      "revision": "c6cf2c3809a38e2a348f373e926cf2585cfcf291",
+      "start": 1,
+      "end": 2,
+      "symbol": "preamble / imports / shared declarations",
+      "primary_owner": "R8",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": []
+    },
+    {
+      "path": "ai-platform/src/control/http.ts",
+      "revision": "c6cf2c3809a38e2a348f373e926cf2585cfcf291",
+      "start": 3,
+      "end": 9,
+      "symbol": "unauthorized",
+      "primary_owner": "R8",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": []
+    },
+    {
+      "path": "ai-platform/src/control/http.ts",
+      "revision": "c6cf2c3809a38e2a348f373e926cf2585cfcf291",
+      "start": 10,
+      "end": 16,
+      "symbol": "reject",
+      "primary_owner": "R8",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": []
+    },
+    {
+      "path": "ai-platform/src/control/http.ts",
+      "revision": "c6cf2c3809a38e2a348f373e926cf2585cfcf291",
+      "start": 17,
+      "end": 23,
+      "symbol": "ok",
+      "primary_owner": "R8",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": []
+    },
+    {
+      "path": "ai-platform/src/control/http.ts",
+      "revision": "c6cf2c3809a38e2a348f373e926cf2585cfcf291",
+      "start": 24,
+      "end": 27,
+      "symbol": "nowIso",
+      "primary_owner": "R8",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": []
+    },
+    {
+      "path": "ai-platform/src/control/http.ts",
+      "revision": "c6cf2c3809a38e2a348f373e926cf2585cfcf291",
+      "start": 28,
+      "end": 31,
+      "symbol": "newId",
+      "primary_owner": "R8",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": []
+    },
+    {
+      "path": "ai-platform/src/control/http.ts",
+      "revision": "c6cf2c3809a38e2a348f373e926cf2585cfcf291",
+      "start": 32,
+      "end": 42,
+      "symbol": "requireOperator",
+      "primary_owner": "R8",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": []
+    },
+    {
+      "path": "ai-platform/src/control/http.ts",
+      "revision": "c6cf2c3809a38e2a348f373e926cf2585cfcf291",
+      "start": 43,
+      "end": 50,
+      "symbol": "parseJsonBody",
+      "primary_owner": "R8",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": []
+    },
+    {
+      "path": "ai-platform/src/control/http.ts",
+      "revision": "c6cf2c3809a38e2a348f373e926cf2585cfcf291",
+      "start": 51,
+      "end": 56,
+      "symbol": "requireNonEmptyString",
+      "primary_owner": "R8",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": []
+    },
+    {
+      "path": "ai-platform/src/control/index.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 1,
+      "end": 4,
+      "symbol": "preamble / imports / shared declarations",
+      "primary_owner": "R8",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": []
+    },
+    {
+      "path": "ai-platform/src/control/index.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 5,
+      "end": 8,
+      "symbol": "SupportLookupOperatorAuth",
+      "primary_owner": "R8",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": []
+    },
+    {
+      "path": "ai-platform/src/control/index.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 9,
+      "end": 14,
+      "symbol": "SupportLookupControlBindings",
+      "primary_owner": "R8",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": []
+    },
+    {
+      "path": "ai-platform/src/control/index.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 15,
+      "end": 48,
+      "symbol": "handleSupportLookup",
+      "primary_owner": "R8",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": []
+    },
+    {
+      "path": "ai-platform/src/control/installation-lifecycle.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 1,
+      "end": 3,
+      "symbol": "preamble / imports / shared declarations",
+      "primary_owner": "R8",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": []
+    },
+    {
+      "path": "ai-platform/src/control/installation-lifecycle.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 4,
+      "end": 35,
+      "symbol": "setInstallationSuspendedAction",
+      "primary_owner": "R8",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": []
+    },
+    {
+      "path": "ai-platform/src/control/kill-switch.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 1,
+      "end": 5,
+      "symbol": "preamble / imports / shared declarations",
+      "primary_owner": "R8",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": []
+    },
+    {
+      "path": "ai-platform/src/control/kill-switch.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 6,
+      "end": 7,
+      "symbol": "KillSwitchScope",
+      "primary_owner": "R8",
+      "changed": false,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": []
+    },
+    {
+      "path": "ai-platform/src/control/kill-switch.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 8,
+      "end": 12,
+      "symbol": "KillSwitchPayload",
+      "primary_owner": "R8",
+      "changed": false,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": []
+    },
+    {
+      "path": "ai-platform/src/control/kill-switch.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 13,
+      "end": 19,
+      "symbol": "KILL_SWITCH_SCOPES",
+      "primary_owner": "R8",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": []
+    },
+    {
+      "path": "ai-platform/src/control/kill-switch.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 20,
+      "end": 23,
+      "symbol": "KillSwitchRow",
+      "primary_owner": "R8",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": []
+    },
+    {
+      "path": "ai-platform/src/control/kill-switch.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 24,
+      "end": 27,
+      "symbol": "isKillSwitchScope",
+      "primary_owner": "R8",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": []
+    },
+    {
+      "path": "ai-platform/src/control/kill-switch.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 28,
+      "end": 31,
+      "symbol": "auditTarget",
+      "primary_owner": "R8",
+      "changed": false,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": []
+    },
+    {
+      "path": "ai-platform/src/control/kill-switch.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 32,
+      "end": 35,
+      "symbol": "armAuditAction",
+      "primary_owner": "R8",
+      "changed": false,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": []
+    },
+    {
+      "path": "ai-platform/src/control/kill-switch.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 36,
+      "end": 41,
+      "symbol": "disarmAuditAction",
+      "primary_owner": "R8",
+      "changed": false,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": []
+    },
+    {
+      "path": "ai-platform/src/control/kill-switch.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 42,
+      "end": 45,
+      "symbol": "isKillSwitchRowActive",
+      "primary_owner": "R8",
+      "changed": false,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": []
+    },
+    {
+      "path": "ai-platform/src/control/kill-switch.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 46,
+      "end": 57,
+      "symbol": "runControlBatch",
+      "primary_owner": "R8",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": []
+    },
+    {
+      "path": "ai-platform/src/control/kill-switch.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 58,
+      "end": 71,
+      "symbol": "assertInstallationExists",
+      "primary_owner": "R8",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": []
+    },
+    {
+      "path": "ai-platform/src/control/kill-switch.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 72,
+      "end": 84,
+      "symbol": "loadKillSwitchRow",
+      "primary_owner": "R8",
+      "changed": false,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": []
+    },
+    {
+      "path": "ai-platform/src/control/kill-switch.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 85,
+      "end": 104,
+      "symbol": "payloadFromArgs",
+      "primary_owner": "R8",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": []
+    },
+    {
+      "path": "ai-platform/src/control/kill-switch.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 105,
+      "end": 156,
+      "symbol": "armKillSwitchAction",
+      "primary_owner": "R8",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": []
+    },
+    {
+      "path": "ai-platform/src/control/kill-switch.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 157,
+      "end": 197,
+      "symbol": "disarmKillSwitchAction",
+      "primary_owner": "R8",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": []
+    },
+    {
+      "path": "ai-platform/src/control/lifecycle.ts",
+      "revision": "c6cf2c3809a38e2a348f373e926cf2585cfcf291",
+      "start": 1,
+      "end": 24,
+      "symbol": "preamble / imports / shared declarations",
+      "primary_owner": "R8",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": []
+    },
+    {
+      "path": "ai-platform/src/control/lifecycle.ts",
+      "revision": "c6cf2c3809a38e2a348f373e926cf2585cfcf291",
+      "start": 25,
+      "end": 25,
+      "symbol": "INSTALLATION_ACTIVE_STATUS",
+      "primary_owner": "R8",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": []
+    },
+    {
+      "path": "ai-platform/src/control/lifecycle.ts",
+      "revision": "c6cf2c3809a38e2a348f373e926cf2585cfcf291",
+      "start": 26,
+      "end": 26,
+      "symbol": "INSTALLATION_SUSPENDED_STATUS",
+      "primary_owner": "R8",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": []
+    },
+    {
+      "path": "ai-platform/src/control/lifecycle.ts",
+      "revision": "c6cf2c3809a38e2a348f373e926cf2585cfcf291",
+      "start": 27,
+      "end": 29,
+      "symbol": "INSTALLATION_DELETED_STATUS",
+      "primary_owner": "R8",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": []
+    },
+    {
+      "path": "ai-platform/src/control/lifecycle.ts",
+      "revision": "c6cf2c3809a38e2a348f373e926cf2585cfcf291",
+      "start": 30,
+      "end": 30,
+      "symbol": "INSTALLATION_KEY_TTL_DAYS",
+      "primary_owner": "R8",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": []
+    },
+    {
+      "path": "ai-platform/src/control/lifecycle.ts",
+      "revision": "c6cf2c3809a38e2a348f373e926cf2585cfcf291",
+      "start": 31,
+      "end": 32,
+      "symbol": "MS_PER_DAY",
+      "primary_owner": "R8",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": []
+    },
+    {
+      "path": "ai-platform/src/control/lifecycle.ts",
+      "revision": "c6cf2c3809a38e2a348f373e926cf2585cfcf291",
+      "start": 33,
+      "end": 38,
+      "symbol": "installationKeyValidUntil",
+      "primary_owner": "R8",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": []
+    },
+    {
+      "path": "ai-platform/src/control/lifecycle.ts",
+      "revision": "c6cf2c3809a38e2a348f373e926cf2585cfcf291",
+      "start": 39,
+      "end": 45,
+      "symbol": "parseInstallationId",
+      "primary_owner": "R8",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": []
+    },
+    {
+      "path": "ai-platform/src/control/lifecycle.ts",
+      "revision": "c6cf2c3809a38e2a348f373e926cf2585cfcf291",
+      "start": 46,
+      "end": 58,
+      "symbol": "requireValidInstallationId",
+      "primary_owner": "R8",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": []
+    },
+    {
+      "path": "ai-platform/src/control/lifecycle.ts",
+      "revision": "c6cf2c3809a38e2a348f373e926cf2585cfcf291",
+      "start": 59,
+      "end": 65,
+      "symbol": "requireValidPublicKey",
+      "primary_owner": "R8",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": []
+    },
+    {
+      "path": "ai-platform/src/control/lifecycle.ts",
+      "revision": "c6cf2c3809a38e2a348f373e926cf2585cfcf291",
+      "start": 66,
+      "end": 69,
+      "symbol": "RevokeKeyPayload",
+      "primary_owner": "R8",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": []
+    },
+    {
+      "path": "ai-platform/src/control/lifecycle.ts",
+      "revision": "c6cf2c3809a38e2a348f373e926cf2585cfcf291",
+      "start": 70,
+      "end": 85,
+      "symbol": "validateRevokeKeyPayload",
+      "primary_owner": "R8",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": []
+    },
+    {
+      "path": "ai-platform/src/control/lifecycle.ts",
+      "revision": "c6cf2c3809a38e2a348f373e926cf2585cfcf291",
+      "start": 86,
+      "end": 132,
+      "symbol": "validateEnrollPayload",
+      "primary_owner": "R8",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": []
+    },
+    {
+      "path": "ai-platform/src/control/lifecycle.ts",
+      "revision": "c6cf2c3809a38e2a348f373e926cf2585cfcf291",
+      "start": 133,
+      "end": 156,
+      "symbol": "validateRotatePayload",
+      "primary_owner": "R8",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": []
+    },
+    {
+      "path": "ai-platform/src/control/lifecycle.ts",
+      "revision": "c6cf2c3809a38e2a348f373e926cf2585cfcf291",
+      "start": 157,
+      "end": 163,
+      "symbol": "d1ErrorMessage",
+      "primary_owner": "R8",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": []
+    },
+    {
+      "path": "ai-platform/src/control/lifecycle.ts",
+      "revision": "c6cf2c3809a38e2a348f373e926cf2585cfcf291",
+      "start": 164,
+      "end": 169,
+      "symbol": "isUniqueConstraint",
+      "primary_owner": "R8",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": []
+    },
+    {
+      "path": "ai-platform/src/control/lifecycle.ts",
+      "revision": "c6cf2c3809a38e2a348f373e926cf2585cfcf291",
+      "start": 170,
+      "end": 182,
+      "symbol": "constraintTarget",
+      "primary_owner": "R8",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": []
+    },
+    {
+      "path": "ai-platform/src/control/lifecycle.ts",
+      "revision": "c6cf2c3809a38e2a348f373e926cf2585cfcf291",
+      "start": 183,
+      "end": 200,
+      "symbol": "runControlBatch",
+      "primary_owner": "R8",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": []
+    },
+    {
+      "path": "ai-platform/src/control/lifecycle.ts",
+      "revision": "c6cf2c3809a38e2a348f373e926cf2585cfcf291",
+      "start": 201,
+      "end": 295,
+      "symbol": "handleEnroll",
+      "primary_owner": "R8",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": []
+    },
+    {
+      "path": "ai-platform/src/control/lifecycle.ts",
+      "revision": "c6cf2c3809a38e2a348f373e926cf2585cfcf291",
+      "start": 296,
+      "end": 379,
+      "symbol": "handleRotate",
+      "primary_owner": "R8",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": []
+    },
+    {
+      "path": "ai-platform/src/control/lifecycle.ts",
+      "revision": "c6cf2c3809a38e2a348f373e926cf2585cfcf291",
+      "start": 380,
+      "end": 467,
+      "symbol": "handleRevokeKey",
+      "primary_owner": "R8",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": []
+    },
+    {
+      "path": "ai-platform/src/control/lifecycle.ts",
+      "revision": "c6cf2c3809a38e2a348f373e926cf2585cfcf291",
+      "start": 468,
+      "end": 520,
+      "symbol": "handleSuspend",
+      "primary_owner": "R8",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": []
+    },
+    {
+      "path": "ai-platform/src/control/lifecycle.ts",
+      "revision": "c6cf2c3809a38e2a348f373e926cf2585cfcf291",
+      "start": 521,
+      "end": 570,
+      "symbol": "handleResume",
+      "primary_owner": "R8",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": []
+    },
+    {
+      "path": "ai-platform/src/control/lifecycle.ts",
+      "revision": "c6cf2c3809a38e2a348f373e926cf2585cfcf291",
+      "start": 571,
+      "end": 619,
+      "symbol": "handleDelete",
+      "primary_owner": "R8",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": []
+    },
+    {
+      "path": "ai-platform/src/control/plan.ts",
+      "revision": "c6cf2c3809a38e2a348f373e926cf2585cfcf291",
+      "start": 1,
+      "end": 11,
+      "symbol": "preamble / imports / shared declarations",
+      "primary_owner": "R8",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": []
+    },
+    {
+      "path": "ai-platform/src/control/plan.ts",
+      "revision": "c6cf2c3809a38e2a348f373e926cf2585cfcf291",
+      "start": 12,
+      "end": 23,
+      "symbol": "runControlBatch",
+      "primary_owner": "R8",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": []
+    },
+    {
+      "path": "ai-platform/src/control/plan.ts",
+      "revision": "c6cf2c3809a38e2a348f373e926cf2585cfcf291",
+      "start": 24,
+      "end": 33,
+      "symbol": "parsePlanNameFromPath",
+      "primary_owner": "R8",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": []
+    },
+    {
+      "path": "ai-platform/src/control/plan.ts",
+      "revision": "c6cf2c3809a38e2a348f373e926cf2585cfcf291",
+      "start": 34,
+      "end": 88,
+      "symbol": "validatePlanPayload",
+      "primary_owner": "R8",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": []
+    },
+    {
+      "path": "ai-platform/src/control/plan.ts",
+      "revision": "c6cf2c3809a38e2a348f373e926cf2585cfcf291",
+      "start": 89,
+      "end": 139,
+      "symbol": "validatePlanUpdatePayload",
+      "primary_owner": "R8",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": []
+    },
+    {
+      "path": "ai-platform/src/control/plan.ts",
+      "revision": "c6cf2c3809a38e2a348f373e926cf2585cfcf291",
+      "start": 140,
+      "end": 191,
+      "symbol": "handlePlanCreate",
+      "primary_owner": "R8",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": []
+    },
+    {
+      "path": "ai-platform/src/control/plan.ts",
+      "revision": "c6cf2c3809a38e2a348f373e926cf2585cfcf291",
+      "start": 192,
+      "end": 255,
+      "symbol": "handlePlanUpdate",
+      "primary_owner": "R8",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": []
+    },
+    {
+      "path": "ai-platform/src/control/plan.ts",
+      "revision": "c6cf2c3809a38e2a348f373e926cf2585cfcf291",
+      "start": 256,
+      "end": 293,
+      "symbol": "handlePlanDelete",
+      "primary_owner": "R8",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": []
+    },
+    {
+      "path": "ai-platform/src/control/quota-inspect.ts",
+      "revision": "c6cf2c3809a38e2a348f373e926cf2585cfcf291",
+      "start": 1,
+      "end": 5,
+      "symbol": "preamble / imports / shared declarations",
+      "primary_owner": "R8",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": []
+    },
+    {
+      "path": "ai-platform/src/control/quota-inspect.ts",
+      "revision": "c6cf2c3809a38e2a348f373e926cf2585cfcf291",
+      "start": 6,
+      "end": 19,
+      "symbol": "capMap",
+      "primary_owner": "R8",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": []
+    },
+    {
+      "path": "ai-platform/src/control/quota-inspect.ts",
+      "revision": "c6cf2c3809a38e2a348f373e926cf2585cfcf291",
+      "start": 20,
+      "end": 145,
+      "symbol": "handleInstallationQuotaGet",
+      "primary_owner": "R8",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": []
+    },
+    {
+      "path": "ai-platform/src/control/routing-policy.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 1,
+      "end": 4,
+      "symbol": "preamble / imports / shared declarations",
+      "primary_owner": "R8",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": []
+    },
+    {
+      "path": "ai-platform/src/control/routing-policy.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 5,
+      "end": 12,
+      "symbol": "RoutingPolicyRow",
+      "primary_owner": "R8",
+      "changed": false,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": []
+    },
+    {
+      "path": "ai-platform/src/control/routing-policy.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 13,
+      "end": 19,
+      "symbol": "PublishedCapabilityManifest",
+      "primary_owner": "R8",
+      "changed": false,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": []
+    },
+    {
+      "path": "ai-platform/src/control/routing-policy.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 20,
+      "end": 23,
+      "symbol": "PUBLISHED_CAPABILITY_MANIFESTS",
+      "primary_owner": "R8",
+      "changed": false,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": []
+    },
+    {
+      "path": "ai-platform/src/control/routing-policy.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 24,
+      "end": 34,
+      "symbol": "parseRoutingPolicyRef",
+      "primary_owner": "R8",
+      "changed": false,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": []
+    },
+    {
+      "path": "ai-platform/src/control/routing-policy.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 35,
+      "end": 70,
+      "symbol": "collectTargetLatencyClasses",
+      "primary_owner": "R8",
+      "changed": false,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": []
+    },
+    {
+      "path": "ai-platform/src/control/routing-policy.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 71,
+      "end": 75,
+      "symbol": "isUniqueConstraint",
+      "primary_owner": "R8",
+      "changed": false,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": []
+    },
+    {
+      "path": "ai-platform/src/control/routing-policy.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 76,
+      "end": 87,
+      "symbol": "runControlBatch",
+      "primary_owner": "R8",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": []
+    },
+    {
+      "path": "ai-platform/src/control/routing-policy.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 88,
+      "end": 112,
+      "symbol": "latencyMismatchWarnings",
+      "primary_owner": "R8",
+      "changed": false,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": []
+    },
+    {
+      "path": "ai-platform/src/control/routing-policy.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 113,
+      "end": 130,
+      "symbol": "installationsExist",
+      "primary_owner": "R8",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": []
+    },
+    {
+      "path": "ai-platform/src/control/routing-policy.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 131,
+      "end": 195,
+      "symbol": "publishRoutingPolicyAction",
+      "primary_owner": "R8",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": []
+    },
+    {
+      "path": "ai-platform/src/control/routing-policy.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 196,
+      "end": 267,
+      "symbol": "canaryRoutingPolicyAction",
+      "primary_owner": "R8",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": []
+    },
+    {
+      "path": "ai-platform/src/control/routing-policy.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 268,
+      "end": 334,
+      "symbol": "promoteRoutingPolicyAction",
+      "primary_owner": "R8",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": []
+    },
+    {
+      "path": "ai-platform/src/control/routing-policy.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 335,
+      "end": 432,
+      "symbol": "rollbackRoutingPolicyAction",
+      "primary_owner": "R8",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": []
+    },
+    {
+      "path": "ai-platform/src/control/support-purge.ts",
+      "revision": "c6cf2c3809a38e2a348f373e926cf2585cfcf291",
+      "start": 1,
+      "end": 14,
+      "symbol": "preamble / imports / shared declarations",
+      "primary_owner": "R8",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": []
+    },
+    {
+      "path": "ai-platform/src/control/support-purge.ts",
+      "revision": "c6cf2c3809a38e2a348f373e926cf2585cfcf291",
+      "start": 15,
+      "end": 16,
+      "symbol": "INSTALLATION_DELETED_STATUS",
+      "primary_owner": "R8",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": []
+    },
+    {
+      "path": "ai-platform/src/control/support-purge.ts",
+      "revision": "c6cf2c3809a38e2a348f373e926cf2585cfcf291",
+      "start": 17,
+      "end": 29,
+      "symbol": "runPurge",
+      "primary_owner": "R8",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": []
+    },
+    {
+      "path": "ai-platform/src/control/support-purge.ts",
+      "revision": "c6cf2c3809a38e2a348f373e926cf2585cfcf291",
+      "start": 30,
+      "end": 71,
+      "symbol": "handleSupportLookup",
+      "primary_owner": "R8",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": []
+    },
+    {
+      "path": "ai-platform/src/control/support-purge.ts",
+      "revision": "c6cf2c3809a38e2a348f373e926cf2585cfcf291",
+      "start": 72,
+      "end": 128,
+      "symbol": "handleInstallationPurge",
+      "primary_owner": "R8",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": []
+    },
+    {
+      "path": "ai-platform/src/control/token-contract.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 1,
+      "end": 4,
+      "symbol": "preamble / imports / shared declarations",
+      "primary_owner": "R8",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": []
+    },
+    {
+      "path": "ai-platform/src/control/token-contract.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 5,
+      "end": 6,
+      "symbol": "ROTATION_TARGET_VER",
+      "primary_owner": "R8",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": []
+    },
+    {
+      "path": "ai-platform/src/control/token-contract.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 7,
+      "end": 53,
+      "symbol": "beginTokenContractRotationAction",
+      "primary_owner": "R8",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": []
+    },
+    {
+      "path": "ai-platform/src/control/token-contract.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 54,
+      "end": 105,
+      "symbol": "retireTokenContractAction",
+      "primary_owner": "R8",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": []
+    },
+    {
+      "path": "ai-platform/src/control/types.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 1,
+      "end": 4,
+      "symbol": "preamble / imports / shared declarations",
+      "primary_owner": "R8",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": []
+    },
+    {
+      "path": "ai-platform/src/control/types.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 5,
+      "end": 10,
+      "symbol": "ControlBindings",
+      "primary_owner": "R8",
+      "changed": false,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": []
+    },
+    {
+      "path": "ai-platform/src/control/types.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 11,
+      "end": 16,
+      "symbol": "requireNonEmptyString",
+      "primary_owner": "R8",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": []
+    },
+    {
+      "path": "ai-platform/src/support/index.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 1,
+      "end": 9,
+      "symbol": "preamble / imports / shared declarations",
+      "primary_owner": "R8",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": []
+    },
+    {
+      "path": "ai-platform/src/support/index.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 10,
+      "end": 27,
+      "symbol": "SupportLookupRequestTrace",
+      "primary_owner": "R8",
+      "changed": false,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": []
+    },
+    {
+      "path": "ai-platform/src/support/index.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 28,
+      "end": 40,
+      "symbol": "SupportLookupAttemptTrace",
+      "primary_owner": "R8",
+      "changed": false,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": []
+    },
+    {
+      "path": "ai-platform/src/support/index.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 41,
+      "end": 49,
+      "symbol": "SupportLookupResult",
+      "primary_owner": "R8",
+      "changed": false,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": []
+    },
+    {
+      "path": "ai-platform/src/support/index.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 50,
+      "end": 55,
+      "symbol": "SupportLookupListEntry",
+      "primary_owner": "R8",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": []
+    },
+    {
+      "path": "ai-platform/src/support/index.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 56,
+      "end": 59,
+      "symbol": "SupportLookupListResult",
+      "primary_owner": "R8",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": []
+    },
+    {
+      "path": "ai-platform/src/support/index.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 60,
+      "end": 67,
+      "symbol": "SupportLookupQuery",
+      "primary_owner": "R8",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": []
+    },
+    {
+      "path": "ai-platform/src/support/index.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 68,
+      "end": 74,
+      "symbol": "SupportLookupBindings",
+      "primary_owner": "R8",
+      "changed": false,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": []
+    },
+    {
+      "path": "ai-platform/src/support/index.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 75,
+      "end": 102,
+      "symbol": "LookupRow",
+      "primary_owner": "R8",
+      "changed": false,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": []
+    },
+    {
+      "path": "ai-platform/src/support/index.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 103,
+      "end": 113,
+      "symbol": "LOOKUP_BY_REFERENCE_SQL",
+      "primary_owner": "R8",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": []
+    },
+    {
+      "path": "ai-platform/src/support/index.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 114,
+      "end": 125,
+      "symbol": "LOOKUP_BY_INSTALLATION_SQL",
+      "primary_owner": "R8",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": []
+    },
+    {
+      "path": "ai-platform/src/support/index.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 126,
+      "end": 129,
+      "symbol": "envelopeKey",
+      "primary_owner": "R8",
+      "changed": false,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": []
+    },
+    {
+      "path": "ai-platform/src/support/index.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 130,
+      "end": 149,
+      "symbol": "requestTraceFromRow",
+      "primary_owner": "R8",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": []
+    },
+    {
+      "path": "ai-platform/src/support/index.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 150,
+      "end": 171,
+      "symbol": "attemptsFromRows",
+      "primary_owner": "R8",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": []
+    },
+    {
+      "path": "ai-platform/src/support/index.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 172,
+      "end": 193,
+      "symbol": "loadEnvelopeIfWithinRetention",
+      "primary_owner": "R8",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": []
+    },
+    {
+      "path": "ai-platform/src/support/index.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 194,
+      "end": 203,
+      "symbol": "groupRowsByRequest",
+      "primary_owner": "R8",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": []
+    },
+    {
+      "path": "ai-platform/src/support/index.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 204,
+      "end": 230,
+      "symbol": "buildSingleLookupFromRows",
+      "primary_owner": "R8",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": []
+    },
+    {
+      "path": "ai-platform/src/support/index.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 231,
+      "end": 263,
+      "symbol": "resolveInstallationId",
+      "primary_owner": "R8",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": []
+    },
+    {
+      "path": "ai-platform/src/support/index.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 264,
+      "end": 280,
+      "symbol": "normalizeQuery",
+      "primary_owner": "R8",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": []
+    },
+    {
+      "path": "ai-platform/src/support/index.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 281,
+      "end": 344,
+      "symbol": "supportLookup",
+      "primary_owner": "R8",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": []
+    },
+    {
+      "path": "ai-platform/src/vendor/entrypoint.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 79,
+      "end": 79,
+      "symbol": "VENDOR_CHANNEL",
+      "primary_owner": "R8",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": [
+        "R1",
+        "R2",
+        "R4",
+        "R6",
+        "R7",
+        "R9"
+      ]
+    },
+    {
+      "path": "ai-platform/src/vendor/entrypoint.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 80,
+      "end": 80,
+      "symbol": "ACTIVATION_MS",
+      "primary_owner": "R8",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": [
+        "R1",
+        "R2",
+        "R4",
+        "R6",
+        "R7",
+        "R9"
+      ]
+    },
+    {
+      "path": "ai-platform/src/vendor/entrypoint.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 129,
+      "end": 130,
+      "symbol": "VendorMethod",
+      "primary_owner": "R8",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": [
+        "R1",
+        "R2",
+        "R4",
+        "R6",
+        "R7",
+        "R9"
+      ]
+    },
+    {
+      "path": "ai-platform/src/vendor/entrypoint.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 131,
+      "end": 134,
+      "symbol": "HpVendorMethod",
+      "primary_owner": "R8",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": [
+        "R1",
+        "R2",
+        "R4",
+        "R6",
+        "R7",
+        "R9"
+      ]
+    },
+    {
+      "path": "ai-platform/src/vendor/entrypoint.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 137,
+      "end": 149,
+      "symbol": "CeilingPolicyRow",
+      "primary_owner": "R8",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": [
+        "R1",
+        "R2",
+        "R4",
+        "R6",
+        "R7",
+        "R9"
+      ]
+    },
+    {
+      "path": "ai-platform/src/vendor/entrypoint.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 150,
+      "end": 156,
+      "symbol": "VendorResultEnvelope",
+      "primary_owner": "R8",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": [
+        "R1",
+        "R2",
+        "R4",
+        "R6",
+        "R7",
+        "R9"
+      ]
+    },
+    {
+      "path": "ai-platform/src/vendor/entrypoint.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 172,
+      "end": 173,
+      "symbol": "HEX64_RE",
+      "primary_owner": "R8",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": [
+        "R1",
+        "R2",
+        "R4",
+        "R6",
+        "R7",
+        "R9"
+      ]
+    },
+    {
+      "path": "ai-platform/src/vendor/entrypoint.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 174,
+      "end": 197,
+      "symbol": "VendorEnv",
+      "primary_owner": "R8",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": [
+        "R1",
+        "R2",
+        "R4",
+        "R6",
+        "R7",
+        "R9"
+      ]
+    },
+    {
+      "path": "ai-platform/src/vendor/entrypoint.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 198,
+      "end": 208,
+      "symbol": "OperatorCredentialRow",
+      "primary_owner": "R8",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": [
+        "R1",
+        "R2",
+        "R4",
+        "R6",
+        "R7",
+        "R9"
+      ]
+    },
+    {
+      "path": "ai-platform/src/vendor/entrypoint.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 323,
+      "end": 327,
+      "symbol": "isValidEd25519PublicKeyEncoding",
+      "primary_owner": "R8",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": [
+        "R1",
+        "R2",
+        "R4",
+        "R6",
+        "R7",
+        "R9"
+      ]
+    },
+    {
+      "path": "ai-platform/src/vendor/entrypoint.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 748,
+      "end": 764,
+      "symbol": "decodeAttestation",
+      "primary_owner": "R8",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": [
+        "R1",
+        "R2",
+        "R4",
+        "R6",
+        "R7",
+        "R9"
+      ]
+    },
+    {
+      "path": "ai-platform/src/vendor/entrypoint.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 1048,
+      "end": 1063,
+      "symbol": "ceilingPolicyRowToDetail",
+      "primary_owner": "R8",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": [
+        "R1",
+        "R2",
+        "R4",
+        "R6",
+        "R7",
+        "R9"
+      ]
+    },
+    {
+      "path": "ai-platform/src/vendor/entrypoint.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 1064,
+      "end": 1076,
+      "symbol": "readCurrentCeilingPolicy",
+      "primary_owner": "R8",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": [
+        "R1",
+        "R2",
+        "R4",
+        "R6",
+        "R7",
+        "R9"
+      ]
+    },
+    {
+      "path": "ai-platform/src/vendor/entrypoint.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 1306,
+      "end": 1313,
+      "symbol": "envelopeWithoutCeilingOverride",
+      "primary_owner": "R8",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": [
+        "R1",
+        "R2",
+        "R4",
+        "R6",
+        "R7",
+        "R9"
+      ]
+    },
+    {
+      "path": "ai-platform/src/vendor/entrypoint.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 1314,
+      "end": 1333,
+      "symbol": "buildCeilingOverrideOperation",
+      "primary_owner": "R8",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": [
+        "R1",
+        "R2",
+        "R4",
+        "R6",
+        "R7",
+        "R9"
+      ]
+    },
+    {
+      "path": "ai-platform/src/vendor/entrypoint.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 1639,
+      "end": 1642,
+      "symbol": "isHex64",
+      "primary_owner": "R8",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": [
+        "R1",
+        "R2",
+        "R4",
+        "R6",
+        "R7",
+        "R9"
+      ]
+    },
+    {
+      "path": "ai-platform/src/vendor/entrypoint.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 1643,
+      "end": 1647,
+      "symbol": "PlatformSigningMaterial",
+      "primary_owner": "R8",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": [
+        "R1",
+        "R2",
+        "R4",
+        "R6",
+        "R7",
+        "R9"
+      ]
+    },
+    {
+      "path": "ai-platform/src/vendor/entrypoint.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 1929,
+      "end": 1929,
+      "symbol": "VendorEntrypoint",
+      "primary_owner": "R8",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": [
+        "R1",
+        "R2",
+        "R4",
+        "R6",
+        "R7",
+        "R9"
+      ]
+    },
+    {
+      "path": "ai-platform/src/vendor/entrypoint.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 1930,
+      "end": 2079,
+      "symbol": "registerOperatorCredential",
+      "primary_owner": "R8",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": [
+        "R1",
+        "R2",
+        "R4",
+        "R6",
+        "R7",
+        "R9"
+      ]
+    },
+    {
+      "path": "ai-platform/src/vendor/entrypoint.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 2080,
+      "end": 2164,
+      "symbol": "revokeOperatorCredential",
+      "primary_owner": "R8",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": [
+        "R1",
+        "R2",
+        "R4",
+        "R6",
+        "R7",
+        "R9"
+      ]
+    },
+    {
+      "path": "ai-platform/src/vendor/entrypoint.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 2165,
+      "end": 2192,
+      "symbol": "listOperatorCredentials",
+      "primary_owner": "R8",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": [
+        "R1",
+        "R2",
+        "R4",
+        "R6",
+        "R7",
+        "R9"
+      ]
+    },
+    {
+      "path": "ai-platform/src/vendor/entrypoint.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 2999,
+      "end": 3112,
+      "symbol": "setCeilingPolicy",
+      "primary_owner": "R8",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": [
+        "R1",
+        "R2",
+        "R4",
+        "R6",
+        "R7",
+        "R9"
+      ]
+    },
+    {
+      "path": "ai-platform/src/vendor/entrypoint.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 4459,
+      "end": 4462,
+      "symbol": "resume",
+      "primary_owner": "R8",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": [
+        "R1",
+        "R2",
+        "R4",
+        "R6",
+        "R7",
+        "R9"
+      ]
+    },
+    {
+      "path": "ai-platform/src/vendor/entrypoint.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 4746,
+      "end": 4764,
+      "symbol": "invokeClassH",
+      "primary_owner": "R8",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": [
+        "R1",
+        "R2",
+        "R4",
+        "R6",
+        "R7",
+        "R9"
+      ]
+    },
+    {
+      "path": "ai-platform/src/vendor/entrypoint.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 4765,
+      "end": 4781,
+      "symbol": "publishRoutingPolicy",
+      "primary_owner": "R8",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": [
+        "R1",
+        "R2",
+        "R4",
+        "R6",
+        "R7",
+        "R9"
+      ]
+    },
+    {
+      "path": "ai-platform/src/vendor/entrypoint.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 4782,
+      "end": 4808,
+      "symbol": "canaryRoutingPolicy",
+      "primary_owner": "R8",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": [
+        "R1",
+        "R2",
+        "R4",
+        "R6",
+        "R7",
+        "R9"
+      ]
+    },
+    {
+      "path": "ai-platform/src/vendor/entrypoint.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 4809,
+      "end": 4827,
+      "symbol": "promoteRoutingPolicy",
+      "primary_owner": "R8",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": [
+        "R1",
+        "R2",
+        "R4",
+        "R6",
+        "R7",
+        "R9"
+      ]
+    },
+    {
+      "path": "ai-platform/src/vendor/entrypoint.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 4828,
+      "end": 4846,
+      "symbol": "rollbackRoutingPolicy",
+      "primary_owner": "R8",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": [
+        "R1",
+        "R2",
+        "R4",
+        "R6",
+        "R7",
+        "R9"
+      ]
+    },
+    {
+      "path": "ai-platform/src/vendor/entrypoint.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 4847,
+      "end": 4865,
+      "symbol": "armKillSwitch",
+      "primary_owner": "R8",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": [
+        "R1",
+        "R2",
+        "R4",
+        "R6",
+        "R7",
+        "R9"
+      ]
+    },
+    {
+      "path": "ai-platform/src/vendor/entrypoint.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 4866,
+      "end": 4884,
+      "symbol": "disarmKillSwitch",
+      "primary_owner": "R8",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": [
+        "R1",
+        "R2",
+        "R4",
+        "R6",
+        "R7",
+        "R9"
+      ]
+    },
+    {
+      "path": "ai-platform/src/vendor/entrypoint.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 4885,
+      "end": 4897,
+      "symbol": "deprecateCapability",
+      "primary_owner": "R8",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": [
+        "R1",
+        "R2",
+        "R4",
+        "R6",
+        "R7",
+        "R9"
+      ]
+    },
+    {
+      "path": "ai-platform/src/vendor/entrypoint.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 4898,
+      "end": 4910,
+      "symbol": "retireCapability",
+      "primary_owner": "R8",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": [
+        "R1",
+        "R2",
+        "R4",
+        "R6",
+        "R7",
+        "R9"
+      ]
+    },
+    {
+      "path": "ai-platform/src/vendor/entrypoint.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 4911,
+      "end": 4922,
+      "symbol": "beginTokenContractRotation",
+      "primary_owner": "R8",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": [
+        "R1",
+        "R2",
+        "R4",
+        "R6",
+        "R7",
+        "R9"
+      ]
+    },
+    {
+      "path": "ai-platform/src/vendor/entrypoint.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 4923,
+      "end": 4935,
+      "symbol": "retireTokenContract",
+      "primary_owner": "R8",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": [
+        "R1",
+        "R2",
+        "R4",
+        "R6",
+        "R7",
+        "R9"
+      ]
+    },
+    {
+      "path": "ai-platform/src/vendor/entrypoint.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 4936,
+      "end": 4948,
+      "symbol": "activateCohort",
+      "primary_owner": "R8",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": [
+        "R1",
+        "R2",
+        "R4",
+        "R6",
+        "R7",
+        "R9"
+      ]
+    },
+    {
+      "path": "ai-platform/src/vendor/entrypoint.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 4949,
+      "end": 4961,
+      "symbol": "promoteCohort",
+      "primary_owner": "R8",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": [
+        "R1",
+        "R2",
+        "R4",
+        "R6",
+        "R7",
+        "R9"
+      ]
+    },
+    {
+      "path": "ai-platform/src/vendor/entrypoint.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 5040,
+      "end": 5071,
+      "symbol": "recordOperatorAction",
+      "primary_owner": "R8",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": [
+        "R1",
+        "R2",
+        "R4",
+        "R6",
+        "R7",
+        "R9"
+      ]
+    },
+    {
+      "path": "ai-platform/src/vendor/entrypoint.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 5072,
+      "end": 5125,
+      "symbol": "supportLookup",
+      "primary_owner": "R8",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": [
+        "R1",
+        "R2",
+        "R4",
+        "R6",
+        "R7",
+        "R9"
+      ]
+    }
+  ],
+  "unchanged_dependencies": [
+    {
+      "path": "ai-platform/src/capability",
+      "caller": "ai-platform/src/control/capability-lifecycle.ts",
+      "owner": "R8",
+      "disposition": "unchanged supporting dependency; read only as required by owned invariant"
+    },
+    {
+      "path": "ai-platform/src/capability",
+      "caller": "ai-platform/src/control/cohort.ts",
+      "owner": "R8",
+      "disposition": "unchanged supporting dependency; read only as required by owned invariant"
+    },
+    {
+      "path": "ai-platform/src/quota-do",
+      "caller": "ai-platform/src/control/entitle.ts",
+      "owner": "R8",
+      "disposition": "unchanged supporting dependency; read only as required by owned invariant"
+    },
+    {
+      "path": "ai-platform/src/support",
+      "caller": "ai-platform/src/control/index.ts",
+      "owner": "R8",
+      "disposition": "unchanged supporting dependency; read only as required by owned invariant"
+    },
+    {
+      "path": "ai-platform/src/retention",
+      "caller": "ai-platform/src/control/index.ts",
+      "owner": "R8",
+      "disposition": "unchanged supporting dependency; read only as required by owned invariant"
+    },
+    {
+      "path": "ai-platform/src/reference.ts",
+      "caller": "ai-platform/src/control/index.ts",
+      "owner": "R8",
+      "disposition": "unchanged supporting dependency; read only as required by owned invariant"
+    },
+    {
+      "path": "ai-platform/src/quota-do",
+      "caller": "ai-platform/src/control/quota-inspect.ts",
+      "owner": "R8",
+      "disposition": "unchanged supporting dependency; read only as required by owned invariant"
+    },
+    {
+      "path": "ai-platform/manifests/published/clinic.visit_summary@1.0.0.json",
+      "caller": "ai-platform/src/control/routing-policy.ts",
+      "owner": "R8",
+      "disposition": "unchanged supporting dependency; read only as required by owned invariant"
+    },
+    {
+      "path": "ai-platform/src/reference.ts",
+      "caller": "ai-platform/src/control/support-purge.ts",
+      "owner": "R8",
+      "disposition": "unchanged supporting dependency; read only as required by owned invariant"
+    },
+    {
+      "path": "ai-platform/src/retention",
+      "caller": "ai-platform/src/control/support-purge.ts",
+      "owner": "R8",
+      "disposition": "unchanged supporting dependency; read only as required by owned invariant"
+    },
+    {
+      "path": "ai-platform/src/support",
+      "caller": "ai-platform/src/control/support-purge.ts",
+      "owner": "R8",
+      "disposition": "unchanged supporting dependency; read only as required by owned invariant"
+    },
+    {
+      "path": "ai-platform/src/journal",
+      "caller": "ai-platform/src/support/index.ts",
+      "owner": "R8",
+      "disposition": "unchanged supporting dependency; read only as required by owned invariant"
+    },
+    {
+      "path": "ai-platform/src/reference.ts",
+      "caller": "ai-platform/src/support/index.ts",
+      "owner": "R8",
+      "disposition": "unchanged supporting dependency; read only as required by owned invariant"
+    },
+    {
+      "path": "ai-platform/src/retention",
+      "caller": "ai-platform/src/support/index.ts",
+      "owner": "R8",
+      "disposition": "unchanged supporting dependency; read only as required by owned invariant"
+    },
+    {
+      "path": "ai-platform/src/retention",
+      "caller": "ai-platform/src/vendor/entrypoint.ts",
+      "owner": "R8",
+      "disposition": "unchanged supporting dependency; read only as required by owned invariant"
+    },
+    {
+      "path": "ai-platform/src/support",
+      "caller": "ai-platform/src/vendor/entrypoint.ts",
+      "owner": "R8",
+      "disposition": "unchanged supporting dependency; read only as required by owned invariant"
+    }
+  ]
+}

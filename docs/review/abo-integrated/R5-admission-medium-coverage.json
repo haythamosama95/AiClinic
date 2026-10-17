@@ -1,0 +1,403 @@
+{
+  "target": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+  "reviewer": "R5-admission-medium",
+  "completed_region_indices": [
+    44,
+    45,
+    46,
+    47,
+    48,
+    49,
+    50,
+    51,
+    52,
+    53,
+    54,
+    55,
+    56,
+    57,
+    58,
+    59,
+    60,
+    61,
+    62,
+    63,
+    64,
+    65,
+    66,
+    67,
+    68,
+    69,
+    70,
+    71,
+    72,
+    73,
+    74,
+    75,
+    76,
+    77,
+    78,
+    79,
+    80,
+    81,
+    82,
+    83,
+    84,
+    85,
+    86,
+    87,
+    88,
+    89,
+    90,
+    91,
+    92,
+    93,
+    94,
+    95,
+    96,
+    97,
+    98,
+    99,
+    100,
+    101,
+    102,
+    103,
+    104,
+    105,
+    106,
+    107,
+    108,
+    109,
+    110,
+    111,
+    112,
+    113,
+    114,
+    115,
+    116,
+    117,
+    118,
+    119,
+    120,
+    121,
+    128,
+    129,
+    130,
+    131,
+    132,
+    133,
+    134,
+    135,
+    136,
+    137,
+    138,
+    139,
+    140,
+    141,
+    142,
+    143,
+    144,
+    160,
+    161,
+    162,
+    163,
+    164,
+    165,
+    166,
+    167,
+    168,
+    169,
+    170,
+    171,
+    172,
+    173,
+    174,
+    175,
+    176,
+    177,
+    196,
+    197,
+    198,
+    199,
+    200,
+    201,
+    202,
+    203,
+    204,
+    205,
+    206,
+    207,
+    208,
+    209,
+    210,
+    211,
+    212,
+    213,
+    214,
+    215,
+    216,
+    217,
+    218,
+    219,
+    220,
+    221,
+    222,
+    223,
+    224,
+    225,
+    226,
+    227,
+    228,
+    229,
+    230,
+    231,
+    232,
+    233,
+    234,
+    235,
+    236,
+    237,
+    238,
+    239,
+    240,
+    241,
+    242,
+    243,
+    244,
+    245,
+    246,
+    247,
+    248,
+    249,
+    250,
+    251,
+    252,
+    253,
+    254,
+    260,
+    261,
+    262,
+    263,
+    264,
+    265,
+    266,
+    267,
+    268,
+    269,
+    270,
+    271,
+    272,
+    273,
+    274,
+    275,
+    276,
+    277,
+    278,
+    279,
+    280,
+    281,
+    282,
+    283,
+    284,
+    527,
+    528,
+    529,
+    530,
+    531,
+    532,
+    533,
+    534,
+    535,
+    536,
+    537,
+    538,
+    539,
+    540,
+    541,
+    542,
+    543,
+    544,
+    545,
+    546,
+    547,
+    548,
+    549,
+    550,
+    551,
+    552,
+    553,
+    554
+  ],
+  "pending_region_indices": [],
+  "supporting_reads": [
+    {
+      "path": "ai-platform/src/journal/index.ts",
+      "ranges": [
+        [
+          190,
+          294
+        ]
+      ],
+      "purpose": "stage9 insert, duplicate key and no JTI storage"
+    },
+    {
+      "path": "ai-platform/src/worker.ts",
+      "ranges": [
+        [
+          190,
+          204
+        ],
+        [
+          1080,
+          1130
+        ],
+        [
+          1250,
+          1290
+        ]
+      ],
+      "purpose": "registry boot, plan cost ceiling and fallback settlement handoff"
+    },
+    {
+      "path": "ai-platform/src/quota-do/coverage.ts",
+      "ranges": [
+        [
+          288,
+          335
+        ],
+        [
+          2558,
+          2606
+        ]
+      ],
+      "purpose": "mirror cost omission and parser interface"
+    },
+    {
+      "path": "ai-platform/src/router/index.ts",
+      "ranges": [
+        [
+          300,
+          365
+        ],
+        [
+          550,
+          579
+        ]
+      ],
+      "purpose": "effective plan ceiling and target exclusion"
+    },
+    {
+      "path": "ai-platform/src/clock.ts",
+      "ranges": [
+        [
+          1,
+          44
+        ]
+      ],
+      "purpose": "production override reachability"
+    },
+    {
+      "path": "ai-platform/wrangler.toml",
+      "ranges": [
+        [
+          1,
+          174
+        ]
+      ],
+      "purpose": "production/staging clock scale flags and private DO binding"
+    },
+    {
+      "path": "packages/vendor-contracts/src/version.ts",
+      "ranges": [
+        [
+          1,
+          43
+        ]
+      ],
+      "purpose": "N/N-1 negotiation interface"
+    },
+    {
+      "path": "ai-platform/migrations/20261006160000_fallback_admission_feed.sql",
+      "ranges": [
+        [
+          1,
+          20
+        ]
+      ],
+      "purpose": "fallback primary and request identity interface"
+    },
+    {
+      "path": "ai-platform/migrations/20260731120000_platform_schema.sql",
+      "ranges": [
+        [
+          59,
+          90
+        ]
+      ],
+      "purpose": "journal request PK interface"
+    }
+  ],
+  "status": "complete with findings",
+  "reviewer_model": "gpt-6.1-sol",
+  "reasoning_effort": "medium",
+  "primary_regions": 225,
+  "primary_lines": 5153,
+  "escalations": {
+    "066:6": "checked: production plan/entitlement cache kinds return miss; legacy helpers unreachable; mirror membership replaces tiers",
+    "066:8": "reference-only excluded harness/assertion effect; no excluded implementation read",
+    "066:10": "reference-only excluded harness timing effect; accounting reviewer owns completed payload source and fallback missing settlement",
+    "067:1": "checked Worker producer668, Gateway pre-write gate1732\u20131739 and response1803; rejection maps coverage_unknown731\u2013732",
+    "067:7": "event producer DO/accounting owner; own feed2299\u20132308 preserves stored kind and sequence (handoff)",
+    "067:9": "checked plan capability array through mirror parser, resolver, discovery, fallback; cost ceiling omission recorded separately",
+    "068:1": "calendar source/placement owner accounting; own worker passes staging scale only from env1765\u20131781 and2032\u20132043",
+    "089:1": "checked own denial producer maps allowance_exhausted/coverage_lapsed/coverage_unknown; Flutter refresh consumer deferred R7",
+    "095:1": "checked negotiate accepts N/N-1; Gateway echoes requested accepted version; unsupported map safe"
+  },
+  "findings": [
+    {
+      "id": "ADM1",
+      "severity": "P1",
+      "title": "non-atomic outage weight cap",
+      "implementation_ready": true
+    },
+    {
+      "id": "ADM2",
+      "severity": "P2",
+      "title": "fallback cost ceiling defaults to standard",
+      "implementation_ready": true
+    },
+    {
+      "id": "ADM3",
+      "severity": "P2",
+      "title": "fallback bypasses mandatory JTI replay gate",
+      "implementation_ready": false,
+      "decision_owner": "architecture owner: common durable replay authority or explicitly amended bounded outage exception"
+    }
+  ],
+  "completed_region_index_ranges": [
+    [
+      44,
+      121
+    ],
+    [
+      128,
+      144
+    ],
+    [
+      160,
+      177
+    ],
+    [
+      196,
+      254
+    ],
+    [
+      260,
+      284
+    ],
+    [
+      527,
+      554
+    ]
+  ]
+}

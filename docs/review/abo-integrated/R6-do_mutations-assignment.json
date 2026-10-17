@@ -1,0 +1,888 @@
+{
+  "target": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+  "owner": "do_mutations",
+  "regions": [
+    {
+      "path": "ai-platform/src/quota-do/coverage.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 543,
+      "end": 573,
+      "symbol": "signReversalVoidReceipt",
+      "primary_owner": "R6",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": [
+        "R4",
+        "R5",
+        "R7",
+        "R9"
+      ],
+      "assigned_reviewer": "do_mutations",
+      "read_status": "unread"
+    },
+    {
+      "path": "ai-platform/src/quota-do/coverage.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 574,
+      "end": 580,
+      "symbol": "StoredVoidReplay",
+      "primary_owner": "R6",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": [
+        "R4",
+        "R5",
+        "R7",
+        "R9"
+      ],
+      "assigned_reviewer": "do_mutations",
+      "read_status": "unread"
+    },
+    {
+      "path": "ai-platform/src/quota-do/coverage.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 581,
+      "end": 590,
+      "symbol": "readVoidReplay",
+      "primary_owner": "R6",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": [
+        "R4",
+        "R5",
+        "R7",
+        "R9"
+      ],
+      "assigned_reviewer": "do_mutations",
+      "read_status": "unread"
+    },
+    {
+      "path": "ai-platform/src/quota-do/coverage.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 591,
+      "end": 600,
+      "symbol": "writeVoidReplay",
+      "primary_owner": "R6",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": [
+        "R4",
+        "R5",
+        "R7",
+        "R9"
+      ],
+      "assigned_reviewer": "do_mutations",
+      "read_status": "unread"
+    },
+    {
+      "path": "ai-platform/src/quota-do/coverage.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 601,
+      "end": 617,
+      "symbol": "readHpReplayReceipt",
+      "primary_owner": "R6",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": [
+        "R4",
+        "R5",
+        "R7",
+        "R9"
+      ],
+      "assigned_reviewer": "do_mutations",
+      "read_status": "unread"
+    },
+    {
+      "path": "ai-platform/src/quota-do/coverage.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 618,
+      "end": 633,
+      "symbol": "writeHpReplayReceipt",
+      "primary_owner": "R6",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": [
+        "R4",
+        "R5",
+        "R7",
+        "R9"
+      ],
+      "assigned_reviewer": "do_mutations",
+      "read_status": "unread"
+    },
+    {
+      "path": "ai-platform/src/quota-do/coverage.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 1469,
+      "end": 1574,
+      "symbol": "applyTermAdjustmentGrant",
+      "primary_owner": "R6",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": [
+        "R4",
+        "R5",
+        "R7",
+        "R9"
+      ],
+      "assigned_reviewer": "do_mutations",
+      "read_status": "unread"
+    },
+    {
+      "path": "ai-platform/src/quota-do/coverage.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 1901,
+      "end": 1910,
+      "symbol": "SuspendResumeRequest",
+      "primary_owner": "R6",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": [
+        "R4",
+        "R5",
+        "R7",
+        "R9"
+      ],
+      "assigned_reviewer": "do_mutations",
+      "read_status": "unread"
+    },
+    {
+      "path": "ai-platform/src/quota-do/coverage.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 1911,
+      "end": 1915,
+      "symbol": "SuspendResumeResponse",
+      "primary_owner": "R6",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": [
+        "R4",
+        "R5",
+        "R7",
+        "R9"
+      ],
+      "assigned_reviewer": "do_mutations",
+      "read_status": "unread"
+    },
+    {
+      "path": "ai-platform/src/quota-do/coverage.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 1930,
+      "end": 2006,
+      "symbol": "suspendResumeRPC",
+      "primary_owner": "R6",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": [
+        "R4",
+        "R5",
+        "R7",
+        "R9"
+      ],
+      "assigned_reviewer": "do_mutations",
+      "read_status": "unread"
+    },
+    {
+      "path": "ai-platform/src/quota-do/coverage.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 2088,
+      "end": 2104,
+      "symbol": "VoidForReversalRequest",
+      "primary_owner": "R6",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": [
+        "R4",
+        "R5",
+        "R7",
+        "R9"
+      ],
+      "assigned_reviewer": "do_mutations",
+      "read_status": "unread"
+    },
+    {
+      "path": "ai-platform/src/quota-do/coverage.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 2105,
+      "end": 2110,
+      "symbol": "VoidForReversalResponse",
+      "primary_owner": "R6",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": [
+        "R4",
+        "R5",
+        "R7",
+        "R9"
+      ],
+      "assigned_reviewer": "do_mutations",
+      "read_status": "unread"
+    },
+    {
+      "path": "ai-platform/src/quota-do/coverage.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 2111,
+      "end": 2272,
+      "symbol": "voidForReversalRPC",
+      "primary_owner": "R6",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": [
+        "R4",
+        "R5",
+        "R7",
+        "R9"
+      ],
+      "assigned_reviewer": "do_mutations",
+      "read_status": "unread"
+    },
+    {
+      "path": "ai-platform/src/quota-do/coverage.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 2273,
+      "end": 2287,
+      "symbol": "ReleaseHeldRequest",
+      "primary_owner": "R6",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": [
+        "R4",
+        "R5",
+        "R7",
+        "R9"
+      ],
+      "assigned_reviewer": "do_mutations",
+      "read_status": "unread"
+    },
+    {
+      "path": "ai-platform/src/quota-do/coverage.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 2288,
+      "end": 2293,
+      "symbol": "ReleaseHeldResponse",
+      "primary_owner": "R6",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": [
+        "R4",
+        "R5",
+        "R7",
+        "R9"
+      ],
+      "assigned_reviewer": "do_mutations",
+      "read_status": "unread"
+    },
+    {
+      "path": "ai-platform/src/quota-do/coverage.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 2294,
+      "end": 2309,
+      "symbol": "VoidGrantRequest",
+      "primary_owner": "R6",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": [
+        "R4",
+        "R5",
+        "R7",
+        "R9"
+      ],
+      "assigned_reviewer": "do_mutations",
+      "read_status": "unread"
+    },
+    {
+      "path": "ai-platform/src/quota-do/coverage.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 2310,
+      "end": 2315,
+      "symbol": "VoidGrantResponse",
+      "primary_owner": "R6",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": [
+        "R4",
+        "R5",
+        "R7",
+        "R9"
+      ],
+      "assigned_reviewer": "do_mutations",
+      "read_status": "unread"
+    },
+    {
+      "path": "ai-platform/src/quota-do/coverage.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 2316,
+      "end": 2423,
+      "symbol": "releaseHeldRPC",
+      "primary_owner": "R6",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": [
+        "R4",
+        "R5",
+        "R7",
+        "R9"
+      ],
+      "assigned_reviewer": "do_mutations",
+      "read_status": "unread"
+    },
+    {
+      "path": "ai-platform/src/quota-do/coverage.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 2424,
+      "end": 2551,
+      "symbol": "voidGrantRPC",
+      "primary_owner": "R6",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": [
+        "R4",
+        "R5",
+        "R7",
+        "R9"
+      ],
+      "assigned_reviewer": "do_mutations",
+      "read_status": "unread"
+    },
+    {
+      "path": "ai-platform/src/quota-do/coverage.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 2851,
+      "end": 2855,
+      "symbol": "OpenAwaitingTransferRequest",
+      "primary_owner": "R6",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": [
+        "R4",
+        "R5",
+        "R7",
+        "R9"
+      ],
+      "assigned_reviewer": "do_mutations",
+      "read_status": "unread"
+    },
+    {
+      "path": "ai-platform/src/quota-do/coverage.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 2856,
+      "end": 2860,
+      "symbol": "OpenAwaitingTransferResponse",
+      "primary_owner": "R6",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": [
+        "R4",
+        "R5",
+        "R7",
+        "R9"
+      ],
+      "assigned_reviewer": "do_mutations",
+      "read_status": "unread"
+    },
+    {
+      "path": "ai-platform/src/quota-do/coverage.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 2861,
+      "end": 2875,
+      "symbol": "openAwaitingTransferRPC",
+      "primary_owner": "R6",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": [
+        "R4",
+        "R5",
+        "R7",
+        "R9"
+      ],
+      "assigned_reviewer": "do_mutations",
+      "read_status": "unread"
+    },
+    {
+      "path": "ai-platform/src/quota-do/coverage.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 2876,
+      "end": 2895,
+      "symbol": "TransferPackageTerm",
+      "primary_owner": "R6",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": [
+        "R4",
+        "R5",
+        "R7",
+        "R9"
+      ],
+      "assigned_reviewer": "do_mutations",
+      "read_status": "unread"
+    },
+    {
+      "path": "ai-platform/src/quota-do/coverage.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 2908,
+      "end": 2942,
+      "symbol": "buildTransferPackageTerm",
+      "primary_owner": "R6",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": [
+        "R4",
+        "R5",
+        "R7",
+        "R9"
+      ],
+      "assigned_reviewer": "do_mutations",
+      "read_status": "unread"
+    },
+    {
+      "path": "ai-platform/src/quota-do/coverage.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 2943,
+      "end": 2955,
+      "symbol": "TransferOutRequest",
+      "primary_owner": "R6",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": [
+        "R4",
+        "R5",
+        "R7",
+        "R9"
+      ],
+      "assigned_reviewer": "do_mutations",
+      "read_status": "unread"
+    },
+    {
+      "path": "ai-platform/src/quota-do/coverage.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 2956,
+      "end": 2964,
+      "symbol": "TransferOutResponse",
+      "primary_owner": "R6",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": [
+        "R4",
+        "R5",
+        "R7",
+        "R9"
+      ],
+      "assigned_reviewer": "do_mutations",
+      "read_status": "unread"
+    },
+    {
+      "path": "ai-platform/src/quota-do/coverage.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 2965,
+      "end": 3044,
+      "symbol": "transferOutRPC",
+      "primary_owner": "R6",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": [
+        "R4",
+        "R5",
+        "R7",
+        "R9"
+      ],
+      "assigned_reviewer": "do_mutations",
+      "read_status": "unread"
+    },
+    {
+      "path": "ai-platform/src/quota-do/coverage.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 3045,
+      "end": 3075,
+      "symbol": "signTransferReceiptInDo",
+      "primary_owner": "R6",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": [
+        "R4",
+        "R5",
+        "R7",
+        "R9"
+      ],
+      "assigned_reviewer": "do_mutations",
+      "read_status": "unread"
+    },
+    {
+      "path": "ai-platform/src/quota-do/coverage.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 3090,
+      "end": 3095,
+      "symbol": "transferGrantId",
+      "primary_owner": "R6",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": [
+        "R4",
+        "R5",
+        "R7",
+        "R9"
+      ],
+      "assigned_reviewer": "do_mutations",
+      "read_status": "unread"
+    },
+    {
+      "path": "ai-platform/src/quota-do/coverage.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 3096,
+      "end": 3100,
+      "symbol": "SetTransferPendingRequest",
+      "primary_owner": "R6",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": [
+        "R4",
+        "R5",
+        "R7",
+        "R9"
+      ],
+      "assigned_reviewer": "do_mutations",
+      "read_status": "unread"
+    },
+    {
+      "path": "ai-platform/src/quota-do/coverage.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 3101,
+      "end": 3105,
+      "symbol": "SetTransferPendingResponse",
+      "primary_owner": "R6",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": [
+        "R4",
+        "R5",
+        "R7",
+        "R9"
+      ],
+      "assigned_reviewer": "do_mutations",
+      "read_status": "unread"
+    },
+    {
+      "path": "ai-platform/src/quota-do/coverage.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 3106,
+      "end": 3117,
+      "symbol": "setTransferPendingRPC",
+      "primary_owner": "R6",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": [
+        "R4",
+        "R5",
+        "R7",
+        "R9"
+      ],
+      "assigned_reviewer": "do_mutations",
+      "read_status": "unread"
+    },
+    {
+      "path": "ai-platform/src/quota-do/coverage.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 3118,
+      "end": 3130,
+      "symbol": "TransferInRequest",
+      "primary_owner": "R6",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": [
+        "R4",
+        "R5",
+        "R7",
+        "R9"
+      ],
+      "assigned_reviewer": "do_mutations",
+      "read_status": "unread"
+    },
+    {
+      "path": "ai-platform/src/quota-do/coverage.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 3131,
+      "end": 3138,
+      "symbol": "TransferInResponse",
+      "primary_owner": "R6",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": [
+        "R4",
+        "R5",
+        "R7",
+        "R9"
+      ],
+      "assigned_reviewer": "do_mutations",
+      "read_status": "unread"
+    },
+    {
+      "path": "ai-platform/src/quota-do/coverage.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 3139,
+      "end": 3297,
+      "symbol": "transferInRPC",
+      "primary_owner": "R6",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": [
+        "R4",
+        "R5",
+        "R7",
+        "R9"
+      ],
+      "assigned_reviewer": "do_mutations",
+      "read_status": "unread"
+    },
+    {
+      "path": "ai-platform/src/quota-do/coverage.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 3298,
+      "end": 3304,
+      "symbol": "wipeCoverageDoTables",
+      "primary_owner": "R6",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": [
+        "R4",
+        "R5",
+        "R7",
+        "R9"
+      ],
+      "assigned_reviewer": "do_mutations",
+      "read_status": "unread"
+    },
+    {
+      "path": "ai-platform/src/quota-do/coverage.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 3768,
+      "end": 3808,
+      "symbol": "applyGrantVoidRowToDo",
+      "primary_owner": "R6",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": [
+        "R4",
+        "R5",
+        "R7",
+        "R9"
+      ],
+      "assigned_reviewer": "do_mutations",
+      "read_status": "unread"
+    },
+    {
+      "path": "ai-platform/src/quota-do/index.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 356,
+      "end": 380,
+      "symbol": "sweepAbandonedAdmissions",
+      "primary_owner": "R6",
+      "changed": false,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": [
+        "R4",
+        "R5",
+        "R7",
+        "R9"
+      ],
+      "assigned_reviewer": "do_mutations",
+      "read_status": "unread"
+    },
+    {
+      "path": "ai-platform/src/quota-do/index.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 381,
+      "end": 387,
+      "symbol": "sweepEphemeral",
+      "primary_owner": "R6",
+      "changed": false,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": [
+        "R4",
+        "R5",
+        "R7",
+        "R9"
+      ],
+      "assigned_reviewer": "do_mutations",
+      "read_status": "unread"
+    },
+    {
+      "path": "ai-platform/src/quota-do/index.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 388,
+      "end": 402,
+      "symbol": "sweepAbandonedAdmissions",
+      "primary_owner": "R6",
+      "changed": false,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": [
+        "R4",
+        "R5",
+        "R7",
+        "R9"
+      ],
+      "assigned_reviewer": "do_mutations",
+      "read_status": "unread"
+    },
+    {
+      "path": "ai-platform/src/quota-do/index.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 466,
+      "end": 475,
+      "symbol": "sweepEphemeral",
+      "primary_owner": "R6",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": [
+        "R4",
+        "R5",
+        "R7",
+        "R9"
+      ],
+      "assigned_reviewer": "do_mutations",
+      "read_status": "unread"
+    },
+    {
+      "path": "ai-platform/src/quota-do/index.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 504,
+      "end": 504,
+      "symbol": "sweepEphemeral",
+      "primary_owner": "R6",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": [
+        "R4",
+        "R5",
+        "R7",
+        "R9"
+      ],
+      "assigned_reviewer": "do_mutations",
+      "read_status": "unread"
+    },
+    {
+      "path": "ai-platform/src/quota-do/index.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 670,
+      "end": 701,
+      "symbol": "sweepEphemeral",
+      "primary_owner": "R6",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": [
+        "R4",
+        "R5",
+        "R7",
+        "R9"
+      ],
+      "assigned_reviewer": "do_mutations",
+      "read_status": "unread"
+    },
+    {
+      "path": "ai-platform/src/quota-do/index.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 877,
+      "end": 892,
+      "symbol": "sweepStoredAnswers",
+      "primary_owner": "R6",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": [
+        "R4",
+        "R5",
+        "R7",
+        "R9"
+      ],
+      "assigned_reviewer": "do_mutations",
+      "read_status": "unread"
+    },
+    {
+      "path": "ai-platform/src/quota-do/index.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 939,
+      "end": 943,
+      "symbol": "adjustEndedTermUsedFinal",
+      "primary_owner": "R6",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": [
+        "R4",
+        "R5",
+        "R7",
+        "R9"
+      ],
+      "assigned_reviewer": "do_mutations",
+      "read_status": "unread"
+    },
+    {
+      "path": "ai-platform/src/quota-do/index.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 1242,
+      "end": 1318,
+      "symbol": "sweepStoredAnswers",
+      "primary_owner": "R6",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": [
+        "R4",
+        "R5",
+        "R7",
+        "R9"
+      ],
+      "assigned_reviewer": "do_mutations",
+      "read_status": "unread"
+    },
+    {
+      "path": "ai-platform/src/quota-do/index.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 1586,
+      "end": 1643,
+      "symbol": "sweepStoredAnswers",
+      "primary_owner": "R6",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": [
+        "R4",
+        "R5",
+        "R7",
+        "R9"
+      ],
+      "assigned_reviewer": "do_mutations",
+      "read_status": "unread"
+    },
+    {
+      "path": "ai-platform/src/quota-do/index.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 1807,
+      "end": 1827,
+      "symbol": "sweepStoredAnswers",
+      "primary_owner": "R6",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": [
+        "R4",
+        "R5",
+        "R7",
+        "R9"
+      ],
+      "assigned_reviewer": "do_mutations",
+      "read_status": "unread"
+    },
+    {
+      "path": "ai-platform/src/quota-do/index.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 1914,
+      "end": 1917,
+      "symbol": "sweepEphemeral",
+      "primary_owner": "R6",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": [
+        "R4",
+        "R5",
+        "R7",
+        "R9"
+      ],
+      "assigned_reviewer": "do_mutations",
+      "read_status": "unread"
+    }
+  ]
+}

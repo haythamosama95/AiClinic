@@ -1,0 +1,227 @@
+{
+  "target": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+  "phase": "R5",
+  "entries": [
+    {
+      "id": "066:6",
+      "spec": "066",
+      "entry_number": 6,
+      "title": "Admission, capability, and entitlement after the cache and tier-helper rows",
+      "source_path": "specs/066-abo-p3-2-issuer-tokens-registry-tenant-bindings/escalations.md",
+      "source_line": 55,
+      "target": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "question": "FR-006 says the config cache no longer reads `plan` or `entitlement`, and FR-016 removes `planTierMeetsMinimum`. `src/admission/index.ts`, `src/capability/index.ts`, and `src/entitlement/index.ts` still load those cache kinds and still call `planTierMeetsMinimum`. `/control/entitle` stays so earlier suites can admit clinics (rule S9, SC-002), and entitlement itself stays until P3.10. The spec does not say what those three modules read or check once the readers and the tier helper are gone.",
+      "resolution": "Those three modules are unchanged in this unit. Admission, capability, and entitlement still load the `entitlements` cache kind. Capability still loads plan-scoped grants, including the `plan:` grant fallback, and still calls `planTierMeetsMinimum`. Entitlement still requires status `active` and still calls `planTierMeetsMinimum`. The config cache still reads `plan` and `entitlement`. `PLAN_TIERS` and `planTierMeetsMinimum` stay. This unit adds the `issuer_key` and `tenant_binding` readers, removes the `installation_key` reader, and renames the key-algorithm constant for issuer keys. It does not add a coverage reader. P3.4 removes the tier checks and the request-path entitlement read, and reads `/v1/capabilities` from `coverage_mirror`. P3.10 drops the `plan` and `entitlement` tables.",
+      "rationale": "04 \u00a76.1 names the end state of `src/config-cache/index.ts` and `src/platform-vocabulary.ts`, and P3.2's Read includes those rows. P3.2's Implements line only adds `issuer_key` and `tenant_binding` readers and drops `installation_key`. The admission, entitlement, and capability rows of 04 \u00a76.1 are in P3.4's Read. P3.4 stops reading entitlement on the request path and reads `/v1/capabilities` from `coverage_mirror`, which P3.3 creates. Rule S9 keeps `/control/entitle` until that switch so earlier suites still admit clinics (SC-002). Removing the readers and `planTierMeetsMinimum` here would leave the three modules with no read or check this unit assigns.",
+      "amended_paths_sections": "`specs/066-abo-p3-2-issuer-tokens-registry-tenant-bindings/spec.md`",
+      "amended_paths": [
+        "specs/066-abo-p3-2-issuer-tokens-registry-tenant-bindings/spec.md"
+      ],
+      "owning_review_phases": [
+        "R1",
+        "R5",
+        "R8"
+      ],
+      "disposition": "source-contract",
+      "producer_consumer_trace": "Temporary cache/tier retention \u2192 final P3.4 admission/capability coverage readers and P3.10 table/control removals; review final replacements",
+      "review_status": "routed; source correctness and propagation not yet reviewed"
+    },
+    {
+      "id": "066:8",
+      "spec": "066",
+      "entry_number": 8,
+      "title": "Remaining e2e assertion values after the version 2 seed",
+      "source_path": "specs/066-abo-p3-2-issuer-tokens-registry-tenant-bindings/escalations.md",
+      "source_line": 75,
+      "target": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "question": "The credential-cache drop, `activates_at` promotion, and stage 00/01/05 version-2-current / version-1-retired seed are applied. `npm run test:e2e` still fails (38 failed). Which of these assertions should this unit change, and to what expected value?",
+      "resolution": "Keep the closed seed. Version `2` stays current, version `1` stays retired, begin-rotation of version `2` is 409 `ver_already_exists`, and a sole live version `1` is not chosen. Apply that seed to stage 07, 09, and 12 as well. The platform assigns `installation_id`. `newClinic` returns a `Scenario` and its capabilities call is 200. It inserts one pending `entitlement`. A registered issuer `kid` is not installation-scoped. A refusal before `org` is resolved counts `installation_id` `\"unverified\"`.\n\n- S01-026, S01-029: the unauthenticated counter matches `installation_id` `\"unverified\"`. Expected length greater than 0 and some row `count >= 1`.\n- S03-078: delete the stored installation id. Expected status 200 and body `{}`.\n- S03-080, S03-083: expected `entitlement` count is 1.\n- S04-019: grant scope is `installationScope()` (`installation:` plus the stored id). Expected length 1 and `capability_version` `\"1.0.0\"`. There is no `INSTALLATION_SCOPE` constant.\n- S04-031, S04-032, S04-033, S04-037: the same through `installationGrantScope()`. Expected length 1, that scope, `capability_version` `\"1.0.0\"`. There is no `INSTALLATION_GRANT_SCOPE` constant.\n- S04-103, S04-104: scope is `installation:` plus the id `enrollAndEntitleI0` returns. Expected length 1 and `capability_version` `\"1.0.0\"` before and after the wrong bearer.\n- S05-023, S05-024, S05-025, S05-026, S05-027, S05-028, S05-033, S05-037: do not read `.status` on `newClinic`'s return. Canary of the stored id is 200.\n- S05-042, S05-043, S05-046, S05-051, S05-054, S05-058: `canary.status` stays 200 for the stored id.\n- S05-072: `excluded[0]` stays `{ provider_id: \"deepseek\", model_id: \"deepseek-v4-flash\", reason_code: \"installation_excluded\" }` and `chain` stays `GEMINI_ONLY_CHAIN` when the override uses the stored id.\n- S05-073: `chain` stays `GEMINI_ONLY_CHAIN` when the pin override uses the stored id.\n- S05-074: `failed.code` stays `\"provider_unavailable\"` when the pin override uses the stored id.\n- S05-075: `effective_cost_class` stays `\"economy\"` when the override uses the stored id.\n- S07-019, S12-032: `newClinic` capabilities stays 200. When the harness issuer `kid` is outside validity, `newClinic` drops that cached signer and registers a new `kid` whose window contains now. The token already minted for the closed `kid` stays 401.\n- S07-020: expected status is 200. An unregistered `kid` stays 401.\n- S07-025: expected status stays 401, and the minted `ver` is not stored (for example `\"99\"`), not `\"2\"`.\n- S07-026, S09-026: begin-rotation of `ver` `\"2\"` is 409 `ver_already_exists`. Open `ver` `\"3\"` (200, `{ ver: \"3\" }`), then retire `ver` `\"2\"` (200). The `ver` `\"2\"` token is then 401. Retiring `ver` `\"1\"` is 409 `ver_already_retired`. Do not delete version 2 or clear version 1's `retired_at`.\n- S12-057, S12-059: invoke status stays 200 with minted `ver` `\"2\"`. `ver` `\"1\"` is 401 and does not settle.",
+      "rationale": "FR-005 refuses `ver` `\"1\"` and any unstored `ver` before `org` is resolved, and the verifier records that refusal on `installation_id` `\"unverified\"`. FR-008 assigns the installation id and does not insert `entitlement`; the removed enroll inserted one pending row, and `/control/entitle` still requires that pending sentinel, so `newClinic` inserts it. FR-004 accepts any registered issuer `kid` and does not bind it to one installation. Canary, delete, grants, and routing overrides already succeed for a stored installation id and return 404 `installation_not_found` for an id that was never stored. A catalog constant passed into `newClinic` is overwritten by the platform id, which is why those calls saw 404, an empty grant list, or an unfiltered chain. `newClinic` returns the scenario, not an HTTP result. The second clinic in a validity-window test reuses the harness `kid` after the test has moved that `kid` outside its window, so the next `newClinic` must register a new `kid` before its capabilities call. Opening version `\"3\"` and retiring version `\"2\"` is the rotation the seed already allows.",
+      "amended_paths_sections": "`specs/066-abo-p3-2-issuer-tokens-registry-tenant-bindings/tasks.md` (T023); `specs/066-abo-p3-2-issuer-tokens-registry-tenant-bindings/spec.md` (FR-017).",
+      "amended_paths": [
+        "specs/066-abo-p3-2-issuer-tokens-registry-tenant-bindings/tasks.md",
+        "specs/066-abo-p3-2-issuer-tokens-registry-tenant-bindings/spec.md"
+      ],
+      "owning_review_phases": [
+        "R1",
+        "R5",
+        "R8"
+      ],
+      "disposition": "reference-only / excluded effect",
+      "producer_consumer_trace": "Harness/assertion repairs for version seed and platform-assigned installation IDs only",
+      "review_status": "routed; source correctness and propagation not yet reviewed"
+    },
+    {
+      "id": "066:10",
+      "spec": "066",
+      "entry_number": 10,
+      "title": "SX-032 settled payload object",
+      "source_path": "specs/066-abo-p3-2-issuer-tokens-registry-tenant-bindings/escalations.md",
+      "source_line": 113,
+      "target": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "question": "SX-032 settles a completed request and expects its payload object in R2 before the purge. `r2Exists(pointer)` is false. Should this unit change that assertion, or is the missing object a harness defect this unit must fix?",
+      "resolution": "The assertion stays `expect(await r2Exists(pointer)).toBe(true)`. A completed settlement still writes one payload object before any purge. The key is `request/{requestId}/envelope`, stored on `ai_request.payload_pointer`, and that key is the pointer `settleCompleted` checks. The write runs in `waitUntil` after SSE close, and `settleCompleted` currently reads R2 once after `flushBackgroundWork(200)`, before that write is visible on `env.R2`. The missing object is a harness defect. This unit makes `settleCompleted` wait until `r2Exists` sees that object, the same wait stage 11 uses for a completed envelope. The assertion value stays true. The later SX-032 check that a non-aged purge leaves that same object in place stays true.",
+      "rationale": "Platform \u00a77.4 and pipeline stage 16 write exactly one R2 payload envelope per completed request, after the response. P3.2 adds issuer tokens and tenant bindings and does not remove that write. Stage 11 already waits for the same post-response envelope and keeps `r2Exists` true. Escalations 7\u20139 cover the issuer credential and the version seed. They leave payload storage unchanged. The settled pointer is present before the purge.",
+      "amended_paths_sections": "`specs/066-abo-p3-2-issuer-tokens-registry-tenant-bindings/tasks.md` (T023); `specs/066-abo-p3-2-issuer-tokens-registry-tenant-bindings/spec.md` (FR-017).",
+      "amended_paths": [
+        "specs/066-abo-p3-2-issuer-tokens-registry-tenant-bindings/tasks.md",
+        "specs/066-abo-p3-2-issuer-tokens-registry-tenant-bindings/spec.md"
+      ],
+      "owning_review_phases": [
+        "R5",
+        "R9"
+      ],
+      "disposition": "reference-only / excluded effect",
+      "producer_consumer_trace": "Harness waits for existing asynchronous R2 payload write; no production write rule changed",
+      "review_status": "routed; source correctness and propagation not yet reviewed"
+    },
+    {
+      "id": "067:1",
+      "spec": "067",
+      "entry_number": 1,
+      "title": "Worker \u2192 DO contract-version scenarios",
+      "source_path": "specs/067-abo-p3-3-plan-versions-paid-grant-coverage-ledger/escalations.md",
+      "source_line": 5,
+      "target": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "question": "Which scenario line shows the Platform Worker \u2192 per-clinic DO RPC accepting and echoing the current contract version, and which scenario line refuses a missing or unsupported version before authentication and before any write?",
+      "resolution": "E2E-P3.3-11 is the accept-and-echo line: a Platform Worker \u2192 per-clinic DO RPC that carries the current contract version is accepted, and the DO answer echoes that same `contract_version`. E2E-P3.3-12 is the refusal line: a call whose `contract_version` is missing or unsupported (2 at launch, because every channel is version 1) is `rejected` with `contract_version_unsupported` and `accepted_versions`. That check runs before authentication and before any write, so nothing changes. The DO still accepts N and N\u22121 and answers in the version the call used. The Worker still maps that refusal to `coverage_unknown` for the clinic; that mapping stays on the later clinic-path lines E2E-P3.4-12 and E2E-P7.3-05.",
+      "rationale": "04 \u00a77.2 already accepts N and N\u22121, answers in the request's version, and refuses a missing version or one outside N and N\u22121 with `contract_version_unsupported` and `accepted_versions` before authentication and before any write. The \u00a77.1 Worker \u2192 DO row already returns `rejected` and has the Worker map that refusal to `coverage_unknown`. Rule V5 requires this unit's own channel to show both the current-version echo and the before-auth refusal, and P3.1 already uses \"missing or 2\" for that launch refusal. N and N\u22121 across a deploy stay with P7.3. The P3.3 list had no line for either case.",
+      "amended_paths_sections": "`docs/architecture/ai-billing-orchestration/04-abo-contracts.md` (\u00a77.1 row \u201cPlatform Worker \u2192 per-clinic DO RPC\u201d); `docs/architecture/ai-billing-orchestration/06-abo-delivery-plan.md` (P3.3 E2E-P3.3-11, E2E-P3.3-12).",
+      "amended_paths": [
+        "docs/architecture/ai-billing-orchestration/04-abo-contracts.md",
+        "docs/architecture/ai-billing-orchestration/06-abo-delivery-plan.md"
+      ],
+      "owning_review_phases": [
+        "R2",
+        "R5"
+      ],
+      "disposition": "source-contract",
+      "producer_consumer_trace": "Worker RPC version producer \u2192 DO accept/echo gate \u2192 Worker coverage_unknown refusal mapping",
+      "review_status": "routed; source correctness and propagation not yet reviewed"
+    },
+    {
+      "id": "067:7",
+      "spec": "067",
+      "entry_number": 7,
+      "title": "coverage_event.kind",
+      "source_path": "specs/067-abo-p3-3-plan-versions-paid-grant-coverage-ledger/escalations.md",
+      "source_line": 65,
+      "target": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "question": "What stored values does `coverage_event.kind` take?",
+      "resolution": "`kind` is one of `grant_applied`, `grant_voided`, `term_activated`, `term_ended`, `term_held`, `term_released`, `grace_started`, `band_crossed`, `suspension_changed`, or `transfer`. `band_crossed` is both the 75 % crossing and the 90 % crossing; the snapshot carries the band. A paid grant emits `grant_applied`, plus `term_activated` when placement leaves the new term `active`, plus `term_ended` when placement ends the grace term. A grant that only queues emits `grant_applied` alone. Those events are written in the order `term_ended`, `term_activated`, `grant_applied`, skipping any the grant does not emit.",
+      "rationale": "\u00a76.7 already names those changes and no others. One token per change matches the closed `kind` lists on `offer_event` and `checkout_event`. The paid-grant subset is the placement this unit performs; the other tokens are the same column for the later changes in that list. The feed event's `kind` is that stored value.",
+      "amended_paths_sections": "`docs/architecture/ai-billing-orchestration/03-abo-data-model-and-lifecycle.md` (\u00a73.2 row `coverage_event`, \u00a76.7); `docs/architecture/ai-billing-orchestration/04-abo-contracts.md` (\u00a74.1 event object).",
+      "amended_paths": [
+        "docs/architecture/ai-billing-orchestration/03-abo-data-model-and-lifecycle.md",
+        "docs/architecture/ai-billing-orchestration/04-abo-contracts.md"
+      ],
+      "owning_review_phases": [
+        "R4",
+        "R5",
+        "R6",
+        "R7"
+      ],
+      "disposition": "source-contract",
+      "producer_consumer_trace": "Grant/lifecycle/usage event producers \u2192 ordered feed, backend projection, ABO coverage view and desktop status",
+      "review_status": "routed; source correctness and propagation not yet reviewed"
+    },
+    {
+      "id": "067:9",
+      "spec": "067",
+      "entry_number": 9,
+      "title": "Plan capabilities shape",
+      "source_path": "specs/067-abo-p3-3-plan-versions-paid-grant-coverage-ledger/escalations.md",
+      "source_line": 85,
+      "target": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "question": "What is the stored shape of `plan_version.capabilities` and of `term.plan_snapshot.capabilities`?",
+      "resolution": "`plan_version.capabilities` is a JSON array of capability id strings. `term.plan_snapshot` is a JSON object `{plan_id, version, display_name, capabilities, max_cost_class, concurrency_limit}`. Its `capabilities` member is that published array, copied unchanged.",
+      "rationale": "The replaced plan catalogue stored capabilities as a JSON array of capability id strings, and admission plus `/v1/capabilities` test membership in the term's plan. The snapshot's other members are the plan fields \u00a73.1 already says it copies.",
+      "amended_paths_sections": "`docs/architecture/ai-billing-orchestration/03-abo-data-model-and-lifecycle.md` (\u00a73.1 `term` row, \u00a73.2 row `plan_version`).",
+      "amended_paths": [
+        "docs/architecture/ai-billing-orchestration/03-abo-data-model-and-lifecycle.md"
+      ],
+      "owning_review_phases": [
+        "R4",
+        "R5",
+        "R7",
+        "R8"
+      ],
+      "disposition": "source-contract",
+      "producer_consumer_trace": "Plan capabilities publisher \u2192 term.plan_snapshot copy \u2192 admission/capability and coverage-display readers",
+      "review_status": "routed; source correctness and propagation not yet reviewed"
+    },
+    {
+      "id": "068:1",
+      "spec": "068",
+      "entry_number": 1,
+      "title": "Missing `calendar.ts` before the T001 harness",
+      "source_path": "specs/068-abo-p3-4-admission-settlement-against-terms/escalations.md",
+      "source_line": 5,
+      "target": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "question": "P3.4 prerequisites list merged P3.3 (`grant`, DO schema, `coverage_mirror`, etc.). Code imports `addDuration` / `DurationScale` from `ai-platform/src/coverage/calendar.ts`, but that file is absent (empty `src/coverage/` directory; never in git history). P3.3 `tasks.md` marks T015 `[X]` for that file. Should `calendar.ts` be restored from P3.3 spec FR-010 before H-AP can run, or was it intentionally omitted from this branch?",
+      "resolution": "Restore `ai-platform/src/coverage/calendar.ts` from P3.3 FR-010 before the T001 H-AP command. It was not intentionally omitted. P3.3 owns it (plan Files, Sequencing steps 15 and 29, tasks T015 and T029). Those task marks stay `[X]`. The empty directory is a tree gap: the file has no git history, and `src/vendor/entrypoint.ts` and `src/quota-do/coverage.ts` already import it. The restored module exports `DurationScale` as the string `\"staging\"` and `addDuration(startIso, unit, count, scale?)`. `unit` is `\"month\"` or `\"day\"`. An omitted `scale` adds `count` months in UTC, keeping the start's day-of-month and time and clamping that day to the last day of the target month, and adds `count` days as exact multiples of 24 hours. `scale` `\"staging\"` keeps that unscaled `count` and replaces the unit length: one month is 30 minutes and one day is 1 minute. It does not compress a previously computed calendar interval. The return value is `Date.prototype.toISOString()`. `2026-01-31T10:00:00.000Z` plus one month is `2026-02-28T10:00:00.000Z`. `2024-01-31T10:00:00.000Z` plus one month is `2024-02-29T10:00:00.000Z`. `2026-03-01T12:00:00.000Z` plus one month at `\"staging\"` is `2026-03-01T12:30:00.000Z`. The resumed P3.4 T001 run writes that file once, then adds the failing test. That write is the missing consumed module. It does not change callers. P3.4 plan sentences that say the file stays as P3.3 left it, and that this unit adds no new source file, apply after this restoration: later P3.4 tasks do not edit it and do not add any other source file. Stop conditions 2 and 5 do not fire again for this absence. The T001 command then loads the worker and fails because `coverClinic` is missing and `POST /v1/requests` is not charged to a term.",
+      "rationale": "FR-010, 03 \u00a76.1, and E2E-P3.3-09 already fix month clamping, day multiples of 24 hours, and the staging map of one month to 30 minutes and one day to 1 minute. The live imports name `addDuration` and `DurationScale`, and `durationScaleFromEnv` passes only `\"staging\"` or omits the scale. There is no commit to restore. Leaving the import broken makes the T001 harness fail on module load instead of on the missing `coverClinic` and term charging.",
+      "amended_paths_sections": "`specs/067-abo-p3-3-plan-versions-paid-grant-coverage-ledger/plan.md` (Files, `ai-platform/src/coverage/calendar.ts`).",
+      "amended_paths": [
+        "specs/067-abo-p3-3-plan-versions-paid-grant-coverage-ledger/plan.md",
+        "ai-platform/src/coverage/calendar.ts"
+      ],
+      "owning_review_phases": [
+        "R4",
+        "R5",
+        "R9"
+      ],
+      "disposition": "source-contract",
+      "producer_consumer_trace": "coverage/calendar.ts addDuration restoration \u2192 vendor paid placement and DO lifecycle consumers; staging scale production exposure belongs R9",
+      "review_status": "routed; source correctness and propagation not yet reviewed"
+    },
+    {
+      "id": "089:1",
+      "spec": "089",
+      "entry_number": 1,
+      "title": "Coverage codes that refresh status",
+      "source_path": "specs/089-abo-p6-1-desktop-contract-versions-token-minting/escalations.md",
+      "source_line": 5,
+      "target": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "question": "Which denial codes count as a \u201ccoverage code\u201d that must refresh `get_ai_status` (04 \u00a73.4, first bullet \u201cWhen to read status\u201d)?",
+      "resolution": "A coverage code is `allowance_exhausted`, `coverage_lapsed`, or `coverage_unknown`. An AI denial with one of those codes refreshes `get_ai_status`.",
+      "rationale": "01 groups those three as the coverage denials, apart from safety limits and from suspension. The refresh exists so a desktop denied because coverage changed re-reads the projection (FR-64). P6.2 still owns denial display.",
+      "amended_paths_sections": "`docs/architecture/ai-billing-orchestration/04-abo-contracts.md` (\u00a73.4 first bullet \u201cWhen to read status\u201d); `docs/architecture/ai-billing-orchestration/06-abo-delivery-plan.md` (P6.1 Implements).",
+      "amended_paths": [
+        "docs/architecture/ai-billing-orchestration/04-abo-contracts.md",
+        "docs/architecture/ai-billing-orchestration/06-abo-delivery-plan.md"
+      ],
+      "owning_review_phases": [
+        "R5",
+        "R7"
+      ],
+      "disposition": "source-contract",
+      "producer_consumer_trace": "AI allowance_exhausted/coverage_lapsed/coverage_unknown denial producer \u2192 Flutter get_ai_status refresh trigger and refreshed status consumer",
+      "review_status": "routed; source correctness and propagation not yet reviewed"
+    },
+    {
+      "id": "095:1",
+      "spec": "095",
+      "entry_number": 1,
+      "title": "Worker N with DO N+1",
+      "source_path": "specs/095-abo-p7-3-contract-version-matrix/escalations.md",
+      "source_line": 5,
+      "target": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "question": "E2E-P7.3-05 says a Worker on N with a DO on N+1 yields `coverage_unknown`. 04 \u00a77.1 says the DO accepts N and N\u22121, answers in the version the call used, and that a gradual rollout pairs an old Worker with a new DO. A DO whose current version is N+1 therefore accepts the Worker's N. Which outcome must the matrix assert for that pairing?",
+      "resolution": "The matrix asserts accepted, answered in N (the version the call used). A DO whose current version is N+1 is the 04 \u00a77.3 step-1 receiver: it accepts N and N+1. The Worker's N is that DO's N\u22121, so the 04 \u00a77.1 gradual-rollout pairing succeeds. `coverage_unknown` is only the Worker's mapping of a DO `rejected` `contract_version_unsupported` when the version is missing or outside the DO's N and N\u22121.",
+      "rationale": "04 \u00a77.1 and \u00a77.2 require the DO to accept its current version and the previous one and to answer in the version the call used. \u00a77.3 deploys that receiver before senders move to N+1, so an old Worker keeps working against the new DO. `coverage_unknown` is the refusal mapping in the same \u00a77.1 row, not the outcome of a version the DO accepts. Answering in the DO's current N+1 would make the Worker treat the answer as unknown and would undo deploy-receivers-first.",
+      "amended_paths_sections": "`docs/architecture/ai-billing-orchestration/06-abo-delivery-plan.md` (E2E-P7.3-05).",
+      "amended_paths": [
+        "docs/architecture/ai-billing-orchestration/06-abo-delivery-plan.md"
+      ],
+      "owning_review_phases": [
+        "R2",
+        "R5",
+        "R7"
+      ],
+      "disposition": "source-contract",
+      "producer_consumer_trace": "Worker N sender \u2192 DO N+1 accepts and echoes N \u2192 Worker coverage/refusal mapping and downstream desktop safe status",
+      "review_status": "routed; source correctness and propagation not yet reviewed"
+    }
+  ]
+}

@@ -1,0 +1,38 @@
+# R4 ABO coverage — explicit high
+
+Target `db9244fddfddc1905335fb8c7105328c15a0cc5e`. GPT-6.1 Sol explicitly high; coordinator `/root/abo_r4_high`. Primary and synthesis complete; canonical phase result in R4-grants-coverage-term-lifecycle.md.
+
+## Primary actual reads
+
+- `abo/src/work/grant.ts`: 1–966
+- `abo/migrations/0004_grant.sql`: 1–72
+- `abo/src/ops/index.ts`: 1646–1687,2122–2162,2219–2322,2653–2723
+
+## Supporting actual reads
+
+- `abo/src/ops/index.ts`: 1506–1543,1965–2018,2163–2218,2600–2652,3100–3165
+- `abo/src/work/runner.ts`: 285–518,645–840
+- `abo/src/clinic-api/checkouts.ts`: 790–850
+- `abo/src/records/append.ts`: 1–27
+- `abo/src/reconciliation/run.ts`: 120–150,595–661
+- `abo/src/rebuild.ts`: 110–221,345–389,600–722
+- `abo/src/work/reversal.ts`: 239–274,430–603,604–708,865–912
+- `abo/src/work/sweep.ts`: 480–506,586–634,658–685
+- `abo/src/work/inquiry-budget.ts`: 169–209
+- `abo/src/worker.ts`: 158–180,366–425
+- `abo/src/clinic-api/billing-reads.ts`: 1–170
+- `abo/migrations/0001_records.sql`: 1–110
+- `abo/migrations/0003_notify_work.sql`: 1–105
+- `abo/migrations/0009_digest_watch.sql`: 1–21
+- `packages/vendor-contracts/src/receipt.ts`: 1–182
+- `packages/vendor-contracts/src/identifiers.ts`: 65–90
+- `packages/vendor-contracts/src/grant-envelope.ts`: 1–150
+- `ai-platform/src/vendor/entrypoint.ts`: 3113–3278,3280–3468,3453–3565,3620–3704
+- `ai-platform/src/quota-do/coverage.ts`: 810–918,1207–1468,1575–1900,2690–2756
+- `ai-platform/src/quota-do/index.ts`: 2030–2042
+
+All 20 escalation resolutions read. Reference plan/packet/manifest, constitution, R0 index/system map and canonical R1–R3 handoffs read. Relevant amended lifecycle/grant/receipt/operations sections read; these are reference, not correctness evidence.
+
+Supporting ranges are bounded grant invariants, not full later-phase algorithm review.
+records/append.ts35–80 fixture declarations incidentally displayed; not analyzed or used.
+No source changes; no tests/build/lint/runtime services.

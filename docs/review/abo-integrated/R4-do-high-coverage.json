@@ -1,0 +1,1036 @@
+{
+  "target": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+  "baseline": "c6cf2c3809a38e2a348f373e926cf2585cfcf291",
+  "history": "d2e7666f59d8ea7b37a5e05fae89f34d96ba1a3f",
+  "reviewer": {
+    "model": "gpt-6.1-sol",
+    "reasoning_effort": "high",
+    "explicitly_configured": true,
+    "prior_unpinned_credit": false
+  },
+  "assignment_status": "complete with findings",
+  "owned_regions": [
+    {
+      "path": "ai-platform/src/coverage/calendar.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 1,
+      "end": 2,
+      "symbol": "preamble / imports / shared declarations",
+      "primary_owner": "R4",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": [],
+      "review_status": "complete; freshly source-read in explicitly high context"
+    },
+    {
+      "path": "ai-platform/src/coverage/calendar.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 3,
+      "end": 4,
+      "symbol": "DurationUnit",
+      "primary_owner": "R4",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": [],
+      "review_status": "complete; freshly source-read in explicitly high context"
+    },
+    {
+      "path": "ai-platform/src/coverage/calendar.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 5,
+      "end": 5,
+      "symbol": "MS_PER_DAY",
+      "primary_owner": "R4",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": [],
+      "review_status": "complete; freshly source-read in explicitly high context"
+    },
+    {
+      "path": "ai-platform/src/coverage/calendar.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 6,
+      "end": 6,
+      "symbol": "STAGING_MS_PER_MONTH",
+      "primary_owner": "R4",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": [],
+      "review_status": "complete; freshly source-read in explicitly high context"
+    },
+    {
+      "path": "ai-platform/src/coverage/calendar.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 7,
+      "end": 8,
+      "symbol": "STAGING_MS_PER_DAY",
+      "primary_owner": "R4",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": [],
+      "review_status": "complete; freshly source-read in explicitly high context"
+    },
+    {
+      "path": "ai-platform/src/coverage/calendar.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 9,
+      "end": 46,
+      "symbol": "addMonthsUtc",
+      "primary_owner": "R4",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": [],
+      "review_status": "complete; freshly source-read in explicitly high context"
+    },
+    {
+      "path": "ai-platform/src/coverage/calendar.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 47,
+      "end": 71,
+      "symbol": "addDuration",
+      "primary_owner": "R4",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": [],
+      "review_status": "complete; freshly source-read in explicitly high context"
+    },
+    {
+      "path": "ai-platform/src/quota-do/coverage.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 61,
+      "end": 81,
+      "symbol": "TermRow",
+      "primary_owner": "R4",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": [
+        "R5",
+        "R6",
+        "R7",
+        "R9"
+      ],
+      "review_status": "complete; freshly source-read in explicitly high context"
+    },
+    {
+      "path": "ai-platform/src/quota-do/coverage.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 82,
+      "end": 87,
+      "symbol": "GrantRow",
+      "primary_owner": "R4",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": [
+        "R5",
+        "R6",
+        "R7",
+        "R9"
+      ],
+      "review_status": "complete; freshly source-read in explicitly high context"
+    },
+    {
+      "path": "ai-platform/src/quota-do/coverage.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 97,
+      "end": 104,
+      "symbol": "CeilingPolicyNumbers",
+      "primary_owner": "R4",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": [
+        "R5",
+        "R6",
+        "R7",
+        "R9"
+      ],
+      "review_status": "complete; freshly source-read in explicitly high context"
+    },
+    {
+      "path": "ai-platform/src/quota-do/coverage.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 105,
+      "end": 130,
+      "symbol": "ApplyGrantRequest",
+      "primary_owner": "R4",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": [
+        "R5",
+        "R6",
+        "R7",
+        "R9"
+      ],
+      "review_status": "complete; freshly source-read in explicitly high context"
+    },
+    {
+      "path": "ai-platform/src/quota-do/coverage.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 131,
+      "end": 145,
+      "symbol": "ApplyGrantResponse",
+      "primary_owner": "R4",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": [
+        "R5",
+        "R6",
+        "R7",
+        "R9"
+      ],
+      "review_status": "complete; freshly source-read in explicitly high context"
+    },
+    {
+      "path": "ai-platform/src/quota-do/coverage.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 160,
+      "end": 164,
+      "symbol": "CoverageShipEnv",
+      "primary_owner": "R4",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": [
+        "R5",
+        "R6",
+        "R7",
+        "R9"
+      ],
+      "review_status": "complete; freshly source-read in explicitly high context"
+    },
+    {
+      "path": "ai-platform/src/quota-do/coverage.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 231,
+      "end": 237,
+      "symbol": "loadTerms",
+      "primary_owner": "R4",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": [
+        "R5",
+        "R6",
+        "R7",
+        "R9"
+      ],
+      "review_status": "complete; freshly source-read in explicitly high context"
+    },
+    {
+      "path": "ai-platform/src/quota-do/coverage.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 238,
+      "end": 241,
+      "symbol": "termGraceEndsAtDisplay",
+      "primary_owner": "R4",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": [
+        "R5",
+        "R6",
+        "R7",
+        "R9"
+      ],
+      "review_status": "complete; freshly source-read in explicitly high context"
+    },
+    {
+      "path": "ai-platform/src/quota-do/coverage.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 242,
+      "end": 266,
+      "symbol": "computeCoverageThrough",
+      "primary_owner": "R4",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": [
+        "R5",
+        "R6",
+        "R7",
+        "R9"
+      ],
+      "review_status": "complete; freshly source-read in explicitly high context"
+    },
+    {
+      "path": "ai-platform/src/quota-do/coverage.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 267,
+      "end": 287,
+      "symbol": "allowanceBand",
+      "primary_owner": "R4",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": [
+        "R5",
+        "R6",
+        "R7",
+        "R9"
+      ],
+      "review_status": "complete; freshly source-read in explicitly high context"
+    },
+    {
+      "path": "ai-platform/src/quota-do/coverage.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 462,
+      "end": 480,
+      "symbol": "buildQueuedTerms",
+      "primary_owner": "R4",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": [
+        "R5",
+        "R6",
+        "R7",
+        "R9"
+      ],
+      "review_status": "complete; freshly source-read in explicitly high context"
+    },
+    {
+      "path": "ai-platform/src/quota-do/coverage.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 481,
+      "end": 504,
+      "symbol": "buildRecentTerms",
+      "primary_owner": "R4",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": [
+        "R5",
+        "R6",
+        "R7",
+        "R9"
+      ],
+      "review_status": "complete; freshly source-read in explicitly high context"
+    },
+    {
+      "path": "ai-platform/src/quota-do/coverage.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 505,
+      "end": 511,
+      "symbol": "nextTermPosition",
+      "primary_owner": "R4",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": [
+        "R5",
+        "R6",
+        "R7",
+        "R9"
+      ],
+      "review_status": "complete; freshly source-read in explicitly high context"
+    },
+    {
+      "path": "ai-platform/src/quota-do/coverage.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 512,
+      "end": 542,
+      "symbol": "signReceipt",
+      "primary_owner": "R4",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": [
+        "R5",
+        "R6",
+        "R7",
+        "R9"
+      ],
+      "review_status": "complete; freshly source-read in explicitly high context"
+    },
+    {
+      "path": "ai-platform/src/quota-do/coverage.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 634,
+      "end": 639,
+      "symbol": "findTermForGrant",
+      "primary_owner": "R4",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": [
+        "R5",
+        "R6",
+        "R7",
+        "R9"
+      ],
+      "review_status": "complete; freshly source-read in explicitly high context"
+    },
+    {
+      "path": "ai-platform/src/quota-do/coverage.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 640,
+      "end": 675,
+      "symbol": "emitCoverageEvent",
+      "primary_owner": "R4",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": [
+        "R5",
+        "R6",
+        "R7",
+        "R9"
+      ],
+      "review_status": "complete; freshly source-read in explicitly high context"
+    },
+    {
+      "path": "ai-platform/src/quota-do/coverage.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 676,
+      "end": 692,
+      "symbol": "scheduleCoverageAlarm",
+      "primary_owner": "R4",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": [
+        "R5",
+        "R6",
+        "R7",
+        "R9"
+      ],
+      "review_status": "complete; freshly source-read in explicitly high context"
+    },
+    {
+      "path": "ai-platform/src/quota-do/coverage.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 708,
+      "end": 723,
+      "symbol": "unscaledTermLengthDays",
+      "primary_owner": "R4",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": [
+        "R5",
+        "R6",
+        "R7",
+        "R9"
+      ],
+      "review_status": "complete; freshly source-read in explicitly high context"
+    },
+    {
+      "path": "ai-platform/src/quota-do/coverage.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 724,
+      "end": 737,
+      "symbol": "computeGraceAllowance",
+      "primary_owner": "R4",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": [
+        "R5",
+        "R6",
+        "R7",
+        "R9"
+      ],
+      "review_status": "complete; freshly source-read in explicitly high context"
+    },
+    {
+      "path": "ai-platform/src/quota-do/coverage.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 772,
+      "end": 780,
+      "symbol": "ApplyDueBoundariesInput",
+      "primary_owner": "R4",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": [
+        "R5",
+        "R6",
+        "R7",
+        "R9"
+      ],
+      "review_status": "complete; freshly source-read in explicitly high context"
+    },
+    {
+      "path": "ai-platform/src/quota-do/coverage.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 781,
+      "end": 809,
+      "symbol": "emitBoundaryCoverageEvent",
+      "primary_owner": "R4",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": [
+        "R5",
+        "R6",
+        "R7",
+        "R9"
+      ],
+      "review_status": "complete; freshly source-read in explicitly high context"
+    },
+    {
+      "path": "ai-platform/src/quota-do/coverage.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 810,
+      "end": 918,
+      "symbol": "applyDueBoundaries",
+      "primary_owner": "R4",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": [
+        "R5",
+        "R6",
+        "R7",
+        "R9"
+      ],
+      "review_status": "complete; freshly source-read in explicitly high context"
+    },
+    {
+      "path": "ai-platform/src/quota-do/coverage.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 919,
+      "end": 930,
+      "symbol": "countDoPaidGrantsLast24Hours",
+      "primary_owner": "R4",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": [
+        "R5",
+        "R6",
+        "R7",
+        "R9"
+      ],
+      "review_status": "complete; freshly source-read in explicitly high context"
+    },
+    {
+      "path": "ai-platform/src/quota-do/coverage.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 931,
+      "end": 945,
+      "symbol": "countD1PaidGrantsLastHour",
+      "primary_owner": "R4",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": [
+        "R5",
+        "R6",
+        "R7",
+        "R9"
+      ],
+      "review_status": "complete; freshly source-read in explicitly high context"
+    },
+    {
+      "path": "ai-platform/src/quota-do/coverage.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 1081,
+      "end": 1086,
+      "symbol": "WindowGrantRow",
+      "primary_owner": "R4",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": [
+        "R5",
+        "R6",
+        "R7",
+        "R9"
+      ],
+      "review_status": "complete; freshly source-read in explicitly high context"
+    },
+    {
+      "path": "ai-platform/src/quota-do/coverage.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 1087,
+      "end": 1102,
+      "symbol": "windowGrantRows",
+      "primary_owner": "R4",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": [
+        "R5",
+        "R6",
+        "R7",
+        "R9"
+      ],
+      "review_status": "complete; freshly source-read in explicitly high context"
+    },
+    {
+      "path": "ai-platform/src/quota-do/coverage.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 1103,
+      "end": 1145,
+      "symbol": "contributionFromGrantRow",
+      "primary_owner": "R4",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": [
+        "R5",
+        "R6",
+        "R7",
+        "R9"
+      ],
+      "review_status": "complete; freshly source-read in explicitly high context"
+    },
+    {
+      "path": "ai-platform/src/quota-do/coverage.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 1146,
+      "end": 1190,
+      "symbol": "grantExceedsCeiling",
+      "primary_owner": "R4",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": [
+        "R5",
+        "R6",
+        "R7",
+        "R9"
+      ],
+      "review_status": "complete; freshly source-read in explicitly high context"
+    },
+    {
+      "path": "ai-platform/src/quota-do/coverage.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 1191,
+      "end": 1206,
+      "symbol": "buildGrantAlertBody",
+      "primary_owner": "R4",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": [
+        "R5",
+        "R6",
+        "R7",
+        "R9"
+      ],
+      "review_status": "complete; freshly source-read in explicitly high context"
+    },
+    {
+      "path": "ai-platform/src/quota-do/coverage.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 1207,
+      "end": 1327,
+      "symbol": "finalizeGrantApply",
+      "primary_owner": "R4",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": [
+        "R5",
+        "R6",
+        "R7",
+        "R9"
+      ],
+      "review_status": "complete; freshly source-read in explicitly high context"
+    },
+    {
+      "path": "ai-platform/src/quota-do/coverage.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 1328,
+      "end": 1468,
+      "symbol": "applyComplimentaryTermGrant",
+      "primary_owner": "R4",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": [
+        "R5",
+        "R6",
+        "R7",
+        "R9"
+      ],
+      "review_status": "complete; freshly source-read in explicitly high context"
+    },
+    {
+      "path": "ai-platform/src/quota-do/coverage.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 1575,
+      "end": 1900,
+      "symbol": "applyGrantRPC",
+      "primary_owner": "R4",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": [
+        "R5",
+        "R6",
+        "R7",
+        "R9"
+      ],
+      "review_status": "complete; freshly source-read in explicitly high context"
+    },
+    {
+      "path": "ai-platform/src/quota-do/coverage.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 1916,
+      "end": 1922,
+      "symbol": "InspectCoverageRequest",
+      "primary_owner": "R4",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": [
+        "R5",
+        "R6",
+        "R7",
+        "R9"
+      ],
+      "review_status": "complete; freshly source-read in explicitly high context"
+    },
+    {
+      "path": "ai-platform/src/quota-do/coverage.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 1923,
+      "end": 1929,
+      "symbol": "InspectCoverageResponse",
+      "primary_owner": "R4",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": [
+        "R5",
+        "R6",
+        "R7",
+        "R9"
+      ],
+      "review_status": "complete; freshly source-read in explicitly high context"
+    },
+    {
+      "path": "ai-platform/src/quota-do/coverage.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 2007,
+      "end": 2034,
+      "symbol": "inspectCoverageRPC",
+      "primary_owner": "R4",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": [
+        "R5",
+        "R6",
+        "R7",
+        "R9"
+      ],
+      "review_status": "complete; freshly source-read in explicitly high context"
+    },
+    {
+      "path": "ai-platform/src/quota-do/coverage.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 2658,
+      "end": 2663,
+      "symbol": "ShippedCoverageAlert",
+      "primary_owner": "R4",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": [
+        "R5",
+        "R6",
+        "R7",
+        "R9"
+      ],
+      "review_status": "complete; freshly source-read in explicitly high context"
+    },
+    {
+      "path": "ai-platform/src/quota-do/coverage.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 2896,
+      "end": 2907,
+      "symbol": "graceAllowanceForPackage",
+      "primary_owner": "R4",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": [
+        "R5",
+        "R6",
+        "R7",
+        "R9"
+      ],
+      "review_status": "complete; freshly source-read in explicitly high context"
+    },
+    {
+      "path": "ai-platform/src/quota-do/coverage.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 3506,
+      "end": 3527,
+      "symbol": "applyUsageToDoTerm",
+      "primary_owner": "R4",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": [
+        "R5",
+        "R6",
+        "R7",
+        "R9"
+      ],
+      "review_status": "complete; freshly source-read in explicitly high context"
+    },
+    {
+      "path": "ai-platform/src/quota-do/index.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 434,
+      "end": 437,
+      "symbol": "hasCoverageHotRow",
+      "primary_owner": "R4",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": [
+        "R5",
+        "R6",
+        "R7",
+        "R9"
+      ],
+      "review_status": "complete; freshly source-read in explicitly high context"
+    },
+    {
+      "path": "ai-platform/src/quota-do/index.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 815,
+      "end": 816,
+      "symbol": "TermBandEmitted",
+      "primary_owner": "R4",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": [
+        "R5",
+        "R6",
+        "R7",
+        "R9"
+      ],
+      "review_status": "complete; freshly source-read in explicitly high context"
+    },
+    {
+      "path": "ai-platform/src/quota-do/index.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 854,
+      "end": 860,
+      "symbol": "termBandFlags",
+      "primary_owner": "R4",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": [
+        "R5",
+        "R6",
+        "R7",
+        "R9"
+      ],
+      "review_status": "complete; freshly source-read in explicitly high context"
+    },
+    {
+      "path": "ai-platform/src/quota-do/index.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 954,
+      "end": 978,
+      "symbol": "planSnapshotForTerm",
+      "primary_owner": "R4",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": [
+        "R5",
+        "R6",
+        "R7",
+        "R9"
+      ],
+      "review_status": "complete; freshly source-read in explicitly high context"
+    },
+    {
+      "path": "ai-platform/src/quota-do/index.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 995,
+      "end": 998,
+      "symbol": "activeOrGraceTerm",
+      "primary_owner": "R4",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": [
+        "R5",
+        "R6",
+        "R7",
+        "R9"
+      ],
+      "review_status": "complete; freshly source-read in explicitly high context"
+    },
+    {
+      "path": "ai-platform/src/quota-do/index.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 999,
+      "end": 1006,
+      "symbol": "lastEndedTerm",
+      "primary_owner": "R4",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": [
+        "R5",
+        "R6",
+        "R7",
+        "R9"
+      ],
+      "review_status": "complete; freshly source-read in explicitly high context"
+    },
+    {
+      "path": "ai-platform/src/quota-do/index.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 1007,
+      "end": 1029,
+      "symbol": "coverageLapseReason",
+      "primary_owner": "R4",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": [
+        "R5",
+        "R6",
+        "R7",
+        "R9"
+      ],
+      "review_status": "complete; freshly source-read in explicitly high context"
+    },
+    {
+      "path": "ai-platform/src/quota-do/index.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 1185,
+      "end": 1202,
+      "symbol": "activateSuccessorTerm",
+      "primary_owner": "R4",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": [
+        "R5",
+        "R6",
+        "R7",
+        "R9"
+      ],
+      "review_status": "complete; freshly source-read in explicitly high context"
+    },
+    {
+      "path": "ai-platform/src/quota-do/index.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 1922,
+      "end": 1979,
+      "symbol": "COVERAGE_DO_SCHEMA_STATEMENTS",
+      "primary_owner": "R4",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": [
+        "R5",
+        "R6",
+        "R7",
+        "R9"
+      ],
+      "review_status": "complete; freshly source-read in explicitly high context"
+    }
+  ],
+  "actual_source_ranges_read": {
+    "ai-platform/src/quota-do/coverage.ts": [
+      [
+        1,
+        460
+      ],
+      [
+        462,
+        542
+      ],
+      [
+        600,
+        1574
+      ],
+      [
+        1575,
+        1930
+      ],
+      [
+        2007,
+        2110
+      ],
+      [
+        2570,
+        2908
+      ],
+      [
+        3120,
+        3400
+      ],
+      [
+        3506,
+        3545
+      ],
+      [
+        4185,
+        4315
+      ]
+    ],
+    "ai-platform/src/quota-do/index.ts": [
+      [
+        400,
+        455
+      ],
+      [
+        800,
+        1210
+      ],
+      [
+        1211,
+        1565
+      ],
+      [
+        1900,
+        2005
+      ]
+    ],
+    "ai-platform/src/worker.ts": [
+      [
+        1690,
+        1795
+      ],
+      [
+        1840,
+        1905
+      ],
+      [
+        1995,
+        2090
+      ]
+    ],
+    "ai-platform/src/vendor/entrypoint.ts": [
+      [
+        3410,
+        3470
+      ],
+      [
+        3585,
+        3704
+      ],
+      [
+        4540,
+        4610
+      ]
+    ],
+    "ai-platform/src/coverage-read/index.ts": [
+      [
+        1,
+        145
+      ]
+    ],
+    "ai-platform/migrations/20261003140000_plan_version_paid_grant_coverage.sql": [
+      [
+        1,
+        90
+      ]
+    ],
+    "ai-platform/src/coverage/calendar.ts": [
+      [
+        1,
+        71
+      ]
+    ]
+  },
+  "escalation_dispositions": {
+    "067:2": "Service-key authorization is upstream; receiver consumes authorized request; coordinator/platform owns register/list/paid verification closure.",
+    "067:3": "DO stores immutable planSnapshot supplied by published-plan receiver; actual term consumer read. Upstream publish/retire and replay validation owned by platform reviewer.",
+    "067:4": "loadTerms position order; queued filter and recent descending max12/live-hot usage source verified; R7 owns actual external consumer freshness.",
+    "067:5": "Shipment produces exact grant ledger fields; listGrants consumer/filter owned by platform/coordinator, no full R8/R9 claim.",
+    "067:6": "Grant ledger D1 then distinct R2 .ndjson object before deleting outbox verified; void suffix seen supporting shipment only. Full rebuild R9.",
+    "067:7": "Paid event ordering term_ended,term_activated,grant_applied verified; immediate snapshots reflect intermediate transition states; post-grant wording ambiguity forwarded to coordinator/R7 without new finding.",
+    "067:8": "signReceipt canonical signing bytes and grantApplied clinic_seq linkage/source columns verified; caller cryptographic/business acceptance owned by coordinator.",
+    "067:9": "DO stores request.planSnapshot; index admission consumes capabilities/cost/concurrency and snapshot consumers read JSON; producer mapping at entrypoint3410 and3662 checked supporting.",
+    "067:11": "DO assumes upstream validated approvals; no separate DO human check. All-kind minimum producer/receiver closure owned by platform/coordinator.",
+    "067:12": "Reference-only transcription workflow; current amended requirements used, no excluded code inspected.",
+    "068:1": "calendar complete; UTC clamp/day/staging-unit behavior and direct grant/boundary callers verified. No harness analysis.",
+    "069:1": "Reference-only clock/test effect excluded. Runtime environment clock/scale dispatch incidentally read in worker; deployment isolation R9.",
+    "070:1": "Local per-grant and open-lower/closed-upper 90-day sums verified; adjustment contribution support read; D5 org-history defect, R2 canonical override-binding defect retained; complete control method R8.",
+    "073:1": "Queued and max12 recent producer shape verified; usage chooses hot for active ID else used_final. External API/desktop full flow R7.",
+    "079:1": "Paid DO receives immutable envelope and hashes it, sign receipt retains hash; operation approval producer/receiver coordinator/platform ownership.",
+    "079:2": "Coverage snapshot producer read; ABO subscription/payment notices and fallback consumer coordinator/R7 ownership, not credited here.",
+    "079:4": "DO signs applied receipt and stores replay copy; ABO verification/parking coordinator ownership; D1/D4 expose durability gaps.",
+    "079:6": "Paid operation approval validator upstream platform/coordinator ownership; no fabricated DO assertion validation.",
+    "083:1": "Supporting transferIn index0..length-1 creates deterministic transferGrantId and one imported term/grant per package element; full transfer correctness R6.",
+    "085:1": "DO receipt stored verbatim in outbox then D1/R2; reconciliation exact comparison owned by R9/coordinator; no reconciliation audit claimed."
+  },
+  "remaining": [],
+  "exclusions": [
+    "Tests, testkit, fixtures, harnesses, viewer correctness analysis",
+    "No tests/build/lint/campaign/service operations",
+    "No source edits, fixes, commits or checkout"
+  ],
+  "finding_ids": {
+    "R4-D1": "P1",
+    "R4-D2": "P1",
+    "R4-D3": "P1",
+    "R4-D4": "P1",
+    "R4-D5": "P2"
+  }
+}

@@ -1,0 +1,792 @@
+{
+  "target": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+  "reviewer": "gpt-6.1-sol",
+  "reasoning_effort": "high",
+  "primary_regions_read": [
+    {
+      "path": "abo/migrations/0005_reversal.sql",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 1,
+      "end": 10,
+      "symbol": "preamble / imports / shared declarations",
+      "primary_owner": "R6",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": [],
+      "assigned_reviewer": "lead_ops",
+      "read_status": "read"
+    },
+    {
+      "path": "abo/migrations/0005_reversal.sql",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 11,
+      "end": 17,
+      "symbol": "reversal_outcome",
+      "primary_owner": "R6",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": [],
+      "assigned_reviewer": "lead_ops",
+      "read_status": "read"
+    },
+    {
+      "path": "abo/migrations/0005_reversal.sql",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 18,
+      "end": 25,
+      "symbol": "finding",
+      "primary_owner": "R6",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": [],
+      "assigned_reviewer": "lead_ops",
+      "read_status": "read"
+    },
+    {
+      "path": "abo/migrations/0005_reversal.sql",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 26,
+      "end": 30,
+      "symbol": "inquiry_spend",
+      "primary_owner": "R6",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": [],
+      "assigned_reviewer": "lead_ops",
+      "read_status": "read"
+    },
+    {
+      "path": "abo/migrations/0005_reversal.sql",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 31,
+      "end": 36,
+      "symbol": "reversal_outcome_abort_update",
+      "primary_owner": "R6",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": [],
+      "assigned_reviewer": "lead_ops",
+      "read_status": "read"
+    },
+    {
+      "path": "abo/migrations/0005_reversal.sql",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 37,
+      "end": 42,
+      "symbol": "reversal_outcome_abort_delete",
+      "primary_owner": "R6",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": [],
+      "assigned_reviewer": "lead_ops",
+      "read_status": "read"
+    },
+    {
+      "path": "abo/migrations/0005_reversal.sql",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 43,
+      "end": 48,
+      "symbol": "finding_abort_update",
+      "primary_owner": "R6",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": [],
+      "assigned_reviewer": "lead_ops",
+      "read_status": "read"
+    },
+    {
+      "path": "abo/migrations/0005_reversal.sql",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 49,
+      "end": 53,
+      "symbol": "finding_abort_delete",
+      "primary_owner": "R6",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": [],
+      "assigned_reviewer": "lead_ops",
+      "read_status": "read"
+    },
+    {
+      "path": "abo/src/ops/index.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 1079,
+      "end": 1161,
+      "symbol": "handleHpReleasePayment",
+      "primary_owner": "R6",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": [
+        "R2",
+        "R3",
+        "R4",
+        "R8",
+        "R9"
+      ],
+      "assigned_reviewer": "lead_ops",
+      "read_status": "read"
+    },
+    {
+      "path": "abo/src/ops/index.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 1162,
+      "end": 1282,
+      "symbol": "handleHpManualChargeback",
+      "primary_owner": "R6",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": [
+        "R2",
+        "R3",
+        "R4",
+        "R8",
+        "R9"
+      ],
+      "assigned_reviewer": "lead_ops",
+      "read_status": "read"
+    },
+    {
+      "path": "abo/src/ops/index.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 1283,
+      "end": 1322,
+      "symbol": "deleteTenantEvidenceBodies",
+      "primary_owner": "R6",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": [
+        "R2",
+        "R3",
+        "R4",
+        "R8",
+        "R9"
+      ],
+      "assigned_reviewer": "lead_ops",
+      "read_status": "read"
+    },
+    {
+      "path": "abo/src/ops/index.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 1323,
+      "end": 1371,
+      "symbol": "handleHpEraseContact",
+      "primary_owner": "R6",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": [
+        "R2",
+        "R3",
+        "R4",
+        "R8",
+        "R9"
+      ],
+      "assigned_reviewer": "lead_ops",
+      "read_status": "read"
+    },
+    {
+      "path": "abo/src/ops/index.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 2096,
+      "end": 2096,
+      "symbol": "TRANSFER_LEASE_MS",
+      "primary_owner": "R6",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": [
+        "R2",
+        "R3",
+        "R4",
+        "R8",
+        "R9"
+      ],
+      "assigned_reviewer": "lead_ops",
+      "read_status": "read"
+    },
+    {
+      "path": "abo/src/ops/index.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 2097,
+      "end": 2098,
+      "symbol": "TRANSFER_BATCH_LIMIT",
+      "primary_owner": "R6",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": [
+        "R2",
+        "R3",
+        "R4",
+        "R8",
+        "R9"
+      ],
+      "assigned_reviewer": "lead_ops",
+      "read_status": "read"
+    },
+    {
+      "path": "abo/src/ops/index.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 2099,
+      "end": 2109,
+      "symbol": "TransferWorkRow",
+      "primary_owner": "R6",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": [
+        "R2",
+        "R3",
+        "R4",
+        "R8",
+        "R9"
+      ],
+      "assigned_reviewer": "lead_ops",
+      "read_status": "read"
+    },
+    {
+      "path": "abo/src/ops/index.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 2181,
+      "end": 2198,
+      "symbol": "transferGrantRequestCanonical",
+      "primary_owner": "R6",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": [
+        "R2",
+        "R3",
+        "R4",
+        "R8",
+        "R9"
+      ],
+      "assigned_reviewer": "lead_ops",
+      "read_status": "read"
+    },
+    {
+      "path": "abo/src/ops/index.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 2724,
+      "end": 2766,
+      "symbol": "handlePostSuspend",
+      "primary_owner": "R6",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": [
+        "R2",
+        "R3",
+        "R4",
+        "R8",
+        "R9"
+      ],
+      "assigned_reviewer": "lead_ops",
+      "read_status": "read"
+    },
+    {
+      "path": "abo/src/ops/index.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 2767,
+      "end": 2809,
+      "symbol": "handlePostResume",
+      "primary_owner": "R6",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": [
+        "R2",
+        "R3",
+        "R4",
+        "R8",
+        "R9"
+      ],
+      "assigned_reviewer": "lead_ops",
+      "read_status": "read"
+    },
+    {
+      "path": "abo/src/ops/index.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 2810,
+      "end": 2856,
+      "symbol": "handlePostListGrantsForVoid",
+      "primary_owner": "R6",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": [
+        "R2",
+        "R3",
+        "R4",
+        "R8",
+        "R9"
+      ],
+      "assigned_reviewer": "lead_ops",
+      "read_status": "read"
+    },
+    {
+      "path": "abo/src/ops/index.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 2857,
+      "end": 2913,
+      "symbol": "handlePostGrantHpRelay",
+      "primary_owner": "R6",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": [
+        "R2",
+        "R3",
+        "R4",
+        "R8",
+        "R9"
+      ],
+      "assigned_reviewer": "lead_ops",
+      "read_status": "read"
+    },
+    {
+      "path": "abo/src/ops/index.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 2914,
+      "end": 2964,
+      "symbol": "handlePostDeleteInstallation",
+      "primary_owner": "R6",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": [
+        "R2",
+        "R3",
+        "R4",
+        "R8",
+        "R9"
+      ],
+      "assigned_reviewer": "lead_ops",
+      "read_status": "read"
+    },
+    {
+      "path": "abo/src/ops/index.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 2965,
+      "end": 3050,
+      "symbol": "handlePostBeginTransfer",
+      "primary_owner": "R6",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": [
+        "R2",
+        "R3",
+        "R4",
+        "R8",
+        "R9"
+      ],
+      "assigned_reviewer": "lead_ops",
+      "read_status": "read"
+    },
+    {
+      "path": "abo/src/ops/index.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 3051,
+      "end": 3082,
+      "symbol": "takeTransferWork",
+      "primary_owner": "R6",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": [
+        "R2",
+        "R3",
+        "R4",
+        "R8",
+        "R9"
+      ],
+      "assigned_reviewer": "lead_ops",
+      "read_status": "read"
+    },
+    {
+      "path": "abo/src/ops/index.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 3083,
+      "end": 3094,
+      "symbol": "clearTransferLease",
+      "primary_owner": "R6",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": [
+        "R2",
+        "R3",
+        "R4",
+        "R8",
+        "R9"
+      ],
+      "assigned_reviewer": "lead_ops",
+      "read_status": "read"
+    },
+    {
+      "path": "abo/src/ops/index.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 3095,
+      "end": 3147,
+      "symbol": "writeTransferGrantRequests",
+      "primary_owner": "R6",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": [
+        "R2",
+        "R3",
+        "R4",
+        "R8",
+        "R9"
+      ],
+      "assigned_reviewer": "lead_ops",
+      "read_status": "read"
+    },
+    {
+      "path": "abo/src/ops/index.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 3148,
+      "end": 3160,
+      "symbol": "finishTransferStep",
+      "primary_owner": "R6",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": [
+        "R2",
+        "R3",
+        "R4",
+        "R8",
+        "R9"
+      ],
+      "assigned_reviewer": "lead_ops",
+      "read_status": "read"
+    },
+    {
+      "path": "abo/src/ops/index.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 3161,
+      "end": 3174,
+      "symbol": "reopenTransferStep",
+      "primary_owner": "R6",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": [
+        "R2",
+        "R3",
+        "R4",
+        "R8",
+        "R9"
+      ],
+      "assigned_reviewer": "lead_ops",
+      "read_status": "read"
+    },
+    {
+      "path": "abo/src/ops/index.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 3175,
+      "end": 3185,
+      "symbol": "transferOutPackageDetail",
+      "primary_owner": "R6",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": [
+        "R2",
+        "R3",
+        "R4",
+        "R8",
+        "R9"
+      ],
+      "assigned_reviewer": "lead_ops",
+      "read_status": "read"
+    },
+    {
+      "path": "abo/src/ops/index.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 3186,
+      "end": 3193,
+      "symbol": "transferOrgIdFromReceipt",
+      "primary_owner": "R6",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": [
+        "R2",
+        "R3",
+        "R4",
+        "R8",
+        "R9"
+      ],
+      "assigned_reviewer": "lead_ops",
+      "read_status": "read"
+    },
+    {
+      "path": "abo/src/ops/index.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 3194,
+      "end": 3267,
+      "symbol": "processTransferStepWork",
+      "primary_owner": "R6",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": [
+        "R2",
+        "R3",
+        "R4",
+        "R8",
+        "R9"
+      ],
+      "assigned_reviewer": "lead_ops",
+      "read_status": "read"
+    },
+    {
+      "path": "abo/src/ops/index.ts",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 3268,
+      "end": 3302,
+      "symbol": "runDueTransferSteps",
+      "primary_owner": "R6",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": [
+        "R2",
+        "R3",
+        "R4",
+        "R8",
+        "R9"
+      ],
+      "assigned_reviewer": "lead_ops",
+      "read_status": "read"
+    },
+    {
+      "path": "ai-platform/migrations/20261006140000_grant_void.sql",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 1,
+      "end": 8,
+      "symbol": "preamble / imports / shared declarations",
+      "primary_owner": "R6",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": [],
+      "assigned_reviewer": "lead_ops",
+      "read_status": "read"
+    },
+    {
+      "path": "ai-platform/migrations/20261006140000_grant_void.sql",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 9,
+      "end": 14,
+      "symbol": "grant_void_no_update",
+      "primary_owner": "R6",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": [],
+      "assigned_reviewer": "lead_ops",
+      "read_status": "read"
+    },
+    {
+      "path": "ai-platform/migrations/20261006140000_grant_void.sql",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 15,
+      "end": 19,
+      "symbol": "grant_void_no_delete",
+      "primary_owner": "R6",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": [],
+      "assigned_reviewer": "lead_ops",
+      "read_status": "read"
+    },
+    {
+      "path": "ai-platform/migrations/20261006150000_transfer.sql",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 1,
+      "end": 11,
+      "symbol": "preamble / imports / shared declarations",
+      "primary_owner": "R6",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": [],
+      "assigned_reviewer": "lead_ops",
+      "read_status": "read"
+    },
+    {
+      "path": "ai-platform/migrations/20261006150000_transfer.sql",
+      "revision": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+      "start": 12,
+      "end": 19,
+      "symbol": "transfer_step",
+      "primary_owner": "R6",
+      "changed": true,
+      "ownership_basis": "\u00a75 path/symbol routing; inventory assignment, not correctness evidence",
+      "supporting_consumers": [],
+      "assigned_reviewer": "lead_ops",
+      "read_status": "read"
+    }
+  ],
+  "supporting_reads": [
+    {
+      "path": "abo/src/ops/index.ts",
+      "start": 624,
+      "end": 787,
+      "purpose": "HP caller/replay, transfer facts and erased-contact gate"
+    },
+    {
+      "path": "abo/src/ops/index.ts",
+      "start": 864,
+      "end": 881,
+      "purpose": "HP caller/replay, transfer facts and erased-contact gate"
+    },
+    {
+      "path": "abo/src/ops/index.ts",
+      "start": 1372,
+      "end": 1402,
+      "purpose": "HP caller/replay, transfer facts and erased-contact gate"
+    },
+    {
+      "path": "abo/src/ops/index.ts",
+      "start": 2110,
+      "end": 2142,
+      "purpose": "HP caller/replay, transfer facts and erased-contact gate"
+    },
+    {
+      "path": "abo/src/ops/index.ts",
+      "start": 2199,
+      "end": 2217,
+      "purpose": "HP caller/replay, transfer facts and erased-contact gate"
+    },
+    {
+      "path": "abo/src/ops/index.ts",
+      "start": 3411,
+      "end": 3448,
+      "purpose": "HP caller/replay, transfer facts and erased-contact gate"
+    },
+    {
+      "path": "abo/src/clinic-api/checkouts.ts",
+      "start": 172,
+      "end": 190,
+      "purpose": "HP caller/replay, transfer facts and erased-contact gate"
+    },
+    {
+      "path": "abo/src/work/runner.ts",
+      "start": 612,
+      "end": 650,
+      "purpose": "raw evidence R2/D1 retention ordering"
+    },
+    {
+      "path": "abo/src/notify/intake.ts",
+      "start": 350,
+      "end": 425,
+      "purpose": "late authentic callback raw-body persistence"
+    },
+    {
+      "path": "ai-platform/src/quota-do/coverage.ts",
+      "start": 2316,
+      "end": 2423,
+      "purpose": "targeted lead verification release-grace and mutation-before-receipt"
+    },
+    {
+      "path": "ai-platform/src/quota-do/coverage.ts",
+      "start": 2910,
+      "end": 2942,
+      "purpose": "targeted lead conservation proof"
+    },
+    {
+      "path": "ai-platform/src/quota-do/coverage.ts",
+      "start": 2965,
+      "end": 3044,
+      "purpose": "targeted lead step replay proof"
+    },
+    {
+      "path": "ai-platform/src/quota-do/coverage.ts",
+      "start": 3139,
+      "end": 3205,
+      "purpose": "targeted lead import counters and partial-write proof"
+    },
+    {
+      "path": "abo/src/provider/paymob/adapter.ts",
+      "start": 418,
+      "end": 455,
+      "purpose": "targeted synthesis verification; primary ownership not duplicated"
+    },
+    {
+      "path": "abo/src/provider/paymob/adapter.ts",
+      "start": 525,
+      "end": 550,
+      "purpose": "targeted synthesis verification; primary ownership not duplicated"
+    },
+    {
+      "path": "abo/src/work/reversal.ts",
+      "start": 511,
+      "end": 573,
+      "purpose": "targeted synthesis verification; primary ownership not duplicated"
+    },
+    {
+      "path": "abo/src/work/reversal.ts",
+      "start": 674,
+      "end": 700,
+      "purpose": "targeted synthesis verification; primary ownership not duplicated"
+    },
+    {
+      "path": "abo/src/work/inquiry-budget.ts",
+      "start": 90,
+      "end": 112,
+      "purpose": "targeted synthesis verification; primary ownership not duplicated"
+    },
+    {
+      "path": "abo/src/work/sweep.ts",
+      "start": 659,
+      "end": 710,
+      "purpose": "targeted synthesis verification; primary ownership not duplicated"
+    },
+    {
+      "path": "ai-platform/src/coverage/transfer.ts",
+      "start": 231,
+      "end": 309,
+      "purpose": "targeted synthesis verification; primary ownership not duplicated"
+    },
+    {
+      "path": "ai-platform/src/coverage/transfer.ts",
+      "start": 580,
+      "end": 722,
+      "purpose": "targeted synthesis verification; primary ownership not duplicated"
+    },
+    {
+      "path": "ai-platform/src/vendor/entrypoint.ts",
+      "start": 4005,
+      "end": 4145,
+      "purpose": "targeted synthesis verification; primary ownership not duplicated"
+    },
+    {
+      "path": "ai-platform/src/quota-do/coverage.ts",
+      "start": 1930,
+      "end": 2006,
+      "purpose": "targeted synthesis verification; primary ownership not duplicated"
+    },
+    {
+      "path": "ai-platform/src/quota-do/coverage.ts",
+      "start": 2140,
+      "end": 2272,
+      "purpose": "targeted synthesis verification; primary ownership not duplicated"
+    },
+    {
+      "path": "ai-platform/src/quota-do/coverage.ts",
+      "start": 2424,
+      "end": 2475,
+      "purpose": "targeted synthesis verification; primary ownership not duplicated"
+    },
+    {
+      "path": "ai-platform/src/quota-do/coverage.ts",
+      "start": 2500,
+      "end": 2551,
+      "purpose": "targeted synthesis verification; primary ownership not duplicated"
+    },
+    {
+      "path": "ai-platform/src/coverage/transfer.ts",
+      "start": 335,
+      "end": 409,
+      "purpose": "targeted synthesis verification; primary ownership not duplicated"
+    },
+    {
+      "path": "ai-platform/src/coverage/transfer.ts",
+      "start": 437,
+      "end": 501,
+      "purpose": "targeted synthesis verification; primary ownership not duplicated"
+    },
+    {
+      "path": "ai-platform/src/coverage/transfer.ts",
+      "start": 723,
+      "end": 750,
+      "purpose": "targeted synthesis verification; primary ownership not duplicated"
+    }
+  ],
+  "unread_primary": [],
+  "scope_limit": "Primary fully closed; supporting reads for targeted synthesis only; no excluded implementation/source edits/execution.",
+  "status": "complete with findings"
+}

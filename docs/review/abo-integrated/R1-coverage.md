@@ -1,0 +1,12 @@
+# R1 aggregate coverage
+
+Target `db9244fddfddc1905335fb8c7105328c15a0cc5e`. 2026-10-16 Africa/Cairo. Status: complete with findings (0 P0, 5 P1, 4 P2).
+
+- [Primary SQL actual ranges](R1-sql-coverage.md): six entire primary migration files, 5,261 physical lines, plus final issuer/status/permission/supporting definitions and the now-closed inherited continuation.
+- [Consumer actual ranges](R1-consumer-coverage.md): every remaining R1 manifest region, actual AI/billing/feed verifier callers, tenant receivers, registry dependencies and Dart token composition/lifetime. Supporting source is not counted as completion of another phase.
+- [Inherited dependency actual ranges](R1-sql-dependencies-coverage.md): schema/RLS/trigger/callee/wrapper/grant authority surface inherited by the P1 retrofit; all five former closure items are complete, including final callees/wrappers/ACLs, patient overloads, billing guard prefixes and schema/storage lineage.
+- Coordinator verification: full `abo/src/clinic-api/auth.ts`, `ai-platform/src/identity/index.ts`, shared `token-claims.ts`, Dart billing/AAT mint clients; worker feed verifier 2180–2255; issuer registration 2193–2316 and identity schema; current-org/role helpers 201–317, staff RLS841–858 and permission1948–1994/2113–2148 in tenant migrations; final AI mint964–1136, canonical billing full; prior broad table grant1–65; final appointment23–62, billing3–75 and service122–138 permission helpers; final staff deactivate216–284; production staff repository SELECT/RPC callers1–90/175–210, provisioning30–65 and session loader45–70.
+
+Ownership/navigation total is 7,167 assigned physical primary lines; read manifests, rather than this count, establish coverage. Supporting inherited authority expansion required the third fresh context. Metadata-only declaration/import searches are not body-read claims. No R2–R10 phase was executed; shared helpers were read only for R1 authority.
+
+[Canonical final synthesis](R1-tenant-identity-authorization.md) reconciles all three assignments, names five shared and nine inline SQL05 readers, ranks SQL04 P2 and preserves SQL03 associations. No unresolved R1 source-coverage item remains. External ownership/default ACL/schema privileges/environment are static limits; SQL02 approved per-org mapping is a remedy decision. Historical subreport checkpoint text is superseded by this completion record and canonical remedies.

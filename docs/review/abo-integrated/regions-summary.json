@@ -1,0 +1,41 @@
+{
+  "target": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+  "counts": {
+    "R9": {
+      "supporting runtime artifact": 13800,
+      "primary source": 7781
+    },
+    "R3": {
+      "primary source": 6276
+    },
+    "R4": {
+      "primary source": 4011
+    },
+    "R6": {
+      "primary source": 6044
+    },
+    "R8": {
+      "primary source": 4469,
+      "deleted": 1951
+    },
+    "R1": {
+      "primary source": 7167
+    },
+    "R7": {
+      "primary source": 7969
+    },
+    "R2": {
+      "primary source": 3885
+    },
+    "R5": {
+      "primary source": 10234,
+      "deleted": 303
+    }
+  },
+  "candidate_counts": {
+    "reference": 351,
+    "supporting runtime artifact": 15,
+    "excluded": 659,
+    "primary source": 155
+  }
+}

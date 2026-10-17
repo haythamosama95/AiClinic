@@ -1,0 +1,371 @@
+{
+  "target": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+  "baseline": "c6cf2c3809a38e2a348f373e926cf2585cfcf291",
+  "history": "d2e7666f59d8ea7b37a5e05fae89f34d96ba1a3f",
+  "date": "2026-10-17",
+  "reviewer": {
+    "model": "gpt-6.1-sol",
+    "reasoning_effort": "high",
+    "explicitly_configured": true
+  },
+  "status": "complete with findings",
+  "scope": "Owned R4 vendor entrypoint grant/plan/binding/idempotency regions and platform D1 plan/grant/coverage migration; supporting precise actual source only.",
+  "primary": [
+    {
+      "path": "ai-platform/src/vendor/entrypoint.ts",
+      "ranges": [
+        [
+          157,
+          170
+        ],
+        [
+          370,
+          450
+        ],
+        [
+          532,
+          547
+        ],
+        [
+          603,
+          675
+        ],
+        [
+          1452,
+          1518
+        ],
+        [
+          1594,
+          1638
+        ],
+        [
+          1842,
+          1857
+        ],
+        [
+          2766,
+          2998
+        ],
+        [
+          3113,
+          3704
+        ]
+      ],
+      "status": "read complete"
+    },
+    {
+      "path": "ai-platform/migrations/20261003140000_plan_version_paid_grant_coverage.sql",
+      "ranges": [
+        [
+          1,
+          90
+        ]
+      ],
+      "status": "read complete"
+    }
+  ],
+  "supporting": [
+    {
+      "path": "ai-platform/src/vendor/entrypoint.ts",
+      "ranges": [
+        [
+          1,
+          145
+        ],
+        [
+          174,
+          229
+        ],
+        [
+          451,
+          531
+        ],
+        [
+          548,
+          602
+        ],
+        [
+          676,
+          710
+        ],
+        [
+          765,
+          854
+        ],
+        [
+          865,
+          1451
+        ],
+        [
+          4391,
+          4453
+        ],
+        [
+          4597,
+          4665
+        ]
+      ],
+      "status": "read supporting only"
+    },
+    {
+      "path": "ai-platform/migrations/20261003130000_issuer_key_tenant_binding.sql",
+      "ranges": [
+        [
+          1,
+          41
+        ]
+      ],
+      "status": "read supporting only"
+    },
+    {
+      "path": "packages/vendor-contracts/src/grant-envelope.ts",
+      "ranges": [
+        [
+          1,
+          372
+        ]
+      ],
+      "status": "read supporting only"
+    },
+    {
+      "path": "packages/vendor-contracts/src/receipt.ts",
+      "ranges": [
+        [
+          1,
+          182
+        ]
+      ],
+      "status": "read supporting only"
+    },
+    {
+      "path": "packages/vendor-contracts/src/operation.ts",
+      "ranges": [
+        [
+          1,
+          65
+        ]
+      ],
+      "status": "read supporting only"
+    },
+    {
+      "path": "packages/vendor-contracts/src/version.ts",
+      "ranges": [
+        [
+          1,
+          43
+        ]
+      ],
+      "status": "read supporting only"
+    },
+    {
+      "path": "packages/vendor-contracts/src/identifiers.ts",
+      "ranges": [
+        [
+          70,
+          97
+        ]
+      ],
+      "status": "read supporting only"
+    },
+    {
+      "path": "ai-platform/src/quota-do/coverage.ts",
+      "ranges": [
+        [
+          512,
+          542
+        ],
+        [
+          1207,
+          1327
+        ],
+        [
+          1575,
+          1668
+        ],
+        [
+          1825,
+          1858
+        ],
+        [
+          2007,
+          2034
+        ],
+        [
+          2664,
+          2753
+        ],
+        [
+          2790,
+          2820
+        ],
+        [
+          3000,
+          3035
+        ],
+        [
+          3140,
+          3260
+        ]
+      ],
+      "status": "read supporting only"
+    },
+    {
+      "path": "ai-platform/src/quota-do/index.ts",
+      "ranges": [
+        [
+          1922,
+          1980
+        ]
+      ],
+      "status": "read supporting only"
+    },
+    {
+      "path": "ai-platform/src/worker.ts",
+      "ranges": [
+        [
+          1785,
+          1905
+        ],
+        [
+          2515,
+          2603
+        ]
+      ],
+      "status": "read supporting only"
+    },
+    {
+      "path": "ai-platform/src/coverage/transfer.ts",
+      "ranges": [
+        [
+          617,
+          718
+        ]
+      ],
+      "status": "read supporting only"
+    },
+    {
+      "path": "abo/src/work/grant.ts",
+      "ranges": [
+        [
+          400,
+          495
+        ],
+        [
+          650,
+          925
+        ]
+      ],
+      "status": "read supporting only"
+    },
+    {
+      "path": "abo/src/ops/index.ts",
+      "ranges": [
+        [
+          2653,
+          2723
+        ]
+      ],
+      "status": "read supporting only"
+    }
+  ],
+  "primary_inclusive_lines": 1227,
+  "unread_owned_regions": [],
+  "remaining_work": "No owned production source or fix-recipe work remains. Coordinator integration/deduplication only; sibling lifecycle and ABO primary review are distinct assignments.",
+  "escalations": [
+    {
+      "id": "067:2",
+      "disposition": "Platform grant consumes named active, finite service-key validity and verifies exact signed payload; unknown kid transient. Producer/rotation registry canonical R2/R8; ABO signing gate coordinator."
+    },
+    {
+      "id": "067:3",
+      "disposition": "Owned publish/retire paths fully read: content idempotence, conflict, status-only retirement, snapshot copy. Completed replay versus retirement conflict captured in PG1."
+    },
+    {
+      "id": "067:4",
+      "disposition": "No additional vendor write-side rule; DO queued/recent producer lifecycle sibling and API/display consumers R7. Assigned platform write path closed."
+    },
+    {
+      "id": "067:5",
+      "disposition": "Supporting listGrants filters and row/receipt output read; credential filter qualified by PG4; DO mirror identity qualified by PG1."
+    },
+    {
+      "id": "067:6",
+      "disposition": "Actual D1-to-R2 shipping row shape read, grant object unchanged. PG1 captures silent duplicate identity masking. Rebuild consumer remains R9."
+    },
+    {
+      "id": "067:7",
+      "disposition": "Vendor dispatch established; exact event ordering/application transaction sibling ownership. No lifecycle completion inferred here."
+    },
+    {
+      "id": "067:8",
+      "disposition": "Actual DO signer fields/JWS receipt bytes and grant ledger-sequence source read; exact ordering sibling. ABO signature/outcome equality coordinator. No new crypto finding."
+    },
+    {
+      "id": "067:9",
+      "disposition": "Owned plan snapshot object and capabilities copy checked at both grant branches; DO stores supplied JSON, later uses sibling/R5."
+    },
+    {
+      "id": "067:11",
+      "disposition": "Shared validator and both vendor paths enforce nonempty approvals; paid exact approvals_required. Complimentary generic validator failure maps to unit_not_allowed; noted as bounded error-code mismatch, no value bypass. Exact absence case not a new major root."
+    },
+    {
+      "id": "067:12",
+      "disposition": "Reference-only transcription instruction; no independent source effect or excluded implementation inspected."
+    },
+    {
+      "id": "068:1",
+      "disposition": "Source calendar restore/import behavior is lifecycle sibling ownership; harness instructions excluded. No calendar coverage claimed by this subreview."
+    },
+    {
+      "id": "069:1",
+      "disposition": "Reference-only test-clock sequencing; excluded test/harness implementation not inspected."
+    },
+    {
+      "id": "070:1",
+      "disposition": "Vendor greatest-version policy read and fields passed to DO; rolling-window calculation/adjustment effects sibling/R6; second override remains canonical R2-P2."
+    },
+    {
+      "id": "073:1",
+      "disposition": "Write-side plan snapshot stable; queued/recent payload producer lifecycle sibling and API/display R7; not inferred reviewed here."
+    },
+    {
+      "id": "079:1",
+      "disposition": "Actual ABO paid operation approval builder400\u2013475 read, shared acceptance and paid vendor consumer traced. No WebAuthn required; exact builder shape matches amendment."
+    },
+    {
+      "id": "079:2",
+      "disposition": "No new vendor write-side rule. Subscription/payment live/fallback and payment-history consumer work coordinator/R7; source response shape not claimed by this subreview."
+    },
+    {
+      "id": "079:4",
+      "disposition": "ABO actual unverifiable signature branch789\u2013800 parks without outcome; signer/receipt handoff read. Receipt identity checking is coordinator finding; platform transport classification PG2."
+    },
+    {
+      "id": "079:6",
+      "disposition": "Full shared grant-envelope validator read; paid operation-object approvals accepted; complimentary generic credential/assertion shape retained. Actual signer lineage mismatch PG4."
+    },
+    {
+      "id": "083:1",
+      "disposition": "Identifier helper and DO transfer import zero-based loop/read supporting lineage confirm per-package deterministic IDs distinct from original grant; PG1 global replay consequence. ABO transfer request rows R6/coordinator."
+    },
+    {
+      "id": "085:1",
+      "disposition": "listGrants original receipt mirror/source checked and PG1 discrepancy consequence. Actual receipt_mismatch reconciliation consumer R9; no reconciliation algorithm review claimed."
+    }
+  ],
+  "findings": [
+    "R4-PG1",
+    "R4-PG2",
+    "R4-PG3",
+    "R4-PG4"
+  ],
+  "inherited_roots": [
+    "R1-C2",
+    "R2-P2",
+    "R2-C2",
+    "R2-C3",
+    "R3-C5",
+    "R3-C6"
+  ],
+  "exclusions": "No tests, testkit, fixtures, harnesses, vectors, campaigns or viewer implementation reviewed; no tests/builds/lint/services/provider calls. Source unchanged."
+}

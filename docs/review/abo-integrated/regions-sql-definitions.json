@@ -1,0 +1,1030 @@
+{
+  "target": "db9244fddfddc1905335fb8c7105328c15a0cc5e",
+  "baseline": "c6cf2c3809a38e2a348f373e926cf2585cfcf291",
+  "scope": "Production backend migration function declarations matching changed function names",
+  "definitions": [
+    {
+      "path": "backend/supabase/migrations/20260516100200_auth_rbac_rls.sql",
+      "line": 59,
+      "name": "public.jwt_organization_id",
+      "arguments": "",
+      "changed": false
+    },
+    {
+      "path": "backend/supabase/migrations/20260516100200_auth_rbac_rls.sql",
+      "line": 69,
+      "name": "public.jwt_branch_ids",
+      "arguments": "",
+      "changed": false
+    },
+    {
+      "path": "backend/supabase/migrations/20260516100300_auth_rbac_functions.sql",
+      "line": 80,
+      "name": "public.get_custom_claims",
+      "arguments": "p_user_id uuid",
+      "changed": false
+    },
+    {
+      "path": "backend/supabase/migrations/20260516100300_auth_rbac_functions.sql",
+      "line": 96,
+      "name": "public.get_custom_claims",
+      "arguments": "event jsonb",
+      "changed": false
+    },
+    {
+      "path": "backend/supabase/migrations/20260516100300_auth_rbac_functions.sql",
+      "line": 129,
+      "name": "public.rpc_success",
+      "arguments": "p_data jsonb DEFAULT '{}'::jsonb",
+      "changed": false
+    },
+    {
+      "path": "backend/supabase/migrations/20260516100300_auth_rbac_functions.sql",
+      "line": 137,
+      "name": "public.rpc_error",
+      "arguments": "p_code text, p_message text",
+      "changed": false
+    },
+    {
+      "path": "backend/supabase/migrations/20260521110000_auth_rbac_definer_internal_schema.sql",
+      "line": 228,
+      "name": "auth_internal.bootstrap_create_organization",
+      "arguments": "p_name text, p_settings_json jsonb DEFAULT '{}'::jsonb, p_logo_url text DEFAULT NULL, p_currency_code text DEFAULT NULL, p_timezone text DEFAULT NULL",
+      "changed": false
+    },
+    {
+      "path": "backend/supabase/migrations/20260521110000_auth_rbac_definer_internal_schema.sql",
+      "line": 298,
+      "name": "auth_internal.bootstrap_create_branch",
+      "arguments": "p_organization_id uuid, p_name text, p_address text DEFAULT NULL, p_phone text DEFAULT NULL, p_code text DEFAULT NULL, p_maps_url text DEFAULT NULL",
+      "changed": false
+    },
+    {
+      "path": "backend/supabase/migrations/20260521110000_auth_rbac_definer_internal_schema.sql",
+      "line": 397,
+      "name": "auth_internal.create_staff_account",
+      "arguments": "p_email text, p_password text, p_full_name text, p_role public.staff_role, p_branch_ids uuid[], p_primary_branch_id uuid DEFAULT NULL",
+      "changed": false
+    },
+    {
+      "path": "backend/supabase/migrations/20260521110000_auth_rbac_definer_internal_schema.sql",
+      "line": 636,
+      "name": "public.get_custom_claims",
+      "arguments": "p_user_id uuid",
+      "changed": false
+    },
+    {
+      "path": "backend/supabase/migrations/20260521110000_auth_rbac_definer_internal_schema.sql",
+      "line": 646,
+      "name": "public.get_custom_claims",
+      "arguments": "event jsonb",
+      "changed": false
+    },
+    {
+      "path": "backend/supabase/migrations/20260521190000_staff_username_auth.sql",
+      "line": 120,
+      "name": "auth_internal.create_staff_account",
+      "arguments": "p_username text, p_password text, p_full_name text, p_role public.staff_role, p_branch_ids uuid[], p_primary_branch_id uuid DEFAULT NULL",
+      "changed": false
+    },
+    {
+      "path": "backend/supabase/migrations/20260522100000_org_branch_management.sql",
+      "line": 14,
+      "name": "auth_internal.assert_permission",
+      "arguments": "p_permission_key text",
+      "changed": false
+    },
+    {
+      "path": "backend/supabase/migrations/20260522100000_org_branch_management.sql",
+      "line": 621,
+      "name": "auth_internal.update_role_permission",
+      "arguments": "p_role public.staff_role, p_permission_key text, p_is_granted boolean",
+      "changed": false
+    },
+    {
+      "path": "backend/supabase/migrations/20260523120000_fix_role_permission_admin_access.sql",
+      "line": 9,
+      "name": "auth_internal.update_role_permission",
+      "arguments": "p_role public.staff_role, p_permission_key text, p_is_granted boolean",
+      "changed": false
+    },
+    {
+      "path": "backend/supabase/migrations/20260523140000_patient_management.sql",
+      "line": 515,
+      "name": "auth_internal.create_patient",
+      "arguments": "p_active_branch_id uuid, p_full_name text, p_phone text DEFAULT NULL, p_date_of_birth date DEFAULT NULL, p_gender text DEFAULT NULL, p_national_id text DEFAULT NULL, p_notes text DEFAULT NULL, p_acknowledge_duplicate boolean DEFAULT false",
+      "changed": false
+    },
+    {
+      "path": "backend/supabase/migrations/20260523140000_patient_management.sql",
+      "line": 671,
+      "name": "auth_internal.update_patient",
+      "arguments": "p_patient_id uuid, p_full_name text, p_expected_updated_at timestamptz, p_phone text DEFAULT NULL, p_date_of_birth date DEFAULT NULL, p_gender text DEFAULT NULL, p_national_id text DEFAULT NULL, p_notes text DEFAULT NULL, p_acknowledge_duplicate boolean DEFAULT false",
+      "changed": false
+    },
+    {
+      "path": "backend/supabase/migrations/20260523140100_fix_update_patient_preserve_gender.sql",
+      "line": 2,
+      "name": "auth_internal.update_patient",
+      "arguments": "p_patient_id uuid, p_full_name text, p_expected_updated_at timestamptz, p_phone text DEFAULT NULL, p_date_of_birth date DEFAULT NULL, p_gender text DEFAULT NULL, p_national_id text DEFAULT NULL, p_notes text DEFAULT NULL, p_acknowledge_duplicate boolean DEFAULT false",
+      "changed": false
+    },
+    {
+      "path": "backend/supabase/migrations/20260523150000_patient_registration_fields.sql",
+      "line": 298,
+      "name": "auth_internal.create_patient",
+      "arguments": "p_active_branch_id uuid, p_full_name text, p_phone text, p_date_of_birth date DEFAULT NULL, p_gender text DEFAULT NULL, p_marital_status text DEFAULT NULL, p_notes text DEFAULT NULL, p_acknowledge_duplicate boolean DEFAULT false",
+      "changed": false
+    },
+    {
+      "path": "backend/supabase/migrations/20260523150000_patient_registration_fields.sql",
+      "line": 458,
+      "name": "auth_internal.update_patient",
+      "arguments": "p_patient_id uuid, p_full_name text, p_expected_updated_at timestamptz, p_phone text DEFAULT NULL, p_date_of_birth date DEFAULT NULL, p_gender text DEFAULT NULL, p_marital_status text DEFAULT NULL, p_notes text DEFAULT NULL, p_acknowledge_duplicate boolean DEFAULT false",
+      "changed": false
+    },
+    {
+      "path": "backend/supabase/migrations/20260524120000_fix_patient_clearable_fields.sql",
+      "line": 15,
+      "name": "auth_internal.update_patient",
+      "arguments": "p_patient_id uuid, p_full_name text, p_expected_updated_at timestamptz, p_phone text DEFAULT NULL, p_date_of_birth date DEFAULT NULL, p_gender text DEFAULT NULL, p_marital_status text DEFAULT NULL, p_notes text DEFAULT NULL, p_acknowledge_duplicate boolean DEFAULT false, p_clear_gender boolean DEFAULT false, p_clear_date_of_birth boolean DEFAULT false, p_clear_marital_status boolean DEFAULT false, p_clear_notes boolean DEFAULT false",
+      "changed": false
+    },
+    {
+      "path": "backend/supabase/migrations/20260525120100_fix_remove_plaintext_password_from_responses.sql",
+      "line": 3,
+      "name": "auth_internal.create_staff_account",
+      "arguments": "p_username text, p_password text, p_full_name text, p_role public.staff_role, p_branch_ids uuid[], p_primary_branch_id uuid DEFAULT NULL",
+      "changed": false
+    },
+    {
+      "path": "backend/supabase/migrations/20260525120300_fix_password_complexity_validation.sql",
+      "line": 28,
+      "name": "auth_internal.create_staff_account",
+      "arguments": "p_username text, p_password text, p_full_name text, p_role public.staff_role, p_branch_ids uuid[], p_primary_branch_id uuid DEFAULT NULL",
+      "changed": false
+    },
+    {
+      "path": "backend/supabase/migrations/20260525120400_fix_patient_phone_index.sql",
+      "line": 9,
+      "name": "auth_internal.create_patient",
+      "arguments": "p_active_branch_id uuid, p_full_name text, p_phone text, p_date_of_birth date DEFAULT NULL, p_gender text DEFAULT NULL, p_marital_status text DEFAULT NULL, p_notes text DEFAULT NULL, p_acknowledge_duplicate boolean DEFAULT false",
+      "changed": false
+    },
+    {
+      "path": "backend/supabase/migrations/20260525121200_fix_backend_test_alignment.sql",
+      "line": 220,
+      "name": "auth_internal.update_patient",
+      "arguments": "p_patient_id uuid, p_full_name text, p_expected_updated_at timestamptz, p_phone text DEFAULT NULL, p_date_of_birth date DEFAULT NULL, p_gender text DEFAULT NULL, p_marital_status text DEFAULT NULL, p_notes text DEFAULT NULL, p_acknowledge_duplicate boolean DEFAULT false",
+      "changed": false
+    },
+    {
+      "path": "backend/supabase/migrations/20260526140000_appointment_management.sql",
+      "line": 222,
+      "name": "auth_internal.assert_appointment_branch",
+      "arguments": "p_branch_id uuid",
+      "changed": false
+    },
+    {
+      "path": "backend/supabase/migrations/20260526140000_appointment_management.sql",
+      "line": 457,
+      "name": "auth_internal.get_appointment_settings",
+      "arguments": "p_branch_id uuid",
+      "changed": false
+    },
+    {
+      "path": "backend/supabase/migrations/20260526140000_appointment_management.sql",
+      "line": 568,
+      "name": "auth_internal.create_appointment",
+      "arguments": "p_branch_id uuid, p_patient_id uuid, p_doctor_id uuid, p_type text, p_start_time timestamptz DEFAULT NULL, p_duration_minutes int DEFAULT NULL, p_end_time timestamptz DEFAULT NULL, p_notes text DEFAULT NULL",
+      "changed": false
+    },
+    {
+      "path": "backend/supabase/migrations/20260527170000_optional_appointment_doctor.sql",
+      "line": 33,
+      "name": "auth_internal.create_appointment",
+      "arguments": "p_branch_id uuid, p_patient_id uuid, p_doctor_id uuid, p_type text, p_start_time timestamptz DEFAULT NULL, p_duration_minutes int DEFAULT NULL, p_end_time timestamptz DEFAULT NULL, p_notes text DEFAULT NULL",
+      "changed": false
+    },
+    {
+      "path": "backend/supabase/migrations/20260528100000_walkin_doctor_optional.sql",
+      "line": 2,
+      "name": "auth_internal.create_appointment",
+      "arguments": "p_branch_id uuid, p_patient_id uuid, p_doctor_id uuid, p_type text, p_start_time timestamptz DEFAULT NULL, p_duration_minutes int DEFAULT NULL, p_end_time timestamptz DEFAULT NULL, p_notes text DEFAULT NULL",
+      "changed": false
+    },
+    {
+      "path": "backend/supabase/migrations/20260528150500_appointment_slot_and_patient_day_conflicts.sql",
+      "line": 138,
+      "name": "auth_internal.create_appointment",
+      "arguments": "p_branch_id uuid, p_patient_id uuid, p_doctor_id uuid, p_type text, p_start_time timestamptz DEFAULT NULL, p_duration_minutes int DEFAULT NULL, p_end_time timestamptz DEFAULT NULL, p_notes text DEFAULT NULL",
+      "changed": false
+    },
+    {
+      "path": "backend/supabase/migrations/20260528153000_enforce_appointment_branch_working_hours.sql",
+      "line": 196,
+      "name": "auth_internal.create_appointment",
+      "arguments": "p_branch_id uuid, p_patient_id uuid, p_doctor_id uuid, p_type text, p_start_time timestamptz DEFAULT NULL, p_duration_minutes int DEFAULT NULL, p_end_time timestamptz DEFAULT NULL, p_notes text DEFAULT NULL",
+      "changed": false
+    },
+    {
+      "path": "backend/supabase/migrations/20260528160000_appointment_confirmed_remove_walkin.sql",
+      "line": 8,
+      "name": "auth_internal.create_appointment",
+      "arguments": "p_branch_id uuid, p_patient_id uuid, p_doctor_id uuid, p_type text, p_start_time timestamptz DEFAULT NULL, p_duration_minutes int DEFAULT NULL, p_end_time timestamptz DEFAULT NULL, p_notes text DEFAULT NULL",
+      "changed": false
+    },
+    {
+      "path": "backend/supabase/migrations/20260531120000_remove_appointment_walk_in_type.sql",
+      "line": 24,
+      "name": "auth_internal.create_appointment",
+      "arguments": "p_branch_id uuid, p_patient_id uuid, p_doctor_id uuid, p_type text, p_start_time timestamptz DEFAULT NULL, p_duration_minutes int DEFAULT NULL, p_end_time timestamptz DEFAULT NULL, p_notes text DEFAULT NULL",
+      "changed": false
+    },
+    {
+      "path": "backend/supabase/migrations/20260531180000_visit_medical_records.sql",
+      "line": 268,
+      "name": "auth_internal.staff_has_visit_clinical_access",
+      "arguments": "",
+      "changed": false
+    },
+    {
+      "path": "backend/supabase/migrations/20260531180000_visit_medical_records.sql",
+      "line": 285,
+      "name": "auth_internal.staff_has_visit_upload_access",
+      "arguments": "",
+      "changed": false
+    },
+    {
+      "path": "backend/supabase/migrations/20260531180000_visit_medical_records.sql",
+      "line": 1512,
+      "name": "auth_internal.get_visit_by_appointment",
+      "arguments": "p_appointment_id uuid",
+      "changed": false
+    },
+    {
+      "path": "backend/supabase/migrations/20260531200000_fix_create_appointment_exceptions.sql",
+      "line": 2,
+      "name": "auth_internal.create_appointment",
+      "arguments": "p_branch_id uuid, p_patient_id uuid, p_doctor_id uuid, p_type text, p_start_time timestamptz DEFAULT NULL, p_duration_minutes int DEFAULT NULL, p_end_time timestamptz DEFAULT NULL, p_notes text DEFAULT NULL",
+      "changed": false
+    },
+    {
+      "path": "backend/supabase/migrations/20260604130000_fix_create_appointment_exception_handlers.sql",
+      "line": 3,
+      "name": "auth_internal.create_appointment",
+      "arguments": "p_branch_id uuid, p_patient_id uuid, p_doctor_id uuid, p_type text, p_start_time timestamptz DEFAULT NULL, p_duration_minutes int DEFAULT NULL, p_end_time timestamptz DEFAULT NULL, p_notes text DEFAULT NULL",
+      "changed": false
+    },
+    {
+      "path": "backend/supabase/migrations/20260604140000_appointment_low_severity_fixes.sql",
+      "line": 8,
+      "name": "auth_internal.get_appointment_settings",
+      "arguments": "p_branch_id uuid",
+      "changed": false
+    },
+    {
+      "path": "backend/supabase/migrations/20260605180000_billing.sql",
+      "line": 608,
+      "name": "auth_internal.update_role_permission",
+      "arguments": "p_role public.staff_role, p_permission_key text, p_is_granted boolean",
+      "changed": false
+    },
+    {
+      "path": "backend/supabase/migrations/20260605180000_billing.sql",
+      "line": 699,
+      "name": "auth_internal.assert_invoice_branch_scope",
+      "arguments": "p_invoice_id uuid",
+      "changed": false
+    },
+    {
+      "path": "backend/supabase/migrations/20260605180500_billing_us1_rpcs.sql",
+      "line": 70,
+      "name": "auth_internal.lock_draft_invoice",
+      "arguments": "p_invoice_id uuid, p_expected_updated_at timestamptz",
+      "changed": false
+    },
+    {
+      "path": "backend/supabase/migrations/20260605180500_billing_us1_rpcs.sql",
+      "line": 808,
+      "name": "auth_internal.list_invoices",
+      "arguments": "p_filters jsonb DEFAULT '{}'::jsonb, p_limit int DEFAULT 50, p_offset int DEFAULT 0",
+      "changed": false
+    },
+    {
+      "path": "backend/supabase/migrations/20260605181000_billing_us2_payment_rpcs.sql",
+      "line": 8,
+      "name": "auth_internal.lock_payable_invoice",
+      "arguments": "p_invoice_id uuid",
+      "changed": false
+    },
+    {
+      "path": "backend/supabase/migrations/20260605240000_billing_us5_list_patient_invoices.sql",
+      "line": 2,
+      "name": "auth_internal.list_patient_invoices",
+      "arguments": "p_patient_id uuid, p_limit int DEFAULT 50, p_offset int DEFAULT 0",
+      "changed": false
+    },
+    {
+      "path": "backend/supabase/migrations/20260605260000_delete_clinic_test_fixtures.sql",
+      "line": 35,
+      "name": "auth_internal.delete_clinic_test_fixtures",
+      "arguments": "p_preserve_staff_ids uuid[] DEFAULT '{}'::uuid[]",
+      "changed": false
+    },
+    {
+      "path": "backend/supabase/migrations/20260605290000_fix_billing_review_items_4_8_12.sql",
+      "line": 403,
+      "name": "auth_internal.list_invoices",
+      "arguments": "p_filters jsonb DEFAULT '{}'::jsonb, p_limit int DEFAULT 50, p_offset int DEFAULT 0",
+      "changed": false
+    },
+    {
+      "path": "backend/supabase/migrations/20260605310000_fix_billing_review_items_18_21_24.sql",
+      "line": 344,
+      "name": "auth_internal.list_invoices",
+      "arguments": "p_filters jsonb DEFAULT '{}'::jsonb, p_limit int DEFAULT 50, p_offset int DEFAULT 0",
+      "changed": false
+    },
+    {
+      "path": "backend/supabase/migrations/20260611140000_allow_admin_create_owner_and_atomic_bootstrap_setup.sql",
+      "line": 3,
+      "name": "auth_internal.create_staff_account",
+      "arguments": "p_username text, p_password text, p_full_name text, p_role public.staff_role, p_branch_ids uuid[], p_primary_branch_id uuid DEFAULT NULL",
+      "changed": false
+    },
+    {
+      "path": "backend/supabase/migrations/20260611140000_allow_admin_create_owner_and_atomic_bootstrap_setup.sql",
+      "line": 331,
+      "name": "auth_internal.bootstrap_finish_setup",
+      "arguments": "p_org_name text, p_branch_name text, p_staff_accounts jsonb, p_settings_json jsonb DEFAULT '{}'::jsonb, p_logo_url text DEFAULT NULL, p_currency_code text DEFAULT NULL, p_timezone text DEFAULT NULL, p_branch_code text DEFAULT NULL, p_branch_address text DEFAULT NULL, p_branch_phone text DEFAULT NULL, p_branch_maps_url text DEFAULT NULL",
+      "changed": false
+    },
+    {
+      "path": "backend/supabase/migrations/20260611150000_remove_owner_role.sql",
+      "line": 93,
+      "name": "auth_internal.create_staff_account",
+      "arguments": "p_username text, p_password text, p_full_name text, p_role public.staff_role, p_branch_ids uuid[], p_primary_branch_id uuid DEFAULT NULL",
+      "changed": false
+    },
+    {
+      "path": "backend/supabase/migrations/20260611150000_remove_owner_role.sql",
+      "line": 439,
+      "name": "auth_internal.bootstrap_finish_setup",
+      "arguments": "p_org_name text, p_branch_name text, p_staff_accounts jsonb, p_settings_json jsonb DEFAULT '{}'::jsonb, p_logo_url text DEFAULT NULL, p_currency_code text DEFAULT NULL, p_timezone text DEFAULT NULL, p_branch_code text DEFAULT NULL, p_branch_address text DEFAULT NULL, p_branch_phone text DEFAULT NULL, p_branch_maps_url text DEFAULT NULL",
+      "changed": false
+    },
+    {
+      "path": "backend/supabase/migrations/20260611150000_remove_owner_role.sql",
+      "line": 665,
+      "name": "auth_internal.update_role_permission",
+      "arguments": "p_role public.staff_role, p_permission_key text, p_is_granted boolean",
+      "changed": false
+    },
+    {
+      "path": "backend/supabase/migrations/20260611160000_fix_bootstrap_finish_setup_admin_count.sql",
+      "line": 4,
+      "name": "auth_internal.bootstrap_finish_setup",
+      "arguments": "p_org_name text, p_branch_name text, p_staff_accounts jsonb, p_settings_json jsonb DEFAULT '{}'::jsonb, p_logo_url text DEFAULT NULL, p_currency_code text DEFAULT NULL, p_timezone text DEFAULT NULL, p_branch_code text DEFAULT NULL, p_branch_address text DEFAULT NULL, p_branch_phone text DEFAULT NULL, p_branch_maps_url text DEFAULT NULL",
+      "changed": false
+    },
+    {
+      "path": "backend/supabase/migrations/20260613120000_bootstrap_finish_setup_working_schedule.sql",
+      "line": 2,
+      "name": "auth_internal.bootstrap_finish_setup",
+      "arguments": "p_org_name text, p_branch_name text, p_staff_accounts jsonb, p_settings_json jsonb DEFAULT '{}'::jsonb, p_logo_url text DEFAULT NULL, p_currency_code text DEFAULT NULL, p_timezone text DEFAULT NULL, p_branch_code text DEFAULT NULL, p_branch_address text DEFAULT NULL, p_branch_phone text DEFAULT NULL, p_branch_maps_url text DEFAULT NULL, p_branch_working_schedule jsonb DEFAULT NULL",
+      "changed": false
+    },
+    {
+      "path": "backend/supabase/migrations/20260613140000_role_permissions_full_matrix.sql",
+      "line": 19,
+      "name": "auth_internal.update_role_permission",
+      "arguments": "p_role public.staff_role, p_permission_key text, p_is_granted boolean",
+      "changed": false
+    },
+    {
+      "path": "backend/supabase/migrations/20260613150000_create_staff_account_phone.sql",
+      "line": 5,
+      "name": "auth_internal.create_staff_account",
+      "arguments": "p_username text, p_password text, p_full_name text, p_role public.staff_role, p_branch_ids uuid[], p_primary_branch_id uuid DEFAULT NULL, p_phone text DEFAULT NULL",
+      "changed": false
+    },
+    {
+      "path": "backend/supabase/migrations/20260613150000_create_staff_account_phone.sql",
+      "line": 177,
+      "name": "auth_internal.bootstrap_finish_setup",
+      "arguments": "p_org_name text, p_branch_name text, p_staff_accounts jsonb, p_settings_json jsonb DEFAULT '{}'::jsonb, p_logo_url text DEFAULT NULL, p_currency_code text DEFAULT NULL, p_timezone text DEFAULT NULL, p_branch_code text DEFAULT NULL, p_branch_address text DEFAULT NULL, p_branch_phone text DEFAULT NULL, p_branch_maps_url text DEFAULT NULL, p_branch_working_schedule jsonb DEFAULT NULL",
+      "changed": false
+    },
+    {
+      "path": "backend/supabase/migrations/20260613160000_staff_login_usernames.sql",
+      "line": 2,
+      "name": "public.staff_login_usernames",
+      "arguments": "p_staff_ids uuid[]",
+      "changed": false
+    },
+    {
+      "path": "backend/supabase/migrations/20260613210000_delete_staff_member.sql",
+      "line": 2,
+      "name": "auth_internal.assert_permission",
+      "arguments": "p_permission_key text",
+      "changed": false
+    },
+    {
+      "path": "backend/supabase/migrations/20260614100000_settings_code_review_fixes.sql",
+      "line": 4,
+      "name": "public.staff_login_usernames",
+      "arguments": "p_staff_ids uuid[]",
+      "changed": false
+    },
+    {
+      "path": "backend/supabase/migrations/20260614100000_settings_code_review_fixes.sql",
+      "line": 47,
+      "name": "auth_internal.update_role_permissions",
+      "arguments": "p_changes jsonb",
+      "changed": false
+    },
+    {
+      "path": "backend/supabase/migrations/20260614100000_settings_code_review_fixes.sql",
+      "line": 158,
+      "name": "auth_internal.create_staff_account",
+      "arguments": "p_username text, p_password text, p_full_name text, p_role public.staff_role, p_branch_ids uuid[], p_primary_branch_id uuid DEFAULT NULL, p_phone text DEFAULT NULL",
+      "changed": false
+    },
+    {
+      "path": "backend/supabase/migrations/20260615120000_remove_appointment_max_duration.sql",
+      "line": 15,
+      "name": "auth_internal.get_appointment_settings",
+      "arguments": "p_branch_id uuid",
+      "changed": false
+    },
+    {
+      "path": "backend/supabase/migrations/20260618120000_get_appointment.sql",
+      "line": 2,
+      "name": "auth_internal.get_appointment",
+      "arguments": "p_appointment_id uuid",
+      "changed": false
+    },
+    {
+      "path": "backend/supabase/migrations/20260628150000_seed_organization_catalog_defaults.sql",
+      "line": 78,
+      "name": "auth_internal.bootstrap_create_organization",
+      "arguments": "p_name text, p_settings_json jsonb DEFAULT '{}'::jsonb, p_logo_url text DEFAULT NULL, p_currency_code text DEFAULT NULL, p_timezone text DEFAULT NULL",
+      "changed": false
+    },
+    {
+      "path": "backend/supabase/migrations/20260712100000_fix_dev_reset_orgs_before_auth_users.sql",
+      "line": 174,
+      "name": "auth_internal.delete_clinic_test_fixtures",
+      "arguments": "p_preserve_staff_ids uuid[] DEFAULT '{}'::uuid[]",
+      "changed": false
+    },
+    {
+      "path": "backend/supabase/migrations/20260713130000_list_invoices_include_payments.sql",
+      "line": 2,
+      "name": "auth_internal.list_invoices",
+      "arguments": "p_filters jsonb DEFAULT '{}'::jsonb, p_limit int DEFAULT 50, p_offset int DEFAULT 0",
+      "changed": false
+    },
+    {
+      "path": "backend/supabase/migrations/20260717120000_invoice_organization_currency.sql",
+      "line": 123,
+      "name": "auth_internal.list_invoices",
+      "arguments": "p_filters jsonb DEFAULT '{}'::jsonb, p_limit int DEFAULT 50, p_offset int DEFAULT 0",
+      "changed": false
+    },
+    {
+      "path": "backend/supabase/migrations/20260724120000_patient_mrn_field.sql",
+      "line": 45,
+      "name": "auth_internal.create_patient",
+      "arguments": "p_active_branch_id uuid, p_full_name text, p_phone text, p_date_of_birth date DEFAULT NULL, p_gender text DEFAULT NULL, p_marital_status text DEFAULT NULL, p_notes text DEFAULT NULL, p_acknowledge_duplicate boolean DEFAULT false",
+      "changed": false
+    },
+    {
+      "path": "backend/supabase/migrations/20260724120100_reassign_patient_mrn_rpc.sql",
+      "line": 2,
+      "name": "auth_internal.reassign_patient_mrn",
+      "arguments": "p_patient_id uuid, p_new_mrn text",
+      "changed": false
+    },
+    {
+      "path": "backend/supabase/migrations/20260724123000_list_invoices_include_mrn.sql",
+      "line": 2,
+      "name": "auth_internal.list_invoices",
+      "arguments": "p_filters jsonb DEFAULT '{}'::jsonb, p_limit int DEFAULT 50, p_offset int DEFAULT 0",
+      "changed": false
+    },
+    {
+      "path": "backend/supabase/migrations/20260724125000_create_patient_optional_mrn_param.sql",
+      "line": 5,
+      "name": "auth_internal.create_patient",
+      "arguments": "p_active_branch_id uuid, p_full_name text, p_phone text, p_date_of_birth date DEFAULT NULL, p_gender text DEFAULT NULL, p_marital_status text DEFAULT NULL, p_notes text DEFAULT NULL, p_acknowledge_duplicate boolean DEFAULT false, p_mrn text DEFAULT NULL",
+      "changed": false
+    },
+    {
+      "path": "backend/supabase/migrations/20260727140000_remove_payment_reference.sql",
+      "line": 152,
+      "name": "auth_internal.list_invoices",
+      "arguments": "p_filters jsonb DEFAULT '{}'::jsonb, p_limit int DEFAULT 50, p_offset int DEFAULT 0",
+      "changed": false
+    },
+    {
+      "path": "backend/supabase/migrations/20260727150000_search_by_mrn.sql",
+      "line": 298,
+      "name": "auth_internal.list_invoices",
+      "arguments": "p_filters jsonb DEFAULT '{}'::jsonb, p_limit int DEFAULT 50, p_offset int DEFAULT 0",
+      "changed": false
+    },
+    {
+      "path": "backend/supabase/migrations/20260801120200_ai_token_issuer_rpc.sql",
+      "line": 113,
+      "name": "auth_internal.issue_ai_token",
+      "arguments": "p_scopes text[] DEFAULT NULL",
+      "changed": false
+    },
+    {
+      "path": "backend/supabase/migrations/20260801120200_ai_token_issuer_rpc.sql",
+      "line": 294,
+      "name": "auth_internal.verify_aat",
+      "arguments": "p_token text",
+      "changed": false
+    },
+    {
+      "path": "backend/supabase/migrations/20260801120200_ai_token_issuer_rpc.sql",
+      "line": 386,
+      "name": "public.issue_ai_token",
+      "arguments": "p_scopes text[] DEFAULT NULL",
+      "changed": false
+    },
+    {
+      "path": "backend/supabase/migrations/20260802150000_ai_acceptance_recording.sql",
+      "line": 63,
+      "name": "auth_internal.invoke_acceptance_domain_rpc",
+      "arguments": "p_domain_function text, p_target_args jsonb",
+      "changed": false
+    },
+    {
+      "path": "backend/supabase/migrations/20260803140000_b1_review_resolution.sql",
+      "line": 435,
+      "name": "auth_internal.issue_ai_token",
+      "arguments": "p_scopes text[] DEFAULT NULL",
+      "changed": false
+    },
+    {
+      "path": "backend/supabase/migrations/20260803140000_b1_review_resolution.sql",
+      "line": 616,
+      "name": "auth_internal.verify_aat",
+      "arguments": "p_token text",
+      "changed": false
+    },
+    {
+      "path": "backend/supabase/migrations/20260803140000_b1_review_resolution.sql",
+      "line": 708,
+      "name": "public.issue_ai_token",
+      "arguments": "p_scopes text[] DEFAULT NULL",
+      "changed": false
+    },
+    {
+      "path": "backend/supabase/migrations/20260805150000_f2_review_resolution.sql",
+      "line": 10,
+      "name": "auth_internal.invoke_acceptance_domain_rpc",
+      "arguments": "p_domain_function text, p_target_args jsonb",
+      "changed": false
+    },
+    {
+      "path": "backend/supabase/migrations/20260905120300_fix_aat_lifetime_fallback.sql",
+      "line": 3,
+      "name": "auth_internal.issue_ai_token",
+      "arguments": "p_scopes text[] DEFAULT NULL",
+      "changed": false
+    },
+    {
+      "path": "backend/supabase/migrations/20261002120000_membership_active_org.sql",
+      "line": 59,
+      "name": "auth_internal.sync_active_organization",
+      "arguments": "p_user_id uuid",
+      "changed": true
+    },
+    {
+      "path": "backend/supabase/migrations/20261002120000_membership_active_org.sql",
+      "line": 123,
+      "name": "public.get_custom_claims",
+      "arguments": "event jsonb",
+      "changed": true
+    },
+    {
+      "path": "backend/supabase/migrations/20261002120000_membership_active_org.sql",
+      "line": 148,
+      "name": "public.set_active_organization",
+      "arguments": "p_organization_id uuid",
+      "changed": true
+    },
+    {
+      "path": "backend/supabase/migrations/20261002120000_membership_active_org.sql",
+      "line": 200,
+      "name": "public.current_org_id",
+      "arguments": "",
+      "changed": true
+    },
+    {
+      "path": "backend/supabase/migrations/20261002120000_membership_active_org.sql",
+      "line": 264,
+      "name": "public.jwt_organization_id",
+      "arguments": "",
+      "changed": true
+    },
+    {
+      "path": "backend/supabase/migrations/20261002120000_membership_active_org.sql",
+      "line": 273,
+      "name": "public.current_membership_role",
+      "arguments": "",
+      "changed": true
+    },
+    {
+      "path": "backend/supabase/migrations/20261002150000_tenant_scoping.sql",
+      "line": 82,
+      "name": "auth_internal.seed_roles_permissions_defaults",
+      "arguments": "p_organization_id uuid",
+      "changed": true
+    },
+    {
+      "path": "backend/supabase/migrations/20261002150000_tenant_scoping.sql",
+      "line": 103,
+      "name": "auth_internal.trg_seed_roles_permissions_defaults",
+      "arguments": "",
+      "changed": true
+    },
+    {
+      "path": "backend/supabase/migrations/20261002150000_tenant_scoping.sql",
+      "line": 143,
+      "name": "auth_internal.update_role_permission",
+      "arguments": "p_role public.staff_role, p_permission_key text, p_is_granted boolean",
+      "changed": true
+    },
+    {
+      "path": "backend/supabase/migrations/20261002150000_tenant_scoping.sql",
+      "line": 257,
+      "name": "auth_internal.update_role_permissions",
+      "arguments": "p_changes jsonb",
+      "changed": true
+    },
+    {
+      "path": "backend/supabase/migrations/20261002150000_tenant_scoping.sql",
+      "line": 410,
+      "name": "auth_internal.issue_ai_token",
+      "arguments": "p_scopes text[] DEFAULT NULL",
+      "changed": true
+    },
+    {
+      "path": "backend/supabase/migrations/20261002150000_tenant_scoping.sql",
+      "line": 605,
+      "name": "auth_internal.issue_ai_token",
+      "arguments": "p_scopes text[] DEFAULT NULL",
+      "changed": true
+    },
+    {
+      "path": "backend/supabase/migrations/20261002150000_tenant_scoping.sql",
+      "line": 801,
+      "name": "auth_internal.user_has_organization_membership",
+      "arguments": "p_user_id uuid, p_organization_id uuid",
+      "changed": true
+    },
+    {
+      "path": "backend/supabase/migrations/20261002150000_tenant_scoping.sql",
+      "line": 1279,
+      "name": "auth_internal.trg_fill_tenant_organization_id",
+      "arguments": "",
+      "changed": true
+    },
+    {
+      "path": "backend/supabase/migrations/20261002150000_tenant_scoping.sql",
+      "line": 1460,
+      "name": "auth_internal.get_appointment",
+      "arguments": "p_appointment_id uuid",
+      "changed": true
+    },
+    {
+      "path": "backend/supabase/migrations/20261002150000_tenant_scoping.sql",
+      "line": 1542,
+      "name": "auth_internal.get_visit_by_appointment",
+      "arguments": "p_appointment_id uuid",
+      "changed": true
+    },
+    {
+      "path": "backend/supabase/migrations/20261002150000_tenant_scoping.sql",
+      "line": 1587,
+      "name": "auth_internal.assert_invoice_branch_scope",
+      "arguments": "p_invoice_id uuid",
+      "changed": true
+    },
+    {
+      "path": "backend/supabase/migrations/20261002150000_tenant_scoping.sql",
+      "line": 1613,
+      "name": "auth_internal.lock_draft_invoice",
+      "arguments": "p_invoice_id uuid, p_expected_updated_at timestamptz",
+      "changed": true
+    },
+    {
+      "path": "backend/supabase/migrations/20261002150000_tenant_scoping.sql",
+      "line": 1652,
+      "name": "auth_internal.lock_payable_invoice",
+      "arguments": "p_invoice_id uuid",
+      "changed": true
+    },
+    {
+      "path": "backend/supabase/migrations/20261002150000_tenant_scoping.sql",
+      "line": 1686,
+      "name": "auth_internal.list_invoices",
+      "arguments": "p_filters jsonb DEFAULT '{}'::jsonb, p_limit int DEFAULT 50, p_offset int DEFAULT 0",
+      "changed": true
+    },
+    {
+      "path": "backend/supabase/migrations/20261002150000_tenant_scoping.sql",
+      "line": 1885,
+      "name": "auth_internal.list_patient_invoices",
+      "arguments": "p_patient_id uuid, p_limit int DEFAULT 50, p_offset int DEFAULT 0",
+      "changed": true
+    },
+    {
+      "path": "backend/supabase/migrations/20261002150000_tenant_scoping.sql",
+      "line": 1917,
+      "name": "public.jwt_branch_ids",
+      "arguments": "",
+      "changed": true
+    },
+    {
+      "path": "backend/supabase/migrations/20261002150000_tenant_scoping.sql",
+      "line": 1948,
+      "name": "auth_internal.assert_permission",
+      "arguments": "p_permission_key text",
+      "changed": true
+    },
+    {
+      "path": "backend/supabase/migrations/20261002150000_tenant_scoping.sql",
+      "line": 1997,
+      "name": "auth_internal.assert_appointment_branch",
+      "arguments": "p_branch_id uuid",
+      "changed": true
+    },
+    {
+      "path": "backend/supabase/migrations/20261002150000_tenant_scoping.sql",
+      "line": 2033,
+      "name": "auth_internal.get_appointment_settings",
+      "arguments": "p_branch_id uuid",
+      "changed": true
+    },
+    {
+      "path": "backend/supabase/migrations/20261002150000_tenant_scoping.sql",
+      "line": 2073,
+      "name": "public.staff_login_usernames",
+      "arguments": "p_staff_ids uuid[]",
+      "changed": true
+    },
+    {
+      "path": "backend/supabase/migrations/20261002150000_tenant_scoping.sql",
+      "line": 2112,
+      "name": "auth_internal.staff_has_visit_clinical_access",
+      "arguments": "",
+      "changed": true
+    },
+    {
+      "path": "backend/supabase/migrations/20261002150000_tenant_scoping.sql",
+      "line": 2130,
+      "name": "auth_internal.staff_has_visit_upload_access",
+      "arguments": "",
+      "changed": true
+    },
+    {
+      "path": "backend/supabase/migrations/20261002150000_tenant_scoping.sql",
+      "line": 2148,
+      "name": "auth_internal.create_appointment",
+      "arguments": "p_branch_id uuid, p_patient_id uuid, p_doctor_id uuid, p_type text, p_start_time timestamptz DEFAULT NULL, p_duration_minutes int DEFAULT NULL, p_end_time timestamptz DEFAULT NULL, p_notes text DEFAULT NULL",
+      "changed": true
+    },
+    {
+      "path": "backend/supabase/migrations/20261007180000_issuer_key_custody.sql",
+      "line": 32,
+      "name": "auth_internal.insert_issuer_kid",
+      "arguments": "",
+      "changed": true
+    },
+    {
+      "path": "backend/supabase/migrations/20261007180000_issuer_key_custody.sql",
+      "line": 197,
+      "name": "public.rpc_success",
+      "arguments": "p_data jsonb DEFAULT '{}'::jsonb, p_contract_version integer DEFAULT NULL",
+      "changed": true
+    },
+    {
+      "path": "backend/supabase/migrations/20261007180000_issuer_key_custody.sql",
+      "line": 209,
+      "name": "public.rpc_error",
+      "arguments": "p_code text, p_message text, p_contract_version integer DEFAULT NULL",
+      "changed": true
+    },
+    {
+      "path": "backend/supabase/migrations/20261007180000_issuer_key_custody.sql",
+      "line": 222,
+      "name": "auth_internal.create_patient",
+      "arguments": "p_active_branch_id uuid, p_full_name text, p_phone text, p_date_of_birth date DEFAULT NULL, p_gender text DEFAULT NULL, p_marital_status text DEFAULT NULL, p_notes text DEFAULT NULL, p_acknowledge_duplicate boolean DEFAULT false, p_mrn text DEFAULT NULL",
+      "changed": true
+    },
+    {
+      "path": "backend/supabase/migrations/20261007180000_issuer_key_custody.sql",
+      "line": 418,
+      "name": "auth_internal.invoke_acceptance_domain_rpc",
+      "arguments": "p_domain_function text, p_target_args jsonb",
+      "changed": true
+    },
+    {
+      "path": "backend/supabase/migrations/20261007180000_issuer_key_custody.sql",
+      "line": 493,
+      "name": "auth_internal.reassign_patient_mrn",
+      "arguments": "p_patient_id uuid, p_new_mrn text",
+      "changed": true
+    },
+    {
+      "path": "backend/supabase/migrations/20261007180000_issuer_key_custody.sql",
+      "line": 589,
+      "name": "auth_internal.update_patient",
+      "arguments": "p_patient_id uuid, p_full_name text, p_expected_updated_at timestamptz, p_phone text DEFAULT NULL, p_date_of_birth date DEFAULT NULL, p_gender text DEFAULT NULL, p_marital_status text DEFAULT NULL, p_notes text DEFAULT NULL, p_acknowledge_duplicate boolean DEFAULT false, p_clear_gender boolean DEFAULT false, p_clear_date_of_birth boolean DEFAULT false, p_clear_marital_status boolean DEFAULT false, p_clear_notes boolean DEFAULT false",
+      "changed": true
+    },
+    {
+      "path": "backend/supabase/migrations/20261007180000_issuer_key_custody.sql",
+      "line": 789,
+      "name": "auth_internal.update_patient",
+      "arguments": "p_patient_id uuid, p_full_name text, p_expected_updated_at timestamptz, p_phone text DEFAULT NULL, p_date_of_birth date DEFAULT NULL, p_gender text DEFAULT NULL, p_marital_status text DEFAULT NULL, p_notes text DEFAULT NULL, p_acknowledge_duplicate boolean DEFAULT false",
+      "changed": true
+    },
+    {
+      "path": "backend/supabase/migrations/20261007180000_issuer_key_custody.sql",
+      "line": 963,
+      "name": "auth_internal.issue_ai_token",
+      "arguments": "p_contract_version integer",
+      "changed": true
+    },
+    {
+      "path": "backend/supabase/migrations/20261007180000_issuer_key_custody.sql",
+      "line": 1115,
+      "name": "public.issue_ai_token",
+      "arguments": "p_contract_version integer DEFAULT NULL",
+      "changed": true
+    },
+    {
+      "path": "backend/supabase/migrations/20261007180000_issuer_key_custody.sql",
+      "line": 1139,
+      "name": "auth_internal.issue_billing_token",
+      "arguments": "p_contract_version integer",
+      "changed": true
+    },
+    {
+      "path": "backend/supabase/migrations/20261007180000_issuer_key_custody.sql",
+      "line": 1310,
+      "name": "public.issue_billing_token",
+      "arguments": "p_contract_version integer DEFAULT NULL",
+      "changed": true
+    },
+    {
+      "path": "backend/supabase/migrations/20261007180000_issuer_key_custody.sql",
+      "line": 1339,
+      "name": "auth_internal.issue_feed_token",
+      "arguments": "",
+      "changed": true
+    },
+    {
+      "path": "backend/supabase/migrations/20261007180000_issuer_key_custody.sql",
+      "line": 1417,
+      "name": "auth_internal.switch_issuer_signing_kid",
+      "arguments": "p_kid text",
+      "changed": true
+    },
+    {
+      "path": "backend/supabase/migrations/20261007180000_issuer_key_custody.sql",
+      "line": 1450,
+      "name": "auth_internal.verify_aat",
+      "arguments": "p_token text",
+      "changed": true
+    },
+    {
+      "path": "backend/supabase/migrations/20261007180000_issuer_key_custody.sql",
+      "line": 1550,
+      "name": "auth_internal.delete_clinic_test_fixtures",
+      "arguments": "p_preserve_staff_ids uuid[] DEFAULT '{}'::uuid[]",
+      "changed": true
+    },
+    {
+      "path": "backend/supabase/migrations/20261007230000_coverage_feed_puller_status.sql",
+      "line": 104,
+      "name": "auth_internal.pull_coverage_feed",
+      "arguments": "",
+      "changed": true
+    },
+    {
+      "path": "backend/supabase/migrations/20261007230000_coverage_feed_puller_status.sql",
+      "line": 378,
+      "name": "auth_internal.get_ai_status",
+      "arguments": "p_contract_version integer",
+      "changed": true
+    },
+    {
+      "path": "backend/supabase/migrations/20261007230000_coverage_feed_puller_status.sql",
+      "line": 441,
+      "name": "public.get_ai_status",
+      "arguments": "p_contract_version integer DEFAULT NULL",
+      "changed": true
+    },
+    {
+      "path": "backend/supabase/migrations/20261007230000_coverage_feed_puller_status.sql",
+      "line": 470,
+      "name": "auth_internal.request_ai_status_refresh",
+      "arguments": "p_contract_version integer",
+      "changed": true
+    },
+    {
+      "path": "backend/supabase/migrations/20261007230000_coverage_feed_puller_status.sql",
+      "line": 533,
+      "name": "public.request_ai_status_refresh",
+      "arguments": "p_contract_version integer DEFAULT NULL",
+      "changed": true
+    },
+    {
+      "path": "backend/supabase/migrations/20261008010000_read_time_status_notices.sql",
+      "line": 8,
+      "name": "auth_internal.get_ai_status",
+      "arguments": "p_contract_version integer",
+      "changed": true
+    },
+    {
+      "path": "backend/supabase/migrations/20261008010000_read_time_status_notices.sql",
+      "line": 320,
+      "name": "public.get_ai_status",
+      "arguments": "p_contract_version integer DEFAULT NULL",
+      "changed": true
+    },
+    {
+      "path": "backend/supabase/migrations/20261008010000_read_time_status_notices.sql",
+      "line": 349,
+      "name": "public.get_ai_billing_status",
+      "arguments": "p_contract_version integer DEFAULT NULL",
+      "changed": true
+    },
+    {
+      "path": "backend/supabase/migrations/20261009120000_fix_staff_membership_session_rls.sql",
+      "line": 4,
+      "name": "auth_internal.upsert_organization_membership",
+      "arguments": "p_user_id uuid, p_organization_id uuid, p_role public.staff_role",
+      "changed": true
+    },
+    {
+      "path": "backend/supabase/migrations/20261009120000_fix_staff_membership_session_rls.sql",
+      "line": 129,
+      "name": "auth_internal.bootstrap_create_organization",
+      "arguments": "p_name text, p_settings_json jsonb DEFAULT '{}'::jsonb, p_logo_url text DEFAULT NULL, p_currency_code text DEFAULT NULL, p_timezone text DEFAULT NULL",
+      "changed": true
+    },
+    {
+      "path": "backend/supabase/migrations/20261009120000_fix_staff_membership_session_rls.sql",
+      "line": 208,
+      "name": "auth_internal.bootstrap_create_branch",
+      "arguments": "p_organization_id uuid, p_name text, p_address text DEFAULT NULL, p_phone text DEFAULT NULL, p_code text DEFAULT NULL, p_maps_url text DEFAULT NULL",
+      "changed": true
+    },
+    {
+      "path": "backend/supabase/migrations/20261009120000_fix_staff_membership_session_rls.sql",
+      "line": 313,
+      "name": "auth_internal.create_staff_account",
+      "arguments": "p_username text, p_password text, p_full_name text, p_role public.staff_role, p_branch_ids uuid[], p_primary_branch_id uuid DEFAULT NULL, p_phone text DEFAULT NULL",
+      "changed": true
+    },
+    {
+      "path": "backend/supabase/migrations/20261009120000_fix_staff_membership_session_rls.sql",
+      "line": 466,
+      "name": "auth_internal.bootstrap_finish_setup",
+      "arguments": "p_org_name text, p_branch_name text, p_staff_accounts jsonb, p_settings_json jsonb DEFAULT '{}'::jsonb, p_logo_url text DEFAULT NULL, p_currency_code text DEFAULT NULL, p_timezone text DEFAULT NULL, p_branch_code text DEFAULT NULL, p_branch_address text DEFAULT NULL, p_branch_phone text DEFAULT NULL, p_branch_maps_url text DEFAULT NULL, p_branch_working_schedule jsonb DEFAULT NULL",
+      "changed": true
+    },
+    {
+      "path": "backend/supabase/migrations/20261014170000_canonical_billing_jwt_json.sql",
+      "line": 4,
+      "name": "auth_internal.canonical_issuer_jwt_json",
+      "arguments": "p_value jsonb",
+      "changed": true
+    },
+    {
+      "path": "backend/supabase/migrations/20261014170000_canonical_billing_jwt_json.sql",
+      "line": 77,
+      "name": "auth_internal.issue_billing_token",
+      "arguments": "p_contract_version integer",
+      "changed": true
+    },
+    {
+      "path": "backend/supabase/migrations/20261014170100_canonical_feed_jwt_json.sql",
+      "line": 3,
+      "name": "auth_internal.issue_feed_token",
+      "arguments": "",
+      "changed": true
+    }
+  ],
+  "limitations": "Name-grouped history; overload signatures retained. DROP/ALTER/grants/RLS/trigger effects require primary region reading. Final resolution is per PostgreSQL signature and migration order, not this name-grouped last occurrence."
+}
