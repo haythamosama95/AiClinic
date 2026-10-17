@@ -376,7 +376,7 @@ describe("P3.9 fallback admission, feed, and coverage read", () => {
     expect(rows[0]?.term_id).toBeTruthy();
     expect(rows[0]?.request_id).toBeTruthy();
 
-    clearAdmissionFault();
+    await clearAdmissionFault();
     const usedBefore = await readHotUsed(scenario.installationId);
     await runScheduled("*/5 * * * *");
     const usedAfterFirst = await readHotUsed(scenario.installationId);
