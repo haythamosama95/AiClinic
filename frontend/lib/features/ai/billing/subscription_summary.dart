@@ -2,14 +2,13 @@ import 'package:ai_clinic/core/contract_versions.dart';
 import 'package:ai_clinic/core/rpc/rpc_result.dart';
 import 'package:ai_clinic/features/ai/billing/abo_client.dart';
 import 'package:ai_clinic/features/ai/availability/ai_availability.dart';
+import 'package:ai_clinic/l10n/app_localizations.dart';
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 /// Injectable RPC callable for unit tests.
-typedef SubscriptionSummaryRpcInvoke = Future<dynamic> Function(
-  String functionName,
-  Map<String, dynamic> params,
-);
+typedef SubscriptionSummaryRpcInvoke =
+    Future<dynamic> Function(String functionName, Map<String, dynamic> params);
 
 /// Loaded subscription summary from `get_ai_billing_status` and `GET /v1/subscription`.
 class SubscriptionSummaryData {
@@ -133,8 +132,11 @@ class _SubscriptionSummaryState extends State<SubscriptionSummary> {
   }
 
   SubscriptionSummaryData _parseSummary(Map<String, dynamic> data) {
-    final notices = (data['notices'] as List?)?.cast<Map<String, dynamic>>() ?? const [];
-    final showEndedReversed = notices.any((entry) => entry['code']?.toString() == 'ended_reversed');
+    final notices =
+        (data['notices'] as List?)?.cast<Map<String, dynamic>>() ?? const [];
+    final showEndedReversed = notices.any(
+      (entry) => entry['code']?.toString() == 'ended_reversed',
+    );
     return SubscriptionSummaryData(
       planDisplayName: _nullableString(data['plan_display_name']),
       startsAt: _nullableDateTime(data['starts_at']),
@@ -183,11 +185,11 @@ class _SubscriptionSummaryState extends State<SubscriptionSummary> {
     return null;
   }
 
-  String? _formatDateTime(DateTime? value) {
+  String? _formatDateTime(BuildContext context, DateTime? value) {
     if (value == null) {
       return null;
     }
-    return value.toUtc().toIso8601String();
+    return MaterialLocalizations.of(context).formatMediumDate(value.toLocal());
   }
 
   @override
@@ -202,40 +204,186 @@ class _SubscriptionSummaryState extends State<SubscriptionSummary> {
   }
 
   Widget _buildBody(BuildContext context) {
+    final l10n = AppLocalizations.of(context)!;
     if (_loading) {
-      return const Center(child: CircularProgressIndicator());
+      return const Padding(
+        padding: EdgeInsets.symmetric(vertical: 16),
+        child: Center(child: CircularProgressIndicator()),
+      );
     }
     if (_error != null) {
-      return Text('$_error');
+      return _BillingPanel(
+        child: Row(
+          children: [
+            const Icon(Icons.wifi_off_outlined),
+            const SizedBox(width: 12),
+            Expanded(child: Text(l10n.aiBillingStatusUnavailable)),
+            TextButton(onPressed: _load, child: Text(l10n.retry)),
+          ],
+        ),
+      );
     }
     final summary = _summary;
     if (summary == null) {
       return const SizedBox.shrink();
     }
+    final hasPlan = summary.planDisplayName != null;
+    final endsAt = _formatDateTime(context, summary.endsAt);
+    final startsAt = _formatDateTime(context, summary.startsAt);
+    final graceEndsAt = _formatDateTime(context, summary.graceEndsAt);
+    final textTheme = Theme.of(context).textTheme;
+    final colors = Theme.of(context).colorScheme;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        Text('Subscription', style: Theme.of(context).textTheme.headlineSmall),
-        const SizedBox(height: 16),
-        if (summary.planDisplayName != null) Text(summary.planDisplayName!),
-        if (_formatDateTime(summary.startsAt) case final startsAt?) Text(startsAt),
-        if (_formatDateTime(summary.endsAt) case final endsAt?) Text(endsAt),
-        if (_formatDateTime(summary.graceEndsAt) case final graceEndsAt?) Text(graceEndsAt),
-        if (summary.allowance != null) Text('${summary.allowance}'),
-        if (summary.used != null) Text('${summary.used}'),
-        if (summary.queuedCount != null) Text('${summary.queuedCount}'),
-        if (summary.heldCount != null) Text('${summary.heldCount}'),
-        if (summary.subscriptionRef != null) Text(summary.subscriptionRef!),
-        const SizedBox(height: 12),
-        const Text('Contact support'),
-        if (summary.subscriptionRef != null) ...[
-          const SizedBox(height: 4),
-          Text(summary.subscriptionRef!),
-        ],
-        if (summary.showEndedReversed) ...[
-          const SizedBox(height: 12),
-          const Text('ended_reversed'),
-        ],
+        Text(l10n.aiBillingCurrentCoverage, style: textTheme.titleMedium),
+        const SizedBox(height: 10),
+        _BillingPanel(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Icon(
+                    hasPlan ? Icons.verified_outlined : Icons.info_outline,
+                    color: hasPlan ? colors.primary : colors.onSurfaceVariant,
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          hasPlan
+                              ? summary.planDisplayName!
+                              : l10n.aiBillingNoActivePlan,
+                          style: textTheme.titleSmall,
+                        ),
+                        const SizedBox(height: 4),
+                        Text(
+                          hasPlan
+                              ? l10n.aiBillingPlanActiveDescription
+                              : l10n.aiBillingNoActivePlanDescription,
+                          style: textTheme.bodyMedium?.copyWith(
+                            color: colors.onSurfaceVariant,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+              if (hasPlan && startsAt != null) ...[
+                const SizedBox(height: 16),
+                _BillingDetail(label: l10n.aiBillingStarted, value: startsAt),
+              ],
+              if (hasPlan && endsAt != null) ...[
+                const SizedBox(height: 10),
+                _BillingDetail(
+                  label: l10n.aiBillingRenewsOrEnds,
+                  value: endsAt,
+                ),
+              ],
+              if (hasPlan && graceEndsAt != null) ...[
+                const SizedBox(height: 10),
+                _BillingDetail(
+                  label: l10n.aiBillingGraceEnds,
+                  value: graceEndsAt,
+                ),
+              ],
+              if (hasPlan && summary.allowance != null) ...[
+                const SizedBox(height: 10),
+                _BillingDetail(
+                  label: l10n.aiBillingCreditsIncluded,
+                  value: '${summary.allowance}',
+                ),
+              ],
+              if (hasPlan && summary.used != null) ...[
+                const SizedBox(height: 10),
+                _BillingDetail(
+                  label: l10n.aiBillingCreditsUsed,
+                  value: '${summary.used}',
+                ),
+              ],
+              if (summary.subscriptionRef case final reference?) ...[
+                const SizedBox(height: 16),
+                Divider(height: 1, color: colors.outlineVariant),
+                const SizedBox(height: 12),
+                Text(
+                  l10n.aiBillingSupportReference,
+                  style: textTheme.labelMedium,
+                ),
+                const SizedBox(height: 3),
+                SelectableText(
+                  reference,
+                  style: textTheme.bodyMedium?.copyWith(
+                    fontWeight: FontWeight.w600,
+                    letterSpacing: 0.4,
+                  ),
+                ),
+                const SizedBox(height: 3),
+                Text(
+                  l10n.aiBillingSupportReferenceDescription,
+                  style: textTheme.bodySmall?.copyWith(
+                    color: colors.onSurfaceVariant,
+                  ),
+                ),
+              ],
+              if (summary.showEndedReversed) ...[
+                const SizedBox(height: 12),
+                Text(
+                  l10n.aiBillingEndedReversed,
+                  style: textTheme.bodyMedium?.copyWith(color: colors.error),
+                ),
+              ],
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _BillingPanel extends StatelessWidget {
+  const _BillingPanel({required this.child});
+
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = Theme.of(context).colorScheme;
+    return Container(
+      decoration: BoxDecoration(
+        color: colors.surfaceContainerLow,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: colors.outlineVariant),
+      ),
+      padding: const EdgeInsets.all(18),
+      child: child,
+    );
+  }
+}
+
+class _BillingDetail extends StatelessWidget {
+  const _BillingDetail({required this.label, required this.value});
+
+  final String label;
+  final String value;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = Theme.of(context).colorScheme;
+    return Row(
+      children: [
+        Text(label, style: Theme.of(context).textTheme.labelMedium),
+        const Spacer(),
+        Text(
+          value,
+          style: Theme.of(
+            context,
+          ).textTheme.bodyMedium?.copyWith(color: colors.onSurfaceVariant),
+        ),
       ],
     );
   }

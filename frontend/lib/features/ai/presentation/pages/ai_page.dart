@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import 'package:ai_clinic/app/app_routes.dart';
 import 'package:ai_clinic/app/providers/ai_shell_status_provider.dart';
 import 'package:ai_clinic/app/providers/auth_session_provider.dart';
 import 'package:ai_clinic/app/shell/navigation/shell_route_meta.dart';
@@ -26,6 +27,8 @@ import 'package:ai_clinic/features/ai/host/ai_feature_host_page.dart';
 import 'package:ai_clinic/features/ai/surface/first_ai_feature_surface.dart';
 import 'package:ai_clinic/features/ai/surface/provisional_prose_view.dart';
 import 'package:ai_clinic/features/ai/surface/request_reference_view.dart';
+import 'package:ai_clinic/l10n/app_localizations.dart';
+import 'package:go_router/go_router.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 /// Production hub composition for the live visit-summary host (I3 / T8 spy target).
@@ -382,11 +385,48 @@ class _AiPageState extends ConsumerState<AiPage> {
   @override
   Widget build(BuildContext context) {
     final colors = context.appColors;
+    final isAdministrator =
+        ref.watch(authSessionProvider).context?.staffProfile.role == StaffRole.administrator;
+    final l10n = AppLocalizations.of(context)!;
 
     final body = Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         AppPageHeader(title: ShellRouteMeta.titleFor('ai'), description: ShellRouteMeta.descriptionFor('ai')),
+        if (isAdministrator) ...[
+          const SizedBox(height: AppSpacing.space4),
+          Card(
+            child: Padding(
+              padding: const EdgeInsets.all(AppSpacing.space4),
+              child: Row(
+                children: [
+                  const Icon(Icons.auto_awesome_outlined),
+                  const SizedBox(width: AppSpacing.space3),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          l10n.aiBillingOffersTitle,
+                          style: Theme.of(context).textTheme.titleMedium,
+                        ),
+                        const SizedBox(height: AppSpacing.space1),
+                        Text(l10n.aiBillingOffersDescription),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(width: AppSpacing.space3),
+                  AppButton(
+                    key: const Key('ai_billing_entry'),
+                    onPressed: () =>
+                        context.push(AppRoutes.aiAdministratorBilling),
+                    child: Text(l10n.aiBillingBrowsePlans),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ],
         const SizedBox(height: AppSpacing.space8),
         _AiFeatureSection(
           title: 'Visit summary',

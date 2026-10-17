@@ -360,11 +360,95 @@ class AppLocalizationsEn extends AppLocalizations {
   String get breadcrumbNotFound => 'Not found';
 
   @override
-  String get aiBillingOffersTitle => 'AI coverage offers';
+  String get aiBillingOffersTitle => 'AI coverage';
 
   @override
   String get aiBillingOffersDescription =>
-      'Choose a plan and accept the current terms to continue.';
+      'Manage your clinic’s plan, payments and support details.';
+
+  @override
+  String get aiBillingOffersEmpty =>
+      'There are no plans available to purchase right now. Contact support and share your clinic reference if you need help.';
+
+  @override
+  String get aiBillingOffersEmptyTitle => 'No plans available';
+
+  @override
+  String get aiBillingOffersUnavailable => 'Plans could not be loaded';
+
+  @override
+  String get aiBillingOffersUnavailableDescription =>
+      'Check your connection, then try again.';
+
+  @override
+  String get aiBillingRefreshPlans => 'Refresh plans';
+
+  @override
+  String get aiBillingCurrentCoverage => 'Current coverage';
+
+  @override
+  String get aiBillingAvailablePlans => 'Available plans';
+
+  @override
+  String get aiBillingNoActivePlan => 'No active plan';
+
+  @override
+  String get aiBillingNoActivePlanDescription =>
+      'AI coverage is not active for this clinic. Choose an available plan below to get started.';
+
+  @override
+  String get aiBillingPlanActiveDescription =>
+      'This plan is active for your clinic.';
+
+  @override
+  String get aiBillingRenewsOrEnds => 'Ends';
+
+  @override
+  String get aiBillingStarted => 'Started';
+
+  @override
+  String get aiBillingGraceEnds => 'Grace period ends';
+
+  @override
+  String get aiBillingCreditsIncluded => 'Credits included';
+
+  @override
+  String get aiBillingCreditsUsed => 'Credits used';
+
+  @override
+  String get aiBillingSupportReference => 'Clinic support reference';
+
+  @override
+  String get aiBillingSupportReferenceDescription =>
+      'Give this reference to support when asking about billing.';
+
+  @override
+  String get aiBillingStatusUnavailable =>
+      'Coverage details could not be loaded. Check your connection and try again.';
+
+  @override
+  String get aiBillingEndedReversed =>
+      'A recent plan ending was reversed. Contact support if your coverage looks incorrect.';
+
+  @override
+  String get aiBillingPaymentHistory => 'Payment history';
+
+  @override
+  String get aiBillingNoPayments => 'No payments yet';
+
+  @override
+  String get aiBillingNoPaymentsDescription =>
+      'Completed payments for this clinic will appear here.';
+
+  @override
+  String get aiBillingPaymentHistoryUnavailable =>
+      'Payment history could not be loaded. Check your connection and try again.';
+
+  @override
+  String get aiBillingPaymentsLoadMore => 'Load more payments';
+
+  @override
+  String get aiBillingBrowsePlans => 'Browse plans';
 
   @override
   String get aiBillingTermsTitle => 'Terms of service';

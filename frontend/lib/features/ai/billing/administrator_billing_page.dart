@@ -1,10 +1,10 @@
 import 'dart:async';
 
+import 'package:ai_clinic/core/ui/components/app_page_header.dart';
 import 'package:ai_clinic/features/ai/billing/abo_client.dart';
 import 'package:ai_clinic/features/ai/billing/billing_contact_form.dart';
 import 'package:ai_clinic/features/ai/billing/billing_token_client.dart';
 import 'package:ai_clinic/features/ai/billing/checkout_screen.dart';
-import 'package:ai_clinic/features/ai/billing/commercial_notices.dart';
 import 'package:ai_clinic/features/ai/billing/offers_screen.dart';
 import 'package:ai_clinic/features/ai/billing/payment_history.dart';
 import 'package:ai_clinic/features/ai/billing/subscription_summary.dart';
@@ -24,7 +24,8 @@ class AdministratorBillingPage extends StatefulWidget {
   final SupabaseClient? supabaseClient;
 
   @override
-  State<AdministratorBillingPage> createState() => _AdministratorBillingPageState();
+  State<AdministratorBillingPage> createState() =>
+      _AdministratorBillingPageState();
 }
 
 class _AdministratorBillingPageState extends State<AdministratorBillingPage> {
@@ -121,53 +122,65 @@ class _AdministratorBillingPageState extends State<AdministratorBillingPage> {
   Widget build(BuildContext context) {
     final l10n = AppLocalizations.of(context)!;
 
-    return Scaffold(
-      appBar: AppBar(title: Text(l10n.aiBillingOffersTitle)),
-      body: switch (_step) {
-        _BillingStep.appUpdate => const AiDegradedView(mode: AiDegradedMode.appUpdate),
-        _ => SingleChildScrollView(
-            child: Column(
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        AppPageHeader(
+          title: l10n.aiBillingOffersTitle,
+          description: l10n.aiBillingOffersDescription,
+        ),
+        const SizedBox(height: 20),
+        if (_step == _BillingStep.appUpdate)
+          const AiDegradedView(mode: AiDegradedMode.appUpdate)
+        else ...[
+          SubscriptionSummary(
+            client: _aboClient,
+            supabaseClient: widget.supabaseClient,
+          ),
+          switch (_step) {
+            _BillingStep.loading => const Padding(
+              padding: EdgeInsets.all(24),
+              child: Center(child: CircularProgressIndicator()),
+            ),
+            _BillingStep.offers => Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                SubscriptionSummary(
-                  client: _aboClient,
-                  supabaseClient: widget.supabaseClient,
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(24, 22, 24, 0),
+                  child: Text(
+                    l10n.aiBillingAvailablePlans,
+                    style: Theme.of(context).textTheme.titleMedium,
+                  ),
                 ),
-                CommercialNotices(client: _aboClient),
+                OffersScreen(
+                  client: _aboClient,
+                  onContinue: _onOffersContinue,
+                  onContractVersionUnsupported: _onContractVersionUnsupported,
+                  loadError: _loadError,
+                ),
                 PaymentHistory(client: _aboClient),
-                switch (_step) {
-                  _BillingStep.loading => const Padding(
-                      padding: EdgeInsets.all(24),
-                      child: Center(child: CircularProgressIndicator()),
-                    ),
-                  _BillingStep.offers => OffersScreen(
-                      client: _aboClient,
-                      onContinue: _onOffersContinue,
-                      onContractVersionUnsupported: _onContractVersionUnsupported,
-                      loadError: _loadError,
-                    ),
-                  _BillingStep.contact => BillingContactForm(
-                      client: _aboClient,
-                      onSaved: _onContactSaved,
-                      onContractVersionUnsupported: _onContractVersionUnsupported,
-                    ),
-                  _BillingStep.checkout => CheckoutScreen(
-                      client: _aboClient,
-                      offer: _selection?.offer,
-                      termsVersion: _selection?.termsVersion,
-                      initialCheckout: _resumedCheckout,
-                      reference: _resumedCheckout?.reference,
-                      supabaseClient: widget.supabaseClient,
-                      onTermsNotAccepted: _onTermsNotAccepted,
-                      onBillingContactRequired: _onBillingContactRequired,
-                      onContractVersionUnsupported: _onContractVersionUnsupported,
-                    ),
-                  _ => const SizedBox.shrink(),
-                },
               ],
             ),
-          ),
-      },
+            _BillingStep.contact => BillingContactForm(
+              client: _aboClient,
+              onSaved: _onContactSaved,
+              onContractVersionUnsupported: _onContractVersionUnsupported,
+            ),
+            _BillingStep.checkout => CheckoutScreen(
+              client: _aboClient,
+              offer: _selection?.offer,
+              termsVersion: _selection?.termsVersion,
+              initialCheckout: _resumedCheckout,
+              reference: _resumedCheckout?.reference,
+              supabaseClient: widget.supabaseClient,
+              onTermsNotAccepted: _onTermsNotAccepted,
+              onBillingContactRequired: _onBillingContactRequired,
+              onContractVersionUnsupported: _onContractVersionUnsupported,
+            ),
+            _ => const SizedBox.shrink(),
+          },
+        ],
+      ],
     );
   }
 }

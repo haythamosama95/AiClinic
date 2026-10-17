@@ -360,11 +360,94 @@ class AppLocalizationsAr extends AppLocalizations {
   String get breadcrumbNotFound => 'غير موجود';
 
   @override
-  String get aiBillingOffersTitle => 'عروض تغطية الذكاء الاصطناعي';
+  String get aiBillingOffersTitle => 'تغطية الذكاء الاصطناعي';
 
   @override
   String get aiBillingOffersDescription =>
-      'اختر خطة واقبل الشروط الحالية للمتابعة.';
+      'إدارة خطة العيادة والمدفوعات وبيانات التواصل مع الدعم.';
+
+  @override
+  String get aiBillingOffersEmpty =>
+      'لا توجد خطط متاحة للشراء حاليًا. تواصل مع الدعم وأرسل مرجع العيادة إذا احتجت إلى المساعدة.';
+
+  @override
+  String get aiBillingOffersEmptyTitle => 'لا توجد خطط متاحة';
+
+  @override
+  String get aiBillingOffersUnavailable => 'تعذّر تحميل الخطط';
+
+  @override
+  String get aiBillingOffersUnavailableDescription =>
+      'تحقق من اتصالك بالإنترنت ثم حاول مرة أخرى.';
+
+  @override
+  String get aiBillingRefreshPlans => 'تحديث الخطط';
+
+  @override
+  String get aiBillingCurrentCoverage => 'التغطية الحالية';
+
+  @override
+  String get aiBillingAvailablePlans => 'الخطط المتاحة';
+
+  @override
+  String get aiBillingNoActivePlan => 'لا توجد خطة نشطة';
+
+  @override
+  String get aiBillingNoActivePlanDescription =>
+      'تغطية الذكاء الاصطناعي غير نشطة لهذه العيادة. اختر خطة متاحة أدناه للبدء.';
+
+  @override
+  String get aiBillingPlanActiveDescription => 'هذه الخطة نشطة لعيادتك.';
+
+  @override
+  String get aiBillingRenewsOrEnds => 'تنتهي في';
+
+  @override
+  String get aiBillingStarted => 'بدأت في';
+
+  @override
+  String get aiBillingGraceEnds => 'تنتهي فترة السماح في';
+
+  @override
+  String get aiBillingCreditsIncluded => 'الرصيد المتضمن';
+
+  @override
+  String get aiBillingCreditsUsed => 'الرصيد المستخدم';
+
+  @override
+  String get aiBillingSupportReference => 'مرجع العيادة للدعم';
+
+  @override
+  String get aiBillingSupportReferenceDescription =>
+      'أرسل هذا المرجع إلى الدعم عند الاستفسار عن الفوترة.';
+
+  @override
+  String get aiBillingStatusUnavailable =>
+      'تعذّر تحميل تفاصيل التغطية. تحقق من اتصالك وحاول مرة أخرى.';
+
+  @override
+  String get aiBillingEndedReversed =>
+      'تم التراجع عن إنهاء الخطة مؤخرًا. تواصل مع الدعم إذا بدت التغطية غير صحيحة.';
+
+  @override
+  String get aiBillingPaymentHistory => 'سجل المدفوعات';
+
+  @override
+  String get aiBillingNoPayments => 'لا توجد مدفوعات بعد';
+
+  @override
+  String get aiBillingNoPaymentsDescription =>
+      'ستظهر هنا المدفوعات المكتملة لهذه العيادة.';
+
+  @override
+  String get aiBillingPaymentHistoryUnavailable =>
+      'تعذّر تحميل سجل المدفوعات. تحقق من اتصالك وحاول مرة أخرى.';
+
+  @override
+  String get aiBillingPaymentsLoadMore => 'تحميل المزيد من المدفوعات';
+
+  @override
+  String get aiBillingBrowsePlans => 'استعراض الخطط';
 
   @override
   String get aiBillingTermsTitle => 'شروط الخدمة';

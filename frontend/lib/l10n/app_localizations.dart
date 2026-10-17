@@ -779,14 +779,164 @@ abstract class AppLocalizations {
   /// No description provided for @aiBillingOffersTitle.
   ///
   /// In en, this message translates to:
-  /// **'AI coverage offers'**
+  /// **'AI coverage'**
   String get aiBillingOffersTitle;
 
   /// No description provided for @aiBillingOffersDescription.
   ///
   /// In en, this message translates to:
-  /// **'Choose a plan and accept the current terms to continue.'**
+  /// **'Manage your clinic’s plan, payments and support details.'**
   String get aiBillingOffersDescription;
+
+  /// No description provided for @aiBillingOffersEmpty.
+  ///
+  /// In en, this message translates to:
+  /// **'There are no plans available to purchase right now. Contact support and share your clinic reference if you need help.'**
+  String get aiBillingOffersEmpty;
+
+  /// No description provided for @aiBillingOffersEmptyTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'No plans available'**
+  String get aiBillingOffersEmptyTitle;
+
+  /// No description provided for @aiBillingOffersUnavailable.
+  ///
+  /// In en, this message translates to:
+  /// **'Plans could not be loaded'**
+  String get aiBillingOffersUnavailable;
+
+  /// No description provided for @aiBillingOffersUnavailableDescription.
+  ///
+  /// In en, this message translates to:
+  /// **'Check your connection, then try again.'**
+  String get aiBillingOffersUnavailableDescription;
+
+  /// No description provided for @aiBillingRefreshPlans.
+  ///
+  /// In en, this message translates to:
+  /// **'Refresh plans'**
+  String get aiBillingRefreshPlans;
+
+  /// No description provided for @aiBillingCurrentCoverage.
+  ///
+  /// In en, this message translates to:
+  /// **'Current coverage'**
+  String get aiBillingCurrentCoverage;
+
+  /// No description provided for @aiBillingAvailablePlans.
+  ///
+  /// In en, this message translates to:
+  /// **'Available plans'**
+  String get aiBillingAvailablePlans;
+
+  /// No description provided for @aiBillingNoActivePlan.
+  ///
+  /// In en, this message translates to:
+  /// **'No active plan'**
+  String get aiBillingNoActivePlan;
+
+  /// No description provided for @aiBillingNoActivePlanDescription.
+  ///
+  /// In en, this message translates to:
+  /// **'AI coverage is not active for this clinic. Choose an available plan below to get started.'**
+  String get aiBillingNoActivePlanDescription;
+
+  /// No description provided for @aiBillingPlanActiveDescription.
+  ///
+  /// In en, this message translates to:
+  /// **'This plan is active for your clinic.'**
+  String get aiBillingPlanActiveDescription;
+
+  /// No description provided for @aiBillingRenewsOrEnds.
+  ///
+  /// In en, this message translates to:
+  /// **'Ends'**
+  String get aiBillingRenewsOrEnds;
+
+  /// No description provided for @aiBillingStarted.
+  ///
+  /// In en, this message translates to:
+  /// **'Started'**
+  String get aiBillingStarted;
+
+  /// No description provided for @aiBillingGraceEnds.
+  ///
+  /// In en, this message translates to:
+  /// **'Grace period ends'**
+  String get aiBillingGraceEnds;
+
+  /// No description provided for @aiBillingCreditsIncluded.
+  ///
+  /// In en, this message translates to:
+  /// **'Credits included'**
+  String get aiBillingCreditsIncluded;
+
+  /// No description provided for @aiBillingCreditsUsed.
+  ///
+  /// In en, this message translates to:
+  /// **'Credits used'**
+  String get aiBillingCreditsUsed;
+
+  /// No description provided for @aiBillingSupportReference.
+  ///
+  /// In en, this message translates to:
+  /// **'Clinic support reference'**
+  String get aiBillingSupportReference;
+
+  /// No description provided for @aiBillingSupportReferenceDescription.
+  ///
+  /// In en, this message translates to:
+  /// **'Give this reference to support when asking about billing.'**
+  String get aiBillingSupportReferenceDescription;
+
+  /// No description provided for @aiBillingStatusUnavailable.
+  ///
+  /// In en, this message translates to:
+  /// **'Coverage details could not be loaded. Check your connection and try again.'**
+  String get aiBillingStatusUnavailable;
+
+  /// No description provided for @aiBillingEndedReversed.
+  ///
+  /// In en, this message translates to:
+  /// **'A recent plan ending was reversed. Contact support if your coverage looks incorrect.'**
+  String get aiBillingEndedReversed;
+
+  /// No description provided for @aiBillingPaymentHistory.
+  ///
+  /// In en, this message translates to:
+  /// **'Payment history'**
+  String get aiBillingPaymentHistory;
+
+  /// No description provided for @aiBillingNoPayments.
+  ///
+  /// In en, this message translates to:
+  /// **'No payments yet'**
+  String get aiBillingNoPayments;
+
+  /// No description provided for @aiBillingNoPaymentsDescription.
+  ///
+  /// In en, this message translates to:
+  /// **'Completed payments for this clinic will appear here.'**
+  String get aiBillingNoPaymentsDescription;
+
+  /// No description provided for @aiBillingPaymentHistoryUnavailable.
+  ///
+  /// In en, this message translates to:
+  /// **'Payment history could not be loaded. Check your connection and try again.'**
+  String get aiBillingPaymentHistoryUnavailable;
+
+  /// No description provided for @aiBillingPaymentsLoadMore.
+  ///
+  /// In en, this message translates to:
+  /// **'Load more payments'**
+  String get aiBillingPaymentsLoadMore;
+
+  /// No description provided for @aiBillingBrowsePlans.
+  ///
+  /// In en, this message translates to:
+  /// **'Browse plans'**
+  String get aiBillingBrowsePlans;
 
   /// No description provided for @aiBillingTermsTitle.
   ///

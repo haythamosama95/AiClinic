@@ -63,7 +63,9 @@ class _OffersScreenState extends State<OffersScreen> {
       }
       setState(() {
         _response = response;
-        _selectedOffer = response.offers.isNotEmpty ? response.offers.first : null;
+        _selectedOffer = response.offers.isNotEmpty
+            ? response.offers.first
+            : null;
         _loading = false;
       });
     } on AboContractVersionUnsupportedException {
@@ -97,10 +99,7 @@ class _OffersScreenState extends State<OffersScreen> {
       return;
     }
     widget.onContinue(
-      BillingOffersSelection(
-        offer: offer,
-        termsVersion: offer.terms.version,
-      ),
+      BillingOffersSelection(offer: offer, termsVersion: offer.terms.version),
     );
   }
 
@@ -112,67 +111,141 @@ class _OffersScreenState extends State<OffersScreen> {
     return KeyedSubtree(
       key: const Key('billing_offers_screen'),
       child: Padding(
-        padding: const EdgeInsets.all(24),
+        padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 18),
         child: Column(
+          mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            Text(l10n.aiBillingOffersTitle, style: Theme.of(context).textTheme.headlineSmall),
-            const SizedBox(height: 8),
-            Text(l10n.aiBillingOffersDescription),
-            const SizedBox(height: 24),
             if (_loading)
-              const Expanded(child: Center(child: CircularProgressIndicator()))
+              const Padding(
+                padding: EdgeInsets.symmetric(vertical: 18),
+                child: Center(child: CircularProgressIndicator()),
+              )
             else if (_error != null)
-              Expanded(
-                child: Center(
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Text('$_error'),
-                      const SizedBox(height: 12),
-                      AppButton(onPressed: _loadOffers, child: Text(l10n.retry)),
-                    ],
-                  ),
+              _OffersMessage(
+                icon: Icons.cloud_off_outlined,
+                title: l10n.aiBillingOffersUnavailable,
+                description: l10n.aiBillingOffersUnavailableDescription,
+                action: TextButton.icon(
+                  onPressed: _loadOffers,
+                  icon: const Icon(Icons.refresh),
+                  label: Text(l10n.retry),
+                ),
+              )
+            else if (_response?.offers.isEmpty ?? true)
+              _OffersMessage(
+                icon: Icons.auto_awesome_outlined,
+                title: l10n.aiBillingOffersEmptyTitle,
+                description: l10n.aiBillingOffersEmpty,
+                action: TextButton.icon(
+                  onPressed: _loadOffers,
+                  icon: const Icon(Icons.refresh),
+                  label: Text(l10n.aiBillingRefreshPlans),
                 ),
               )
             else
-              Expanded(
-                child: ListView(
-                  children: [
-                    for (final offer in _response?.offers ?? const <BillingOffer>[])
-                      _OfferCard(
-                        offer: offer,
-                        locale: locale,
-                        selected: _selectedOffer?.offerId == offer.offerId,
-                        onSelected: () => setState(() => _selectedOffer = offer),
-                      ),
-                    if (_selectedOffer != null) ...[
-                      const SizedBox(height: 24),
-                      Text(l10n.aiBillingTermsTitle, style: Theme.of(context).textTheme.titleMedium),
-                      const SizedBox(height: 8),
-                      Text(_selectedOffer!.terms.text),
-                      const SizedBox(height: 16),
-                      CheckboxListTile(
-                        key: const Key('billing_accept_terms'),
-                        value: _termsAccepted,
-                        onChanged: (value) => setState(() => _termsAccepted = value ?? false),
-                        title: Text(l10n.aiBillingAcceptTerms),
-                        controlAffinity: ListTileControlAffinity.leading,
-                        contentPadding: EdgeInsets.zero,
-                      ),
-                    ],
+              ListView(
+                shrinkWrap: true,
+                physics: const NeverScrollableScrollPhysics(),
+                children: [
+                  for (final offer
+                      in _response?.offers ?? const <BillingOffer>[])
+                    _OfferCard(
+                      offer: offer,
+                      locale: locale,
+                      selected: _selectedOffer?.offerId == offer.offerId,
+                      onSelected: () => setState(() => _selectedOffer = offer),
+                    ),
+                  if (_selectedOffer != null) ...[
+                    const SizedBox(height: 24),
+                    Text(
+                      l10n.aiBillingTermsTitle,
+                      style: Theme.of(context).textTheme.titleMedium,
+                    ),
+                    const SizedBox(height: 8),
+                    Text(_selectedOffer!.terms.text),
+                    const SizedBox(height: 16),
+                    CheckboxListTile(
+                      key: const Key('billing_accept_terms'),
+                      value: _termsAccepted,
+                      onChanged: (value) =>
+                          setState(() => _termsAccepted = value ?? false),
+                      title: Text(l10n.aiBillingAcceptTerms),
+                      controlAffinity: ListTileControlAffinity.leading,
+                      contentPadding: EdgeInsets.zero,
+                    ),
                   ],
-                ),
+                ],
               ),
-            const SizedBox(height: 16),
-            AppButton(
-              key: const Key('billing_continue'),
-              onPressed: _termsAccepted && _selectedOffer != null ? _handleContinue : null,
-              disabled: !_termsAccepted || _selectedOffer == null || _loading,
-              child: Text(l10n.aiBillingContinue),
-            ),
+            if ((_response?.offers.isNotEmpty ?? false) && !_loading) ...[
+              const SizedBox(height: 16),
+              AppButton(
+                key: const Key('billing_continue'),
+                onPressed: _termsAccepted && _selectedOffer != null
+                    ? _handleContinue
+                    : null,
+                disabled: !_termsAccepted || _selectedOffer == null,
+                child: Text(l10n.aiBillingContinue),
+              ),
+            ],
           ],
         ),
+      ),
+    );
+  }
+}
+
+class _OffersMessage extends StatelessWidget {
+  const _OffersMessage({
+    required this.icon,
+    required this.title,
+    required this.description,
+    required this.action,
+  });
+
+  final IconData icon;
+  final String title;
+  final String description;
+  final Widget action;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = Theme.of(context).colorScheme;
+    final textTheme = Theme.of(context).textTheme;
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(18),
+      decoration: BoxDecoration(
+        color: colors.surfaceContainerLow,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: colors.outlineVariant),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Icon(icon, color: colors.primary),
+          const SizedBox(width: 14),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(title, style: textTheme.titleSmall),
+                const SizedBox(height: 4),
+                Text(
+                  description,
+                  style: textTheme.bodyMedium?.copyWith(
+                    color: colors.onSurfaceVariant,
+                  ),
+                ),
+                const SizedBox(height: 6),
+                Align(
+                  alignment: AlignmentDirectional.centerStart,
+                  child: action,
+                ),
+              ],
+            ),
+          ),
+        ],
       ),
     );
   }
@@ -205,10 +278,10 @@ class _OfferCard extends StatelessWidget {
           padding: const EdgeInsets.all(16),
           child: Row(
             children: [
-              Radio<String>(
-                value: offer.offerId,
+              RadioGroup<String>(
                 groupValue: selected ? offer.offerId : null,
                 onChanged: (_) => onSelected(),
+                child: Radio<String>(value: offer.offerId),
               ),
               const SizedBox(width: 8),
               Expanded(

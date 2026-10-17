@@ -36,6 +36,32 @@ Optional: VS Code with the Dart and Flutter extensions (repository settings live
 
 ## 2. Start the local Supabase stack
 
+To bring up the non-Flutter development services together, run this from the
+repository root:
+
+```bash
+./scripts/start-local.sh
+```
+
+The launcher starts or reuses Supabase, applies pending Supabase migrations
+without resetting database data, applies the local D1 migrations, and starts
+the AI Platform (AP), ABO, and AI Platform Viewer. It installs each module's
+Node dependencies with `npm ci` when its `node_modules` directory is missing.
+The viewer is optional (`./scripts/start-local.sh --no-viewer`). Use
+`./scripts/start-local.sh status` to probe the services, and
+`./scripts/start-local.sh stop` to stop the launcher-owned processes. Pressing
+Ctrl-C also stops processes started by that launcher run; services that were
+already running are left alone.
+
+The launcher uses AP port 8787, ABO port 8788, and Viewer port 5173 by default.
+Override them with `AI_PLATFORM_PORT`, `ABO_PORT`, and
+`AI_PLATFORM_VIEWER_PORT`. It keeps Wrangler's local state under the ignored
+repo-level `.wrangler/dev-stack/` directory. ABO can start with placeholder
+provider/key configuration; a running service alone does not configure a
+payment provider or provision production issuer keys.
+
+For the manual Supabase-only workflow, continue with:
+
 ```bash
 cd backend/local
 cp -n .env.example .env    # skip if .env already exists
