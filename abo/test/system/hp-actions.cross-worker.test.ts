@@ -75,6 +75,7 @@ type OffersFixtureExpectations = {
 };
 
 type PublishOfferParams = {
+  offer_id: string;
   price_minor: number;
   terms_text: string;
   copy: {
@@ -649,10 +650,12 @@ async function ensureActiveHpCredential(): Promise<ActiveHpCredential> {
 }
 
 function publishOfferParams(
+  offerId: string,
   expectations: OffersFixtureExpectations,
   priceMinor: number,
 ): PublishOfferParams {
   return {
+    offer_id: offerId,
     price_minor: priceMinor,
     terms_text: expectations.terms.text,
     copy: {
@@ -1161,7 +1164,7 @@ beforeEach(async () => {
 });
 
 describe("hp-actions cross-worker", () => {
-  it("E2E-P4.7-03 HP publish refusals for missing assertion, mismatch, and stale issued_at", async () => {
+  it("E2E-P4.7-03 HP publish refusals for missing assertion, mismatch, and stale issued_at (R2-P1 bound params)", async () => {
     const expectations = await setupHpHarness();
     const hp = await ensureActiveHpCredential();
     const controlAuditBefore = await platformControlAuditCountForActor(
@@ -1169,7 +1172,11 @@ describe("hp-actions cross-worker", () => {
     );
     const operatorActionBefore = await operatorActionCount();
     const publishPath = `/ops/offers/${expectations.offer_id}/publish`;
-    const params = publishOfferParams(expectations, expectations.price_minor);
+    const params = publishOfferParams(
+      expectations.offer_id,
+      expectations,
+      expectations.price_minor,
+    );
 
     const missingAssertionOperation = await buildHpOperation({
       op: "publish_offer",
@@ -1237,7 +1244,7 @@ describe("hp-actions cross-worker", () => {
     ).toBe(controlAuditBefore);
   });
 
-  it("E2E-P4.7-07 revoked credential is refused with credential_not_active", async () => {
+  it("E2E-P4.7-07 revoked credential is refused with credential_not_active (R2-P1 bound params)", async () => {
     const expectations = await setupHpHarness();
     const signerAuthenticator = await createSoftwareAuthenticator("EdDSA");
     const signerCredentialId = await seedActiveOperatorCredential(
@@ -1271,7 +1278,11 @@ describe("hp-actions cross-worker", () => {
     const operatorActionBefore = await operatorActionCount();
     const operation = await buildHpOperation({
       op: "publish_offer",
-      params: publishOfferParams(expectations, expectations.price_minor),
+      params: publishOfferParams(
+        expectations.offer_id,
+        expectations,
+        expectations.price_minor,
+      ),
       actorEmail: VENDOR_OPERATOR_EMAIL,
     });
     const assertion = await signHpOperation(hpAuthenticator, operation);
@@ -1293,7 +1304,7 @@ describe("hp-actions cross-worker", () => {
     ).toBe(controlAuditBefore);
   });
 
-  it("E2E-P4.7-01 publish offer v2 keeps open v1 checkout at v1 price", async () => {
+  it("E2E-P4.7-01 publish offer v2 keeps open v1 checkout at v1 price (R2-P1 bound params)", async () => {
     const expectations = await setupHpHarness();
     await seedV1OnlyPublishOffer(expectations);
 
@@ -1310,7 +1321,11 @@ describe("hp-actions cross-worker", () => {
     const hp = await ensureActiveHpCredential();
     const publishOperation = await buildHpOperation({
       op: "publish_offer",
-      params: publishOfferParams(expectations, HP_V2_PRICE_MINOR),
+      params: publishOfferParams(
+        HP_V1_ONLY_OFFER_ID,
+        expectations,
+        HP_V2_PRICE_MINOR,
+      ),
       actorEmail: VENDOR_OPERATOR_EMAIL,
     });
     const publishAssertion = await signHpOperation(
@@ -1355,7 +1370,7 @@ describe("hp-actions cross-worker", () => {
     expect(await grantOutcomeResult(grantId)).toBe("applied");
   });
 
-  it("E2E-P4.7-02 retire offer removes it from offers and blocks checkout", async () => {
+  it("E2E-P4.7-02 retire offer removes it from offers and blocks checkout (R2-P1 bound params)", async () => {
     const expectations = await setupHpHarness();
     const orgId = ORG_HP_02;
     await putBillingContact(orgId);
@@ -1365,7 +1380,7 @@ describe("hp-actions cross-worker", () => {
     const hp = await ensureActiveHpCredential();
     const retireOperation = await buildHpOperation({
       op: "retire_offer",
-      params: {},
+      params: { offer_id: expectations.offer_id },
       actorEmail: VENDOR_OPERATOR_EMAIL,
     });
     const retireAssertion = await signHpOperation(
@@ -1410,7 +1425,7 @@ describe("hp-actions cross-worker", () => {
     expect(await platformPlanVersionSnapshot()).toBe(platformTermsBefore);
   });
 
-  it("E2E-P4.7-04 withheld release applies grant; fully reversed release is refused", async () => {
+  it("E2E-P4.7-04 withheld release applies grant; fully reversed release is refused (R2-P1 bound params)", async () => {
     const expectations = await setupHpHarness();
     const orgId = ORG_HP_03;
     const offer = { offerId: expectations.offer_id, version: expectations.version };
@@ -1426,7 +1441,7 @@ describe("hp-actions cross-worker", () => {
     const hp = await ensureActiveHpCredential();
     const releaseOperation = await buildHpOperation({
       op: "release_payment",
-      params: {},
+      params: { payment_id: withheld.paymentId },
       actorEmail: VENDOR_OPERATOR_EMAIL,
     });
     const releaseAssertion = await signHpOperation(
@@ -1457,7 +1472,7 @@ describe("hp-actions cross-worker", () => {
     const grantWorkBefore = await grantWorkCountForPayment(reversed.paymentId);
     const reversedOperation = await buildHpOperation({
       op: "release_payment",
-      params: {},
+      params: { payment_id: reversed.paymentId },
       actorEmail: VENDOR_OPERATOR_EMAIL,
     });
     const reversedAssertion = await signHpOperation(
@@ -1479,7 +1494,7 @@ describe("hp-actions cross-worker", () => {
     );
   });
 
-  it("E2E-P4.7-05 manual chargeback voids the active term and holds the queue", async () => {
+  it("E2E-P4.7-05 manual chargeback voids the active term and holds the queue (R2-P1 bound params)", async () => {
     const expectations = await setupHpHarness();
     const orgId = ORG_HP_04;
     const offer = { offerId: expectations.offer_id, version: expectations.version };
@@ -1533,7 +1548,7 @@ describe("hp-actions cross-worker", () => {
 
     const chargebackOperation = await buildHpOperation({
       op: "manual_chargeback",
-      params: {},
+      params: { payment_id: activePaymentId! },
       actorEmail: VENDOR_OPERATOR_EMAIL,
     });
     const chargebackAssertion = await signHpOperation(
@@ -1587,7 +1602,7 @@ describe("hp-actions cross-worker", () => {
     await settlePlatformDurableObjectAlarms();
   });
 
-  it("E2E-P4.7-06 erasure blanks contact versions and blocks checkout", async () => {
+  it("E2E-P4.7-06 erasure blanks contact versions and blocks checkout (R2-P1 bound params)", async () => {
     const expectations = await setupHpHarness();
     const orgId = ORG_HP_05;
     const offer = { offerId: expectations.offer_id, version: expectations.version };
@@ -1628,7 +1643,7 @@ describe("hp-actions cross-worker", () => {
     const hp = await ensureActiveHpCredential();
     const eraseOperation = await buildHpOperation({
       op: "erase_contact",
-      params: {},
+      params: { org_id: orgId },
       actorEmail: VENDOR_OPERATOR_EMAIL,
     });
     const eraseAssertion = await signHpOperation(hp.authenticator, eraseOperation);

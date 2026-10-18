@@ -32,6 +32,7 @@ import {
   reversalIdFromDedupeKey,
   type ReversalEnv,
 } from "../work/reversal.js";
+import { signedHpParamsBound } from "./browser/ceremony.js";
 const ASSERTION_MAX_AGE_MS = 5 * 60 * 1000;
 
 export interface OpsEnv extends ClockEnv {
@@ -134,6 +135,9 @@ export interface OpsEnv extends ClockEnv {
     armKillSwitch(
       args: Record<string, unknown>,
     ): Promise<Record<string, unknown>>;
+    disarmKillSwitch(
+      args: Record<string, unknown>,
+    ): Promise<Record<string, unknown>>;
     activateCohort(
       args: Record<string, unknown>,
     ): Promise<Record<string, unknown>>;
@@ -174,6 +178,7 @@ type RelayPlatformMethod =
   | "promoteRoutingPolicy"
   | "rollbackRoutingPolicy"
   | "armKillSwitch"
+  | "disarmKillSwitch"
   | "activateCohort"
   | "promoteCohort"
   | "deprecateCapability"
@@ -259,7 +264,12 @@ async function loadAccessCerts(env: OpsEnv): Promise<AccessCertsDocument | null>
   }
 }
 
-async function verifyOpsAccess(
+/**
+ * Verify the Cloudflare Access JWT on an ops request. Exported so the exact
+ * `GET /ops` shell route (R2-P4 / 01 §3.8 D-2) can verify Access before
+ * the contract-version check.
+ */
+export async function verifyOpsAccess(
   env: OpsEnv,
   request: Request,
 ): Promise<VerifiedAccess | Response> {
@@ -684,6 +694,21 @@ async function verifyHpRequest(
       subject,
       operation.params,
       "actor_email_mismatch",
+      contractVersion,
+    );
+  }
+
+  // R2-P1: the signed params must carry the exact frozen key set for the
+  // action and must bind the route subject, before the assertion (and its
+  // replay reservation) can be consumed.
+  if (!signedHpParamsBound(operation.op, operation.params, subject)) {
+    return refuseHpAction(
+      env,
+      access,
+      expectedOp,
+      subject,
+      operation.params,
+      "assertion_invalid",
       contractVersion,
     );
   }
@@ -3359,6 +3384,28 @@ export async function handleOps(
     return handleGetRegistries(env, contractVersion);
   }
 
+  // R2-P4 / 01 §3.8 D-2: the shell's versioned context source. Returns the
+  // verified Access email, the RP id/origin, the negotiated console
+  // version and the active credential ids and algs only — never any
+  // stored signing material, and never a caller-supplied actor.
+  if (request.method === "GET" && path === "/ops/ceremony-context") {
+    const credentials = await listActiveHpCredentials(env);
+    return clinicJsonResponse(
+      {
+        contract_version: contractVersion,
+        actor_email: access.email,
+        rp_id: env.OPS_HOST,
+        origin: `https://${env.OPS_HOST}`,
+        credentials: credentials.map((credential) => ({
+          credential_id: credential.credential_id,
+          alg: credential.alg,
+        })),
+      },
+      200,
+      contractVersion,
+    );
+  }
+
   const retryMatch = /^\/ops\/parked\/([^/]+)\/retry$/u.exec(path);
   if (request.method === "POST" && retryMatch !== null) {
     return handlePostRetry(env, retryMatch[1]!, access, contractVersion);
@@ -3730,6 +3777,21 @@ export async function handleOps(
       request,
       contractVersion,
       "armKillSwitch",
+      killSwitchSubject,
+      ["scope", "target"],
+    );
+  }
+
+  // R8-CONSOLE2: lift an armed switch through the same class-H relay; the
+  // platform owns validation, audit and AL-19. Switch state is never
+  // written locally.
+  if (request.method === "POST" && path === "/ops/kill-switches/disarm") {
+    return handlePostConfigurationClassHRelay(
+      env,
+      access,
+      request,
+      contractVersion,
+      "disarmKillSwitch",
       killSwitchSubject,
       ["scope", "target"],
     );

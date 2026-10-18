@@ -1635,7 +1635,7 @@ describe("reconciliation cross-worker", () => {
     expect(capturedEmailMentions("AL-10")).toBe(true);
   });
 
-  it("E2E-P4.10-05 unrecorded payout chargeback resolves after manual chargeback and re-run", async () => {
+  it("E2E-P4.10-05 unrecorded payout chargeback resolves after manual chargeback and re-run (R2-P1 bound params)", async () => {
     const expectations = await setupReconciliationHarness();
     const orgId = ORG_RC_05;
     const hp = await ensureActiveHpCredential();
@@ -1659,7 +1659,7 @@ describe("reconciliation cross-worker", () => {
 
     const chargebackOperation = await buildHpOperation({
       op: "manual_chargeback",
-      params: {},
+      params: { payment_id: paymentId },
       actorEmail: VENDOR_OPERATOR_EMAIL,
     });
     const chargebackAssertion = await signHpOperation(

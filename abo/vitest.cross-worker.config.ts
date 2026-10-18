@@ -62,6 +62,7 @@ export default defineWorkersConfig({
   test: {
     include: [
       "test/system/checkout.cross-worker.test.ts",
+      "test/system/console-browser.cross-worker.test.ts",
       "test/system/coverage-view.cross-worker.test.ts",
       "test/system/grant.cross-worker.test.ts",
       "test/system/hp-actions.cross-worker.test.ts",

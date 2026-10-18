@@ -69,6 +69,7 @@ const ORG_CFG_04 = "a4890004-0004-4004-8004-000000000004";
 const ORG_CFG_05 = "a4890005-0005-4005-8005-000000000005";
 const ORG_CFG_06 = "a4890006-0006-4006-8006-000000000006";
 const ORG_CFG_07 = "a4890007-0007-4007-8007-000000000007";
+const ORG_CFG_08 = "a4890008-0008-4008-8008-000000000008";
 const ROUTING_POLICY_VERSION_2 = "2";
 const COHORT_NAME = "relay-probe-cohort";
 const LAUNCH_CEILING_POLICY = {
@@ -1103,6 +1104,40 @@ async function platformAlertCount(code: string): Promise<number> {
   return row?.n ?? 0;
 }
 
+// R8-CONSOLE2: the platform's control_audit count for the Access actor.
+async function platformControlAuditCountForActor(
+  email: string,
+): Promise<number> {
+  try {
+    const row = await env.PLATFORM_DB.prepare(
+      `SELECT COUNT(*) AS n FROM control_audit
+       WHERE actor = ? OR operator_id = ?`,
+    )
+      .bind(email, email)
+      .first<{ n: number }>();
+    return row?.n ?? 0;
+  } catch {
+    return 0;
+  }
+}
+
+async function platformControlAuditRowsForAction(
+  email: string,
+  action: string,
+): Promise<number> {
+  try {
+    const row = await env.PLATFORM_DB.prepare(
+      `SELECT COUNT(*) AS n FROM control_audit
+       WHERE (actor = ? OR operator_id = ?) AND action = ?`,
+    )
+      .bind(email, email, action)
+      .first<{ n: number }>();
+    return row?.n ?? 0;
+  } catch {
+    return 0;
+  }
+}
+
 async function operatorActionCount(): Promise<number> {
   const row = await env.DB.prepare(`SELECT COUNT(*) AS n FROM operator_action`).first<{
     n: number;
@@ -1948,6 +1983,110 @@ describe("configuration relays cross-worker", () => {
     }
 
     expect(await operatorActionCount()).toBe(operatorActionBefore + 7);
+    for (const email of await operatorActionActorEmails()) {
+      expect(email).toBe(VENDOR_OPERATOR_EMAIL);
+    }
+  });
+
+  it("R8-CONSOLE2 console disarm kill switch lifts the armed capability and refuses inactive or unknown targets", async () => {
+    const expectations = await setupConfigurationRelaysHarness();
+    const orgId = ORG_CFG_08;
+    await setupPaidPlatformCoverage(
+      orgId,
+      expectations,
+      "req-cfg-08-paid",
+      94908,
+    );
+    const accessJwt = await mintVendorAccessJwt();
+    const operatorActionBefore = await operatorActionCount();
+    const controlAuditBefore =
+      await platformControlAuditCountForActor(VENDOR_OPERATOR_EMAIL);
+
+    const arm = await opsClassHRelay({
+      path: "/ops/kill-switches",
+      accessJwt,
+      bodyFields: {
+        scope: "capability",
+        target: CAPABILITY_ID,
+      },
+      actionId: crypto.randomUUID(),
+    });
+    expect(arm.status).toBe(200);
+    const armBody = (await arm.json()) as Record<string, unknown>;
+    expect(armBody.result).toBe("ok");
+
+    const refused = await platformHttpInvoke(orgId, clinicIssuer!);
+    expect(refused.status).toBe(503);
+    const refusedBody = (await refused.json()) as Record<string, unknown>;
+    expect(refusedBody.code).toBe("capability_disabled");
+    expect(await platformAlertCount("AL-19")).toBeGreaterThan(0);
+
+    const disarm = await opsClassHRelay({
+      path: "/ops/kill-switches/disarm",
+      accessJwt,
+      bodyFields: {
+        scope: "capability",
+        target: CAPABILITY_ID,
+      },
+      actionId: crypto.randomUUID(),
+    });
+    expect(disarm.status).toBe(200);
+    const disarmBody = (await disarm.json()) as Record<string, unknown>;
+    expect(disarmBody.result).toBe("ok");
+
+    const accepted = await platformHttpInvoke(orgId, clinicIssuer!);
+    expect(accepted.status).toBe(200);
+
+    // Both audits: the platform wrote the lift row, the ABO wrote one
+    // operator_action per relay attempt with the Access email as actor.
+    expect(
+      await platformControlAuditRowsForAction(
+        VENDOR_OPERATOR_EMAIL,
+        "lift_kill_switch_capability",
+      ),
+    ).toBeGreaterThan(0);
+    expect(
+      await platformControlAuditCountForActor(VENDOR_OPERATOR_EMAIL),
+    ).toBeGreaterThanOrEqual(controlAuditBefore + 2);
+
+    // Disarming an already-inactive switch and an unknown target are both
+    // refused by the platform without writing any further platform audit.
+    const auditAfterLift = await platformControlAuditCountForActor(
+      VENDOR_OPERATOR_EMAIL,
+    );
+    const inactive = await opsClassHRelay({
+      path: "/ops/kill-switches/disarm",
+      accessJwt,
+      bodyFields: {
+        scope: "capability",
+        target: CAPABILITY_ID,
+      },
+      actionId: crypto.randomUUID(),
+    });
+    expect(inactive.status).toBe(200);
+    const inactiveBody = (await inactive.json()) as Record<string, unknown>;
+    expect(inactiveBody.result).toBe("conflict");
+    expect(inactiveBody.code).toBe("illegal_kill_switch_transition");
+
+    const unknown = await opsClassHRelay({
+      path: "/ops/kill-switches/disarm",
+      accessJwt,
+      bodyFields: {
+        scope: "capability",
+        target: "clinic.unknown_capability",
+      },
+      actionId: crypto.randomUUID(),
+    });
+    const unknownBody = (await unknown.json()) as Record<string, unknown>;
+    expect(unknownBody.result).toBe("conflict");
+    expect(unknownBody.code).toBe("illegal_kill_switch_transition");
+
+    expect(
+      await platformControlAuditCountForActor(VENDOR_OPERATOR_EMAIL),
+    ).toBe(auditAfterLift);
+
+    // arm + disarm + inactive refusal + unknown refusal
+    expect(await operatorActionCount()).toBe(operatorActionBefore + 4);
     for (const email of await operatorActionActorEmails()) {
       expect(email).toBe(VENDOR_OPERATOR_EMAIL);
     }

@@ -18,7 +18,8 @@ import {
   checkContractVersion,
   clinicErrorResponse,
 } from "./clinic-api/version.js";
-import { handleOps as dispatchOps, runDueTransferSteps } from "./ops/index.js";
+import { handleOps as dispatchOps, runDueTransferSteps, verifyOpsAccess } from "./ops/index.js";
+import { handleOpsShell } from "./ops/browser/shell.js";
 import { refreshCoverageView } from "./coverage/view.js";
 import { markExportLagIfDue, sendDueAlerts } from "./alert/index.js";
 import { checkR2BucketLock } from "./alert/lock.js";
@@ -115,6 +116,12 @@ export interface Env {
       args: Record<string, unknown>,
     ): Promise<Record<string, unknown>>;
     recordOperatorAction(
+      args: Record<string, unknown>,
+    ): Promise<Record<string, unknown>>;
+    armKillSwitch(
+      args: Record<string, unknown>,
+    ): Promise<Record<string, unknown>>;
+    disarmKillSwitch(
       args: Record<string, unknown>,
     ): Promise<Record<string, unknown>>;
   };
@@ -329,6 +336,16 @@ export default {
 
     if (isCrossHostRejection(host, path, env)) {
       return emptyNotFound();
+    }
+
+    // R2-P4 / 01 §3.8 D-2: exactly `GET /ops` (no trailing slash) serves the
+    // source-bundled console HTML shell after host validation. Access JWT
+    // verification happens inside the handler; the contract-version gate does
+    // not run for this one path because a browser navigation cannot send the
+    // version header. Every other `/ops/*` path keeps the version and auth
+    // rules handled by `dispatchOps`.
+    if (host === env.OPS_HOST && request.method === "GET" && path === "/ops") {
+      return handleOpsShell(request, env);
     }
 
     if (!isAcceptedPath(host, path, env)) {
