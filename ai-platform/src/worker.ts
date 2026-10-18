@@ -161,7 +161,7 @@ interface Env extends AlertEnv {
   CONFIG_CACHE_TTL_MS?: string;
   ISSUER_ID: string;
   TEST_CLOCK?: string;
-  PLATFORM_SIGNING_KEY: string;
+  PLATFORM_SIGNING_KEY?: string;
   DURATION_SCALE?: string;
   RATE_LIMITER_INSTALLATION: RateLimit;
   RATE_LIMITER_INSTALLATION_ACTOR: RateLimit;
@@ -1739,6 +1739,12 @@ export class GatewayObject extends DurableObject {
     const contractVersion = negotiated.version;
 
     const kind = (body as { kind?: string }).kind;
+    if (typeof body === "object" && body !== null && !Array.isArray(body)) {
+      body = {
+        ...(body as Record<string, unknown>),
+        environment: (this.env as Env).ENVIRONMENT,
+      };
+    }
     log.debug("gateway_object_rpc_received", { kind: kind ?? "unknown" });
     const injectableNow = (body as { now?: unknown }).now;
     const now =

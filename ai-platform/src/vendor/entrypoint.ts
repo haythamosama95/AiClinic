@@ -77,6 +77,8 @@ import {
   runRebuildClinicDo,
   runRebuildGrantLedger,
   runRefreshCoverageSnapshot,
+  loadPlatformSigningKey,
+  type PlatformSigningMaterial,
 } from "../quota-do/coverage";
 
 const VENDOR_CHANNEL = CHANNEL_VERSIONS.vendorEntrypoint;
@@ -179,6 +181,7 @@ type VendorEnv = ClockEnv & {
   R2: R2Bucket;
   DO: DurableObjectNamespace;
   ISSUER_ID: string;
+  ENVIRONMENT: string;
   ACCESS_TEAM_DOMAIN: string;
   ACCESS_AUD: string;
   /** Local full-stack tests provide the generated Access certificates here. */
@@ -186,7 +189,7 @@ type VendorEnv = ClockEnv & {
   WEBAUTHN_RP_ID: string;
   WEBAUTHN_ORIGIN: string;
   ALERT_EMAIL_TO: string;
-  PLATFORM_SIGNING_KEY: string;
+  PLATFORM_SIGNING_KEY?: string;
   DURATION_SCALE?: string;
   SEND_EMAIL: {
     send(message: {
@@ -648,6 +651,7 @@ async function callCoverageDo(
         contract_version: CHANNEL_VERSIONS.platformDo,
         installationId,
         ...body,
+        environment: env.ENVIRONMENT,
       }),
     });
     if (!response.ok) {
@@ -1689,39 +1693,6 @@ function mapApplyGrantDoResponse(
 
 function isHex64(value: unknown): value is string {
   return typeof value === "string" && HEX64_RE.test(value);
-}
-
-type PlatformSigningMaterial = {
-  kid: string;
-  privateKey: CryptoKey;
-};
-
-async function loadPlatformSigningKey(
-  json: string,
-): Promise<PlatformSigningMaterial | null> {
-  try {
-    const parsed = JSON.parse(json) as {
-      kid?: string;
-      pkcs8?: string;
-    };
-    if (typeof parsed.kid !== "string" || typeof parsed.pkcs8 !== "string") {
-      return null;
-    }
-    const pkcs8 = base64UrlDecode(parsed.pkcs8);
-    if (pkcs8 === null) {
-      return null;
-    }
-    const privateKey = await crypto.subtle.importKey(
-      "pkcs8",
-      pkcs8,
-      { name: "Ed25519" },
-      false,
-      ["sign"],
-    );
-    return { kid: parsed.kid, privateKey };
-  } catch {
-    return null;
-  }
 }
 
 async function readVoidReceiptFromR2(
@@ -4242,7 +4213,10 @@ export class VendorEntrypoint extends WorkerEntrypoint<VendorEnv> {
       }
       return mapVoidForReversalDoResponse(version, doResponse);
     }
-    const signingKey = await loadPlatformSigningKey(this.env.PLATFORM_SIGNING_KEY);
+    const signingKey = await loadPlatformSigningKey(
+      this.env.PLATFORM_SIGNING_KEY,
+      this.env.ENVIRONMENT,
+    );
     if (signingKey === null) {
       return grantRejected(version, "coverage_unknown");
     }

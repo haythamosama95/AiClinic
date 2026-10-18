@@ -116,7 +116,8 @@ export interface ApplyGrantRequest {
   allowanceCredits: number;
   graceDays?: number;
   operatorCredentialId: string;
-  platformSigningKeyJson: string;
+  platformSigningKeyJson?: string;
+  environment?: string;
   durationScale?: DurationScale;
   nowIso: string;
   db: D1Database;
@@ -162,10 +163,18 @@ export type CoverageShipEnv = CoverageAlertEnv & {
   R2: R2Bucket;
 };
 
-type PlatformSigningMaterial = {
+export type PlatformSigningMaterial = {
   kid: string;
   privateKey: CryptoKey;
 };
+
+const PUBLISHED_DEVELOPMENT_SIGNING_KEY_PKCS8 =
+  "MC4CAQAwBQYDK2VwBCIEIN2ndQQArm1dlsCuHaGGaUB8nnqfj7W2HaVbj_JJA9Lk";
+const PUBLISHED_DEVELOPMENT_SIGNING_KEY_BYTES = base64UrlToBytes(
+  PUBLISHED_DEVELOPMENT_SIGNING_KEY_PKCS8,
+);
+const PUBLISHED_DEVELOPMENT_SIGNING_KEY_PUBLIC =
+  "GNzxZ6Gymues_aeJArGyb3wDESTOUJeqhuZBfTByni0";
 
 function base64UrlToBytes(segment: string): Uint8Array {
   const base64 = segment.replace(/-/g, "+").replace(/_/g, "/");
@@ -179,9 +188,13 @@ function base64UrlToBytes(segment: string): Uint8Array {
 }
 
 async function loadPlatformSigningKey(
-  json: string,
+  json: string | undefined,
+  environment = "unknown",
 ): Promise<PlatformSigningMaterial | null> {
   try {
+    if (typeof json !== "string" || json.length === 0) {
+      return null;
+    }
     const parsed = JSON.parse(json) as {
       kid?: string;
       pkcs8?: string;
@@ -190,6 +203,15 @@ async function loadPlatformSigningKey(
       return null;
     }
     const pkcs8 = base64UrlToBytes(parsed.pkcs8);
+    if (
+      environment !== "development" &&
+      pkcs8.length === PUBLISHED_DEVELOPMENT_SIGNING_KEY_BYTES.length &&
+      pkcs8.every(
+        (value, index) => value === PUBLISHED_DEVELOPMENT_SIGNING_KEY_BYTES[index],
+      )
+    ) {
+      return null;
+    }
     const privateKey = await crypto.subtle.importKey(
       "pkcs8",
       pkcs8,
@@ -197,11 +219,40 @@ async function loadPlatformSigningKey(
       false,
       ["sign"],
     );
+    if (environment !== "development") {
+      // Check both the published PKCS8 bytes and the corresponding public-key
+      // identity so re-encoding or renaming the exposed key cannot bypass K-3.
+      const publishedPublicKey = await crypto.subtle.importKey(
+        "raw",
+        base64UrlToBytes(PUBLISHED_DEVELOPMENT_SIGNING_KEY_PUBLIC),
+        { name: "Ed25519" },
+        false,
+        ["verify"],
+      );
+      const probe = new TextEncoder().encode("R9-RT3 published-key check");
+      const signature = await crypto.subtle.sign("Ed25519", privateKey, probe);
+      const matchesPublishedBytes =
+        pkcs8.length === PUBLISHED_DEVELOPMENT_SIGNING_KEY_BYTES.length &&
+        pkcs8.every(
+          (value, index) => value === PUBLISHED_DEVELOPMENT_SIGNING_KEY_BYTES[index],
+        );
+      const matchesPublishedPublicKey = await crypto.subtle.verify(
+        "Ed25519",
+        publishedPublicKey,
+        signature,
+        probe,
+      );
+      if (matchesPublishedBytes || matchesPublishedPublicKey) {
+        return null;
+      }
+    }
     return { kid: parsed.kid, privateKey };
   } catch {
     return null;
   }
 }
+
+export { loadPlatformSigningKey };
 
 function ensureHotRow(storage: DurableObjectStorage, bindingEpoch: number): void {
   const rows = sqlSelect<HotRow>(storage, "SELECT binding_epoch FROM hot LIMIT 1");
@@ -1618,7 +1669,10 @@ export async function applyGrantRPC(
       return { kind: "apply_grant", result: "conflict" };
     }
 
-    const signingKey = await loadPlatformSigningKey(request.platformSigningKeyJson);
+    const signingKey = await loadPlatformSigningKey(
+      request.platformSigningKeyJson,
+      request.environment,
+    );
     if (signingKey === null) {
       throw new Error("invalid_platform_signing_key");
     }
@@ -2097,7 +2151,8 @@ export interface VoidForReversalRequest {
   evidenceSha256: string;
   envelopeSha256: string;
   nowIso: string;
-  platformSigningKeyJson: string;
+  platformSigningKeyJson?: string;
+  environment?: string;
   durationScale?: DurationScale;
   replayOnly?: boolean;
 }
@@ -2137,7 +2192,10 @@ export async function voidForReversalRPC(
       return { kind: "void_for_reversal", result: "bad_request" };
     }
 
-    const signingKey = await loadPlatformSigningKey(request.platformSigningKeyJson);
+    const signingKey = await loadPlatformSigningKey(
+      request.platformSigningKeyJson,
+      request.environment,
+    );
     if (signingKey === null) {
       return { kind: "void_for_reversal", result: "bad_request" };
     }
@@ -2280,7 +2338,8 @@ export interface ReleaseHeldRequest {
   reason: string;
   assertionSha256: string;
   nowIso: string;
-  platformSigningKeyJson: string;
+  platformSigningKeyJson?: string;
+  environment?: string;
   durationScale?: DurationScale;
   replayOnly?: boolean;
 }
@@ -2302,7 +2361,8 @@ export interface VoidGrantRequest {
   assertionSha256: string;
   evidenceSha256: string;
   nowIso: string;
-  platformSigningKeyJson: string;
+  platformSigningKeyJson?: string;
+  environment?: string;
   durationScale?: DurationScale;
   replayOnly?: boolean;
 }
@@ -2335,7 +2395,10 @@ export async function releaseHeldRPC(
       return { kind: "release_held", result: "bad_request" };
     }
 
-    const signingKey = await loadPlatformSigningKey(request.platformSigningKeyJson);
+    const signingKey = await loadPlatformSigningKey(
+      request.platformSigningKeyJson,
+      request.environment,
+    );
     if (signingKey === null) {
       return { kind: "release_held", result: "bad_request" };
     }
@@ -2443,7 +2506,10 @@ export async function voidGrantRPC(
       return { kind: "void_grant", result: "bad_request" };
     }
 
-    const signingKey = await loadPlatformSigningKey(request.platformSigningKeyJson);
+    const signingKey = await loadPlatformSigningKey(
+      request.platformSigningKeyJson,
+      request.environment,
+    );
     if (signingKey === null) {
       return { kind: "void_grant", result: "bad_request" };
     }
@@ -2948,7 +3014,8 @@ export interface TransferOutRequest {
   bindingEpoch: number;
   transferId: string;
   toInstallationId: string;
-  platformSigningKeyJson: string;
+  platformSigningKeyJson?: string;
+  environment?: string;
   durationScale?: DurationScale;
   nowIso: string;
 }
@@ -2970,7 +3037,10 @@ export async function transferOutRPC(
 ): Promise<TransferOutResponse> {
   return blockConcurrencyWhile(async () => {
     ensureHotRow(storage, request.bindingEpoch);
-    const signingKey = await loadPlatformSigningKey(request.platformSigningKeyJson);
+    const signingKey = await loadPlatformSigningKey(
+      request.platformSigningKeyJson,
+      request.environment,
+    );
     if (signingKey === null) {
       return { kind: "transfer_out", result: "bad_request" };
     }
@@ -3123,7 +3193,8 @@ export interface TransferInRequest {
   bindingEpoch: number;
   transferId: string;
   package: TransferPackageTerm[];
-  platformSigningKeyJson: string;
+  platformSigningKeyJson?: string;
+  environment?: string;
   durationScale?: DurationScale;
   nowIso: string;
 }
@@ -3144,7 +3215,10 @@ export async function transferInRPC(
 ): Promise<TransferInResponse> {
   return blockConcurrencyWhile(async () => {
     ensureHotRow(storage, request.bindingEpoch);
-    const signingKey = await loadPlatformSigningKey(request.platformSigningKeyJson);
+    const signingKey = await loadPlatformSigningKey(
+      request.platformSigningKeyJson,
+      request.environment,
+    );
     if (signingKey === null) {
       return { kind: "transfer_in", result: "bad_request" };
     }
@@ -3821,7 +3895,8 @@ export type RebuildClinicDoRequest = {
   orgId: string;
   vendorContractVersion: number;
   bindingEpoch: number;
-  platformSigningKeyJson: string;
+  platformSigningKeyJson?: string;
+  environment?: string;
   durationScale?: DurationScale;
   db: D1Database;
   r2: R2Bucket;
@@ -4090,7 +4165,7 @@ export async function runRebuildClinicDo(
     DB: D1Database;
     DO: DurableObjectNamespace;
     R2: R2Bucket;
-    PLATFORM_SIGNING_KEY: string;
+    PLATFORM_SIGNING_KEY?: string;
     DURATION_SCALE?: string;
   },
   installationId: string,
