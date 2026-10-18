@@ -738,7 +738,7 @@ Agents update only their own row (rule 2.11). Status values: `not started`, `in 
 | --- | --- | --- | --- | --- | --- |
 | RM00 | complete | `5aefe777a0266c0e6b6de1fdf6598a2476e69de0` | [39104988439](https://github.com/haythamosama95/AiClinic/actions/runs/39104988439) | 2026-10-18 | CI baseline, no code changes (§2.9.5); 2 known failures: `backend/all` `appointments_patient_mrn_payload_test.sql`, `ai-platform/workers` `E2E-P3.9-01 FM-06 DO failure admits via fallback and */5 charges once` |
 | RM01 | complete | `979b9246ff497ce2b869679d8856b45f58742b8d` | [39116772595](https://github.com/haythamosama95/AiClinic/actions/runs/39116772595) | 2026-10-18 | 4 findings implemented (SQL-01 → SQL-03 → SQL-02 → SQL-06); new `Staff authority RM01` test passed 20/20 in `backend/all`; test-fixture commits `79a37765`/`979b9246` on top of `bec38fee`; see docs/review/abo-remediation/RM01.md |
-| RM02 | not started | — | — | — | — |
+| RM02 | complete | `46d036546fa906b75e40856a15fd5ebd97d5644f` | [39119525973](https://github.com/haythamosama95/AiClinic/actions/runs/39119525973) | 2026-10-18 | 2 findings implemented (SQL-04 → SQL-05); new `Permission readers RM02` test passed 20/20 in `backend/all`; sole failure is the known RM00 baseline flake `E2E-P3.9-01` (`ai-platform/workers`, passed in round 1 run 39118251291); test-alignment commit `46d03654` on top of `19cbdd8f`; see docs/review/abo-remediation/RM02.md |
 | RM03 | not started | — | — | — | — |
 | RM04 | not started | — | — | — | — |
 | RM05 | not started | — | — | — | — |
