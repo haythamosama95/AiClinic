@@ -130,7 +130,7 @@ async function hmacRawBodiesInHour(env: NotifyIntakeEnv, nowMs: number): Promise
 
 async function recordInvalidHmac(
   env: NotifyIntakeEnv,
-  rawBody: Uint8Array,
+  rawBody: string,
 ): Promise<void> {
   const nowMs = await clockNowMs(env);
   const nowIso = await clockNowIso(env);
@@ -152,13 +152,14 @@ async function recordInvalidHmac(
 
 async function recordUnparseableNotification(
   env: NotifyIntakeEnv,
+  rawBody: string,
   rawBytes: Uint8Array,
 ): Promise<void> {
   const nowIso = await clockNowIso(env);
   const notificationId = await newId(env);
   const bodySha256 = await sha256Hex(rawBytes);
   const bodyR2Key = `evidence/notification/${notificationId}`;
-  await env.R2.put(bodyR2Key, rawBytes);
+  await env.R2.put(bodyR2Key, rawBody);
   await env.DB.prepare(
     `INSERT INTO notification (
        notification_id, provider_id, channel, hmac_valid, body_r2_key,
@@ -549,14 +550,14 @@ export async function handlePostNotifyPaymob(
   const parsed = await provider.parseNotification(parseRequest);
   if (parsed.parseable === false) {
     try {
-      await recordUnparseableNotification(env, bodyBytes);
+      await recordUnparseableNotification(env, body, bodyBytes);
     } catch {
       return emptyResponse(500);
     }
     return emptyResponse(200);
   }
   if (!parsed.authentic) {
-    await recordInvalidHmac(env, bodyBytes);
+    await recordInvalidHmac(env, body);
     return emptyResponse(401);
   }
 
@@ -567,7 +568,7 @@ export async function handlePostNotifyPaymob(
   const bodyR2Key = `evidence/notification/${notificationId}`;
 
   try {
-    await env.R2.put(bodyR2Key, bodyBytes);
+    await env.R2.put(bodyR2Key, body);
   } catch {
     return emptyResponse(500);
   }
@@ -696,6 +697,7 @@ export async function handleGetNotifyPaymob(
     try {
       await recordUnparseableNotification(
         env,
+        query,
         new TextEncoder().encode(query),
       );
     } catch {
@@ -704,7 +706,7 @@ export async function handleGetNotifyPaymob(
     return emptyResponse(200);
   }
   if (!parsed.authentic) {
-    await recordInvalidHmac(env, new TextEncoder().encode(query));
+    await recordInvalidHmac(env, query);
     return emptyResponse(401);
   }
 

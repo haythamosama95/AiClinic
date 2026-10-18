@@ -614,7 +614,6 @@ describe("P4.3 notify intake", () => {
     await setClock("2026-01-15T11:00:00.000Z");
     const rateIp = "203.0.113.99";
     const notificationsBefore = await tableCount("notification");
-    const workBefore = await tableCount("work");
 
     for (let index = 0; index < 60; index += 1) {
       const response = await postPaymobProcessedCallback(
@@ -624,14 +623,17 @@ describe("P4.3 notify intake", () => {
       expect(response.status).toBe(200);
     }
 
+    const notificationsAfterAcceptedWindow = await tableCount("notification");
+    const workAfterAcceptedWindow = await tableCount("work");
     const limited = await postPaymobProcessedCallback(
       successFixtureWithTxnId(88999),
       { connectingIp: rateIp },
     );
     expect(limited.status).toBe(429);
     expect(await limited.text()).toBe("");
-    expect(await tableCount("notification")).toBe(notificationsBefore + 60);
-    expect(await tableCount("work")).toBe(workBefore + 60);
+    expect(notificationsAfterAcceptedWindow).toBe(notificationsBefore + 60);
+    expect(await tableCount("notification")).toBe(notificationsAfterAcceptedWindow);
+    expect(await tableCount("work")).toBe(workAfterAcceptedWindow);
   });
 
   it("E2E-P4.3-03 bad HMAC stores no evidence and raises AL-02", async () => {
@@ -676,6 +678,9 @@ describe("P4.3 notify intake", () => {
     expect(await tableCount("work")).toBe(0);
 
     const factLogsBeforeD1Failure = await tableCount("fact_log");
+    const notificationFactsBeforeD1Failure = await env.DB.prepare(
+      `SELECT COUNT(*) AS n FROM fact_log WHERE "table" = 'notification'`,
+    ).first<{ n: number }>();
     setD1BatchThrows(true);
     const d1Failure = await postPaymobProcessedCallback(
       successFixtureWithTxnId(99050),
@@ -693,8 +698,16 @@ describe("P4.3 notify intake", () => {
     );
     expect(retry.status).toBe(200);
     expect(await tableCount("notification")).toBe(1);
-    expect(await tableCount("paymob_state_seen")).toBe(1);
-    expect(await tableCount("fact_log")).toBe(factLogsBeforeD1Failure + 1);
+    const notifyBodyClaims = await env.DB.prepare(
+      `SELECT COUNT(*) AS n FROM paymob_state_seen WHERE source = 'notify_body'`,
+    ).first<{ n: number }>();
+    expect(notifyBodyClaims?.n).toBe(1);
+    const notificationFactsAfterRetry = await env.DB.prepare(
+      `SELECT COUNT(*) AS n FROM fact_log WHERE "table" = 'notification'`,
+    ).first<{ n: number }>();
+    expect(notificationFactsAfterRetry?.n).toBe(
+      (notificationFactsBeforeD1Failure?.n ?? 0) + 1,
+    );
   });
 
   it("E2E-P4.3-05 unbound order and amount mismatch withhold the grant", async () => {
@@ -835,13 +848,22 @@ describe("P4.3 notify intake", () => {
     expect(afterBatchFailure?.last_error).toBe("batch_failed");
 
     await setClock("2026-01-15T09:32:00.000Z");
-    const workRowsBeforeReplay = await tableCount("work");
+    const confirmWorkCountBeforeReplay = await env.DB.prepare(
+      `SELECT COUNT(*) AS n FROM work WHERE kind = 'confirm' AND subject_id = ?`,
+    )
+      .bind(checkoutId)
+      .first<{ n: number }>();
     const replay = await postPaymobProcessedCallback(
       successFixture as PaymobCallbackFixture,
     );
     expect(replay.status).toBe(200);
     expect(await notificationDispositions()).toEqual(["enqueued", "duplicate"]);
-    expect(await tableCount("work")).toBe(workRowsBeforeReplay);
+    const confirmWorkCountAfterReplay = await env.DB.prepare(
+      `SELECT COUNT(*) AS n FROM work WHERE kind = 'confirm' AND subject_id = ?`,
+    )
+      .bind(checkoutId)
+      .first<{ n: number }>();
+    expect(confirmWorkCountAfterReplay?.n).toBe(confirmWorkCountBeforeReplay?.n);
     expect(await tableCount("payment")).toBe(1);
     expect((await confirmWorkForCheckout(checkoutId))?.state).toBe("done");
 

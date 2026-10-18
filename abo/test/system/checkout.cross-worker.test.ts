@@ -275,7 +275,7 @@ describe("checkout cross-worker", () => {
     expect(hostedCheckout.origin).toBe("https://paymob.harness.test");
     expect(hostedCheckout.pathname).toBe("/unifiedcheckout/");
     expect(hostedCheckout.searchParams.get("publicKey")).toBe(
-      "paymob-public-unconfigured",
+      "paymob-public-test",
     );
     expect(hostedCheckout.searchParams.get("clientSecret")).toBe(
       "stub-client-secret",

@@ -429,7 +429,7 @@ export async function recordPaidConfirmation(
     ) {
       throw new Error("payment_identity_conflict");
     }
-    const statements: D1PreparedStatement[] = [];
+    const statements: D1PreparedStatement[] = [...input.leadingStatements];
     if (existing.disposition === "grant") {
       const grantId = await grantIdPaid(paymentId);
       const applied = await env.DB.prepare(
@@ -623,6 +623,55 @@ export async function recordPaidConfirmation(
     );
   }
   return true;
+}
+
+/**
+ * Rebuild can discover a succeeded provider transaction that has no callback
+ * work row because the local database was wiped. Give that one replay an
+ * in-batch lease row: the leading INSERT and all lease-fenced payment writes
+ * are committed atomically, so no synthetic confirm item survives a failure.
+ */
+export async function recordRebuiltPaidConfirmation(
+  env: WorkRunnerEnv,
+  input: {
+    checkout: CheckoutRow;
+    confirmedTxn: ProviderTxn;
+    inquiryId: string;
+    evidenceSha256: string;
+    nowIso: string;
+    paymobTxnId?: string | null;
+  },
+): Promise<boolean> {
+  const workId = await newId(env);
+  const leaseToken = crypto.randomUUID();
+  const dedupeKey = `rebuild-confirm:${input.confirmedTxn.payment_id}:${workId}`;
+  const work: WorkRow = {
+    work_id: workId,
+    kind: "confirm",
+    subject_id: input.checkout.checkout_id,
+    dedupe_key: dedupeKey,
+    state: "open",
+    attempts: 0,
+    next_attempt_at: null,
+    lease_until: input.nowIso,
+    lease_token: leaseToken,
+    last_error: null,
+    opened_at: input.nowIso,
+  };
+  const leadingStatements = [
+    env.DB.prepare(
+      `INSERT INTO work (
+         work_id, kind, subject_id, dedupe_key, state, attempts,
+         next_attempt_at, lease_until, lease_token, last_error, opened_at
+       ) VALUES (?, 'confirm', ?, ?, 'open', 0, NULL, ?, ?, NULL, ?)`,
+    ).bind(workId, input.checkout.checkout_id, dedupeKey, input.nowIso, leaseToken, input.nowIso),
+  ];
+  return recordPaidConfirmation(env, {
+    ...input,
+    work,
+    leaseToken,
+    leadingStatements,
+  });
 }
 
 async function confirmSuccessBatch(

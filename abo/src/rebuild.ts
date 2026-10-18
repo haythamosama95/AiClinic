@@ -17,7 +17,7 @@ import type { ProviderTxn } from "./provider/port.js";
 import { insertFactLog } from "./records/append.js";
 import { runReconciliation } from "./reconciliation/run.js";
 import { runDueGrantWork } from "./work/grant.js";
-import { recordPaidConfirmation } from "./work/runner.js";
+import { recordRebuiltPaidConfirmation } from "./work/runner.js";
 
 type LedgerLine = {
   fact_seq: number;
@@ -538,7 +538,7 @@ async function maybeRecordSucceededPayment(
   }
   const nowIso = await clockNowIso(env);
   const inquiryId = await newId(env);
-  const recorded = await recordPaidConfirmation(env, {
+  const recorded = await recordRebuiltPaidConfirmation(env, {
     checkout,
     confirmedTxn,
     inquiryId,
