@@ -78,7 +78,49 @@ async function seedCheckout(checkoutId = CHECKOUT_ID): Promise<void> {
        checkout_id, intention_id, order_id, client_secret, special_reference, expires_at
      ) VALUES (?, ?, ?, ?, ?, ?)`,
   )
-    .bind(checkoutId, "intention-rm08", "9001", "secret", "special", "2026-01-15T10:30:00.000Z")
+    .bind(checkoutId, "intention-rm08", "9001", "secret", `special-${checkoutId}-1`, "2026-01-15T10:30:00.000Z")
+    .run();
+  await env.DB.prepare(
+    `INSERT INTO paymob_intention_attempt (
+       checkout_id, attempt_no, state, lease_token, lease_until,
+       special_reference, intention_id, order_id, client_secret, expires_at,
+       started_at, finished_at
+     ) VALUES (?, 1, 'created', ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+  )
+    .bind(
+      checkoutId,
+      `fixture-${checkoutId}`,
+      "2026-01-15T10:30:00.000Z",
+      `special-${checkoutId}-1`,
+      "intention-rm08",
+      "9001",
+      "secret",
+      "2026-01-15T10:30:00.000Z",
+      now,
+      now,
+    )
+    .run();
+  await env.DB.prepare(
+    `INSERT INTO paymob_intention_attempt_event (
+       event_key, checkout_id, attempt_no, state, lease_token, lease_until,
+       special_reference, intention_id, order_id, client_secret, expires_at,
+       started_at, finished_at, event_at
+     ) VALUES (?, ?, 1, 'created', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+  )
+    .bind(
+      `${checkoutId}:1:created:fixture`,
+      checkoutId,
+      `fixture-${checkoutId}`,
+      "2026-01-15T10:30:00.000Z",
+      `special-${checkoutId}-1`,
+      "intention-rm08",
+      "9001",
+      "secret",
+      "2026-01-15T10:30:00.000Z",
+      now,
+      now,
+      now,
+    )
     .run();
 }
 

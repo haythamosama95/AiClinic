@@ -529,8 +529,9 @@ async function paidCheckoutFlow(
   offer: { offerId: string; version: number },
   expectations: OffersFixtureExpectations,
   txnId: number,
+  billingEmail = "admin@clinic.test",
 ): Promise<{ checkoutId: string; reference: string }> {
-  await putBillingContact(org);
+  await putBillingContact(org, billingEmail);
   const checkout = await postCheckout(
     org,
     offer,
@@ -749,6 +750,7 @@ async function seedRichClinic(
     offerVersions[1],
     expectations,
     96602,
+    billingEmail,
   );
   const paymentId = await paymentIdForCheckout(checkoutId);
   expect(paymentId).not.toBeNull();

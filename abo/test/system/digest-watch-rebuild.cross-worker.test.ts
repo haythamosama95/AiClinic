@@ -28,6 +28,7 @@ import operatorActionMigrationSql from "../../migrations/0006_operator_action.sq
 import hpActionsMigrationSql from "../../migrations/0007_hp_actions.sql?raw";
 import reconciliationMigrationSql from "../../migrations/0008_reconciliation.sql?raw";
 import workLeaseTokenMigrationSql from "../../migrations/0010_work_lease_token.sql?raw";
+import checkoutCreationAttemptsMigrationSql from "../../migrations/0011_checkout_creation_attempts.sql?raw";
 import { loadOffersFixture } from "../../src/records/append";
 import { exportFacts } from "../../src/records/export";
 import {
@@ -331,6 +332,7 @@ async function ensureMigrations(): Promise<void> {
     hpActionsMigrationSql,
     reconciliationMigrationSql,
     workLeaseTokenMigrationSql,
+    checkoutCreationAttemptsMigrationSql,
   ]) {
     try {
       await applySql(sql);
@@ -734,6 +736,13 @@ async function wipeAboD1(): Promise<void> {
   for (const row of objects.results ?? []) {
     if (row.type === "view") {
       await env.DB.prepare(`DROP VIEW IF EXISTS ${row.name}`).run();
+    }
+  }
+  // RM09's attempt projections reference checkout, so drop them first rather
+  // than relying on sqlite_master enumeration order.
+  for (const tableName of ["paymob_intention_attempt_event", "paymob_intention_attempt"]) {
+    if ((objects.results ?? []).some((row) => row.type === "table" && row.name === tableName)) {
+      await env.DB.prepare(`DROP TABLE IF EXISTS ${tableName}`).run();
     }
   }
   for (const row of objects.results ?? []) {

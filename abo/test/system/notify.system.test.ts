@@ -12,6 +12,7 @@ import refundParentFixture from "../fixtures/paymob/refund-parent.json";
 import successFixture from "../fixtures/paymob/success.json";
 import checkoutMigrationSql from "../../migrations/0002_checkout.sql?raw";
 import notifyWorkMigrationSql from "../../migrations/0003_notify_work.sql?raw";
+import checkoutCreationAttemptsMigrationSql from "../../migrations/0011_checkout_creation_attempts.sql?raw";
 import {
   applySql,
   billingFetch,
@@ -168,6 +169,14 @@ async function ensureNotifyWorkMigration(): Promise<void> {
   }
 }
 
+async function ensureCheckoutCreationAttemptsMigration(): Promise<void> {
+  try {
+    await applySql(checkoutCreationAttemptsMigrationSql);
+  } catch {
+    // Migration not present yet.
+  }
+}
+
 type ConfirmWorkRow = {
   state: string;
   attempts: number;
@@ -300,8 +309,51 @@ async function seedOpenCheckout(
       "intention-stub-id",
       TEST_ORDER_ID,
       "stub-client-secret",
-      "CK-NOTIFY01",
+      `CK-NOTIFY01-${checkoutId}-1`,
       expires,
+    )
+    .run();
+  const specialReference = `CK-NOTIFY01-${checkoutId}-1`;
+  await env.DB.prepare(
+    `INSERT INTO paymob_intention_attempt (
+       checkout_id, attempt_no, state, lease_token, lease_until,
+       special_reference, intention_id, order_id, client_secret, expires_at,
+       started_at, finished_at
+     ) VALUES (?, 1, 'created', ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+  )
+    .bind(
+      checkoutId,
+      `fixture-${checkoutId}`,
+      expires,
+      specialReference,
+      "intention-stub-id",
+      TEST_ORDER_ID,
+      "stub-client-secret",
+      expires,
+      now,
+      now,
+    )
+    .run();
+  await env.DB.prepare(
+    `INSERT INTO paymob_intention_attempt_event (
+       event_key, checkout_id, attempt_no, state, lease_token, lease_until,
+       special_reference, intention_id, order_id, client_secret, expires_at,
+       started_at, finished_at, event_at
+     ) VALUES (?, ?, 1, 'created', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+  )
+    .bind(
+      `${checkoutId}:1:created:fixture`,
+      checkoutId,
+      `fixture-${checkoutId}`,
+      expires,
+      specialReference,
+      "intention-stub-id",
+      TEST_ORDER_ID,
+      "stub-client-secret",
+      expires,
+      now,
+      now,
+      now,
     )
     .run();
 }
@@ -459,6 +511,7 @@ beforeEach(async () => {
   await resetHarnessState();
   await ensureCheckoutMigration();
   await ensureNotifyWorkMigration();
+  await ensureCheckoutCreationAttemptsMigration();
   await setClock("2026-01-15T09:30:00.000Z");
   await scriptPaymobInquiry("bound_success");
 });
