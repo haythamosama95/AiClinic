@@ -976,6 +976,7 @@ describe("P4.3 notify intake", () => {
     expect(afterBatchFailure?.last_error).toBe("batch_failed");
 
     await setClock("2026-01-15T09:32:00.000Z");
+    await scriptPaymobInquiry("bound_success");
     const confirmWorkCountBeforeReplay = await env.DB.prepare(
       `SELECT COUNT(*) AS n FROM work WHERE kind = 'confirm' AND subject_id = ?`,
     )

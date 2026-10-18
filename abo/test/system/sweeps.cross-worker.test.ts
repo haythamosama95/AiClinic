@@ -1120,7 +1120,7 @@ async function setupActiveAndQueuedTerms(
   await putBillingContact(org);
   await ensureGrantTenantBinding(org);
   const firstMinute = new Date(
-    (await harnessClockNowSeconds()) * 1000 + 60_000,
+    (await harnessClockNowSeconds()) * 1000,
   );
   await setClock(firstMinute.toISOString());
   const firstCheckout = await postCheckoutWithOffer(
@@ -1188,21 +1188,32 @@ afterEach(async () => {
 describe.sequential("sweeps cross-worker", () => {
   it("R3-C7: concurrent inquiry reservations admit at most two logical attempts", async () => {
     const expectations = await setupSweepsHarness();
-    const checkoutIds: string[] = [];
-    for (const requestId of ["req-budget-a", "req-budget-b", "req-budget-c"]) {
+    const inquiries: Array<{ checkoutId: string; transactionId: string }> = [];
+    for (const [index, requestId] of [
+      "req-budget-a",
+      "req-budget-b",
+      "req-budget-c",
+    ].entries()) {
       const checkout = await createOpenCheckoutWithoutCallback(
         ORG_SWEEP_01,
         expectations,
         requestId,
       );
-      checkoutIds.push(checkout.checkoutId);
+      await syncPaymobForCheckout(checkout.checkoutId);
+      inquiries.push({
+        checkoutId: checkout.checkoutId,
+        transactionId: String(95010 + index),
+      });
     }
     const provider = providerForId(env as never, PAYMOB_PROVIDER_ID);
     expect(provider).not.toBeNull();
 
     const results = await Promise.all(
-      checkoutIds.map((checkoutId) =>
-        provider!.inquire({ checkout_id: checkoutId }),
+      inquiries.map(({ checkoutId, transactionId }) =>
+        provider!.inquire({
+          checkout_id: checkoutId,
+          paymob_txn_id: transactionId,
+        }),
       ),
     );
     expect(results.filter((result) => result.deferred)).toHaveLength(1);

@@ -1451,6 +1451,7 @@ describe("grant cross-worker", () => {
       amountMinor: firstChargedPrice,
     });
     await runGrantStep();
+    await setClock("2026-06-01T12:01:00.000Z");
     const secondChargedPrice = await syncPaymobForCheckout(
       secondCheckout.checkoutId,
     );
