@@ -195,7 +195,7 @@ describe("Stage 08 — request ingress trace and auth (S08-021…S08-040)", () =
     expect(await count("ai_request")).toBe(0);
   });
 
-  it("S08-029 — Missing capability_id is internal_error 500", async () => {
+  it("R2-C2 / S08-029 — Missing capability_id is internal_error 500", async () => {
     const scenario = await newScenario();
     const result = await postRequest(scenario, {
       token: null,
@@ -207,8 +207,9 @@ describe("Stage 08 — request ingress trace and auth (S08-021…S08-040)", () =
     expect(result.body?.trace_id).toBe(CLIENT_ULID);
     expect(result.body?.retry_safe).toBe(true);
     expect(Object.keys(result.body ?? {}).sort()).toEqual(
-      [...TAXONOMY_BODY_KEYS].sort(),
+      [...TAXONOMY_BODY_KEYS, "contract_version"].sort(),
     );
+    expect(result.body?.contract_version).toBe(1);
     expect(await count("ai_request")).toBe(0);
   });
 

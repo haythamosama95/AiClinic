@@ -818,13 +818,13 @@ describe("Stage X — credit, inspect, retention joinability, GatewayObject RPC 
     expect(lookup.json).toEqual({ error: "not_found" });
   });
 
-  it("SX-055 — diagnostic-purged Completed GET omits result; support envelope is null", async () => {
+  it("R2-C2 / SX-055 — diagnostic-purged Completed GET omits result; support envelope is null", async () => {
     const rebuilt = await rebuildSx024();
     const token = await mintAat(rebuilt.scenario);
 
     const clinic = await getRequestByRef(token, rebuilt.diagRef);
     expect(clinic.status).toBe(200);
-    expect(clinic.json).toEqual({ state: "Completed" });
+    expect(clinic.json).toEqual({ state: "Completed", contract_version: 1 });
     expect(clinic.json as Record<string, unknown>).not.toHaveProperty("result");
 
     const lookup = await controlFetch(
@@ -1005,7 +1005,7 @@ describe("Stage X — credit, inspect, retention joinability, GatewayObject RPC 
     expect(result.json).toEqual({ error: "invalid_json" });
   });
 
-  it("SX-059 — GatewayObject unknown kind returns 400 unknown_kind", async () => {
+  it("R2-C2 / SX-059 — GatewayObject unknown kind returns 400 unknown_kind", async () => {
     const scenario = await newScenario();
     const result = await gatewayObjectJson(scenario.installationId, {
       kind: "obliterate",
@@ -1013,10 +1013,10 @@ describe("Stage X — credit, inspect, retention joinability, GatewayObject RPC 
       now: 1_757_000_000_000,
     });
     expect(result.status).toBe(400);
-    expect(result.json).toEqual({ error: "unknown_kind" });
+    expect(result.json).toEqual({ error: "unknown_kind", contract_version: 1 });
   });
 
-  it("SX-060 — real DO admission missing args returns 400 bad_request", async () => {
+  it("R2-C2 / SX-060 — real DO admission missing args returns 400 bad_request", async () => {
     const scenario = await newScenario();
     const result = await gatewayObjectJson(scenario.installationId, {
       kind: "admission",
@@ -1024,14 +1024,14 @@ describe("Stage X — credit, inspect, retention joinability, GatewayObject RPC 
       requestReference: "AAAA-AAAA",
     });
     expect(result.status).toBe(400);
-    expect(result.json).toEqual({ error: "bad_request" });
+    expect(result.json).toEqual({ error: "bad_request", contract_version: 1 });
 
     const inspect = await inspectDo(scenario.installationId);
     expect(inspect.admittedRequests ?? {}).toEqual({});
     expect(inspect.idempotency ?? {}).toEqual({});
   });
 
-  it("SX-061 — real DO credit wrong-typed args returns 400 bad_request", async () => {
+  it("R2-C2 / SX-061 — real DO credit wrong-typed args returns 400 bad_request", async () => {
     const scenario = await newScenario();
     const requestId = crypto.randomUUID();
     const base: Record<string, unknown> = {
@@ -1047,7 +1047,7 @@ describe("Stage X — credit, inspect, retention joinability, GatewayObject RPC 
       partial: "yes",
     });
     expect(partial.status).toBe(400);
-    expect(partial.json).toEqual({ error: "bad_request" });
+    expect(partial.json).toEqual({ error: "bad_request", contract_version: 1 });
 
     const exploded = await gatewayObjectJson(scenario.installationId, {
       ...base,
@@ -1055,10 +1055,10 @@ describe("Stage X — credit, inspect, retention joinability, GatewayObject RPC 
       idempotencyState: "exploded",
     });
     expect(exploded.status).toBe(400);
-    expect(exploded.json).toEqual({ error: "bad_request" });
+    expect(exploded.json).toEqual({ error: "bad_request", contract_version: 1 });
   });
 
-  it("SX-062 — real DO release missing args returns 400 bad_request", async () => {
+  it("R2-C2 / SX-062 — real DO release missing args returns 400 bad_request", async () => {
     const scenario = await newScenario();
     const result = await gatewayObjectJson(scenario.installationId, {
       kind: "release",
@@ -1066,7 +1066,7 @@ describe("Stage X — credit, inspect, retention joinability, GatewayObject RPC 
       requestId: crypto.randomUUID(),
     });
     expect(result.status).toBe(400);
-    expect(result.json).toEqual({ error: "bad_request" });
+    expect(result.json).toEqual({ error: "bad_request", contract_version: 1 });
   });
 
   it.skip(

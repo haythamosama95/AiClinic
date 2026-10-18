@@ -246,9 +246,15 @@ function assertCanonicalCompletedBody(
   json: unknown,
   envelopeResult: unknown,
 ): void {
-  expect(json).toEqual({ state: "Completed", result: envelopeResult });
+  expect(json).toEqual({
+    state: "Completed",
+    result: envelopeResult,
+    contract_version: 1,
+  });
   const body = json as Record<string, unknown>;
-  expect(Object.keys(body).sort()).toEqual(["result", "state"]);
+  expect(Object.keys(body).sort()).toEqual(
+    ["contract_version", "result", "state"],
+  );
   expect(body.state).toBe("Completed");
   expect(body).not.toHaveProperty("attempts");
   expect(body).not.toHaveProperty("envelope");
@@ -499,13 +505,16 @@ function assertPendingLookup(json: unknown): void {
     }),
   );
   const body = json as { state: string; pending: boolean };
+  expect((json as Record<string, unknown>).contract_version).toBe(1);
   expect(body.pending).toBe(true);
   expect(NON_TERMINAL_STATES.has(body.state)).toBe(true);
-  expect(Object.keys(body).sort()).toEqual(["pending", "state"]);
+  expect(Object.keys(body).sort()).toEqual(
+    ["contract_version", "pending", "state"],
+  );
 }
 
 describe("Stage 12 — GET /v1/requests lookup (S12-001…S12-018)", () => {
-  it("S12-001 — GET Completed returns R2 envelope result", async () => {
+  it("R2-C2 / S12-001 — GET Completed returns R2 envelope result", async () => {
     const { ref, pointer, lookup } = await settleCompleted();
 
     expect(lookup.status).toBe(200);
@@ -517,7 +526,7 @@ describe("Stage 12 — GET /v1/requests lookup (S12-001…S12-018)", () => {
     expect(await r2Exists(pointer)).toBe(true);
   });
 
-  it("S12-002 — GET Completed with NULL payload_pointer omits result", async () => {
+  it("R2-C2 / S12-002 — GET Completed with NULL payload_pointer omits result", async () => {
     const { scenario, ref } = await settleCompleted();
 
     // [SEED] NULL-pointer branch is unreachable on a settled row because
@@ -531,11 +540,11 @@ describe("Stage 12 — GET /v1/requests lookup (S12-001…S12-018)", () => {
 
     const got = await getRequestByRef(await mintAat(scenario), ref);
     expect(got.status).toBe(200);
-    expect(got.json).toEqual({ state: "Completed" });
+    expect(got.json).toEqual({ state: "Completed", contract_version: 1 });
     expect(got.json as Record<string, unknown>).not.toHaveProperty("result");
   });
 
-  it("S12-003 — GET Completed with missing R2 object omits result", async () => {
+  it("R2-C2 / S12-003 — GET Completed with missing R2 object omits result", async () => {
     const { scenario, ref, pointer } = await settleCompleted();
 
     // [SEED] R2 delete while leaving payload_pointer set (retention race).
@@ -544,11 +553,11 @@ describe("Stage 12 — GET /v1/requests lookup (S12-001…S12-018)", () => {
 
     const got = await getRequestByRef(await mintAat(scenario), ref);
     expect(got.status).toBe(200);
-    expect(got.json).toEqual({ state: "Completed" });
+    expect(got.json).toEqual({ state: "Completed", contract_version: 1 });
     expect(got.json as Record<string, unknown>).not.toHaveProperty("result");
   });
 
-  it("S12-004 — GET Completed with corrupt envelope JSON omits result", async () => {
+  it("R2-C2 / S12-004 — GET Completed with corrupt envelope JSON omits result", async () => {
     const { scenario, ref, pointer } = await settleCompleted();
 
     // [SEED] overwrite envelope bytes to cover JSON.parse throw → resultMissing.
@@ -556,11 +565,11 @@ describe("Stage 12 — GET /v1/requests lookup (S12-001…S12-018)", () => {
 
     const got = await getRequestByRef(await mintAat(scenario), ref);
     expect(got.status).toBe(200);
-    expect(got.json).toEqual({ state: "Completed" });
+    expect(got.json).toEqual({ state: "Completed", contract_version: 1 });
     expect(got.json as Record<string, unknown>).not.toHaveProperty("result");
   });
 
-  it("S12-005 — GET Failed returns terminal_error_code", async () => {
+  it("R2-C2 / S12-005 — GET Failed returns terminal_error_code", async () => {
     const { scenario, ref } = await settleFailed();
 
     const got = await getRequestByRef(await mintAat(scenario), ref);
@@ -568,10 +577,11 @@ describe("Stage 12 — GET /v1/requests lookup (S12-001…S12-018)", () => {
     expect(got.json).toEqual({
       state: "Failed",
       terminal_error_code: "provider_unavailable",
+      contract_version: 1,
     });
   });
 
-  it("S12-006 — GET Failed with NULL terminal_error_code falls back to internal_error", async () => {
+  it("R2-C2 / S12-006 — GET Failed with NULL terminal_error_code falls back to internal_error", async () => {
     const { scenario, ref } = await settleFailed();
 
     // [SEED] C3-R3 makes Failed-without-code unreachable through the pipeline.
@@ -587,10 +597,11 @@ describe("Stage 12 — GET /v1/requests lookup (S12-001…S12-018)", () => {
     expect(got.json).toEqual({
       state: "Failed",
       terminal_error_code: "internal_error",
+      contract_version: 1,
     });
   });
 
-  it("S12-007 — GET Cancelled", async () => {
+  it("R2-C2 / S12-007 — GET Cancelled", async () => {
     const scenario = await provisionHappyPath();
     const fakeMod = await loadFakeModule();
     const original = fakeMod.FakeAdapter;
@@ -637,13 +648,13 @@ describe("Stage 12 — GET /v1/requests lookup (S12-001…S12-018)", () => {
 
       const got = await getRequestByRef(await mintAat(scenario), ref);
       expect(got.status).toBe(200);
-      expect(got.json).toEqual({ state: "Cancelled" });
+      expect(got.json).toEqual({ state: "Cancelled", contract_version: 1 });
     } finally {
       adapterSpy.mockRestore();
     }
   });
 
-  it("S12-008 — GET AwaitingContext", async () => {
+  it("R2-C2 / S12-008 — GET AwaitingContext", async () => {
     const scenario = await enrollOnly();
 
     // [SEED] AwaitingContext is conversational-only; the published manifest is
@@ -659,10 +670,10 @@ describe("Stage 12 — GET /v1/requests lookup (S12-001…S12-018)", () => {
 
     const got = await getRequestByRef(await mintAat(scenario), AWAITING_REF);
     expect(got.status).toBe(200);
-    expect(got.json).toEqual({ state: "AwaitingContext" });
+    expect(got.json).toEqual({ state: "AwaitingContext", contract_version: 1 });
   });
 
-  it("S12-009 — GET in-flight request returns pending:true", async () => {
+  it("R2-C2 / S12-009 — GET in-flight request returns pending:true", async () => {
     // Register 5 #10: live in-flight race — implement, do not skip. Prefer
     // POST → accepted → GET before settlement; hang FakeAdapter so the window
     // is deterministic. [SEED] state='Invoking' is the catalog-justified
@@ -739,7 +750,11 @@ describe("Stage 12 — GET /v1/requests lookup (S12-001…S12-018)", () => {
         INFLIGHT_SEED_REF,
       );
       expect(seeded.status).toBe(200);
-      expect(seeded.json).toEqual({ state: "Invoking", pending: true });
+      expect(seeded.json).toEqual({
+        state: "Invoking",
+        pending: true,
+        contract_version: 1,
+      });
     } finally {
       controller.abort();
       await pump?.close();
@@ -793,7 +808,7 @@ describe("Stage 12 — GET /v1/requests lookup (S12-001…S12-018)", () => {
     assertPlainNotFound(got);
   });
 
-  it("S12-015 — GET reference normalization", async () => {
+  it("R2-C2 / S12-015 — GET reference normalization", async () => {
     const { scenario, ref, requestId, pointer, lookup } =
       await settleCompleted();
     expect(lookup.status).toBe(200);

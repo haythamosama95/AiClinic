@@ -704,7 +704,7 @@ function creditInput(spy: {
 }
 
 describe("Stage 11 — terminal settlement completed/failed/cancelled (S11-001…S11-011)", () => {
-  it("S11-001 — Completed settlement full ledger", async () => {
+  it("R2-C2 / S11-001 — Completed settlement full ledger", async () => {
     const scenario = await setupFresh();
     const creditMod = await loadCreditModule();
     const creditSpy = vi.spyOn(creditMod, "creditUsage");
@@ -806,6 +806,7 @@ describe("Stage 11 — terminal settlement completed/failed/cancelled (S11-001�
     expect(got.json).toEqual({
       state: "Completed",
       result: envelope.result,
+      contract_version: 1,
     });
   });
 
@@ -890,7 +891,7 @@ describe("Stage 11 — terminal settlement completed/failed/cancelled (S11-001�
     }
   });
 
-  it("S11-003 — Empty chain provider_unavailable", async () => {
+  it("R2-C2 / S11-003 — Empty chain provider_unavailable", async () => {
     const scenario = await setupFresh({
       policyVersion: "2",
       overrides: [{ exclude_providers: ["fake"] }],
@@ -969,6 +970,7 @@ describe("Stage 11 — terminal settlement completed/failed/cancelled (S11-001�
       expect(got.json).toEqual({
         state: "Failed",
         terminal_error_code: "provider_unavailable",
+        contract_version: 1,
       });
   });
 

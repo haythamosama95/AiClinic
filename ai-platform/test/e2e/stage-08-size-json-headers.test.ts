@@ -95,6 +95,7 @@ function assertRequestTooLargeEmptyRef(body: unknown): void {
     request_reference: "",
     trace_id: "",
     retry_safe: false,
+    contract_version: 1,
   });
 }
 
@@ -137,7 +138,7 @@ describe("Stage 08 — request ingress size, JSON, and headers (S08-001…S08-02
     "S08-003 — Content-Length one byte over 1 MiB (Register 5 #37: workerd may strip Content-Length on constructed Request; no in-pool seam)",
   );
 
-  it("S08-004 — Streamed body over 1 MiB without Content-Length", async () => {
+  it("R2-C2 / S08-004 — Streamed body over 1 MiB without Content-Length", async () => {
     const scenario = await newScenario();
     const bytes = new TextEncoder().encode("x".repeat(INGRESS_BODY_SIZE_LIMIT + 1));
     expect(bytes.byteLength).toBe(INGRESS_BODY_SIZE_LIMIT + 1);
@@ -170,7 +171,7 @@ describe("Stage 08 — request ingress size, JSON, and headers (S08-001…S08-02
     expect(await count("ai_request")).toBe(0);
   });
 
-  it("S08-007 — Size gate counts UTF-8 bytes not characters", async () => {
+  it("R2-C2 / S08-007 — Size gate counts UTF-8 bytes not characters", async () => {
     const scenario = await newScenario();
     const arabic = "م";
     expect(new TextEncoder().encode(arabic).byteLength).toBe(2);
@@ -189,7 +190,7 @@ describe("Stage 08 — request ingress size, JSON, and headers (S08-001…S08-02
     expect(await count("ai_request")).toBe(0);
   });
 
-  it("S08-008 — Oversize wins over invalid JSON and missing headers", async () => {
+  it("R2-C2 / S08-008 — Oversize wins over invalid JSON and missing headers", async () => {
     const prefix = "not json";
     const text = `${prefix}${"x".repeat(INGRESS_BODY_SIZE_LIMIT + 1 - prefix.length)}`;
     const bytes = new TextEncoder().encode(text);

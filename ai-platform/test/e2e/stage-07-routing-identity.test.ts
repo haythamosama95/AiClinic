@@ -82,10 +82,14 @@ function assertUnauthenticated(result: HttpResult): void {
   const body = result.json as {
     request_reference: string;
     trace_id: string;
+    contract_version: number;
   };
   assertRequestReferenceShape(body.request_reference);
   assertUlidShape(body.trace_id);
-  expect(Object.keys(body).sort()).toEqual([...TAXONOMY_BODY_KEYS].sort());
+  expect(body.contract_version).toBe(1);
+  expect(Object.keys(body).sort()).toEqual(
+    [...TAXONOMY_BODY_KEYS, "contract_version"].sort(),
+  );
   assertNoCacheHeaders(result);
 }
 
@@ -109,7 +113,11 @@ async function discoveryWithAuthorization(
 function assertEntitledDiscovery(result: HttpResult): void {
   expect(result.status).toBe(200);
   expect(result.headers.get("content-type")).toContain("application/json");
-  const body = result.json as { manifests?: unknown };
+  const body = result.json as {
+    manifests?: unknown;
+    contract_version?: unknown;
+  };
+  expect(body.contract_version).toBe(1);
   expect(Array.isArray(body.manifests)).toBe(true);
   expect(body.manifests).toHaveLength(1);
 }
@@ -142,7 +150,7 @@ describe("Stage 07 — discovery routing and identity (S07-001…S07-018)", () =
     expect(await count("ai_request")).toBe(aiRequestBefore);
   });
 
-  it("S07-003 — Missing Authorization → 401 unauthenticated", async () => {
+  it("R2-C2 / S07-003 — Missing Authorization → 401 unauthenticated", async () => {
     await provisionB0();
     // HARNESS-GAP: cannot assert discovery_auth_rejected log reason
     // missing_authorization_header (isolate console is not captured).
@@ -152,7 +160,7 @@ describe("Stage 07 — discovery routing and identity (S07-001…S07-018)", () =
     expect(await count("ai_request")).toBe(0);
   });
 
-  it("S07-004 — Non-Bearer Authorization scheme → 401", async () => {
+  it("R2-C2 / S07-004 — Non-Bearer Authorization scheme → 401", async () => {
     await provisionB0();
     // HARNESS-GAP: cannot assert log reason invalid_authorization_scheme
     // with authorization_scheme "Basic". Scheme check is case-sensitive
@@ -165,7 +173,7 @@ describe("Stage 07 — discovery routing and identity (S07-001…S07-018)", () =
     expect(await count("ai_request")).toBe(0);
   });
 
-  it("S07-005 — Bearer with whitespace-only token → 401", async () => {
+  it("R2-C2 / S07-005 — Bearer with whitespace-only token → 401", async () => {
     await provisionB0();
     // HARNESS-GAP: cannot assert log reason empty_bearer_token. Bare
     // `Authorization: Bearer` (no trailing space) is a different reason
@@ -176,7 +184,7 @@ describe("Stage 07 — discovery routing and identity (S07-001…S07-018)", () =
     expect(await count("ai_request")).toBe(0);
   });
 
-  it("S07-006 — Lowercase bearer scheme → 401", async () => {
+  it("R2-C2 / S07-006 — Lowercase bearer scheme → 401", async () => {
     const { token } = await provisionB0();
     // HARNESS-GAP: cannot assert log reason invalid_authorization_scheme
     // with authorization_scheme "bearer".
@@ -186,7 +194,7 @@ describe("Stage 07 — discovery routing and identity (S07-001…S07-018)", () =
     expect(await count("ai_request")).toBe(0);
   });
 
-  it("S07-007 — Token is not three segments → 401", async () => {
+  it("R2-C2 / S07-007 — Token is not three segments → 401", async () => {
     await provisionB0();
     const result = await discoveryGet({ token: "not-a-valid-token" });
 
@@ -194,7 +202,7 @@ describe("Stage 07 — discovery routing and identity (S07-001…S07-018)", () =
     expect(await count("ai_request")).toBe(0);
   });
 
-  it("S07-008 — Undecodable / non-JSON JWT header → 401", async () => {
+  it("R2-C2 / S07-008 — Undecodable / non-JSON JWT header → 401", async () => {
     await provisionB0();
 
     const undecodable = await discoveryGet({ token: "###.e30.sig" });
@@ -207,7 +215,7 @@ describe("Stage 07 — discovery routing and identity (S07-001…S07-018)", () =
     expect(await count("ai_request")).toBe(0);
   });
 
-  it("S07-009 — JWT alg HS256 → 401", async () => {
+  it("R2-C2 / S07-009 — JWT alg HS256 → 401", async () => {
     const { scenario } = await provisionB0();
     const token = await mintAat(scenario, { alg: "HS256" });
     const result = await discoveryGet({ token });
@@ -216,7 +224,7 @@ describe("Stage 07 — discovery routing and identity (S07-001…S07-018)", () =
     expect(await count("ai_request")).toBe(0);
   });
 
-  it("S07-010 — JWT header missing kid → 401", async () => {
+  it("R2-C2 / S07-010 — JWT header missing kid → 401", async () => {
     const { scenario } = await provisionB0();
     const token = await mintAat(scenario, { omitHeaderFields: ["kid"] });
     const result = await discoveryGet({ token });
@@ -225,7 +233,7 @@ describe("Stage 07 — discovery routing and identity (S07-001…S07-018)", () =
     expect(await count("ai_request")).toBe(0);
   });
 
-  it("S07-011 — Payload missing required claims → 401", async () => {
+  it("R2-C2 / S07-011 — Payload missing required claims → 401", async () => {
     const { scenario } = await provisionB0();
 
     const missingClaims = await mintAat(scenario, {
@@ -248,7 +256,7 @@ describe("Stage 07 — discovery routing and identity (S07-001…S07-018)", () =
     expect(await count("ai_request")).toBe(0);
   });
 
-  it("S07-012 — Wrong audience claim → 401", async () => {
+  it("R2-C2 / S07-012 — Wrong audience claim → 401", async () => {
     const { scenario } = await provisionB0();
     const token = await mintAat(scenario, {
       claims: { aud: "clinic-portal" },
@@ -259,7 +267,7 @@ describe("Stage 07 — discovery routing and identity (S07-001…S07-018)", () =
     expect(await count("ai_request")).toBe(0);
   });
 
-  it("S07-013 — Expired AAT beyond 60s skew → 401", async () => {
+  it("R2-C2 / S07-013 — Expired AAT beyond 60s skew → 401", async () => {
     const { scenario } = await provisionB0();
     const now = nowSeconds();
 
@@ -276,7 +284,7 @@ describe("Stage 07 — discovery routing and identity (S07-001…S07-018)", () =
     assertEntitledDiscovery(await discoveryGet({ token: insideSkew }));
   });
 
-  it("S07-014 — AAT iat in the future beyond skew → 401", async () => {
+  it("R2-C2 / S07-014 — AAT iat in the future beyond skew → 401", async () => {
     const { scenario } = await provisionB0();
     const now = nowSeconds();
 
@@ -293,7 +301,7 @@ describe("Stage 07 — discovery routing and identity (S07-001…S07-018)", () =
     assertEntitledDiscovery(await discoveryGet({ token: insideSkew }));
   });
 
-  it("S07-015 — AAT lifetime exceeds 600s → 401", async () => {
+  it("R2-C2 / S07-015 — AAT lifetime exceeds 600s → 401", async () => {
     const { scenario } = await provisionB0();
     const iat = nowSeconds();
 
@@ -310,7 +318,7 @@ describe("Stage 07 — discovery routing and identity (S07-001…S07-018)", () =
     assertEntitledDiscovery(await discoveryGet({ token: atCap }));
   });
 
-  it("S07-016 — Unknown installation iss → 401", async () => {
+  it("R2-C2 / S07-016 — Unknown installation iss → 401", async () => {
     const { scenario } = await provisionB0();
     const unknownKey = await generateTestKeypair();
     const token = await mintAat(scenario, {
@@ -323,7 +331,7 @@ describe("Stage 07 — discovery routing and identity (S07-001…S07-018)", () =
     expect(await count("ai_request")).toBe(0);
   });
 
-  it("S07-017 — Unknown kid in header → 401", async () => {
+  it("R2-C2 / S07-017 — Unknown kid in header → 401", async () => {
     const { scenario } = await provisionB0();
     const unknownKid = crypto.randomUUID();
     const token = await mintAat(scenario, { kid: unknownKid });
@@ -336,7 +344,7 @@ describe("Stage 07 — discovery routing and identity (S07-001…S07-018)", () =
     expect(await count("ai_request")).toBe(0);
   });
 
-  it("S07-018 — Revoked signing key → 401", async () => {
+  it("R2-C2 / S07-018 — Revoked signing key → 401", async () => {
     const { scenario, token } = await provisionB0();
     await seedSql([
       {

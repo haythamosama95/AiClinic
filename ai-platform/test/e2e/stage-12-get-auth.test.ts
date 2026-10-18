@@ -323,11 +323,15 @@ function assertUnauthenticated(result: HttpResult, pathRef: string): void {
   const body = result.json as {
     request_reference: string;
     trace_id: string;
+    contract_version: number;
   };
   assertRequestReferenceShape(body.request_reference);
   assertUlidShape(body.trace_id);
   expect(body.request_reference).not.toBe(pathRef);
-  expect(Object.keys(body).sort()).toEqual([...TAXONOMY_BODY_KEYS].sort());
+  expect(body.contract_version).toBe(1);
+  expect(Object.keys(body).sort()).toEqual(
+    [...TAXONOMY_BODY_KEYS, "contract_version"].sort(),
+  );
 }
 
 function assertInstallationSuspended(
@@ -342,18 +346,25 @@ function assertInstallationSuspended(
   const body = result.json as {
     request_reference: string;
     trace_id: string;
+    contract_version: number;
   };
   assertRequestReferenceShape(body.request_reference);
   assertUlidShape(body.trace_id);
   expect(body.request_reference).not.toBe(pathRef);
-  expect(Object.keys(body).sort()).toEqual([...TAXONOMY_BODY_KEYS].sort());
+  expect(body.contract_version).toBe(1);
+  expect(Object.keys(body).sort()).toEqual(
+    [...TAXONOMY_BODY_KEYS, "contract_version"].sort(),
+  );
 }
 
 function assertCompletedGet(result: HttpResult): void {
   expect(result.status).toBe(200);
   expect(result.json).not.toBeNull();
   const body = result.json as Record<string, unknown>;
-  expect(Object.keys(body).sort()).toEqual(["result", "state"].sort());
+  expect(body.contract_version).toBe(1);
+  expect(Object.keys(body).sort()).toEqual(
+    ["contract_version", "result", "state"].sort(),
+  );
   expect(body.state).toBe("Completed");
   expect(body).not.toHaveProperty("attempts");
   expect(body).not.toHaveProperty("envelope");
@@ -388,25 +399,25 @@ function tamperPayloadSegment(token: string): string {
 }
 
 describe("Stage 12 — GET /v1/requests/{ref} auth (S12-019…S12-040)", () => {
-  it("S12-019 — GET without Authorization header returns 401", async () => {
+  it("R2-C2 / S12-019 — GET without Authorization header returns 401", async () => {
     const { ref } = await settleCompleted();
     const result = await getClinic(ref);
     assertUnauthenticated(result, ref);
   });
 
-  it("S12-020 — non-Bearer Authorization scheme returns 401", async () => {
+  it("R2-C2 / S12-020 — non-Bearer Authorization scheme returns 401", async () => {
     const { ref } = await settleCompleted();
     const result = await getClinic(ref, { authorization: "Token abc123" });
     assertUnauthenticated(result, ref);
   });
 
-  it("S12-021 — empty Bearer token returns 401", async () => {
+  it("R2-C2 / S12-021 — empty Bearer token returns 401", async () => {
     const { ref } = await settleCompleted();
     const result = await getClinic(ref, { authorization: "Bearer " });
     assertUnauthenticated(result, ref);
   });
 
-  it("S12-022 — structurally malformed token returns 401", async () => {
+  it("R2-C2 / S12-022 — structurally malformed token returns 401", async () => {
     const { scenario, ref } = await settleCompleted();
 
     const twoSegments = await getClinic(ref, { token: "abc.def" });
@@ -448,13 +459,13 @@ describe("Stage 12 — GET /v1/requests/{ref} auth (S12-019…S12-040)", () => {
     assertUnauthenticated(missingRequired, ref);
   });
 
-  it("S12-023 — JWT alg HS256 returns 401", async () => {
+  it("R2-C2 / S12-023 — JWT alg HS256 returns 401", async () => {
     const { scenario, ref } = await settleCompleted();
     const token = await mintAat(scenario, { alg: "HS256" });
     assertUnauthenticated(await getClinic(ref, { token }), ref);
   });
 
-  it("S12-024 — missing or empty kid returns 401", async () => {
+  it("R2-C2 / S12-024 — missing or empty kid returns 401", async () => {
     const { scenario, ref } = await settleCompleted();
 
     const omitted = await mintAat(scenario, { omitHeaderFields: ["kid"] });
@@ -464,7 +475,7 @@ describe("Stage 12 — GET /v1/requests/{ref} auth (S12-019…S12-040)", () => {
     assertUnauthenticated(await getClinic(ref, { token: emptyKid }), ref);
   });
 
-  it("S12-025 — wrong audience returns 401", async () => {
+  it("R2-C2 / S12-025 — wrong audience returns 401", async () => {
     const { scenario, ref } = await settleCompleted();
     const token = await mintAat(scenario, {
       claims: { aud: "other-service" },
@@ -472,7 +483,7 @@ describe("Stage 12 — GET /v1/requests/{ref} auth (S12-019…S12-040)", () => {
     assertUnauthenticated(await getClinic(ref, { token }), ref);
   });
 
-  it("S12-026 — expired token beyond skew returns 401", async () => {
+  it("R2-C2 / S12-026 — expired token beyond skew returns 401", async () => {
     const { scenario, ref } = await settleCompleted();
     const now = nowSeconds();
     const token = await mintAat(scenario, {
@@ -482,7 +493,7 @@ describe("Stage 12 — GET /v1/requests/{ref} auth (S12-019…S12-040)", () => {
     assertUnauthenticated(await getClinic(ref, { token }), ref);
   });
 
-  it("S12-027 — future iat beyond skew returns 401", async () => {
+  it("R2-C2 / S12-027 — future iat beyond skew returns 401", async () => {
     const { scenario, ref } = await settleCompleted();
     const now = nowSeconds();
     const iat = now + 120;
@@ -493,7 +504,7 @@ describe("Stage 12 — GET /v1/requests/{ref} auth (S12-019…S12-040)", () => {
     assertUnauthenticated(await getClinic(ref, { token }), ref);
   });
 
-  it("S12-028 — token lifetime over 600 s returns 401", async () => {
+  it("R2-C2 / S12-028 — token lifetime over 600 s returns 401", async () => {
     const { scenario, ref } = await settleCompleted();
     const now = nowSeconds();
     const token = await mintAat(scenario, {
@@ -503,7 +514,7 @@ describe("Stage 12 — GET /v1/requests/{ref} auth (S12-019…S12-040)", () => {
     assertUnauthenticated(await getClinic(ref, { token }), ref);
   });
 
-  it("S12-029 — unknown installation iss returns 401", async () => {
+  it("R2-C2 / S12-029 — unknown installation iss returns 401", async () => {
     const { scenario, ref } = await settleCompleted();
     const unknownKey = await generateTestKeypair();
     const token = await mintAat(scenario, {
@@ -513,7 +524,7 @@ describe("Stage 12 — GET /v1/requests/{ref} auth (S12-019…S12-040)", () => {
     assertUnauthenticated(await getClinic(ref, { token }), ref);
   });
 
-  it("S12-030 — unknown kid returns 401", async () => {
+  it("R2-C2 / S12-030 — unknown kid returns 401", async () => {
     const { scenario, ref } = await settleCompleted();
     const unknownKid = crypto.randomUUID();
     const token = await mintAat(scenario, { kid: unknownKid });
@@ -523,7 +534,7 @@ describe("Stage 12 — GET /v1/requests/{ref} auth (S12-019…S12-040)", () => {
     ).toBeNull();
   });
 
-  it("S12-031 — revoked key returns 401", async () => {
+  it("R2-C2 / S12-031 — revoked key returns 401", async () => {
     const { scenario, ref } = await settleCompleted();
     const token = await mintAat(scenario);
     await seedSql([
@@ -543,7 +554,7 @@ describe("Stage 12 — GET /v1/requests/{ref} auth (S12-019…S12-040)", () => {
     assertUnauthenticated(await getClinic(ref, { token }), ref);
   });
 
-  it("S12-032 — key outside validity window returns 401", async () => {
+  it("R2-C2 / S12-032 — key outside validity window returns 401", async () => {
     const closed = await settleCompleted();
     const closedToken = await mintAat(closed.scenario);
     await seedSql([
@@ -573,7 +584,7 @@ describe("Stage 12 — GET /v1/requests/{ref} auth (S12-019…S12-040)", () => {
     );
   });
 
-  it("S12-033 — kid bound to a different installation returns 401", async () => {
+  it("R2-C2 / S12-033 — kid bound to a different installation returns 401", async () => {
     const i0 = await settleCompleted();
     const i1 = await newScenario();
     await newClinic(i1);
@@ -584,7 +595,7 @@ const token = await mintAat(i0.scenario, {
     assertUnauthenticated(await getClinic(i0.ref, { token }), i0.ref);
   });
 
-  it("S12-034 — tampered payload signature returns 401", async () => {
+  it("R2-C2 / S12-034 — tampered payload signature returns 401", async () => {
     const { scenario, ref } = await settleCompleted();
     const token = await mintAat(scenario);
     const tampered = tamperPayloadSegment(token);
@@ -592,7 +603,7 @@ const token = await mintAat(i0.scenario, {
     assertUnauthenticated(await getClinic(ref, { token: tampered }), ref);
   });
 
-  it("S12-035 — suspended installation returns 403", async () => {
+  it("R2-C2 / S12-035 — suspended installation returns 403", async () => {
     const { scenario, ref } = await settleCompleted();
     const token = await mintAat(scenario);
     const suspended = await controlFetch(
@@ -605,7 +616,7 @@ const token = await mintAat(i0.scenario, {
     assertInstallationSuspended(await getClinic(ref, { token }), ref);
   });
 
-  it("S12-036 — deleted installation returns 401 not 403", async () => {
+  it("R2-C2 / S12-036 — deleted installation returns 401 not 403", async () => {
     const { scenario, ref } = await settleCompleted();
     const token = await mintAat(scenario);
     await seedSql([
@@ -623,13 +634,13 @@ const token = await mintAat(i0.scenario, {
     );
   });
 
-  it("S12-037 — unknown token contract ver returns 401", async () => {
+  it("R2-C2 / S12-037 — unknown token contract ver returns 401", async () => {
     const { scenario, ref } = await settleCompleted();
     const token = await mintAat(scenario, { claims: { ver: "v99" } });
     assertUnauthenticated(await getClinic(ref, { token }), ref);
   });
 
-  it("S12-038 — retired token contract returns 401", async () => {
+  it("R2-C2 / S12-038 — retired token contract returns 401", async () => {
     const { scenario, ref } = await settleCompleted();
     const token = await mintAat(scenario);
     await seedSql([
@@ -653,7 +664,7 @@ const token = await mintAat(i0.scenario, {
     }
   });
 
-  it("S12-039 — revoked key still authenticates within isolate cache TTL", async () => {
+  it("R2-C2 / S12-039 — revoked key still authenticates within isolate cache TTL", async () => {
     const { scenario, ref } = await settleCompleted();
     const token = await mintAat(scenario);
 
@@ -678,7 +689,7 @@ const token = await mintAat(i0.scenario, {
     }
   });
 
-  it("S12-040 — revoked key rejected after isolate cache TTL expires", async () => {
+  it("R2-C2 / S12-040 — revoked key rejected after isolate cache TTL expires", async () => {
     const { scenario, ref } = await settleCompleted();
     const token = await mintAat(scenario);
 

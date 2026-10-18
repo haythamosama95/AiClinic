@@ -119,7 +119,7 @@ async function postInvoke(
 }
 
 describe("Stage 09 — adapter parse and identity (S09-001…S09-022)", () => {
-  it("S09-001 — body over 1 MiB is request_too_large", async () => {
+  it("R2-C2 / S09-001 — body over 1 MiB is request_too_large", async () => {
     const scenario = await provisionHappyPath();
     const token = await mintAat(scenario);
     const body = paddedH0(scenario, INGRESS_OVER_LIMIT_BYTES);
@@ -142,6 +142,7 @@ describe("Stage 09 — adapter parse and identity (S09-001…S09-022)", () => {
       request_reference: "",
       trace_id: "",
       retry_safe: false,
+      contract_version: 1,
     });
     await assertNoRequestWrites();
   });

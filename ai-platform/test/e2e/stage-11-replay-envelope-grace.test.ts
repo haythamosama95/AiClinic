@@ -1308,7 +1308,7 @@ describe("Stage 11 — replay, envelope, grace (S11-012…S11-021)", () => {
     }
   });
 
-  it("S11-020 — failed and cancelled envelopes carry placeholder result", async () => {
+  it("R2-C2 / S11-020 — failed and cancelled envelopes carry placeholder result", async () => {
     const scenario = await setupFresh();
 
     const failedZero = await failEmptyChain(
@@ -1381,9 +1381,10 @@ describe("Stage 11 — replay, envelope, grace (S11-012…S11-021)", () => {
         expect(body).toEqual({
           state: "Failed",
           terminal_error_code: testCase.terminal,
+          contract_version: 1,
         });
       } else {
-        expect(body).toEqual({ state: "Cancelled" });
+        expect(body).toEqual({ state: "Cancelled", contract_version: 1 });
       }
     }
   });
