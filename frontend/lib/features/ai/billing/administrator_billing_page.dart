@@ -110,6 +110,14 @@ class _AdministratorBillingPageState extends State<AdministratorBillingPage> {
     });
   }
 
+  void _onOfferUnavailable() {
+    setState(() {
+      _selection = null;
+      _resumedCheckout = null;
+      _step = _BillingStep.offers;
+    });
+  }
+
   void _onBillingContactRequired() {
     setState(() => _step = _BillingStep.contact);
   }
@@ -153,6 +161,7 @@ class _AdministratorBillingPageState extends State<AdministratorBillingPage> {
                   ),
                 ),
                 OffersScreen(
+                  key: ValueKey(_step),
                   client: _aboClient,
                   onContinue: _onOffersContinue,
                   onContractVersionUnsupported: _onContractVersionUnsupported,
@@ -174,6 +183,7 @@ class _AdministratorBillingPageState extends State<AdministratorBillingPage> {
               reference: _resumedCheckout?.reference,
               supabaseClient: widget.supabaseClient,
               onTermsNotAccepted: _onTermsNotAccepted,
+              onOfferUnavailable: _onOfferUnavailable,
               onBillingContactRequired: _onBillingContactRequired,
               onContractVersionUnsupported: _onContractVersionUnsupported,
             ),

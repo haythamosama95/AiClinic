@@ -574,6 +574,11 @@ final class AboInvalidRequestException extends AboApiException {
       : super(code: 'invalid_request');
 }
 
+final class AboIdempotencyConflictException extends AboApiException {
+  const AboIdempotencyConflictException({required super.contractVersion})
+      : super(code: 'idempotency_conflict');
+}
+
 /// ABO clinic API client over the billing token session.
 class AboClient {
   AboClient({
@@ -584,6 +589,7 @@ class AboClient {
 
   final BillingTokenClient _tokenClient;
   final http.Client _httpClient;
+  final Map<String, Future<CheckoutRead>> _checkoutRefreshesInFlight = {};
 
   Future<BillingOffersResponse> getOffers() async {
     final response = await _request('GET', '/v1/offers');
@@ -644,6 +650,20 @@ class AboClient {
   }
 
   Future<CheckoutRead> getCheckout(String checkoutId) async {
+    final active = _checkoutRefreshesInFlight[checkoutId];
+    if (active != null) return active;
+    final pending = _getCheckout(checkoutId);
+    _checkoutRefreshesInFlight[checkoutId] = pending;
+    try {
+      return await pending;
+    } finally {
+      if (identical(_checkoutRefreshesInFlight[checkoutId], pending)) {
+        _checkoutRefreshesInFlight.remove(checkoutId);
+      }
+    }
+  }
+
+  Future<CheckoutRead> _getCheckout(String checkoutId) async {
     final response = await _request('GET', '/v1/checkouts/$checkoutId');
     _throwOnError(response);
     return CheckoutRead.fromJson(_decodeObject(response.body));
@@ -675,13 +695,19 @@ class AboClient {
     String path, {
     Map<String, Object?>? body,
   }) async {
-    final session = await _tokenClient.ensureToken();
+    final session = await _tokenClient.reserveRequestToken();
     final base = _normalizeBaseUrl(session.aboBaseUrl);
     final uri = Uri.parse('$base$path');
     final headers = _headers(session.token, session.aboBaseUrl);
     switch (method) {
       case 'GET':
-        return _httpClient.get(uri, headers: headers);
+        final response = await _httpClient.get(uri, headers: headers);
+        if (response.statusCode == 429 && _tokenClientSessionExhausted(response)) {
+          _tokenClient.invalidate(session);
+          final fresh = await _tokenClient.reserveRequestToken();
+          return _httpClient.get(uri, headers: _headers(fresh.token, fresh.aboBaseUrl));
+        }
+        return response;
       case 'PUT':
       case 'POST':
         headers['content-type'] = 'application/json';
@@ -746,6 +772,8 @@ class AboClient {
           contractVersion: contractVersion,
           currentVersion: _optionalInt(body['current_version']),
         );
+      case 'idempotency_conflict':
+        throw AboIdempotencyConflictException(contractVersion: contractVersion);
       case 'billing_contact_required':
         throw AboBillingContactRequiredException(contractVersion: contractVersion);
       case 'terms_not_accepted':
@@ -767,6 +795,11 @@ class AboClient {
       default:
         throw AboUnknownException(code: code ?? 'abo_error', contractVersion: contractVersion);
     }
+  }
+
+  bool _tokenClientSessionExhausted(http.Response response) {
+    final code = _tryDecodeObject(response.body)['code']?.toString();
+    return code == 'rate_limited' || code == 'token_use_limit';
   }
 }
 

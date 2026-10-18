@@ -41,6 +41,9 @@ class BillingTokenClient {
   final BillingTokenRpcInvoke _rpc;
   BillingTokenSession? _session;
   Future<BillingTokenSession>? _mintInFlight;
+  int _reservedUses = 0;
+
+  static const maxLocalTokenUses = 59;
 
   /// Returns a valid billing token, minting on first use and renewing before expiry.
   Future<BillingTokenSession> ensureToken() {
@@ -51,9 +54,32 @@ class BillingTokenClient {
     return _mint();
   }
 
+  /// Reserves one local request slot before an ABO call starts.
+  /// Dart's single-isolate execution makes the check and increment atomic.
+  Future<BillingTokenSession> reserveRequestToken() async {
+    var session = await ensureToken();
+    if (identical(session, _session) && _reservedUses >= maxLocalTokenUses) {
+      session = await _mint();
+    }
+    if (!identical(session, _session)) {
+      _reservedUses = 0;
+    }
+    _reservedUses++;
+    return session;
+  }
+
+  /// Invalidates a token after the server reports that it is unexpectedly spent.
+  void invalidate(BillingTokenSession session) {
+    if (identical(_session, session)) {
+      _session = null;
+      _reservedUses = 0;
+    }
+  }
+
   /// Clears the in-memory session.
   void dispose() {
     _session = null;
+    _reservedUses = 0;
     _mintInFlight = null;
   }
 
@@ -102,6 +128,7 @@ class BillingTokenClient {
         expiresAt: expiresAt,
       );
       _session = session;
+      _reservedUses = 0;
       return session;
     } on PostgrestException catch (error) {
       if (error.message.contains('CONTRACT_VERSION_UNSUPPORTED')) {

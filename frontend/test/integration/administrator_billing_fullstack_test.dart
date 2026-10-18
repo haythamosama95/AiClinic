@@ -130,7 +130,7 @@ void main() {
   });
 
   group('E2E-P6.3-01', () {
-    testWidgets('E2E-P6.3-01', (tester) async {
+    testWidgets('R3-C1 E2E-P6.3-01 lays out the complete purchase flow', (tester) async {
       _activeCase = 'E2E-P6.3-01';
       if (!_hfsStackReady) {
         fail(
@@ -189,6 +189,7 @@ void main() {
         find.byKey(_billingOffersKey),
         reason: 'renew should open the offers screen',
       );
+      expect(tester.takeException(), isNull, reason: 'R3-C1 offers layout');
 
       await _acceptTermsAndContinue(tester, boundedPumping: true);
       await _pumpUntilFound(
@@ -196,6 +197,7 @@ void main() {
         find.byKey(_billingContactKey),
         reason: 'offers should advance to the contact form',
       );
+      expect(tester.takeException(), isNull, reason: 'R3-C1 contact layout');
 
       await _fillAndSaveBillingContact(tester, boundedPumping: true);
       await _pumpUntilFound(
@@ -203,6 +205,7 @@ void main() {
         find.byKey(_billingCheckoutKey),
         reason: 'contact save should advance to checkout',
       );
+      expect(tester.takeException(), isNull, reason: 'R3-C1 checkout layout');
 
       await _submitCheckout(tester);
 
@@ -434,7 +437,7 @@ void main() {
   });
 
   group('E2E-P6.3-04', () {
-    testWidgets('E2E-P6.3-04', (tester) async {
+    testWidgets('R3-M4 E2E-P6.3-04 returns to fresh offer selection', (tester) async {
       _activeCase = 'E2E-P6.3-04';
       _progress('fixture setup: clinic and coverage');
       final clinic = (await _runLiveIo(
@@ -494,14 +497,19 @@ void main() {
       await _submitCheckout(tester);
 
       expect(
-        find.textContaining('$newPriceMinor'),
+        find.byKey(_billingOffersKey),
         findsOneWidget,
-        reason: 'offer_unavailable should show the new price before launch',
+        reason: 'R3-M4: a superseded offer returns to fresh selection',
       );
       expect(
         urlLauncher.launchedUrls,
         isEmpty,
-        reason: 'checkout should not launch until the new price is shown',
+        reason: 'R3-M4: checkout must not launch an undisplayed replacement offer',
+      );
+      expect(
+        tester.widget<CheckboxListTile>(find.byKey(const Key('billing_accept_terms'))).value,
+        isFalse,
+        reason: 'R3-M4: offer recovery clears acceptance of the previous terms',
       );
     });
   });

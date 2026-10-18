@@ -4,6 +4,7 @@ import 'package:ai_clinic/core/contract_versions.dart';
 import 'package:ai_clinic/core/rpc/rpc_result.dart';
 import 'package:ai_clinic/core/ui/components/app_button.dart';
 import 'package:ai_clinic/features/ai/billing/abo_client.dart';
+import 'package:ai_clinic/features/ai/billing/billing_money.dart';
 import 'package:ai_clinic/features/ai/degraded/ai_degraded_mode.dart';
 import 'package:ai_clinic/features/ai/degraded/ai_degraded_view.dart';
 import 'package:ai_clinic/l10n/app_localizations.dart';
@@ -23,6 +24,7 @@ class CheckoutScreen extends StatefulWidget {
     this.initialCheckout,
     this.supabaseClient,
     this.onTermsNotAccepted,
+    this.onOfferUnavailable,
     this.onBillingContactRequired,
     this.onContractVersionUnsupported,
   });
@@ -35,6 +37,7 @@ class CheckoutScreen extends StatefulWidget {
   final CheckoutRead? initialCheckout;
   final SupabaseClient? supabaseClient;
   final VoidCallback? onTermsNotAccepted;
+  final VoidCallback? onOfferUnavailable;
   final VoidCallback? onBillingContactRequired;
   final VoidCallback? onContractVersionUnsupported;
 
@@ -51,10 +54,11 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
   var _refreshRequested = false;
   var _showAppUpdate = false;
   Timer? _pollTimer;
+  var _polling = false;
+  var _pollFailures = 0;
   String? _errorMessage;
   String? _checkoutRequestId;
   int? _displayPriceMinor;
-  int? _offerVersionOverride;
   String? _resolvedCheckoutId;
 
   BillingOffer? get _offer => widget.offer;
@@ -90,7 +94,11 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
       if (!mounted || read == null) {
         return;
       }
+      _pollFailures = 0;
       _applyCheckoutRead(read);
+    } on AboRateLimitedException {
+      _pollFailures++;
+      _scheduleNextPoll();
     } on AboContractVersionUnsupportedException {
       if (!mounted) {
         return;
@@ -101,6 +109,8 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
         return;
       }
       setState(() => _errorMessage = '$error');
+      _pollFailures++;
+      _scheduleNextPoll();
     }
   }
 
@@ -152,7 +162,25 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
     if (_pollTimer != null) {
       return;
     }
-    _pollTimer = Timer.periodic(const Duration(seconds: 1), (_) => _refreshCheckout());
+    _scheduleNextPoll();
+  }
+
+  void _scheduleNextPoll() {
+    if (!mounted || _pollTimer != null || _polling) return;
+    final seconds = _pollFailures == 0 ? 1 : (1 << _pollFailures).clamp(2, 15).toInt();
+    _pollTimer = Timer(Duration(seconds: seconds), () async {
+      _pollTimer = null;
+      if (_polling) return;
+      _polling = true;
+      await _refreshCheckout();
+      _polling = false;
+      final state = _checkoutRead?.shownState;
+      if (state == CheckoutShownState.waiting ||
+          state == CheckoutShownState.paid ||
+          state == CheckoutShownState.failed) {
+        _scheduleNextPoll();
+      }
+    });
   }
 
   void _showContractVersionUnsupported() {
@@ -190,7 +218,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
       final created = await widget.client.createCheckout(
         clientRequestId: _checkoutRequestId!,
         offerId: offer.offerId,
-        offerVersion: _offerVersionOverride ?? offer.version,
+        offerVersion: offer.version,
         termsVersion: termsVersion,
       );
       if (!mounted) {
@@ -210,7 +238,10 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
 
       await _launchPayment();
     } on AboOfferUnavailableException {
-      await _handleOfferUnavailable(offer);
+      if (mounted) {
+        setState(() => _submitting = false);
+        widget.onOfferUnavailable?.call();
+      }
     } on AboBillingContactRequiredException {
       if (!mounted) {
         return;
@@ -259,44 +290,6 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
     }
   }
 
-  Future<void> _handleOfferUnavailable(BillingOffer offer) async {
-    final l10n = AppLocalizations.of(context)!;
-    try {
-      final offers = await widget.client.getOffers();
-      if (!mounted) {
-        return;
-      }
-      BillingOffer? updated;
-      for (final entry in offers.offers) {
-        if (entry.offerId == offer.offerId) {
-          updated = entry;
-          break;
-        }
-      }
-      updated ??= offers.offers.isNotEmpty ? offers.offers.first : null;
-      setState(() {
-        _errorMessage = l10n.aiBillingErrorOfferUnavailable;
-        _displayPriceMinor = updated?.priceMinor ?? offer.priceMinor;
-        _offerVersionOverride = updated?.version ?? offer.version;
-        _submitting = false;
-      });
-    } on AboContractVersionUnsupportedException {
-      if (!mounted) {
-        return;
-      }
-      setState(() => _submitting = false);
-      _showContractVersionUnsupported();
-    } catch (error) {
-      if (!mounted) {
-        return;
-      }
-      setState(() {
-        _errorMessage = l10n.aiBillingErrorOfferUnavailable;
-        _submitting = false;
-      });
-    }
-  }
-
   Future<void> _launchPayment() async {
     final redirectUrl = _createdCheckout?.redirectUrl;
     if (redirectUrl == null || redirectUrl.isEmpty) {
@@ -328,7 +321,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
         shownState: CheckoutShownState.waiting,
         offer: CheckoutOfferSummary(
           offerId: offer?.offerId ?? _checkoutRead?.offer.offerId ?? '',
-          version: _offerVersionOverride ?? offer?.version ?? _checkoutRead?.offer.version ?? 0,
+          version: offer?.version ?? _checkoutRead?.offer.version ?? 0,
           termUnit: offer?.termUnit ?? _checkoutRead?.offer.termUnit ?? '',
           termCount: offer?.termCount ?? _checkoutRead?.offer.termCount ?? 0,
           chargedPriceMinor: _displayPriceMinor ?? offer?.priceMinor ?? _checkoutRead?.offer.chargedPriceMinor ?? 0,
@@ -396,7 +389,13 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
               ),
             if (_displayPriceMinor != null) ...[
               const SizedBox(height: 8),
-              Text('$_displayPriceMinor $currency'),
+              Text(
+                BillingMoney.format(
+                  _displayPriceMinor!,
+                  currency,
+                  Localizations.localeOf(context).toString(),
+                ),
+              ),
             ],
             if (showQueuedTerm) ...[
               const SizedBox(height: 16),
@@ -413,7 +412,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
                 style: TextStyle(color: Theme.of(context).colorScheme.error),
               ),
             ],
-            const Spacer(),
+            const SizedBox(height: 24),
             AppButton(
               key: const Key('billing_checkout_submit'),
               loading: _submitting,

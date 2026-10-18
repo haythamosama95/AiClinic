@@ -1,5 +1,6 @@
 import 'package:ai_clinic/core/ui/components/app_button.dart';
 import 'package:ai_clinic/features/ai/billing/abo_client.dart';
+import 'package:ai_clinic/features/ai/billing/billing_money.dart';
 import 'package:ai_clinic/l10n/app_localizations.dart';
 import 'package:flutter/material.dart';
 
@@ -144,9 +145,8 @@ class _OffersScreenState extends State<OffersScreen> {
                 ),
               )
             else
-              ListView(
-                shrinkWrap: true,
-                physics: const NeverScrollableScrollPhysics(),
+                Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
                   for (final offer
                       in _response?.offers ?? const <BillingOffer>[])
@@ -154,7 +154,14 @@ class _OffersScreenState extends State<OffersScreen> {
                       offer: offer,
                       locale: locale,
                       selected: _selectedOffer?.offerId == offer.offerId,
-                      onSelected: () => setState(() => _selectedOffer = offer),
+                      onSelected: () => setState(() {
+                        if (_selectedOffer?.offerId != offer.offerId ||
+                            _selectedOffer?.version != offer.version ||
+                            _selectedOffer?.terms.version != offer.terms.version) {
+                          _termsAccepted = false;
+                        }
+                        _selectedOffer = offer;
+                      }),
                     ),
                   if (_selectedOffer != null) ...[
                     const SizedBox(height: 24),
@@ -292,7 +299,7 @@ class _OfferCard extends StatelessWidget {
                     const SizedBox(height: 4),
                     Text(summary),
                     const SizedBox(height: 8),
-                    Text('${offer.priceMinor} ${offer.currency}'),
+                    Text(BillingMoney.format(offer.priceMinor, offer.currency, locale)),
                   ],
                 ),
               ),

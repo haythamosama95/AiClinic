@@ -29,6 +29,7 @@ class _BillingContactFormState extends State<BillingContactForm> {
   var _saving = false;
   Object? _error;
   String? _saveRequestId;
+  String? _submittedPayload;
 
   @override
   void initState() {
@@ -83,6 +84,14 @@ class _BillingContactFormState extends State<BillingContactForm> {
   }
 
   Future<void> _saveContact() async {
+    final name = _nameController.text.trim();
+    final email = _emailController.text.trim();
+    final phone = _phoneController.text.trim();
+    final payload = '$name\u0000$email\u0000$phone';
+    if (_submittedPayload != null && _submittedPayload != payload) {
+      _saveRequestId = null;
+    }
+    _submittedPayload = payload;
     _saveRequestId ??= _newClientRequestId('billing-contact');
     setState(() {
       _saving = true;
@@ -91,9 +100,9 @@ class _BillingContactFormState extends State<BillingContactForm> {
     try {
       final contact = await widget.client.putBillingContact(
         clientRequestId: _saveRequestId!,
-        name: _nameController.text.trim(),
-        email: _emailController.text.trim(),
-        phone: _phoneController.text.trim(),
+        name: name,
+        email: email,
+        phone: phone,
       );
       if (!mounted) {
         return;
@@ -140,7 +149,7 @@ class _BillingContactFormState extends State<BillingContactForm> {
             Text(l10n.aiBillingContactTitle, style: Theme.of(context).textTheme.headlineSmall),
             const SizedBox(height: 24),
             if (_loading)
-              const Expanded(child: Center(child: CircularProgressIndicator()))
+              const Padding(padding: EdgeInsets.symmetric(vertical: 24), child: Center(child: CircularProgressIndicator()))
             else ...[
               TextField(
                 key: const Key('billing_contact_name'),
@@ -172,7 +181,7 @@ class _BillingContactFormState extends State<BillingContactForm> {
                 ),
               ],
             ],
-            const Spacer(),
+            const SizedBox(height: 24),
             AppButton(
               key: const Key('billing_contact_save'),
               loading: _saving,
