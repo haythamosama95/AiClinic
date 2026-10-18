@@ -22,7 +22,7 @@ export async function writeAudit(
     .run();
 }
 
-export async function writeEntrypointAudit(
+export function buildEntrypointAuditStatement(
   db: D1Database,
   actor: string,
   action: string,
@@ -30,8 +30,8 @@ export async function writeEntrypointAudit(
   assertionSha256: string | null,
   beforePointer: string | null = null,
   afterPointer: string | null = null,
-): Promise<void> {
-  await db
+): D1PreparedStatement {
+  return db
     .prepare(
       `INSERT INTO control_audit
          (audit_id, operator_id, actor, action, target, assertion_sha256, before_pointer, after_pointer, recorded_at)
@@ -47,6 +47,25 @@ export async function writeEntrypointAudit(
       beforePointer,
       afterPointer,
       nowIso(),
-    )
-    .run();
+    );
+}
+
+export async function writeEntrypointAudit(
+  db: D1Database,
+  actor: string,
+  action: string,
+  target: string,
+  assertionSha256: string | null,
+  beforePointer: string | null = null,
+  afterPointer: string | null = null,
+): Promise<void> {
+  await buildEntrypointAuditStatement(
+    db,
+    actor,
+    action,
+    target,
+    assertionSha256,
+    beforePointer,
+    afterPointer,
+  ).run();
 }

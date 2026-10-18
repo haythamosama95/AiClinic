@@ -310,7 +310,7 @@ async function insertActiveOperatorCredential({
 
 function readIssuerKeyByStatus(status) {
   const row = psqlQuery(
-    `SELECT kid, public_key, not_before::text, not_after::text FROM ai_internal.issuer_key WHERE status = '${status}' LIMIT 1`,
+    `SELECT kid, public_key, to_char(not_before AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'), to_char(not_after AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"') FROM ai_internal.issuer_key WHERE status = '${status}' LIMIT 1`,
   );
   if (!row) {
     return null;
@@ -438,7 +438,7 @@ function getTenantBindingEpoch(orgId) {
 
 function ownerInsertIssuerKid() {
   const row = psqlQuery(
-    "SELECT kid, public_key, status, not_before::text, not_after::text FROM auth_internal.insert_issuer_kid()",
+    "SELECT kid, public_key, status, to_char(not_before AT TIME ZONE 'UTC', 'YYYY-MM-DD\"T\"HH24:MI:SS.MS\"Z\"'), to_char(not_after AT TIME ZONE 'UTC', 'YYYY-MM-DD\"T\"HH24:MI:SS.MS\"Z\"') FROM auth_internal.insert_issuer_kid()",
   );
   const [kid, publicKey, status, notBefore, notAfter] = row.split("|");
   return {

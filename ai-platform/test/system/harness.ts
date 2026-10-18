@@ -87,6 +87,8 @@ import fallbackAdmissionFeedMigrationSql from "../../migrations/20261006160000_f
 import dropInvoicingSql from "../../migrations/20261006170000_drop_invoicing.sql?raw";
 import dropPlanEntitlementSql from "../../migrations/20261006170100_drop_plan_entitlement.sql?raw";
 import idempotencyFingerprintSql from "../../migrations/20261014120000_ai_request_idempotency_fingerprint.sql?raw";
+import malformedIssuerKeyCleanupSql from "../../migrations/20261018120000_r1_c3_malformed_issuer_key_cleanup.sql?raw";
+import tenantCreationCapTriggerSql from "../../migrations/20261018120100_r1_c2_tenant_creation_cap_trigger.sql?raw";
 import { applySqlStatements } from "../split-sql-statements";
 import {
   createCapabilityRegistry,
@@ -275,6 +277,8 @@ const MIGRATION_SQL = [
   dropInvoicingSql,
   dropPlanEntitlementSql,
   idempotencyFingerprintSql,
+  malformedIssuerKeyCleanupSql,
+  tenantCreationCapTriggerSql,
 ];
 
 const CATALOGUE_PLAN_NAME = "standard";

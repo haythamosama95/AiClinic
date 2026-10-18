@@ -28,6 +28,7 @@ import { loadOffersFixture } from "../../src/records/append";
 import {
   applySql,
   billingFetch,
+  harnessClockNowSeconds,
   mintAi,
   mintBilling,
   newIssuer,
@@ -585,7 +586,7 @@ async function administratorHeaders(
     await pinIssuer(issuer.kid, issuer.publicKey);
     clinicIssuer = issuer;
   }
-  const now = await harnessNowSeconds();
+  const now = await harnessClockNowSeconds();
   const token = await mintBilling(issuer, {
     sub: "admin-sub",
     org,

@@ -146,9 +146,11 @@ test("E2E-P7.2-01", async () => {
     });
     assert.equal(unknownLimited.status, 429);
   } finally {
+    // Remove the pinned row so the worker's clock falls back to wall time;
+    // freezing it here would make later billing tokens look future-issued
+    // once authenticateBilling enforces token times (R1-C1).
     runAboD1Command(`
-      UPDATE harness_test_clock
-      SET now_iso = ${sqlLiteral(new Date().toISOString())}
+      DELETE FROM harness_test_clock
       WHERE id = 'default';
     `);
   }

@@ -9,6 +9,7 @@ import { loadOffersFixture } from "../../src/records/append";
 import {
   applySql,
   billingFetch,
+  harnessClockNowSeconds,
   mintBilling,
   newIssuer,
   pinIssuer,
@@ -59,7 +60,7 @@ async function administratorHeaders(
 ): Promise<{ headers: Record<string, string>; jti: string }> {
   const issuer = await newIssuer();
   await pinIssuer(issuer.kid, issuer.publicKey);
-  const now = Math.floor(Date.now() / 1000);
+  const now = await harnessClockNowSeconds();
   const jti = options?.jti ?? crypto.randomUUID();
   const token = await mintBilling(issuer, {
     sub: options?.sub ?? "admin-sub",

@@ -40,7 +40,10 @@ import {
   clockNowSeconds,
   type ClockEnv,
 } from "../clock";
-import { writeEntrypointAudit } from "../control/audit";
+import {
+  buildEntrypointAuditStatement,
+  writeEntrypointAudit,
+} from "../control/audit";
 import {
   deprecateCapabilityAction,
   retireCapabilityAction,
@@ -323,6 +326,36 @@ function issuerKeyRowToDetail(row: IssuerKeyRow): string {
 function isValidEd25519PublicKeyEncoding(publicKey: string): boolean {
   const decoded = base64UrlDecode(publicKey);
   return decoded !== null && decoded.length === 32;
+}
+
+/**
+ * R1-C3: validity bounds must be canonical UTC ISO-8601 timestamps
+ * (`YYYY-MM-DDTHH:MM:SS[.sss]Z`) that parse to a finite instant, so a typo
+ * like `2030-13-01` can never silently remove a time restriction.
+ */
+const CANONICAL_UTC_ISO_RE =
+  /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d{1,3})?Z$/u;
+
+function parseCanonicalUtcTimestampMs(value: string): number | null {
+  if (!CANONICAL_UTC_ISO_RE.test(value)) {
+    return null;
+  }
+  const parsed = Date.parse(value);
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
+function validKeyWindowBounds(
+  notBefore: unknown,
+  notAfter: unknown,
+): boolean {
+  if (typeof notBefore !== "string" || typeof notAfter !== "string") {
+    return false;
+  }
+  const notBeforeMs = parseCanonicalUtcTimestampMs(notBefore);
+  const notAfterMs = parseCanonicalUtcTimestampMs(notAfter);
+  return (
+    notBeforeMs !== null && notAfterMs !== null && notBeforeMs < notAfterMs
+  );
 }
 
 async function readIssuerKey(
@@ -879,18 +912,26 @@ async function assertionChallengeUsed(
   return row !== null;
 }
 
+async function buildAssertionUsedStatement(
+  env: VendorEnv,
+  challengeSha256: string,
+  credentialId: string,
+): Promise<D1PreparedStatement> {
+  const usedAt = await clockNowIso(env);
+  return env.DB.prepare(
+    `INSERT INTO assertion_used (challenge_sha256, credential_id, used_at)
+     VALUES (?, ?, ?)`,
+  ).bind(challengeSha256, credentialId, usedAt);
+}
+
 async function insertAssertionUsed(
   env: VendorEnv,
   challengeSha256: string,
   credentialId: string,
 ): Promise<void> {
-  const usedAt = await clockNowIso(env);
-  await env.DB.prepare(
-    `INSERT INTO assertion_used (challenge_sha256, credential_id, used_at)
-     VALUES (?, ?, ?)`,
-  )
-    .bind(challengeSha256, credentialId, usedAt)
-    .run();
+  await (
+    await buildAssertionUsedStatement(env, challengeSha256, credentialId)
+  ).run();
 }
 
 async function importSignerPublicKey(
@@ -2255,6 +2296,19 @@ export class VendorEntrypoint extends WorkerEntrypoint<VendorEnv> {
       return rejected(version, "public_key_invalid");
     }
 
+    // R1-C3: malformed or reversed validity windows are rejected before the
+    // assertion is consumed or any row is written.
+    if (!validKeyWindowBounds(notBefore, notAfter)) {
+      await writeEntrypointAudit(
+        this.env.DB,
+        access.email,
+        "registerIssuerKey",
+        check.auditTarget,
+        check.assertionSha256,
+      );
+      return rejected(version, "assertion_invalid");
+    }
+
     const existing = await readIssuerKey(this.env.DB, kid);
     if (existing !== null) {
       if (existing.public_key !== publicKey) {
@@ -2413,24 +2467,34 @@ export class VendorEntrypoint extends WorkerEntrypoint<VendorEnv> {
       return rejected(version, "kid_revoked");
     }
 
-    await finishHpAssertion(
-      this.env,
-      access.email,
-      "retireIssuerKey",
-      check,
-    );
-
-    if (existing.status === "active") {
-      await this.env.DB.prepare(
-        `UPDATE issuer_key SET status = 'retiring' WHERE kid = ?`,
-      )
-        .bind(kid)
-        .run();
-    }
+    // R8-KEY1: the transition is guarded on the row still being `active`, and
+    // it is batched atomically with the assertion consumption and the audit
+    // write so a concurrent revoke can never be overwritten. The dedicated
+    // AUDIT1 helper from RM13 will replace this local batching (seam for RM13).
+    await this.env.DB.batch([
+      await buildAssertionUsedStatement(
+        this.env,
+        check.assertionSha256,
+        check.signer.credential_id,
+      ),
+      this.env.DB.prepare(
+        `UPDATE issuer_key SET status = 'retiring' WHERE kid = ? AND status = 'active'`,
+      ).bind(kid),
+      buildEntrypointAuditStatement(
+        this.env.DB,
+        access.email,
+        "retireIssuerKey",
+        check.auditTarget,
+        check.assertionSha256,
+      ),
+    ]);
 
     const row = await readIssuerKey(this.env.DB, kid);
     if (row === null) {
       return rejected(version, "kid_not_found");
+    }
+    if (row.status === "revoked") {
+      return rejected(version, "kid_revoked");
     }
 
     await raiseAl13IssuerKey(this.env, {
@@ -2589,6 +2653,19 @@ export class VendorEntrypoint extends WorkerEntrypoint<VendorEnv> {
         check.assertionSha256,
       );
       return rejected(version, "public_key_invalid");
+    }
+
+    // R1-C3: malformed or reversed validity windows are rejected before the
+    // assertion is consumed or any row is written.
+    if (!validKeyWindowBounds(notBefore, notAfter)) {
+      await writeEntrypointAudit(
+        this.env.DB,
+        access.email,
+        "registerServiceKey",
+        check.auditTarget,
+        check.assertionSha256,
+      );
+      return rejected(version, "assertion_invalid");
     }
 
     const existing = await readServiceKey(this.env.DB, kid);

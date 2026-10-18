@@ -200,27 +200,19 @@ function isIssuerKeyWithinValidityWindow(
   keyRow: Record<string, unknown>,
   nowSeconds: number,
 ): boolean {
-  if (isString(keyRow.not_before)) {
-    const notBeforeMs = Date.parse(keyRow.not_before);
-    if (
-      !Number.isNaN(notBeforeMs) &&
-      nowSeconds < Math.floor(notBeforeMs / 1000)
-    ) {
-      return false;
-    }
+  // R1-C3: fail closed — a missing, non-string or non-finite bound removes no
+  // restriction; it makes the key unusable.
+  const notBeforeMs = isString(keyRow.not_before)
+    ? Date.parse(keyRow.not_before)
+    : Number.NaN;
+  const notAfterMs = isString(keyRow.not_after)
+    ? Date.parse(keyRow.not_after)
+    : Number.NaN;
+  if (!Number.isFinite(notBeforeMs) || !Number.isFinite(notAfterMs)) {
+    return false;
   }
-
-  if (isString(keyRow.not_after)) {
-    const notAfterMs = Date.parse(keyRow.not_after);
-    if (
-      !Number.isNaN(notAfterMs) &&
-      nowSeconds >= Math.floor(notAfterMs / 1000)
-    ) {
-      return false;
-    }
-  }
-
-  return true;
+  const nowMs = nowSeconds * 1000;
+  return nowMs >= notBeforeMs && nowMs < notAfterMs;
 }
 
 function isIssuerKeyUsable(
@@ -267,6 +259,16 @@ async function countEpochOneBindingsLast24Hours(
     .bind(windowStart)
     .first<{ count: number }>();
   return row?.count ?? 0;
+}
+
+/**
+ * R1-C2: sentinel raised by the `tenant_creation_cap_guard` trigger
+ * (`RAISE(ABORT, 'tenant_creation_cap')`) when a first-tenant insertion would
+ * exceed the 50-per-24-hours cap. It must never be swallowed into success.
+ */
+function isTenantCreationCapAbort(error: unknown): boolean {
+  const message = error instanceof Error ? error.message : String(error);
+  return message.includes("tenant_creation_cap");
 }
 
 async function readLiveBindingFromD1(
@@ -322,17 +324,24 @@ async function resolveInstallationId(
     return rejectUnauthenticated();
   }
 
-  const recentCreations = await countEpochOneBindingsLast24Hours(ctx.db, ctx.now);
-  if (recentCreations >= 50) {
-    if (ctx.alertEnv !== undefined) {
-      await raiseAl20(ctx.alertEnv);
-    }
-    return rejectUnauthenticated();
-  }
-
   const installationId = crypto.randomUUID();
   const createdAt = new Date(ctx.now * 1000).toISOString();
   const nextEpoch = (await readMaxBindingEpoch(ctx.db, orgId)) + 1;
+
+  // R1-C2: the D1 `tenant_creation_cap_guard` trigger is the authoritative
+  // cap; this pre-check is only an optional fast refusal for first creations.
+  if (nextEpoch === 1) {
+    const recentCreations = await countEpochOneBindingsLast24Hours(
+      ctx.db,
+      ctx.now,
+    );
+    if (recentCreations >= 50) {
+      if (ctx.alertEnv !== undefined) {
+        await raiseAl20(ctx.alertEnv);
+      }
+      return rejectUnauthenticated();
+    }
+  }
 
   try {
     await ctx.db.batch([
@@ -351,7 +360,13 @@ async function resolveInstallationId(
         )
         .bind(orgId, installationId, nextEpoch, createdAt),
     ]);
-  } catch {
+  } catch (error) {
+    if (isTenantCreationCapAbort(error)) {
+      if (ctx.alertEnv !== undefined) {
+        await raiseAl20(ctx.alertEnv);
+      }
+      return rejectUnauthenticated();
+    }
     const existing = await readLiveBindingFromD1(ctx.db, orgId);
     if (existing === null || !isString(existing.installation_id)) {
       return rejectUnauthenticated();

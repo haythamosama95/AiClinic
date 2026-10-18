@@ -11,6 +11,7 @@ import notifyWorkMigrationSql from "../../migrations/0003_notify_work.sql?raw";
 import {
   applySql,
   billingFetch,
+  harnessClockNowSeconds,
   mintBilling,
   newIssuer,
   opsFetch,
@@ -177,7 +178,8 @@ async function latestNotificationAdapterVersion(): Promise<number | null> {
   }
 }
 
-function baseClaims(now = Math.floor(Date.now() / 1000)) {
+async function baseClaims() {
+  const now = await harnessClockNowSeconds();
   return {
     sub: "user-version-matrix",
     org: "org-version-matrix",
@@ -283,7 +285,7 @@ describe("E2E-P7.3-01", () => {
     const issuer = await newIssuer();
     await pinIssuer(issuer.kid, issuer.publicKey);
     const billingToken = await mintBilling(issuer, {
-      ...baseClaims(),
+      ...(await baseClaims()),
       role: "administrator",
     });
     const contact = await billingFetch("/v1/billing-contact", {
@@ -323,7 +325,7 @@ describe("E2E-P7.3-01", () => {
     expect(String(checkoutBody.redirect_url ?? "")).not.toBe("");
 
     const badVerJwt = await mintBilling(issuer, {
-      ...baseClaims(),
+      ...(await baseClaims()),
       role: "administrator",
       jti: crypto.randomUUID(),
       ver: "1",

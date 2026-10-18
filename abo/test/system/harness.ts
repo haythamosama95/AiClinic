@@ -210,6 +210,32 @@ export async function setClock(isoUtc: string): Promise<void> {
     .run();
 }
 
+/**
+ * Seconds on the ABO harness clock (the same `harness_test_clock` row the
+ * worker's `clockNowMs` reads), falling back to wall time. Billing tokens must
+ * be minted relative to this clock so `authenticateBilling` accepts them
+ * regardless of any fixed clock a test installs (R1-C1).
+ */
+export async function harnessClockNowSeconds(): Promise<number> {
+  try {
+    const row = await env.DB.prepare(
+      `SELECT now_iso FROM harness_test_clock WHERE id = 'default'`,
+    ).first<{ now_iso: string }>();
+    if (row?.now_iso) {
+      const parsed = Date.parse(row.now_iso);
+      if (!Number.isNaN(parsed)) {
+        return Math.floor(parsed / 1000);
+      }
+    }
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    if (!/no such table/i.test(message)) {
+      throw error;
+    }
+  }
+  return Math.floor(Date.now() / 1000);
+}
+
 export async function pinIssuer(
   kid: string,
   publicKey: CryptoKey,

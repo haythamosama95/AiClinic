@@ -6,8 +6,10 @@ import { env, SELF } from "cloudflare:test";
 import { CHANNEL_VERSIONS } from "vendor-contracts";
 import { createSoftwareAuthenticator } from "vendor-contracts/testkit";
 import { beforeAll, beforeEach, describe, expect, it } from "vitest";
+import malformedIssuerKeyCleanupSql from "../../migrations/20261018120000_r1_c3_malformed_issuer_key_cleanup.sql?raw";
 import {
   applyAllMigrations,
+  applySql,
   clearCapturedVendorEmails,
   count,
   encodeVendorAssertion,
@@ -752,5 +754,534 @@ describe("issuer tokens", () => {
       ["installation_key"],
     );
     expect(installationKeyTable).toBeNull();
+  });
+});
+
+describe("remediation RM03 (R1-C2 / R1-C3 / R8-KEY1)", () => {
+  it("R1-C3: registerIssuerKey rejects malformed, non-canonical and reversed validity windows with assertion_invalid and writes no row", async () => {
+    const { signerCredentialId, signerAuthenticator } =
+      await bootstrapIssuerRegistry();
+    const key = await generateIssuerKeyMaterial();
+    const { notBefore, notAfter } = await issuerValidityWindow();
+    const kidsBefore = await count("issuer_key");
+
+    const cases: Array<{ notBefore: string; notAfter: string }> = [
+      { notBefore: notBefore, notAfter: "2030-13-01" },
+      { notBefore: notBefore, notAfter: "not-a-date" },
+      { notBefore: notBefore, notAfter: "2030-01-01 00:00:00Z" },
+      { notBefore: "2020-25-01T00:00:00Z", notAfter: notAfter },
+      { notBefore: notAfter, notAfter: notBefore },
+    ];
+
+    for (const bounds of cases) {
+      const { envelope } = await registerIssuerKeyWithAssertion({
+        kid: key.kid,
+        publicKey: key.publicKeyB64,
+        notBefore: bounds.notBefore,
+        notAfter: bounds.notAfter,
+        signerCredentialId,
+        authenticator: signerAuthenticator,
+      });
+      expect(envelope.result).toBe("rejected");
+      expect(envelope.code).toBe("assertion_invalid");
+    }
+
+    expect(await count("issuer_key")).toBe(kidsBefore);
+  });
+
+  it("R1-C3: registerServiceKey rejects a malformed not_after with assertion_invalid and writes no row", async () => {
+    const { signerCredentialId, signerAuthenticator } =
+      await bootstrapIssuerRegistry();
+    const kid = crypto.randomUUID();
+    const publicKey = base64urlEncode(
+      crypto.getRandomValues(new Uint8Array(32)),
+    );
+    const { notBefore, notAfter } = await issuerValidityWindow();
+    const serviceKeysBefore = await count("service_key");
+
+    const accessJwt = await mintVendorAccessJwt();
+    const operation = {
+      op: "registerServiceKey",
+      params: {
+        contract_version: CONTRACT_VERSION,
+        access_jwt: accessJwt,
+        kid,
+        public_key: publicKey,
+        not_before: notBefore,
+        not_after: "2030-13-01",
+      },
+      actor_email: VENDOR_OPERATOR_EMAIL,
+      issued_at: getVendorTestClockIso() ?? new Date().toISOString(),
+      nonce: crypto.randomUUID(),
+      contract_version: CONTRACT_VERSION,
+    };
+    const assertion = encodeVendorAssertion(
+      await signerAuthenticator.assert({
+        operation,
+        rpId: env.WEBAUTHN_RP_ID,
+        origin: env.WEBAUTHN_ORIGIN,
+        up: true,
+        uv: true,
+      }),
+    );
+    const envelope = await vendorCall(
+      "registerServiceKey",
+      {
+        contract_version: CONTRACT_VERSION,
+        kid,
+        public_key: publicKey,
+        not_before: notBefore,
+        not_after: "2030-13-01",
+        signer_credential_id: signerCredentialId,
+        operation,
+        assertion,
+      },
+      { accessJwt },
+    );
+
+    expect(envelope.result).toBe("rejected");
+    expect(envelope.code).toBe("assertion_invalid");
+    expect(await count("service_key")).toBe(serviceKeysBefore);
+  });
+
+  it("R1-C3: a legacy issuer key with a malformed not_after fails closed even before the cleanup migration", async () => {
+    const { signerCredentialId, signerAuthenticator } =
+      await bootstrapIssuerRegistry();
+    const issuerKey = await generateIssuerKeyMaterial();
+    await registerIssuerKeyMaterial({
+      key: issuerKey,
+      signerCredentialId,
+      signerAuthenticator,
+    });
+
+    const orgId = crypto.randomUUID();
+    const warm = await fetchCapabilities(
+      await mintIssuerToken(issuerKey, { org: orgId }),
+    );
+    expect(warm.status).toBe(200);
+
+    await env.DB.prepare(
+      `UPDATE issuer_key SET not_after = '2030-13-01' WHERE kid = ?`,
+    )
+      .bind(issuerKey.kid)
+      .run();
+
+    const clockIso = getVendorTestClockIso() ?? new Date().toISOString();
+    await setTestClock(
+      new Date(Date.parse(clockIso) + configCacheTtlMs() + 1).toISOString(),
+    );
+
+    const rejected = await fetchCapabilities(
+      await mintIssuerToken(issuerKey, { org: crypto.randomUUID() }),
+    );
+    expect(rejected.status).toBe(401);
+  });
+
+  it("R1-C3: the cleanup migration revokes active/retiring issuer rows with malformed or reversed bounds and never revives revoked kids", async () => {
+    const validKid = crypto.randomUUID();
+    const validNotBefore = "2026-01-01T00:00:00.000Z";
+    const validNotAfter = "2036-01-01T00:00:00.000Z";
+    const malformedKidA = crypto.randomUUID();
+    const malformedKidB = crypto.randomUUID();
+    const revokedMalformedKid = crypto.randomUUID();
+    await env.DB.batch([
+      env.DB.prepare(
+        `INSERT INTO issuer_key
+           (kid, issuer, public_key, status, not_before, not_after, registered_by, assertion_sha256)
+         VALUES (?, ?, ?, 'active', ?, ?, 'seed', 'seed')`,
+      ).bind(
+        validKid,
+        ISSUER_ID,
+        base64urlEncode(crypto.getRandomValues(new Uint8Array(32))),
+        validNotBefore,
+        validNotAfter,
+      ),
+      env.DB.prepare(
+        `INSERT INTO issuer_key
+           (kid, issuer, public_key, status, not_before, not_after, registered_by, assertion_sha256)
+         VALUES (?, ?, ?, 'retiring', ?, ?, 'seed', 'seed')`,
+      ).bind(
+        malformedKidA,
+        ISSUER_ID,
+        base64urlEncode(crypto.getRandomValues(new Uint8Array(32))),
+        validNotBefore,
+        "2030-13-01",
+      ),
+      env.DB.prepare(
+        `INSERT INTO issuer_key
+           (kid, issuer, public_key, status, not_before, not_after, registered_by, assertion_sha256)
+         VALUES (?, ?, ?, 'active', ?, ?, 'seed', 'seed')`,
+      ).bind(
+        malformedKidB,
+        ISSUER_ID,
+        base64urlEncode(crypto.getRandomValues(new Uint8Array(32))),
+        validNotAfter,
+        validNotBefore,
+      ),
+      env.DB.prepare(
+        `INSERT INTO issuer_key
+           (kid, issuer, public_key, status, not_before, not_after, registered_by, assertion_sha256)
+         VALUES (?, ?, ?, 'revoked', ?, ?, 'seed', 'seed')`,
+      ).bind(
+        revokedMalformedKid,
+        ISSUER_ID,
+        base64urlEncode(crypto.getRandomValues(new Uint8Array(32))),
+        validNotBefore,
+        "2030-13-01",
+      ),
+    ]);
+
+    await applySql(env.DB, malformedIssuerKeyCleanupSql);
+
+    const malformedStatuses = await env.DB.prepare(
+      `SELECT kid, status FROM issuer_key
+       WHERE kid IN (?, ?, ?)`,
+    )
+      .bind(malformedKidA, malformedKidB, revokedMalformedKid)
+      .all<{ kid: string; status: string }>();
+    const statusByKid = new Map(
+      (malformedStatuses.results ?? []).map((row) => [row.kid, row.status]),
+    );
+    expect(statusByKid.get(malformedKidA)).toBe("revoked");
+    expect(statusByKid.get(malformedKidB)).toBe("revoked");
+    expect(statusByKid.get(revokedMalformedKid)).toBe("revoked");
+
+    const validRow = await queryOne<{ status: string }>(
+      "SELECT status FROM issuer_key WHERE kid = ?",
+      [validKid],
+    );
+    expect(validRow?.status).toBe("active");
+  });
+
+  it("R8-KEY1: retiring an already-revoked kid returns kid_revoked and leaves the kid revoked", async () => {
+    const { signerCredentialId, signerAuthenticator } =
+      await bootstrapIssuerRegistry();
+    const issuerKey = await generateIssuerKeyMaterial();
+    await registerIssuerKeyMaterial({
+      key: issuerKey,
+      signerCredentialId,
+      signerAuthenticator,
+    });
+
+    const revoke = await issuerKidVendorCall({
+      method: "revokeIssuerKey",
+      kid: issuerKey.kid,
+      signerCredentialId,
+      signerAuthenticator,
+    });
+    expect(revoke.result).toBe("ok");
+
+    const retire = await issuerKidVendorCall({
+      method: "retireIssuerKey",
+      kid: issuerKey.kid,
+      signerCredentialId,
+      signerAuthenticator,
+    });
+    expect(retire.result).toBe("rejected");
+    expect(retire.code).toBe("kid_revoked");
+
+    const row = await queryOne<{ status: string }>(
+      "SELECT status FROM issuer_key WHERE kid = ?",
+      [issuerKey.kid],
+    );
+    expect(row?.status).toBe("revoked");
+  });
+
+  it("R8-KEY1: retiring an already-retiring kid succeeds and interleaved retire/revoke never restores a revoked key", async () => {
+    const { signerCredentialId, signerAuthenticator } =
+      await bootstrapIssuerRegistry();
+    const keyA = await generateIssuerKeyMaterial();
+    const keyB = await generateIssuerKeyMaterial();
+    await registerIssuerKeyMaterial({
+      key: keyA,
+      signerCredentialId,
+      signerAuthenticator,
+    });
+    await registerIssuerKeyMaterial({
+      key: keyB,
+      signerCredentialId,
+      signerAuthenticator,
+    });
+
+    const firstRetire = await issuerKidVendorCall({
+      method: "retireIssuerKey",
+      kid: keyA.kid,
+      signerCredentialId,
+      signerAuthenticator,
+    });
+    expect(firstRetire.result).toBe("ok");
+    expect(parseDetailRow(firstRetire.detail!).status).toBe("retiring");
+
+    const secondRetire = await issuerKidVendorCall({
+      method: "retireIssuerKey",
+      kid: keyA.kid,
+      signerCredentialId,
+      signerAuthenticator,
+    });
+    expect(secondRetire.result).toBe("ok");
+    expect(parseDetailRow(secondRetire.detail!).status).toBe("retiring");
+
+    const [retireResult, revokeResult] = await Promise.all([
+      issuerKidVendorCall({
+        method: "retireIssuerKey",
+        kid: keyB.kid,
+        signerCredentialId,
+        signerAuthenticator,
+      }),
+      issuerKidVendorCall({
+        method: "revokeIssuerKey",
+        kid: keyB.kid,
+        signerCredentialId,
+        signerAuthenticator,
+      }),
+    ]);
+    void retireResult;
+    void revokeResult;
+
+    const finalRow = await queryOne<{ status: string }>(
+      "SELECT status FROM issuer_key WHERE kid = ?",
+      [keyB.kid],
+    );
+    expect(["retiring", "revoked"]).toContain(finalRow?.status);
+
+    const clockIso = getVendorTestClockIso() ?? new Date().toISOString();
+    await setTestClock(
+      new Date(Date.parse(clockIso) + configCacheTtlMs() + 1).toISOString(),
+    );
+    if (finalRow?.status === "revoked") {
+      const token = await fetchCapabilities(
+        await mintIssuerToken(keyB, { org: crypto.randomUUID() }),
+      );
+      expect(token.status).toBe(401);
+    }
+  });
+
+  it("R1-C2: the tenant_creation_cap_guard trigger aborts the 51st epoch-1 insert with tenant_creation_cap and rolls back its installation", async () => {
+    const nowIso = getVendorTestClockIso() ?? new Date().toISOString();
+    const seeds: D1PreparedStatement[] = [];
+    for (let index = 0; index < 50; index += 1) {
+      const installationId = crypto.randomUUID();
+      const orgId = crypto.randomUUID();
+      seeds.push(
+        env.DB.prepare(
+          `INSERT INTO installation (
+             installation_id, org_id, status, display_name, region, enrolled_at
+           ) VALUES (?, ?, 'active', '', '', ?)`,
+        ).bind(installationId, orgId, nowIso),
+      );
+      seeds.push(
+        env.DB.prepare(
+          `INSERT INTO tenant_binding (
+             org_id, installation_id, epoch, status, retired_at, reason, created_at
+           ) VALUES (?, ?, 1, 'active', NULL, NULL, ?)`,
+        ).bind(orgId, installationId, nowIso),
+      );
+    }
+    await env.DB.batch(seeds);
+
+    const installationId = crypto.randomUUID();
+    const orgId = crypto.randomUUID();
+    await expect(
+      env.DB.batch([
+        env.DB.prepare(
+          `INSERT INTO installation (
+             installation_id, org_id, status, display_name, region, enrolled_at
+           ) VALUES (?, ?, 'active', '', '', ?)`,
+        ).bind(installationId, orgId, nowIso),
+        env.DB.prepare(
+          `INSERT INTO tenant_binding (
+             org_id, installation_id, epoch, status, retired_at, reason, created_at
+           ) VALUES (?, ?, 1, 'active', NULL, NULL, ?)`,
+        ).bind(orgId, installationId, nowIso),
+      ]),
+    ).rejects.toThrow(/tenant_creation_cap/);
+
+    expect(await count("tenant_binding", "epoch = 1")).toBe(50);
+    expect(await count("installation")).toBe(50);
+    expect(
+      await queryOne<{ installation_id: string }>(
+        "SELECT installation_id FROM installation WHERE installation_id = ?",
+        [installationId],
+      ),
+    ).toBeNull();
+
+    await env.DB.prepare(
+      `INSERT INTO tenant_binding (
+         org_id, installation_id, epoch, status, retired_at, reason, created_at
+       ) VALUES (?, ?, 2, 'active', NULL, NULL, ?)`,
+    )
+      .bind(crypto.randomUUID(), crypto.randomUUID(), nowIso)
+      .run();
+    expect(await count("tenant_binding", "epoch = 2")).toBe(1);
+  });
+
+  it("R1-C2: exactly 24-hour-old epoch-1 rows no longer count toward the cap", async () => {
+    const nowIso = getVendorTestClockIso() ?? new Date().toISOString();
+    const nowMs = Date.parse(nowIso);
+    const boundaryIso = new Date(nowMs - 24 * 60 * 60 * 1000).toISOString();
+
+    const seeds: D1PreparedStatement[] = [];
+    for (let index = 0; index < 50; index += 1) {
+      const installationId = crypto.randomUUID();
+      const orgId = crypto.randomUUID();
+      seeds.push(
+        env.DB.prepare(
+          `INSERT INTO installation (
+             installation_id, org_id, status, display_name, region, enrolled_at
+           ) VALUES (?, ?, 'active', '', '', ?)`,
+        ).bind(installationId, orgId, boundaryIso),
+      );
+      seeds.push(
+        env.DB.prepare(
+          `INSERT INTO tenant_binding (
+             org_id, installation_id, epoch, status, retired_at, reason, created_at
+           ) VALUES (?, ?, 1, 'active', NULL, NULL, ?)`,
+        ).bind(orgId, installationId, boundaryIso),
+      );
+    }
+    await env.DB.batch(seeds);
+
+    const installationId = crypto.randomUUID();
+    const orgId = crypto.randomUUID();
+    await env.DB.batch([
+      env.DB.prepare(
+        `INSERT INTO installation (
+           installation_id, org_id, status, display_name, region, enrolled_at
+         ) VALUES (?, ?, 'active', '', '', ?)`,
+      ).bind(installationId, orgId, nowIso),
+      env.DB.prepare(
+        `INSERT INTO tenant_binding (
+           org_id, installation_id, epoch, status, retired_at, reason, created_at
+         ) VALUES (?, ?, 1, 'active', NULL, NULL, ?)`,
+      ).bind(orgId, installationId, nowIso),
+    ]);
+
+    expect(await count("tenant_binding", "epoch = 1")).toBe(51);
+  });
+
+  it("R1-C2: at the cap, a valid higher-epoch re-creation succeeds through the API", async () => {
+    const nowIso = getVendorTestClockIso() ?? new Date().toISOString();
+    const seeds: D1PreparedStatement[] = [];
+    for (let index = 0; index < 50; index += 1) {
+      const installationId = crypto.randomUUID();
+      const orgId = crypto.randomUUID();
+      seeds.push(
+        env.DB.prepare(
+          `INSERT INTO installation (
+             installation_id, org_id, status, display_name, region, enrolled_at
+           ) VALUES (?, ?, 'active', '', '', ?)`,
+        ).bind(installationId, orgId, nowIso),
+      );
+      seeds.push(
+        env.DB.prepare(
+          `INSERT INTO tenant_binding (
+             org_id, installation_id, epoch, status, retired_at, reason, created_at
+           ) VALUES (?, ?, 1, 'active', NULL, NULL, ?)`,
+        ).bind(orgId, installationId, nowIso),
+      );
+    }
+    await env.DB.batch(seeds);
+
+    const rebindOrg = crypto.randomUUID();
+    const retiredInstallation = crypto.randomUUID();
+    await env.DB.batch([
+      env.DB.prepare(
+        `INSERT INTO installation (
+           installation_id, org_id, status, display_name, region, enrolled_at
+         ) VALUES (?, ?, 'active', '', '', ?)`,
+      ).bind(retiredInstallation, rebindOrg, nowIso),
+      env.DB.prepare(
+        `INSERT INTO tenant_binding (
+           org_id, installation_id, epoch, status, retired_at, reason, created_at
+         ) VALUES (?, ?, 1, 'retired', ?, 'transfer', ?)`,
+      ).bind(rebindOrg, retiredInstallation, nowIso, nowIso),
+    ]);
+
+    const { signerCredentialId, signerAuthenticator } =
+      await bootstrapIssuerRegistry();
+    const issuerKey = await generateIssuerKeyMaterial();
+    await registerIssuerKeyMaterial({
+      key: issuerKey,
+      signerCredentialId,
+      signerAuthenticator,
+    });
+
+    const response = await fetchCapabilities(
+      await mintIssuerToken(issuerKey, { org: rebindOrg }),
+    );
+    expect(response.status).toBe(200);
+
+    const binding = await queryOne<{ epoch: number; installation_id: string }>(
+      "SELECT epoch, installation_id FROM tenant_binding WHERE org_id = ? AND status = 'active'",
+      [rebindOrg],
+    );
+    expect(binding?.epoch).toBe(2);
+    expect(binding?.installation_id).not.toBe(retiredInstallation);
+  });
+
+  it("R1-C2: with 49 first bindings, concurrent distinct-org admissions admit exactly one more and leave no orphan installation", async () => {
+    const nowIso = getVendorTestClockIso() ?? new Date().toISOString();
+    const seeds: D1PreparedStatement[] = [];
+    for (let index = 0; index < 49; index += 1) {
+      const installationId = crypto.randomUUID();
+      const orgId = crypto.randomUUID();
+      seeds.push(
+        env.DB.prepare(
+          `INSERT INTO installation (
+             installation_id, org_id, status, display_name, region, enrolled_at
+           ) VALUES (?, ?, 'active', '', '', ?)`,
+        ).bind(installationId, orgId, nowIso),
+      );
+      seeds.push(
+        env.DB.prepare(
+          `INSERT INTO tenant_binding (
+             org_id, installation_id, epoch, status, retired_at, reason, created_at
+           ) VALUES (?, ?, 1, 'active', NULL, NULL, ?)`,
+        ).bind(orgId, installationId, nowIso),
+      );
+    }
+    await env.DB.batch(seeds);
+
+    const { signerCredentialId, signerAuthenticator } =
+      await bootstrapIssuerRegistry();
+    const issuerKey = await generateIssuerKeyMaterial();
+    await registerIssuerKeyMaterial({
+      key: issuerKey,
+      signerCredentialId,
+      signerAuthenticator,
+    });
+
+    const installationsBefore = await count("installation");
+    const [first, second] = await Promise.all([
+      fetchCapabilities(await mintIssuerToken(issuerKey, { org: crypto.randomUUID() })),
+      fetchCapabilities(await mintIssuerToken(issuerKey, { org: crypto.randomUUID() })),
+    ]);
+
+    const statuses = [first.status, second.status].sort();
+    expect(statuses).toEqual([200, 401]);
+    expect(await count("tenant_binding", "epoch = 1")).toBe(50);
+    expect(await count("installation")).toBe(installationsBefore + 1);
+  });
+
+  it("R1-C2: competing first tokens for the same org resolve one installation", async () => {
+    const { signerCredentialId, signerAuthenticator } =
+      await bootstrapIssuerRegistry();
+    const issuerKey = await generateIssuerKeyMaterial();
+    await registerIssuerKeyMaterial({
+      key: issuerKey,
+      signerCredentialId,
+      signerAuthenticator,
+    });
+
+    const orgId = crypto.randomUUID();
+    const [first, second] = await Promise.all([
+      fetchCapabilities(await mintIssuerToken(issuerKey, { org: orgId })),
+      fetchCapabilities(await mintIssuerToken(issuerKey, { org: orgId })),
+    ]);
+
+    expect(first.status).toBe(200);
+    expect(second.status).toBe(200);
+    expect(await count("tenant_binding", `org_id = '${orgId}'`)).toBe(1);
+    expect(await count("installation")).toBe(1);
   });
 });

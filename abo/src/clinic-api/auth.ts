@@ -1,4 +1,5 @@
 import { validateTokenClaims } from "vendor-contracts";
+import { clockNowMs } from "../clock.js";
 import { clinicErrorResponse } from "./version.js";
 
 const textEncoder = new TextEncoder();
@@ -264,6 +265,8 @@ export async function authenticateBilling(
     issuerId: env.ISSUER_ID,
     publicKey,
     kid,
+    nowSeconds: Math.floor((await clockNowMs(env)) / 1000),
+    clockSkewSeconds: 60,
   });
   if (validated.ok) {
     const payload = await verifyJwtSignature(jwt, publicKey);

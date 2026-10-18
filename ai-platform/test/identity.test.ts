@@ -619,6 +619,27 @@ describe("identity token rejection cases", () => {
         }),
     },
     {
+      name: "identity_rejects_key_with_missing_validity_bounds",
+      mutate: async (_token, keypair) => mintToken(keypair),
+      reader: (keypair) =>
+        makeIdentityReader(keypair, {
+          key: issuerKeyRow(keypair, {
+            not_before: null,
+            not_after: null,
+          }),
+        }),
+    },
+    {
+      name: "identity_rejects_key_with_malformed_validity_bounds",
+      mutate: async (_token, keypair) => mintToken(keypair),
+      reader: (keypair) =>
+        makeIdentityReader(keypair, {
+          key: issuerKeyRow(keypair, {
+            not_after: "2030-13-01",
+          }),
+        }),
+    },
+    {
       name: "identity_rejects_deleted_installation",
       mutate: async (_token, keypair) => mintToken(keypair),
       reader: (keypair) =>

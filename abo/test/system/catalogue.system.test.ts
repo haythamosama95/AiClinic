@@ -13,6 +13,7 @@ import {
   clearCapturedHeartbeatFetches,
   getCapturedEmails,
   getCapturedHeartbeatFetches,
+  harnessClockNowSeconds,
   mintAi,
   mintBilling,
   newIssuer,
@@ -65,7 +66,7 @@ async function administratorHeaders(
 ): Promise<Record<string, string>> {
   const issuer = await newIssuer();
   await pinIssuer(issuer.kid, issuer.publicKey);
-  const now = Math.floor(Date.now() / 1000);
+  const now = await harnessClockNowSeconds();
   const token = await mintBilling(issuer, {
     sub: options?.sub ?? "admin-sub",
     org,
@@ -255,7 +256,7 @@ describe("catalogue", () => {
     await pinIssuer(pinned.kid, pinned.publicKey);
     const unpinned = await newIssuer();
 
-    const now = Math.floor(Date.now() / 1000);
+    const now = await harnessClockNowSeconds();
     const baseClaims = {
       sub: "user-test",
       org: "org-test",
@@ -340,7 +341,7 @@ describe("catalogue", () => {
     const pinned = await newIssuer();
     await pinIssuer(pinned.kid, pinned.publicKey);
     const jti = crypto.randomUUID();
-    const now = Math.floor(Date.now() / 1000);
+    const now = await harnessClockNowSeconds();
     const token = await mintBilling(pinned, {
       sub: "rate-limit-sub",
       org: "org-rate-limit",

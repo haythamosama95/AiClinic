@@ -25,6 +25,7 @@ import { loadOffersFixture } from "../../src/records/append";
 import {
   applySql,
   billingFetch,
+  harnessClockNowSeconds,
   mintBilling,
   newIssuer,
   opsFetch,
@@ -403,7 +404,7 @@ async function administratorHeaders(
 ): Promise<Record<string, string>> {
   const issuer = await newIssuer();
   await pinIssuer(issuer.kid, issuer.publicKey);
-  const now = Math.floor(Date.now() / 1000);
+  const now = await harnessClockNowSeconds();
   const token = await mintBilling(issuer, {
     sub: "admin-sub",
     org,

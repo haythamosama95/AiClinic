@@ -34,6 +34,7 @@ import {
   billingFetch,
   clearCapturedEmails,
   getCapturedEmails,
+  harnessClockNowSeconds,
   mintBilling,
   newIssuer,
   opsFetch,
@@ -504,7 +505,7 @@ async function administratorHeaders(
     await pinIssuer(issuer.kid, issuer.publicKey);
     clinicIssuer = issuer;
   }
-  const now = await harnessNowSeconds();
+  const now = await harnessClockNowSeconds();
   const token = await mintBilling(issuer, {
     sub: "admin-sub",
     org,

@@ -104,6 +104,8 @@ function validateCommonClaims(
   payload: Record<string, unknown>,
   audience: TokenAudience,
   issuerId: string,
+  nowSeconds: number,
+  clockSkewSeconds: number,
 ): boolean {
   if (payload.iss !== issuerId || payload.ver !== "2" || payload.aud !== audience) {
     return false;
@@ -121,6 +123,12 @@ function validateCommonClaims(
   }
   const lifetime = payload.exp - payload.iat;
   if (lifetime < 0 || lifetime > LIFETIME_MAX[audience]) {
+    return false;
+  }
+  if (payload.iat > nowSeconds + clockSkewSeconds) {
+    return false;
+  }
+  if (payload.exp <= nowSeconds - clockSkewSeconds) {
     return false;
   }
   return true;
@@ -193,7 +201,16 @@ export async function validateTokenClaims(input: {
   issuerId: string;
   publicKey: CryptoKey;
   kid: string;
+  nowSeconds: number;
+  clockSkewSeconds: number;
 }): Promise<{ ok: true } | { ok: false }> {
+  if (
+    !Number.isFinite(input.nowSeconds) ||
+    !Number.isFinite(input.clockSkewSeconds) ||
+    input.clockSkewSeconds < 0
+  ) {
+    return fail();
+  }
   const parts = input.jwt.split(".");
   if (parts.length !== 3) {
     return fail();
@@ -234,7 +251,13 @@ export async function validateTokenClaims(input: {
   }
 
   if (
-    !validateCommonClaims(payloadValue, input.audience, input.issuerId) ||
+    !validateCommonClaims(
+      payloadValue,
+      input.audience,
+      input.issuerId,
+      input.nowSeconds,
+      input.clockSkewSeconds,
+    ) ||
     !validateAudienceClaims(payloadValue, input.audience)
   ) {
     return fail();

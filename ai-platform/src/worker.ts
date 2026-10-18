@@ -2159,25 +2159,21 @@ function issuerKeyUsable(
   if (status !== "active" && status !== "retiring") {
     return false;
   }
-  if (typeof keyRow.not_before === "string") {
-    const notBeforeMs = Date.parse(keyRow.not_before);
-    if (
-      !Number.isNaN(notBeforeMs) &&
-      nowSeconds < Math.floor(notBeforeMs / 1000)
-    ) {
-      return false;
-    }
+  // R1-C3: fail closed — a missing, non-string or non-finite bound removes no
+  // restriction; it makes the key unusable.
+  const notBeforeMs =
+    typeof keyRow.not_before === "string"
+      ? Date.parse(keyRow.not_before)
+      : Number.NaN;
+  const notAfterMs =
+    typeof keyRow.not_after === "string"
+      ? Date.parse(keyRow.not_after)
+      : Number.NaN;
+  if (!Number.isFinite(notBeforeMs) || !Number.isFinite(notAfterMs)) {
+    return false;
   }
-  if (typeof keyRow.not_after === "string") {
-    const notAfterMs = Date.parse(keyRow.not_after);
-    if (
-      !Number.isNaN(notAfterMs) &&
-      nowSeconds >= Math.floor(notAfterMs / 1000)
-    ) {
-      return false;
-    }
-  }
-  return true;
+  const nowMs = nowSeconds * 1000;
+  return nowMs >= notBeforeMs && nowMs < notAfterMs;
 }
 
 function feedUnauthorizedResponse(): Response {
@@ -2237,6 +2233,8 @@ async function verifyFeedBearerToken(
     issuerId: runtimeEnv.ISSUER_ID,
     publicKey,
     kid,
+    nowSeconds,
+    clockSkewSeconds: 60,
   });
   if (!claimsResult.ok) {
     return { ok: false, response: feedUnauthorizedResponse() };
