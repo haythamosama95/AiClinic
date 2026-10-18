@@ -959,6 +959,8 @@ function spawnAboProcess(
       "--var",
       `PAYMOB_BASE_URL:${PAYMOB_URL}`,
       "--var",
+      "PAYMOB_ALLOW_LOCAL_HTTP:1",
+      "--var",
       `ISSUER_KEYS:${JSON.stringify(issuerKeys)}`,
       "--var",
       `ABO_GRANT_KEY:${JSON.stringify(ABO_GRANT_KEY)}`,

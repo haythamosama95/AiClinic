@@ -36,6 +36,7 @@ export type PaymobAdapterEnv = PaymobClientEnv &
     BILLING_HOST: string;
     PAYMOB_PUBLIC_KEY: string;
     PAYMOB_HMAC_SECRET: string;
+    PAYMOB_ALLOW_LOCAL_HTTP?: string;
   };
 
 const PAYMOB_HMAC_FIELDS = [
@@ -94,14 +95,52 @@ type IntentionRow = {
   expires_at: string;
 };
 
+export function paymobUnifiedCheckoutUrl(
+  baseUrl: string,
+  publicKey: string,
+  clientSecret: string,
+  allowLocalTransport = false,
+): string {
+  let base: URL;
+  try {
+    base = new URL(baseUrl);
+  } catch {
+    throw new Error("PAYMOB_BASE_URL must be an HTTPS origin");
+  }
+  const hostname = base.hostname.toLowerCase();
+  const isLoopbackHost =
+    hostname === "localhost" ||
+    hostname === "[::1]" ||
+    /^127(?:\.(?:25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)){3}$/u.test(hostname);
+  const isAllowedLocalHttp =
+    allowLocalTransport && base.protocol === "http:" && isLoopbackHost;
+  if (
+    (base.protocol !== "https:" && !isAllowedLocalHttp) ||
+    base.username.length > 0 ||
+    base.password.length > 0 ||
+    (base.pathname !== "/" && base.pathname !== "") ||
+    base.href.includes("?") ||
+    base.href.includes("#")
+  ) {
+    throw new Error("PAYMOB_BASE_URL must be an HTTPS origin");
+  }
+
+  const checkoutUrl = new URL("/unifiedcheckout/", base.origin);
+  checkoutUrl.searchParams.set("publicKey", publicKey);
+  checkoutUrl.searchParams.set("clientSecret", clientSecret);
+  return checkoutUrl.toString();
+}
+
 function unifiedCheckoutUrl(
   env: PaymobAdapterEnv,
   clientSecret: string,
 ): string {
-  const base = env.PAYMOB_BASE_URL.replace(/\/$/u, "");
-  const publicKey = encodeURIComponent(env.PAYMOB_PUBLIC_KEY);
-  const secret = encodeURIComponent(clientSecret);
-  return `${base}/unifiedcheckout/?publicKey=${publicKey}&clientSecret=${secret}`;
+  return paymobUnifiedCheckoutUrl(
+    env.PAYMOB_BASE_URL,
+    env.PAYMOB_PUBLIC_KEY,
+    clientSecret,
+    env.PAYMOB_ALLOW_LOCAL_HTTP === "1" || env.PAYMOB_STUB !== undefined,
+  );
 }
 
 function notifyUrl(env: PaymobAdapterEnv): string {

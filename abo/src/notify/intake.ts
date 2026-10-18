@@ -1,4 +1,4 @@
-import { sha256Hex, ulid } from "vendor-contracts";
+import { canonicalize, sha256Hex, ulid } from "vendor-contracts";
 import { clockNowIso, clockNowMs, type ClockEnv } from "../clock.js";
 import { raiseAlert } from "../alert/index.js";
 import {
@@ -130,7 +130,7 @@ async function hmacRawBodiesInHour(env: NotifyIntakeEnv, nowMs: number): Promise
 
 async function recordInvalidHmac(
   env: NotifyIntakeEnv,
-  rawBody: string,
+  rawBody: Uint8Array,
 ): Promise<void> {
   const nowMs = await clockNowMs(env);
   const nowIso = await clockNowIso(env);
@@ -139,8 +139,10 @@ async function recordInvalidHmac(
   const key = `hmac-invalid/${day}/${objectId}`;
 
   const rawInHour = await hmacRawBodiesInHour(env, nowMs);
-  const payload = rawInHour < HMAC_RAW_BODY_HOURLY_CAP ? rawBody : "";
-  await env.R2.put(key, payload);
+  await env.R2.put(
+    key,
+    rawInHour < HMAC_RAW_BODY_HOURLY_CAP ? rawBody : "",
+  );
 
   const failures15m = await hmacFailuresInWindow(env, nowMs, AL02_WINDOW_MS);
   if (failures15m >= AL02_THRESHOLD) {
@@ -150,13 +152,13 @@ async function recordInvalidHmac(
 
 async function recordUnparseableNotification(
   env: NotifyIntakeEnv,
-  rawBody: string,
+  rawBytes: Uint8Array,
 ): Promise<void> {
   const nowIso = await clockNowIso(env);
   const notificationId = await newId(env);
-  const bodySha256 = await sha256Hex(new TextEncoder().encode(rawBody));
+  const bodySha256 = await sha256Hex(rawBytes);
   const bodyR2Key = `evidence/notification/${notificationId}`;
-  await env.R2.put(bodyR2Key, rawBody);
+  await env.R2.put(bodyR2Key, rawBytes);
   await env.DB.prepare(
     `INSERT INTO notification (
        notification_id, provider_id, channel, hmac_valid, body_r2_key,
@@ -201,21 +203,6 @@ async function scheduleConfirmForCheckout(
     .run();
 }
 
-async function claimNotifyBodyDedupe(
-  env: NotifyIntakeEnv,
-  bodySha256: string,
-): Promise<boolean> {
-  const nowIso = await clockNowIso(env);
-  const result = await env.DB.prepare(
-    `INSERT INTO paymob_state_seen (dedupe_key, source, first_seen_at)
-     VALUES (?, 'notify_body', ?)
-     ON CONFLICT(dedupe_key) DO NOTHING`,
-  )
-    .bind(`notify-body:${bodySha256}`, nowIso)
-    .run();
-  return (result.meta.changes ?? 0) > 0;
-}
-
 async function insertEnqueuedNotificationAndConfirm(
   env: NotifyIntakeEnv,
   params: {
@@ -225,19 +212,56 @@ async function insertEnqueuedNotificationAndConfirm(
     checkoutId: string;
     channel: "processed" | "response";
   },
-): Promise<string | null> {
-  if (!(await claimNotifyBodyDedupe(env, params.bodySha256))) {
-    return null;
-  }
-
+): Promise<{ confirmWorkId: string | null; duplicate: boolean }> {
   const nowIso = await clockNowIso(env);
   const confirmId = await newId(env);
-  await env.DB.batch([
+  const notificationRow = {
+    notification_id: params.notificationId,
+    provider_id: PAYMOB_PROVIDER_ID,
+    channel: params.channel,
+    hmac_valid: 1,
+    body_r2_key: params.bodyR2Key,
+    body_sha256: params.bodySha256,
+    dedupe_key: params.bodySha256,
+    checkout_id: params.checkoutId,
+    disposition: "enqueued",
+    adapter_version: PAYMOB_ADAPTER_VERSION,
+  };
+  const notificationRowBytes = canonicalize(notificationRow);
+  const notificationRowJson = new TextDecoder().decode(notificationRowBytes);
+  const notificationRowSha256 = await sha256Hex(notificationRowBytes);
+  const readOriginalConfirmWork = async (): Promise<{
+    notification_id: string;
+    body_r2_key: string;
+    work_id: string | null;
+  } | null> =>
+    env.DB.prepare(
+      `SELECT n.notification_id, n.body_r2_key, w.work_id
+       FROM notification n
+       LEFT JOIN work w ON w.dedupe_key = 'confirm:' || n.notification_id
+       WHERE n.dedupe_key = ? AND n.disposition = 'enqueued'
+       ORDER BY n.notification_id
+       LIMIT 1`,
+    )
+      .bind(params.bodySha256)
+      .first<{
+        notification_id: string;
+        body_r2_key: string;
+        work_id: string | null;
+      }>();
+
+  const results = await env.DB.batch([
+    env.DB.prepare(
+      `INSERT INTO paymob_state_seen (dedupe_key, source, first_seen_at)
+       VALUES (?, 'notify_body', ?)
+       ON CONFLICT(dedupe_key) DO NOTHING`,
+    ).bind(`notify-body:${params.bodySha256}`, nowIso),
     env.DB.prepare(
       `INSERT INTO notification (
          notification_id, provider_id, channel, hmac_valid, body_r2_key,
          body_sha256, dedupe_key, checkout_id, disposition, adapter_version
-       ) VALUES (?, ?, ?, 1, ?, ?, ?, ?, 'enqueued', ?)`,
+       ) SELECT ?, ?, ?, 1, ?, ?, ?, ?, 'enqueued', ?
+         WHERE changes() = 1`,
     ).bind(
       params.notificationId,
       PAYMOB_PROVIDER_ID,
@@ -249,19 +273,183 @@ async function insertEnqueuedNotificationAndConfirm(
       PAYMOB_ADAPTER_VERSION,
     ),
     env.DB.prepare(
+      `INSERT INTO fact_log ("table", key, row_sha256, row_json, created_at)
+       SELECT 'notification', ?, ?, ?, ?
+       WHERE EXISTS (
+         SELECT 1 FROM notification
+         WHERE notification_id = ? AND disposition = 'enqueued'
+       )`,
+    ).bind(
+      params.notificationId,
+      notificationRowSha256,
+      notificationRowJson,
+      nowIso,
+      params.notificationId,
+    ),
+    env.DB.prepare(
       `INSERT INTO work (
          work_id, kind, subject_id, dedupe_key, state, attempts,
          next_attempt_at, lease_until, last_error, opened_at
-       ) VALUES (?, 'confirm', ?, ?, 'open', 0, ?, NULL, NULL, ?)`,
+       ) SELECT ?, 'confirm', ?, ?, 'open', 0, ?, NULL, NULL, ?
+         WHERE EXISTS (
+           SELECT 1 FROM notification
+           WHERE notification_id = ? AND disposition = 'enqueued'
+         )`,
     ).bind(
       confirmId,
       params.checkoutId,
       `confirm:${params.notificationId}`,
       nowIso,
       nowIso,
+      params.notificationId,
     ),
   ]);
-  return confirmId;
+  if ((results[1]?.meta.changes ?? 0) === 0) {
+    // Re-read the committed original pair. A body marker left by an older
+    // build may have no notification row; an authenticated redelivery is the
+    // bounded source from which that missing durable evidence can be rebuilt.
+    let original = await readOriginalConfirmWork();
+    if (original === null) {
+      const recoveryWorkId = await newId(env);
+      await env.DB.batch([
+        env.DB.prepare(
+          `INSERT INTO notification (
+             notification_id, provider_id, channel, hmac_valid, body_r2_key,
+             body_sha256, dedupe_key, checkout_id, disposition, adapter_version
+           ) SELECT ?, ?, ?, 1, ?, ?, ?, ?, 'enqueued', ?
+             WHERE EXISTS (
+               SELECT 1 FROM paymob_state_seen WHERE dedupe_key = ?
+             ) AND NOT EXISTS (
+               SELECT 1 FROM notification
+               WHERE dedupe_key = ? AND disposition = 'enqueued'
+             )`,
+        ).bind(
+          params.notificationId,
+          PAYMOB_PROVIDER_ID,
+          params.channel,
+          params.bodyR2Key,
+          params.bodySha256,
+          params.bodySha256,
+          params.checkoutId,
+          PAYMOB_ADAPTER_VERSION,
+          `notify-body:${params.bodySha256}`,
+          params.bodySha256,
+        ),
+        env.DB.prepare(
+          `INSERT INTO fact_log ("table", key, row_sha256, row_json, created_at)
+           SELECT 'notification', ?, ?, ?, ?
+           WHERE EXISTS (
+             SELECT 1 FROM notification
+             WHERE notification_id = ? AND disposition = 'enqueued'
+           )`,
+        ).bind(
+          params.notificationId,
+          notificationRowSha256,
+          notificationRowJson,
+          nowIso,
+          params.notificationId,
+        ),
+        env.DB.prepare(
+          `INSERT INTO work (
+             work_id, kind, subject_id, dedupe_key, state, attempts,
+             next_attempt_at, lease_until, last_error, opened_at
+           ) SELECT ?, 'confirm', ?, ?, 'open', 0, ?, NULL, NULL, ?
+             WHERE EXISTS (
+               SELECT 1 FROM notification
+               WHERE notification_id = ? AND disposition = 'enqueued'
+             )`,
+        ).bind(
+          recoveryWorkId,
+          params.checkoutId,
+          `confirm:${params.notificationId}`,
+          nowIso,
+          nowIso,
+          params.notificationId,
+        ),
+      ]);
+      original = await readOriginalConfirmWork();
+    } else if (original.work_id === null) {
+      const recoveredWorkId = await newId(env);
+      await env.DB.prepare(
+        `INSERT INTO work (
+           work_id, kind, subject_id, dedupe_key, state, attempts,
+           next_attempt_at, lease_until, last_error, opened_at
+         ) SELECT ?, 'confirm', ?, ?, 'open', 0, ?, NULL, NULL, ?
+           WHERE EXISTS (
+             SELECT 1 FROM notification
+             WHERE notification_id = ? AND disposition = 'enqueued'
+           ) AND NOT EXISTS (
+             SELECT 1 FROM work WHERE dedupe_key = ?
+           )`,
+      )
+        .bind(
+          recoveredWorkId,
+          params.checkoutId,
+          `confirm:${original.notification_id}`,
+          nowIso,
+          nowIso,
+          original.notification_id,
+          `confirm:${original.notification_id}`,
+        )
+        .run();
+      original = await readOriginalConfirmWork();
+    }
+    return { confirmWorkId: original?.work_id ?? null, duplicate: true };
+  }
+  return { confirmWorkId: confirmId, duplicate: false };
+}
+
+async function readBoundedNotifyBody(
+  request: Request,
+): Promise<Uint8Array | null> {
+  const contentLength = request.headers.get("Content-Length");
+  if (contentLength !== null && /^\d+$/u.test(contentLength)) {
+    const declaredBytes = Number(contentLength);
+    if (Number.isSafeInteger(declaredBytes) && declaredBytes > MAX_NOTIFY_BODY_BYTES) {
+      try {
+        await request.body?.cancel();
+      } catch {
+        // The byte cap still determines the response if cancellation races.
+      }
+      return null;
+    }
+  }
+
+  if (request.body === null) {
+    return new Uint8Array();
+  }
+
+  const reader = request.body.getReader();
+  const chunks: Uint8Array[] = [];
+  let totalBytes = 0;
+  try {
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) {
+        break;
+      }
+      totalBytes += value.byteLength;
+      if (totalBytes > MAX_NOTIFY_BODY_BYTES) {
+        try {
+          await reader.cancel();
+        } catch {
+          // The byte cap still determines the response if cancellation races.
+        }
+        return null;
+      }
+      chunks.push(value);
+    }
+  } finally {
+    reader.releaseLock();
+  }
+
+  const bytes = new Uint8Array(totalBytes);
+  let offset = 0;
+  for (const chunk of chunks) {
+    bytes.set(chunk, offset);
+    offset += chunk.byteLength;
+  }
+  return bytes;
 }
 
 async function insertDuplicateNotification(
@@ -326,9 +514,20 @@ export async function handlePostNotifyPaymob(
   ctx: ExecutionContext,
 ): Promise<Response> {
   const ip = connectingIp(request);
-  const body = await request.text();
-  if (body.length > MAX_NOTIFY_BODY_BYTES) {
+  let bodyBytes: Uint8Array | null;
+  try {
+    bodyBytes = await readBoundedNotifyBody(request);
+  } catch {
+    return emptyResponse(400);
+  }
+  if (bodyBytes === null) {
     return emptyResponse(413);
+  }
+  let body: string;
+  try {
+    body = new TextDecoder("utf-8", { fatal: true }).decode(bodyBytes);
+  } catch {
+    return emptyResponse(400);
   }
 
   if (!(await checkNotifyRate(env, ip))) {
@@ -350,25 +549,25 @@ export async function handlePostNotifyPaymob(
   const parsed = await provider.parseNotification(parseRequest);
   if (parsed.parseable === false) {
     try {
-      await recordUnparseableNotification(env, body);
+      await recordUnparseableNotification(env, bodyBytes);
     } catch {
       return emptyResponse(500);
     }
     return emptyResponse(200);
   }
   if (!parsed.authentic) {
-    await recordInvalidHmac(env, body);
+    await recordInvalidHmac(env, bodyBytes);
     return emptyResponse(401);
   }
 
-  const bodySha256 = await sha256Hex(new TextEncoder().encode(body));
+  const bodySha256 = await sha256Hex(bodyBytes);
   const event = parsed.events[0] ?? null;
   const checkoutId = event?.checkout_id ?? null;
   const notificationId = await newId(env);
   const bodyR2Key = `evidence/notification/${notificationId}`;
 
   try {
-    await env.R2.put(bodyR2Key, body);
+    await env.R2.put(bodyR2Key, bodyBytes);
   } catch {
     return emptyResponse(500);
   }
@@ -439,14 +638,15 @@ export async function handlePostNotifyPaymob(
         channel: "processed",
       });
     } else {
-      confirmWorkId = await insertEnqueuedNotificationAndConfirm(env, {
+      const intakeResult = await insertEnqueuedNotificationAndConfirm(env, {
         notificationId,
         bodySha256,
         bodyR2Key,
         checkoutId,
         channel: "processed",
       });
-      if (confirmWorkId === null) {
+      confirmWorkId = intakeResult.confirmWorkId;
+      if (intakeResult.duplicate) {
         const duplicateId = await newId(env, 1);
         const duplicateR2Key = `evidence/notification/${duplicateId}`;
         await env.R2.put(duplicateR2Key, body);
@@ -494,14 +694,17 @@ export async function handleGetNotifyPaymob(
   });
   if (parsed.parseable === false) {
     try {
-      await recordUnparseableNotification(env, query);
+      await recordUnparseableNotification(
+        env,
+        new TextEncoder().encode(query),
+      );
     } catch {
       return emptyResponse(500);
     }
     return emptyResponse(200);
   }
   if (!parsed.authentic) {
-    await recordInvalidHmac(env, query);
+    await recordInvalidHmac(env, new TextEncoder().encode(query));
     return emptyResponse(401);
   }
 

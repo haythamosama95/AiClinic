@@ -25,6 +25,7 @@ import {
 } from "./cross-worker-harness";
 import { CHANNEL_VERSIONS } from "vendor-contracts";
 import checkoutMigrationSql from "../../migrations/0002_checkout.sql?raw";
+import { paymobUnifiedCheckoutUrl } from "../../src/provider/paymob/adapter";
 
 type OffersFixtureExpectations = {
   offer_id: string;
@@ -180,6 +181,65 @@ beforeEach(async () => {
 });
 
 describe("checkout cross-worker", () => {
+  it("R3-C3 hosted checkout URL pins the path and rejects base URL suffixes", () => {
+    const url = new URL(
+      paymobUnifiedCheckoutUrl(
+        "https://accept.paymob.com/",
+        "public key",
+        "client/secret",
+      ),
+    );
+    expect(url.href).toBe(
+      "https://accept.paymob.com/unifiedcheckout/?publicKey=public+key&clientSecret=client%2Fsecret",
+    );
+    expect(() =>
+      paymobUnifiedCheckoutUrl(
+        "https://accept.paymob.com/api",
+        "public-key",
+        "client-secret",
+      ),
+    ).toThrow("PAYMOB_BASE_URL must be an HTTPS origin");
+    expect(() =>
+      paymobUnifiedCheckoutUrl(
+        "https://accept.paymob.com/?mode=test",
+        "public-key",
+        "client-secret",
+      ),
+    ).toThrow("PAYMOB_BASE_URL must be an HTTPS origin");
+    expect(() =>
+      paymobUnifiedCheckoutUrl(
+        "https://accept.paymob.com/#checkout",
+        "public-key",
+        "client-secret",
+      ),
+    ).toThrow("PAYMOB_BASE_URL must be an HTTPS origin");
+    expect(() =>
+      paymobUnifiedCheckoutUrl(
+        "http://localhost:8787",
+        "public-key",
+        "client-secret",
+      ),
+    ).toThrow("PAYMOB_BASE_URL must be an HTTPS origin");
+    expect(
+      paymobUnifiedCheckoutUrl(
+        "http://127.0.0.1:8787/",
+        "public-key",
+        "client-secret",
+        true,
+      ),
+    ).toBe(
+      "http://127.0.0.1:8787/unifiedcheckout/?publicKey=public-key&clientSecret=client-secret",
+    );
+    expect(() =>
+      paymobUnifiedCheckoutUrl(
+        "http://paymob.example.test",
+        "public-key",
+        "client-secret",
+        true,
+      ),
+    ).toThrow("PAYMOB_BASE_URL must be an HTTPS origin");
+  });
+
   it("E2E-P4.2-01 checkout 201 redirect_url CK reference expires_at +30 min", async () => {
     const clockIso = "2026-03-15T12:00:00.000Z";
     await setClock(clockIso);
@@ -211,6 +271,15 @@ describe("checkout cross-worker", () => {
     expect(typeof body.checkout_id).toBe("string");
     expect(String(body.reference)).toMatch(/^CK-/u);
     expect(body.redirect_url).toBeTruthy();
+    const hostedCheckout = new URL(String(body.redirect_url));
+    expect(hostedCheckout.origin).toBe("https://paymob.harness.test");
+    expect(hostedCheckout.pathname).toBe("/unifiedcheckout/");
+    expect(hostedCheckout.searchParams.get("publicKey")).toBe(
+      "paymob-public-unconfigured",
+    );
+    expect(hostedCheckout.searchParams.get("clientSecret")).toBe(
+      "stub-client-secret",
+    );
     expect(body.expires_at).toBe(addMinutes(clockIso, 30));
 
     const paymobBody = await getLastPaymobIntentionBody();

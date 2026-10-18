@@ -1,7 +1,6 @@
-import { canonicalize, humanRef, sha256Hex, ulid } from "vendor-contracts";
+import { canonicalize, grantIdPaid, humanRef, sha256Hex, ulid } from "vendor-contracts";
 import { clockNowIso, clockNowMs, type ClockEnv } from "../clock.js";
 import { raiseAlert } from "../alert/index.js";
-import { insertFactLog } from "../records/append.js";
 import {
   PAYMOB_ADAPTER_VERSION,
   PAYMOB_PROVIDER_ID,
@@ -35,6 +34,7 @@ type WorkRow = {
   attempts: number;
   next_attempt_at: string | null;
   lease_until: string | null;
+  lease_token: string | null;
   last_error: string | null;
   opened_at: string;
 };
@@ -56,6 +56,8 @@ type NotificationRow = {
   body_r2_key: string;
   body_sha256: string;
   channel: string;
+  checkout_id?: string | null;
+  disposition?: string;
 };
 
 async function newId(env: WorkRunnerEnv): Promise<string> {
@@ -80,16 +82,17 @@ async function takeWork(
   const nowMs = await clockNowMs(env);
   const nowIso = new Date(nowMs).toISOString();
   const leaseUntil = new Date(nowMs + LEASE_MS).toISOString();
+  const leaseToken = crypto.randomUUID();
 
   const leased = await env.DB.prepare(
     `UPDATE work
-     SET lease_until = ?
+     SET lease_until = ?, lease_token = ?
      WHERE work_id = ?
        AND state = 'open'
        AND (lease_until IS NULL OR lease_until <= ?)
        AND (next_attempt_at IS NULL OR next_attempt_at <= ?)`,
   )
-    .bind(leaseUntil, workId, nowIso, nowIso)
+    .bind(leaseUntil, leaseToken, workId, nowIso, nowIso)
     .run();
   if ((leased.meta.changes ?? 0) === 0) {
     return null;
@@ -97,17 +100,17 @@ async function takeWork(
 
   return env.DB.prepare(
     `SELECT work_id, kind, subject_id, dedupe_key, state, attempts,
-            next_attempt_at, lease_until, last_error, opened_at
-     FROM work WHERE work_id = ? AND lease_until = ?`,
+            next_attempt_at, lease_until, lease_token, last_error, opened_at
+     FROM work WHERE work_id = ? AND lease_until = ? AND lease_token = ?`,
   )
-    .bind(workId, leaseUntil)
+    .bind(workId, leaseUntil, leaseToken)
     .first<WorkRow>();
 }
 
 async function releaseLeaseRetry(
   env: WorkRunnerEnv,
   workId: string,
-  leaseUntil: string,
+  leaseToken: string,
   attempts: number,
   lastError: string,
 ): Promise<void> {
@@ -115,22 +118,22 @@ async function releaseLeaseRetry(
   const nextAttempt = new Date(nowMs + backoffMs(env, attempts)).toISOString();
   await env.DB.prepare(
     `UPDATE work
-     SET attempts = ?, next_attempt_at = ?, lease_until = NULL, last_error = ?
-     WHERE work_id = ? AND lease_until = ?`,
+     SET attempts = ?, next_attempt_at = ?, lease_until = NULL, lease_token = NULL, last_error = ?
+     WHERE work_id = ? AND state = 'open' AND lease_token = ?`,
   )
-    .bind(attempts, nextAttempt, lastError, workId, leaseUntil)
+    .bind(attempts, nextAttempt, lastError, workId, leaseToken)
     .run();
 }
 
 async function leaseStillHeld(
   env: WorkRunnerEnv,
   workId: string,
-  leaseUntil: string,
+  leaseToken: string,
 ): Promise<boolean> {
   const row = await env.DB.prepare(
-    `SELECT 1 FROM work WHERE work_id = ? AND lease_until = ?`,
+    `SELECT 1 FROM work WHERE work_id = ? AND state = 'open' AND lease_token = ?`,
   )
-    .bind(workId, leaseUntil)
+    .bind(workId, leaseToken)
     .first();
   return row !== null;
 }
@@ -146,13 +149,13 @@ function paymobStateSeenKey(
 async function markWorkDone(
   env: WorkRunnerEnv,
   workId: string,
-  leaseUntil: string,
+  leaseToken: string,
 ): Promise<boolean> {
   const result = await env.DB.prepare(
-    `UPDATE work SET state = 'done', lease_until = NULL, last_error = NULL
-     WHERE work_id = ? AND lease_until = ?`,
+    `UPDATE work SET state = 'done', lease_until = NULL, lease_token = NULL, last_error = NULL
+     WHERE work_id = ? AND state = 'open' AND lease_token = ?`,
   )
-    .bind(workId, leaseUntil)
+    .bind(workId, leaseToken)
     .run();
   return (result.meta.changes ?? 0) > 0;
 }
@@ -230,6 +233,7 @@ async function appendCheckoutEvent(
     contract_version: number;
   },
   createdAt: string,
+  lease: { workId: string; token: string },
 ): Promise<D1PreparedStatement[]> {
   const canonicalRow = {
     checkout_id: row.checkout_id,
@@ -244,22 +248,46 @@ async function appendCheckoutEvent(
     env.DB.prepare(
       `INSERT INTO checkout_event (
          checkout_id, kind, source, ref, actor, at, contract_version
-       ) VALUES (?, ?, 'system', ?, 'system', ?, ?)`,
+       ) SELECT ?, ?, 'system', ?, 'system', ?, ?
+       WHERE EXISTS (SELECT 1 FROM work WHERE work_id = ? AND state = 'open' AND lease_token = ?)`,
     ).bind(
       row.checkout_id,
       row.kind,
       row.ref,
       row.at,
       row.contract_version,
+      lease.workId,
+      lease.token,
     ),
-    await insertFactLog(
+    await insertFencedFactLog(
       env,
       "checkout_event",
       `${row.checkout_id}:${row.kind}:${row.at}`,
       canonicalRow,
       createdAt,
+      lease.workId,
+      lease.token,
     ),
   ];
+}
+
+async function insertFencedFactLog(
+  env: WorkRunnerEnv,
+  table: string,
+  key: string,
+  canonicalRow: Record<string, unknown>,
+  createdAt: string,
+  workId: string,
+  leaseToken: string,
+): Promise<D1PreparedStatement> {
+  const rowJsonBytes = canonicalize(canonicalRow);
+  const rowJson = new TextDecoder().decode(rowJsonBytes);
+  const rowSha256 = await sha256Hex(rowJsonBytes);
+  return env.DB.prepare(
+    `INSERT INTO fact_log ("table", key, row_sha256, row_json, created_at)
+     SELECT ?, ?, ?, ?, ?
+     WHERE EXISTS (SELECT 1 FROM work WHERE work_id = ? AND state = 'open' AND lease_token = ?)`,
+  ).bind(table, key, rowSha256, rowJson, createdAt, workId, leaseToken);
 }
 
 async function shouldWriteInquiryResult(
@@ -319,12 +347,15 @@ function paymobStateSeenInsert(
   env: WorkRunnerEnv,
   dedupeKey: string,
   createdAt: string,
+  workId: string,
+  leaseToken: string,
 ): D1PreparedStatement {
   return env.DB.prepare(
     `INSERT INTO paymob_state_seen (dedupe_key, source, first_seen_at)
-     VALUES (?, 'confirm', ?)
+     SELECT ?, 'confirm', ?
+     WHERE EXISTS (SELECT 1 FROM work WHERE work_id = ? AND state = 'open' AND lease_token = ?)
      ON CONFLICT(dedupe_key) DO NOTHING`,
-  ).bind(dedupeKey, createdAt);
+  ).bind(dedupeKey, createdAt, workId, leaseToken);
 }
 
 async function confirmAttemptDeclined(
@@ -332,7 +363,7 @@ async function confirmAttemptDeclined(
   work: WorkRow,
   checkout: CheckoutRow,
   notificationId: string,
-  leaseUntil: string,
+  leaseToken: string,
   stateSeenKey: string,
 ): Promise<void> {
   const nowIso = await clockNowIso(env);
@@ -346,18 +377,20 @@ async function confirmAttemptDeclined(
       contract_version: checkout.contract_version,
     },
     nowIso,
+    { workId: work.work_id, token: leaseToken },
   );
   statements.push(
     env.DB.prepare(
-      `UPDATE checkout_status SET last_event_at = ? WHERE checkout_id = ?`,
-    ).bind(nowIso, checkout.checkout_id),
+      `UPDATE checkout_status SET last_event_at = ? WHERE checkout_id = ?
+       AND EXISTS (SELECT 1 FROM work WHERE work_id = ? AND state = 'open' AND lease_token = ?)`,
+    ).bind(nowIso, checkout.checkout_id, work.work_id, leaseToken),
   );
-  statements.push(paymobStateSeenInsert(env, stateSeenKey, nowIso));
+  statements.push(paymobStateSeenInsert(env, stateSeenKey, nowIso, work.work_id, leaseToken));
   statements.push(
     env.DB.prepare(
-      `UPDATE work SET state = 'done', lease_until = NULL, last_error = NULL
-       WHERE work_id = ? AND lease_until = ?`,
-    ).bind(work.work_id, leaseUntil),
+      `UPDATE work SET state = 'done', lease_until = NULL, lease_token = NULL, last_error = NULL
+       WHERE work_id = ? AND state = 'open' AND lease_token = ?`,
+    ).bind(work.work_id, leaseToken),
   );
   const results = await env.DB.batch(statements);
   const workIdx = statements.length - 1;
@@ -369,6 +402,9 @@ async function confirmAttemptDeclined(
 export async function recordPaidConfirmation(
   env: WorkRunnerEnv,
   input: {
+    work: WorkRow;
+    leaseToken: string;
+    leadingStatements: D1PreparedStatement[];
     checkout: CheckoutRow;
     confirmedTxn: ProviderTxn;
     inquiryId: string;
@@ -379,32 +415,60 @@ export async function recordPaidConfirmation(
 ): Promise<boolean> {
   const paymentId = input.confirmedTxn.payment_id;
   const existing = await env.DB.prepare(
-    `SELECT 1 FROM payment WHERE payment_id = ?`,
+    `SELECT checkout_id, provider_id, amount_minor, currency, disposition
+     FROM payment WHERE payment_id = ?`,
   )
     .bind(paymentId)
-    .first();
+    .first<{ checkout_id: string; provider_id: string; amount_minor: number; currency: string; disposition: string }>();
   if (existing !== null) {
+    if (
+      existing.checkout_id !== input.checkout.checkout_id ||
+      existing.provider_id !== PAYMOB_PROVIDER_ID ||
+      existing.amount_minor !== input.confirmedTxn.amount_minor ||
+      existing.currency !== input.confirmedTxn.currency
+    ) {
+      throw new Error("payment_identity_conflict");
+    }
+    const statements: D1PreparedStatement[] = [];
+    if (existing.disposition === "grant") {
+      const grantId = await grantIdPaid(paymentId);
+      const applied = await env.DB.prepare(
+        `SELECT 1 FROM grant_outcome WHERE grant_id = ?`,
+      )
+        .bind(grantId)
+        .first();
+      if (applied === null) {
+        const grantWorkId = await newId(env);
+        statements.push(
+          env.DB.prepare(
+            `INSERT INTO work (
+               work_id, kind, subject_id, dedupe_key, state, attempts,
+               next_attempt_at, lease_until, lease_token, last_error, opened_at
+             ) SELECT ?, 'grant', ?, ?, 'open', 0, ?, NULL, NULL, NULL, ?
+             WHERE EXISTS (SELECT 1 FROM work WHERE work_id = ? AND state = 'open' AND lease_token = ?)
+             ON CONFLICT(dedupe_key) DO UPDATE SET
+               state = 'open', attempts = 0, next_attempt_at = excluded.next_attempt_at,
+               lease_until = NULL, lease_token = NULL, last_error = NULL
+             WHERE work.state IN ('done', 'parked')`,
+          ).bind(grantWorkId, paymentId, `grant:${paymentId}`, input.nowIso, input.nowIso, input.work.work_id, input.leaseToken),
+        );
+      }
+    }
+    statements.push(
+      env.DB.prepare(
+        `UPDATE work SET state = 'done', lease_until = NULL, lease_token = NULL, last_error = NULL
+         WHERE work_id = ? AND state = 'open' AND lease_token = ?`,
+      ).bind(input.work.work_id, input.leaseToken),
+    );
+    const results = await env.DB.batch(statements);
+    if ((results[statements.length - 1]?.meta.changes ?? 0) === 0) {
+      throw new Error("lease_lost");
+    }
     return false;
   }
 
   const reference = humanRef("PAY", paymentId);
   const classification = await classificationForPayment(env, input.checkout);
-  if (classification === "likely_duplicate") {
-    await raiseAlert(
-      env,
-      "AL-09",
-      `AL-09:${input.checkout.checkout_id}`,
-      input.checkout.checkout_id,
-    );
-  }
-  if (classification === "late") {
-    await raiseAlert(
-      env,
-      "AL-08",
-      `AL-08:${input.checkout.checkout_id}`,
-      input.checkout.checkout_id,
-    );
-  }
   const paidCheckoutState =
     classification === "late" ? "paid_late" : "paid";
 
@@ -429,13 +493,15 @@ export async function recordPaidConfirmation(
   };
   const grantWorkId = await newId(env);
   const statements: D1PreparedStatement[] = [
+    ...input.leadingStatements,
     env.DB.prepare(
       `INSERT INTO payment (
          payment_id, reference, org_id, checkout_id, provider_id, amount_minor,
          currency, paid_at, confirmed_at, confirmation_inquiry_id, offer_id,
          offer_version, billing_contact_version, classification, disposition,
          mismatch_detail, evidence_sha256
-       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+       ) SELECT ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
+       WHERE EXISTS (SELECT 1 FROM work WHERE work_id = ? AND state = 'open' AND lease_token = ?)`,
     ).bind(
       paymentId,
       reference,
@@ -454,8 +520,18 @@ export async function recordPaidConfirmation(
       "grant",
       null,
       input.evidenceSha256,
+      input.work.work_id,
+      input.leaseToken,
     ),
-    await insertFactLog(env, "payment", paymentId, paymentCanonical, input.nowIso),
+    await insertFencedFactLog(
+      env,
+      "payment",
+      paymentId,
+      paymentCanonical,
+      input.nowIso,
+      input.work.work_id,
+      input.leaseToken,
+    ),
     ...(await appendCheckoutEvent(
       env,
       {
@@ -466,21 +542,27 @@ export async function recordPaidConfirmation(
         contract_version: input.checkout.contract_version,
       },
       input.nowIso,
+      { workId: input.work.work_id, token: input.leaseToken },
     )),
     env.DB.prepare(
-      `UPDATE checkout_status SET state = ?, last_event_at = ? WHERE checkout_id = ?`,
-    ).bind(paidCheckoutState, input.nowIso, input.checkout.checkout_id),
+      `UPDATE checkout_status SET state = ?, last_event_at = ? WHERE checkout_id = ?
+       AND EXISTS (SELECT 1 FROM work WHERE work_id = ? AND state = 'open' AND lease_token = ?)`,
+    ).bind(paidCheckoutState, input.nowIso, input.checkout.checkout_id, input.work.work_id, input.leaseToken),
     env.DB.prepare(
       `INSERT INTO work (
          work_id, kind, subject_id, dedupe_key, state, attempts,
          next_attempt_at, lease_until, last_error, opened_at
-       ) VALUES (?, 'grant', ?, ?, 'open', 0, ?, NULL, NULL, ?)`,
+       ) SELECT ?, 'grant', ?, ?, 'open', 0, ?, NULL, NULL, ?
+       WHERE EXISTS (SELECT 1 FROM work WHERE work_id = ? AND state = 'open' AND lease_token = ?)
+       ON CONFLICT(dedupe_key) DO NOTHING`,
     ).bind(
       grantWorkId,
       paymentId,
       `grant:${paymentId}`,
       input.nowIso,
       input.nowIso,
+      input.work.work_id,
+      input.leaseToken,
     ),
   ];
 
@@ -495,7 +577,8 @@ export async function recordPaidConfirmation(
       env.DB.prepare(
         `INSERT INTO paymob_txn (
            txn_id, order_id, checkout_id, payment_id, parent_txn_id, last_state_key
-         ) VALUES (?, ?, ?, ?, ?, ?)
+         ) SELECT ?, ?, ?, ?, ?, ?
+         WHERE EXISTS (SELECT 1 FROM work WHERE work_id = ? AND state = 'open' AND lease_token = ?)
          ON CONFLICT(txn_id) DO UPDATE SET
            payment_id = excluded.payment_id,
            parent_txn_id = excluded.parent_txn_id,
@@ -507,11 +590,38 @@ export async function recordPaidConfirmation(
         paymentId,
         input.confirmedTxn.provider_parent_txn_id ?? null,
         input.confirmedTxn.dedupe_key,
+        input.work.work_id,
+        input.leaseToken,
       ),
     );
   }
 
-  await env.DB.batch(statements);
+  statements.push(
+    env.DB.prepare(
+      `UPDATE work SET state = 'done', lease_until = NULL, lease_token = NULL, last_error = NULL
+       WHERE work_id = ? AND state = 'open' AND lease_token = ?`,
+    ).bind(input.work.work_id, input.leaseToken),
+  );
+  const results = await env.DB.batch(statements);
+  if ((results[statements.length - 1]?.meta.changes ?? 0) === 0) {
+    throw new Error("lease_lost");
+  }
+  if (classification === "likely_duplicate") {
+    await raiseAlert(
+      env,
+      "AL-09",
+      `AL-09:${input.checkout.checkout_id}`,
+      input.checkout.checkout_id,
+    );
+  }
+  if (classification === "late") {
+    await raiseAlert(
+      env,
+      "AL-08",
+      `AL-08:${input.checkout.checkout_id}`,
+      input.checkout.checkout_id,
+    );
+  }
   return true;
 }
 
@@ -520,9 +630,9 @@ async function confirmSuccessBatch(
   work: WorkRow,
   checkout: CheckoutRow,
   notification: NotificationRow,
-  leaseUntil: string,
+  leaseToken: string,
 ): Promise<void> {
-  if (!(await leaseStillHeld(env, work.work_id, leaseUntil))) {
+  if (!(await leaseStillHeld(env, work.work_id, leaseToken))) {
     return;
   }
 
@@ -543,7 +653,7 @@ async function confirmSuccessBatch(
       `AL-05:unbound:${checkout.checkout_id}`,
       checkout.checkout_id,
     );
-    await markWorkDone(env, work.work_id, leaseUntil);
+    await markWorkDone(env, work.work_id, leaseToken);
     return;
   }
 
@@ -551,7 +661,7 @@ async function confirmSuccessBatch(
     await releaseLeaseRetry(
       env,
       work.work_id,
-      leaseUntil,
+      leaseToken,
       work.attempts + 1,
       "inquiry_retry",
     );
@@ -561,17 +671,11 @@ async function confirmSuccessBatch(
   const confirmedTxn = inquiry.transactions[0]!;
   const effectiveKind = confirmedTxn.kind;
 
-  const checkoutState = await checkoutStatusState(env, checkout.checkout_id);
-  if (checkoutState === "paid" && effectiveKind === "payment_succeeded") {
-    await markWorkDone(env, work.work_id, leaseUntil);
-    return;
-  }
-
   if (effectiveKind === "payment_pending") {
     await releaseLeaseRetry(
       env,
       work.work_id,
-      leaseUntil,
+      leaseToken,
       work.attempts + 1,
       "pending",
     );
@@ -592,8 +696,8 @@ async function confirmSuccessBatch(
   )
     .bind(stateSeenKey)
     .first();
-  if (existingState !== null) {
-    await markWorkDone(env, work.work_id, leaseUntil);
+  if (existingState !== null && effectiveKind !== "payment_succeeded") {
+    await markWorkDone(env, work.work_id, leaseToken);
     return;
   }
 
@@ -603,7 +707,7 @@ async function confirmSuccessBatch(
       work,
       checkout,
       notification.notification_id,
-      leaseUntil,
+      leaseToken,
       stateSeenKey,
     );
     return;
@@ -619,7 +723,7 @@ async function confirmSuccessBatch(
   const inquirySha = await sha256Hex(new TextEncoder().encode(inquiryJson));
 
   const statements: D1PreparedStatement[] = [
-    paymobStateSeenInsert(env, stateSeenKey, nowIso),
+    paymobStateSeenInsert(env, stateSeenKey, nowIso, work.work_id, leaseToken),
   ];
 
   if (
@@ -635,7 +739,8 @@ async function confirmSuccessBatch(
         `INSERT INTO inquiry_result (
            inquiry_id, subject, normalized_state, cumulative_reversed_minor,
            raw_r2_key, raw_sha256, at, adapter_version
-         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+         ) SELECT ?, ?, ?, ?, ?, ?, ?, ?
+         WHERE EXISTS (SELECT 1 FROM work WHERE work_id = ? AND state = 'open' AND lease_token = ?)`,
       ).bind(
         inquiryId,
         subject,
@@ -645,6 +750,8 @@ async function confirmSuccessBatch(
         inquirySha,
         nowIso,
         PAYMOB_ADAPTER_VERSION,
+        work.work_id,
+        leaseToken,
       ),
     );
   }
@@ -654,7 +761,7 @@ async function confirmSuccessBatch(
       await releaseLeaseRetry(
         env,
         work.work_id,
-        leaseUntil,
+        leaseToken,
         work.attempts + 1,
         "partial_reversal",
       );
@@ -689,7 +796,8 @@ async function confirmSuccessBatch(
            currency, paid_at, confirmed_at, confirmation_inquiry_id, offer_id,
            offer_version, billing_contact_version, classification, disposition,
            mismatch_detail, evidence_sha256
-         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+         ) SELECT ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
+         WHERE EXISTS (SELECT 1 FROM work WHERE work_id = ? AND state = 'open' AND lease_token = ?)`,
       ).bind(
         paymentId,
         reference,
@@ -708,14 +816,16 @@ async function confirmSuccessBatch(
         "reversed_before_grant",
         null,
         notification.body_sha256,
+        work.work_id,
+        leaseToken,
       ),
-      await insertFactLog(env, "payment", paymentId, paymentCanonical, nowIso),
+      await insertFencedFactLog(env, "payment", paymentId, paymentCanonical, nowIso, work.work_id, leaseToken),
     );
     statements.push(
       env.DB.prepare(
-        `UPDATE work SET state = 'done', lease_until = NULL, last_error = NULL
-         WHERE work_id = ? AND lease_until = ?`,
-      ).bind(work.work_id, leaseUntil),
+        `UPDATE work SET state = 'done', lease_until = NULL, lease_token = NULL, last_error = NULL
+         WHERE work_id = ? AND state = 'open' AND lease_token = ?`,
+      ).bind(work.work_id, leaseToken),
     );
     const reversalResults = await env.DB.batch(statements);
     const reversalWorkIdx = statements.length - 1;
@@ -771,7 +881,8 @@ async function confirmSuccessBatch(
            currency, paid_at, confirmed_at, confirmation_inquiry_id, offer_id,
            offer_version, billing_contact_version, classification, disposition,
            mismatch_detail, evidence_sha256
-         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+         ) SELECT ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
+         WHERE EXISTS (SELECT 1 FROM work WHERE work_id = ? AND state = 'open' AND lease_token = ?)`,
       ).bind(
         paymentId,
         reference,
@@ -790,8 +901,10 @@ async function confirmSuccessBatch(
         "withheld_mismatch",
         mismatchDetail,
         notification.body_sha256,
+        work.work_id,
+        leaseToken,
       ),
-      await insertFactLog(env, "payment", paymentId, paymentCanonical, nowIso),
+      await insertFencedFactLog(env, "payment", paymentId, paymentCanonical, nowIso, work.work_id, leaseToken),
     );
     await raiseAlert(
       env,
@@ -801,9 +914,9 @@ async function confirmSuccessBatch(
     );
     statements.push(
       env.DB.prepare(
-        `UPDATE work SET state = 'done', lease_until = NULL, last_error = NULL
-         WHERE work_id = ? AND lease_until = ?`,
-      ).bind(work.work_id, leaseUntil),
+        `UPDATE work SET state = 'done', lease_until = NULL, lease_token = NULL, last_error = NULL
+         WHERE work_id = ? AND state = 'open' AND lease_token = ?`,
+      ).bind(work.work_id, leaseToken),
     );
     const mismatchResults = await env.DB.batch(statements);
     const mismatchWorkIdx = statements.length - 1;
@@ -813,10 +926,10 @@ async function confirmSuccessBatch(
     return;
   }
 
-  if (statements.length > 0) {
-    await env.DB.batch(statements);
-  }
   await recordPaidConfirmation(env, {
+    work,
+    leaseToken,
+    leadingStatements: statements,
     checkout,
     confirmedTxn,
     inquiryId,
@@ -824,24 +937,20 @@ async function confirmSuccessBatch(
     nowIso,
     paymobTxnId,
   });
-  const done = await markWorkDone(env, work.work_id, leaseUntil);
-  if (!done) {
-    throw new Error("lease_lost");
-  }
 }
 
 async function processConfirmWork(
   env: WorkRunnerEnv,
   work: WorkRow,
 ): Promise<{ inquired: boolean }> {
-  const leaseUntil = work.lease_until;
-  if (leaseUntil === null) {
+  const leaseToken = work.lease_token;
+  if (leaseToken === null) {
     return { inquired: false };
   }
 
   const checkout = await loadCheckout(env, work.subject_id);
   if (checkout === null) {
-    await markWorkDone(env, work.work_id, leaseUntil);
+    await markWorkDone(env, work.work_id, leaseToken);
     return { inquired: false };
   }
 
@@ -866,7 +975,7 @@ async function processConfirmWork(
       await releaseLeaseRetry(
         env,
         work.work_id,
-        leaseUntil,
+        leaseToken,
         work.attempts + 1,
         "no_notification",
       );
@@ -876,7 +985,7 @@ async function processConfirmWork(
       await releaseLeaseRetry(
         env,
         work.work_id,
-        leaseUntil,
+        leaseToken,
         work.attempts + 1,
         "inquiry_retry",
       );
@@ -893,7 +1002,7 @@ async function processConfirmWork(
       work,
       checkout,
       syntheticNotification,
-      leaseUntil,
+      leaseToken,
     );
     return { inquired: true };
   }
@@ -904,7 +1013,7 @@ async function processConfirmWork(
       work,
       checkout,
       notification,
-      leaseUntil,
+      leaseToken,
     );
     return { inquired: true };
   }
@@ -914,7 +1023,7 @@ async function processConfirmWork(
     await releaseLeaseRetry(
       env,
       work.work_id,
-      leaseUntil,
+      leaseToken,
       work.attempts + 1,
       "parse_failed",
     );
@@ -927,14 +1036,14 @@ async function processConfirmWork(
       work,
       checkout,
       notification,
-      leaseUntil,
+      leaseToken,
     );
     return { inquired: true };
   } catch {
     await releaseLeaseRetry(
       env,
       work.work_id,
-      leaseUntil,
+      leaseToken,
       work.attempts + 1,
       "batch_failed",
     );
@@ -950,8 +1059,8 @@ export async function runConfirmForWorkId(
   if (work === null || work.kind !== "confirm") {
     return { inquired: false };
   }
-  const leaseUntil = work.lease_until;
-  if (leaseUntil === null) {
+  const leaseToken = work.lease_token;
+  if (leaseToken === null) {
     return { inquired: false };
   }
   try {
@@ -960,7 +1069,7 @@ export async function runConfirmForWorkId(
     await releaseLeaseRetry(
       env,
       work.work_id,
-      leaseUntil,
+      leaseToken,
       work.attempts + 1,
       "batch_failed",
     );
@@ -982,10 +1091,121 @@ export async function raiseStaleConfirmAlerts(env: WorkRunnerEnv): Promise<void>
   }
 }
 
+/**
+ * Reopen an enqueued notification's original confirm work when an older build
+ * left the body claim without its work, or committed a success marker before
+ * its payment. The notification only schedules a fresh authoritative inquiry;
+ * callback text is never used to create payment value.
+ */
+async function recoverMissingConfirmWork(env: WorkRunnerEnv): Promise<void> {
+  const notifications = await env.DB.prepare(
+    `SELECT notification_id, body_r2_key, body_sha256, channel, checkout_id, disposition
+     FROM notification
+     WHERE disposition = 'enqueued' AND checkout_id IS NOT NULL`,
+  ).all<NotificationRow>();
+
+  for (const notification of notifications.results ?? []) {
+    const dedupeKey = `confirm:${notification.notification_id}`;
+    const existingWork = await env.DB.prepare(
+      `SELECT work_id, state FROM work WHERE dedupe_key = ?`,
+    )
+      .bind(dedupeKey)
+      .first<{ work_id: string; state: string }>();
+    let needsRecovery = existingWork === null;
+
+    const txnId = await paymobTxnIdFromNotification(env, notification);
+    if (txnId !== null) {
+      const successSeen = await env.DB.prepare(
+        `SELECT 1 FROM paymob_state_seen WHERE dedupe_key = ?`,
+      )
+        .bind(paymobStateSeenKey(txnId, "payment_succeeded", 0))
+        .first();
+      if (successSeen !== null) {
+        const mapped = await env.DB.prepare(
+          `SELECT payment_id FROM paymob_txn WHERE txn_id = ?`,
+        )
+          .bind(txnId)
+          .first<{ payment_id: string | null }>();
+        const payment = mapped?.payment_id
+          ? await env.DB.prepare(
+              `SELECT disposition FROM payment WHERE payment_id = ?`,
+            )
+              .bind(mapped.payment_id)
+              .first<{ disposition: string }>()
+          : null;
+        if (payment === null) {
+          needsRecovery = true;
+        } else {
+          needsRecovery = false;
+        }
+        if (payment?.disposition === "grant") {
+          const grantId = await grantIdPaid(mapped!.payment_id);
+          const outcome = await env.DB.prepare(
+            `SELECT 1 FROM grant_outcome WHERE grant_id = ?`,
+          )
+            .bind(grantId)
+            .first();
+          const grantWork = await env.DB.prepare(
+            `SELECT 1 FROM work WHERE dedupe_key = ?`,
+          )
+            .bind(`grant:${mapped!.payment_id}`)
+            .first();
+          if (outcome === null && grantWork === null) {
+            const grantWorkId = await newId(env);
+            const nowIso = await clockNowIso(env);
+            await env.DB.prepare(
+              `INSERT INTO work (
+                 work_id, kind, subject_id, dedupe_key, state, attempts,
+                 next_attempt_at, lease_until, lease_token, last_error, opened_at
+               ) VALUES (?, 'grant', ?, ?, 'open', 0, ?, NULL, NULL, NULL, ?)
+               ON CONFLICT(dedupe_key) DO NOTHING`,
+            )
+              .bind(grantWorkId, mapped!.payment_id, `grant:${mapped!.payment_id}`, nowIso, nowIso)
+              .run();
+          } else if (outcome === null) {
+            await env.DB.prepare(
+              `UPDATE work SET state = 'open', next_attempt_at = ?, lease_until = NULL,
+                   lease_token = NULL, last_error = NULL
+               WHERE dedupe_key = ? AND kind = 'grant' AND state IN ('done', 'parked')`,
+            )
+              .bind(await clockNowIso(env), `grant:${mapped!.payment_id}`)
+              .run();
+          }
+        }
+      }
+    }
+
+    if (!needsRecovery) {
+      continue;
+    }
+    const workId = await newId(env);
+    const nowIso = await clockNowIso(env);
+    await env.DB.prepare(
+      `INSERT INTO work (
+         work_id, kind, subject_id, dedupe_key, state, attempts,
+         next_attempt_at, lease_until, lease_token, last_error, opened_at
+       ) VALUES (?, 'confirm', ?, ?, 'open', 0, ?, NULL, NULL, NULL, ?)
+       ON CONFLICT(dedupe_key) DO UPDATE SET
+         state = 'open', attempts = 0, next_attempt_at = excluded.next_attempt_at,
+         lease_until = NULL, lease_token = NULL, last_error = NULL
+       WHERE work.state IN ('done', 'parked')`,
+    )
+      .bind(
+        workId,
+        notification.checkout_id!,
+        dedupeKey,
+        nowIso,
+        nowIso,
+      )
+      .run();
+  }
+}
+
 export async function runDueConfirmWork(
   env: WorkRunnerEnv,
   limit = CONFIRM_BATCH_LIMIT,
 ): Promise<void> {
+  await recoverMissingConfirmWork(env);
   await raiseStaleConfirmAlerts(env);
   const nowIso = await clockNowIso(env);
   const due = await env.DB.prepare(

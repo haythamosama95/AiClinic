@@ -62,6 +62,7 @@ export interface Env {
   PAYMOB_CARD_INTEGRATION_ID: string;
   PAYMOB_HMAC_SECRET: string;
   PAYMOB_API_KEY: string;
+  PAYMOB_ALLOW_LOCAL_HTTP?: string;
   PAYMOB_STUB?: Fetcher;
   ABO_GRANT_KEY: string;
   PLATFORM_PUBLIC_KEYS: string;

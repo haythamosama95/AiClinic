@@ -7,6 +7,7 @@ export type PaymobClientEnv = {
   PAYMOB_SECRET_KEY: string;
   PAYMOB_API_KEY?: string;
   PAYMOB_CARD_INTEGRATION_ID: string;
+  PAYMOB_ALLOW_LOCAL_HTTP?: string;
   TEST_CLOCK?: string;
   PAYMOB_STUB?: Fetcher;
 };
@@ -70,8 +71,39 @@ function providerHttpAbortMs(env: PaymobClientEnv): number {
     : PROVIDER_HTTP_ABORT_MS;
 }
 
-function paymobBaseUrl(baseUrl: string): string {
-  return baseUrl.replace(/\/$/u, "");
+function paymobBaseUrl(
+  baseUrl: string,
+  allowLocalTransport = false,
+): string | null {
+  let parsed: URL;
+  try {
+    parsed = new URL(baseUrl);
+  } catch {
+    return null;
+  }
+
+  const isLocalHost =
+    parsed.hostname === "localhost" ||
+    parsed.hostname.endsWith(".localhost") ||
+    parsed.hostname === "127.0.0.1" ||
+    parsed.hostname === "[::1]" ||
+    parsed.hostname === "::1";
+  const secure = parsed.protocol === "https:";
+  const explicitlyAuthorizedLocal =
+    allowLocalTransport && parsed.protocol === "http:" && isLocalHost;
+
+  if (
+    (!secure && !explicitlyAuthorizedLocal) ||
+    parsed.username.length > 0 ||
+    parsed.password.length > 0 ||
+    parsed.pathname !== "/" ||
+    parsed.search.length > 0 ||
+    parsed.hash.length > 0
+  ) {
+    return null;
+  }
+
+  return parsed.origin;
 }
 
 function splitPayerName(name: string): { first_name: string; last_name: string } {
@@ -86,21 +118,43 @@ function splitPayerName(name: string): { first_name: string; last_name: string }
   };
 }
 
-function intentionUrl(baseUrl: string): string {
-  return `${paymobBaseUrl(baseUrl)}/v1/intention/`;
+function intentionUrl(
+  baseUrl: string,
+  allowLocalTransport: boolean,
+): string | null {
+  const base = paymobBaseUrl(baseUrl, allowLocalTransport);
+  return base === null ? null : `${base}/v1/intention/`;
 }
 
-function authTokenUrl(baseUrl: string): string {
-  return `${paymobBaseUrl(baseUrl)}/api/auth/tokens`;
+function authTokenUrl(
+  baseUrl: string,
+  allowLocalTransport: boolean,
+): string | null {
+  const base = paymobBaseUrl(baseUrl, allowLocalTransport);
+  return base === null ? null : `${base}/api/auth/tokens`;
 }
 
-function orderTransactionInquiryUrl(baseUrl: string): string {
-  return `${paymobBaseUrl(baseUrl)}/api/ecommerce/orders/transaction_inquiry`;
+function orderTransactionInquiryUrl(
+  baseUrl: string,
+  allowLocalTransport: boolean,
+): string | null {
+  const base = paymobBaseUrl(baseUrl, allowLocalTransport);
+  return base === null
+    ? null
+    : `${base}/api/ecommerce/orders/transaction_inquiry`;
 }
 
-function acceptanceTransactionUrl(baseUrl: string, txnId: string): string {
+function acceptanceTransactionUrl(
+  baseUrl: string,
+  txnId: string,
+  allowLocalTransport: boolean,
+): string | null {
+  const base = paymobBaseUrl(baseUrl, allowLocalTransport);
+  if (base === null) {
+    return null;
+  }
   const encoded = encodeURIComponent(txnId);
-  return `${paymobBaseUrl(baseUrl)}/api/acceptance/transactions/${encoded}`;
+  return `${base}/api/acceptance/transactions/${encoded}`;
 }
 
 async function paymobProviderFetch(
@@ -336,12 +390,19 @@ export async function createPaymobIntention(
   env: PaymobClientEnv,
   input: CreatePaymobIntentionInput,
 ): Promise<CreatePaymobIntentionResult> {
+  const url = intentionUrl(
+    env.PAYMOB_BASE_URL,
+    env.PAYMOB_STUB !== undefined || env.PAYMOB_ALLOW_LOCAL_HTTP === "1",
+  );
+  if (url === null) {
+    return { ok: false };
+  }
   const body = buildIntentionBody(env, input);
   if (body === null) {
     return { ok: false };
   }
 
-  const response = await paymobProviderFetch(env, intentionUrl(env.PAYMOB_BASE_URL), {
+  const response = await paymobProviderFetch(env, url, {
     method: "POST",
     headers: {
       Authorization: `Token ${env.PAYMOB_SECRET_KEY}`,
@@ -372,10 +433,17 @@ export async function fetchPaymobAuthToken(
   if (apiKey === undefined || apiKey.length === 0) {
     return { outcome: "error" };
   }
+  const url = authTokenUrl(
+    env.PAYMOB_BASE_URL,
+    env.PAYMOB_STUB !== undefined || env.PAYMOB_ALLOW_LOCAL_HTTP === "1",
+  );
+  if (url === null) {
+    return { outcome: "error" };
+  }
 
   const response = await paymobProviderFetch(
     env,
-    authTokenUrl(env.PAYMOB_BASE_URL),
+    url,
     {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -390,9 +458,16 @@ export async function postPaymobOrderTransactionInquiry(
   authToken: string,
   orderId: string,
 ): Promise<PaymobInquiryHttpOutcome<PaymobOrderInquiry>> {
+  const url = orderTransactionInquiryUrl(
+    env.PAYMOB_BASE_URL,
+    env.PAYMOB_STUB !== undefined || env.PAYMOB_ALLOW_LOCAL_HTTP === "1",
+  );
+  if (url === null) {
+    return { outcome: "error" };
+  }
   const response = await paymobProviderFetch(
     env,
-    orderTransactionInquiryUrl(env.PAYMOB_BASE_URL),
+    url,
     {
       method: "POST",
       headers: {
@@ -410,9 +485,17 @@ export async function getPaymobAcceptanceTransaction(
   authToken: string,
   txnId: string,
 ): Promise<PaymobInquiryHttpOutcome<PaymobAcceptanceTransaction>> {
+  const url = acceptanceTransactionUrl(
+    env.PAYMOB_BASE_URL,
+    txnId,
+    env.PAYMOB_STUB !== undefined || env.PAYMOB_ALLOW_LOCAL_HTTP === "1",
+  );
+  if (url === null) {
+    return { outcome: "error" };
+  }
   const response = await paymobProviderFetch(
     env,
-    acceptanceTransactionUrl(env.PAYMOB_BASE_URL, txnId),
+    url,
     {
       method: "GET",
       headers: {

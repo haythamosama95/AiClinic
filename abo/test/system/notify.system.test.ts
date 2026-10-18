@@ -4,6 +4,7 @@
 
 import { env } from "cloudflare:test";
 import { beforeEach, describe, expect, it } from "vitest";
+import { sha256Hex } from "vendor-contracts";
 import badHmacFixture from "../fixtures/paymob/bad-hmac.json";
 import declineFixture from "../fixtures/paymob/decline.json";
 import refundChildFixture from "../fixtures/paymob/refund-child.json";
@@ -463,14 +464,32 @@ beforeEach(async () => {
 });
 
 describe("P4.3 notify intake", () => {
-  it("E2E-P4.3-01 replayed success callback opens a PAY payment and a grant row", async () => {
+  it("E2E-P4.3-01 R3-M5 byte-caps callback bodies before intake writes", async () => {
     const checkoutId = "01JNOTIFYCHECKOUT000001";
     await seedOpenCheckout(checkoutId);
 
+    const successBody = JSON.stringify({
+      type: (successFixture as PaymobCallbackFixture).type,
+      obj: (successFixture as PaymobCallbackFixture).obj,
+    });
+    const exactMiBBody =
+      successBody +
+      " ".repeat(
+        1_048_576 - new TextEncoder().encode(successBody).byteLength,
+      );
+    expect(new TextEncoder().encode(exactMiBBody).byteLength).toBe(1_048_576);
     const intake = await postPaymobProcessedCallback(
       successFixture as PaymobCallbackFixture,
+      { bodyOverride: exactMiBBody },
     );
     expect(intake.status).toBe(200);
+    const exactBodySha256 = await sha256Hex(
+      new TextEncoder().encode(exactMiBBody),
+    );
+    const storedBody = await env.DB.prepare(
+      `SELECT body_sha256 FROM notification WHERE disposition = 'enqueued'`,
+    ).first<{ body_sha256: string }>();
+    expect(storedBody?.body_sha256).toBe(exactBodySha256);
 
     expect(await tableCount("notification")).toBe(1);
     const reference = await paymentReference();
@@ -479,7 +498,23 @@ describe("P4.3 notify intake", () => {
     expect(await checkoutStatusState(checkoutId)).toBe("paid");
     expect(await openGrantWorkCount()).toBe(1);
 
-    const oversizeBody = "x".repeat(1_048_577);
+    // The character count is below the cap while the UTF-8 byte count exceeds it.
+    const oversizeBody = "é".repeat(524_289);
+    expect(oversizeBody.length).toBeLessThanOrEqual(1_048_576);
+    expect(new TextEncoder().encode(oversizeBody).byteLength).toBeGreaterThan(
+      1_048_576,
+    );
+    const rateRowsBeforeOversize = await tableCount("notify_rate");
+    const evidenceBeforeOversize = await r2KeyCount("evidence/");
+    const stateSeenBeforeOversize = await tableCount("paymob_state_seen");
+    const notificationRowsBeforeOversize = await tableCount("notification");
+    const workRowsBeforeOversize = await tableCount("work");
+    const rateRowForOverflowIp = await env.DB.prepare(
+      `SELECT hits FROM notify_rate WHERE ip = ?`,
+    )
+      .bind("203.0.113.11")
+      .first<{ hits: number }>();
+    expect(rateRowForOverflowIp).toBeNull();
     const oversize = await billingFetch("/notify/paymob", {
       method: "POST",
       headers: {
@@ -490,8 +525,30 @@ describe("P4.3 notify intake", () => {
     });
     expect(oversize.status).toBe(413);
     expect(await oversize.text()).toBe("");
+    expect(await tableCount("notification")).toBe(notificationRowsBeforeOversize);
+    expect(await tableCount("work")).toBe(workRowsBeforeOversize);
+    expect(await tableCount("notify_rate")).toBe(rateRowsBeforeOversize);
+    expect(await tableCount("paymob_state_seen")).toBe(stateSeenBeforeOversize);
+    expect(await r2KeyCount("evidence/")).toBe(evidenceBeforeOversize);
+    expect(
+      await env.DB.prepare(`SELECT hits FROM notify_rate WHERE ip = ?`)
+        .bind("203.0.113.11")
+        .first<{ hits: number }>(),
+    ).toBeNull();
+
+    const invalidUtf8 = await billingFetch("/notify/paymob", {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        "cf-connecting-ip": "203.0.113.12",
+      },
+      body: new Uint8Array([0xc3, 0x28]),
+    });
+    expect(invalidUtf8.status).toBe(400);
+    expect(await invalidUtf8.text()).toBe("");
     expect(await tableCount("notification")).toBe(1);
     expect(await tableCount("work")).toBe(2);
+    expect(await tableCount("notify_rate")).toBe(rateRowsBeforeOversize);
   });
 
   it("E2E-P4.3-04 decline then success is one payment", async () => {
@@ -604,7 +661,7 @@ describe("P4.3 notify intake", () => {
     expect(await r2KeyCount("evidence/")).toBe(0);
   });
 
-  it("E2E-P4.3-09 R2 and D1 intake failures enqueue nothing", async () => {
+  it("E2E-P4.3-09 R3-C5 intake batch failure leaves no dedupe claim", async () => {
     const checkoutR2 = "01JNOTIFYCHECKOUT000009A";
     const checkoutD1 = "01JNOTIFYCHECKOUT000009B";
     await seedOpenCheckout(checkoutR2);
@@ -618,6 +675,7 @@ describe("P4.3 notify intake", () => {
     expect(await tableCount("notification")).toBe(0);
     expect(await tableCount("work")).toBe(0);
 
+    const factLogsBeforeD1Failure = await tableCount("fact_log");
     setD1BatchThrows(true);
     const d1Failure = await postPaymobProcessedCallback(
       successFixtureWithTxnId(99050),
@@ -626,6 +684,17 @@ describe("P4.3 notify intake", () => {
     expect(d1Failure.status).toBe(500);
     expect(await tableCount("notification")).toBe(0);
     expect(await tableCount("work")).toBe(0);
+    expect(await tableCount("paymob_state_seen")).toBe(0);
+    expect(await tableCount("fact_log")).toBe(factLogsBeforeD1Failure);
+
+    const retry = await postPaymobProcessedCallback(
+      successFixtureWithTxnId(99050),
+      { connectingIp: "203.0.113.12" },
+    );
+    expect(retry.status).toBe(200);
+    expect(await tableCount("notification")).toBe(1);
+    expect(await tableCount("paymob_state_seen")).toBe(1);
+    expect(await tableCount("fact_log")).toBe(factLogsBeforeD1Failure + 1);
   });
 
   it("E2E-P4.3-05 unbound order and amount mismatch withhold the grant", async () => {
@@ -746,7 +815,7 @@ describe("P4.3 notify intake", () => {
     expect(await alertCountByCode("AL-01")).toBeGreaterThanOrEqual(1);
   });
 
-  it("E2E-P4.3-10 failed confirm batch retries and one lease wins", async () => {
+  it("E2E-P4.3-10 R3-C5 claim collision recovers original confirm work", async () => {
     const checkoutId = "01JNOTIFYCHECKOUT000010A";
     await seedOpenCheckout(checkoutId);
     await scriptPaymobInquiry("pending");
@@ -766,8 +835,15 @@ describe("P4.3 notify intake", () => {
     expect(afterBatchFailure?.last_error).toBe("batch_failed");
 
     await setClock("2026-01-15T09:32:00.000Z");
-    await runScheduled("* * * * *");
+    const workRowsBeforeReplay = await tableCount("work");
+    const replay = await postPaymobProcessedCallback(
+      successFixture as PaymobCallbackFixture,
+    );
+    expect(replay.status).toBe(200);
+    expect(await notificationDispositions()).toEqual(["enqueued", "duplicate"]);
+    expect(await tableCount("work")).toBe(workRowsBeforeReplay);
     expect(await tableCount("payment")).toBe(1);
+    expect((await confirmWorkForCheckout(checkoutId))?.state).toBe("done");
 
     const leaseCheckout = "01JNOTIFYCHECKOUT000010B";
     await seedOpenCheckout(leaseCheckout);
@@ -787,6 +863,35 @@ describe("P4.3 notify intake", () => {
       .bind(leaseCheckout)
       .first<{ n: number }>();
     expect(leasePaymentCount?.n).toBe(1);
+  });
+
+  it("E2E-P4.3-13 R3-C5 authenticated redelivery repairs a marker-only claim", async () => {
+    const checkoutId = "01JNOTIFYCHECKOUT000013";
+    await seedOpenCheckout(checkoutId);
+    const body = JSON.stringify({
+      type: (successFixture as PaymobCallbackFixture).type,
+      obj: (successFixture as PaymobCallbackFixture).obj,
+    });
+    const bodySha256 = await sha256Hex(new TextEncoder().encode(body));
+    await env.DB.prepare(
+      `INSERT INTO paymob_state_seen (dedupe_key, source, first_seen_at)
+       VALUES (?, 'notify_body', ?)`,
+    )
+      .bind(`notify-body:${bodySha256}`, "2026-01-15T09:30:00.000Z")
+      .run();
+
+    const replay = await postPaymobProcessedCallback(
+      successFixture as PaymobCallbackFixture,
+      { bodyOverride: body },
+    );
+    expect(replay.status).toBe(200);
+    expect(await notificationDispositions()).toEqual(["enqueued", "duplicate"]);
+    expect(await paymentReference()).toMatch(/^PAY-/u);
+    expect((await confirmWorkForCheckout(checkoutId))?.state).toBe("done");
+    const notificationFacts = await env.DB.prepare(
+      `SELECT COUNT(*) AS n FROM fact_log WHERE "table" = 'notification'`,
+    ).first<{ n: number }>();
+    expect(notificationFacts?.n).toBe(1);
   });
 
   it("E2E-P4.3-11 return v=99 is a neutral page and schedules inquiry", async () => {

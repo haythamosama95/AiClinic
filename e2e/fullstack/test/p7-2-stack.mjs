@@ -828,6 +828,8 @@ function spawnAboProcess(issuerKeys, accessCerts) {
       "--var",
       `PAYMOB_BASE_URL:${PAYMOB_URL}`,
       "--var",
+      "PAYMOB_ALLOW_LOCAL_HTTP:1",
+      "--var",
       `ACCESS_TEAM_DOMAIN:${ACCESS_TEAM_DOMAIN}`,
       "--var",
       `ACCESS_AUD:${ACCESS_AUD}`,

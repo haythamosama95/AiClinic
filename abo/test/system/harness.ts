@@ -13,8 +13,9 @@ import operatorActionMigrationSql from "../../migrations/0006_operator_action.sq
 import hpActionsMigrationSql from "../../migrations/0007_hp_actions.sql?raw";
 import reconciliationMigrationSql from "../../migrations/0008_reconciliation.sql?raw";
 import digestWatchMigrationSql from "../../migrations/0009_digest_watch.sql?raw";
+import workLeaseTokenMigrationSql from "../../migrations/0010_work_lease_token.sql?raw";
 
-const ABO_MIGRATION_SQL: string[] = [
+const ABO_LEGACY_MIGRATION_SQL: string[] = [
   recordsMigrationSql,
   checkoutMigrationSql,
   notifyWorkMigrationSql,
@@ -24,6 +25,10 @@ const ABO_MIGRATION_SQL: string[] = [
   hpActionsMigrationSql,
   reconciliationMigrationSql,
   digestWatchMigrationSql,
+];
+const ABO_MIGRATION_SQL: string[] = [
+  ...ABO_LEGACY_MIGRATION_SQL,
+  workLeaseTokenMigrationSql,
 ];
 
 function base64UrlEncode(bytes: Uint8Array): string {
@@ -173,7 +178,16 @@ export async function applySql(sql: string): Promise<void> {
 }
 
 export async function applyAllAboMigrations(): Promise<void> {
-  for (const sql of ABO_MIGRATION_SQL) {
+  await applyMigrations(ABO_MIGRATION_SQL);
+}
+
+/** Apply the schema immediately before the work-lease-token forward migration. */
+export async function applyLegacyAboMigrations(): Promise<void> {
+  await applyMigrations(ABO_LEGACY_MIGRATION_SQL);
+}
+
+async function applyMigrations(migrations: readonly string[]): Promise<void> {
+  for (const sql of migrations) {
     try {
       await applySql(sql);
     } catch {
