@@ -481,7 +481,9 @@ BEGIN
 END;
 $$;
 
--- T13: STAFF_NOT_FOUND for auth user with no staff_members row.
+-- T13: FORBIDDEN for auth user with no staff_members row (R1-SQL-03: no live
+-- staff row, so current_org_id() fails closed and the mint is refused before
+-- the staff lookup; previously STAFF_NOT_FOUND).
 DO $$
 DECLARE
   v_doctor_user uuid := 'c1000000-0000-4000-8000-000000000001';
@@ -528,11 +530,11 @@ BEGIN
 
   PERFORM pg_temp.set_authenticated_session(v_nostaff_user);
   v_code := pg_temp.capture_issue_error();
-  v_passed := v_code = 'STAFF_NOT_FOUND';
+  v_passed := v_code = 'FORBIDDEN';
 
   PERFORM set_config('role', 'postgres', true);
   INSERT INTO ai_token_issuer_results VALUES (
-    'T13 STAFF_NOT_FOUND',
+    'T13 FORBIDDEN for no-staff auth user (R1-SQL-03)',
     v_passed,
     'code=' || COALESCE(v_code, '<null>')
   );

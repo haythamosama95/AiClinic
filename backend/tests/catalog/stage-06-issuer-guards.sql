@@ -600,7 +600,7 @@ END;
 $$;
 
 -- -----------------------------------------------------------------------------
--- S06-005 — Deactivated staff member is STAFF_NOT_FOUND
+-- S06-005 — Deactivated staff member is FORBIDDEN without org context (R1-SQL-03)
 -- -----------------------------------------------------------------------------
 DO $$
 DECLARE
@@ -629,7 +629,7 @@ BEGIN
   IF NOT v_setup.success THEN
     PERFORM pg_temp.reset_postgres();
     PERFORM pg_temp.record(
-      'S06-005 — Deactivated staff member is STAFF_NOT_FOUND',
+      'S06-005 — Deactivated staff member is FORBIDDEN without org context (R1-SQL-03)',
       false,
       'set_staff_active(false) failed: '
         || COALESCE(v_setup.error_code, '<null>')
@@ -650,9 +650,12 @@ BEGIN
 
   v_issuance := pg_temp.issuance_count();
 
+  -- R1-SQL-03: a deactivated staff member has no live staff row, so
+  -- current_org_id() fails closed and the mint is FORBIDDEN before the
+  -- staff lookup (previously STAFF_NOT_FOUND).
   v_ok := v_doc_active IS FALSE
     AND v_sqlstate = 'P0001'
-    AND v_message = 'STAFF_NOT_FOUND'
+    AND v_message = 'FORBIDDEN'
     AND v_issuance = 0;
   v_detail := 'sqlstate=' || COALESCE(v_sqlstate, '<none>')
     || ' message=' || COALESCE(v_message, '<none>')
@@ -660,7 +663,7 @@ BEGIN
     || ' issuance=' || v_issuance::text;
 
   PERFORM pg_temp.record(
-    'S06-005 — Deactivated staff member is STAFF_NOT_FOUND',
+    'S06-005 — Deactivated staff member is FORBIDDEN without org context (R1-SQL-03)',
     v_ok,
     v_detail
   );
@@ -676,7 +679,7 @@ END;
 $$;
 
 -- -----------------------------------------------------------------------------
--- S06-006 — Soft-deleted staff member is STAFF_NOT_FOUND
+-- S06-006 — Soft-deleted staff member is FORBIDDEN without org context (R1-SQL-03)
 -- -----------------------------------------------------------------------------
 DO $$
 DECLARE
@@ -705,7 +708,7 @@ BEGIN
   IF NOT v_deactivate.success THEN
     PERFORM pg_temp.reset_postgres();
     PERFORM pg_temp.record(
-      'S06-006 — Soft-deleted staff member is STAFF_NOT_FOUND',
+      'S06-006 — Soft-deleted staff member is FORBIDDEN without org context (R1-SQL-03)',
       false,
       'set_staff_active(false) failed: '
         || COALESCE(v_deactivate.error_code, '<null>')
@@ -718,7 +721,7 @@ BEGIN
   IF NOT v_delete.success THEN
     PERFORM pg_temp.reset_postgres();
     PERFORM pg_temp.record(
-      'S06-006 — Soft-deleted staff member is STAFF_NOT_FOUND',
+      'S06-006 — Soft-deleted staff member is FORBIDDEN without org context (R1-SQL-03)',
       false,
       'delete_staff_member failed: '
         || COALESCE(v_delete.error_code, '<null>')
@@ -739,9 +742,12 @@ BEGIN
 
   v_issuance := pg_temp.issuance_count();
 
+  -- R1-SQL-03: a soft-deleted staff member has no live staff row, so
+  -- current_org_id() fails closed and the mint is FORBIDDEN before the
+  -- staff lookup (previously STAFF_NOT_FOUND).
   v_ok := v_deleted IS TRUE
     AND v_sqlstate = 'P0001'
-    AND v_message = 'STAFF_NOT_FOUND'
+    AND v_message = 'FORBIDDEN'
     AND v_issuance = 0;
   v_detail := 'sqlstate=' || COALESCE(v_sqlstate, '<none>')
     || ' message=' || COALESCE(v_message, '<none>')
@@ -749,7 +755,7 @@ BEGIN
     || ' issuance=' || v_issuance::text;
 
   PERFORM pg_temp.record(
-    'S06-006 — Soft-deleted staff member is STAFF_NOT_FOUND',
+    'S06-006 — Soft-deleted staff member is FORBIDDEN without org context (R1-SQL-03)',
     v_ok,
     v_detail
   );
