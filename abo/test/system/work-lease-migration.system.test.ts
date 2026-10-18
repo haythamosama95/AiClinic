@@ -10,7 +10,9 @@ describe("R3-C5 work lease token migration", () => {
   const seedId = `r3-c5-migration-${suffix}`;
   const isolatedMigrationSql = workLeaseMigrationSql
     .replace(/\bwork\b/gu, workTable)
-    .replace("work_lease_token_unique", `${workTable}_lease_token_unique`);
+    .replace("work_lease_token_unique", `${workTable}_lease_token_unique`)
+    .replace(/^\s*--.*(?:\r?\n|$)/gmu, "")
+    .trim();
 
   beforeAll(async () => {
     await env.DB.prepare(

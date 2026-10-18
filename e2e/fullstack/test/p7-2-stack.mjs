@@ -950,6 +950,12 @@ export async function startStack() {
   });
 
   await prepareAboD1({ aboConfig: ABO_CONFIG });
+  runAboD1Command(`
+    CREATE TABLE IF NOT EXISTS harness_test_clock (
+      id TEXT PRIMARY KEY,
+      now_iso TEXT NOT NULL
+    );
+  `);
   const abo = spawnAboProcess(issuerKeys, accessTeam.certs);
   startupCleanups.push(() => stopChild(abo));
   await waitForHttp(`${ABO_URL}/v1/offers`, {

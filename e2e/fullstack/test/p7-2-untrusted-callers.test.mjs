@@ -99,10 +99,6 @@ test("E2E-P7.2-01", async () => {
   assert.equal(countAboWork(), workBefore);
 
   runAboD1Command(`
-    CREATE TABLE IF NOT EXISTS harness_test_clock (
-      id TEXT PRIMARY KEY,
-      now_iso TEXT NOT NULL
-    );
     INSERT OR REPLACE INTO harness_test_clock (id, now_iso)
     VALUES ('default', '2026-10-16T10:00:00.000Z');
   `);
