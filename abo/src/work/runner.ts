@@ -190,7 +190,7 @@ async function latestNotificationForCheckout(
   checkoutId: string,
 ): Promise<NotificationRow | null> {
   return env.DB.prepare(
-    `SELECT notification_id, body_r2_key, body_sha256, channel
+    `SELECT notification_id, body_r2_key, body_sha256, channel, provider_txn_id
      FROM notification
      WHERE checkout_id = ?
      ORDER BY notification_id DESC
@@ -1101,7 +1101,7 @@ async function processConfirmWork(
   const notification =
     work.dedupe_key.startsWith("confirm:")
       ? await env.DB.prepare(
-          `SELECT notification_id, body_r2_key, body_sha256, channel
+          `SELECT notification_id, body_r2_key, body_sha256, channel, provider_txn_id
            FROM notification
            WHERE notification_id = ?`,
         )
@@ -1284,7 +1284,8 @@ export async function raiseStaleConfirmAlerts(env: WorkRunnerEnv): Promise<void>
  */
 async function recoverMissingConfirmWork(env: WorkRunnerEnv): Promise<void> {
   const notifications = await env.DB.prepare(
-    `SELECT notification_id, body_r2_key, body_sha256, channel, checkout_id, disposition
+    `SELECT notification_id, body_r2_key, body_sha256, channel, checkout_id, disposition,
+            provider_txn_id
      FROM notification
      WHERE disposition = 'enqueued' AND checkout_id IS NOT NULL`,
   ).all<NotificationRow>();

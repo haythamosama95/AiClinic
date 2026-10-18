@@ -22,6 +22,7 @@ import reversalMigrationSql from "../../migrations/0005_reversal.sql?raw";
 import operatorActionMigrationSql from "../../migrations/0006_operator_action.sql?raw";
 import hpActionsMigrationSql from "../../migrations/0007_hp_actions.sql?raw";
 import acceptedCommandsErasureFenceMigrationSql from "../../migrations/0012_accepted_commands_erasure_fence.sql?raw";
+import notificationProviderTxnIdMigrationSql from "../../migrations/0013_notification_provider_txn_id.sql?raw";
 import { loadOffersFixture } from "../../src/records/append";
 import {
   applySql,
@@ -286,6 +287,7 @@ async function ensureMigrations(): Promise<void> {
     operatorActionMigrationSql,
     hpActionsMigrationSql,
     acceptedCommandsErasureFenceMigrationSql,
+    notificationProviderTxnIdMigrationSql,
   ]) {
     try {
       await applySql(sql);
@@ -1120,34 +1122,14 @@ async function billingContactRows(
 async function tenantEvidenceR2Keys(orgId: string): Promise<string[]> {
   const keys = new Set<string>();
   const notifications = await env.DB.prepare(
-    `SELECT n.body_r2_key
-     FROM notification n
-     WHERE n.body_r2_key != ''
-       AND (
-         n.checkout_id IN (SELECT checkout_id FROM checkout WHERE org_id = ?)
-         OR n.body_sha256 IN (
-           SELECT evidence_sha256 FROM payment
-           WHERE org_id = ? AND evidence_sha256 != ''
-         )
-       )`,
-  )
-    .bind(orgId, orgId)
-    .all<{ body_r2_key: string }>();
-  for (const row of notifications.results ?? []) {
-    keys.add(row.body_r2_key);
-  }
-  const inquiryRows = await env.DB.prepare(
-    `SELECT ir.raw_r2_key
-     FROM inquiry_result ir
-     WHERE ir.raw_r2_key != ''
-       AND ir.subject IN (
-         SELECT 'checkout:' || checkout_id FROM checkout WHERE org_id = ?
-       )`,
+    `SELECT r.r2_key
+     FROM raw_evidence_registry r
+     WHERE r.org_id = ? AND r.state IN ('claimed', 'retained', 'delete_pending')`,
   )
     .bind(orgId)
-    .all<{ raw_r2_key: string }>();
-  for (const row of inquiryRows.results ?? []) {
-    keys.add(row.raw_r2_key);
+    .all<{ r2_key: string }>();
+  for (const row of notifications.results ?? []) {
+    keys.add(row.r2_key);
   }
   return [...keys];
 }
@@ -1708,6 +1690,18 @@ describe("hp-actions cross-worker", () => {
     for (const key of evidenceKeys) {
       expect(await env.R2.get(key)).toBeNull();
     }
+    const erasedEvidence = await env.DB.prepare(
+      `SELECT r.r2_key, r.state, o.state AS cleanup_state
+       FROM raw_evidence_registry r
+       JOIN raw_evidence_cleanup_outbox o ON o.evidence_id = r.evidence_id
+       WHERE r.org_id = ? ORDER BY r.r2_key`,
+    )
+      .bind(orgId)
+      .all<{ r2_key: string; state: string; cleanup_state: string }>();
+    expect(erasedEvidence.results?.length).toBe(evidenceKeys.length);
+    expect(erasedEvidence.results?.every((row) =>
+      row.state === "deleted" && row.cleanup_state === "done",
+    )).toBe(true);
     const eraseReplay = await opsHpFetch(`/ops/orgs/${orgId}/erase-contact`, {
       accessJwt: hp.accessJwt,
       operation: eraseOperation,
@@ -1727,12 +1721,13 @@ describe("hp-actions cross-worker", () => {
     );
     expect(lateCallback.status).toBe(200);
     const lateNotification = await env.DB.prepare(
-      `SELECT body_r2_key FROM notification WHERE checkout_id = ?
+      `SELECT body_r2_key, provider_txn_id FROM notification WHERE checkout_id = ?
        ORDER BY notification_id DESC LIMIT 1`,
     )
       .bind(checkoutId)
-      .first<{ body_r2_key: string }>();
+      .first<{ body_r2_key: string; provider_txn_id: string | null }>();
     expect(lateNotification?.body_r2_key).toBe("");
+    expect(lateNotification?.provider_txn_id).toBe("97708");
     expect(await tenantEvidenceR2Keys(orgId)).toEqual([]);
     const ledgerAfter = await listLedgerExportKeys();
     expect(ledgerAfter).toEqual(ledgerBefore);

@@ -16,6 +16,7 @@ import digestWatchMigrationSql from "../../migrations/0009_digest_watch.sql?raw"
 import workLeaseTokenMigrationSql from "../../migrations/0010_work_lease_token.sql?raw";
 import checkoutCreationAttemptsMigrationSql from "../../migrations/0011_checkout_creation_attempts.sql?raw";
 import acceptedCommandsErasureFenceMigrationSql from "../../migrations/0012_accepted_commands_erasure_fence.sql?raw";
+import notificationProviderTxnIdMigrationSql from "../../migrations/0013_notification_provider_txn_id.sql?raw";
 
 const ABO_LEGACY_MIGRATION_SQL: string[] = [
   recordsMigrationSql,
@@ -33,6 +34,7 @@ const ABO_MIGRATION_SQL: string[] = [
   workLeaseTokenMigrationSql,
   checkoutCreationAttemptsMigrationSql,
   acceptedCommandsErasureFenceMigrationSql,
+  notificationProviderTxnIdMigrationSql,
 ];
 
 function base64UrlEncode(bytes: Uint8Array): string {
@@ -596,7 +598,13 @@ export async function resetHarnessState(): Promise<void> {
   await setupHarness();
   await env.DB.prepare("DELETE FROM harness_test_clock").run();
   await env.DB.prepare("DELETE FROM harness_issuer_pin").run();
-  for (const table of ["token_use", "billing_contact"]) {
+  for (const table of [
+    "token_use",
+    "billing_contact",
+    "org_erasure_fence",
+    "raw_evidence_registry",
+    "raw_evidence_cleanup_outbox",
+  ]) {
     try {
       await env.DB.prepare(`DELETE FROM ${table}`).run();
     } catch (error) {

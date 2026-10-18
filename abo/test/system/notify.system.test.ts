@@ -14,6 +14,7 @@ import checkoutMigrationSql from "../../migrations/0002_checkout.sql?raw";
 import notifyWorkMigrationSql from "../../migrations/0003_notify_work.sql?raw";
 import checkoutCreationAttemptsMigrationSql from "../../migrations/0011_checkout_creation_attempts.sql?raw";
 import acceptedCommandsErasureFenceMigrationSql from "../../migrations/0012_accepted_commands_erasure_fence.sql?raw";
+import notificationProviderTxnIdMigrationSql from "../../migrations/0013_notification_provider_txn_id.sql?raw";
 import {
   applySql,
   billingFetch,
@@ -185,6 +186,11 @@ async function ensureAcceptedCommandsErasureFenceMigration(): Promise<void> {
   } catch {
     // Migration not present yet.
   }
+  try {
+    await applySql(notificationProviderTxnIdMigrationSql);
+  } catch {
+    // Migration not present yet.
+  }
 }
 
 type ConfirmWorkRow = {
@@ -263,6 +269,22 @@ async function seedOpenCheckout(
   const now = "2026-01-15T09:00:00.000Z";
   const expires = "2026-01-15T10:30:00.000Z";
   const coverageThrough = options?.openedWithCoverageThrough ?? null;
+  await env.DB.prepare(
+    `INSERT OR IGNORE INTO billing_contact (
+       org_id, version, client_request_id, name, email, phone, contact_sha256,
+       created_by_sub, contract_version, erasure_generation, erased_at, erased_by
+     ) VALUES (?, 1, 'notify-fixture-contact-v1', 'Notify Fixture',
+       'notify-fixture@clinic.test', '+201000000000', 'sha256-billing-contact',
+       'admin-sub', 1, 0, NULL, NULL)`,
+  )
+    .bind(TEST_ORG)
+    .run();
+  await env.DB.prepare(
+    `INSERT INTO org_erasure_fence (org_id, generation, updated_at)
+     VALUES (?, 0, ?) ON CONFLICT(org_id) DO NOTHING`,
+  )
+    .bind(TEST_ORG, now)
+    .run();
   await env.DB.prepare(
     `INSERT INTO checkout (
        checkout_id, reference, org_id, created_by_sub, billing_token_jti,
@@ -560,13 +582,23 @@ describe("P4.3 notify intake", () => {
       .first<{ r2_key: string; state: string }>();
     expect(lateEvidence?.state).toBe("deleted");
     expect(await env.R2.get(lateEvidence!.r2_key)).toBeNull();
+    const lateCleanup = await env.DB.prepare(
+      `SELECT state FROM raw_evidence_cleanup_outbox WHERE r2_key = ?`,
+    )
+      .bind(lateEvidence!.r2_key)
+      .first<{ state: string }>();
+    expect(lateCleanup?.state).toBe("done");
     const notification = await env.DB.prepare(
-      `SELECT body_r2_key FROM notification WHERE checkout_id = ?
+      `SELECT body_r2_key, provider_txn_id FROM notification WHERE checkout_id = ?
        ORDER BY notification_id DESC LIMIT 1`,
     )
       .bind(checkoutId)
-      .first<{ body_r2_key: string }>();
+      .first<{ body_r2_key: string; provider_txn_id: string | null }>();
     expect(notification?.body_r2_key).toBe("");
+    expect(notification?.provider_txn_id).toBe(
+      String((successFixture as PaymobCallbackFixture).obj.id),
+    );
+    expect(await paymentRow(checkoutId)).not.toBeNull();
   });
 
   it("E2E-P4.3-01 R3-M5 byte-caps callback bodies before intake writes", async () => {
@@ -809,6 +841,15 @@ describe("P4.3 notify intake", () => {
     expect(r2Failure.status).toBe(500);
     expect(await tableCount("notification")).toBe(0);
     expect(await tableCount("work")).toBe(0);
+    const failedUploadCleanup = await env.DB.prepare(
+      `SELECT r.state, o.state AS cleanup_state
+       FROM raw_evidence_registry r
+       JOIN raw_evidence_cleanup_outbox o ON o.evidence_id = r.evidence_id
+       WHERE r.evidence_kind = 'notification'
+       ORDER BY r.created_at DESC LIMIT 1`,
+    )
+      .first<{ state: string; cleanup_state: string }>();
+    expect(failedUploadCleanup).toEqual({ state: "delete_pending", cleanup_state: "open" });
 
     const factLogsBeforeD1Failure = await tableCount("fact_log");
     const retryFixture = successFixtureWithTxnId(99050);
@@ -817,7 +858,7 @@ describe("P4.3 notify intake", () => {
     const notificationFactsBeforeD1Failure = await env.DB.prepare(
       `SELECT COUNT(*) AS n FROM fact_log WHERE "table" = 'notification'`,
     ).first<{ n: number }>();
-    setD1BatchThrows(true);
+    setD1BatchThrows(true, 1);
     const d1Failure = await postPaymobProcessedCallback(retryFixture, {
       connectingIp: "203.0.113.12",
     });

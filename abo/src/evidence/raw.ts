@@ -87,13 +87,14 @@ export async function putClaimedRawEvidence(
     .first<{ current: number }>();
   if (before === null) {
     await queueRawEvidenceDelete(env, claim, "stale_claim");
+    await drainRawEvidenceDeletes(env, 100, claim.orgId ?? undefined);
     return false;
   }
   try {
     await env.R2.put(claim.r2Key, body);
-  } catch {
+  } catch (error) {
     await queueRawEvidenceDelete(env, claim, "upload_uncertain");
-    return false;
+    throw error;
   }
   const now = await clockNowIso(env);
   const finalized = await env.DB.prepare(
@@ -108,6 +109,7 @@ export async function putClaimedRawEvidence(
     .run();
   if ((finalized.meta.changes ?? 0) > 0) return true;
   await queueRawEvidenceDelete(env, claim, "erasure_raced_upload");
+  await drainRawEvidenceDeletes(env, 100, claim.orgId ?? undefined);
   return false;
 }
 

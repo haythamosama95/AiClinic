@@ -27,6 +27,7 @@ import reversalMigrationSql from "../../migrations/0005_reversal.sql?raw";
 import operatorActionMigrationSql from "../../migrations/0006_operator_action.sql?raw";
 import hpActionsMigrationSql from "../../migrations/0007_hp_actions.sql?raw";
 import acceptedCommandsErasureFenceMigrationSql from "../../migrations/0012_accepted_commands_erasure_fence.sql?raw";
+import notificationProviderTxnIdMigrationSql from "../../migrations/0013_notification_provider_txn_id.sql?raw";
 import reconciliationMigrationSql from "../../migrations/0008_reconciliation.sql?raw";
 import { loadOffersFixture } from "../../src/records/append";
 import { runReconciliation } from "../../src/reconciliation/run";
@@ -330,6 +331,7 @@ async function ensureMigrations(): Promise<void> {
     operatorActionMigrationSql,
     hpActionsMigrationSql,
     acceptedCommandsErasureFenceMigrationSql,
+    notificationProviderTxnIdMigrationSql,
     reconciliationMigrationSql,
   ]) {
     try {

@@ -64,8 +64,9 @@ async function retainCallbackBody(
   )
     .bind(input.checkoutId)
     .first<{ org_id: string; erasure_generation: number; erased_at: string | null }>();
-  if (owner === null || owner.erased_at !== null) return "";
+  if (owner === null) return "";
   await deleteQuarantinedRawEvidence(env, input.bodySha256);
+  if (owner.erased_at !== null) return "";
   const claim = {
     evidenceId: input.notificationId,
     orgId: owner.org_id,
@@ -238,6 +239,7 @@ async function insertEnqueuedNotificationAndConfirm(
     notificationId: string;
     bodySha256: string;
     bodyR2Key: string;
+    providerTxnId: string | undefined;
     checkoutId: string;
     channel: "processed" | "response";
   },
@@ -250,6 +252,7 @@ async function insertEnqueuedNotificationAndConfirm(
     channel: params.channel,
     hmac_valid: 1,
     body_r2_key: params.bodyR2Key,
+    provider_txn_id: params.providerTxnId ?? null,
     body_sha256: params.bodySha256,
     dedupe_key: params.bodySha256,
     checkout_id: params.checkoutId,
@@ -287,15 +290,16 @@ async function insertEnqueuedNotificationAndConfirm(
     ).bind(`notify-body:${params.bodySha256}`, nowIso),
     env.DB.prepare(
       `INSERT INTO notification (
-         notification_id, provider_id, channel, hmac_valid, body_r2_key,
+         notification_id, provider_id, channel, hmac_valid, body_r2_key, provider_txn_id,
          body_sha256, dedupe_key, checkout_id, disposition, adapter_version
-       ) SELECT ?, ?, ?, 1, ?, ?, ?, ?, 'enqueued', ?
+       ) SELECT ?, ?, ?, 1, ?, ?, ?, ?, ?, 'enqueued', ?
          WHERE changes() = 1`,
     ).bind(
       params.notificationId,
       PAYMOB_PROVIDER_ID,
       params.channel,
       params.bodyR2Key,
+      params.providerTxnId ?? null,
       params.bodySha256,
       params.bodySha256,
       params.checkoutId,
@@ -343,9 +347,9 @@ async function insertEnqueuedNotificationAndConfirm(
       await env.DB.batch([
         env.DB.prepare(
           `INSERT INTO notification (
-             notification_id, provider_id, channel, hmac_valid, body_r2_key,
+             notification_id, provider_id, channel, hmac_valid, body_r2_key, provider_txn_id,
              body_sha256, dedupe_key, checkout_id, disposition, adapter_version
-           ) SELECT ?, ?, ?, 1, ?, ?, ?, ?, 'enqueued', ?
+           ) SELECT ?, ?, ?, 1, ?, ?, ?, ?, ?, 'enqueued', ?
              WHERE EXISTS (
                SELECT 1 FROM paymob_state_seen WHERE dedupe_key = ?
              ) AND NOT EXISTS (
@@ -357,6 +361,7 @@ async function insertEnqueuedNotificationAndConfirm(
           PAYMOB_PROVIDER_ID,
           params.channel,
           params.bodyR2Key,
+          params.providerTxnId ?? null,
           params.bodySha256,
           params.bodySha256,
           params.checkoutId,
@@ -477,21 +482,23 @@ async function insertDuplicateNotification(
     notificationId: string;
     bodySha256: string;
     bodyR2Key: string;
+    providerTxnId?: string;
     checkoutId: string | null;
     channel: "processed" | "response";
   },
 ): Promise<void> {
   await env.DB.prepare(
     `INSERT INTO notification (
-       notification_id, provider_id, channel, hmac_valid, body_r2_key,
+       notification_id, provider_id, channel, hmac_valid, body_r2_key, provider_txn_id,
        body_sha256, dedupe_key, checkout_id, disposition, adapter_version
-     ) VALUES (?, ?, ?, 1, ?, ?, ?, ?, 'duplicate', ?)`,
+     ) VALUES (?, ?, ?, 1, ?, ?, ?, ?, ?, 'duplicate', ?)`,
   )
     .bind(
       params.notificationId,
       PAYMOB_PROVIDER_ID,
       params.channel,
       params.bodyR2Key,
+      params.providerTxnId ?? null,
       params.bodySha256,
       params.bodySha256,
       params.checkoutId,
@@ -658,14 +665,15 @@ export async function handlePostNotifyPaymob(
     try {
       await env.DB.prepare(
         `INSERT INTO notification (
-           notification_id, provider_id, channel, hmac_valid, body_r2_key,
+           notification_id, provider_id, channel, hmac_valid, body_r2_key, provider_txn_id,
            body_sha256, dedupe_key, checkout_id, disposition, adapter_version
-         ) VALUES (?, ?, 'processed', 1, ?, ?, ?, ?, 'enqueued', ?)`,
+         ) VALUES (?, ?, 'processed', 1, ?, ?, ?, ?, ?, 'enqueued', ?)`,
       )
         .bind(
           notificationId,
           PAYMOB_PROVIDER_ID,
           bodyR2Key,
+          event.provider_txn_id ?? null,
           bodySha256,
           bodySha256,
           checkoutId,
@@ -691,6 +699,7 @@ export async function handlePostNotifyPaymob(
       notificationId,
       bodySha256,
       bodyR2Key,
+      providerTxnId: event.provider_txn_id,
       checkoutId,
       channel: "processed",
     });
@@ -709,6 +718,7 @@ export async function handlePostNotifyPaymob(
         notificationId: duplicateId,
         bodySha256,
         bodyR2Key: duplicateBodyR2Key,
+        providerTxnId: event.provider_txn_id,
         checkoutId,
         channel: "processed",
       });
