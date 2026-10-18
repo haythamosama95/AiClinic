@@ -163,13 +163,17 @@ BEGIN
     (v_recon_user, v_org_a);
 
   -- Permission matrix for org A: RPC authorization for the caller and the AI
-  -- scope split used by the R1-SQL-02 reduced-scopes check.
+  -- scope split used by the R1-SQL-02 reduced-scopes check. Organization
+  -- inserts auto-seed the default matrix (tenant scoping trigger), so upsert.
   INSERT INTO public.roles_permissions (organization_id, role, permission_key, is_granted, created_by, updated_by)
   VALUES
     (v_org_a, 'administrator', 'settings.manage_staff', true, v_caller_user, v_caller_user),
     (v_org_a, 'administrator', 'ai.visit_summary',     true, v_caller_user, v_caller_user),
     (v_org_a, 'administrator', 'ai.admin_only_flag',   true, v_caller_user, v_caller_user),
-    (v_org_a, 'doctor',        'ai.visit_summary',     true, v_caller_user, v_caller_user);
+    (v_org_a, 'doctor',        'ai.visit_summary',     true, v_caller_user, v_caller_user)
+  ON CONFLICT (organization_id, role, permission_key) DO UPDATE
+    SET is_granted = true, is_deleted = false, updated_at = now(),
+        created_by = v_caller_user, updated_by = v_caller_user;
 
   INSERT INTO public.patients (
     id, branch_id, organization_id, full_name, phone, mrn, created_by, updated_by
