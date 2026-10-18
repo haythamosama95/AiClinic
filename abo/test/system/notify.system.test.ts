@@ -489,11 +489,18 @@ async function paymentRow(
   }
 }
 
-function successFixtureWithTxnId(txnId: number): PaymobCallbackFixture {
+function successFixtureWithTxnId(
+  txnId: number,
+  orderId?: string | number,
+): PaymobCallbackFixture {
   const base = successFixture as PaymobCallbackFixture;
   return {
     type: base.type,
-    obj: { ...base.obj, id: txnId },
+    obj: {
+      ...base.obj,
+      id: txnId,
+      order: { ...base.obj.order, id: orderId ?? base.obj.order.id },
+    },
   };
 }
 
@@ -671,16 +678,16 @@ describe("P4.3 notify intake", () => {
 
     for (let index = 0; index < 59; index += 1) {
       const response = await postPaymobProcessedCallback(
-        successFixtureWithTxnId(88000 + index),
+        successFixtureWithTxnId(88000 + index, "999999"),
         { connectingIp: rateIp },
       );
       expect(response.status).toBe(200);
     }
 
     const racing = await Promise.all([
-      postPaymobProcessedCallback(successFixtureWithTxnId(88997),
+      postPaymobProcessedCallback(successFixtureWithTxnId(88997, "999999"),
         { connectingIp: rateIp }),
-      postPaymobProcessedCallback(successFixtureWithTxnId(88998),
+      postPaymobProcessedCallback(successFixtureWithTxnId(88998, "999999"),
         { connectingIp: rateIp }),
     ]);
     expect(racing.map((response) => response.status).sort()).toEqual([200, 429]);
@@ -694,7 +701,7 @@ describe("P4.3 notify intake", () => {
     expect(notificationsAfterAcceptedWindow).toBe(notificationsBefore + 60);
     expect(workAfterAcceptedWindow).toBe(workBeforeRateWindow);
     const limited = await postPaymobProcessedCallback(
-      successFixtureWithTxnId(88999),
+      successFixtureWithTxnId(88999, "999999"),
       { connectingIp: rateIp },
     );
     expect(limited.status).toBe(429);
