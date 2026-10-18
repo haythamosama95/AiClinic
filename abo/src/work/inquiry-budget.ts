@@ -1,4 +1,4 @@
-import { clockNowIso, clockNowMs, type ClockEnv } from "../clock.js";
+import { clockNowIso, type ClockEnv } from "../clock.js";
 import { runDueGrantWork, type GrantEnv } from "./grant.js";
 import {
   raiseStaleConfirmAlerts,
@@ -17,7 +17,6 @@ import {
   type SweepEnv,
 } from "./sweep.js";
 
-const INQUIRY_CAP = 2;
 const WORK_BATCH_LIMIT = 50;
 
 export type InquiryBudgetEnv = ClockEnv &
@@ -31,41 +30,6 @@ type WorkRow = {
   kind: string;
   next_attempt_at: string | null;
 };
-
-function minuteKeyFromMs(nowMs: number): string {
-  return new Date(nowMs).toISOString().slice(0, 16);
-}
-
-async function ensureInquirySpendRow(
-  env: InquiryBudgetEnv,
-  minuteKey: string,
-): Promise<number> {
-  const row = await env.DB.prepare(
-    `SELECT spent FROM inquiry_spend WHERE minute_key = ?`,
-  )
-    .bind(minuteKey)
-    .first<{ spent: number }>();
-  if (row !== null) {
-    return row.spent;
-  }
-  await env.DB.prepare(
-    `INSERT INTO inquiry_spend (minute_key, spent) VALUES (?, 0)`,
-  )
-    .bind(minuteKey)
-    .run();
-  return 0;
-}
-
-async function incrementInquirySpend(
-  env: InquiryBudgetEnv,
-  minuteKey: string,
-): Promise<void> {
-  await env.DB.prepare(
-    `UPDATE inquiry_spend SET spent = spent + 1 WHERE minute_key = ?`,
-  )
-    .bind(minuteKey)
-    .run();
-}
 
 async function dueOpenWork(
   env: InquiryBudgetEnv,
@@ -145,18 +109,7 @@ export async function runMinuteInquiryBudget(
   await raiseStaleConfirmAlerts(env);
   await materializeCheckoutSweepSchedules(env);
 
-  const nowMs = await clockNowMs(env);
   const nowIso = await clockNowIso(env);
-  const minuteKey = minuteKeyFromMs(nowMs);
-  let spent = await ensureInquirySpendRow(env, minuteKey);
-
-  await processPendingNotificationReversals(env, {
-    budgetRemaining: Math.max(0, INQUIRY_CAP - spent),
-    onInquired: () => {
-      spent += 1;
-      return incrementInquirySpend(env, minuteKey);
-    },
-  });
 
   let confirmsProcessed = 0;
   const confirmRows = await dueOpenWork(
@@ -166,15 +119,8 @@ export async function runMinuteInquiryBudget(
     WORK_BATCH_LIMIT,
   );
   for (const row of confirmRows) {
-    if (spent >= INQUIRY_CAP) {
-      break;
-    }
     try {
-      const result = await runConfirmForWorkId(env, row.work_id);
-      if (result.inquired) {
-        spent += 1;
-        await incrementInquirySpend(env, minuteKey);
-      }
+      await runConfirmForWorkId(env, row.work_id);
       confirmsProcessed += 1;
     } catch {
       // Single row failure must not throw out of cron.
@@ -184,14 +130,9 @@ export async function runMinuteInquiryBudget(
   let grantsProcessed = 0;
   const grantRows = await dueOpenWork(env, "grant", nowIso, WORK_BATCH_LIMIT);
   for (const _row of grantRows) {
-    const withinCap = spent < INQUIRY_CAP;
     try {
       const processed = await runDueGrantWork(env, 1);
-      if (processed > 0 && withinCap) {
-        spent += 1;
-        await incrementInquirySpend(env, minuteKey);
-        grantsProcessed += 1;
-      } else if (processed > 0) {
+      if (processed > 0) {
         grantsProcessed += 1;
       }
     } catch {
@@ -202,18 +143,10 @@ export async function runMinuteInquiryBudget(
   const sweepRows = await dueOpenSweepWork(env, nowIso, WORK_BATCH_LIMIT);
   let sweepsProcessed = 0;
   for (const row of sweepRows) {
-    if (spent >= INQUIRY_CAP) {
-      break;
-    }
     try {
-      const result =
-        row.kind === "sweep_checkout"
+      row.kind === "sweep_checkout"
           ? await processSweepCheckoutWork(env, row.work_id)
           : await processSweepPaymentWork(env, row.work_id);
-      if (result.inquired) {
-        spent += 1;
-        await incrementInquirySpend(env, minuteKey);
-      }
       sweepsProcessed += 1;
     } catch {
       // Single row failure must not throw out of cron.
@@ -243,4 +176,6 @@ export async function runMinuteInquiryBudget(
       // Single row failure must not throw out of cron.
     }
   }
+
+  await processPendingNotificationReversals(env);
 }

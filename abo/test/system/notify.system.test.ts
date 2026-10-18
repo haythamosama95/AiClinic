@@ -878,7 +878,34 @@ describe("P4.3 notify intake", () => {
     expect(await openGrantWorkCount()).toBe(2);
   });
 
-  it("E2E-P4.3-08 inquiry timeout backs off and an old open row raises AL-01", async () => {
+  it("R3-C6: a second successful capture on one checkout is recorded separately", async () => {
+    const checkoutId = "01JNOTIFYCHECKOUT000007C";
+    await seedOpenCheckout(checkoutId, { openedWithCoverageThrough: null });
+
+    const first = await postPaymobProcessedCallback(
+      successFixtureWithTxnId(99101),
+    );
+    expect(first.status).toBe(200);
+    const second = await postPaymobProcessedCallback(
+      successFixtureWithTxnId(99102),
+      { connectingIp: "203.0.113.16" },
+    );
+    expect(second.status).toBe(200);
+
+    const payments = await env.DB.prepare(
+      `SELECT payment_id, classification FROM payment WHERE checkout_id = ? ORDER BY payment_id`,
+    )
+      .bind(checkoutId)
+      .all<{ payment_id: string; classification: string }>();
+    expect(payments.results).toHaveLength(2);
+    expect(new Set(payments.results?.map((row) => row.payment_id)).size).toBe(2);
+    expect(payments.results?.map((row) => row.classification).sort()).toEqual([
+      "likely_duplicate",
+      "normal",
+    ]);
+  });
+
+  it("R3-C7: inquiry timeout consumes its reservation and backs off", async () => {
     const checkoutId = "01JNOTIFYCHECKOUT000008A";
     await seedOpenCheckout(checkoutId);
     await setClock("2026-01-15T13:00:00.000Z");
@@ -893,6 +920,12 @@ describe("P4.3 notify intake", () => {
     expect(afterTimeout?.state).toBe("open");
     expect(afterTimeout?.attempts).toBeGreaterThanOrEqual(1);
     expect(await tableCount("payment")).toBe(0);
+    const spend = await env.DB.prepare(
+      `SELECT spent FROM inquiry_spend WHERE minute_key = ?`,
+    )
+      .bind("2026-01-15T13:00")
+      .first<{ spent: number }>();
+    expect(spend?.spent).toBe(1);
 
     await setClock("2026-01-15T13:01:00.000Z");
     await scriptPaymobInquiry("bound_success");

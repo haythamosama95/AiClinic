@@ -674,6 +674,9 @@ export async function verifyNotificationReversal(
     checkout_id: checkoutRow.checkout_id,
     paymob_txn_id: txnRow?.txn_id,
   });
+  if (inquiry.deferred) {
+    return { inquired: false, agreed: false };
+  }
   if (!inquiry.bound) {
     return { inquired: false, agreed: false };
   }
@@ -867,10 +870,6 @@ async function reverseWorkExists(
 
 export async function processPendingNotificationReversals(
   env: ReversalEnv,
-  options?: {
-    budgetRemaining?: number;
-    onInquired?: () => void | Promise<void>;
-  },
 ): Promise<void> {
   const rows = await env.DB.prepare(
     `SELECT reversal_id FROM reversal
@@ -879,23 +878,14 @@ export async function processPendingNotificationReversals(
        AND reversal_id NOT IN (SELECT reversal_id FROM reversal_outcome)`,
   ).all<{ reversal_id: string }>();
 
-  let remaining = options?.budgetRemaining ?? Number.POSITIVE_INFINITY;
-
   for (const row of rows.results ?? []) {
-    if (remaining <= 0) {
-      break;
-    }
     if (await reverseWorkExists(env, row.reversal_id)) {
       continue;
     }
     if (await findingExists(env, row.reversal_id, "inquiry_disagrees")) {
       continue;
     }
-    const result = await verifyNotificationReversal(env, row.reversal_id);
-    if (result.inquired) {
-      remaining -= 1;
-      await options?.onInquired?.();
-    }
+    await verifyNotificationReversal(env, row.reversal_id);
   }
 }
 

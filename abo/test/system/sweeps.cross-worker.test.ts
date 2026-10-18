@@ -15,6 +15,7 @@ import notifyWorkMigrationSql from "../../migrations/0003_notify_work.sql?raw";
 import grantMigrationSql from "../../migrations/0004_grant.sql?raw";
 import reversalMigrationSql from "../../migrations/0005_reversal.sql?raw";
 import { loadOffersFixture } from "../../src/records/append";
+import { PAYMOB_PROVIDER_ID, providerForId } from "../../src/provider/registry";
 import {
   applySql,
   billingFetch,
@@ -1179,7 +1180,35 @@ afterEach(async () => {
 });
 
 describe.sequential("sweeps cross-worker", () => {
-  it("E2E-P4.5-01 callback blocked, +2 min sweep confirms and grants", async () => {
+  it("R3-C7: concurrent inquiry reservations admit at most two logical attempts", async () => {
+    const expectations = await setupSweepsHarness();
+    const checkoutIds: string[] = [];
+    for (const requestId of ["req-budget-a", "req-budget-b", "req-budget-c"]) {
+      const checkout = await createOpenCheckoutWithoutCallback(
+        ORG_SWEEP_01,
+        expectations,
+        requestId,
+      );
+      checkoutIds.push(checkout.checkoutId);
+    }
+    const provider = providerForId(env as never, PAYMOB_PROVIDER_ID);
+    expect(provider).not.toBeNull();
+
+    const results = await Promise.all(
+      checkoutIds.map((checkoutId) =>
+        provider!.inquire({ checkout_id: checkoutId }),
+      ),
+    );
+    expect(results.filter((result) => result.deferred)).toHaveLength(1);
+    const currentIso = new Date(
+      (await harnessClockNowSeconds()) * 1000,
+    ).toISOString();
+    expect(
+      await inquirySpendForMinute(minuteKeyFromIso(currentIso)),
+    ).toBe(2);
+  });
+
+  it("R3-C4: callback-free discovery stays due until an operator submits a transaction id", async () => {
     const expectations = await setupSweepsHarness();
     const txnId = 95001;
     const { checkoutId } = await createOpenCheckoutWithoutCallback(
@@ -1194,27 +1223,14 @@ describe.sequential("sweeps cross-worker", () => {
 
     await setClock(addMinutes(openedAt, 2));
     await runScheduled("* * * * *");
-    await runGrantStep(ORG_SWEEP_01);
 
-    expect(await paymentCountForCheckout(checkoutId)).toBe(1);
-    expect(await grantOutcomeCount()).toBeGreaterThan(0);
+    expect(await paymentCountForCheckout(checkoutId)).toBe(0);
+    expect(await openSweepCheckoutWorkCount(checkoutId)).toBeGreaterThan(0);
     expect(await alertCountByCode("AL-03")).toBe(1);
-
-    const snapshot = await platformCoverageSnapshot(ORG_SWEEP_01);
-    expect(snapshot?.state).toBe("active");
-
-    for (const offsetMin of [5, 10, 20]) {
-      await setClock(addMinutes(openedAt, offsetMin));
-      await runScheduled("* * * * *");
-      expect(await paymentCountForCheckout(checkoutId)).toBe(1);
-      expect(await doneSweepCheckoutWorkCount(checkoutId)).toBeGreaterThanOrEqual(
-        offsetMin === 5 ? 2 : offsetMin === 10 ? 3 : 4,
-      );
-    }
-    expect(await sweepCheckoutWorkCount(checkoutId)).toBeGreaterThanOrEqual(4);
+    expect(await checkoutStatusState(checkoutId)).toBe("open");
   });
 
-  it("E2E-P4.5-02 HMAC failures still confirm by sweep", async () => {
+  it("R3-C4: HMAC failures alert and callback-free recovery remains due", async () => {
     const expectations = await setupSweepsHarness();
     const txnId = 95002;
     const { checkoutId } = await createOpenCheckoutWithoutCallback(
@@ -1234,13 +1250,13 @@ describe.sequential("sweeps cross-worker", () => {
 
     await setClock(addMinutes(openedAt, 2));
     await runScheduled("* * * * *");
-    await runGrantStep(ORG_SWEEP_02);
 
-    expect(await paymentCountForCheckout(checkoutId)).toBe(1);
-    expect(await grantOutcomeCount()).toBeGreaterThan(0);
+    expect(await paymentCountForCheckout(checkoutId)).toBe(0);
+    expect(await openSweepCheckoutWorkCount(checkoutId)).toBeGreaterThan(0);
+    expect(await alertCountByCode("AL-03")).toBe(1);
   });
 
-  it("E2E-P4.5-03 expiry then day-3 payment is paid_late", async () => {
+  it("R3-C4: expiry sweeps stay due when no transaction identity is known", async () => {
     const expectations = await setupSweepsHarness();
     const txnId = 95003;
     const { checkoutId } = await createOpenCheckoutWithoutCallback(
@@ -1253,27 +1269,21 @@ describe.sequential("sweeps cross-worker", () => {
     await setClock(expiresAt);
     await runScheduled("* * * * *");
 
-    expect(await checkoutStatusState(checkoutId)).toBe("expired");
-    expect(await getCheckoutShownState(ORG_SWEEP_03, checkoutId)).toBe(
-      "Abandoned",
-    );
+    expect(await checkoutStatusState(checkoutId)).toBe("open");
     expect(await paymentCountForCheckout(checkoutId)).toBe(0);
+    expect(await openSweepCheckoutWorkCount(checkoutId)).toBeGreaterThan(0);
 
     const day3 = addDays(expiresAt, 3);
     await setClock(day3);
     await runScheduled("* * * * *");
 
-    expect(await checkoutStatusState(checkoutId)).toBe("paid_late");
-    expect(await paymentClassification(checkoutId)).toBe("late");
-    expect(await getCheckoutShownState(ORG_SWEEP_03, checkoutId)).toBe("Paid");
+    expect(await checkoutStatusState(checkoutId)).toBe("open");
+    expect(await paymentCountForCheckout(checkoutId)).toBe(0);
+    expect(await alertCountByCode("AL-03")).toBe(1);
     expect(await grantOutcomeCount()).toBe(0);
-
-    await runGrantStep(ORG_SWEEP_03);
-    expect(await grantOutcomeCount()).toBeGreaterThan(0);
-    expect(await alertCountByCode("AL-08")).toBe(1);
   });
 
-  it("E2E-P4.5-12 crash after callback is inquired within 2–20 minutes", async () => {
+  it("R3-C4: callback body loss stays due until an operator submits its transaction id", async () => {
     const expectations = await setupSweepsHarness();
     const txnId = 95012;
     const { checkoutId } = await createOpenCheckoutWithoutCallback(
@@ -1302,8 +1312,9 @@ describe.sequential("sweeps cross-worker", () => {
     await scriptPaymobInquiry("bound_success");
     await runScheduled("* * * * *");
 
-    expect(await paymentCountForCheckout(checkoutId)).toBe(1);
-    expect(await doneSweepCheckoutWorkCount(checkoutId)).toBeGreaterThanOrEqual(1);
+    expect(await paymentCountForCheckout(checkoutId)).toBe(0);
+    expect(await openSweepCheckoutWorkCount(checkoutId)).toBeGreaterThan(0);
+    expect(await alertCountByCode("AL-03")).toBe(1);
   });
 
   it("E2E-P4.5-04 parent-flag refund ends the active term and holds the queue", async () => {
@@ -1626,7 +1637,7 @@ describe.sequential("sweeps cross-worker", () => {
     expect(await reversalDetectedVia(dailyPaymentId!)).toBe("inquiry");
   });
 
-  it("E2E-P4.5-10 confirm and grant take the inquiry budget first", async () => {
+  it("R3-C7: confirms reserve inquiry slots and grants consume none", async () => {
     const expectations = await setupSweepsHarness();
     const offerVersions = await seedTermOfferVersions(expectations);
     const org = ORG_SWEEP_10;

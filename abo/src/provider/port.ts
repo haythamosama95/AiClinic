@@ -112,6 +112,10 @@ export type InquireInput = InquireByCheckout | InquireByPayment;
 export type InquireResult = {
   bound: boolean;
   transactions: ProviderTxn[];
+  /** The shared per-minute inquiry reservation was unavailable; retry the work later. */
+  deferred?: boolean;
+  /** No transaction identity is known and automatic order enumeration is not enabled. */
+  discovery_unavailable?: boolean;
 };
 
 export type PayoutLineKind =

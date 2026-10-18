@@ -7,7 +7,7 @@ import {
   providerForId,
   type ProviderRegistryEnv,
 } from "../provider/registry.js";
-import type { ProviderTxn } from "../provider/port.js";
+import type { InquireResult, ProviderTxn } from "../provider/port.js";
 import {
   recordReversalFromProviderTxn,
   type ReversalEnv,
@@ -58,6 +58,7 @@ type NotificationRow = {
   channel: string;
   checkout_id?: string | null;
   disposition?: string;
+  provider_txn_id?: string;
 };
 
 async function newId(env: WorkRunnerEnv): Promise<string> {
@@ -205,6 +206,9 @@ async function paymobTxnIdFromNotification(
   env: WorkRunnerEnv,
   notification: NotificationRow,
 ): Promise<string | null> {
+  if (notification.provider_txn_id !== undefined) {
+    return notification.provider_txn_id;
+  }
   const object = await env.R2.get(notification.body_r2_key);
   if (object === null) {
     return null;
@@ -322,23 +326,15 @@ async function classificationForPayment(
   if (status === "expired" || status === "cancelled") {
     return "late";
   }
-  if (checkout.opened_with_coverage_through === null) {
-    return "normal";
-  }
   const prior = await env.DB.prepare(
     `SELECT 1
      FROM payment p
      INNER JOIN checkout c ON c.checkout_id = p.checkout_id
      WHERE p.org_id = ?
-       AND c.opened_with_coverage_through = ?
-       AND p.checkout_id != ?
+       AND c.opened_with_coverage_through IS ?
      LIMIT 1`,
   )
-    .bind(
-      checkout.org_id,
-      checkout.opened_with_coverage_through,
-      checkout.checkout_id,
-    )
+    .bind(checkout.org_id, checkout.opened_with_coverage_through)
     .first();
   return prior === null ? "normal" : "likely_duplicate";
 }
@@ -676,6 +672,7 @@ async function confirmSuccessBatch(
   checkout: CheckoutRow,
   notification: NotificationRow,
   leaseToken: string,
+  authoritativeInquiry?: InquireResult,
 ): Promise<void> {
   if (!(await leaseStillHeld(env, work.work_id, leaseToken))) {
     return;
@@ -687,7 +684,7 @@ async function confirmSuccessBatch(
   }
 
   const paymobTxnId = await paymobTxnIdFromNotification(env, notification);
-  const inquiry = await provider.inquire({
+  const inquiry = authoritativeInquiry ?? await provider.inquire({
     checkout_id: checkout.checkout_id,
     paymob_txn_id: paymobTxnId ?? undefined,
   });
@@ -699,6 +696,23 @@ async function confirmSuccessBatch(
       checkout.checkout_id,
     );
     await markWorkDone(env, work.work_id, leaseToken);
+    return;
+  }
+
+  if (inquiry.discovery_unavailable) {
+    await raiseAlert(
+      env,
+      "AL-03",
+      `AL-03:discovery:${checkout.checkout_id}`,
+      checkout.checkout_id,
+    );
+    await releaseLeaseRetry(
+      env,
+      work.work_id,
+      leaseToken,
+      work.attempts + 1,
+      "discovery_unavailable",
+    );
     return;
   }
 
@@ -987,6 +1001,7 @@ async function confirmSuccessBatch(
 async function processConfirmWork(
   env: WorkRunnerEnv,
   work: WorkRow,
+  authoritativeInquiry?: InquireResult,
 ): Promise<{ inquired: boolean }> {
   const leaseToken = work.lease_token;
   if (leaseToken === null) {
@@ -1015,7 +1030,11 @@ async function processConfirmWork(
     if (provider === null) {
       return { inquired: false };
     }
-    const inquiry = await provider.inquire({ checkout_id: checkout.checkout_id });
+    const manualTxnId = /^confirm:manual:[^:]+:(\d+)$/u.exec(work.dedupe_key)?.[1];
+    const inquiry = authoritativeInquiry ?? await provider.inquire({
+      checkout_id: checkout.checkout_id,
+      paymob_txn_id: manualTxnId,
+    });
     if (!inquiry.bound && inquiry.transactions.length === 0) {
       await releaseLeaseRetry(
         env,
@@ -1025,6 +1044,22 @@ async function processConfirmWork(
         "no_notification",
       );
       return { inquired: false };
+    }
+    if (inquiry.discovery_unavailable) {
+      await raiseAlert(
+        env,
+        "AL-03",
+        `AL-03:discovery:${checkout.checkout_id}`,
+        checkout.checkout_id,
+      );
+      await releaseLeaseRetry(
+        env,
+        work.work_id,
+        leaseToken,
+        work.attempts + 1,
+        "discovery_unavailable",
+      );
+      return { inquired: true };
     }
     if (inquiry.transactions.length === 0) {
       await releaseLeaseRetry(
@@ -1041,6 +1076,7 @@ async function processConfirmWork(
       body_r2_key: "",
       body_sha256: await sha256Hex(new TextEncoder().encode("")),
       channel: "processed",
+      provider_txn_id: manualTxnId,
     };
     await confirmSuccessBatch(
       env,
@@ -1048,6 +1084,7 @@ async function processConfirmWork(
       checkout,
       syntheticNotification,
       leaseToken,
+      inquiry,
     );
     return { inquired: true };
   }
@@ -1059,6 +1096,7 @@ async function processConfirmWork(
       checkout,
       notification,
       leaseToken,
+      authoritativeInquiry,
     );
     return { inquired: true };
   }
@@ -1076,12 +1114,19 @@ async function processConfirmWork(
   }
 
   try {
+    const sameTxnInquiry =
+      authoritativeInquiry?.transactions.some(
+        (txn) => txn.provider_txn_id === paymobTxnId,
+      ) === true
+        ? authoritativeInquiry
+        : undefined;
     await confirmSuccessBatch(
       env,
       work,
       checkout,
       notification,
       leaseToken,
+      sameTxnInquiry,
     );
     return { inquired: true };
   } catch {
@@ -1099,6 +1144,7 @@ async function processConfirmWork(
 export async function runConfirmForWorkId(
   env: WorkRunnerEnv,
   workId: string,
+  authoritativeInquiry?: InquireResult,
 ): Promise<{ inquired: boolean }> {
   const work = await takeWork(env, workId);
   if (work === null || work.kind !== "confirm") {
@@ -1109,7 +1155,7 @@ export async function runConfirmForWorkId(
     return { inquired: false };
   }
   try {
-    return await processConfirmWork(env, work);
+    return await processConfirmWork(env, work, authoritativeInquiry);
   } catch {
     await releaseLeaseRetry(
       env,

@@ -21,7 +21,12 @@ import {
 } from "../clinic-api/version.js";
 import { clockNowIso, clockNowMs, type ClockEnv } from "../clock.js";
 import { insertFactLog } from "../records/append.js";
-import { PAYMOB_PROVIDER_ID, providerForId } from "../provider/registry.js";
+import {
+  PAYMOB_PROVIDER_ID,
+  providerForId,
+  type ProviderRegistryEnv,
+} from "../provider/registry.js";
+import { runConfirmForWorkId } from "../work/runner.js";
 import { runReconciliation } from "../reconciliation/run.js";
 import { rememberOperatorCredential } from "../watch/hourly.js";
 import {
@@ -35,7 +40,7 @@ import {
 import { signedHpParamsBound } from "./browser/ceremony.js";
 const ASSERTION_MAX_AGE_MS = 5 * 60 * 1000;
 
-export interface OpsEnv extends ClockEnv {
+export interface OpsEnv extends ClockEnv, ProviderRegistryEnv {
   DB: D1Database;
   R2: R2Bucket;
   ACCESS_TEAM_DOMAIN: string;
@@ -2118,6 +2123,100 @@ async function handlePostCancel(
   );
 }
 
+async function handlePostSubmitTransactionId(
+  env: OpsEnv,
+  checkoutId: string,
+  access: VerifiedAccess,
+  request: Request,
+  contractVersion: number,
+): Promise<Response> {
+  let transactionId: string;
+  try {
+    const body = (await request.json()) as unknown;
+    if (
+      body === null ||
+      typeof body !== "object" ||
+      typeof (body as { transaction_id?: unknown }).transaction_id !== "string"
+    ) {
+      return clinicErrorResponse("invalid_request", 400, contractVersion);
+    }
+    transactionId = (body as { transaction_id: string }).transaction_id.trim();
+  } catch {
+    return clinicErrorResponse("invalid_request", 400, contractVersion);
+  }
+  if (!/^\d{1,32}$/u.test(transactionId)) {
+    return clinicErrorResponse("invalid_request", 400, contractVersion);
+  }
+
+  const checkout = await env.DB.prepare(
+    `SELECT checkout_id FROM checkout WHERE checkout_id = ?`,
+  )
+    .bind(checkoutId)
+    .first<{ checkout_id: string }>();
+  if (checkout === null) {
+    return clinicErrorResponse("not_found", 404, contractVersion);
+  }
+  const knownTransaction = await env.DB.prepare(
+    `SELECT 1 FROM paymob_txn WHERE checkout_id = ? LIMIT 1`,
+  )
+    .bind(checkoutId)
+    .first();
+  if (knownTransaction !== null) {
+    return clinicErrorResponse("conflict", 409, contractVersion);
+  }
+
+  const actionId = crypto.randomUUID();
+  const workId = actionId;
+  const nowIso = await clockNowIso(env);
+  const action = "Submit a provider transaction id for a checkout with no known transaction";
+  const subject = checkoutId;
+  const paramsSha256 = await sha256Hex(
+    canonicalize({ action, subject, transaction_id: transactionId }),
+  );
+  await insertOperatorAction(
+    env,
+    {
+      action_id: actionId,
+      actor_email: access.email,
+      access_jti: access.jti,
+      action,
+      subject,
+      params_sha256: paramsSha256,
+      assertion_sha256: null,
+      result: "submitted",
+    },
+    nowIso,
+  );
+  await env.DB.prepare(
+    `INSERT INTO work (
+       work_id, kind, subject_id, dedupe_key, state, attempts,
+       next_attempt_at, lease_until, lease_token, last_error, opened_at
+     ) VALUES (?, 'confirm', ?, ?, 'open', 0, NULL, NULL, NULL, NULL, ?)
+     ON CONFLICT(dedupe_key) DO NOTHING`,
+  )
+    .bind(
+      workId,
+      checkoutId,
+      `confirm:manual:${actionId}:${transactionId}`,
+      nowIso,
+    )
+    .run();
+
+  await recordPlatformOperatorAction(
+    env,
+    access.jwt,
+    action,
+    subject,
+    actionId,
+  );
+  await runConfirmForWorkId(env, workId);
+  return clinicJsonResponse(
+    { contract_version: contractVersion, action_id: actionId, work_id: workId },
+    200,
+    contractVersion,
+  );
+}
+
 const TRANSFER_LEASE_MS = 60_000;
 const TRANSFER_BATCH_LIMIT = 50;
 
@@ -3414,6 +3513,18 @@ export async function handleOps(
   const cancelMatch = /^\/ops\/checkouts\/([^/]+)\/cancel$/u.exec(path);
   if (request.method === "POST" && cancelMatch !== null) {
     return handlePostCancel(env, cancelMatch[1]!, access, contractVersion);
+  }
+
+  const submitTransactionMatch =
+    /^\/ops\/checkouts\/([^/]+)\/transaction-id$/u.exec(path);
+  if (request.method === "POST" && submitTransactionMatch !== null) {
+    return handlePostSubmitTransactionId(
+      env,
+      submitTransactionMatch[1]!,
+      access,
+      request,
+      contractVersion,
+    );
   }
 
   const publishMatch = /^\/ops\/offers\/([^/]+)\/publish$/u.exec(path);

@@ -27,6 +27,7 @@ import {
   opsFetch,
   pinIssuer,
   runScheduled,
+  scriptPaymobInquiry,
   tableCount,
 } from "./harness";
 import { mintHxwVendorAccessJwt } from "./hxw-access-fixture";
@@ -54,6 +55,7 @@ const ORG_OPS_04 = "a4660004-0000-4004-8004-000000000004";
 const ORG_OPS_05 = "a4660005-0000-4005-8005-000000000005";
 const ORG_OPS_06 = "a4660006-0000-4006-8006-000000000006";
 const ORG_OPS_07 = "a4660007-0000-4007-8007-000000000007";
+const ORG_OPS_08 = "a4660008-0000-4008-8008-000000000008";
 
 type OffersFixtureExpectations = {
   offer_id: string;
@@ -1203,6 +1205,64 @@ describe("ops cross-worker", () => {
     expect(intake.status).toBe(200);
     await runScheduled("* * * * *");
     expect(await checkoutStatusState(checkoutId)).toBe("paid_late");
+  });
+
+  it("R3-C4: operator transaction submission confirms only a bound capture", async () => {
+    const { expectations, offerVersions } = await setupOpsHarness();
+    const orgId = ORG_OPS_08;
+    await setClock("2026-06-01T12:00:00.000Z");
+    await putBillingContact(orgId);
+    await setupActivePlatformCoverage(orgId);
+    const { checkoutId } = await postCheckout(
+      orgId,
+      offerVersions[1],
+      expectations,
+      "req-ops-08-transaction-id",
+    );
+    expect(await paymentIdForCheckout(checkoutId)).toBeNull();
+
+    const accessJwt = await mintVendorAccessJwt(OPS_OPERATOR_EMAIL);
+    const submit = await opsFetch(
+      `/ops/checkouts/${checkoutId}/transaction-id`,
+      {
+        method: "POST",
+        headers: {
+          ...(await opsHeaders(accessJwt)),
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ transaction_id: "96708" }),
+      },
+    );
+    expect(submit.status).toBe(200);
+    const body = (await submit.json()) as Record<string, unknown>;
+    expectContractVersion(submit, body);
+    expect(await paymentIdForCheckout(checkoutId)).not.toBeNull();
+    const action = await operatorActionRow(String(body.action_id));
+    expect(action?.action).toBe(
+      "Submit a provider transaction id for a checkout with no known transaction",
+    );
+    expect(action?.actor_email).toBe(OPS_OPERATOR_EMAIL);
+
+    const unbound = await postCheckout(
+      orgId,
+      offerVersions[1],
+      expectations,
+      "req-ops-08-unbound-transaction-id",
+    );
+    await scriptPaymobInquiry("unbound");
+    const rejectedBinding = await opsFetch(
+      `/ops/checkouts/${unbound.checkoutId}/transaction-id`,
+      {
+        method: "POST",
+        headers: {
+          ...(await opsHeaders(accessJwt)),
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ transaction_id: "96709" }),
+      },
+    );
+    expect(rejectedBinding.status).toBe(200);
+    expect(await paymentIdForCheckout(unbound.checkoutId)).toBeNull();
   });
 
   it("E2E-P4.6-06 stale contract version rejects before auth and writes", async () => {

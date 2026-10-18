@@ -286,6 +286,18 @@ export async function processSweepCheckoutWork(
   }
 
   const inquiry = await provider.inquire({ checkout_id: checkoutId });
+  if (inquiry.deferred) {
+    return { inquired: false };
+  }
+  if (inquiry.discovery_unavailable) {
+    await raiseAlert(
+      env,
+      "AL-03",
+      `AL-03:discovery:${checkoutId}`,
+      checkoutId,
+    );
+    return { inquired: true };
+  }
   const nowIso = await clockNowIso(env);
   const status = await checkoutStatus(env, checkoutId);
   const isExpirySweep = work.next_attempt_at === checkout.expires_at;
@@ -358,7 +370,7 @@ export async function processSweepCheckoutWork(
     if (mayConfirm) {
       const confirmWorkId = await ensureConfirmWorkForCheckout(env, checkoutId);
       if (confirmWorkId !== null) {
-        await runConfirmForWorkId(env, confirmWorkId);
+        await runConfirmForWorkId(env, confirmWorkId, inquiry);
         const paymentRow = await env.DB.prepare(
           `SELECT payment_id FROM payment WHERE checkout_id = ?`,
         )
@@ -413,6 +425,9 @@ export async function processSweepPaymentWork(
   }
 
   const inquiry = await provider.inquire({ payment_id: work.subject_id });
+  if (inquiry.deferred) {
+    return { inquired: false };
+  }
   if (!inquiry.bound) {
     return { inquired: false };
   }

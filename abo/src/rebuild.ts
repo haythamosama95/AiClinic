@@ -810,20 +810,9 @@ async function inquireGapPayments(
 ): Promise<string[]> {
   const gapFilledPaymentIds: string[] = [];
 
-  const checkouts = await env.DB.prepare(
-    `SELECT checkout_id FROM checkout`,
-  ).all<{ checkout_id: string }>();
-  for (const checkout of checkouts.results ?? []) {
-    await provider.inquire({ checkout_id: checkout.checkout_id });
-  }
-
-  const payments = await env.DB.prepare(
-    `SELECT payment_id FROM payment`,
-  ).all<{ payment_id: string }>();
-  for (const payment of payments.results ?? []) {
-    await provider.inquire({ payment_id: payment.payment_id });
-  }
-
+  // Explicit transaction references are the operator's stated repair target.
+  // Give them the shared inquiry slots before broad recovery scans consume the
+  // per-minute cap; remaining scans stay read-only when they are deferred.
   for (const reference of options.providerTransactionReferences) {
     const candidates = await env.DB.prepare(
       `SELECT pi.checkout_id
@@ -836,7 +825,7 @@ async function inquireGapPayments(
         checkout_id: candidate.checkout_id,
         paymob_txn_id: reference,
       });
-      if (!inquiry.bound) {
+      if (!inquiry.bound || inquiry.deferred) {
         continue;
       }
       for (const txn of inquiry.transactions) {
@@ -851,6 +840,20 @@ async function inquireGapPayments(
         }
       }
     }
+  }
+
+  const checkouts = await env.DB.prepare(
+    `SELECT checkout_id FROM checkout`,
+  ).all<{ checkout_id: string }>();
+  for (const checkout of checkouts.results ?? []) {
+    await provider.inquire({ checkout_id: checkout.checkout_id });
+  }
+
+  const payments = await env.DB.prepare(
+    `SELECT payment_id FROM payment`,
+  ).all<{ payment_id: string }>();
+  for (const payment of payments.results ?? []) {
+    await provider.inquire({ payment_id: payment.payment_id });
   }
 
   const paidGrantIds = await paidGrantIdsFromPayments(env);

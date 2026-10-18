@@ -946,10 +946,32 @@ async function authToken(env: PaymobAdapterEnv): Promise<string | null> {
 
 const INQUIRY_RETRY: InquireResult = { bound: true, transactions: [] };
 
+async function reserveInquiryAttempt(env: PaymobAdapterEnv): Promise<boolean> {
+  const nowMs = await clockNowMs(env);
+  const minuteKey = new Date(nowMs).toISOString().slice(0, 16);
+  await env.DB.prepare(
+    `INSERT INTO inquiry_spend (minute_key, spent) VALUES (?, 0)
+     ON CONFLICT(minute_key) DO NOTHING`,
+  )
+    .bind(minuteKey)
+    .run();
+  const reserved = await env.DB.prepare(
+    `UPDATE inquiry_spend SET spent = spent + 1
+     WHERE minute_key = ? AND spent < 2
+     RETURNING spent`,
+  )
+    .bind(minuteKey)
+    .first<{ spent: number }>();
+  return reserved !== null;
+}
+
 async function inquireImpl(
   env: PaymobAdapterEnv,
   input: InquireInput,
 ): Promise<InquireResult> {
+  if (!(await reserveInquiryAttempt(env))) {
+    return { bound: true, transactions: [], deferred: true };
+  }
   let checkoutId: string;
   let paymobTxnIdOverride: string | undefined;
   if ("checkout_id" in input) {
@@ -984,20 +1006,19 @@ async function inquireImpl(
     return { bound: false, transactions: [] };
   }
 
+  const txnId =
+    paymobTxnIdOverride ?? (await latestTxnIdForCheckout(env, checkoutId));
+  if (txnId === null) {
+    return {
+      bound: true,
+      transactions: [],
+      discovery_unavailable: true,
+    };
+  }
+
   const token = await authToken(env);
   if (token === null) {
     return INQUIRY_RETRY;
-  }
-
-  let txnId =
-    paymobTxnIdOverride ?? (await latestTxnIdForCheckout(env, checkoutId));
-  if (txnId === null) {
-    const storedTxn = await env.DB.prepare(
-      `SELECT txn_id FROM paymob_txn WHERE checkout_id = ? ORDER BY txn_id ASC LIMIT 1`,
-    )
-      .bind(checkoutId)
-      .first<{ txn_id: string }>();
-    txnId = storedTxn?.txn_id ?? "99001";
   }
 
   const txnResult = await getPaymobAcceptanceTransaction(env, token, txnId);
