@@ -236,12 +236,9 @@ Do not use `gh run watch`. It refreshes every 3 seconds by default and reads eve
 which exhausts the API rate limit. Instead, check the run with one call:
 `gh run view <run-id> --repo haythamosama95/AiClinic --json status,conclusion`, on this schedule:
 
-1. First check 9 minutes after dispatch.
-2. If the run is not complete, check again every minute, up to 5 more checks (about 14 minutes after
-   dispatch).
-3. If it is still not complete, the run is slower than usual (queued runners or a long job). Check every
-   5 minutes from then on.
-4. If it is still not complete 2 hours after dispatch, stop and report the run URL and the jobs still
+1. First check 7 minutes after dispatch.
+2. If the run is not complete, check again every minute, up to 5 more checks.
+3. If it is still not complete 15 minutes after dispatch, stop and report the run URL and the jobs still
    running (rule 2.10). Do not cancel the run or dispatch another.
 
 - Between checks, wait using your environment's wait or sleep facility (for example a background shell or a
@@ -263,7 +260,7 @@ Stop, record the reason in the tracker row as `blocked`, and report to the human
   Implement the code part, list the action under "Operator checklist" in your completion record and do not
   perform it;
 - `gh` is missing or unauthenticated, the dispatch fails, or the CI run's `headSha` is not your commit;
-- a CI run is still not complete 2 hours after dispatch (§2.9.6);
+- a CI run is still not complete 15 minutes after dispatch (§2.9.6);
 - the same test case still fails after three CI rounds (§2.9.4).
 
 Never guess past a stop.

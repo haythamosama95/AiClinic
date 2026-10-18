@@ -54,10 +54,9 @@ Validate remotely only, with the complete CI workflow:
   `gh run watch`. Check with one
   `gh run view <run-id> --json status,conclusion` call: first 7 minutes
    after dispatch, then every minute for up to 5 more checks. If the run
-   is not complete 15 minutes after dispatch, stop and report. Fetch job
-   details and logs only once the run has completed. Wait between checks
-   with your wait or sleep tool. Fetch job details and logs only once the
-   run has completed. On a rate-limit error, wait until the reset time and resume.
+   is not complete 15 minutes after dispatch, stop and report. Wait between
+   checks with your wait or sleep tool. Fetch job details and logs only
+   once the run has completed. On a rate-limit error, wait until the reset time and resume.
 - Green means every test-campaign job passed, apart from unchanged known
   failures in the RM00 baseline. Confirm your new tests actually ran and
   passed. Fix your own failures with a new commit and run the complete
