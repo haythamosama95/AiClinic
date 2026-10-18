@@ -32,7 +32,9 @@ Before editing:
    file; read only that section. Then read the listed architecture
    sections. Open nothing else in docs/review/ or specs/.
 3. Write a todo list: one item per fix step of each finding, in the
-   entry's order, plus one item per completion check to turn into a test.
+   entry's order, plus one item per completion check to turn into a test,
+   plus one item to search existing tests for every symbol you change and
+   update those asserting the old behavior (plan §2.9.1).
 
 Implement:
 - Fix steps are the specification. Completion checks are the acceptance

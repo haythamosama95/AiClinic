@@ -181,6 +181,12 @@ Source code is the authority on what currently exists. It is never the authority
 - An existing test may encode the defective behavior. Change it only to the behavior the recipe specifies,
   and name the finding in it. Never delete or weaken a test just to make the suite pass. Do not modify harness
   files marked frozen, such as `backend/tests/catalog/harness.sql` and `run.sh`.
+- Before the first push, find the existing tests your change affects. For every SQL object, RPC, error code,
+  table, column, route or exported symbol you change, search the test trees (`backend/tests/`,
+  `packages/*/test/`, `ai-platform/test/`, `abo/test/`, `frontend/test/`, and any test directory next to the
+  code you change) for references. Open each hit and either update it in the implementation commit, because it
+  asserts behavior the recipe changes, or mark it unaffected. CI remains the authority: if an existing test you
+  marked unaffected fails in CI, record it in the completion record as a missed hit.
 
 #### 2.9.2 No local execution
 
@@ -273,6 +279,8 @@ Never guess past a stop.
    - findings implemented, with any recipe step intentionally deferred and why;
    - changed files and symbols, and new migrations in order;
    - tests added or changed, by finding;
+   - existing tests reviewed (rule 2.9.1): search terms used, tests changed with their finding ID, tests checked
+     and left unchanged, and any missed hits CI revealed;
    - seams left for later phases, discovered issues, operator checklist items and any precedence conflicts
      (rule 2.4).
 3. Commit with message `RM<NN>: <title> (<finding IDs>)`. A phase may use several commits; CI validates the
