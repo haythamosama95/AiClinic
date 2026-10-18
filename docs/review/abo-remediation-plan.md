@@ -737,7 +737,7 @@ Agents update only their own row (rule 2.11). Status values: `not started`, `in 
 | Phase | Status | Validated commit | CI run | Completed on | Notes |
 | --- | --- | --- | --- | --- | --- |
 | RM00 | complete | `5aefe777a0266c0e6b6de1fdf6598a2476e69de0` | [39104988439](https://github.com/haythamosama95/AiClinic/actions/runs/39104988439) | 2026-10-18 | CI baseline, no code changes (§2.9.5); 2 known failures: `backend/all` `appointments_patient_mrn_payload_test.sql`, `ai-platform/workers` `E2E-P3.9-01 FM-06 DO failure admits via fallback and */5 charges once` |
-| RM01 | blocked | `bec38feeb5f250311d294d7e8404f9d2921ad5ae` (unvalidated) | — | — | Implemented + pushed; blocked at CI dispatch: `gh` missing on implementing machine (rule 2.10); see docs/review/abo-remediation/RM01.md |
+| RM01 | complete | `979b9246ff497ce2b869679d8856b45f58742b8d` | [39116772595](https://github.com/haythamosama95/AiClinic/actions/runs/39116772595) | 2026-10-18 | 4 findings implemented (SQL-01 → SQL-03 → SQL-02 → SQL-06); new `Staff authority RM01` test passed 20/20 in `backend/all`; test-fixture commits `79a37765`/`979b9246` on top of `bec38fee`; see docs/review/abo-remediation/RM01.md |
 | RM02 | not started | — | — | — | — |
 | RM03 | not started | — | — | — | — |
 | RM04 | not started | — | — | — | — |
