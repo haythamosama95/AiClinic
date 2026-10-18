@@ -1,4 +1,5 @@
 import { env, runInDurableObject } from "cloudflare:test";
+import { CHANNEL_VERSIONS } from "vendor-contracts";
 import { beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import migrationSql from "../migrations/20260731120000_platform_schema.sql?raw";
 import graceQueueMigrationSql from "../migrations/20260821120000_grace_admission_queue.sql?raw";
@@ -1138,6 +1139,53 @@ describe("fallback_reconcile_drains_pending_rows", () => {
     expect(reconcile.reconciled).toBe(0);
     expect(await countPendingFallbackRows(installationId)).toBe(1);
   });
+
+  it("R2-C3: settleFallback does not mark usage settled from a mismatched DO version", async () => {
+    const admission = await loadAdmissionModule();
+    const credit = await loadCreditModule();
+    const installationId = freshInstallationId();
+    const { cache, reader } = await seedInstallationAndEntitlement(installationId);
+    const fallback = await admission.runAdmission(
+      defaultAdmissionInput(installationId, cache, reader),
+      { DB: env.DB, DO: createThrowingDoNamespace(env.DO) },
+      { now: FIXTURE_NOW_MS, nowMs: FIXTURE_NOW_MS },
+    );
+    expect(fallback.ok).toBe(true);
+    if (!fallback.ok || fallback.outcome !== "grace_admitted") {
+      return;
+    }
+    await seedAiRequestForFallback(
+      installationId,
+      fallback.requestId,
+      uniqueIdempotencyKey(),
+    );
+
+    const doFetch = vi.fn(async () =>
+      Response.json({
+        contract_version: CHANNEL_VERSIONS.platformDo + 1,
+        kind: "settleFallback",
+        outcome: "settled",
+      }),
+    );
+    const doNamespace = {
+      idFromName: (name: string) => name,
+      get: () => ({ fetch: doFetch }),
+    } as unknown as DurableObjectNamespace;
+    const reconcile = await credit.reconcileGraceUsage({
+      DO: doNamespace,
+      DB: env.DB,
+    });
+
+    expect(doFetch).toHaveBeenCalledTimes(1);
+    expect(reconcile.reconciled).toBe(0);
+    expect(await countPendingFallbackRows(installationId)).toBe(1);
+    const usageCount = await env.DB.prepare(
+      "SELECT COUNT(*) AS count FROM usage_event WHERE installation_id = ?",
+    )
+      .bind(installationId)
+      .first<{ count: number }>();
+    expect(usageCount?.count).toBe(0);
+  });
 });
 
 describe("admission_rejection_counted_not_journaled", () => {
@@ -1413,5 +1461,41 @@ describe("exactly_two_durable_object_round_trips_per_request", () => {
     );
 
     expect(doSpy.fetchCount()).toBe(2);
+  });
+
+  it("R2-C3: credit treats a mismatched DO reply version as unavailable", async () => {
+    const credit = await loadCreditModule();
+    const doFetch = vi.fn(async () =>
+      Response.json({
+        contract_version: CHANNEL_VERSIONS.platformDo + 1,
+        kind: "credit",
+        ok: true,
+        periodCounters: {
+          requestsUsed: 1,
+          tokensUsed: 10,
+          costUsed: 1,
+          creditsUsed: 1,
+          inFlight: 0,
+        },
+      }),
+    );
+    const doNamespace = {
+      idFromName: (name: string) => name,
+      get: () => ({ fetch: doFetch }),
+    } as unknown as DurableObjectNamespace;
+
+    const result = await credit.creditUsage(
+      {
+        installationId: freshInstallationId(),
+        requestId: crypto.randomUUID(),
+        requestReference: uniqueRequestReference(),
+        usage: { tokens: 10, cost: 0.01 },
+        partial: false,
+      },
+      { DO: doNamespace },
+    );
+
+    expect(doFetch).toHaveBeenCalledTimes(1);
+    expect(result).toEqual({ ok: false, code: "unavailable" });
   });
 });

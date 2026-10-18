@@ -11,6 +11,8 @@ import {
 } from "vendor-contracts";
 import { beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { supplementaryFieldsForCode } from "../../src/errors";
+import { handleCoverageReadRequest } from "../../src/coverage-read";
+import { withAipContractVersion } from "../../src/vendor/contract-version";
 import {
   applyAllMigrations,
   coverClinic,
@@ -583,13 +585,14 @@ describe("P3.9 fallback admission, feed, and coverage read", () => {
     expect(aatOnFeed.status).toBe(401);
   });
 
-  it("E2E-P3.9-06 feed version missing or unsupported is refused before auth", async () => {
+  it("R2-C2 — feed version refusal echoes current contract_version before auth", async () => {
     const missingVersion = await SELF.fetch(
       new Request(`${GATEWAY_ORIGIN}/v1/feed/coverage?after=0&limit=1`),
     );
     expect(missingVersion.status).toBe(400);
     const missingBody = (await missingVersion.json()) as Record<string, unknown>;
     expect(missingBody.code).toBe("contract_version_unsupported");
+    expect(missingBody.contract_version).toBe(PLATFORM_FEED_VERSION);
 
     const unsupported = await SELF.fetch(
       new Request(`${GATEWAY_ORIGIN}/v1/feed/coverage?after=0&limit=1`, {
@@ -599,6 +602,7 @@ describe("P3.9 fallback admission, feed, and coverage read", () => {
     expect(unsupported.status).toBe(400);
     const unsupportedBody = (await unsupported.json()) as Record<string, unknown>;
     expect(unsupportedBody.code).toBe("contract_version_unsupported");
+    expect(unsupportedBody.contract_version).toBe(PLATFORM_FEED_VERSION);
 
     const table = await queryOne<{ ok: number }>(
       "SELECT 1 AS ok FROM sqlite_master WHERE type = 'table' AND name = 'feed_consumer'",
@@ -611,7 +615,7 @@ describe("P3.9 fallback admission, feed, and coverage read", () => {
     }
   });
 
-  it("E2E-P3.9-07 administrator coverage read does not write the DO", async () => {
+  it("R2-C2 / E2E-P3.9-07 administrator coverage read does not write the DO and echoes its body version", async () => {
     const scenario = await newScenario();
     await coverClinic(scenario);
     await grantSecondPaidTerm(scenario);
@@ -652,6 +656,7 @@ describe("P3.9 fallback admission, feed, and coverage read", () => {
       String(PLATFORM_CLINIC_VERSION),
     );
     const coverageBody = (await coverageResponse.json()) as Record<string, unknown>;
+    expect(coverageBody.contract_version).toBe(PLATFORM_CLINIC_VERSION);
     expect(coverageBody.subscription_ref).toBe(
       await subscriptionRef(scenario.orgId),
     );
@@ -675,6 +680,47 @@ describe("P3.9 fallback admission, feed, and coverage read", () => {
 
     const detailAfterStaffDenied = await getCoverageDetail(scenario);
     expect(detailAfterStaffDenied).toBe(detailBefore);
+  });
+
+  it("R2-C3: coverage read fails closed on a mismatched DO version", async () => {
+    const scenario = await newScenario();
+    await coverClinic(scenario);
+    const adminToken = await mintAat(scenario, { role: "administrator" });
+    const detailBefore = await getCoverageDetail(scenario);
+    const doFetch = vi.fn(async () =>
+      Response.json({
+        contract_version: CHANNEL_VERSIONS.platformDo + 1,
+        snapshot: { available: 999 },
+        queued_terms: [],
+        recent_terms: [],
+      }),
+    );
+    const doNamespace = {
+      idFromName: (name: string) => name,
+      get: () => ({ fetch: doFetch }),
+    } as unknown as DurableObjectNamespace;
+
+    const handlerResponse = await handleCoverageReadRequest(
+      new Request(`${GATEWAY_ORIGIN}/v1/coverage`, {
+        headers: { authorization: `Bearer ${adminToken}` },
+      }),
+      { ...env, DO: doNamespace },
+    );
+    const response = withAipContractVersion(
+      handlerResponse,
+      PLATFORM_CLINIC_VERSION,
+    );
+
+    expect(doFetch).toHaveBeenCalledTimes(1);
+    expect(response.status).not.toBe(200);
+    const body = (await response.json()) as Record<string, unknown>;
+    expect(body.code).toBe("coverage_unknown");
+    expect(body.contract_version).toBe(PLATFORM_CLINIC_VERSION);
+    expect(body).not.toHaveProperty("subscription_ref");
+    expect(body).not.toHaveProperty("snapshot");
+    expect(body).not.toHaveProperty("queued_terms");
+    expect(body).not.toHaveProperty("recent_terms");
+    expect(await getCoverageDetail(scenario)).toBe(detailBefore);
   });
 
   it("E2E-P3.9-08 GET /v1/usage is 404", async () => {

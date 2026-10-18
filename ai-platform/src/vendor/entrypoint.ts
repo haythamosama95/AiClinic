@@ -17,6 +17,7 @@ import {
   type AccessCertsDocument,
   type Assertion,
 } from "vendor-contracts";
+import { decodeDoResponse } from "../quota-do/response-decoder";
 import type { DurationScale } from "../coverage/calendar";
 import {
   executeBeginTransfer,
@@ -157,6 +158,7 @@ type VendorResultEnvelope = {
   result: "ok" | "rejected" | "conflict";
   code: string;
   detail: string;
+  accepted_versions?: number[];
 };
 
 type GrantResultEnvelope = {
@@ -171,6 +173,7 @@ type GrantResultEnvelope = {
   code: string;
   detail: string;
   receipt?: Record<string, unknown>;
+  accepted_versions?: number[];
 };
 
 const VOID_NIL_UUID = "00000000-0000-0000-0000-000000000000";
@@ -261,6 +264,9 @@ function rejected(
     result: "rejected",
     code,
     detail,
+    ...(code === "contract_version_unsupported"
+      ? { accepted_versions: [VENDOR_CHANNEL - 1, VENDOR_CHANNEL] }
+      : {}),
   };
 }
 
@@ -469,6 +475,9 @@ function grantRejected(
     result: "rejected",
     code,
     detail,
+    ...(code === "contract_version_unsupported"
+      ? { accepted_versions: [VENDOR_CHANNEL - 1, VENDOR_CHANNEL] }
+      : {}),
   };
 }
 
@@ -657,7 +666,10 @@ async function callCoverageDo(
     if (!response.ok) {
       return null;
     }
-    return (await response.json()) as Record<string, unknown>;
+    return decodeDoResponse<Record<string, unknown>>(
+      await response.json(),
+      CHANNEL_VERSIONS.platformDo,
+    ) ?? null;
   } catch {
     return null;
   }

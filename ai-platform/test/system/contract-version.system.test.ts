@@ -53,7 +53,7 @@ describe("contract version", () => {
     expect(await count("ai_request")).toBe(before);
   });
 
-  it("E2E-P2.1-05 — GET /v1/capabilities echoes version 1 and refuses version 2", async () => {
+  it("R2-C2 / E2E-P2.1-05 — GET /v1/capabilities echoes version 1 and refuses version 2", async () => {
     const scenario = await newScenario();
     await newClinic(scenario);
     const token = await mintAat(scenario);
@@ -77,6 +77,8 @@ describe("contract version", () => {
     expect(refused.status).toBe(400);
     const json = (await refused.json()) as Record<string, unknown>;
     expect(json.code).toBe("contract_version_unsupported");
+    expect(json.contract_version).toBe(1);
+    expect(json.accepted_versions).toEqual([0, 1]);
   });
 
   it("E2E-P2.1-06 — streamed POST echoes Aip-Contract-Version before SSE body", async () => {

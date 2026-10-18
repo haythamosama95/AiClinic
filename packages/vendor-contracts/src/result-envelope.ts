@@ -52,7 +52,11 @@ export function validateResultEnvelope(
 
   const needsReceipt =
     result === "applied" || result === "already_applied";
-  const allowedKeys = needsReceipt ? [...baseKeys, "receipt"] : baseKeys;
+  const allowedKeys = needsReceipt
+    ? [...baseKeys, "receipt"]
+    : result === "rejected"
+    ? [...baseKeys, "accepted_versions"]
+    : baseKeys;
   if (!hasOnlyKeys(value, allowedKeys)) {
     return fail();
   }
@@ -62,6 +66,21 @@ export function validateResultEnvelope(
   }
   if (typeof value.code !== "string" || typeof value.detail !== "string") {
     return fail();
+  }
+
+  if (Object.prototype.hasOwnProperty.call(value, "accepted_versions")) {
+    if (
+      result !== "rejected" ||
+      value.code !== "contract_version_unsupported" ||
+      !Array.isArray(value.accepted_versions) ||
+      value.accepted_versions.length === 0 ||
+      !value.accepted_versions.every(
+        (version) => Number.isInteger(version) && (version as number) >= 0,
+      ) ||
+      new Set(value.accepted_versions).size !== value.accepted_versions.length
+    ) {
+      return fail();
+    }
   }
 
   if (result === "transient") {

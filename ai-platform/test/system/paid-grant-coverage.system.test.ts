@@ -846,6 +846,38 @@ describe("paid grant coverage", () => {
     expect(activeTerms.some((row) => row.state === "active")).toBe(true);
   });
 
+  it("R2-C3: a grant with a mismatched DO reply version does not record success", async () => {
+    const fixture = await bootstrapPaidGrantFixture();
+    const doFetch = vi.fn(async () =>
+      Response.json({
+        contract_version: CHANNEL_VERSIONS.platformDo + 1,
+        result: "applied",
+        receipt: { grant_id: fixture.grantId },
+      }),
+    );
+    const getSpy = vi
+      .spyOn(env.DO, "get")
+      .mockReturnValue({ fetch: doFetch } as unknown as DurableObjectStub);
+
+    let result: VendorResultEnvelope;
+    try {
+      result = await grantPaid({
+        envelope: fixture.envelope,
+        aboKid: fixture.aboKid,
+        aboSignature: fixture.aboSignature,
+      });
+    } finally {
+      getSpy.mockRestore();
+    }
+
+    expect(doFetch).toHaveBeenCalledTimes(1);
+    expect(result.result).toBe("rejected");
+    expect(result.code).toBe("coverage_unknown");
+    expect(result.receipt).toBeUndefined();
+    expect(await grantLedgerCount(fixture.grantId)).toBe(0);
+    expect(await listCoverageEventsForOrg(fixture.orgId)).toHaveLength(0);
+  });
+
   it("E2E-P3.3-02 The same grant resent is already_applied with the identical receipt and one ledger row", async () => {
     const fixture = await bootstrapPaidGrantFixture();
 

@@ -505,6 +505,76 @@ beforeEach(async () => {
 });
 
 describe("platform rebuild procedures", () => {
+  it("R2-C3: rebuild and refresh reject mismatched DO versions without advancing projection", async () => {
+    const scenario = await newScenario();
+    await coverClinic(scenario);
+    await newClinic(scenario);
+    await shipCoverageOutbox(scenario.installationId);
+
+    const eventsBefore = await queryOne<{ count: number }>(
+      "SELECT COUNT(*) AS count FROM coverage_event WHERE installation_id = ?",
+      [scenario.installationId],
+    );
+    const mirrorBefore = await queryOne<{
+      clinic_seq: number;
+      binding_epoch: number;
+      state: string;
+      suspended: number;
+      term_snapshot: string;
+    }>(
+      `SELECT clinic_seq, binding_epoch, state, suspended, term_snapshot
+       FROM coverage_mirror WHERE installation_id = ?`,
+      [scenario.installationId],
+    );
+    const doFetch = vi.fn(async () =>
+      Response.json({
+        contract_version: CHANNEL_VERSIONS.platformDo + 1,
+        result: "ok",
+        snapshot: {},
+        event_id: "mismatched-version-event",
+      }),
+    );
+    const getSpy = vi
+      .spyOn(env.DO, "get")
+      .mockReturnValue({ fetch: doFetch } as unknown as DurableObjectStub);
+
+    let rebuilt: P311ResultEnvelope;
+    let refreshed: P311ResultEnvelope;
+    try {
+      rebuilt = await callRebuildClinicDo(scenario.installationId);
+      const accessJwt = await mintVendorAccessJwt();
+      refreshed = await p311VendorCall(
+        "refreshCoverageSnapshot",
+        {
+          contract_version: CONTRACT_VERSION,
+          installation_id: scenario.installationId,
+        },
+        { accessJwt },
+      );
+    } finally {
+      getSpy.mockRestore();
+    }
+
+    expect(doFetch).toHaveBeenCalledTimes(2);
+    expect(rebuilt.result).toBe("rejected");
+    expect(rebuilt.code).toBe("not_found");
+    expect(refreshed.result).toBe("rejected");
+    expect(refreshed.code).toBe("not_found");
+    expect(
+      await queryOne<{ count: number }>(
+        "SELECT COUNT(*) AS count FROM coverage_event WHERE installation_id = ?",
+        [scenario.installationId],
+      ),
+    ).toEqual(eventsBefore);
+    expect(
+      await queryOne(
+        `SELECT clinic_seq, binding_epoch, state, suspended, term_snapshot
+         FROM coverage_mirror WHERE installation_id = ?`,
+        [scenario.installationId],
+      ),
+    ).toEqual(mirrorBefore);
+  });
+
   it("E2E-P3.11-01 FM-20 wiped DO rebuilds terms positions holds and usage and the compare is clean", async () => {
     const scenario = await newScenario();
     await setupFm20Clinic(scenario);

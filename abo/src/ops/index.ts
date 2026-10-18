@@ -272,8 +272,8 @@ async function loadAccessCerts(env: OpsEnv): Promise<AccessCertsDocument | null>
 export async function verifyOpsAccess(
   env: OpsEnv,
   request: Request,
+  contractVersion: number = CHANNEL_VERSIONS.aboConsole,
 ): Promise<VerifiedAccess | Response> {
-  const contractVersion = 1;
   const header = request.headers.get("Cf-Access-Jwt-Assertion");
   if (header === null || header.length === 0) {
     return clinicErrorResponse("unauthenticated", 401, contractVersion);
@@ -3331,7 +3331,7 @@ export async function handleOps(
   path: string,
   contractVersion: number,
 ): Promise<Response> {
-  const access = await verifyOpsAccess(env, request);
+  const access = await verifyOpsAccess(env, request, contractVersion);
   if (access instanceof Response) {
     return access;
   }

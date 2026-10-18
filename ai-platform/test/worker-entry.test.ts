@@ -499,6 +499,23 @@ describe("GatewayObject.fetch negatives and §3.1.7", () => {
     },
   };
 
+  it("R2-C2 — echoes contract_version on a post-negotiation success", async () => {
+    mockAdmissionRPC.mockResolvedValue({ result: "admitted", requestId: "req-1" });
+    const { instance } = gatewayStub();
+    const response = await rpc(instance, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(validAdmission),
+    });
+
+    expect(response.status).toBe(200);
+    expect(await response.json()).toEqual({
+      result: "admitted",
+      requestId: "req-1",
+      contract_version: PLATFORM_DO_CONTRACT_VERSION,
+    });
+  });
+
   it("returns 405 for non-POST", async () => {
     const { instance } = gatewayStub();
     const response = await rpc(instance, { method: "GET" });
@@ -516,7 +533,7 @@ describe("GatewayObject.fetch negatives and §3.1.7", () => {
     expect(await response.json()).toEqual({ error: "invalid_json" });
   });
 
-  it("returns 400 unknown_kind for unrecognized kind", async () => {
+  it("R2-C2 — echoes contract_version on post-negotiation unknown_kind", async () => {
     const { instance } = gatewayStub();
     const response = await rpc(instance, {
       method: "POST",
@@ -527,10 +544,13 @@ describe("GatewayObject.fetch negatives and §3.1.7", () => {
       }),
     });
     expect(response.status).toBe(400);
-    expect(await response.json()).toEqual({ error: "unknown_kind" });
+    expect(await response.json()).toEqual({
+      error: "unknown_kind",
+      contract_version: PLATFORM_DO_CONTRACT_VERSION,
+    });
   });
 
-  it("returns 400 bad_request for known arg-validation failures", async () => {
+  it("R2-C2 — echoes contract_version on post-negotiation bad_request", async () => {
     const { instance } = gatewayStub();
     const response = await rpc(instance, {
       method: "POST",
@@ -542,12 +562,15 @@ describe("GatewayObject.fetch negatives and §3.1.7", () => {
       }),
     });
     expect(response.status).toBe(400);
-    expect(await response.json()).toEqual({ error: "bad_request" });
+    expect(await response.json()).toEqual({
+      error: "bad_request",
+      contract_version: PLATFORM_DO_CONTRACT_VERSION,
+    });
     expect(mockAdmissionRPC).not.toHaveBeenCalled();
     expect(consoleErrorSpy).not.toHaveBeenCalled();
   });
 
-  it("returns 400 for installation_id_mismatch from RPC", async () => {
+  it("R2-C2 — echoes contract_version on RPC validation errors", async () => {
     mockAdmissionRPC.mockRejectedValue(new Error("installation_id_mismatch"));
     const { instance } = gatewayStub();
     const response = await rpc(instance, {
@@ -556,11 +579,14 @@ describe("GatewayObject.fetch negatives and §3.1.7", () => {
       body: JSON.stringify(validAdmission),
     });
     expect(response.status).toBe(400);
-    expect(await response.json()).toEqual({ error: "bad_request" });
+    expect(await response.json()).toEqual({
+      error: "bad_request",
+      contract_version: PLATFORM_DO_CONTRACT_VERSION,
+    });
     expect(consoleErrorSpy).not.toHaveBeenCalled();
   });
 
-  it("returns 500 and logs structured error for unexpected RPC failures", async () => {
+  it("R2-C2 — echoes contract_version on internal RPC errors", async () => {
     mockAdmissionRPC.mockRejectedValue(new Error("storage_put_failed"));
     const { instance } = gatewayStub();
     const response = await rpc(instance, {
@@ -570,7 +596,10 @@ describe("GatewayObject.fetch negatives and §3.1.7", () => {
     });
 
     expect(response.status).toBe(500);
-    expect(await response.json()).toEqual({ error: "internal_error" });
+    expect(await response.json()).toEqual({
+      error: "internal_error",
+      contract_version: PLATFORM_DO_CONTRACT_VERSION,
+    });
     expect(consoleErrorSpy).toHaveBeenCalledTimes(1);
     const logged = String(consoleErrorSpy.mock.calls[0]?.[0]);
     expect(logged).toMatch(/\[Error\] gateway_object_rpc_failed/);

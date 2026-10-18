@@ -493,7 +493,7 @@ describe("vendor entrypoint", () => {
     expect(await vendorTableCount("control_audit")).toBe(beforeAudit);
   });
 
-  it("E2E-P3.1-06 A method with contract_version missing or 2 is rejected contract_version_unsupported and writes nothing", async () => {
+  it("R2-C2 — unsupported VendorEntrypoint versions include accepted_versions and write nothing", async () => {
     const badJwt = await mintVendorAccessJwt({ aud: "wrong-audience" });
 
     async function expectUnsupported(
@@ -507,6 +507,10 @@ describe("vendor entrypoint", () => {
       const result = await vendorCall(method, args, { accessJwt: badJwt });
       expect(result.result).toBe("rejected");
       expect(result.code).toBe("contract_version_unsupported");
+      expect(result).toMatchObject({
+        contract_version: CONTRACT_VERSION,
+        accepted_versions: [CONTRACT_VERSION - 1, CONTRACT_VERSION],
+      });
       expectNoReceipt(result);
 
       expect(await vendorTableCount("operator_credential")).toBe(beforeCredential);

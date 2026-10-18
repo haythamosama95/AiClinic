@@ -53,7 +53,7 @@
 
 ### 1.2 Result envelope
 
-Every method returns `{contract_version, result, code, detail, receipt?}`. `detail` is a string. The object has no other key. `receipt` is present when `result` is `applied` or `already_applied`, and then it is the receipt in §1.6. On every other result, `receipt` is absent.
+Every method returns `{contract_version, result, code, detail, receipt?}`. `detail` is a string. The object has no other key, except that a `contract_version_unsupported` refusal may also include `accepted_versions`, the integer versions accepted by the receiver. `receipt` is present when `result` is `applied` or `already_applied`, and then it is the receipt in §1.6. On every other result, `receipt` is absent.
 
 `registerOperatorCredential`, `revokeOperatorCredential`, and `listOperatorCredentials` do not record a grant or a reversal, so they do not return `applied` or `already_applied`. A successful call is `ok`: `receipt` is absent and `code` is empty. On register and revoke, `detail` is the JSON text of the `operator_credential` row (03 §3.2). On `listOperatorCredentials`, `detail` is the JSON text of an array of `{credential_id, public_key_cose, alg}` for each row with `status` `active`. That array is what the ABO uses to verify assertions for its own HP actions (05 §3.2).
 

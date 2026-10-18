@@ -16,6 +16,7 @@ import { noopLogger, type Logger } from "../logger";
 import type { ReadCoverageResponse } from "../quota-do";
 import { generateRequestReference } from "../reference";
 import { generateUlid } from "../trace";
+import { decodeDoResponse } from "../quota-do/response-decoder";
 
 const QUOTA_DO_RPC_URL = "https://quota-do.internal/rpc";
 
@@ -43,7 +44,10 @@ async function callReadCoverage(
   doNamespace: DurableObjectNamespace,
   installationId: string,
   orgId: string,
-): Promise<ReadCoverageResponse | undefined> {
+): Promise<
+  | { ok: true; body: ReadCoverageResponse }
+  | { ok: false; reason: "unavailable" | "contract_rejected" }
+> {
   const stub = doNamespace.get(doNamespace.idFromName(installationId));
   try {
     const response = await stub.fetch(QUOTA_DO_RPC_URL, {
@@ -58,11 +62,23 @@ async function callReadCoverage(
       }),
     });
     if (!response.ok) {
-      return undefined;
+      return { ok: false, reason: "unavailable" };
     }
-    return (await response.json()) as ReadCoverageResponse;
+    let body: ReadCoverageResponse | undefined;
+    try {
+      body = decodeDoResponse<ReadCoverageResponse>(
+        await response.json(),
+        CHANNEL_VERSIONS.platformDo,
+      );
+    } catch {
+      return { ok: false, reason: "contract_rejected" };
+    }
+    if (body === undefined) {
+      return { ok: false, reason: "contract_rejected" };
+    }
+    return { ok: true, body };
   } catch {
-    return undefined;
+    return { ok: false, reason: "unavailable" };
   }
 }
 
@@ -122,7 +138,18 @@ export async function handleCoverageReadRequest(
   const installationId = verifyResult.principal.installationId;
 
   const doResponse = await callReadCoverage(env.DO, installationId, orgId);
-  if (!doResponse) {
+  if (!doResponse.ok) {
+    if (doResponse.reason === "contract_rejected") {
+      const status = liveHttpStatusForCode("coverage_unknown") ?? 503;
+      return Response.json(
+        buildErrorBody({
+          code: "coverage_unknown",
+          requestReference: generateRequestReference(),
+          traceId: generateUlid(),
+        }),
+        { status },
+      );
+    }
     logger.error("coverage_read_do_unavailable", { installation_id: installationId });
     const status = liveHttpStatusForCode("internal_error") ?? 500;
     return Response.json(
@@ -138,8 +165,8 @@ export async function handleCoverageReadRequest(
   const subRef = await subscriptionRef(orgId);
   return Response.json({
     subscription_ref: subRef,
-    snapshot: doResponse.snapshot,
-    queued_terms: doResponse.queued_terms,
-    recent_terms: doResponse.recent_terms,
+    snapshot: doResponse.body.snapshot,
+    queued_terms: doResponse.body.queued_terms,
+    recent_terms: doResponse.body.recent_terms,
   });
 }

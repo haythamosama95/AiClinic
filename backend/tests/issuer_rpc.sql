@@ -294,6 +294,79 @@ BEGIN
 END;
 $$;
 
+
+-- R2-C2: errors from the billing issuer echo each accepted request version.
+DO $$
+DECLARE
+  v_admin_user uuid;
+  v_org_id uuid;
+  v_branch_id uuid;
+  v_v0 public.rpc_result;
+  v_v1 public.rpc_result;
+  v_unauthenticated public.rpc_result;
+  v_passed boolean;
+  v_detail text;
+BEGIN
+  SELECT f.user_id, f.org_id, f.branch_id
+  INTO v_admin_user, v_org_id, v_branch_id
+  FROM pg_temp.issuer_rpc_admin_fixture() f;
+
+  PERFORM set_config('role', 'postgres', true);
+  UPDATE ai_internal.membership
+  SET role = 'doctor'
+  WHERE user_id = v_admin_user AND organization_id = v_org_id;
+
+  PERFORM set_config('role', 'authenticated', true);
+  PERFORM set_config(
+    'request.jwt.claims',
+    json_build_object(
+      'sub', v_admin_user::text,
+      'role', 'authenticated',
+      'organization_id', v_org_id::text,
+      'branch_ids', v_branch_id::text
+    )::text,
+    true
+  );
+
+  v_v0 := public.issue_billing_token(0);
+  v_v1 := public.issue_billing_token(1);
+
+  PERFORM set_config('role', 'postgres', true);
+  UPDATE ai_internal.membership
+  SET role = 'administrator'
+  WHERE user_id = v_admin_user AND organization_id = v_org_id;
+
+  PERFORM set_config('role', 'authenticated', true);
+  PERFORM set_config('request.jwt.claims', '{}', true);
+  v_unauthenticated := public.issue_billing_token(1);
+
+  v_passed := NOT v_v0.success
+    AND v_v0.error_code = 'FORBIDDEN_ROLE'
+    AND v_v0.contract_version = 0
+    AND NOT v_v1.success
+    AND v_v1.error_code = 'FORBIDDEN_ROLE'
+    AND v_v1.contract_version = 1
+    AND NOT v_unauthenticated.success
+    AND v_unauthenticated.error_code = 'UNAUTHENTICATED'
+    AND v_unauthenticated.contract_version = 1;
+
+  v_detail := 'v0_error=' || COALESCE(v_v0.error_code, '<null>')
+    || ' v0_contract_version=' || COALESCE(v_v0.contract_version::text, '<null>')
+    || ' v1_error=' || COALESCE(v_v1.error_code, '<null>')
+    || ' v1_contract_version=' || COALESCE(v_v1.contract_version::text, '<null>')
+    || ' unauthenticated_error=' || COALESCE(v_unauthenticated.error_code, '<null>')
+    || ' unauthenticated_contract_version='
+    || COALESCE(v_unauthenticated.contract_version::text, '<null>');
+
+  PERFORM set_config('role', 'postgres', true);
+  INSERT INTO issuer_rpc_results VALUES (
+    'R2-C2: billing token errors echo negotiated contract version',
+    v_passed,
+    v_detail
+  );
+END;
+$$;
+
 -- E2E-P5.1-05: 21st billing token in 10 min is RATE_LIMITED.
 DO $$
 DECLARE

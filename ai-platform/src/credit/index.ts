@@ -4,6 +4,7 @@ import { CHANNEL_VERSIONS } from "vendor-contracts";
 import type { TaxonomyCode } from "../errors";
 import { clockNowIso } from "../clock";
 import { generateUlid } from "../trace";
+import { decodeDoResponse } from "../quota-do/response-decoder";
 
 const QUOTA_DO_RPC_URL = "https://quota-do.internal/rpc";
 
@@ -106,7 +107,18 @@ async function invokeCreditRpc(
     return { ok: false, reason: "client_error" };
   }
 
-  const body = (await response.json()) as CreditWireResponse;
+  let body: CreditWireResponse | undefined;
+  try {
+    body = decodeDoResponse<CreditWireResponse>(
+      await response.json(),
+      CHANNEL_VERSIONS.platformDo,
+    );
+  } catch {
+    return { ok: false, reason: "unavailable" };
+  }
+  if (body === undefined) {
+    return { ok: false, reason: "unavailable" };
+  }
   if (body.kind !== "credit" || !body.ok) {
     return { ok: false, reason: "unknown_request" };
   }
@@ -140,7 +152,14 @@ async function invokeSettleFallback(
   if (!response.ok) {
     return null;
   }
-  return (await response.json()) as SettleFallbackWireResponse;
+  try {
+    return decodeDoResponse<SettleFallbackWireResponse>(
+      await response.json(),
+      CHANNEL_VERSIONS.platformDo,
+    ) ?? null;
+  } catch {
+    return null;
+  }
 }
 
 export async function creditUsage(

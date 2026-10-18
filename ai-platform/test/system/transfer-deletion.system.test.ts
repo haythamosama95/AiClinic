@@ -577,6 +577,47 @@ beforeEach(async () => {
 });
 
 describe("transfer, deletion with coverage left, ledger retention", () => {
+  it("R2-C3: transfer out does not record a step for a mismatched DO version", async () => {
+    const setup = await setupBeginTransferOnly();
+    const packageBefore = await readTransferPackage(setup.transferId);
+    const stepsBefore = await queryOne<{ count: number }>(
+      "SELECT COUNT(*) AS count FROM transfer_step WHERE transfer_id = ?",
+      [setup.transferId],
+    );
+    const doFetch = vi.fn(async () =>
+      Response.json({
+        contract_version: CHANNEL_VERSIONS.platformDo + 1,
+        result: "applied",
+        package: [],
+        term_ids: [],
+        ledger_seq: 1,
+        receipt: { transfer_id: setup.transferId },
+      }),
+    );
+    const getSpy = vi
+      .spyOn(env.DO, "get")
+      .mockReturnValue({ fetch: doFetch } as unknown as DurableObjectStub);
+
+    let result: GrantResultEnvelope;
+    try {
+      result = await transferOut(setup.transferId);
+    } finally {
+      getSpy.mockRestore();
+    }
+
+    expect(doFetch).toHaveBeenCalledTimes(1);
+    expect(result.result).toBe("rejected");
+    expect(result.code).toBe("bad_request");
+    expect(result.receipt).toBeUndefined();
+    expect(await readTransferPackage(setup.transferId)).toBe(packageBefore);
+    expect(
+      await queryOne<{ count: number }>(
+        "SELECT COUNT(*) AS count FROM transfer_step WHERE transfer_id = ?",
+        [setup.transferId],
+      ),
+    ).toEqual(stepsBefore);
+  });
+
   it("E2E-P3.8-01 A14 beginTransfer moves an active term and a queued term", async () => {
     const { scenario, activeGrantId, queuedGrantId } =
       await setupActiveAndQueuedTerms();

@@ -11,6 +11,7 @@ import { addDuration, type DurationScale } from "../coverage/calendar";
 import type { Logger } from "../logger";
 import { noopLogger } from "../logger";
 import { generateUlid } from "../trace";
+import { decodeDoResponse } from "./response-decoder";
 type SqlStorage = DurableObjectStorage & {
   sql?: {
     exec: (query: string, ...bindings: unknown[]) => Iterable<Record<string, unknown>>;
@@ -4204,8 +4205,16 @@ export async function runRebuildClinicDo(
   if (!response.ok) {
     return { status: "not_found" };
   }
-  const body = (await response.json()) as RebuildClinicDoResponse;
-  if (body.result !== "ok" || body.snapshot === undefined) {
+  let body: RebuildClinicDoResponse | undefined;
+  try {
+    body = decodeDoResponse<RebuildClinicDoResponse>(
+      await response.json(),
+      CHANNEL_VERSIONS.platformDo,
+    );
+  } catch {
+    return { status: "not_found" };
+  }
+  if (body === undefined || body.result !== "ok" || body.snapshot === undefined) {
     return { status: "not_found" };
   }
 
@@ -4382,8 +4391,16 @@ export async function runRefreshCoverageSnapshot(
   if (!response.ok) {
     return "not_found";
   }
-  const body = (await response.json()) as RefreshCoverageSnapshotResponse;
-  if (body.result !== "ok" || body.event_id === undefined) {
+  let body: RefreshCoverageSnapshotResponse | undefined;
+  try {
+    body = decodeDoResponse<RefreshCoverageSnapshotResponse>(
+      await response.json(),
+      CHANNEL_VERSIONS.platformDo,
+    );
+  } catch {
+    return "not_found";
+  }
+  if (body === undefined || body.result !== "ok" || body.event_id === undefined) {
     return "not_found";
   }
   return { event_id: body.event_id };

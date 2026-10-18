@@ -1696,6 +1696,17 @@ function platformDoContractRefusal(
   };
 }
 
+function platformDoResponse(
+  body: object,
+  contractVersion: number,
+  init?: ResponseInit,
+): Response {
+  return Response.json(
+    { ...(body as Record<string, unknown>), contract_version: contractVersion },
+    init,
+  );
+}
+
 async function readHarnessAdmissionFault(
   db: D1Database,
 ): Promise<{ mode: string; hold_until: number | null } | null> {
@@ -1806,7 +1817,7 @@ export class GatewayObject extends DurableObject {
           this.ctx.storage,
           admissionNowIso,
         );
-        return Response.json({ ...result, contract_version: contractVersion });
+        return platformDoResponse(result, contractVersion);
       }
       if (kind === "settleFallback") {
         const settleBody = body as SettleFallbackRequest;
@@ -1816,16 +1827,18 @@ export class GatewayObject extends DurableObject {
           typeof settleBody.term_id !== "string" ||
           typeof settleBody.weight !== "number"
         ) {
-          return Response.json({ error: "invalid_settle_fallback_args" }, {
-            status: 400,
-          });
+          return platformDoResponse(
+            { error: "invalid_settle_fallback_args" },
+            contractVersion,
+            { status: 400 },
+          );
         }
         const result = await settleFallbackRPC(
           this.ctx.storage,
           (fn) => this.ctx.blockConcurrencyWhile(fn),
           settleBody,
         );
-        return Response.json({ ...result, contract_version: contractVersion });
+        return platformDoResponse(result, contractVersion);
       }
       if (kind === "credit") {
         assertCreditArgs(body);
@@ -1836,7 +1849,7 @@ export class GatewayObject extends DurableObject {
           now,
           quotaLog,
         );
-        return Response.json({ ...result, contract_version: contractVersion });
+        return platformDoResponse(result, contractVersion);
       }
       if (kind === "release") {
         assertReleaseArgs(body);
@@ -1847,11 +1860,11 @@ export class GatewayObject extends DurableObject {
           now,
           quotaLog,
         );
-        return Response.json({ ...result, contract_version: contractVersion });
+        return platformDoResponse(result, contractVersion);
       }
       if (kind === "inspect") {
         const result = await inspectRPC(this.ctx.storage, now);
-        return Response.json({ ...result, contract_version: contractVersion });
+        return platformDoResponse(result, contractVersion);
       }
       if (kind === "apply_grant") {
         const applyBody = body as Omit<ApplyGrantRequest, "db">;
@@ -1868,7 +1881,7 @@ export class GatewayObject extends DurableObject {
           },
           quotaLog,
         );
-        return Response.json({ ...result, contract_version: contractVersion });
+        return platformDoResponse(result, contractVersion);
       }
       if (kind === "read_coverage") {
         const result = await readCoverageRPC(
@@ -1876,7 +1889,7 @@ export class GatewayObject extends DurableObject {
           (fn) => this.ctx.blockConcurrencyWhile(fn),
           body as ReadCoverageRequest,
         );
-        return Response.json({ ...result, contract_version: contractVersion });
+        return platformDoResponse(result, contractVersion);
       }
       if (kind === "suspend" || kind === "resume") {
         const result = await suspendResumeRPC(
@@ -1885,7 +1898,7 @@ export class GatewayObject extends DurableObject {
           (fn) => this.ctx.blockConcurrencyWhile(fn),
           body as Parameters<typeof suspendResumeRPC>[3],
         );
-        return Response.json({ ...result, contract_version: contractVersion });
+        return platformDoResponse(result, contractVersion);
       }
       if (kind === "inspect_coverage") {
         const result = await inspectCoverageRPC(
@@ -1893,7 +1906,7 @@ export class GatewayObject extends DurableObject {
           (fn) => this.ctx.blockConcurrencyWhile(fn),
           body as Parameters<typeof inspectCoverageRPC>[2],
         );
-        return Response.json({ ...result, contract_version: contractVersion });
+        return platformDoResponse(result, contractVersion);
       }
       if (kind === "void_for_reversal") {
         const result = await voidForReversalRPC(
@@ -1903,7 +1916,7 @@ export class GatewayObject extends DurableObject {
           body as Parameters<typeof voidForReversalRPC>[3],
           quotaLog,
         );
-        return Response.json({ ...result, contract_version: contractVersion });
+        return platformDoResponse(result, contractVersion);
       }
       if (kind === "release_held") {
         const result = await releaseHeldRPC(
@@ -1913,7 +1926,7 @@ export class GatewayObject extends DurableObject {
           body as Parameters<typeof releaseHeldRPC>[3],
           quotaLog,
         );
-        return Response.json({ ...result, contract_version: contractVersion });
+        return platformDoResponse(result, contractVersion);
       }
       if (kind === "void_grant") {
         const result = await voidGrantRPC(
@@ -1923,7 +1936,7 @@ export class GatewayObject extends DurableObject {
           body as Parameters<typeof voidGrantRPC>[3],
           quotaLog,
         );
-        return Response.json({ ...result, contract_version: contractVersion });
+        return platformDoResponse(result, contractVersion);
       }
       if (kind === "open_awaiting_transfer") {
         const result = await openAwaitingTransferRPC(
@@ -1931,7 +1944,7 @@ export class GatewayObject extends DurableObject {
           (fn) => this.ctx.blockConcurrencyWhile(fn),
           body as Parameters<typeof openAwaitingTransferRPC>[2],
         );
-        return Response.json({ ...result, contract_version: contractVersion });
+        return platformDoResponse(result, contractVersion);
       }
       if (kind === "transfer_out") {
         const result = await transferOutRPC(
@@ -1940,7 +1953,7 @@ export class GatewayObject extends DurableObject {
           (fn) => this.ctx.blockConcurrencyWhile(fn),
           body as Parameters<typeof transferOutRPC>[3],
         );
-        return Response.json({ ...result, contract_version: contractVersion });
+        return platformDoResponse(result, contractVersion);
       }
       if (kind === "transfer_in") {
         const result = await transferInRPC(
@@ -1949,7 +1962,7 @@ export class GatewayObject extends DurableObject {
           (fn) => this.ctx.blockConcurrencyWhile(fn),
           body as Parameters<typeof transferInRPC>[3],
         );
-        return Response.json({ ...result, contract_version: contractVersion });
+        return platformDoResponse(result, contractVersion);
       }
       if (kind === "set_transfer_pending") {
         const result = await setTransferPendingRPC(
@@ -1957,7 +1970,7 @@ export class GatewayObject extends DurableObject {
           (fn) => this.ctx.blockConcurrencyWhile(fn),
           body as Parameters<typeof setTransferPendingRPC>[2],
         );
-        return Response.json({ ...result, contract_version: contractVersion });
+        return platformDoResponse(result, contractVersion);
       }
       if (kind === "rebuild_clinic_do") {
         const rebuildBody = body as Omit<
@@ -1978,7 +1991,7 @@ export class GatewayObject extends DurableObject {
               runtimeEnv.PLATFORM_SIGNING_KEY,
           },
         );
-        return Response.json({ ...result, contract_version: contractVersion });
+        return platformDoResponse(result, contractVersion);
       }
       if (kind === "refresh_coverage_snapshot") {
         const refreshBody = body as Omit<
@@ -2011,20 +2024,29 @@ export class GatewayObject extends DurableObject {
           result.shipped_alerts ?? [],
         );
         const { shipped_alerts: _shippedAlerts, ...publicResult } = result;
-        return Response.json({
-          ...publicResult,
-          contract_version: contractVersion,
-        });
+        return platformDoResponse(publicResult, contractVersion);
       }
     } catch (error) {
       if (isArgValidationError(error)) {
-        return Response.json({ error: "bad_request" }, { status: 400 });
+        return platformDoResponse(
+          { error: "bad_request" },
+          contractVersion,
+          { status: 400 },
+        );
       }
       logGatewayRpcFailure(log, kind, body, error);
-      return Response.json({ error: "internal_error" }, { status: 500 });
+      return platformDoResponse(
+        { error: "internal_error" },
+        contractVersion,
+        { status: 500 },
+      );
     }
     log.error("gateway_object_unknown_kind", { kind: kind ?? "unknown" });
-    return Response.json({ error: "unknown_kind" }, { status: 400 });
+    return platformDoResponse(
+      { error: "unknown_kind" },
+      contractVersion,
+      { status: 400 },
+    );
   }
 
   async alarm(): Promise<void> {
@@ -2393,6 +2415,7 @@ export default {
       if (!feedNegotiated.ok) {
         return Response.json(
           {
+            contract_version: CHANNEL_VERSIONS.platformFeed,
             code: feedNegotiated.code,
             accepted_versions: feedNegotiated.accepted_versions,
           },

@@ -23,6 +23,7 @@ import {
 
 const RECEIVER_CURRENT = CHANNEL_VERSIONS.aboClinic;
 const ACCEPTED_VERSIONS = [RECEIVER_CURRENT - 1, RECEIVER_CURRENT];
+const CONSOLE_CURRENT = CHANNEL_VERSIONS.aboConsole;
 const PAYMOB_ADAPTER_VERSION = CHANNEL_VERSIONS.paymobAdapter;
 const HARNESS_OFFER_ID = "01JHARNESSOFFERPUBLISH001";
 const HARNESS_OFFER_VERSION = 2;
@@ -358,5 +359,20 @@ describe("E2E-P7.3-01", () => {
     expect(notifyResponse.status).toBe(200);
     expect(await tableCount("notification")).toBeGreaterThan(notificationsBefore);
     expect(await latestNotificationAdapterVersion()).toBe(PAYMOB_ADAPTER_VERSION);
+  });
+});
+
+describe("R2-C2", () => {
+  it("R2-C2: Access failures echo the negotiated console contract version", async () => {
+    const version = CONSOLE_CURRENT - 1;
+    const response = await opsFetch("/ops/lookup", {
+      headers: { "Abo-Contract-Version": String(version) },
+    });
+
+    expect(response.status).toBe(401);
+    expect(response.headers.get("Abo-Contract-Version")).toBe(String(version));
+    const body = (await response.json()) as Record<string, unknown>;
+    expect(body.code).toBe("unauthenticated");
+    expect(body.contract_version).toBe(version);
   });
 });

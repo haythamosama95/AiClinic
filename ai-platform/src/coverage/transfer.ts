@@ -9,6 +9,7 @@ import { raiseAl11Transfer, raiseAl18HeldBinding, type CoverageAlertEnv } from "
 import { clockNowIso, type ClockEnv } from "../clock";
 import { purgeByInstallationId } from "../retention/index";
 import { generateUlid } from "../trace";
+import { decodeDoResponse } from "../quota-do/response-decoder";
 
 type TransferEnv = ClockEnv &
   CoverageAlertEnv & {
@@ -109,7 +110,10 @@ async function callCoverageDo(
     if (!response.ok) {
       return null;
     }
-    return (await response.json()) as Record<string, unknown>;
+    return decodeDoResponse<Record<string, unknown>>(
+      await response.json(),
+      CHANNEL_VERSIONS.platformDo,
+    ) ?? null;
   } catch {
     return null;
   }

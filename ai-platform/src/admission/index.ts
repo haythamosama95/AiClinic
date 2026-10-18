@@ -20,6 +20,7 @@ import {
   type EntitlementSnapshot,
   type IdempotencyPriorState,
 } from "../quota-do/index";
+import { decodeDoResponse } from "../quota-do/response-decoder";
 import {
   flushRejectionCounters,
   recordGuardRejection,
@@ -310,8 +311,16 @@ async function callAdmissionDo(
     return { ok: false, reason: "client_error" };
   }
 
-  const payload = (await response.json()) as Record<string, unknown>;
-  if (payload.result === "rejected") {
+  let payload: Record<string, unknown> | undefined;
+  try {
+    payload = decodeDoResponse<Record<string, unknown>>(
+      await response.json(),
+      CHANNEL_VERSIONS.platformDo,
+    );
+  } catch {
+    return { ok: false, reason: "contract_rejected" };
+  }
+  if (payload === undefined || payload.result === "rejected") {
     return { ok: false, reason: "contract_rejected" };
   }
 
