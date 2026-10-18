@@ -1613,7 +1613,9 @@ describe.sequential("sweeps cross-worker", () => {
     const paymentsBeforeSixHour = await tableCount("payment");
     const reversalsBeforeSixHour = await reversalCount();
 
-    await setClock(addMinutes(addDays(baseClock, 3), 1));
+    // The setup payments use the 12:00 and 12:01 inquiry minutes. Keep the
+    // six-hour sweep in the same bucket, but give it a fresh budget minute.
+    await setClock(addMinutes(addDays(baseClock, 3), 2));
     await scriptPaymobInquiry("reversed");
     await runScheduled("0 */6 * * *");
     await runScheduled("* * * * *");
