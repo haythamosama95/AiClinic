@@ -113,15 +113,10 @@ async function hmacRawBodiesInHour(env: NotifyIntakeEnv, nowMs: number): Promise
   const listed = await env.R2.list({ prefix: "hmac-invalid/" });
   let count = 0;
   for (const object of listed.objects) {
-    if (nowMs - object.uploaded.getTime() > 60 * 60 * 1000) {
-      continue;
-    }
-    const body = await env.R2.get(object.key);
-    if (body === null) {
-      continue;
-    }
-    const text = await body.text();
-    if (text.length > 0) {
+    if (
+      nowMs - object.uploaded.getTime() <= 60 * 60 * 1000 &&
+      object.size > 0
+    ) {
       count += 1;
     }
   }

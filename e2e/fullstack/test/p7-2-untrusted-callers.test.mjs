@@ -9,6 +9,7 @@ import {
   countAboWork,
   ensurePlatformActiveCoverage,
   ensurePlatformGrantPrerequisites,
+  getPlatformLogBuffer,
   issueFeedToken,
   openCheckout,
   platformFetch,
@@ -116,7 +117,15 @@ test("E2E-P7.2-01", async () => {
         },
         body: junkNotifyBody(100 + index),
       });
-      assert.equal(response.status, 401);
+      if (response.status !== 401) {
+        const responseBody = await response.text();
+        const platformLogTail = getPlatformLogBuffer().join("").slice(-12_000);
+        assert.equal(
+          response.status,
+          401,
+          `bad-HMAC request ${index + 1}/60 returned ${response.status}; body=${JSON.stringify(responseBody)}\nABO log tail:\n${platformLogTail}`,
+        );
+      }
     }
     const limited = await billingFetch("/notify/paymob?hmac=deadbeef", {
       method: "POST",
