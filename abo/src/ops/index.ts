@@ -31,13 +31,13 @@ import { runReconciliation } from "../reconciliation/run.js";
 import { rememberOperatorCredential } from "../watch/hourly.js";
 import {
   determineReversalEffect,
-  insertReverseWorkRow,
   processReverseWork,
   reversalDedupeKey,
   reversalIdFromDedupeKey,
   type ReversalEnv,
 } from "../work/reversal.js";
 import { signedHpParamsBound } from "./browser/ceremony.js";
+import { eraseOrgRawEvidence } from "../evidence/raw.js";
 const ASSERTION_MAX_AGE_MS = 5 * 60 * 1000;
 
 export interface OpsEnv extends ClockEnv, ProviderRegistryEnv {
@@ -213,6 +213,8 @@ type VerifiedHpContext = {
   challengeSha256: string;
   credentialId: string;
   actionId: string;
+  resumed?: boolean;
+  leaseToken?: string;
 };
 
 type VerifiedAccess = {
@@ -591,6 +593,220 @@ async function insertOperatorAction(
   ]);
 }
 
+async function acceptedCommandForChallenge(
+  env: OpsEnv,
+  challengeSha256: string,
+): Promise<{ command_id: string; operation_json: string; actor_email: string; target: string; contract_version: number; action_id: string; stage: string; result_json: string | null } | null> {
+  return env.DB.prepare(
+    `SELECT command_id, operation_json, actor_email, target, contract_version,
+            action_id, stage, result_json
+     FROM accepted_operator_command WHERE challenge_sha256 = ?`,
+  )
+    .bind(challengeSha256)
+    .first<{
+      command_id: string;
+      operation_json: string;
+      actor_email: string;
+      target: string;
+      contract_version: number;
+      action_id: string;
+      stage: string;
+      result_json: string | null;
+    }>();
+}
+
+async function acceptedCommandForId(
+  env: OpsEnv,
+  commandId: string,
+): Promise<{ stage: string; result_json: string | null } | null> {
+  return env.DB.prepare(
+    `SELECT stage, result_json FROM accepted_operator_command WHERE command_id = ?`,
+  )
+    .bind(commandId)
+    .first<{ stage: string; result_json: string | null }>();
+}
+
+async function completedRelayResponse(
+  env: OpsEnv,
+  commandId: string,
+  contractVersion: number,
+): Promise<Response | null> {
+  const command = await env.DB.prepare(
+    `SELECT stage, result_json FROM accepted_operator_command WHERE command_id = ?`,
+  )
+    .bind(commandId)
+    .first<{ stage: string; result_json: string | null }>();
+  if (command?.stage !== "complete" || command.result_json === null) return null;
+  try {
+    return platformResponseJson(
+      JSON.parse(command.result_json) as Record<string, unknown>,
+      contractVersion,
+    );
+  } catch {
+    return clinicErrorResponse("transient", 503, contractVersion);
+  }
+}
+
+async function setAcceptedCommandStage(
+  env: OpsEnv,
+  challengeSha256: string,
+  stage: string,
+  resultJson: string | null = null,
+  leaseToken?: string,
+): Promise<void> {
+  const now = await clockNowIso(env);
+  await env.DB.prepare(
+    `UPDATE accepted_operator_command
+     SET stage = ?, result_json = COALESCE(?, result_json), updated_at = ?
+     WHERE challenge_sha256 = ? AND (? IS NULL OR lease_token = ?)`,
+  )
+    .bind(stage, resultJson, now, challengeSha256, leaseToken ?? null, leaseToken ?? null)
+    .run();
+}
+
+async function leaseAcceptedCommand(
+  env: OpsEnv,
+  challengeSha256: string,
+): Promise<string> {
+  const nowMs = await clockNowMs(env);
+  const now = new Date(nowMs).toISOString();
+  const token = crypto.randomUUID();
+  const leaseUntil = new Date(nowMs + 60_000).toISOString();
+  const result = await env.DB.prepare(
+    `UPDATE accepted_operator_command
+     SET lease_token = ?, lease_until = ?, updated_at = ?
+     WHERE challenge_sha256 = ? AND stage != 'complete'
+       AND (lease_until IS NULL OR lease_until <= ?)`,
+  )
+    .bind(token, leaseUntil, now, challengeSha256, now)
+    .run();
+  if ((result.meta.changes ?? 0) !== 1) {
+    throw new Error("accepted operator command lease is held");
+  }
+  return token;
+}
+
+async function reserveRelayCommand(
+  env: OpsEnv,
+  input: {
+    commandId: string;
+    method: string;
+    actorEmail: string;
+    target: string;
+    contractVersion: number;
+    args: Record<string, unknown>;
+    operation: HpOperation;
+    assertion?: unknown;
+  },
+): Promise<"accepted" | "replay" | "conflict"> {
+  const operationJson = new TextDecoder().decode(canonicalize(input.operation));
+  const argsJson = new TextDecoder().decode(canonicalize(input.args));
+  const challengeSha256 = await sha256Hex(canonicalize(input.operation));
+  const existing = await env.DB.prepare(
+    `SELECT method, args_json, operation_json, actor_email, target, contract_version, command_kind
+     FROM accepted_operator_command WHERE command_id = ?`,
+  )
+    .bind(input.commandId)
+    .first<{
+      method: string;
+      args_json: string;
+      operation_json: string;
+      actor_email: string;
+      target: string;
+      contract_version: number;
+      command_kind: string;
+    }>();
+  if (existing !== null) {
+    return existing.method === input.method &&
+        existing.args_json === argsJson &&
+        (existing.command_kind === "relay" || existing.operation_json === operationJson) &&
+        existing.actor_email === input.actorEmail &&
+        existing.target === input.target &&
+        existing.contract_version === input.contractVersion
+      ? "replay"
+      : "conflict";
+  }
+  const now = await clockNowIso(env);
+  try {
+    await env.DB.prepare(
+      `INSERT INTO accepted_operator_command (
+         challenge_sha256, command_id, method, args_json, operation_json, assertion_json,
+         actor_email, target, contract_version, action_id, command_kind,
+         stage, due_at, lease_until, result_json, created_at, updated_at
+       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'relay', 'intent_persisted', ?, NULL, NULL, ?, ?)`,
+    )
+      .bind(
+        challengeSha256,
+        input.commandId,
+        input.method,
+        argsJson,
+        operationJson,
+        input.assertion === undefined ? null : JSON.stringify(input.assertion),
+        input.actorEmail,
+        input.target,
+        input.contractVersion,
+        input.commandId,
+        now,
+        now,
+        now,
+      )
+      .run();
+    return "accepted";
+  } catch {
+    const byId = await env.DB.prepare(
+      `SELECT method, args_json, operation_json, actor_email, target, contract_version, command_kind
+       FROM accepted_operator_command WHERE command_id = ?`,
+    )
+      .bind(input.commandId)
+      .first<{
+        method: string;
+        args_json: string;
+        operation_json: string;
+        actor_email: string;
+        target: string;
+        contract_version: number;
+        command_kind: string;
+      }>();
+    if (byId !== null) {
+      return byId.method === input.method && byId.args_json === argsJson &&
+          (byId.command_kind === "relay" || byId.operation_json === operationJson) && byId.actor_email === input.actorEmail &&
+          byId.target === input.target && byId.contract_version === input.contractVersion
+        ? "replay"
+        : "conflict";
+    }
+    return "conflict";
+  }
+}
+
+async function reserveRelayInvocation(
+  env: OpsEnv,
+  input: {
+    commandId: string;
+    method: string;
+    actorEmail: string;
+    target: string;
+    contractVersion: number;
+    args: Record<string, unknown>;
+    operation?: unknown;
+    assertion?: unknown;
+  },
+): Promise<{ result: "accepted" | "replay" | "conflict"; challengeSha256: string }> {
+  const operation = isRecord(input.operation)
+    ? (input.operation as HpOperation)
+    : {
+        op: input.method,
+        params: input.args,
+        actor_email: input.actorEmail,
+        issued_at: "relay",
+        nonce: input.commandId,
+        contract_version: input.contractVersion,
+      };
+  return {
+    result: await reserveRelayCommand(env, { ...input, operation }),
+    challengeSha256: await sha256Hex(canonicalize(operation)),
+  };
+}
+
 async function recordPlatformOperatorAction(
   env: OpsEnv,
   accessJwt: string,
@@ -718,6 +934,42 @@ async function verifyHpRequest(
     );
   }
 
+  const challengeSha256 = await sha256Hex(canonicalize(operation));
+  const durableLocalCommand = [
+    "release_payment",
+    "manual_chargeback",
+    "erase_contact",
+  ].includes(operation.op);
+  if (durableLocalCommand) {
+  const accepted = await acceptedCommandForChallenge(env, challengeSha256);
+  if (accepted !== null) {
+    if (
+      accepted.operation_json !== new TextDecoder().decode(canonicalize(operation)) ||
+      accepted.actor_email !== access.email ||
+      accepted.target !== subject ||
+      accepted.contract_version !== contractVersion
+    ) {
+      return refuseHpAction(
+        env,
+        access,
+        expectedOp,
+        subject,
+        operation.params,
+        "conflict",
+        contractVersion,
+      );
+    }
+    return {
+      access,
+      operation,
+      challengeSha256,
+      credentialId: "accepted",
+      actionId: accepted.action_id,
+      resumed: true,
+    };
+  }
+  }
+
   const issuedAtMs = Date.parse(operation.issued_at);
   const nowMs = await clockNowMs(env);
   if (
@@ -736,7 +988,6 @@ async function verifyHpRequest(
     );
   }
 
-  const challengeSha256 = await sha256Hex(canonicalize(operation));
   if (await assertionChallengeUsed(env, challengeSha256)) {
     return refuseHpAction(
       env,
@@ -784,21 +1035,81 @@ async function commitAcceptedHp(
 ): Promise<void> {
   const createdAt = await clockNowIso(env);
   const paramsSha256 = await sha256Hex(canonicalize(hp.operation.params));
-  await insertAssertionUsed(env, hp.challengeSha256);
-  await insertOperatorAction(
-    env,
-    {
-      action_id: hp.actionId,
-      actor_email: hp.access.email,
-      access_jti: hp.access.jti,
-      action: hp.operation.op,
+  if (hp.resumed === true) {
+    hp.leaseToken = await leaseAcceptedCommand(env, hp.challengeSha256);
+    return;
+  }
+  if (!["release_payment", "manual_chargeback", "erase_contact"].includes(hp.operation.op)) {
+    await insertAssertionUsed(env, hp.challengeSha256);
+    await insertOperatorAction(
+      env,
+      {
+        action_id: hp.actionId,
+        actor_email: hp.access.email,
+        access_jti: hp.access.jti,
+        action: hp.operation.op,
+        subject,
+        params_sha256: paramsSha256,
+        assertion_sha256: hp.challengeSha256,
+        result: "accepted",
+      },
+      createdAt,
+    );
+    return;
+  }
+  const canonicalRow = {
+    action_id: hp.actionId,
+    actor_email: hp.access.email,
+    access_jti: hp.access.jti,
+    action: hp.operation.op,
+    subject,
+    params_sha256: paramsSha256,
+    assertion_sha256: hp.challengeSha256,
+    result: "accepted",
+  };
+  const operationJson = new TextDecoder().decode(canonicalize(hp.operation));
+  const argsJson = new TextDecoder().decode(canonicalize(hp.operation.params));
+  await env.DB.batch([
+    env.DB.prepare(
+      `INSERT INTO accepted_operator_command (
+         challenge_sha256, command_id, method, args_json, operation_json,
+         actor_email, target, contract_version, action_id, command_kind,
+         stage, due_at, lease_until, result_json, created_at, updated_at
+       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'local_hp', 'accepted', ?, NULL, NULL, ?, ?)`
+    ).bind(
+      hp.challengeSha256,
+      hp.actionId,
+      hp.operation.op,
+      argsJson,
+      operationJson,
+      hp.access.email,
       subject,
-      params_sha256: paramsSha256,
-      assertion_sha256: hp.challengeSha256,
-      result: "accepted",
-    },
-    createdAt,
-  );
+      hp.operation.contract_version,
+      hp.actionId,
+      createdAt,
+      createdAt,
+      createdAt,
+    ),
+    env.DB.prepare(
+      `INSERT INTO assertion_used (challenge_sha256) VALUES (?)`,
+    ).bind(hp.challengeSha256),
+    env.DB.prepare(
+      `INSERT INTO operator_action (
+         action_id, actor_email, access_jti, action, subject,
+         params_sha256, assertion_sha256, result
+       ) VALUES (?, ?, ?, ?, ?, ?, ?, 'accepted')`,
+    ).bind(
+      hp.actionId,
+      hp.access.email,
+      hp.access.jti,
+      hp.operation.op,
+      subject,
+      paramsSha256,
+      hp.challengeSha256,
+    ),
+    await insertFactLog(env, "operator_action", hp.actionId, canonicalRow, createdAt),
+  ]);
+  hp.leaseToken = await leaseAcceptedCommand(env, hp.challengeSha256);
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -1128,7 +1439,10 @@ async function handleHpReleasePayment(
       contractVersion,
     );
   }
-  if (await paymentFullyReversed(env, paymentId, payment.amount_minor)) {
+  if (
+    hp.resumed !== true &&
+    await paymentFullyReversed(env, paymentId, payment.amount_minor)
+  ) {
     return refuseHpAction(
       env,
       hp.access,
@@ -1151,29 +1465,79 @@ async function handleHpReleasePayment(
   await env.DB.batch([
     env.DB.prepare(
       `INSERT INTO payment_release (payment_id, operator_action_id, at)
-       VALUES (?, ?, ?)`,
-    ).bind(paymentId, hp.actionId, nowIso),
-    await insertFactLog(
-      env,
-      "payment_release",
+       SELECT ?, ?, ?
+       WHERE EXISTS (
+         SELECT 1 FROM payment p
+         WHERE p.payment_id = ? AND p.disposition = 'withheld_mismatch'
+       ) AND EXISTS (
+         SELECT 1 FROM accepted_operator_command c
+         WHERE c.challenge_sha256 = ? AND c.lease_token = ?
+       ) AND NOT EXISTS (
+         SELECT 1 FROM reversal r JOIN payment p ON p.payment_id = r.payment_id
+         WHERE r.payment_id = ?
+           AND (r.is_full = 1 OR r.cumulative_reversed_minor >= p.amount_minor)
+       )
+       ON CONFLICT(payment_id) DO NOTHING`,
+    ).bind(paymentId, hp.actionId, nowIso, paymentId, hp.challengeSha256, hp.leaseToken, paymentId),
+    env.DB.prepare(
+      `INSERT INTO fact_log ("table", key, row_sha256, row_json, created_at)
+       SELECT 'payment_release', ?, ?, ?, ?
+       WHERE NOT EXISTS (
+         SELECT 1 FROM fact_log WHERE "table" = 'payment_release' AND key = ?
+       ) AND EXISTS (
+         SELECT 1 FROM payment_release WHERE payment_id = ?
+       )`,
+    ).bind(
       paymentId,
-      paymentReleaseCanonical,
+      await sha256Hex(canonicalize(paymentReleaseCanonical)),
+      new TextDecoder().decode(canonicalize(paymentReleaseCanonical)),
       nowIso,
+      paymentId,
+      paymentId,
     ),
     env.DB.prepare(
       `INSERT INTO work (
          work_id, kind, subject_id, dedupe_key, state, attempts,
          next_attempt_at, lease_until, last_error, opened_at
-       ) VALUES (?, 'grant', ?, ?, 'open', 0, ?, NULL, NULL, ?)`,
+       ) SELECT ?, 'grant', ?, ?, 'open', 0, ?, NULL, NULL, ?
+       WHERE EXISTS (
+         SELECT 1 FROM payment_release WHERE payment_id = ?
+       ) AND EXISTS (
+         SELECT 1 FROM accepted_operator_command c
+         WHERE c.challenge_sha256 = ? AND c.lease_token = ?
+       ) AND NOT EXISTS (
+         SELECT 1 FROM reversal r JOIN payment p ON p.payment_id = r.payment_id
+         WHERE r.payment_id = ?
+           AND (r.is_full = 1 OR r.cumulative_reversed_minor >= p.amount_minor)
+       )
+       ON CONFLICT(dedupe_key) DO NOTHING`,
     ).bind(
       grantWorkId,
       paymentId,
       `grant:${paymentId}`,
       nowIso,
       nowIso,
+      paymentId,
+      hp.challengeSha256,
+      hp.leaseToken,
+      paymentId,
     ),
+    env.DB.prepare(
+      `UPDATE accepted_operator_command SET stage = 'local_applied', updated_at = ?
+       WHERE challenge_sha256 = ?
+         AND lease_token = ?
+         AND EXISTS (SELECT 1 FROM payment_release WHERE payment_id = ?)`,
+    ).bind(nowIso, hp.challengeSha256, hp.leaseToken, paymentId),
   ]);
-
+  const releaseCommitted = await env.DB.prepare(
+    `SELECT 1 FROM payment_release WHERE payment_id = ?`,
+  )
+    .bind(paymentId)
+    .first();
+  if (releaseCommitted === null) {
+    await setAcceptedCommandStage(env, hp.challengeSha256, "conflict", null, hp.leaseToken);
+    return clinicErrorResponse("payment_fully_reversed", 409, contractVersion);
+  }
   await recordPlatformOperatorAction(
     env,
     hp.access.jwt,
@@ -1181,6 +1545,7 @@ async function handleHpReleasePayment(
     paymentId,
     hp.actionId,
   );
+  await setAcceptedCommandStage(env, hp.challengeSha256, "complete", null, hp.leaseToken);
 
   return clinicJsonResponse(
     { contract_version: contractVersion, action_id: hp.actionId },
@@ -1227,7 +1592,7 @@ async function handleHpManualChargeback(
   )
     .bind(dedupeKey)
     .first();
-  if (existing !== null) {
+  if (existing !== null && hp.resumed !== true) {
     return refuseHpAction(
       env,
       hp.access,
@@ -1248,6 +1613,7 @@ async function handleHpManualChargeback(
   const reversalId = await reversalIdFromDedupeKey(dedupeKey);
   const reference = humanRef("REV", reversalId);
   const nowIso = await clockNowIso(env);
+  const reverseWorkId = crypto.randomUUID();
   const reversalCanonical = {
     reversal_id: reversalId,
     payment_id: paymentId,
@@ -1269,7 +1635,12 @@ async function handleHpManualChargeback(
          reversal_id, payment_id, reference, amount_minor, kind, is_full,
          source, cumulative_reversed_minor, detected_via, recorded_by,
          evidence_sha256, effect, dedupe_key
-       ) VALUES (?, ?, ?, ?, 'chargeback', 1, 'operator', ?, 'manual', ?, ?, ?, ?)`,
+       ) SELECT ?, ?, ?, ?, 'chargeback', 1, 'operator', ?, 'manual', ?, ?, ?, ?
+       WHERE EXISTS (
+         SELECT 1 FROM accepted_operator_command c
+         WHERE c.challenge_sha256 = ? AND c.lease_token = ?
+       )
+       ON CONFLICT(dedupe_key) DO NOTHING`,
     ).bind(
       reversalId,
       paymentId,
@@ -1280,12 +1651,55 @@ async function handleHpManualChargeback(
       hp.challengeSha256,
       effect,
       dedupeKey,
+      hp.challengeSha256,
+      hp.leaseToken,
     ),
-    await insertFactLog(env, "reversal", reversalId, reversalCanonical, nowIso),
+    env.DB.prepare(
+      `INSERT INTO fact_log ("table", key, row_sha256, row_json, created_at)
+       SELECT 'reversal', ?, ?, ?, ?
+       WHERE NOT EXISTS (
+         SELECT 1 FROM fact_log WHERE "table" = 'reversal' AND key = ?
+       ) AND EXISTS (
+         SELECT 1 FROM accepted_operator_command c
+         WHERE c.challenge_sha256 = ? AND c.lease_token = ?
+       )`,
+    ).bind(
+      reversalId,
+      await sha256Hex(canonicalize(reversalCanonical)),
+      new TextDecoder().decode(canonicalize(reversalCanonical)),
+      nowIso,
+      reversalId,
+      hp.challengeSha256,
+      hp.leaseToken,
+    ),
+    env.DB.prepare(
+      `INSERT INTO work (
+         work_id, kind, subject_id, dedupe_key, state, attempts,
+         next_attempt_at, lease_until, last_error, opened_at
+       ) SELECT ?, 'reverse', ?, ?, 'open', 0, ?, NULL, NULL, ?
+       WHERE EXISTS (SELECT 1 FROM reversal WHERE reversal_id = ?)
+         AND EXISTS (
+           SELECT 1 FROM accepted_operator_command c
+           WHERE c.challenge_sha256 = ? AND c.lease_token = ?
+         )
+       ON CONFLICT(dedupe_key) DO NOTHING`,
+    ).bind(
+      reverseWorkId,
+      reversalId,
+      `reverse:${reversalId}`,
+      nowIso,
+      nowIso,
+      reversalId,
+      hp.challengeSha256,
+      hp.leaseToken,
+    ),
+    env.DB.prepare(
+      `UPDATE accepted_operator_command SET stage = 'local_applied', updated_at = ?
+       WHERE challenge_sha256 = ? AND lease_token = ?`,
+    ).bind(nowIso, hp.challengeSha256, hp.leaseToken),
   ]);
 
   await raiseAlert(env, "AL-06", `AL-06:${reversalId}`, reversalId);
-  await insertReverseWorkRow(env as ReversalEnv, reversalId);
   const reverseWork = await env.DB.prepare(
     `SELECT work_id FROM work WHERE dedupe_key = ?`,
   )
@@ -1302,6 +1716,7 @@ async function handleHpManualChargeback(
     paymentId,
     hp.actionId,
   );
+  await setAcceptedCommandStage(env, hp.challengeSha256, "complete", null, hp.leaseToken);
 
   return clinicJsonResponse(
     { contract_version: contractVersion, action_id: hp.actionId },
@@ -1378,11 +1793,16 @@ async function handleHpEraseContact(
   await env.DB.prepare(
     `UPDATE billing_contact
      SET name = '', email = '', phone = '', erased_at = ?, erased_by = ?
-     WHERE org_id = ?`,
+     WHERE org_id = ? AND EXISTS (
+       SELECT 1 FROM accepted_operator_command c
+       WHERE c.challenge_sha256 = ? AND c.lease_token = ?
+     )`,
   )
-    .bind(nowIso, hp.access.email, orgId)
+    .bind(nowIso, hp.access.email, orgId, hp.challengeSha256, hp.leaseToken)
     .run();
+  await eraseOrgRawEvidence(env, orgId);
   await deleteTenantEvidenceBodies(env, orgId);
+  await setAcceptedCommandStage(env, hp.challengeSha256, "local_applied", null, hp.leaseToken);
 
   await recordPlatformOperatorAction(
     env,
@@ -1391,6 +1811,7 @@ async function handleHpEraseContact(
     orgId,
     hp.actionId,
   );
+  await setAcceptedCommandStage(env, hp.challengeSha256, "complete", null, hp.leaseToken);
 
   return clinicJsonResponse(
     { contract_version: contractVersion, action_id: hp.actionId },
@@ -1427,6 +1848,16 @@ async function handleHpPost(
   );
   if (verified instanceof Response) {
     return verified;
+  }
+  if (verified.resumed === true) {
+    const accepted = await acceptedCommandForChallenge(env, verified.challengeSha256);
+    if (accepted?.stage === "complete") {
+      return clinicJsonResponse(
+        { contract_version: contractVersion, action_id: verified.actionId },
+        200,
+        contractVersion,
+      );
+    }
   }
   return execute(env, subject, verified, contractVersion);
 }
@@ -2456,14 +2887,71 @@ async function forwardPlatformRelay(
     params: Record<string, unknown>;
   },
 ): Promise<Response> {
-  const platformResult = await env.PLATFORM[input.method](input.platformArgs);
-  const result = String(platformResult.result ?? "");
+  const operation = isRecord(input.platformArgs.operation)
+    ? (input.platformArgs.operation as HpOperation)
+    : {
+        op: input.method,
+        params: input.params,
+        actor_email: access.email,
+        issued_at: "",
+        nonce: input.actionId,
+        contract_version: contractVersion,
+      };
+  const reservation = await reserveRelayCommand(env, {
+    commandId: input.actionId,
+    method: input.method,
+    actorEmail: access.email,
+    target: input.subject,
+    contractVersion,
+    args: input.params,
+    operation,
+    assertion: input.platformArgs.assertion,
+  });
+  if (reservation === "conflict") {
+    return clinicErrorResponse("conflict", 409, contractVersion);
+  }
+  const prior = await acceptedCommandForId(env, input.actionId);
   const paramsSha256 = await sha256Hex(canonicalize(input.params));
-  const operation = input.platformArgs.operation;
   const assertionSha256 =
-    input.platformArgs.assertion !== undefined && isRecord(operation)
-      ? await sha256Hex(canonicalize(operation))
+    input.platformArgs.assertion !== undefined && isRecord(input.platformArgs.operation)
+      ? await sha256Hex(canonicalize(input.platformArgs.operation))
       : null;
+  if (
+    reservation === "replay" &&
+    (prior?.stage === "platform_succeeded" || prior?.stage === "complete") &&
+    prior.result_json !== null
+  ) {
+    try {
+      const cachedResult = JSON.parse(prior.result_json) as Record<string, unknown>;
+      await insertRelayOperatorAction(env, {
+        action_id: input.actionId,
+        actor_email: access.email,
+        access_jti: access.jti,
+        action: input.method,
+        subject: input.subject,
+        params_sha256: paramsSha256,
+        assertion_sha256: assertionSha256,
+        result: String(cachedResult.result ?? ""),
+      });
+      await setAcceptedCommandStage(
+        env,
+        await sha256Hex(canonicalize(operation)),
+        "complete",
+        prior.result_json,
+      );
+      return platformResponseJson(cachedResult, contractVersion);
+    } catch {
+      return clinicErrorResponse("transient", 503, contractVersion);
+    }
+  }
+  const platformResult = await env.PLATFORM[input.method](input.platformArgs);
+  await setAcceptedCommandStage(
+    env,
+    await sha256Hex(canonicalize(operation)),
+    "platform_succeeded",
+    JSON.stringify(platformResult),
+  );
+  const result = String(platformResult.result ?? "");
 
   await insertRelayOperatorAction(env, {
     action_id: input.actionId,
@@ -2475,6 +2963,12 @@ async function forwardPlatformRelay(
     assertion_sha256: assertionSha256,
     result,
   });
+  await setAcceptedCommandStage(
+    env,
+    await sha256Hex(canonicalize(operation)),
+    "complete",
+    JSON.stringify(platformResult),
+  );
 
   return platformResponseJson(platformResult, contractVersion);
 }
@@ -2517,8 +3011,30 @@ async function handlePostRegisterOperatorCredential(
     params.attestation = body.attestation;
   }
 
+  const reservation = await reserveRelayInvocation(env, {
+    commandId: actionId,
+    method: "registerOperatorCredential",
+    actorEmail: access.email,
+    target: credentialId,
+    contractVersion,
+    args: params,
+    operation: body.operation,
+    assertion: body.assertion,
+  });
+  if (reservation.result === "conflict") {
+    return clinicErrorResponse("conflict", 409, contractVersion);
+  }
+  const replay = await completedRelayResponse(env, actionId, contractVersion);
+  if (replay !== null) return replay;
+
   const platformResult = await env.PLATFORM.registerOperatorCredential(
     platformArgs,
+  );
+  await setAcceptedCommandStage(
+    env,
+    reservation.challengeSha256,
+    "platform_succeeded",
+    JSON.stringify(platformResult),
   );
   const result = String(platformResult.result ?? "");
   const paramsSha256 = await sha256Hex(canonicalize(params));
@@ -2561,6 +3077,7 @@ async function handlePostRegisterOperatorCredential(
       });
     }
   }
+  await setAcceptedCommandStage(env, reservation.challengeSha256, "complete", JSON.stringify(platformResult));
 
   return platformResponseJson(platformResult, contractVersion);
 }
@@ -2810,7 +3327,28 @@ async function handlePostComplimentaryGrant(
     platformArgs.ceiling_override_operation = body.ceiling_override_operation;
   }
 
+  const reservation = await reserveRelayInvocation(env, {
+    commandId: actionId,
+    method: "grant",
+    actorEmail: access.email,
+    target: orgId,
+    contractVersion,
+    args: {
+      org_id: orgId,
+      envelope,
+      ceiling_override_operation: body.ceiling_override_operation ?? null,
+    },
+    operation: body.operation,
+    assertion: body.assertion,
+  });
+  if (reservation.result === "conflict") {
+    return clinicErrorResponse("conflict", 409, contractVersion);
+  }
+  const replay = await completedRelayResponse(env, actionId, contractVersion);
+  if (replay !== null) return replay;
+
   const platformResult = await env.PLATFORM.grant(platformArgs);
+  await setAcceptedCommandStage(env, reservation.challengeSha256, "platform_succeeded", JSON.stringify(platformResult));
   const result = String(platformResult.result ?? "");
   const paramsSha256 = await sha256Hex(
     canonicalize({ org_id: orgId, action_id: actionId }),
@@ -2841,6 +3379,7 @@ async function handlePostComplimentaryGrant(
     assertion: body.assertion,
     platformResult,
   });
+  await setAcceptedCommandStage(env, reservation.challengeSha256, "complete", JSON.stringify(platformResult));
 
   return platformResponseJson(platformResult, contractVersion);
 }
@@ -2863,6 +3402,20 @@ async function handlePostSuspend(
     return clinicErrorResponse("assertion_invalid", 400, contractVersion);
   }
 
+  const reservation = await reserveRelayInvocation(env, {
+    commandId: actionId,
+    method: "suspend",
+    actorEmail: access.email,
+    target: orgId,
+    contractVersion,
+    args: { org_id: orgId, reason },
+  });
+  if (reservation.result === "conflict") {
+    return clinicErrorResponse("conflict", 409, contractVersion);
+  }
+  const replay = await completedRelayResponse(env, actionId, contractVersion);
+  if (replay !== null) return replay;
+
   const platformResult = await env.PLATFORM.suspend({
     contract_version: CHANNEL_VERSIONS.vendorEntrypoint,
     access_jwt: access.jwt,
@@ -2884,6 +3437,7 @@ async function handlePostSuspend(
     assertion_sha256: null,
     result,
   });
+  await setAcceptedCommandStage(env, reservation.challengeSha256, "complete", JSON.stringify(platformResult));
 
   return platformResponseJson(platformResult, contractVersion);
 }
@@ -2906,6 +3460,20 @@ async function handlePostResume(
     return clinicErrorResponse("assertion_invalid", 400, contractVersion);
   }
 
+  const reservation = await reserveRelayInvocation(env, {
+    commandId: actionId,
+    method: "resume",
+    actorEmail: access.email,
+    target: orgId,
+    contractVersion,
+    args: { org_id: orgId, reason },
+  });
+  if (reservation.result === "conflict") {
+    return clinicErrorResponse("conflict", 409, contractVersion);
+  }
+  const replay = await completedRelayResponse(env, actionId, contractVersion);
+  if (replay !== null) return replay;
+
   const platformResult = await env.PLATFORM.resume({
     contract_version: CHANNEL_VERSIONS.vendorEntrypoint,
     access_jwt: access.jwt,
@@ -2927,6 +3495,7 @@ async function handlePostResume(
     assertion_sha256: null,
     result,
   });
+  await setAcceptedCommandStage(env, reservation.challengeSha256, "complete", JSON.stringify(platformResult));
 
   return platformResponseJson(platformResult, contractVersion);
 }
@@ -2953,6 +3522,20 @@ async function handlePostListGrantsForVoid(
     return clinicErrorResponse("assertion_invalid", 400, contractVersion);
   }
 
+  const reservation = await reserveRelayInvocation(env, {
+    commandId: actionId,
+    method: "listGrantsForVoid",
+    actorEmail: access.email,
+    target: credentialId,
+    contractVersion,
+    args: { credential_id: credentialId, window },
+  });
+  if (reservation.result === "conflict") {
+    return clinicErrorResponse("conflict", 409, contractVersion);
+  }
+  const replay = await completedRelayResponse(env, actionId, contractVersion);
+  if (replay !== null) return replay;
+
   const platformResult = await env.PLATFORM.listGrantsForVoid({
     contract_version: CHANNEL_VERSIONS.vendorEntrypoint,
     access_jwt: access.jwt,
@@ -2974,6 +3557,7 @@ async function handlePostListGrantsForVoid(
     assertion_sha256: null,
     result,
   });
+  await setAcceptedCommandStage(env, reservation.challengeSha256, "complete", JSON.stringify(platformResult));
 
   return platformResponseJson(platformResult, contractVersion);
 }
@@ -3007,6 +3591,21 @@ async function handlePostGrantHpRelay(
     signer_credential_id: body.signer_credential_id,
   };
 
+  const reservation = await reserveRelayInvocation(env, {
+    commandId: actionId,
+    method: platformMethod,
+    actorEmail: access.email,
+    target: grantId,
+    contractVersion,
+    args: { grant_id: grantId, reason },
+    operation: body.operation,
+  });
+  if (reservation.result === "conflict") {
+    return clinicErrorResponse("conflict", 409, contractVersion);
+  }
+  const replay = await completedRelayResponse(env, actionId, contractVersion);
+  if (replay !== null) return replay;
+
   const platformResult =
     platformMethod === "voidGrant"
       ? await env.PLATFORM.voidGrant(platformArgs)
@@ -3031,6 +3630,7 @@ async function handlePostGrantHpRelay(
     assertion_sha256: assertionSha256,
     result,
   });
+  await setAcceptedCommandStage(env, reservation.challengeSha256, "complete", JSON.stringify(platformResult));
 
   return platformResponseJson(platformResult, contractVersion);
 }
@@ -3052,6 +3652,21 @@ async function handlePostDeleteInstallation(
   if (typeof actionId !== "string" || typeof reason !== "string") {
     return clinicErrorResponse("assertion_invalid", 400, contractVersion);
   }
+
+  const reservation = await reserveRelayInvocation(env, {
+    commandId: actionId,
+    method: "deleteInstallation",
+    actorEmail: access.email,
+    target: orgId,
+    contractVersion,
+    args: { org_id: orgId, reason },
+    operation: body.operation,
+  });
+  if (reservation.result === "conflict") {
+    return clinicErrorResponse("conflict", 409, contractVersion);
+  }
+  const replay = await completedRelayResponse(env, actionId, contractVersion);
+  if (replay !== null) return replay;
 
   const platformResult = await env.PLATFORM.deleteInstallation({
     contract_version: CHANNEL_VERSIONS.vendorEntrypoint,
@@ -3082,6 +3697,7 @@ async function handlePostDeleteInstallation(
     assertion_sha256: assertionSha256,
     result,
   });
+  await setAcceptedCommandStage(env, reservation.challengeSha256, "complete", JSON.stringify(platformResult));
 
   return platformResponseJson(platformResult, contractVersion);
 }
@@ -3109,16 +3725,70 @@ async function handlePostBeginTransfer(
     return clinicErrorResponse("assertion_invalid", 400, contractVersion);
   }
 
+  if (!isRecord(body.operation) || !validateOperation(body.operation).ok) {
+    return clinicErrorResponse("assertion_invalid", 400, contractVersion);
+  }
+  const operation = body.operation as HpOperation;
+  if (
+    operation.op !== "beginTransfer" ||
+    operation.actor_email !== access.email ||
+    operation.contract_version !== contractVersion
+  ) {
+    return clinicErrorResponse("assertion_invalid", 400, contractVersion);
+  }
+  const reservation = await reserveRelayCommand(env, {
+    commandId: actionId,
+    method: "beginTransfer",
+    actorEmail: access.email,
+    target: orgId,
+    contractVersion,
+    args: { org_id: orgId, from_installation_id: fromInstallationId, reason },
+    operation,
+    assertion: body.assertion,
+  });
+  if (reservation === "conflict") {
+    return clinicErrorResponse("conflict", 409, contractVersion);
+  }
+  const storedCommand = await env.DB.prepare(
+    `SELECT operation_json, assertion_json, stage, result_json
+     FROM accepted_operator_command WHERE command_id = ?`,
+  )
+    .bind(actionId)
+    .first<{
+      operation_json: string;
+      assertion_json: string | null;
+      stage: string;
+      result_json: string | null;
+    }>();
+  const acceptedOperation = storedCommand === null
+    ? operation
+    : (JSON.parse(storedCommand.operation_json) as HpOperation);
+  const acceptedAssertion = storedCommand?.assertion_json == null
+    ? body.assertion
+    : (JSON.parse(storedCommand.assertion_json) as unknown);
+  if (storedCommand?.stage === "complete" && storedCommand.result_json !== null) {
+    return platformResponseJson(
+      JSON.parse(storedCommand.result_json) as Record<string, unknown>,
+      contractVersion,
+    );
+  }
+
   const platformResult = await env.PLATFORM.beginTransfer({
     contract_version: CHANNEL_VERSIONS.vendorEntrypoint,
     access_jwt: access.jwt,
     org_id: orgId,
     from_installation_id: fromInstallationId,
     reason,
-    operation: body.operation,
-    assertion: body.assertion,
+    operation: acceptedOperation,
+    assertion: acceptedAssertion,
     signer_credential_id: body.signer_credential_id,
   });
+  await setAcceptedCommandStage(
+    env,
+    await sha256Hex(canonicalize(acceptedOperation)),
+    "platform_succeeded",
+    JSON.stringify(platformResult),
+  );
   const result = String(platformResult.result ?? "");
   const paramsSha256 = await sha256Hex(
     canonicalize({
@@ -3127,13 +3797,19 @@ async function handlePostBeginTransfer(
       reason,
     }),
   );
-  const operation = body.operation;
   const assertionSha256 =
-    isRecord(operation)
-      ? await sha256Hex(canonicalize(operation))
+    isRecord(acceptedOperation)
+      ? await sha256Hex(canonicalize(acceptedOperation))
       : null;
-
-  await insertRelayOperatorAction(env, {
+  let transferId: string | null = null;
+  if (result === "ok" && typeof platformResult.detail === "string") {
+    const detail = JSON.parse(platformResult.detail) as Record<string, unknown>;
+    transferId = typeof detail.transfer_id === "string" && detail.transfer_id.length > 0
+      ? detail.transfer_id
+      : null;
+  }
+  const nowIso = await clockNowIso(env);
+  const canonicalAction = {
     action_id: actionId,
     actor_email: access.email,
     access_jti: access.jti,
@@ -3142,32 +3818,51 @@ async function handlePostBeginTransfer(
     params_sha256: paramsSha256,
     assertion_sha256: assertionSha256,
     result,
-  });
-
-  if (result === "ok" && typeof platformResult.detail === "string") {
-    const detail = JSON.parse(platformResult.detail) as Record<string, unknown>;
-    const transferId = detail.transfer_id;
-    if (typeof transferId === "string" && transferId.length > 0) {
-      const dedupeKey = `transfer_step:${transferId}`;
-      const existing = await env.DB.prepare(
-        `SELECT 1 FROM work WHERE dedupe_key = ?`,
-      )
-        .bind(dedupeKey)
-        .first();
-      if (existing === null) {
-        const nowIso = await clockNowIso(env);
-        const workId = crypto.randomUUID();
-        await env.DB.prepare(
-          `INSERT INTO work (
-             work_id, kind, subject_id, dedupe_key, state, attempts,
-             next_attempt_at, lease_until, last_error, opened_at
-           ) VALUES (?, 'transfer_step', ?, ?, 'open', 0, NULL, NULL, NULL, ?)`,
-        )
-          .bind(workId, transferId, dedupeKey, nowIso)
-          .run();
-      }
-    }
+  };
+  const statements: D1PreparedStatement[] = [
+    env.DB.prepare(
+      `INSERT OR IGNORE INTO operator_action (
+         action_id, actor_email, access_jti, action, subject,
+         params_sha256, assertion_sha256, result
+       ) VALUES (?, ?, ?, 'beginTransfer', ?, ?, ?, ?)`,
+    ).bind(actionId, access.email, access.jti, orgId, paramsSha256, assertionSha256, result),
+    env.DB.prepare(
+      `INSERT INTO fact_log ("table", key, row_sha256, row_json, created_at)
+       SELECT 'operator_action', ?, ?, ?, ?
+       WHERE NOT EXISTS (
+         SELECT 1 FROM fact_log WHERE "table" = 'operator_action' AND key = ?
+       )`,
+    ).bind(
+      actionId,
+      await sha256Hex(canonicalize(canonicalAction)),
+      new TextDecoder().decode(canonicalize(canonicalAction)),
+      nowIso,
+      actionId,
+    ),
+  ];
+  if (transferId !== null) {
+    statements.push(
+      env.DB.prepare(
+        `INSERT INTO work (
+           work_id, kind, subject_id, dedupe_key, state, attempts,
+           next_attempt_at, lease_until, last_error, opened_at
+         ) VALUES (?, 'transfer_step', ?, ?, 'open', 0, NULL, NULL, NULL, ?)
+         ON CONFLICT(dedupe_key) DO NOTHING`,
+      ).bind(crypto.randomUUID(), transferId, `transfer_step:${transferId}`, nowIso),
+    );
   }
+  statements.push(
+    env.DB.prepare(
+      `UPDATE accepted_operator_command
+       SET stage = 'complete', result_json = ?, updated_at = ?
+       WHERE challenge_sha256 = ?`,
+    ).bind(
+      JSON.stringify(platformResult),
+      nowIso,
+      await sha256Hex(canonicalize(acceptedOperation)),
+    ),
+  );
+  await env.DB.batch(statements);
 
   return platformResponseJson(platformResult, contractVersion);
 }

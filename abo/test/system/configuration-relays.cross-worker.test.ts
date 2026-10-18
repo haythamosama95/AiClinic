@@ -25,6 +25,7 @@ import grantMigrationSql from "../../migrations/0004_grant.sql?raw";
 import reversalMigrationSql from "../../migrations/0005_reversal.sql?raw";
 import operatorActionMigrationSql from "../../migrations/0006_operator_action.sql?raw";
 import hpActionsMigrationSql from "../../migrations/0007_hp_actions.sql?raw";
+import acceptedCommandsErasureFenceMigrationSql from "../../migrations/0012_accepted_commands_erasure_fence.sql?raw";
 import { loadOffersFixture } from "../../src/records/append";
 import {
   applySql,
@@ -376,6 +377,7 @@ async function ensureMigrations(): Promise<void> {
     reversalMigrationSql,
     operatorActionMigrationSql,
     hpActionsMigrationSql,
+    acceptedCommandsErasureFenceMigrationSql,
   ]) {
     try {
       await applySql(sql);

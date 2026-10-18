@@ -13,6 +13,7 @@ import successFixture from "../fixtures/paymob/success.json";
 import checkoutMigrationSql from "../../migrations/0002_checkout.sql?raw";
 import notifyWorkMigrationSql from "../../migrations/0003_notify_work.sql?raw";
 import checkoutCreationAttemptsMigrationSql from "../../migrations/0011_checkout_creation_attempts.sql?raw";
+import acceptedCommandsErasureFenceMigrationSql from "../../migrations/0012_accepted_commands_erasure_fence.sql?raw";
 import {
   applySql,
   billingFetch,
@@ -22,6 +23,7 @@ import {
   scriptPaymobInquiry,
   setClock,
   setD1BatchThrows,
+  setIntakeR2PutAfterHook,
   setIntakeR2PutThrows,
   tableCount,
 } from "./harness";
@@ -172,6 +174,14 @@ async function ensureNotifyWorkMigration(): Promise<void> {
 async function ensureCheckoutCreationAttemptsMigration(): Promise<void> {
   try {
     await applySql(checkoutCreationAttemptsMigrationSql);
+  } catch {
+    // Migration not present yet.
+  }
+}
+
+async function ensureAcceptedCommandsErasureFenceMigration(): Promise<void> {
+  try {
+    await applySql(acceptedCommandsErasureFenceMigrationSql);
   } catch {
     // Migration not present yet.
   }
@@ -519,11 +529,46 @@ beforeEach(async () => {
   await ensureCheckoutMigration();
   await ensureNotifyWorkMigration();
   await ensureCheckoutCreationAttemptsMigration();
+  await ensureAcceptedCommandsErasureFenceMigration();
   await setClock("2026-01-15T09:30:00.000Z");
   await scriptPaymobInquiry("bound_success");
 });
 
 describe("P4.3 notify intake", () => {
+  it("R6-O2: callback racing an erasure fence removes its late R2 upload", async () => {
+    const checkoutId = "01JNOTIFYCHECKOUTR6O2RACE";
+    await seedOpenCheckout(checkoutId);
+    setIntakeR2PutAfterHook(async () => {
+      await env.DB.prepare(
+        `UPDATE org_erasure_fence SET generation = generation + 1
+         WHERE org_id = ?`,
+      )
+        .bind(TEST_ORG)
+        .run();
+    });
+
+    const intake = await postPaymobProcessedCallback(
+      successFixture as PaymobCallbackFixture,
+    );
+    expect(intake.status).toBe(200);
+    const lateEvidence = await env.DB.prepare(
+      `SELECT r2_key, state FROM raw_evidence_registry
+       WHERE checkout_id = ? AND evidence_kind = 'notification'
+       ORDER BY created_at DESC LIMIT 1`,
+    )
+      .bind(checkoutId)
+      .first<{ r2_key: string; state: string }>();
+    expect(lateEvidence?.state).toBe("deleted");
+    expect(await env.R2.get(lateEvidence!.r2_key)).toBeNull();
+    const notification = await env.DB.prepare(
+      `SELECT body_r2_key FROM notification WHERE checkout_id = ?
+       ORDER BY notification_id DESC LIMIT 1`,
+    )
+      .bind(checkoutId)
+      .first<{ body_r2_key: string }>();
+    expect(notification?.body_r2_key).toBe("");
+  });
+
   it("E2E-P4.3-01 R3-M5 byte-caps callback bodies before intake writes", async () => {
     const checkoutId = "01JNOTIFYCHECKOUT000001";
     await seedOpenCheckout(checkoutId);
@@ -751,7 +796,7 @@ describe("P4.3 notify intake", () => {
     expect(await tableCount("work")).toBe(0);
   });
 
-  it("E2E-P4.3-09 R3-C5 intake batch failure leaves no dedupe claim", async () => {
+  it("E2E-P4.3-09 R3-C5 R6-O2 intake retry deletes a resolved quarantined copy", async () => {
     const checkoutR2 = "01JNOTIFYCHECKOUT000009A";
     const checkoutD1 = "01JNOTIFYCHECKOUT000009B";
     await seedOpenCheckout(checkoutR2);
@@ -766,25 +811,51 @@ describe("P4.3 notify intake", () => {
     expect(await tableCount("work")).toBe(0);
 
     const factLogsBeforeD1Failure = await tableCount("fact_log");
+    const retryFixture = successFixtureWithTxnId(99050);
+    const retryBody = JSON.stringify({ type: retryFixture.type, obj: retryFixture.obj });
+    const retrySha = await sha256Hex(new TextEncoder().encode(retryBody));
     const notificationFactsBeforeD1Failure = await env.DB.prepare(
       `SELECT COUNT(*) AS n FROM fact_log WHERE "table" = 'notification'`,
     ).first<{ n: number }>();
     setD1BatchThrows(true);
-    const d1Failure = await postPaymobProcessedCallback(
-      successFixtureWithTxnId(99050),
-      { connectingIp: "203.0.113.12" },
-    );
+    const d1Failure = await postPaymobProcessedCallback(retryFixture, {
+      connectingIp: "203.0.113.12",
+    });
     expect(d1Failure.status).toBe(500);
     expect(await tableCount("notification")).toBe(0);
     expect(await tableCount("work")).toBe(0);
     expect(await tableCount("paymob_state_seen")).toBe(0);
     expect(await tableCount("fact_log")).toBe(factLogsBeforeD1Failure);
+    const failedIntakeEvidence = await env.DB.prepare(
+      `SELECT r2_key FROM raw_evidence_registry
+       WHERE raw_sha256 = ? AND evidence_kind = 'notification' AND state = 'retained'`,
+    )
+      .bind(retrySha)
+      .all<{ r2_key: string }>();
+    expect(failedIntakeEvidence.results?.length).toBe(1);
+    expect(await r2GetText(failedIntakeEvidence.results![0]!.r2_key)).toBe(retryBody);
 
-    const retry = await postPaymobProcessedCallback(
-      successFixtureWithTxnId(99050),
-      { connectingIp: "203.0.113.12" },
-    );
+    await env.R2.put("evidence/notification/quarantined-copy", retryBody);
+    await env.DB.prepare(
+      `INSERT INTO raw_evidence_registry (
+         evidence_id, org_id, checkout_id, evidence_kind, generation, r2_key,
+         raw_sha256, state, created_at, updated_at
+       ) VALUES ('quarantined-copy', NULL, NULL, 'notification', NULL,
+         'evidence/notification/quarantined-copy', ?, 'quarantined', ?, ?)`,
+    )
+      .bind(retrySha, "2026-01-15T09:30:00.000Z", "2026-01-15T09:30:00.000Z")
+      .run();
+    const retry = await postPaymobProcessedCallback(retryFixture, {
+      connectingIp: "203.0.113.12",
+    });
     expect(retry.status).toBe(200);
+    expect(await r2GetText("evidence/notification/quarantined-copy")).toBeNull();
+    const quarantinedResolution = await env.DB.prepare(
+      `SELECT r.state, o.state AS cleanup_state FROM raw_evidence_registry r
+       JOIN raw_evidence_cleanup_outbox o ON o.evidence_id = r.evidence_id
+       WHERE r.evidence_id = 'quarantined-copy'`,
+    ).first<{ state: string; cleanup_state: string }>();
+    expect(quarantinedResolution).toEqual({ state: "deleted", cleanup_state: "done" });
     expect(await tableCount("notification")).toBe(1);
     const notifyBodyClaims = await env.DB.prepare(
       `SELECT COUNT(*) AS n FROM paymob_state_seen WHERE source = 'notify_body'`,

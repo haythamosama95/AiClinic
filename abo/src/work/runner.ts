@@ -12,6 +12,7 @@ import {
   recordReversalFromProviderTxn,
   type ReversalEnv,
 } from "./reversal.js";
+import { claimRawEvidence, putClaimedRawEvidence } from "../evidence/raw.js";
 
 const LEASE_MS = 60_000;
 const MIN_BACKOFF_MS = 60_000;
@@ -836,23 +837,46 @@ async function confirmSuccessBatch(
   const subject = `checkout:${checkout.checkout_id}`;
   const nowIso = await clockNowIso(env);
   const inquiryId = await newId(env);
-  const inquiryKey = `evidence/inquiry/${inquiryId}`;
   const inquiryJson = JSON.stringify(confirmedTxn);
-  await env.R2.put(inquiryKey, inquiryJson);
   const inquirySha = await sha256Hex(new TextEncoder().encode(inquiryJson));
 
   const statements: D1PreparedStatement[] = [
     paymobStateSeenInsert(env, stateSeenKey, nowIso, work.work_id, leaseToken),
   ];
 
-  if (
-    await shouldWriteInquiryResult(
-      env,
-      subject,
-      normalizedState,
-      cumulativeReversed,
+  const shouldWriteInquiry = await shouldWriteInquiryResult(
+    env,
+    subject,
+    normalizedState,
+    cumulativeReversed,
+  );
+  let inquiryKey = "";
+  if (shouldWriteInquiry) {
+    const contact = await env.DB.prepare(
+      `SELECT erasure_generation, erased_at FROM billing_contact
+       WHERE org_id = ? AND version = ?`,
     )
-  ) {
+      .bind(checkout.org_id, checkout.billing_contact_version)
+      .first<{ erasure_generation: number; erased_at: string | null }>();
+    if (contact !== null && contact.erased_at === null) {
+      const candidateKey = `evidence/inquiry/${inquiryId}`;
+      const claim = {
+        evidenceId: inquiryId,
+        orgId: checkout.org_id,
+        checkoutId: checkout.checkout_id,
+        kind: "inquiry" as const,
+        r2Key: candidateKey,
+        sha256: inquirySha,
+        expectedGeneration: contact.erasure_generation,
+      };
+      const generation = await claimRawEvidence(env, claim);
+      if (generation !== null &&
+          await putClaimedRawEvidence(env, claim, generation, inquiryJson)) {
+        inquiryKey = candidateKey;
+      }
+    }
+  }
+  if (shouldWriteInquiry) {
     statements.push(
       env.DB.prepare(
         `INSERT INTO inquiry_result (

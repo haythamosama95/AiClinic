@@ -15,6 +15,7 @@ import reconciliationMigrationSql from "../../migrations/0008_reconciliation.sql
 import digestWatchMigrationSql from "../../migrations/0009_digest_watch.sql?raw";
 import workLeaseTokenMigrationSql from "../../migrations/0010_work_lease_token.sql?raw";
 import checkoutCreationAttemptsMigrationSql from "../../migrations/0011_checkout_creation_attempts.sql?raw";
+import acceptedCommandsErasureFenceMigrationSql from "../../migrations/0012_accepted_commands_erasure_fence.sql?raw";
 
 const ABO_LEGACY_MIGRATION_SQL: string[] = [
   recordsMigrationSql,
@@ -31,6 +32,7 @@ const ABO_MIGRATION_SQL: string[] = [
   ...ABO_LEGACY_MIGRATION_SQL,
   workLeaseTokenMigrationSql,
   checkoutCreationAttemptsMigrationSql,
+  acceptedCommandsErasureFenceMigrationSql,
 ];
 
 function base64UrlEncode(bytes: Uint8Array): string {
@@ -412,6 +414,7 @@ export function getCapturedEmails(): ReadonlyArray<{
 
 let paymobMockReady = false;
 let intakeR2PutThrows = false;
+let intakeR2PutAfterHook: (() => Promise<void>) | null = null;
 let d1BatchThrows = false;
 let d1SuccessfulBatchesBeforeThrow = 0;
 let r2PutWrapped = false;
@@ -481,7 +484,11 @@ function ensureR2PutWrapper(): void {
       intakeR2PutThrows = false;
       throw new Error("R2 put failure injected by harness");
     }
-    return originalPut(key, value, options);
+    const result = await originalPut(key, value, options);
+    const afterHook = intakeR2PutAfterHook;
+    intakeR2PutAfterHook = null;
+    if (afterHook !== null) await afterHook();
+    return result;
   };
   r2PutWrapped = true;
 }
@@ -508,6 +515,11 @@ function ensureD1BatchWrapper(): void {
 
 export function setIntakeR2PutThrows(active: boolean): void {
   intakeR2PutThrows = active;
+  ensureR2PutWrapper();
+}
+
+export function setIntakeR2PutAfterHook(hook: (() => Promise<void>) | null): void {
+  intakeR2PutAfterHook = hook;
   ensureR2PutWrapper();
 }
 
@@ -567,6 +579,7 @@ export async function setupHarness(): Promise<void> {
   harnessState.sendEmailThrows = false;
   heartbeatHarness.fetchThrows = false;
   intakeR2PutThrows = false;
+  intakeR2PutAfterHook = null;
   d1BatchThrows = false;
   d1SuccessfulBatchesBeforeThrow = 0;
   clearCapturedEmails();

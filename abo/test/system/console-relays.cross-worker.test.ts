@@ -24,6 +24,7 @@ import grantMigrationSql from "../../migrations/0004_grant.sql?raw";
 import reversalMigrationSql from "../../migrations/0005_reversal.sql?raw";
 import operatorActionMigrationSql from "../../migrations/0006_operator_action.sql?raw";
 import hpActionsMigrationSql from "../../migrations/0007_hp_actions.sql?raw";
+import acceptedCommandsErasureFenceMigrationSql from "../../migrations/0012_accepted_commands_erasure_fence.sql?raw";
 import { loadOffersFixture } from "../../src/records/append";
 import {
   applySql,
@@ -352,6 +353,7 @@ async function ensureMigrations(): Promise<void> {
     reversalMigrationSql,
     operatorActionMigrationSql,
     hpActionsMigrationSql,
+    acceptedCommandsErasureFenceMigrationSql,
   ]) {
     try {
       await applySql(sql);
@@ -1953,7 +1955,7 @@ describe("console relays cross-worker", () => {
     expect(operatorRow!.result).toBe("rejected");
   });
 
-  it("E2E-P4.8-04 begin-transfer saga retries through transient to epoch 2", async () => {
+  it("R6-O1/R8-CONSOLE3: E2E-P4.8-04 begin-transfer binds IDs and recovers its runner", async () => {
     const orgId = ORG_CR_04;
     await setupConsoleRelaysHarness();
     await setupActivePlatformCoverage(orgId);
@@ -1984,6 +1986,36 @@ describe("console relays cross-worker", () => {
     };
     const transferId = transferDetail.transfer_id;
     expect(transferId).toBeTruthy();
+
+    const resumedBegin = await opsBeginTransferRelay({
+      orgId,
+      fromInstallationId: fromInstallationId!,
+      accessJwt: hp.accessJwt,
+      hpCredential: hp,
+      actionId: begun.actionId,
+    });
+    expect(resumedBegin.response.status).toBe(200);
+    const resumedBody = (await resumedBegin.response.json()) as Record<string, unknown>;
+    expect(resumedBody.result).toBe("ok");
+    expect(
+      (JSON.parse(String(resumedBody.detail)) as { transfer_id: string }).transfer_id,
+    ).toBe(transferId);
+
+    const changed = await opsBeginTransferRelay({
+      orgId,
+      fromInstallationId: fromInstallationId!,
+      accessJwt: hp.accessJwt,
+      hpCredential: hp,
+      reason: "different command under reused id",
+      actionId: begun.actionId,
+    });
+    expect(changed.response.status).toBe(409);
+    const transferCount = await env.PLATFORM_DB.prepare(
+      `SELECT COUNT(*) AS n FROM transfer WHERE org_id = ?`,
+    )
+      .bind(orgId)
+      .first<{ n: number }>();
+    expect(transferCount?.n).toBe(1);
 
     const workRow = await transferStepWorkRow(transferId);
     expect(workRow).not.toBeNull();

@@ -142,12 +142,13 @@ export async function handlePutBillingContact(
       const inserted = await env.DB.prepare(
         `INSERT INTO billing_contact (
            org_id, version, client_request_id, name, email, phone,
-           contact_sha256, created_by_sub, contract_version
+           contact_sha256, created_by_sub, contract_version, erasure_generation
          )
          SELECT ?,
                 (SELECT COALESCE(MAX(version), 0) + 1
                  FROM billing_contact WHERE org_id = ?),
-                ?, ?, ?, ?, ?, ?, ?
+                ?, ?, ?, ?, ?, ?, ?,
+                COALESCE((SELECT generation FROM org_erasure_fence WHERE org_id = ?), 0)
          WHERE NOT EXISTS (
            SELECT 1 FROM billing_contact
            WHERE org_id = ? AND client_request_id = ?
@@ -164,6 +165,7 @@ export async function handlePutBillingContact(
           hash,
           claims.sub,
           contractVersion,
+          orgId,
           orgId,
           clientRequestId,
         )

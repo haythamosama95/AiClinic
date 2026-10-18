@@ -12,6 +12,7 @@ import grantMigrationSql from "../../migrations/0004_grant.sql?raw";
 import reversalMigrationSql from "../../migrations/0005_reversal.sql?raw";
 import operatorActionMigrationSql from "../../migrations/0006_operator_action.sql?raw";
 import hpActionsMigrationSql from "../../migrations/0007_hp_actions.sql?raw";
+import acceptedCommandsErasureFenceMigrationSql from "../../migrations/0012_accepted_commands_erasure_fence.sql?raw";
 import { operationChallenge } from "vendor-contracts";
 import {
   createSoftwareAuthenticator,
@@ -62,6 +63,7 @@ async function ensureMigrations(): Promise<void> {
     reversalMigrationSql,
     operatorActionMigrationSql,
     hpActionsMigrationSql,
+    acceptedCommandsErasureFenceMigrationSql,
   ]) {
     try {
       await applySql(sql);
@@ -380,7 +382,7 @@ describe("console browser cross-worker", () => {
     expect(registryAfter?.n).toBe(registryBefore?.n);
   });
 
-  it("R2-ABO-03 console producer ceremonies build the package challenge, serialize passkey output and submit bound bytes through the versioned handler", async () => {
+  it("R2-ABO-03/R6-O1 console producer ceremonies submit bound bytes and resume accepted erasure", async () => {
     await clearOperatorCredentials();
     const { accessJwt, authenticator, credentialId } =
       await registerAndActivateFirstCredential();
@@ -520,8 +522,8 @@ describe("console browser cross-worker", () => {
     expect(contacts?.erased_at).not.toBeNull();
     expect(contacts?.erased_by).toBe(VENDOR_OPERATOR_EMAIL);
 
-    // The accepted ceremony's challenge is consumed: replaying the same
-    // operation and assertion is refused without any further mutation.
+    // An accepted erasure resumes by the same operation and returns its
+    // original action identity without applying the mutation twice.
     const replay = await opsFetch(erase!.route, {
       method: "POST",
       headers: await opsHeaders(accessJwt),
@@ -530,9 +532,7 @@ describe("console browser cross-worker", () => {
         assertion: eraseAssertion,
       }),
     });
-    expect(replay.status).toBe(400);
-    const replayBody = (await replay.json()) as Record<string, unknown>;
-    expect(replayBody.code).toBe("assertion_used");
+    expect(replay.status).toBe(200);
 
     // The unused retire ceremony (never submitted) serializes fine on its
     // own handler; its subject has no published version, so the handler
@@ -550,7 +550,7 @@ describe("console browser cross-worker", () => {
     expect(retirementBody.code).not.toBe("credential_not_active");
   });
 
-  it("R2-P1 a bound approval delivered to another subject's URL is refused without consuming the challenge or changing that subject", async () => {
+  it("R2-P1/R6-O1 a bound approval stays subject-scoped and accepted erasure resumes", async () => {
     await clearOperatorCredentials();
     const accessJwt = await mintVendorAccessJwt();
     const authenticator = await createSoftwareAuthenticator("EdDSA");
@@ -640,7 +640,7 @@ describe("console browser cross-worker", () => {
     expect(contactA?.name).toBe("");
     expect(contactA?.erased_by).toBe(VENDOR_OPERATOR_EMAIL);
 
-    // Reuse of the consumed approval is refused.
+    // Reuse of the accepted approval returns the same command result.
     const replay = await opsFetch(`/ops/orgs/${orgA}/erase-contact`, {
       method: "POST",
       headers: await opsHeaders(accessJwt),
@@ -654,9 +654,7 @@ describe("console browser cross-worker", () => {
         },
       }),
     });
-    expect(replay.status).toBe(400);
-    const replayBody = (await replay.json()) as Record<string, unknown>;
-    expect(replayBody.code).toBe("assertion_used");
+    expect(replay.status).toBe(200);
 
     // Missing the frozen bound key altogether is refused before replay
     // consumption as well: an unbound erase_contact (no org_id in params)

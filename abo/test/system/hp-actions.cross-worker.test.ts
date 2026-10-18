@@ -21,6 +21,7 @@ import grantMigrationSql from "../../migrations/0004_grant.sql?raw";
 import reversalMigrationSql from "../../migrations/0005_reversal.sql?raw";
 import operatorActionMigrationSql from "../../migrations/0006_operator_action.sql?raw";
 import hpActionsMigrationSql from "../../migrations/0007_hp_actions.sql?raw";
+import acceptedCommandsErasureFenceMigrationSql from "../../migrations/0012_accepted_commands_erasure_fence.sql?raw";
 import { loadOffersFixture } from "../../src/records/append";
 import {
   applySql,
@@ -284,6 +285,7 @@ async function ensureMigrations(): Promise<void> {
     reversalMigrationSql,
     operatorActionMigrationSql,
     hpActionsMigrationSql,
+    acceptedCommandsErasureFenceMigrationSql,
   ]) {
     try {
       await applySql(sql);
@@ -1425,7 +1427,7 @@ describe("hp-actions cross-worker", () => {
     expect(await platformPlanVersionSnapshot()).toBe(platformTermsBefore);
   });
 
-  it("E2E-P4.7-04 withheld release applies grant; fully reversed release is refused (R2-P1 bound params)", async () => {
+  it("R6-O1: E2E-P4.7-04 accepted release replays idempotently; fully reversed release is refused", async () => {
     const expectations = await setupHpHarness();
     const orgId = ORG_HP_03;
     const offer = { offerId: expectations.offer_id, version: expectations.version };
@@ -1457,6 +1459,21 @@ describe("hp-actions cross-worker", () => {
       },
     );
     expect(release.status).toBe(200);
+    expect(await paymentReleaseCount(withheld.paymentId)).toBe(1);
+    expect(await grantWorkCountForPayment(withheld.paymentId)).toBe(1);
+    const releaseBody = (await release.json()) as { action_id: string };
+    const replay = await opsHpFetch(
+      `/ops/payments/${withheld.paymentId}/release`,
+      {
+        accessJwt: hp.accessJwt,
+        operation: releaseOperation,
+        assertion: releaseAssertion,
+      },
+    );
+    expect(replay.status).toBe(200);
+    expect(((await replay.json()) as { action_id: string }).action_id).toBe(
+      releaseBody.action_id,
+    );
     expect(await paymentReleaseCount(withheld.paymentId)).toBe(1);
     expect(await grantWorkCountForPayment(withheld.paymentId)).toBe(1);
     await runDueGrantWorkUntilApplied(withheld.paymentId, orgId);
@@ -1498,7 +1515,7 @@ describe("hp-actions cross-worker", () => {
     );
   });
 
-  it("E2E-P4.7-05 manual chargeback voids the active term and holds the queue (R2-P1 bound params)", async () => {
+  it("R6-O1: E2E-P4.7-05 manual chargeback voids the active term and holds the queue", async () => {
     const expectations = await setupHpHarness();
     const orgId = ORG_HP_04;
     const offer = { offerId: expectations.offer_id, version: expectations.version };
@@ -1568,6 +1585,25 @@ describe("hp-actions cross-worker", () => {
       },
     );
     expect(chargeback.status).toBe(200);
+    const chargebackBody = (await chargeback.json()) as { action_id: string };
+    const chargebackReplay = await opsHpFetch(
+      `/ops/payments/${activePaymentId}/chargeback`,
+      {
+        accessJwt: hp.accessJwt,
+        operation: chargebackOperation,
+        assertion: chargebackAssertion,
+      },
+    );
+    expect(chargebackReplay.status).toBe(200);
+    expect(((await chargebackReplay.json()) as { action_id: string }).action_id).toBe(
+      chargebackBody.action_id,
+    );
+    const reversalCount = await env.DB.prepare(
+      `SELECT COUNT(*) AS n FROM reversal WHERE payment_id = ?`,
+    )
+      .bind(activePaymentId)
+      .first<{ n: number }>();
+    expect(reversalCount?.n).toBe(1);
 
     const reversal = await env.DB.prepare(
       `SELECT source, detected_via, kind, is_full, recorded_by, effect
@@ -1606,7 +1642,7 @@ describe("hp-actions cross-worker", () => {
     await settlePlatformDurableObjectAlarms();
   });
 
-  it("E2E-P4.7-06 erasure blanks contact versions and blocks checkout (R2-P1 bound params)", async () => {
+  it("R6-O1/R6-O2: E2E-P4.7-06 erasure blanks contact versions and blocks checkout", async () => {
     const expectations = await setupHpHarness();
     const orgId = ORG_HP_05;
     const offer = { offerId: expectations.offer_id, version: expectations.version };
@@ -1657,6 +1693,7 @@ describe("hp-actions cross-worker", () => {
       assertion: eraseAssertion,
     });
     expect(erase.status).toBe(200);
+    const eraseBody = (await erase.json()) as { action_id: string };
 
     const contactsAfter = await billingContactRows(orgId);
     expect(contactsAfter.length).toBe(contactsBefore.length);
@@ -1671,6 +1708,32 @@ describe("hp-actions cross-worker", () => {
     for (const key of evidenceKeys) {
       expect(await env.R2.get(key)).toBeNull();
     }
+    const eraseReplay = await opsHpFetch(`/ops/orgs/${orgId}/erase-contact`, {
+      accessJwt: hp.accessJwt,
+      operation: eraseOperation,
+      assertion: eraseAssertion,
+    });
+    expect(eraseReplay.status).toBe(200);
+    expect(((await eraseReplay.json()) as { action_id: string }).action_id).toBe(
+      eraseBody.action_id,
+    );
+    const lateCallback = await postPaymobProcessedCallback(
+      successFixture as PaymobCallbackFixture,
+      {
+        txnId: 97708,
+        connectingIp: "203.0.113.108",
+        amountMinor: chargedPrice,
+      },
+    );
+    expect(lateCallback.status).toBe(200);
+    const lateNotification = await env.DB.prepare(
+      `SELECT body_r2_key FROM notification WHERE checkout_id = ?
+       ORDER BY notification_id DESC LIMIT 1`,
+    )
+      .bind(checkoutId)
+      .first<{ body_r2_key: string }>();
+    expect(lateNotification?.body_r2_key).toBe("");
+    expect(await tenantEvidenceR2Keys(orgId)).toEqual([]);
     const ledgerAfter = await listLedgerExportKeys();
     expect(ledgerAfter).toEqual(ledgerBefore);
     for (const key of ledgerAfter) {

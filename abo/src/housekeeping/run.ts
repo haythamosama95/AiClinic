@@ -1,4 +1,5 @@
 import { clockNowMs, type ClockEnv } from "../clock.js";
+import { drainRawEvidenceDeletes } from "../evidence/raw.js";
 
 const ONE_DAY_MS = 24 * 60 * 60 * 1000;
 const RETENTION_DAYS_MS = 90 * ONE_DAY_MS;
@@ -10,6 +11,7 @@ export type HousekeepingEnv = ClockEnv & {
 };
 
 export async function runHousekeeping(env: HousekeepingEnv): Promise<void> {
+  await drainRawEvidenceDeletes(env, 100);
   const nowMs = await clockNowMs(env);
   const retentionCutoff = new Date(nowMs - RETENTION_DAYS_MS).toISOString();
 

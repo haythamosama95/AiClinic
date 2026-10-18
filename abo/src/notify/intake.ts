@@ -14,6 +14,11 @@ import { recordReversalFromProviderTxn } from "../work/reversal.js";
 import type { ReversalEnv } from "../work/reversal.js";
 import { runConfirmForWorkId } from "../work/runner.js";
 import type { GrantEnv } from "../work/grant.js";
+import {
+  claimRawEvidence,
+  deleteQuarantinedRawEvidence,
+  putClaimedRawEvidence,
+} from "../evidence/raw.js";
 
 const MAX_NOTIFY_BODY_BYTES = 1_048_576;
 const RATE_LIMIT_WINDOW_MS = 60_000;
@@ -25,12 +30,56 @@ const AL23_PARSE_ALERT_KEY = "AL-23:notification-parse";
 
 export type NotifyIntakeEnv = ProviderRegistryEnv &
   ClockEnv & {
+    DB: D1Database;
     R2: R2Bucket;
     PAYMOB_HMAC_SECRET: string;
   };
 
 function emptyResponse(status: number): Response {
   return new Response(null, { status });
+}
+
+async function retainCallbackBody(
+  env: NotifyIntakeEnv,
+  input: { notificationId: string; checkoutId: string | null; bodyR2Key: string; bodySha256: string; body: string },
+): Promise<string> {
+  if (input.checkoutId === null) {
+    const now = await clockNowIso(env);
+    await env.DB.prepare(
+      `INSERT INTO raw_evidence_registry (
+         evidence_id, org_id, checkout_id, evidence_kind, generation,
+         r2_key, raw_sha256, state, created_at, updated_at
+       ) VALUES (?, NULL, NULL, 'notification', NULL, ?, ?, 'quarantined', ?, ?)`,
+    )
+      .bind(input.notificationId, input.bodyR2Key, input.bodySha256, now, now)
+      .run();
+    await env.R2.put(input.bodyR2Key, input.body);
+    return input.bodyR2Key;
+  }
+  const owner = await env.DB.prepare(
+    `SELECT c.org_id, b.erasure_generation, b.erased_at
+     FROM checkout c JOIN billing_contact b
+       ON b.org_id = c.org_id AND b.version = c.billing_contact_version
+     WHERE c.checkout_id = ?`,
+  )
+    .bind(input.checkoutId)
+    .first<{ org_id: string; erasure_generation: number; erased_at: string | null }>();
+  if (owner === null || owner.erased_at !== null) return "";
+  await deleteQuarantinedRawEvidence(env, input.bodySha256);
+  const claim = {
+    evidenceId: input.notificationId,
+    orgId: owner.org_id,
+    checkoutId: input.checkoutId,
+    kind: "notification" as const,
+    r2Key: input.bodyR2Key,
+    sha256: input.bodySha256,
+    expectedGeneration: owner.erasure_generation,
+  };
+  const generation = await claimRawEvidence(env, claim);
+  if (generation === null) return "";
+  return (await putClaimedRawEvidence(env, claim, generation, input.body))
+    ? input.bodyR2Key
+    : "";
 }
 
 function neutralReturnHtml(): Response {
@@ -559,10 +608,15 @@ export async function handlePostNotifyPaymob(
   const event = parsed.events[0] ?? null;
   const checkoutId = event?.checkout_id ?? null;
   const notificationId = await newId(env);
-  const bodyR2Key = `evidence/notification/${notificationId}`;
-
+  let bodyR2Key = `evidence/notification/${notificationId}`;
   try {
-    await env.R2.put(bodyR2Key, body);
+    bodyR2Key = await retainCallbackBody(env, {
+      notificationId,
+      checkoutId,
+      bodyR2Key,
+      bodySha256,
+      body,
+    });
   } catch {
     return emptyResponse(500);
   }
@@ -644,11 +698,17 @@ export async function handlePostNotifyPaymob(
     if (intakeResult.duplicate) {
       const duplicateId = await newId(env, 1);
       const duplicateR2Key = `evidence/notification/${duplicateId}`;
-      await env.R2.put(duplicateR2Key, body);
+      const duplicateBodyR2Key = await retainCallbackBody(env, {
+        notificationId: duplicateId,
+        checkoutId,
+        bodyR2Key: duplicateR2Key,
+        bodySha256,
+        body,
+      });
       await insertDuplicateNotification(env, {
         notificationId: duplicateId,
         bodySha256,
-        bodyR2Key: duplicateR2Key,
+        bodyR2Key: duplicateBodyR2Key,
         checkoutId,
         channel: "processed",
       });
@@ -713,9 +773,15 @@ export async function handleGetNotifyPaymob(
     const bodyBytes = new TextEncoder().encode(query);
     const bodySha256 = await sha256Hex(bodyBytes);
     const notificationId = await newId(env);
-    const bodyR2Key = `evidence/notification/${notificationId}`;
+    const candidateKey = `evidence/notification/${notificationId}`;
     try {
-      await env.R2.put(bodyR2Key, query);
+      const bodyR2Key = await retainCallbackBody(env, {
+        notificationId,
+        checkoutId: null,
+        bodyR2Key: candidateKey,
+        bodySha256,
+        body: query,
+      });
       await recordUnmatchedNotificationAndAlert(env, {
         notificationId,
         bodySha256,
