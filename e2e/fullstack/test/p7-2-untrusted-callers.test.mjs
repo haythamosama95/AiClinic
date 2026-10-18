@@ -68,7 +68,7 @@ function junkNotifyBody(index = 0) {
   });
 }
 
-test("E2E-P7.2-01", async () => {
+test("E2E-P7.2-01 R3-M5 oversized notify body preserves subsequent callback responses", async () => {
   const notificationsBefore = countAboTable("notification");
   const workBefore = countAboWork();
 

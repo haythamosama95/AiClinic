@@ -21,7 +21,7 @@ function clientEnv(
 }
 
 describe("R3-C3: Paymob client URL composition", () => {
-  it("uses the pinned absolute paths for an origin with a trailing slash", async () => {
+  it("R3-C3 uses pinned absolute paths for an origin with a trailing slash", async () => {
     const urls: string[] = [];
     const env = clientEnv("https://accept.paymob.com/", async (input) => {
       urls.push(String(input));
@@ -71,7 +71,7 @@ describe("R3-C3: Paymob client URL composition", () => {
     ]);
   });
 
-  it("rejects paths, queries, fragments, and insecure non-local origins before fetch", async () => {
+  it("R3-C3 rejects paths, queries, fragments, and insecure non-local origins before fetch", async () => {
     const fetch = vi.fn(async () => Response.json({ token: "must-not-be-read" }));
 
     for (const baseUrl of [
@@ -87,7 +87,7 @@ describe("R3-C3: Paymob client URL composition", () => {
     expect(fetch).not.toHaveBeenCalled();
   });
 
-  it("permits HTTP only for an explicitly stubbed local transport", async () => {
+  it("R3-C3 permits HTTP only for an explicitly stubbed local transport", async () => {
     const fetch = vi.fn(async () => Response.json({ token: "auth-token" }));
     const outcome = await fetchPaymobAuthToken(
       clientEnv("http://localhost:8787/", fetch),
