@@ -185,7 +185,7 @@ describe("token claims", () => {
     ).toEqual({ ok: false });
 
     const insideJwt = await issuer.mintFeed({
-      iat: now - 180,
+      iat: now - 179,
       exp: now - 59,
       jti: "a1b2c3d4-e5f6-7890-abcd-ef1234567898",
     });

@@ -1105,13 +1105,22 @@ describe("remediation RM03 (R1-C2 / R1-C3 / R8-KEY1)", () => {
       ),
     ).toBeNull();
 
-    await env.DB.prepare(
-      `INSERT INTO tenant_binding (
-         org_id, installation_id, epoch, status, retired_at, reason, created_at
-       ) VALUES (?, ?, 2, 'active', NULL, NULL, ?)`,
-    )
-      .bind(crypto.randomUUID(), crypto.randomUUID(), nowIso)
-      .run();
+    // The cap guards only first creations: an epoch-2 insert at the cap goes
+    // through (the binding's FK requires its installation row to exist first).
+    const probeOrg = crypto.randomUUID();
+    const probeInstallation = crypto.randomUUID();
+    await env.DB.batch([
+      env.DB.prepare(
+        `INSERT INTO installation (
+           installation_id, org_id, status, display_name, region, enrolled_at
+         ) VALUES (?, ?, 'active', '', '', ?)`,
+      ).bind(probeInstallation, probeOrg, nowIso),
+      env.DB.prepare(
+        `INSERT INTO tenant_binding (
+           org_id, installation_id, epoch, status, retired_at, reason, created_at
+         ) VALUES (?, ?, 2, 'active', NULL, NULL, ?)`,
+      ).bind(probeOrg, probeInstallation, nowIso),
+    ]);
     expect(await count("tenant_binding", "epoch = 2")).toBe(1);
   });
 
@@ -1161,8 +1170,24 @@ describe("remediation RM03 (R1-C2 / R1-C3 / R8-KEY1)", () => {
 
   it("R1-C2: at the cap, a valid higher-epoch re-creation succeeds through the API", async () => {
     const nowIso = getVendorTestClockIso() ?? new Date().toISOString();
-    const seeds: D1PreparedStatement[] = [];
-    for (let index = 0; index < 50; index += 1) {
+    // The rebindOrg's retired epoch-1 binding is seeded as part of the 50
+    // rows that fill the cap window (the trigger counts every epoch-1 row,
+    // retired or not), so seeding it after the cap would itself abort.
+    const rebindOrg = crypto.randomUUID();
+    const retiredInstallation = crypto.randomUUID();
+    const seeds: D1PreparedStatement[] = [
+      env.DB.prepare(
+        `INSERT INTO installation (
+           installation_id, org_id, status, display_name, region, enrolled_at
+         ) VALUES (?, ?, 'active', '', '', ?)`,
+      ).bind(retiredInstallation, rebindOrg, nowIso),
+      env.DB.prepare(
+        `INSERT INTO tenant_binding (
+           org_id, installation_id, epoch, status, retired_at, reason, created_at
+         ) VALUES (?, ?, 1, 'retired', ?, 'transfer', ?)`,
+      ).bind(rebindOrg, retiredInstallation, nowIso, nowIso),
+    ];
+    for (let index = 0; index < 49; index += 1) {
       const installationId = crypto.randomUUID();
       const orgId = crypto.randomUUID();
       seeds.push(
@@ -1181,21 +1206,6 @@ describe("remediation RM03 (R1-C2 / R1-C3 / R8-KEY1)", () => {
       );
     }
     await env.DB.batch(seeds);
-
-    const rebindOrg = crypto.randomUUID();
-    const retiredInstallation = crypto.randomUUID();
-    await env.DB.batch([
-      env.DB.prepare(
-        `INSERT INTO installation (
-           installation_id, org_id, status, display_name, region, enrolled_at
-         ) VALUES (?, ?, 'active', '', '', ?)`,
-      ).bind(retiredInstallation, rebindOrg, nowIso),
-      env.DB.prepare(
-        `INSERT INTO tenant_binding (
-           org_id, installation_id, epoch, status, retired_at, reason, created_at
-         ) VALUES (?, ?, 1, 'retired', ?, 'transfer', ?)`,
-      ).bind(rebindOrg, retiredInstallation, nowIso, nowIso),
-    ]);
 
     const { signerCredentialId, signerAuthenticator } =
       await bootstrapIssuerRegistry();

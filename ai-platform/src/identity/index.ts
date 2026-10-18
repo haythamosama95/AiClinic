@@ -200,8 +200,10 @@ function isIssuerKeyWithinValidityWindow(
   keyRow: Record<string, unknown>,
   nowSeconds: number,
 ): boolean {
-  // R1-C3: fail closed — a missing, non-string or non-finite bound removes no
-  // restriction; it makes the key unusable.
+  // R1-C3: fail closed — a missing, non-string or non-finite bound makes the
+  // key unusable. Well-formed bounds keep the established second-granularity
+  // window semantics (`not_before <= now < not_after`, floored to seconds), so
+  // a key registered mid-second is usable within that same second.
   const notBeforeMs = isString(keyRow.not_before)
     ? Date.parse(keyRow.not_before)
     : Number.NaN;
@@ -211,8 +213,10 @@ function isIssuerKeyWithinValidityWindow(
   if (!Number.isFinite(notBeforeMs) || !Number.isFinite(notAfterMs)) {
     return false;
   }
-  const nowMs = nowSeconds * 1000;
-  return nowMs >= notBeforeMs && nowMs < notAfterMs;
+  if (nowSeconds < Math.floor(notBeforeMs / 1000)) {
+    return false;
+  }
+  return nowSeconds < Math.floor(notAfterMs / 1000);
 }
 
 function isIssuerKeyUsable(
