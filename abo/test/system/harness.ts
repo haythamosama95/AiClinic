@@ -14,6 +14,7 @@ import hpActionsMigrationSql from "../../migrations/0007_hp_actions.sql?raw";
 import reconciliationMigrationSql from "../../migrations/0008_reconciliation.sql?raw";
 import digestWatchMigrationSql from "../../migrations/0009_digest_watch.sql?raw";
 import workLeaseTokenMigrationSql from "../../migrations/0010_work_lease_token.sql?raw";
+import checkoutCreationAttemptsMigrationSql from "../../migrations/0011_checkout_creation_attempts.sql?raw";
 
 const ABO_LEGACY_MIGRATION_SQL: string[] = [
   recordsMigrationSql,
@@ -29,6 +30,7 @@ const ABO_LEGACY_MIGRATION_SQL: string[] = [
 const ABO_MIGRATION_SQL: string[] = [
   ...ABO_LEGACY_MIGRATION_SQL,
   workLeaseTokenMigrationSql,
+  checkoutCreationAttemptsMigrationSql,
 ];
 
 function base64UrlEncode(bytes: Uint8Array): string {
