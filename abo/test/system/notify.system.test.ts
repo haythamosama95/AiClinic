@@ -903,6 +903,12 @@ describe("P4.3 notify intake", () => {
       "likely_duplicate",
       "normal",
     ]);
+    const paidEvents = await env.DB.prepare(
+      `SELECT COUNT(*) AS n FROM checkout_event WHERE checkout_id = ? AND kind = 'paid'`,
+    )
+      .bind(checkoutId)
+      .first<{ n: number }>();
+    expect(paidEvents?.n).toBe(1);
   });
 
   it("R3-C7: inquiry timeout consumes its reservation and backs off", async () => {
@@ -960,6 +966,7 @@ describe("P4.3 notify intake", () => {
     expect(await tableCount("payment")).toBe(0);
     expect((await confirmWorkForCheckout(checkoutId))?.state).toBe("open");
 
+    await setClock("2026-01-15T09:31:00.000Z");
     await scriptPaymobInquiry("bound_success");
     setD1BatchThrows(true);
     await runScheduled("* * * * *");

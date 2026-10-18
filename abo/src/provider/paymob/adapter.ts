@@ -969,9 +969,6 @@ async function inquireImpl(
   env: PaymobAdapterEnv,
   input: InquireInput,
 ): Promise<InquireResult> {
-  if (!(await reserveInquiryAttempt(env))) {
-    return { bound: true, transactions: [], deferred: true };
-  }
   let checkoutId: string;
   let paymobTxnIdOverride: string | undefined;
   if ("checkout_id" in input) {
@@ -1014,6 +1011,12 @@ async function inquireImpl(
       transactions: [],
       discovery_unavailable: true,
     };
+  }
+
+  // Count only provider work. Local lookup and callback-free discovery failures
+  // must not consume one of the two per-minute inquiry attempts.
+  if (!(await reserveInquiryAttempt(env))) {
+    return { bound: true, transactions: [], deferred: true };
   }
 
   const token = await authToken(env);

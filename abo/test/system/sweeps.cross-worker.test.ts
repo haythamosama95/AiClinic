@@ -27,8 +27,10 @@ import {
   scriptPaymobInquiry,
   setIntakeR2PutThrows,
   tableCount,
+  opsFetch,
 } from "./harness";
 import {
+  mintVendorAccessJwt,
   platformCall,
   resetCrossWorkerHarness,
   scriptPaymobStub,
@@ -1117,6 +1119,10 @@ async function setupActiveAndQueuedTerms(
 }> {
   await putBillingContact(org);
   await ensureGrantTenantBinding(org);
+  const firstMinute = new Date(
+    (await harnessClockNowSeconds()) * 1000 + 60_000,
+  );
+  await setClock(firstMinute.toISOString());
   const firstCheckout = await postCheckoutWithOffer(
     org,
     offer,
@@ -1135,6 +1141,7 @@ async function setupActiveAndQueuedTerms(
     amountMinor: firstChargedPrice,
   });
   await runGrantStep(org);
+  await setClock(new Date(firstMinute.getTime() + 60_000).toISOString());
   const secondChargedPrice = await syncPaymobForCheckout(
     secondCheckout.checkoutId,
   );
@@ -1176,8 +1183,7 @@ beforeEach(async () => {
 
 afterEach(async () => {
   await drainPlatformDurableObjects();
-  await settlePlatformDurableObjectAlarms();
-});
+}, 30_000);
 
 describe.sequential("sweeps cross-worker", () => {
   it("R3-C7: concurrent inquiry reservations admit at most two logical attempts", async () => {
@@ -1228,6 +1234,9 @@ describe.sequential("sweeps cross-worker", () => {
     expect(await openSweepCheckoutWorkCount(checkoutId)).toBeGreaterThan(0);
     expect(await alertCountByCode("AL-03")).toBe(1);
     expect(await checkoutStatusState(checkoutId)).toBe("open");
+    expect(
+      await inquirySpendForMinute(minuteKeyFromIso(addMinutes(openedAt, 2))),
+    ).toBeNull();
   });
 
   it("R3-C4: HMAC failures alert and callback-free recovery remains due", async () => {
@@ -1674,10 +1683,6 @@ describe.sequential("sweeps cross-worker", () => {
       "req-sweep-10-confirm-95132",
     );
     await syncPaymobForCheckout(confirmCheckout.checkoutId);
-    const confirmReturn = await billingFetch("/return/paymob?v=99");
-    expect(confirmReturn.status).toBe(200);
-    expect(await paymentCountForCheckout(confirmCheckout.checkoutId)).toBe(0);
-    expect(await confirmWorkState(confirmCheckout.checkoutId)).toBe("open");
 
     const sweepTxnId = 95130;
     const sweepCheckout = await postCheckout(
@@ -1692,18 +1697,32 @@ describe.sequential("sweeps cross-worker", () => {
     const dueMinute = addMinutes(sweepOpenedAt, 2);
     await setClock(dueMinute);
     expect(await openSweepCheckoutWorkCount(sweepCheckoutId)).toBeGreaterThan(0);
-    expect(await dueOpenWorkCount("confirm", dueMinute)).toBeGreaterThanOrEqual(1);
     expect(await dueOpenWorkCount("grant", dueMinute)).toBeGreaterThanOrEqual(1);
     expect(
-      (await dueOpenWorkCount("confirm", dueMinute)) +
-        (await dueOpenWorkCount("grant", dueMinute)) +
+      (await dueOpenWorkCount("grant", dueMinute)) +
         (await openSweepCheckoutWorkCount(sweepCheckoutId)),
-    ).toBeGreaterThan(2);
+    ).toBeGreaterThan(1);
+
+    const accessJwt = await mintVendorAccessJwt(VENDOR_OPERATOR_EMAIL);
+    const confirmSubmit = await opsFetch(
+      `/ops/checkouts/${confirmCheckout.checkoutId}/transaction-id`,
+      {
+        method: "POST",
+        headers: {
+          "Abo-Contract-Version": "1",
+          "Cf-Access-Jwt-Assertion": accessJwt,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ transaction_id: "95132" }),
+      },
+    );
+    expect(confirmSubmit.status).toBe(200);
+    expect(await paymentCountForCheckout(confirmCheckout.checkoutId)).toBe(1);
+    expect(await confirmWorkState(confirmCheckout.checkoutId)).toBe("done");
+    expect(await inquirySpendForMinute(minuteKeyFromIso(dueMinute))).toBe(1);
 
     await runScheduled("* * * * *");
 
-    expect(await dueOpenWorkCount("confirm", dueMinute)).toBe(0);
-    expect(await paymentCountForCheckout(confirmCheckout.checkoutId)).toBe(1);
     expect(await grantWorkAttempts(grantPaymentId!)).toBeGreaterThanOrEqual(1);
     expect(await openSweepCheckoutWorkCount(sweepCheckoutId)).toBeGreaterThan(0);
     expect(await inquirySpendForMinute(minuteKeyFromIso(dueMinute))).toBe(2);

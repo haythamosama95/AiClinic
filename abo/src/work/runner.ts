@@ -68,10 +68,7 @@ async function newId(env: WorkRunnerEnv): Promise<string> {
   return ulid(nowMs, random);
 }
 
-function backoffMs(env: WorkRunnerEnv, attempts: number): number {
-  if (env.TEST_CLOCK === "1") {
-    return 0;
-  }
+function backoffMs(attempts: number): number {
   const exponent = Math.max(0, attempts - 1);
   return Math.min(MAX_BACKOFF_MS, MIN_BACKOFF_MS * 2 ** exponent);
 }
@@ -116,7 +113,7 @@ async function releaseLeaseRetry(
   lastError: string,
 ): Promise<void> {
   const nowMs = await clockNowMs(env);
-  const nextAttempt = new Date(nowMs + backoffMs(env, attempts)).toISOString();
+  const nextAttempt = new Date(nowMs + backoffMs(attempts)).toISOString();
   await env.DB.prepare(
     `UPDATE work
      SET attempts = ?, next_attempt_at = ?, lease_until = NULL, lease_token = NULL, last_error = ?
@@ -271,6 +268,63 @@ async function appendCheckoutEvent(
       createdAt,
       lease.workId,
       lease.token,
+    ),
+  ];
+}
+
+async function appendPaidTransition(
+  env: WorkRunnerEnv,
+  checkout: CheckoutRow,
+  reference: string,
+  at: string,
+  workId: string,
+  leaseToken: string,
+): Promise<D1PreparedStatement[]> {
+  const canonicalRow = {
+    checkout_id: checkout.checkout_id,
+    kind: "paid",
+    source: "system",
+    ref: reference,
+    actor: "system",
+    at,
+    contract_version: checkout.contract_version,
+  };
+  const rowJsonBytes = canonicalize(canonicalRow);
+  const rowJson = new TextDecoder().decode(rowJsonBytes);
+  const rowSha256 = await sha256Hex(rowJsonBytes);
+  const firstPaidTransition = `EXISTS (
+      SELECT 1 FROM work WHERE work_id = ? AND state = 'open' AND lease_token = ?
+    ) AND NOT EXISTS (
+      SELECT 1 FROM checkout_status
+      WHERE checkout_id = ? AND state IN ('paid', 'paid_late')
+    )`;
+  return [
+    env.DB.prepare(
+      `INSERT INTO checkout_event (
+         checkout_id, kind, source, ref, actor, at, contract_version
+       ) SELECT ?, 'paid', 'system', ?, 'system', ?, ?
+       WHERE ${firstPaidTransition}`,
+    ).bind(
+      checkout.checkout_id,
+      reference,
+      at,
+      checkout.contract_version,
+      workId,
+      leaseToken,
+      checkout.checkout_id,
+    ),
+    env.DB.prepare(
+      `INSERT INTO fact_log ("table", key, row_sha256, row_json, created_at)
+       SELECT 'checkout_event', ?, ?, ?, ?
+       WHERE ${firstPaidTransition}`,
+    ).bind(
+      `${checkout.checkout_id}:paid:${at}`,
+      rowSha256,
+      rowJson,
+      at,
+      workId,
+      leaseToken,
+      checkout.checkout_id,
     ),
   ];
 }
@@ -528,17 +582,13 @@ export async function recordPaidConfirmation(
       input.work.work_id,
       input.leaseToken,
     ),
-    ...(await appendCheckoutEvent(
+    ...(await appendPaidTransition(
       env,
-      {
-        checkout_id: input.checkout.checkout_id,
-        kind: "paid",
-        ref: reference,
-        at: input.nowIso,
-        contract_version: input.checkout.contract_version,
-      },
+      input.checkout,
+      reference,
       input.nowIso,
-      { workId: input.work.work_id, token: input.leaseToken },
+      input.work.work_id,
+      input.leaseToken,
     )),
     env.DB.prepare(
       `UPDATE checkout_status SET state = ?, last_event_at = ? WHERE checkout_id = ?
@@ -688,6 +738,16 @@ async function confirmSuccessBatch(
     checkout_id: checkout.checkout_id,
     paymob_txn_id: paymobTxnId ?? undefined,
   });
+  if (inquiry.deferred) {
+    await releaseLeaseRetry(
+      env,
+      work.work_id,
+      leaseToken,
+      work.attempts + 1,
+      "inquiry_deferred",
+    );
+    return;
+  }
   if (!inquiry.bound) {
     await raiseAlert(
       env,
@@ -1035,6 +1095,16 @@ async function processConfirmWork(
       checkout_id: checkout.checkout_id,
       paymob_txn_id: manualTxnId,
     });
+    if (inquiry.deferred) {
+      await releaseLeaseRetry(
+        env,
+        work.work_id,
+        leaseToken,
+        work.attempts + 1,
+        "inquiry_deferred",
+      );
+      return { inquired: false };
+    }
     if (!inquiry.bound && inquiry.transactions.length === 0) {
       await releaseLeaseRetry(
         env,

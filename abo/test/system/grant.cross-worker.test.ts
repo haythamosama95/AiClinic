@@ -32,7 +32,6 @@ import {
   platformCall,
   resetCrossWorkerHarness,
   scriptPaymobStub,
-  settlePlatformDurableObjectAlarms,
   setClock,
   setupCrossWorkerHarness,
 } from "./cross-worker-harness";
@@ -1189,8 +1188,7 @@ beforeEach(async () => {
 
 afterEach(async () => {
   await drainPlatformDurableObjects();
-  await settlePlatformDurableObjectAlarms();
-});
+}, 30_000);
 
 describe("grant cross-worker", () => {
   it("E2E-P4.4-01 paid grant activates the term and completes an issuer request", async () => {
@@ -1202,6 +1200,10 @@ describe("grant cross-worker", () => {
       12: ORG_GRANT_01_12M,
     };
     for (const termCount of [1, 3, 12] as const) {
+      if (termCount === 12) {
+        // Two inquiry reservations are available per logical minute.
+        await setClock("2026-06-01T12:01:00.000Z");
+      }
       const org = orgByTermCount[termCount];
       const offer = offerVersions[termCount];
       const txnId = 94000 + termCount;

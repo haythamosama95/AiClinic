@@ -1461,6 +1461,10 @@ describe("hp-actions cross-worker", () => {
     expect(await grantWorkCountForPayment(withheld.paymentId)).toBe(1);
     await runDueGrantWorkUntilApplied(withheld.paymentId, orgId);
 
+    const nextMinute = new Date(
+      (await harnessClockNowSeconds()) * 1000 + 60_000,
+    ).toISOString();
+    await setClock(nextMinute);
     const reversed = await createWithheldMismatchPayment(
       orgId,
       offer,
