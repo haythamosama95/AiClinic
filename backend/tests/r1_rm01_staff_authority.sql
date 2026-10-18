@@ -553,7 +553,7 @@ BEGIN
     'R1-SQL-02: demotion emits reduced AI token role and scopes',
     v_token IS NOT NULL
       AND v_payload ->> 'role' = 'doctor'
-      AND v_payload -> 'scopes' = '["ai.visit_summary"]'::jsonb,
+      AND v_payload -> 'scopes' = '["ai.access", "ai.visit_summary"]'::jsonb,
     'role=' || COALESCE(v_payload ->> 'role', '<none>')
       || ' scopes=' || COALESCE((v_payload -> 'scopes')::text, '<none>')
   );
