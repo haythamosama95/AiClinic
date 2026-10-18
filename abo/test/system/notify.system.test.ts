@@ -1003,7 +1003,9 @@ describe("P4.3 notify intake", () => {
     await postPaymobProcessedCallback(successFixtureWithTxnId(99010), {
       connectingIp: "203.0.113.17",
     });
-    await setClock("2026-01-15T09:33:00.000Z");
+    const leaseWork = await confirmWorkForCheckout(leaseCheckout);
+    expect(leaseWork?.next_attempt_at).not.toBeNull();
+    await setClock(leaseWork!.next_attempt_at!);
     await scriptPaymobInquiry("bound_success");
     await Promise.all([
       runScheduled("* * * * *"),
