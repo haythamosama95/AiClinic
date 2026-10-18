@@ -269,7 +269,7 @@ describe("Stage 00 — platform boot, bindings, and routing (S00-001…S00-018)"
     "S00-007 throwing-load arm — The manifest is a static JSON import baked at build time; cannot become malformed in a running isolate (Register 5 #3)",
   );
 
-  it("S00-007 — Bundled manifest failing validation aborts isolate boot (harness empty-registry seam)", async () => {
+  it("R2-C2 / S00-007 — Bundled manifest failing validation aborts isolate boot (harness empty-registry seam)", async () => {
     const { scenario, token } = await enrollAndEntitle();
     try {
       setCapabilityRegistry(new Map(), { replace: true });
@@ -280,7 +280,7 @@ describe("Stage 00 — platform boot, bindings, and routing (S00-001…S00-018)"
 
       const discovery = await getCapabilities(token);
       expect(discovery.status).toBe(200);
-      expect(discovery.body).toEqual({ manifests: [] });
+      expect(discovery.body).toEqual({ manifests: [], contract_version: 1 });
 
       await assertCapabilityUnknown(scenario, token);
     } finally {

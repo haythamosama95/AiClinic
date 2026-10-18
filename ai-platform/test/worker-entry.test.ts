@@ -4,6 +4,7 @@
  * the worker default export / GatewayObject after dependency injection via vi.mock.
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { CHANNEL_VERSIONS } from "vendor-contracts";
 
 const mockHandleAdapterRequest = vi.fn();
 const mockAuthenticateGetRequest = vi.fn();
@@ -22,6 +23,7 @@ const mockLiveHttpStatusForCode = vi.fn(
 );
 
 const PLATFORM_DO_CONTRACT_VERSION = 1;
+const PLATFORM_CLINIC_CONTRACT_VERSION = CHANNEL_VERSIONS.platformClinic;
 
 const runtimeEnv = {
   DB: { kind: "d1" },
@@ -242,7 +244,7 @@ describe("GET /v1/requests/:ref response shaping", () => {
     );
   }
 
-  it("shapes Completed with result", async () => {
+  it("R2-C2 — shapes Completed with result and contract_version", async () => {
     mockAuthenticateGetRequest.mockResolvedValue({
       ok: true,
       principal: { installationId: "inst-1" },
@@ -258,10 +260,11 @@ describe("GET /v1/requests/:ref response shaping", () => {
     expect(await response.json()).toEqual({
       state: "Completed",
       result: { kind: "prose", text: "hello" },
+      contract_version: PLATFORM_CLINIC_CONTRACT_VERSION,
     });
   });
 
-  it("shapes Completed without result when result is missing", async () => {
+  it("R2-C2 — shapes Completed without result and with contract_version", async () => {
     mockAuthenticateGetRequest.mockResolvedValue({
       ok: true,
       principal: { installationId: "inst-1" },
@@ -274,10 +277,13 @@ describe("GET /v1/requests/:ref response shaping", () => {
 
     const response = await getRef({ authorization: "Bearer tok" });
     expect(response.status).toBe(200);
-    expect(await response.json()).toEqual({ state: "Completed" });
+    expect(await response.json()).toEqual({
+      state: "Completed",
+      contract_version: PLATFORM_CLINIC_CONTRACT_VERSION,
+    });
   });
 
-  it("shapes pending in-flight states", async () => {
+  it("R2-C2 — shapes pending in-flight states with contract_version", async () => {
     mockAuthenticateGetRequest.mockResolvedValue({
       ok: true,
       principal: { installationId: "inst-1" },
@@ -293,10 +299,11 @@ describe("GET /v1/requests/:ref response shaping", () => {
     expect(await response.json()).toEqual({
       state: "Invoking",
       pending: true,
+      contract_version: PLATFORM_CLINIC_CONTRACT_VERSION,
     });
   });
 
-  it("shapes Failed with terminal_error_code", async () => {
+  it("R2-C2 — shapes Failed with terminal_error_code and contract_version", async () => {
     mockAuthenticateGetRequest.mockResolvedValue({
       ok: true,
       principal: { installationId: "inst-1" },
@@ -312,10 +319,11 @@ describe("GET /v1/requests/:ref response shaping", () => {
     expect(await response.json()).toEqual({
       state: "Failed",
       terminal_error_code: "provider_unavailable",
+      contract_version: PLATFORM_CLINIC_CONTRACT_VERSION,
     });
   });
 
-  it("shapes AwaitingContext", async () => {
+  it("R2-C2 — shapes AwaitingContext with contract_version", async () => {
     mockAuthenticateGetRequest.mockResolvedValue({
       ok: true,
       principal: { installationId: "inst-1" },
@@ -327,10 +335,13 @@ describe("GET /v1/requests/:ref response shaping", () => {
 
     const response = await getRef({ authorization: "Bearer tok" });
     expect(response.status).toBe(200);
-    expect(await response.json()).toEqual({ state: "AwaitingContext" });
+    expect(await response.json()).toEqual({
+      state: "AwaitingContext",
+      contract_version: PLATFORM_CLINIC_CONTRACT_VERSION,
+    });
   });
 
-  it("shapes Cancelled", async () => {
+  it("R2-C2 — shapes Cancelled with contract_version", async () => {
     mockAuthenticateGetRequest.mockResolvedValue({
       ok: true,
       principal: { installationId: "inst-1" },
@@ -342,7 +353,10 @@ describe("GET /v1/requests/:ref response shaping", () => {
 
     const response = await getRef({ authorization: "Bearer tok" });
     expect(response.status).toBe(200);
-    expect(await response.json()).toEqual({ state: "Cancelled" });
+    expect(await response.json()).toEqual({
+      state: "Cancelled",
+      contract_version: PLATFORM_CLINIC_CONTRACT_VERSION,
+    });
   });
 
   it("returns 404 when the reference is not found", async () => {

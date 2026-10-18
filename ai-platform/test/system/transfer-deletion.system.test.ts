@@ -4,7 +4,7 @@
 
 import { env, runDurableObjectAlarm, runInDurableObject, SELF } from "cloudflare:test";
 import { CHANNEL_VERSIONS, grantIdPaid, sha256Hex } from "vendor-contracts";
-import { beforeAll, beforeEach, describe, expect, it } from "vitest";
+import { beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   applyAllMigrations,
   coverClinic,

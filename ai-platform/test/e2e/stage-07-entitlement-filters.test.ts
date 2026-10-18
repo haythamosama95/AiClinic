@@ -37,7 +37,7 @@ beforeEach(async () => {
 });
 
 const ETAG_QUOTED_64_HEX = /^"[0-9a-f]{64}"$/;
-const EMPTY_LIST_BODY = { manifests: [] } as const;
+const EMPTY_LIST_BODY = { manifests: [], contract_version: 1 } as const;
 const CLOSED_VALID_UNTIL = "2026-09-01T00:00:00.000Z";
 const GRANT_REVOKED_AT = "2026-09-05T00:00:00.000Z";
 const UNPUBLISHED_CAPABILITY_ID = "clinic.patient_triage";
@@ -126,7 +126,7 @@ async function assertEmptyList(result: HttpResult): Promise<void> {
   expect(result.headers.get("etag")).toBe(await emptyListQuotedEtag());
   expect(result.headers.get("etag")).toMatch(ETAG_QUOTED_64_HEX);
   expect(result.json).toEqual(EMPTY_LIST_BODY);
-  expect(result.text).toBe('{"manifests":[]}');
+  expect(result.text).toBe('{"manifests":[],"contract_version":1}');
 }
 
 function assertListedVisitSummary(result: HttpResult): void {
@@ -328,7 +328,7 @@ describe("Stage 07 — entitlement filters (S07-019…S07-037)", () => {
     assertUnauthenticated(await discoveryGet(token));
   });
 
-  it("S07-027 — no entitlement row → 200 empty list", async () => {
+  it("R2-C2 / S07-027 — no entitlement row → 200 empty list", async () => {
     const scenario = await newScenario();
     await enrollWithPlan(scenario, "professional");
     await coverClinic(scenario);
@@ -348,7 +348,7 @@ describe("Stage 07 — entitlement filters (S07-019…S07-037)", () => {
   });
 
 
-  it("S07-029 — active entitlement empty allowed_capabilities → 200 empty", async () => {
+  it("R2-C2 / S07-029 — active entitlement empty allowed_capabilities → 200 empty", async () => {
     const scenario = await provisionB0();
     await setMirrorCapabilities(scenario, []);
 
@@ -357,7 +357,7 @@ describe("Stage 07 — entitlement filters (S07-019…S07-037)", () => {
   });
 
 
-  it("S07-031 — capability not in allowed list → 200 empty", async () => {
+  it("R2-C2 / S07-031 — capability not in allowed list → 200 empty", async () => {
     const scenario = await provisionB0();
     await setMirrorCapabilities(scenario, [UNPUBLISHED_CAPABILITY_ID]);
 
@@ -366,7 +366,7 @@ describe("Stage 07 — entitlement filters (S07-019…S07-037)", () => {
   });
 
 
-  it("S07-033 — installation grant revoked, no plan grant → 200 empty", async () => {
+  it("R2-C2 / S07-033 — installation grant revoked, no plan grant → 200 empty", async () => {
     const scenario = await provisionB0();
     await seedSql([
       {
@@ -394,7 +394,7 @@ describe("Stage 07 — entitlement filters (S07-019…S07-037)", () => {
     assertListedVisitSummary(await discoveryGet(token));
   });
 
-  it("S07-035 — grant pinned to 2.0.0 → 200 empty", async () => {
+  it("R2-C2 / S07-035 — grant pinned to 2.0.0 → 200 empty", async () => {
     const scenario = await provisionB0();
     await seedSql([
       {
@@ -431,7 +431,7 @@ describe("Stage 07 — entitlement filters (S07-019…S07-037)", () => {
     assertListedVisitSummary(await discoveryGet(token));
   });
 
-  it("S07-037 — no grant at either scope → 200 empty", async () => {
+  it("R2-C2 / S07-037 — no grant at either scope → 200 empty", async () => {
     const scenario = await provisionB0();
     await seedSql([
       {

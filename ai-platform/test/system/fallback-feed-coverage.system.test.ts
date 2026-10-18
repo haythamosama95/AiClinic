@@ -9,7 +9,7 @@ import {
   sha256Hex,
   subscriptionRef,
 } from "vendor-contracts";
-import { beforeAll, beforeEach, describe, expect, it } from "vitest";
+import { beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { supplementaryFieldsForCode } from "../../src/errors";
 import { handleCoverageReadRequest } from "../../src/coverage-read";
 import { withAipContractVersion } from "../../src/vendor/contract-version";

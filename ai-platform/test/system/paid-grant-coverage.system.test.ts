@@ -15,7 +15,7 @@ import {
   verifyReceiptSignature,
 } from "vendor-contracts";
 import { createAboGrantSigner, createSoftwareAuthenticator } from "vendor-contracts/testkit";
-import { beforeAll, beforeEach, describe, expect, it } from "vitest";
+import { beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   applyAllMigrations,
   count,

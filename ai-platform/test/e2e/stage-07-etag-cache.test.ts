@@ -119,8 +119,8 @@ function asObject(json: unknown): Record<string, unknown> {
 
 function assertEmptyManifests(json: unknown): Record<string, unknown> {
   const body = asObject(json);
-  expect(Object.keys(body)).toEqual(["manifests"]);
-  expect(body).toEqual({ manifests: [] });
+  expect(Object.keys(body).sort()).toEqual(["contract_version", "manifests"]);
+  expect(body).toEqual({ manifests: [], contract_version: 1 });
   return body;
 }
 
@@ -132,7 +132,8 @@ function assertPublicProjection(
   } = { lifecycleState: "active", successorId: null },
 ): Record<string, unknown> {
   const body = asObject(json);
-  expect(Object.keys(body)).toEqual(["manifests"]);
+  expect(Object.keys(body).sort()).toEqual(["contract_version", "manifests"]);
+  expect(body.contract_version).toBe(1);
   const manifests = body.manifests;
   expect(Array.isArray(manifests)).toBe(true);
   expect(manifests).toHaveLength(1);
@@ -268,7 +269,7 @@ async function retireVisitSummary(): Promise<void> {
 }
 
 describe("Stage 07 — discovery ETag, cache, lifecycle overlay (S07-038…S07-052)", () => {
-  it("S07-038 — Lifecycle overlay retired excludes the capability", async () => {
+  it("R2-C2 / S07-038 — Lifecycle overlay retired excludes the capability", async () => {
     const { token } = await provisionEntitled();
     await retireVisitSummary();
 
@@ -278,7 +279,7 @@ describe("Stage 07 — discovery ETag, cache, lifecycle overlay (S07-038…S07-0
     expect(etag).toBe(await quotedEtagFor({ manifests: [] }));
   });
 
-  it("S07-039 — Deprecated overlay lists with successorId; other fields unchanged", async () => {
+  it("R2-C2 / S07-039 — Deprecated overlay lists with successorId; other fields unchanged", async () => {
     const { token } = await provisionEntitled();
     await deprecateVisitSummary();
     clearConfigCache();
@@ -309,7 +310,7 @@ describe("Stage 07 — discovery ETag, cache, lifecycle overlay (S07-038…S07-0
     expect(etag).toBe(await quotedEtagFor({ manifests: [] }));
   });
 
-  it("S07-040 — Active kill switch does not remove the capability from discovery", async () => {
+  it("R2-C2 / S07-040 — Active kill switch does not remove the capability from discovery", async () => {
     const { token } = await provisionEntitled();
     // Catalog S07-040 is [SEED] INSERT (Register 5 #27 claimed no HTTP API).
     // Code has POST /control/kill-switches/arm (Stage 05). Follow the real arm.
@@ -324,7 +325,7 @@ describe("Stage 07 — discovery ETag, cache, lifecycle overlay (S07-038…S07-0
     assertPublicProjection(result.json);
   });
 
-  it("S07-041 — Receptionist + empty scopes still lists the capability", async () => {
+  it("R2-C2 / S07-041 — Receptionist + empty scopes still lists the capability", async () => {
     const { token } = await provisionEntitled({
       role: "receptionist",
       scopes: [],
@@ -335,7 +336,7 @@ describe("Stage 07 — discovery ETag, cache, lifecycle overlay (S07-038…S07-0
     assertPublicProjection(result.json);
   });
 
-  it("S07-042 — Entitled happy path: public projection, ETag, Cache-Control", async () => {
+  it("R2-C2 / S07-042 — Entitled happy path: public projection, ETag, Cache-Control", async () => {
     const { token } = await provisionEntitled();
     const tablesBefore = await snapshotPlatform();
     const r2Before = await countR2Objects();
@@ -344,14 +345,14 @@ describe("Stage 07 — discovery ETag, cache, lifecycle overlay (S07-038…S07-0
     const result = await fetchDiscovery(token);
     const etag = assert200DiscoveryHeaders(result);
     const body = assertPublicProjection(result.json);
-    expect(etag).toBe(await quotedEtagFor(body));
+    expect(etag).toBe(await quotedEtagFor({ manifests: body.manifests }));
 
     expect(await snapshotPlatform()).toEqual(tablesBefore);
     expect(await count("ai_request")).toBe(0);
     expect(await countR2Objects()).toBe(r2Before);
   });
 
-  it("S07-043 — If-None-Match exact quoted ETag → 304 empty body", async () => {
+  it("R2-C2 / S07-043 — If-None-Match exact quoted ETag → 304 empty body", async () => {
     const { token } = await provisionEntitled();
     const first = await fetchDiscovery(token);
     const etag0 = assert200DiscoveryHeaders(first);
@@ -383,7 +384,7 @@ describe("Stage 07 — discovery ETag, cache, lifecycle overlay (S07-038…S07-0
     assert304DiscoveryHeaders(second, etag0);
   });
 
-  it("S07-046 — If-None-Match: * → 304 (entitled and empty-list)", async () => {
+  it("R2-C2 / S07-046 — If-None-Match: * → 304 (entitled and empty-list)", async () => {
     const { token } = await provisionEntitled();
     const first = await fetchDiscovery(token);
     const etag0 = assert200DiscoveryHeaders(first);
@@ -403,7 +404,7 @@ describe("Stage 07 — discovery ETag, cache, lifecycle overlay (S07-038…S07-0
     assert304DiscoveryHeaders(emptyStar, emptyEtag);
   });
 
-  it("S07-047 — Stale If-None-Match tag → 200 full body", async () => {
+  it("R2-C2 / S07-047 — Stale If-None-Match tag → 200 full body", async () => {
     const { token } = await provisionEntitled();
     const first = await fetchDiscovery(token);
     const etag0 = assert200DiscoveryHeaders(first);
@@ -416,7 +417,7 @@ describe("Stage 07 — discovery ETag, cache, lifecycle overlay (S07-038…S07-0
     assertPublicProjection(stale.json);
   });
 
-  it("S07-048 — Malformed If-None-Match → 200; empty value also 200", async () => {
+  it("R2-C2 / S07-048 — Malformed If-None-Match → 200; empty value also 200", async () => {
     const { token } = await provisionEntitled();
     const first = await fetchDiscovery(token);
     const etag0 = assert200DiscoveryHeaders(first);
@@ -447,7 +448,7 @@ describe("Stage 07 — discovery ETag, cache, lifecycle overlay (S07-038…S07-0
     expect(rejected.headers.get("cache-control")).toBeNull();
   });
 
-  it("S07-050 — ETag is content-derived, not installation-derived", async () => {
+  it("R2-C2 / S07-050 — ETag is content-derived, not installation-derived", async () => {
     const a = await provisionEntitled();
     const b = await provisionEntitled();
 
@@ -474,7 +475,7 @@ describe("Stage 07 — discovery ETag, cache, lifecycle overlay (S07-038…S07-0
     expect(emptyEtagA).not.toBe(etagA);
   });
 
-  it("S07-051 — Revoked grant stays listed while isolate cache is warm", async () => {
+  it("R2-C2 / S07-051 — Revoked grant stays listed while isolate cache is warm", async () => {
     // Pool TTL is 0. Raise a short TTL, revoke in D1 without clearing, then
     // wait for real expiry instead of setTtlMs(30_000) / clearConfigCache().
     const { scenario, token } = await provisionEntitled();

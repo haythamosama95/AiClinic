@@ -239,7 +239,11 @@ function createSettlingDoNamespace(
             const payload = JSON.parse(init.body) as { kind?: string };
             if (payload.kind === "settleFallback") {
               return new Response(
-                JSON.stringify({ kind: "settleFallback", outcome: "settled" }),
+                JSON.stringify({
+                  contract_version: CHANNEL_VERSIONS.platformDo,
+                  kind: "settleFallback",
+                  outcome: "settled",
+                }),
                 { status: 200, headers: { "Content-Type": "application/json" } },
               );
             }
