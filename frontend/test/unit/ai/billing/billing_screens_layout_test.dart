@@ -1,5 +1,7 @@
 import 'dart:convert';
 
+import 'package:ai_clinic/core/ui/components/app_button.dart';
+import 'package:ai_clinic/core/ui/theme/app_theme.dart';
 import 'package:ai_clinic/features/ai/billing/abo_client.dart';
 import 'package:ai_clinic/features/ai/billing/billing_contact_form.dart';
 import 'package:ai_clinic/features/ai/billing/billing_token_client.dart';
@@ -71,16 +73,31 @@ void main() {
       )));
       await tester.pumpAndSettle();
 
+      await tester.ensureVisible(find.text('Plan 1'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Plan 1'));
+      await tester.pump();
+      await tester.ensureVisible(find.byKey(const Key('billing_accept_terms')));
+      await tester.pumpAndSettle();
       await tester.tap(find.byKey(const Key('billing_accept_terms')));
       await tester.pump();
       expect(tester.widget<CheckboxListTile>(find.byKey(const Key('billing_accept_terms'))).value, isTrue);
 
+      await tester.ensureVisible(find.text('Plan 2'));
+      await tester.pumpAndSettle();
       await tester.tap(find.text('Plan 2'));
       await tester.pump();
       expect(tester.widget<CheckboxListTile>(find.byKey(const Key('billing_accept_terms'))).value, isFalse);
+      final continueButton = tester.widget<AppButton>(find.byKey(const Key('billing_continue')));
+      expect(continueButton.disabled, isTrue);
+      expect(continueButton.onPressed, isNull);
       expect(selections, isEmpty);
+      await tester.ensureVisible(find.byKey(const Key('billing_accept_terms')));
+      await tester.pumpAndSettle();
       await tester.tap(find.byKey(const Key('billing_accept_terms')));
       await tester.pump();
+      await tester.ensureVisible(find.byKey(const Key('billing_continue')));
+      await tester.pumpAndSettle();
       await tester.tap(find.byKey(const Key('billing_continue')));
       expect(selections.single.offer.offerId, 'plan-2');
       expect(selections.single.offer.planDisplayName, 'Plan 2');
@@ -94,27 +111,55 @@ void main() {
 
     testWidgets('superseded checkout returns control to fresh offer selection', (tester) async {
       var unavailableCallbackCount = 0;
-      final client = _client((request) async => http.Response(
+      var checkoutPostCount = 0;
+      Map<String, dynamic>? submittedPayload;
+      final client = _client((request) async {
+        if (request.method == 'POST') {
+          checkoutPostCount++;
+          submittedPayload = jsonDecode(request.body) as Map<String, dynamic>;
+        }
+        return http.Response(
             jsonEncode({'code': 'offer_unavailable', 'contract_version': 1}),
             409,
-          ));
+          );
+      });
 
+      tester.view.physicalSize = const Size(360, 480);
+      tester.view.devicePixelRatio = 1;
       await tester.pumpWidget(_app(CheckoutScreen(
         client: client,
         offer: BillingOffer.fromJson(_offer(1)),
         termsVersion: 1,
         onOfferUnavailable: () => unavailableCallbackCount++,
       )));
+      await tester.ensureVisible(find.byKey(const Key('billing_checkout_submit')));
+      await tester.pumpAndSettle();
+      expect(tester.getSize(find.byKey(const Key('billing_checkout_submit'))).height, greaterThan(0));
+      expect(
+        tester.getRect(find.byKey(const Key('billing_checkout_submit'))).overlaps(
+              const Rect.fromLTWH(0, 0, 360, 480),
+            ),
+        isTrue,
+      );
       await tester.tap(find.byKey(const Key('billing_checkout_submit')));
       await tester.pumpAndSettle();
 
+      expect(checkoutPostCount, 1);
+      expect(submittedPayload?['offer_id'], 'plan-1');
+      expect(submittedPayload?['offer_version'], 1);
+      expect(submittedPayload?['terms_version'], 1);
       expect(unavailableCallbackCount, 1);
       expect(tester.takeException(), isNull);
+      addTearDown(() {
+        tester.view.resetPhysicalSize();
+        tester.view.resetDevicePixelRatio();
+      });
     });
   });
 }
 
 Widget _app(Widget child) => MaterialApp(
+      theme: AppTheme.light(),
       localizationsDelegates: AppLocalizations.localizationsDelegates,
       supportedLocales: AppLocalizations.supportedLocales,
       home: Scaffold(body: child),
