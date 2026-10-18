@@ -672,9 +672,12 @@ describe("complimentary grants, ceilings, adjustments, suspension", () => {
         ceilingOverride: {},
       });
       // R2-P2: the bound form is the submitted envelope minus
-      // ceiling_override (two-approval evidence kept).
+      // ceiling_override (two-approval evidence kept). Deep copy so the
+      // mismatch mutation cannot leak into the submitted envelope.
       delete envelope.ceiling_override;
-      const envelopeBase = { ...envelope };
+      const envelopeBase = JSON.parse(
+        JSON.stringify(envelope),
+      ) as Record<string, unknown>;
       input.mutateEnvelopeBase?.(envelopeBase);
 
       const overrideOperation: Record<string, unknown> = {
