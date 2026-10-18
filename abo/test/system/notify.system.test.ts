@@ -663,6 +663,19 @@ describe("P4.3 notify intake", () => {
     expect(await r2KeyCount("evidence/")).toBe(0);
   });
 
+  it("R3-C5 bad HMAC stays 401 when diagnostic storage fails", async () => {
+    setIntakeR2PutThrows(true);
+
+    const response = await postBadHmacFixture();
+
+    expect(response.status).toBe(401);
+    expect(await response.text()).toBe("");
+    expect(await r2KeyCount("hmac-invalid/")).toBe(0);
+    expect(await r2KeyCount("evidence/")).toBe(0);
+    expect(await tableCount("notification")).toBe(0);
+    expect(await tableCount("work")).toBe(0);
+  });
+
   it("E2E-P4.3-09 R3-C5 intake batch failure leaves no dedupe claim", async () => {
     const checkoutR2 = "01JNOTIFYCHECKOUT000009A";
     const checkoutD1 = "01JNOTIFYCHECKOUT000009B";

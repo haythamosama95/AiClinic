@@ -557,7 +557,14 @@ export async function handlePostNotifyPaymob(
     return emptyResponse(200);
   }
   if (!parsed.authentic) {
-    await recordInvalidHmac(env, body);
+    // Authentication rejection is independent of the best-effort diagnostic
+    // evidence path. R2/AL-02 failures must not turn an invalid signature into
+    // an infrastructure 503 (and a retry must still be rejected as 401).
+    try {
+      await recordInvalidHmac(env, body);
+    } catch {
+      // The untrusted callback remains rejected even when diagnostics fail.
+    }
     return emptyResponse(401);
   }
 
@@ -706,7 +713,11 @@ export async function handleGetNotifyPaymob(
     return emptyResponse(200);
   }
   if (!parsed.authentic) {
-    await recordInvalidHmac(env, query);
+    try {
+      await recordInvalidHmac(env, query);
+    } catch {
+      // The untrusted callback remains rejected even when diagnostics fail.
+    }
     return emptyResponse(401);
   }
 
