@@ -2034,11 +2034,11 @@ describe("configuration relays cross-worker", () => {
     const disarmBody = (await disarm.json()) as Record<string, unknown>;
     expect(disarmBody.result).toBe("ok");
 
-    // The gateway caches the armed capability state for the harness clock TTL;
-    // wait past the TTL before expecting the lifted state (same pattern as
-    // the issuer-key revocation flow above).
-    const clockIso = await currentHarnessClockIso();
-    await setClock(addMs(clockIso, CONFIG_CACHE_TTL_MS + 1));
+    // The gateway cache expires against Date.now(), not the harness's virtual
+    // clock. Wait past its short test TTL before expecting the lifted state.
+    await new Promise<void>((resolve) =>
+      setTimeout(resolve, CONFIG_CACHE_TTL_MS + 1),
+    );
 
     const accepted = await platformHttpInvoke(orgId, clinicIssuer!);
     expect(accepted.status).toBe(200);

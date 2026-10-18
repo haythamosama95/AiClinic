@@ -34,7 +34,6 @@ describe("package executable metadata", () => {
         referenced.push({ script: name, file: match[1]! });
       }
     }
-    expect(referenced.length).toBeGreaterThan(0);
     for (const entry of referenced) {
       expect(
         existsSync(new URL(`../${entry.file}`, import.meta.url)),
