@@ -30,7 +30,7 @@ The required invariants are term-local settled+reserved admission, one crossing 
 
 ## Findings and chosen fixes
 
-All findings are high-confidence static source diagnoses. Paths below are relative to `ai-platform/`; links identify complete slice evidence. Recipes are implementation-ready except R5-ADM3's explicit policy decision and historical data adjudication. Implement A1/A2 before A3/A5, and the common A4 handoff before its routing/journal consumers. R4-D1/D4 remain prerequisites for atomic lifecycle/event shipment and alarm recovery, rather than new R5 counts.
+All findings are high-confidence static source diagnoses. Paths below are relative to `ai-platform/`; links identify complete slice evidence. Recipes are implementation-ready except R5-ADM3's explicit policy decision and historical data adjudication. **Decision 2026-10-18:** both are decided in [01 §3.8 D-4 and D-5](../../architecture/ai-billing-orchestration/01-abo-design-decisions.md#38-decisions-from-the-integrated-review-r10). Implement A1/A2 before A3/A5, and the common A4 handoff before its routing/journal consumers. R4-D1/D4 remain prerequisites for atomic lifecycle/event shipment and alarm recovery, rather than new R5 counts.
 
 ### R5-A1 — P1: predecessor reservations consume successor allowance
 
@@ -124,6 +124,8 @@ Mirror projection/parser (`src/quota-do/coverage.ts:288–312,2558–2583`) omit
 2. Architecture owner must choose a common durable JTI authority consulted by **all** normal/fallback admission (including revised write budget), or explicitly approve/amend the bounded outage replay exception. New fallback-only JTI rows cannot detect a token already consumed in the hidden DO.
 3. Implement the chosen rule across normal/fallback/replay/cleanup with identity/fingerprint binding. Completion requires prior-normal and prior-fallback replay rejection, or an explicitly approved revised exception. The lower-cost implementer stops at containment while unresolved.
 
+**Decision 2026-10-18 ([01 §3.8 D-4](../../architecture/ai-billing-orchestration/01-abo-design-decisions.md#38-decisions-from-the-integrated-review-r10)) — now implementation-ready.** The explicitly approved revised exception is chosen (02 §4.4). Store `jti` on every `fallback_admission` row, unique per installation, bound to the identity and request fingerprint. Answer `replay` to a second fallback admission with a stored `jti` (03 §3.2, §6.5). Accepted residual: a `jti` the unreachable DO already consumed can be admitted once more in fallback, so a token gets at most two admissions within the 5 × `w_max` outage cap. Completion: prior-fallback replay is rejected; prior-normal replay is bounded to one fallback admission. Keep step 1's `coverage_unknown` containment until this ships.
+
 ### R5-J1 — P2: usage journal records released quota as consumed
 
 Lead confirmed `src/worker.ts:694–719,779–814` always passes manifest weight to `src/journal/index.ts:413–430`, even for zero-use provider failure/cancellation; DO (`quota-do/index.ts:1603–1619`) releases that reservation. Consequently durable usage facts disagree with actual accounting. Unique request_id also means a zero journal row must not outrank a prior stale conservative charge.
@@ -154,4 +156,4 @@ Lead confirmed `src/worker.ts:694–719,779–814` always passes manifest weight
 
 **R9:** preserve fallback receipts, pending settlement intents, original request/term ids and usage uniqueness through retention/rebuild; reconcile A2/A3/J1 historical divergence without guessing, and finish canonical R4-D4 wake-up/alert shipment recovery. Static review does not attest production keys, flags, alarms or service settings.
 
-The unresolved outage replay policy belongs to architecture/maintainer; ambiguous historical attribution belongs to maintainer plus frontier/R9 adjudication. These are explicit remediation limits, not unread R5 source. **R5 complete with findings; overall review remains in progress.**
+The unresolved outage replay policy belongs to architecture/maintainer; ambiguous historical attribution belongs to maintainer plus frontier/R9 adjudication. These are explicit remediation limits, not unread R5 source. **Decision 2026-10-18:** both are decided in [01 §3.8 D-4 and D-5](../../architecture/ai-billing-orchestration/01-abo-design-decisions.md#38-decisions-from-the-integrated-review-r10). **R5 complete with findings; overall review remains in progress.**

@@ -40,7 +40,7 @@ Every scheduled query is index-backed (01 §3.3). Each job is idempotent, so a r
 | AI Platform | Every 5 minutes            | Drain `fallback_admission`; retry `platform_alert`; heartbeat ping                                                                                                                         |
 | AI Platform | `0 3 * * *`, `0 4 * * *`   | Retention purge and rollup, as today (`ai-platform/src/worker.ts:1733-1767`), keyed by `term_id`                                                                                          |
 | Backend     | pg_cron every 30 s         | Two-phase feed pull (04 §4.1)                                                                                                                                                              |
-| External    | Hourly                     | Audit-log watcher (02 §4.4); the heartbeat monitor alerts on any missing ping                                                                                                               |
+| External    | Hourly                     | Audit-log watcher (02 §4.4), on a scheduler outside the monitored Cloudflare account, with its own heartbeat stream; the heartbeat monitor alerts on any stream missing past its window (02 §5, 01 §3.8 D-6) |
 
 
 ## 2. Alerts
@@ -98,6 +98,8 @@ HP actions run the passkey ceremony in the console. "Verified by" says which sys
 | Retry parked work                               | H     | ABO         | FR-71               |
 | Cancel an open checkout                         | H     | ABO         | FR-71               |
 | Import a payout CSV; resolve a finding          | H     | ABO         | FR-80               |
+| Submit a provider transaction id for a checkout with no known transaction (01 §3.8 D-3). The ABO confirms it by authenticated inquiry and order binding; the entry alone creates nothing | H | ABO | FR-82, A3 |
+| Adjudicate a disputed historical fact: record a new append-only adjudication fact with its evidence; the original is never rewritten (01 §3.8 D-5) | HP | System that owns the fact | G4, RC-01 |
 | Record a manual chargeback                      | HP    | ABO         | FR-44, A18          |
 | Release a withheld payment                      | HP    | ABO         | FR-16               |
 | Publish or retire an offer or terms version     | HP    | ABO         | FR-01, FR-06        |
@@ -154,7 +156,7 @@ Recovery never needs database surgery (G3, NFR-01).
 | #     | Failure                                              | Detection               | Automatic behaviour                                                                                                               | Operator step                                            |
 | ----- | ---------------------------------------------------- | ----------------------- | --------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------- |
 | FM-01 | ABO crashes after receiving a callback               | AL-01 if a row stalls   | The callback was answered with 5xx or the row is open; the sweep inquires within 2–20 minutes                                     | None                                                     |
-| FM-02 | Callback lost or delayed (A3)                        | AL-03                   | Checkout sweep finds the payment by inquiry                                                                                       | None                                                     |
+| FM-02 | Callback lost or delayed (A3)                        | AL-03; AL-01 while discovery is unavailable | Checkout sweep finds the payment by inquiry when a transaction id is known. Until order-scoped discovery is confirmed (01 R-2), a checkout with none stays due and alerts once (01 §3.8 D-3) | If no transaction id is known: submit it from the Paymob dashboard (§3.2) |
 | FM-03 | HMAC verification fails for every callback (A23)     | AL-02                   | Sweeps keep confirming by inquiry                                                                                                 | Fix the adapter or secret; deploy                        |
 | FM-04 | Platform unreachable or failing (A4)                 | AL-04 hourly            | Grant rows retry with backoff up to 15 minutes, forever; the term starts at activation (01 I-2)                                    | None                                                     |
 | FM-05 | Platform answers `conflict` or `rejected`            | AL-07                   | Row parked                                                                                                                        | Inspect; fix the cause; retry                            |
@@ -178,6 +180,7 @@ Recovery never needs database surgery (G3, NFR-01).
 | FM-23 | Installation deleted with paid time left             | AL-18                   | Binding `held_for_transfer`: AI refused with `transfer_pending`, grants wait as `transient`, no second binding (03 §5.4)          | `beginTransfer`, or void the remaining grants            |
 | FM-24 | ABO signing key not registered or revoked on the platform | AL-23              | `grant` and `reverse` work pauses; nothing is parked                                                                              | Register the key or deploy the right secret (02 §6)      |
 | FM-25 | One side deployed with a contract version the other does not accept | `contract_version_unsupported` answers; AL-07 or AL-15 by channel | Nothing is written; the ABO parks the row, the feed puller keeps its cursor | Deploy the receiver first (04 §7.3), or roll back; retry parked rows |
+| FM-26 | A stored fact is ambiguous: receipt, envelope, actor, predecessor, route or accounting identity cannot be corroborated from retained originals | Reconciliation, AL-10; rebuild comparison | The fact is marked disputed; every mutation and recovery that depends on it is blocked, never guessed | Adjudicate from retained evidence (§3.2); no hard deletion (01 §3.8 D-5) |
 
 
 ## 5. Rebuild procedures
@@ -238,7 +241,9 @@ These are conditions on the production state, not tasks.
 - The first operator credential is bootstrapped and a second one is registered (24-hour delay). The issuer and service keys are registered, the platform signing key is set, and the issuer keys are pinned in the ABO's `ISSUER_KEYS`; the ABO's key self-check passes (AL-23 clear).
 - Every channel runs contract version 1 on both sides, and the backend's `ai.contract_versions` matches the shared package (04 §7).
 - R-9 advice on payer contact data is recorded, and the erasure action (§3.2) has been run once in staging.
-- `workers_dev` and preview URLs are off. The audit watcher and heartbeat monitor are live. No stored token has production rights (02 §4.4).
+- `workers_dev` and preview URLs are off. The audit watcher and heartbeat monitor are live, with one monitor check per stream (02 §5). No stored token has production rights (02 §4.4).
+- The platform signing key in staging and production is a separately provisioned secret, not the checked-in development key, and the ABO pins its public key (02 §6 K-3). No staging or development fact is imported into production (01 §3.8 D-5, D-6).
+- These conditions are checked by the operator-run, read-only `launch-check` against the live target. A supplied snapshot file is offline evidence only and never counts as a pass (01 §3.8 D-6).
 
 ### 6.3 Delivery sequence
 

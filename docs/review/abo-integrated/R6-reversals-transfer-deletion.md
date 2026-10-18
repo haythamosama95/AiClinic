@@ -18,7 +18,7 @@ Deletion must first prove and freeze authoritative inventory, hold any remaining
 
 ## Major findings and exact remedies
 
-Every finding is high-confidence static source reasoning. Recipes below are implementation-ready except BR1's explicitly named external cumulative decision and historical-data adjudication limits. Detailed ordered recipes are authoritative at the linked slice heading; no fixes were applied.
+Every finding is high-confidence static source reasoning. Recipes below are implementation-ready except BR1's explicitly named external cumulative decision and historical-data adjudication limits. **Decision 2026-10-18:** both are decided in [01 §3.8 D-3 and D-5](../../architecture/ai-billing-orchestration/01-abo-design-decisions.md#38-decisions-from-the-integrated-review-r10). Detailed ordered recipes are authoritative at the linked slice heading; no fixes were applied.
 
 ### R6-DM1 — P1: transfer restores spent allowance
 
@@ -50,6 +50,8 @@ Receiver picks current location from delayed grant_ledger (`vendor/entrypoint.ts
 ### R6-BR1 — P1: partial child/callback evidence can trigger a full void
 
 Adapter compares child cumulative to child amount (`abo/src/provider/paymob/adapter.ts:418–440`); recorder ORs that flag with parent comparison (`work/reversal.ts:535–536`). A20 refund of a100 payment can void all coverage. Callback unsigned cumulative and guessed parent are persisted before inquiry; later verification accepts a lower-bound comparison without replacing callback-derived effect (`674–699`). Pending child flags also precede pending classification. [Full recipe and decision stop](R6-abo-reversal.md#br1--p1-childcallback-evidence-can-authorize-a-full-void-of-a-partial-refund).
+
+**Decision 2026-10-18 ([01 §3.8 D-3](../../architecture/ai-billing-orchestration/01-abo-design-decisions.md#38-decisions-from-the-integrated-review-r10)) — now implementation-ready.** Full reversal is derived only from the authenticated inquiry of the original parent transaction: cumulative ≥ payment `amount_minor`. Callback and child values are inquiry hints. A missing or inconsistent parent cumulative never auto-voids; it takes `review_partial` and alerts. Historical callback-derived rows follow D-5 adjudication. Amended text: 03 §2.7, 04 §5.3.
 
 **Fix steps:**
 1. Store callbacks only as durable inquiry hints. Bind authenticated child→exact parent→original payment/order/currency; pending/unknown results defer. Remove adapter fullness override and derive full exclusively as authoritative cumulative≥original payment amount.
@@ -138,6 +140,6 @@ Local HP consumes challenge before release/manual/erase effects (`abo/src/ops/in
 
 **R9 obligations:** retain/rebuild global claims/routes/seals, accepted lifecycle commands, original receipts/packages, export/purge/erasure obligations and original-term pending settlements. Existing wipe/rebuild helper (coverage.ts:3298–3303,3768–3808 and supporting rebuild ranges) can lose local replay, and grant_void hydration ignores operator-versus-reversal source; R9 must finish its owned full reconstruction semantics, not assume R6 reviewed them. Reconcile orphan/guessed/provider-derived historical facts under maintainer/frontier ownership; fail closed for ambiguous lineage or value. Complete canonical R3-C5 orphan-work and R4-D4 shipment/alarm recovery. These are named downstream scope, not hidden unread R6 work.
 
-All 18 escalation dispositions are in [coverage](R6-coverage.md#escalation-dispositions-18). Prior R1–R5 findings stay canonical/unfixed; they are not counted again. External provider cumulative semantics (BR1/R3-C4), historical route/value adjudication, and earlier R1/R2/R3 decisions remain explicit limits. Static source does not attest deployed keys, buckets, alarms, provider behavior or account settings.
+All 18 escalation dispositions are in [coverage](R6-coverage.md#escalation-dispositions-18). Prior R1–R5 findings stay canonical/unfixed; they are not counted again. External provider cumulative semantics (BR1/R3-C4), historical route/value adjudication, and earlier R1/R2/R3 decisions remain explicit limits. **Decision 2026-10-18:** all of these are decided in [01 §3.8](../../architecture/ai-billing-orchestration/01-abo-design-decisions.md#38-decisions-from-the-integrated-review-r10). Static source does not attest deployed keys, buckets, alarms, provider behavior or account settings.
 
 Only review artifacts and R6 tracker changed. No application edits, fixes, commits, pushes, branches, tests/builds/lint, services, live research or usage/account queries. Architecture navigation incidentally displayed acceptance-walkthrough row snippets and vector references; they were not analyzed or used as evidence. No excluded implementation was opened. R0–R5 remain complete, R7–R10 not started, overall review in progress. Completion records diagnosis/coverage, not launch approval.
