@@ -56,6 +56,21 @@ BEGIN
   v_branch_main := (v_result.data ->> 'branch_id')::uuid;
 
   PERFORM set_config('role', 'postgres', true);
+  UPDATE public.branches b
+  SET working_schedule = jsonb_build_object(
+    'days',
+    jsonb_build_array(
+      jsonb_build_object('day', 'monday', 'is_working_day', true, 'open_time', '00:00', 'close_time', '23:59'),
+      jsonb_build_object('day', 'tuesday', 'is_working_day', true, 'open_time', '00:00', 'close_time', '23:59'),
+      jsonb_build_object('day', 'wednesday', 'is_working_day', true, 'open_time', '00:00', 'close_time', '23:59'),
+      jsonb_build_object('day', 'thursday', 'is_working_day', true, 'open_time', '00:00', 'close_time', '23:59'),
+      jsonb_build_object('day', 'friday', 'is_working_day', true, 'open_time', '00:00', 'close_time', '23:59'),
+      jsonb_build_object('day', 'saturday', 'is_working_day', true, 'open_time', '00:00', 'close_time', '23:59'),
+      jsonb_build_object('day', 'sunday', 'is_working_day', true, 'open_time', '00:00', 'close_time', '23:59')
+    )
+  )
+  WHERE b.id = v_branch_main;
+
   INSERT INTO public.staff_members (id, auth_user_id, full_name, role, is_bootstrap_admin, created_by, updated_by)
   VALUES
     (v_owner_staff, v_owner_user, 'Appointment Owner', 'administrator', false, v_bootstrap_user, v_bootstrap_user),
