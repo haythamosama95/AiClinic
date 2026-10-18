@@ -739,7 +739,7 @@ Agents update only their own row (rule 2.11). Status values: `not started`, `in 
 
 | Phase | Status | Validated commit | CI run | Completed on | Notes |
 | --- | --- | --- | --- | --- | --- |
-| RM00 | not started | — | — | — | CI baseline, no code changes (§2.9.5) |
+| RM00 | complete | `5aefe777a0266c0e6b6de1fdf6598a2476e69de0` | [39104988439](https://github.com/haythamosama95/AiClinic/actions/runs/39104988439) | 2026-10-18 | CI baseline, no code changes (§2.9.5); 2 known failures: `backend/all` `appointments_patient_mrn_payload_test.sql`, `ai-platform/workers` `E2E-P3.9-01 FM-06 DO failure admits via fallback and */5 charges once` |
 | RM01 | not started | — | — | — | — |
 | RM02 | not started | — | — | — | — |
 | RM03 | not started | — | — | — | — |
