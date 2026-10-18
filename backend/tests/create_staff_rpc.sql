@@ -123,6 +123,24 @@ PERFORM set_config('role', 'postgres', true);
   );
   PERFORM set_config('role', 'authenticated', true);
 
+  -- R1-SQL-04: once the organization exists, provisioning requires an
+  -- org-scoped membership administrator session; the bootstrap flag alone no
+  -- longer authorizes create_staff_account. The input-validation cases below
+  -- therefore run as the member administrator (v_admin_user holds an
+  -- administrator membership in the new organization).
+  PERFORM set_config(
+    'request.jwt.claims',
+    json_build_object(
+      'sub', v_admin_user::text,
+      'role', 'authenticated',
+      'organization_id', v_org_id::text,
+      'branch_ids', v_branch_id::text,
+      'staff_member_id', v_admin_staff::text,
+      'staff_role', 'administrator'
+    )::text,
+    true
+  );
+
   -- Stupid usage: empty branch list.
   v_result := public.create_staff_account(
     'us6-empty-branches',
@@ -227,7 +245,37 @@ PERFORM set_config('role', 'postgres', true);
     true
   );
 
-  -- Bootstrap admin may create the first administrator.
+  -- R1-SQL-04: the bootstrap flag must not bypass an existing organization's
+  -- membership role, so the bootstrap caller cannot provision once the
+  -- organization exists.
+  v_result := public.create_staff_account(
+    'admin-boot-attempt',
+    'admin-pass-3',
+    'Bootstrap Attempt',
+    'administrator',
+    ARRAY[v_branch_id]
+  );
+PERFORM set_config('role', 'postgres', true);
+  INSERT INTO create_staff_rpc_results VALUES (
+'r1_sql04_bootstrap_forbidden_after_org_exists',
+    NOT v_result.success AND v_result.error_code = 'FORBIDDEN',
+    COALESCE(v_result.error_code, '<null>')
+  );
+  PERFORM set_config('role', 'authenticated', true);
+
+  -- Member administrator (org-scoped claims) creates the first administrator.
+  PERFORM set_config(
+    'request.jwt.claims',
+    json_build_object(
+      'sub', v_admin_user::text,
+      'role', 'authenticated',
+      'organization_id', v_org_id::text,
+      'branch_ids', v_branch_id::text,
+      'staff_member_id', v_admin_staff::text,
+      'staff_role', 'administrator'
+    )::text,
+    true
+  );
   v_result := public.create_staff_account(
     'admin-one',
     'admin-pass-1',
@@ -239,7 +287,7 @@ PERFORM set_config('role', 'postgres', true);
   v_admin_staff_id := (v_result.data ->> 'staff_member_id')::uuid;
 PERFORM set_config('role', 'postgres', true);
   INSERT INTO create_staff_rpc_results VALUES (
-'bootstrap_creates_first_administrator',
+'member_administrator_creates_first_administrator',
     v_result.success AND v_admin_staff_id IS NOT NULL,
     'staff_id=' || COALESCE(v_admin_staff_id::text, '<null>')
   );
@@ -257,7 +305,13 @@ PERFORM set_config('role', 'postgres', true);
   );
   PERFORM set_config('role', 'authenticated', true);
 
-  -- Bootstrap administrator may create a second administrator.
+  -- R1-SQL-04: the bootstrap flag cannot create a second administrator once
+  -- the organization exists; only a member administrator may provision.
+  PERFORM set_config(
+    'request.jwt.claims',
+    json_build_object('sub', v_bootstrap_user::text, 'role', 'authenticated')::text,
+    true
+  );
   v_result := public.create_staff_account(
     'admin-bootstrap-second',
     'admin-pass-2',
@@ -267,16 +321,23 @@ PERFORM set_config('role', 'postgres', true);
   );
 PERFORM set_config('role', 'postgres', true);
   INSERT INTO create_staff_rpc_results VALUES (
-'bootstrap_admin_creates_second_administrator',
-    v_result.success AND (v_result.data ->> 'staff_member_id') IS NOT NULL,
-    COALESCE(v_result.error_code, 'ok')
+'r1_sql04_bootstrap_second_administrator_forbidden',
+    NOT v_result.success AND v_result.error_code = 'FORBIDDEN',
+    COALESCE(v_result.error_code, '<null>')
   );
   PERFORM set_config('role', 'authenticated', true);
 
-  -- Non-bootstrap administrator may create another administrator.
+  -- Non-bootstrap member administrator may create another administrator.
   PERFORM set_config(
     'request.jwt.claims',
-    json_build_object('sub', v_admin_user::text, 'role', 'authenticated')::text,
+    json_build_object(
+      'sub', v_admin_user::text,
+      'role', 'authenticated',
+      'organization_id', v_org_id::text,
+      'branch_ids', v_branch_id::text,
+      'staff_member_id', v_admin_staff::text,
+      'staff_role', 'administrator'
+    )::text,
     true
   );
   PERFORM set_config('role', 'postgres', true);

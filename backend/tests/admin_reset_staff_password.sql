@@ -84,6 +84,19 @@ BEGIN
   );
   PERFORM set_config('role', 'authenticated', true);
 
+  -- R1-SQL-04: provisioning after the organization exists requires an
+  -- org-scoped membership administrator session; the bootstrap user holds an
+  -- administrator membership in the new organization, so add the org claim.
+  PERFORM set_config(
+    'request.jwt.claims',
+    json_build_object(
+      'sub', v_bootstrap_user::text,
+      'role', 'authenticated',
+      'organization_id', v_org_id::text
+    )::text,
+    true
+  );
+
   v_result := public.create_staff_account(
     'us7-reception',
     'initial-pass1',

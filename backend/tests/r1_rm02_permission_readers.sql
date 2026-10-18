@@ -427,7 +427,7 @@ BEGIN
   -- Restore the flipped permission row directly (the postgres session has no
   -- JWT staff context, so the guarded RPC is not usable for the restore).
   UPDATE public.roles_permissions
-  SET is_granted = v_before, updated_at = now(), updated_by = v_u4
+  SET is_granted = v_before, updated_at = now(), updated_by = v_u2
   WHERE organization_id = v_org_b
     AND role = 'doctor' AND permission_key = 'services.view';
   IF v_create.success AND v_create.data ? 'staff_member_id' THEN

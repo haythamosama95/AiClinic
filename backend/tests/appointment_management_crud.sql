@@ -829,19 +829,22 @@ BEGIN
   PERFORM set_config('role', 'authenticated', true);
 
   -- Reschedule parity: patient already booked same day is rejected (regression #2).
-  v_start := date_trunc('day', now() + interval '18 days') + interval '10 hours';
+  -- Days 24/25: disjoint from every other slot in this suite, including the
+  -- hour-truncated day-18 appointment above (same doctor), which otherwise
+  -- collides with a fixed 10:00 day-18 slot whenever CI runs at 10:xx UTC.
+  v_start := date_trunc('day', now() + interval '24 days') + interval '10 hours';
   v_result := public.create_appointment(
     v_main_branch_id, v_patient2_id, c_doctor_staff_id, 'planned', v_start, 20, NULL, NULL
   );
   v_appt_planned := (v_result.data ->> 'appointment_id')::uuid;
-  v_start := date_trunc('day', now() + interval '19 days') + interval '10 hours';
+  v_start := date_trunc('day', now() + interval '25 days') + interval '10 hours';
   v_result := public.create_appointment(
     v_main_branch_id, v_patient2_id, v_doctor2_staff, 'planned', v_start, 20, NULL, NULL
   );
   v_appt_second := (v_result.data ->> 'appointment_id')::uuid;
   v_result := public.reschedule_appointment(
     v_appt_second,
-    date_trunc('day', now() + interval '18 days') + interval '14 hours',
+    date_trunc('day', now() + interval '24 days') + interval '14 hours',
     20,
     NULL
   );
