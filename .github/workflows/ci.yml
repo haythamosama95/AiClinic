@@ -121,9 +121,9 @@ jobs:
 
       - name: Install Supabase CLI
         if: matrix.supabase
-        uses: supabase/setup-cli@v1
+        uses: supabase/setup-cli@v3
         with:
-          version: latest
+          version: 2.121.0
 
       - name: Install PostgreSQL client
         if: matrix.postgresql_client
