@@ -141,25 +141,251 @@ async function listLedgerLines(env: RebuildEnv): Promise<LedgerLine[]> {
 
 async function replayLedger(env: RebuildEnv, lines: LedgerLine[]): Promise<void> {
   const exportedAt = await clockNowIso(env);
+  const checkoutCreatedAt = new Map<string, string>();
+  for (const line of lines) {
+    if (line.table !== "checkout" || line.row === undefined) {
+      continue;
+    }
+    const createdAt = line.row.created_at;
+    if (typeof createdAt === "string" && createdAt.length > 0) {
+      checkoutCreatedAt.set(line.key, createdAt);
+    }
+  }
+  // Older checkout facts predate checkout.created_at. Their immutable opened
+  // event is the authoritative admission timestamp used to restore the new
+  // projection column while the row is first inserted under append-only rules.
+  for (const line of lines) {
+    if (
+      line.table !== "checkout_event" ||
+      line.row === undefined ||
+      line.row.kind !== "opened" ||
+      typeof line.row.checkout_id !== "string" ||
+      typeof line.row.at !== "string" ||
+      line.row.at.length === 0
+    ) {
+      continue;
+    }
+    if (!checkoutCreatedAt.has(line.row.checkout_id)) {
+      checkoutCreatedAt.set(line.row.checkout_id, line.row.at);
+    }
+  }
+
   for (const line of lines) {
     const row = line.row;
     if (row === undefined) {
       continue;
     }
-    await ledgerInsertStatement(env, line.table, row).run();
+    const admissionAt = line.table === "checkout"
+      ? checkoutCreatedAt.get(line.key)
+      : undefined;
+    const insertedRow = line.table === "checkout" &&
+        (typeof row.created_at !== "string" || row.created_at.length === 0) &&
+        admissionAt !== undefined
+      ? { ...row, created_at: admissionAt }
+      : row;
+    await ledgerInsertStatement(env, line.table, insertedRow).run();
     await (
       await insertFactLog(
         env,
         line.table,
         line.key,
         row,
-        factCreatedAt(row),
+        admissionAt ?? factCreatedAt(row),
       )
     ).run();
     await env.DB.prepare(
       `INSERT INTO fact_export (fact_seq, exported_at) VALUES (?, ?)`,
     )
       .bind(line.fact_seq, exportedAt)
+      .run();
+  }
+}
+
+type IntentionAttemptEventRow = {
+  event_key: string;
+  checkout_id: string;
+  attempt_no: number;
+  state: "pending" | "created" | "abandoned_unconfirmed";
+  lease_token: string;
+  lease_until: string;
+  special_reference: string;
+  intention_id: string | null;
+  order_id: string | null;
+  client_secret: string | null;
+  expires_at: string | null;
+  started_at: string | null;
+  finished_at: string | null;
+  event_at: string;
+};
+
+async function appendLegacyAttemptEvent(
+  env: RebuildEnv,
+  event: IntentionAttemptEventRow,
+): Promise<void> {
+  const existing = await env.DB.prepare(
+    `SELECT 1 FROM paymob_intention_attempt_event WHERE event_key = ?`,
+  )
+    .bind(event.event_key)
+    .first();
+  if (existing === null) {
+    await ledgerInsertStatement(
+      env,
+      "paymob_intention_attempt_event",
+      event as unknown as Record<string, unknown>,
+    ).run();
+  }
+
+  // Migration-created legacy events are derived from old facts and have no
+  // fact_log entry. Add one so a subsequent ledger export carries the event.
+  const fact = await env.DB.prepare(
+    `SELECT 1 FROM fact_log
+     WHERE "table" = 'paymob_intention_attempt_event' AND key = ? LIMIT 1`,
+  )
+    .bind(event.event_key)
+    .first();
+  if (fact === null) {
+    await (
+      await insertFactLog(
+        env,
+        "paymob_intention_attempt_event",
+        event.event_key,
+        event as unknown as Record<string, unknown>,
+        event.event_at,
+      )
+    ).run();
+  }
+}
+
+async function ensureLegacyAttemptEvents(env: RebuildEnv): Promise<void> {
+  const intentions = await env.DB.prepare(
+    `SELECT pi.checkout_id, pi.intention_id, pi.order_id, pi.client_secret,
+            pi.special_reference, pi.expires_at, c.created_at
+     FROM paymob_intention pi
+     INNER JOIN checkout c ON c.checkout_id = pi.checkout_id`,
+  ).all<{
+    checkout_id: string;
+    intention_id: string;
+    order_id: string;
+    client_secret: string;
+    special_reference: string;
+    expires_at: string;
+    created_at: string | null;
+  }>();
+  for (const intention of intentions.results ?? []) {
+    const eventKey = `${intention.checkout_id}:1:created:legacy`;
+    const prior = await env.DB.prepare(
+      `SELECT event_key FROM paymob_intention_attempt_event
+       WHERE checkout_id = ? AND attempt_no = 1 LIMIT 1`,
+    )
+      .bind(intention.checkout_id)
+      .first<{ event_key: string }>();
+    if (prior !== null && prior.event_key !== eventKey) {
+      continue;
+    }
+    const eventAt = intention.created_at ?? intention.expires_at;
+    await appendLegacyAttemptEvent(env, {
+      event_key: eventKey,
+      checkout_id: intention.checkout_id,
+      attempt_no: 1,
+      state: "created",
+      lease_token: "legacy",
+      lease_until: intention.expires_at,
+      special_reference: intention.special_reference,
+      intention_id: intention.intention_id,
+      order_id: intention.order_id,
+      client_secret: intention.client_secret,
+      expires_at: intention.expires_at,
+      started_at: intention.created_at,
+      finished_at: intention.created_at,
+      event_at: eventAt,
+    });
+  }
+
+  const failedCheckouts = await env.DB.prepare(
+    `SELECT c.checkout_id, c.reference, c.expires_at, c.created_at,
+            COALESCE(cs.last_event_at, (
+              SELECT MAX(oe.at) FROM checkout_event oe
+              WHERE oe.checkout_id = c.checkout_id AND oe.kind = 'open_failed'
+            ), c.created_at, c.expires_at) AS failed_at
+     FROM checkout c
+     INNER JOIN checkout_status cs ON cs.checkout_id = c.checkout_id
+     LEFT JOIN paymob_intention pi ON pi.checkout_id = c.checkout_id
+     WHERE cs.state = 'open_failed' AND pi.checkout_id IS NULL`,
+  ).all<{
+    checkout_id: string;
+    reference: string;
+    expires_at: string;
+    created_at: string | null;
+    failed_at: string;
+  }>();
+  for (const checkout of failedCheckouts.results ?? []) {
+    const eventKey = `${checkout.checkout_id}:1:abandoned_unconfirmed:legacy`;
+    const prior = await env.DB.prepare(
+      `SELECT event_key FROM paymob_intention_attempt_event
+       WHERE checkout_id = ? AND attempt_no = 1 LIMIT 1`,
+    )
+      .bind(checkout.checkout_id)
+      .first<{ event_key: string }>();
+    if (prior !== null && prior.event_key !== eventKey) {
+      continue;
+    }
+    await appendLegacyAttemptEvent(env, {
+      event_key: eventKey,
+      checkout_id: checkout.checkout_id,
+      attempt_no: 1,
+      state: "abandoned_unconfirmed",
+      lease_token: "legacy",
+      lease_until: checkout.expires_at,
+      special_reference: checkout.reference,
+      intention_id: null,
+      order_id: null,
+      client_secret: null,
+      expires_at: null,
+      started_at: checkout.created_at,
+      finished_at: checkout.failed_at,
+      event_at: checkout.failed_at,
+    });
+  }
+}
+
+async function rebuildIntentionAttempts(env: RebuildEnv): Promise<void> {
+  const listed = await env.DB.prepare(
+    `SELECT event_key, checkout_id, attempt_no, state, lease_token, lease_until,
+            special_reference, intention_id, order_id, client_secret, expires_at,
+            started_at, finished_at, event_at
+     FROM paymob_intention_attempt_event ORDER BY rowid ASC`,
+  ).all<IntentionAttemptEventRow>();
+  const latest = new Map<string, IntentionAttemptEventRow>();
+  for (const event of listed.results ?? []) {
+    latest.set(`${event.checkout_id}:${event.attempt_no}`, event);
+  }
+
+  // paymob_intention_attempt is an operational projection. Replacing it from
+  // append-only event rows prevents ledger replay from trying to insert every
+  // historical snapshot into its (checkout_id, attempt_no) primary key.
+  await env.DB.prepare(`DELETE FROM paymob_intention_attempt`).run();
+  for (const event of latest.values()) {
+    await env.DB.prepare(
+      `INSERT INTO paymob_intention_attempt (
+         checkout_id, attempt_no, state, lease_token, lease_until,
+         special_reference, intention_id, order_id, client_secret, expires_at,
+         started_at, finished_at
+       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    )
+      .bind(
+        event.checkout_id,
+        event.attempt_no,
+        event.state,
+        event.lease_token,
+        event.lease_until,
+        event.special_reference,
+        event.intention_id,
+        event.order_id,
+        event.client_secret,
+        event.expires_at,
+        event.started_at,
+        event.finished_at,
+      )
       .run();
   }
 }
@@ -577,49 +803,12 @@ async function parsePlatformGrants(
   return Array.isArray(parsed) ? (parsed as Record<string, unknown>[]) : [];
 }
 
-async function ensurePaymobIntentions(
-  env: RebuildEnv,
-  provider: NonNullable<ReturnType<typeof providerForId>>,
-): Promise<void> {
-  const checkouts = await env.DB.prepare(
-    `SELECT c.checkout_id, c.reference, c.charged_price_minor, c.currency
-     FROM checkout c
-     LEFT JOIN payment p ON p.checkout_id = c.checkout_id
-     LEFT JOIN paymob_intention pi ON pi.checkout_id = c.checkout_id
-     WHERE p.payment_id IS NULL AND pi.checkout_id IS NULL`,
-  ).all<{
-    checkout_id: string;
-    reference: string;
-    charged_price_minor: number;
-    currency: string;
-  }>();
-
-  for (const checkout of checkouts.results ?? []) {
-    await provider.createCheckout({
-      checkout_id: checkout.checkout_id,
-      reference: checkout.reference,
-      amount_minor: checkout.charged_price_minor,
-      currency: checkout.currency,
-      item_name: "Clinic subscription",
-      payer: {
-        name: "",
-        email: "",
-        phone: "",
-      },
-      expires_in_s: 1800,
-      return_url: `https://${env.BILLING_HOST}/return/paymob`,
-      notify_url: `https://${env.BILLING_HOST}/notify/paymob`,
-    });
-  }
-}
-
 async function inquireGapPayments(
   env: RebuildEnv,
   provider: NonNullable<ReturnType<typeof providerForId>>,
   options: RebuildOptions,
 ): Promise<string[]> {
   const gapFilledPaymentIds: string[] = [];
-  await ensurePaymobIntentions(env, provider);
 
   const checkouts = await env.DB.prepare(
     `SELECT checkout_id FROM checkout`,
@@ -708,6 +897,8 @@ export async function rebuildAbo(
   const lines = await listLedgerLines(env);
   await replayLedger(env, lines);
   await recomputeCheckoutStatus(env);
+  await ensureLegacyAttemptEvents(env);
+  await rebuildIntentionAttempts(env);
   await refreshCoverageView(env);
 
   const provider = providerForId(env, PAYMOB_PROVIDER_ID);

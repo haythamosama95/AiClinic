@@ -41,7 +41,6 @@ type SellableRow = {
   allowance_credits: number;
   grace_days: number;
   copy: string;
-  terms_version: number;
 };
 
 function parseCopy(copyJson: string): OfferCopy {
@@ -49,19 +48,19 @@ function parseCopy(copyJson: string): OfferCopy {
   return parsed;
 }
 
-async function termsText(
+async function currentTermsText(
   env: OffersEnv,
-  termsVersion: number,
 ): Promise<{ version: number; text: string }> {
   const row = await env.DB.prepare(
     `SELECT terms_version, text_r2_key
      FROM terms_version
-     WHERE terms_version = ? AND locale = ?`,
+     WHERE terms_version = (SELECT MAX(terms_version) FROM terms_version)
+       AND locale = ?`,
   )
-    .bind(termsVersion, "en")
+    .bind("en")
     .first<{ terms_version: number; text_r2_key: string }>();
   if (!row) {
-    throw new Error(`terms_version ${termsVersion} en not found`);
+    throw new Error("current terms_version en not found");
   }
   const object = await env.R2.get(row.text_r2_key);
   if (!object) {
@@ -85,6 +84,7 @@ export async function listOffers(env: OffersEnv): Promise<CatalogueOffer[]> {
 
   const sellableIds = latestEvents.results ?? [];
   const offers: CatalogueOffer[] = [];
+  let currentTerms: { version: number; text: string } | null = null;
 
   for (const event of sellableIds) {
     const versionRow = await env.DB.prepare(
@@ -101,7 +101,7 @@ export async function listOffers(env: OffersEnv): Promise<CatalogueOffer[]> {
 
     const row = await env.DB.prepare(
       `SELECT offer_id, version, term_unit, term_count, price_minor, currency,
-              allowance_credits, grace_days, copy, terms_version
+              allowance_credits, grace_days, copy
        FROM offer_version
        WHERE offer_id = ? AND version = ?`,
     )
@@ -112,7 +112,7 @@ export async function listOffers(env: OffersEnv): Promise<CatalogueOffer[]> {
     }
 
     const copy = parseCopy(row.copy);
-    const terms = await termsText(env, row.terms_version);
+    currentTerms ??= await currentTermsText(env);
     offers.push({
       offer_id: row.offer_id,
       version: row.version,
@@ -124,7 +124,7 @@ export async function listOffers(env: OffersEnv): Promise<CatalogueOffer[]> {
       allowance_credits: row.allowance_credits,
       grace_days: row.grace_days,
       copy,
-      terms,
+      terms: currentTerms,
     });
   }
 

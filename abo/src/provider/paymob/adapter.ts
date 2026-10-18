@@ -1,4 +1,4 @@
-import { CHANNEL_VERSIONS, paymentId, sha256Hex } from "vendor-contracts";
+import { canonicalize, CHANNEL_VERSIONS, paymentId, sha256Hex } from "vendor-contracts";
 import type {
   CancelCheckoutResult,
   CreateCheckoutInput,
@@ -16,7 +16,6 @@ import type {
   ProviderTxnKind,
 } from "../port.js";
 import { clockNowIso, clockNowMs, type ClockEnv } from "../../clock.js";
-import { insertFactLog } from "../../records/append.js";
 import { PAYMOB_PROVIDER_ID } from "../registry.js";
 import {
   createPaymobIntention,
@@ -90,9 +89,17 @@ type PaymobCallbackObj = {
 
 let cachedPaymobAuthToken: string | null = null;
 
-type IntentionRow = {
-  client_secret: string;
-  expires_at: string;
+type IntentionAttemptRow = {
+  attempt_no: number;
+  state: string;
+  lease_token: string | null;
+  lease_until: string | null;
+  special_reference: string;
+  started_at: string;
+  intention_id: string | null;
+  order_id: string | null;
+  client_secret: string | null;
+  expires_at: string | null;
 };
 
 export function paymobUnifiedCheckoutUrl(
@@ -155,24 +162,92 @@ async function intentionExpiresAt(
   return new Date(ms + expiresInS * 1000).toISOString();
 }
 
-async function loadIntention(
+async function loadIntentionAttempt(
   env: PaymobAdapterEnv,
   checkoutId: string,
-): Promise<IntentionRow | null> {
+  attemptNo: number,
+): Promise<IntentionAttemptRow | null> {
   return env.DB.prepare(
-    `SELECT client_secret, expires_at
-     FROM paymob_intention
-     WHERE checkout_id = ?`,
+    `SELECT attempt_no, state, lease_token, lease_until, special_reference, started_at,
+            intention_id, order_id, client_secret, expires_at
+     FROM paymob_intention_attempt
+     WHERE checkout_id = ? AND attempt_no = ?`,
   )
-    .bind(checkoutId)
-    .first<IntentionRow>();
+    .bind(checkoutId, attemptNo)
+    .first<IntentionAttemptRow>();
 }
 
-async function storeIntention(
+async function markAttemptAbandoned(
   env: PaymobAdapterEnv,
   checkoutId: string,
-  reference: string,
+  attemptNo: number,
+  leaseToken: string,
+): Promise<void> {
+  const finishedAt = await clockNowIso(env);
+  const attempt = await loadIntentionAttempt(env, checkoutId, attemptNo);
+  if (attempt === null || attempt.state !== "pending" || attempt.lease_token !== leaseToken) {
+    return;
+  }
+  const canonicalRow = {
+    event_key: `${checkoutId}:${attemptNo}:abandoned_unconfirmed:${finishedAt}`,
+    checkout_id: checkoutId,
+    attempt_no: attemptNo,
+    state: "abandoned_unconfirmed",
+    lease_token: attempt.lease_token,
+    lease_until: attempt.lease_until,
+    special_reference: attempt.special_reference,
+    intention_id: attempt.intention_id,
+    order_id: attempt.order_id,
+    client_secret: attempt.client_secret,
+    expires_at: attempt.expires_at,
+    started_at: attempt.started_at,
+    finished_at: finishedAt,
+    event_at: finishedAt,
+  };
+  const rowJson = new TextDecoder().decode(canonicalize(canonicalRow));
+  const rowHash = await sha256Hex(canonicalize(canonicalRow));
+  await env.DB.batch([
+    env.DB.prepare(
+      `UPDATE paymob_intention_attempt
+       SET state = 'abandoned_unconfirmed', finished_at = ?
+       WHERE checkout_id = ? AND attempt_no = ?
+         AND state = 'pending' AND lease_token = ?`,
+    ).bind(finishedAt, checkoutId, attemptNo, leaseToken),
+    env.DB.prepare(
+      `INSERT INTO paymob_intention_attempt_event (
+         event_key, checkout_id, attempt_no, state, lease_token, lease_until,
+         special_reference, intention_id, order_id, client_secret, expires_at,
+         started_at, finished_at, event_at
+       ) SELECT ?, ?, ?, 'abandoned_unconfirmed', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
+       WHERE EXISTS (SELECT 1 FROM paymob_intention_attempt
+         WHERE checkout_id = ? AND attempt_no = ? AND state = 'abandoned_unconfirmed'
+           AND lease_token = ? AND finished_at = ?)
+       ON CONFLICT(event_key) DO NOTHING`,
+    ).bind(canonicalRow.event_key, checkoutId, attemptNo, canonicalRow.lease_token,
+      canonicalRow.lease_until, canonicalRow.special_reference, canonicalRow.intention_id,
+      canonicalRow.order_id, canonicalRow.client_secret, canonicalRow.expires_at,
+      canonicalRow.started_at, canonicalRow.finished_at, canonicalRow.event_at,
+      checkoutId, attemptNo, leaseToken, finishedAt),
+    env.DB.prepare(
+      `INSERT INTO fact_log ("table", key, row_sha256, row_json, created_at)
+       SELECT 'paymob_intention_attempt_event', ?, ?, ?, ?
+       WHERE EXISTS (SELECT 1 FROM paymob_intention_attempt_event WHERE event_key = ?)
+         AND NOT EXISTS (SELECT 1 FROM fact_log
+           WHERE "table" = 'paymob_intention_attempt_event' AND key = ?)`,
+    ).bind(canonicalRow.event_key, rowHash, rowJson, finishedAt,
+      canonicalRow.event_key, canonicalRow.event_key),
+  ]);
+}
+
+async function storeIntentionAttempt(
+  env: PaymobAdapterEnv,
+  checkoutId: string,
+  attemptNo: number,
+  leaseToken: string,
+  specialReference: string,
   expiresAt: string,
+  attemptStartedAt: string,
+  attemptLeaseUntil: string,
   intention: {
     id: string;
     intention_order_id: number;
@@ -180,76 +255,230 @@ async function storeIntention(
   },
 ): Promise<void> {
   const canonicalRow = {
+    event_key: "",
     checkout_id: checkoutId,
+    attempt_no: attemptNo,
+    state: "created",
+    lease_token: leaseToken,
+    lease_until: attemptLeaseUntil,
+    special_reference: specialReference,
     intention_id: intention.id,
     order_id: String(intention.intention_order_id),
     client_secret: intention.client_secret,
-    special_reference: reference,
     expires_at: expiresAt,
+    started_at: "",
+    finished_at: "",
+    event_at: "",
   };
   const createdAt = await clockNowIso(env);
-  await env.DB.batch([
+  canonicalRow.event_key = `${checkoutId}:${attemptNo}:created:${createdAt}`;
+  canonicalRow.started_at = attemptStartedAt;
+  canonicalRow.finished_at = createdAt;
+  canonicalRow.event_at = createdAt;
+  const attemptRowJson = new TextDecoder().decode(canonicalize(canonicalRow));
+  const attemptRowHash = await sha256Hex(canonicalize(canonicalRow));
+  const summaryRow = {
+    checkout_id: checkoutId,
+    intention_id: intention.id,
+    order_id: canonicalRow.order_id,
+    client_secret: intention.client_secret,
+    special_reference: specialReference,
+    expires_at: expiresAt,
+  };
+  const summaryRowJson = new TextDecoder().decode(canonicalize(summaryRow));
+  const summaryRowHash = await sha256Hex(canonicalize(summaryRow));
+  const results = await env.DB.batch([
+    env.DB.prepare(
+      `UPDATE paymob_intention_attempt
+       SET state = 'created', special_reference = ?, intention_id = ?,
+           order_id = ?, client_secret = ?, expires_at = ?, finished_at = ?
+       WHERE checkout_id = ? AND attempt_no = ?
+         AND state = 'pending' AND lease_token = ? AND lease_until > ?`,
+    ).bind(
+      specialReference,
+      intention.id,
+      canonicalRow.order_id,
+      intention.client_secret,
+      expiresAt,
+      createdAt,
+      checkoutId,
+      attemptNo,
+      leaseToken,
+      createdAt,
+    ),
     env.DB.prepare(
       `INSERT INTO paymob_intention (
          checkout_id, intention_id, order_id, client_secret, special_reference, expires_at
-       ) VALUES (?, ?, ?, ?, ?, ?)`,
+       ) SELECT ?, ?, ?, ?, ?, ?
+       WHERE EXISTS (
+         SELECT 1 FROM paymob_intention_attempt
+         WHERE checkout_id = ? AND attempt_no = ? AND state = 'created'
+           AND finished_at = ? AND special_reference = ?
+       )
+       ON CONFLICT(checkout_id) DO UPDATE SET
+         intention_id = excluded.intention_id,
+         order_id = excluded.order_id,
+         client_secret = excluded.client_secret,
+         special_reference = excluded.special_reference,
+         expires_at = excluded.expires_at`,
     ).bind(
       checkoutId,
       intention.id,
       canonicalRow.order_id,
       intention.client_secret,
-      reference,
+      specialReference,
       expiresAt,
+      checkoutId,
+      attemptNo,
+      createdAt,
+      specialReference,
     ),
-    await insertFactLog(
-      env,
+    env.DB.prepare(
+      `INSERT INTO paymob_intention_attempt_event (
+         event_key, checkout_id, attempt_no, state, lease_token, lease_until,
+         special_reference, intention_id, order_id, client_secret, expires_at,
+         started_at, finished_at, event_at
+       ) SELECT ?, ?, ?, 'created', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
+       WHERE EXISTS (
+         SELECT 1 FROM paymob_intention_attempt
+         WHERE checkout_id = ? AND attempt_no = ? AND state = 'created'
+           AND finished_at = ? AND special_reference = ?
+       )
+       ON CONFLICT(event_key) DO NOTHING`,
+    ).bind(
+      canonicalRow.event_key, checkoutId, attemptNo, leaseToken, attemptLeaseUntil,
+      specialReference, intention.id, canonicalRow.order_id, intention.client_secret,
+      expiresAt, attemptStartedAt, createdAt, createdAt, checkoutId, attemptNo,
+      createdAt, specialReference,
+    ),
+    env.DB.prepare(
+      `INSERT INTO fact_log ("table", key, row_sha256, row_json, created_at)
+       SELECT 'paymob_intention_attempt_event', ?, ?, ?, ?
+       WHERE EXISTS (SELECT 1 FROM paymob_intention_attempt_event WHERE event_key = ?)
+         AND NOT EXISTS (SELECT 1 FROM fact_log
+           WHERE "table" = 'paymob_intention_attempt_event' AND key = ?)`,
+    ).bind(canonicalRow.event_key, attemptRowHash, attemptRowJson, createdAt,
+      canonicalRow.event_key, canonicalRow.event_key),
+    env.DB.prepare(
+      `INSERT INTO fact_log ("table", key, row_sha256, row_json, created_at)
+       SELECT ?, ?, ?, ?, ?
+       WHERE EXISTS (
+         SELECT 1 FROM paymob_intention_attempt
+         WHERE checkout_id = ? AND attempt_no = ? AND state = 'created'
+           AND finished_at = ? AND special_reference = ?
+       )
+         AND NOT EXISTS (SELECT 1 FROM fact_log
+           WHERE "table" = 'paymob_intention' AND key = ? AND row_sha256 = ?)`,
+    ).bind(
       "paymob_intention",
       checkoutId,
-      canonicalRow,
+      summaryRowHash,
+      summaryRowJson,
       createdAt,
+      checkoutId,
+      attemptNo,
+      createdAt,
+      specialReference,
+      checkoutId,
+      summaryRowHash,
     ),
   ]);
+  if (results[0]?.meta.changes !== 1) {
+    throw new Error("Paymob intention attempt lease expired before persistence");
+  }
 }
 
 async function createCheckoutImpl(
   env: PaymobAdapterEnv,
   input: CreateCheckoutInput,
 ): Promise<CreateCheckoutResult> {
-  const existing = await loadIntention(env, input.checkout_id);
-  if (existing !== null) {
+  const attempt = await loadIntentionAttempt(
+    env,
+    input.checkout_id,
+    input.attempt_no,
+  );
+  const specialReference = `${input.reference}-${input.attempt_no}`;
+  if (
+    attempt?.state === "created" &&
+    attempt.lease_token === input.lease_token &&
+    (attempt.special_reference === specialReference ||
+      (input.attempt_no === 1 && attempt.special_reference === input.reference)) &&
+    attempt.client_secret !== null &&
+    attempt.expires_at !== null
+  ) {
     return {
       ok: true,
-      redirect_url: unifiedCheckoutUrl(env, existing.client_secret),
-      expires_at: existing.expires_at,
+      redirect_url: unifiedCheckoutUrl(env, attempt.client_secret),
+      expires_at: attempt.expires_at,
     };
   }
 
-  const expiresAt = await intentionExpiresAt(env, input.expires_in_s);
-
-  const intention = await createPaymobIntention(env, {
-    amount_minor: input.amount_minor,
-    item_name: input.item_name,
-    payer: input.payer,
-    reference: input.reference,
-    return_url: input.return_url,
-    notify_url: input.notify_url.length > 0 ? input.notify_url : notifyUrl(env),
-  });
-
-  if (!intention.ok) {
+  const nowMs = await clockNowMs(env);
+  const leaseUntilMs = attempt?.lease_until === null || attempt?.lease_until === undefined
+    ? Number.NaN
+    : Date.parse(attempt.lease_until);
+  if (
+    attempt === null ||
+    attempt.state !== "pending" ||
+    attempt.lease_token !== input.lease_token ||
+    attempt.special_reference !== specialReference ||
+    !Number.isFinite(leaseUntilMs) ||
+    leaseUntilMs <= nowMs
+  ) {
     return { ok: false };
   }
 
-  await storeIntention(env, input.checkout_id, input.reference, expiresAt, {
-    id: intention.id,
-    intention_order_id: intention.intention_order_id,
-    client_secret: intention.client_secret,
-  });
+  const expiresAt = await intentionExpiresAt(env, input.expires_in_s);
+  try {
+    const intention = await createPaymobIntention(env, {
+      amount_minor: input.amount_minor,
+      item_name: input.item_name,
+      payer: input.payer,
+      reference: specialReference,
+      return_url: input.return_url,
+      notify_url: input.notify_url.length > 0 ? input.notify_url : notifyUrl(env),
+    });
 
-  return {
-    ok: true,
-    redirect_url: unifiedCheckoutUrl(env, intention.client_secret),
-    expires_at: expiresAt,
-  };
+    if (!intention.ok) {
+      await markAttemptAbandoned(
+        env,
+        input.checkout_id,
+        input.attempt_no,
+        input.lease_token,
+      );
+      return { ok: false };
+    }
+
+    await storeIntentionAttempt(
+      env,
+      input.checkout_id,
+      input.attempt_no,
+      input.lease_token,
+      specialReference,
+      expiresAt,
+      attempt.started_at,
+      attempt.lease_until ?? "",
+      {
+        id: intention.id,
+        intention_order_id: intention.intention_order_id,
+        client_secret: intention.client_secret,
+      },
+    );
+
+    return {
+      ok: true,
+      redirect_url: unifiedCheckoutUrl(env, intention.client_secret),
+      expires_at: expiresAt,
+    };
+  } catch {
+    await markAttemptAbandoned(
+      env,
+      input.checkout_id,
+      input.attempt_no,
+      input.lease_token,
+    );
+    return { ok: false };
+  }
 }
 
 function hmacFieldValue(obj: PaymobCallbackObj, field: string): string {
@@ -376,12 +605,12 @@ function paymobObjFromProcessedBody(body: string): PaymobCallbackObj | null {
 const UNPAID_CHECKOUT_OPEN_ORDER = `ORDER BY (
      SELECT ce.at
      FROM checkout_event ce
-     WHERE ce.checkout_id = pi.checkout_id AND ce.kind = 'opened'
+     WHERE ce.checkout_id = ia.checkout_id AND ce.kind = 'opened'
    ) ASC,
    (
      SELECT ce.rowid
      FROM checkout_event ce
-     WHERE ce.checkout_id = pi.checkout_id AND ce.kind = 'opened'
+     WHERE ce.checkout_id = ia.checkout_id AND ce.kind = 'opened'
    ) ASC`;
 
 async function checkoutIdForOrder(
@@ -391,15 +620,15 @@ async function checkoutIdForOrder(
   const orderKey = String(orderId);
 
   const withoutNotification = await env.DB.prepare(
-    `SELECT pi.checkout_id
-     FROM paymob_intention pi
-     LEFT JOIN payment p ON p.checkout_id = pi.checkout_id
-     WHERE pi.order_id = ?
+    `SELECT ia.checkout_id
+     FROM paymob_intention_attempt ia
+     LEFT JOIN payment p ON p.checkout_id = ia.checkout_id
+     WHERE ia.order_id = ? AND ia.state = 'created'
        AND p.payment_id IS NULL
        AND NOT EXISTS (
          SELECT 1
          FROM notification n
-         WHERE n.checkout_id = pi.checkout_id
+         WHERE n.checkout_id = ia.checkout_id
            AND n.disposition IN ('enqueued', 'duplicate')
        )
      ${UNPAID_CHECKOUT_OPEN_ORDER}
@@ -412,10 +641,10 @@ async function checkoutIdForOrder(
   }
 
   const withoutPayment = await env.DB.prepare(
-    `SELECT pi.checkout_id
-     FROM paymob_intention pi
-     LEFT JOIN payment p ON p.checkout_id = pi.checkout_id
-     WHERE pi.order_id = ? AND p.payment_id IS NULL
+    `SELECT ia.checkout_id
+     FROM paymob_intention_attempt ia
+     LEFT JOIN payment p ON p.checkout_id = ia.checkout_id
+     WHERE ia.order_id = ? AND ia.state = 'created' AND p.payment_id IS NULL
      ${UNPAID_CHECKOUT_OPEN_ORDER}
      LIMIT 1`,
   )
@@ -426,12 +655,12 @@ async function checkoutIdForOrder(
   }
 
   const withReversal = await env.DB.prepare(
-    `SELECT pi.checkout_id
-     FROM paymob_intention pi
-     INNER JOIN payment p ON p.checkout_id = pi.checkout_id
+    `SELECT ia.checkout_id
+     FROM paymob_intention_attempt ia
+     INNER JOIN payment p ON p.checkout_id = ia.checkout_id
      INNER JOIN reversal r ON r.payment_id = p.payment_id
-     WHERE pi.order_id = ?
-     ORDER BY pi.checkout_id ASC
+     WHERE ia.order_id = ? AND ia.state = 'created'
+     ORDER BY ia.checkout_id ASC
      LIMIT 1`,
   )
     .bind(orderKey)
@@ -441,8 +670,9 @@ async function checkoutIdForOrder(
   }
 
   const fallback = await env.DB.prepare(
-    `SELECT checkout_id FROM paymob_intention WHERE order_id = ?
-     ORDER BY rowid DESC LIMIT 1`,
+    `SELECT checkout_id FROM paymob_intention_attempt
+     WHERE order_id = ? AND state = 'created'
+     ORDER BY checkout_id ASC, attempt_no DESC LIMIT 1`,
   )
     .bind(orderKey)
     .first<{ checkout_id: string }>();
@@ -515,42 +745,50 @@ async function parentTxnRefForCallback(
   const txnId = String(obj.id);
   if (obj.has_parent_transaction) {
     const intention = await env.DB.prepare(
-      `SELECT order_id FROM paymob_intention WHERE checkout_id = ?`,
+      `SELECT order_id FROM paymob_intention_attempt
+       WHERE checkout_id = ? AND order_id = ? AND state = 'created'
+       ORDER BY attempt_no DESC LIMIT 1`,
+    )
+      .bind(checkoutId, String(obj.order.id))
+      .first<{ order_id: string }>();
+    if (intention === null) {
+      return txnId;
+    }
+    const checkout = await env.DB.prepare(
+      `SELECT org_id FROM checkout WHERE checkout_id = ?`,
     )
       .bind(checkoutId)
-      .first<{ order_id: string }>();
-    if (intention !== null) {
-      const checkout = await env.DB.prepare(
-        `SELECT org_id FROM checkout WHERE checkout_id = ?`,
+      .first<{ org_id: string }>();
+    if (checkout !== null) {
+      const reversedParent = await env.DB.prepare(
+        `SELECT pt.txn_id
+         FROM reversal r
+         INNER JOIN payment p ON p.payment_id = r.payment_id
+         INNER JOIN paymob_txn pt
+           ON pt.payment_id = r.payment_id AND pt.parent_txn_id IS NULL
+         INNER JOIN paymob_intention_attempt ia
+           ON ia.checkout_id = pt.checkout_id AND ia.order_id = pt.order_id
+              AND ia.state = 'created'
+         WHERE ia.order_id = ? AND p.org_id = ?
+         ORDER BY pt.txn_id ASC
+         LIMIT 1`,
       )
-        .bind(checkoutId)
-        .first<{ org_id: string }>();
-      if (checkout !== null) {
-        const reversedParent = await env.DB.prepare(
-          `SELECT pt.txn_id
-           FROM reversal r
-           INNER JOIN payment p ON p.payment_id = r.payment_id
-           INNER JOIN paymob_txn pt
-             ON pt.payment_id = r.payment_id AND pt.parent_txn_id IS NULL
-           INNER JOIN paymob_intention pi ON pi.checkout_id = pt.checkout_id
-           WHERE pi.order_id = ? AND p.org_id = ?
-           ORDER BY pt.txn_id ASC
-           LIMIT 1`,
-        )
-          .bind(intention.order_id, checkout.org_id)
-          .first<{ txn_id: string }>();
-        if (reversedParent !== null) {
-          return reversedParent.txn_id;
-        }
+        .bind(intention.order_id, checkout.org_id)
+        .first<{ txn_id: string }>();
+      if (reversedParent !== null) {
+        return reversedParent.txn_id;
       }
     }
     const parentRow = await env.DB.prepare(
-      `SELECT txn_id FROM paymob_txn
-       WHERE checkout_id = ? AND parent_txn_id IS NULL
-       ORDER BY txn_id ASC
+      `SELECT pt.txn_id FROM paymob_txn pt
+       INNER JOIN paymob_intention_attempt ia
+         ON ia.checkout_id = pt.checkout_id AND ia.order_id = pt.order_id
+            AND ia.state = 'created'
+       WHERE pt.checkout_id = ? AND pt.order_id = ? AND pt.parent_txn_id IS NULL
+       ORDER BY pt.txn_id ASC
        LIMIT 1`,
     )
-      .bind(checkoutId)
+      .bind(checkoutId, intention.order_id)
       .first<{ txn_id: string }>();
     if (parentRow !== null) {
       return parentRow.txn_id;
@@ -612,6 +850,7 @@ async function providerTxnFromCallback(
   return {
     kind,
     checkout_id: checkoutId,
+    provider_order_id: String(obj.order.id),
     payment_id: resolvedPaymentId,
     amount_minor: amountMinorFromCents(obj.amount_cents),
     currency: obj.currency,
@@ -635,6 +874,7 @@ async function providerTxnFromAcceptanceAsync(
   return {
     kind,
     checkout_id: checkoutId,
+    provider_order_id: String(txn.order.id),
     payment_id: resolvedPaymentId,
     amount_minor: amountMinorFromCents(txn.amount_cents),
     currency: txn.currency,
@@ -725,45 +965,28 @@ async function inquireImpl(
       return { bound: false, transactions: [] };
     }
     checkoutId = row.checkout_id;
+    const providerTxn = await env.DB.prepare(
+      `SELECT txn_id FROM paymob_txn
+       WHERE payment_id = ? AND parent_txn_id IS NULL
+       ORDER BY txn_id ASC LIMIT 1`,
+    )
+      .bind(input.payment_id)
+      .first<{ txn_id: string }>();
+    paymobTxnIdOverride = providerTxn?.txn_id;
   }
 
-  const intention = await env.DB.prepare(
-    `SELECT order_id FROM paymob_intention WHERE checkout_id = ?`,
-  )
-    .bind(checkoutId)
-    .first<{ order_id: string }>();
-  if (intention === null) {
+  const hasCreatedAttempt = await env.DB.prepare(
+    `SELECT 1 FROM paymob_intention_attempt
+     WHERE checkout_id = ? AND state = 'created' AND order_id IS NOT NULL
+     LIMIT 1`,
+  ).bind(checkoutId).first();
+  if (hasCreatedAttempt === null) {
     return { bound: false, transactions: [] };
   }
 
   const token = await authToken(env);
   if (token === null) {
     return INQUIRY_RETRY;
-  }
-
-  const orderInquiry = await postPaymobOrderTransactionInquiry(
-    env,
-    token,
-    intention.order_id,
-  );
-  if (orderInquiry.outcome === "unauthorized") {
-    cachedPaymobAuthToken = null;
-    return INQUIRY_RETRY;
-  }
-  if (
-    orderInquiry.outcome === "timeout" ||
-    orderInquiry.outcome === "rate_limit"
-  ) {
-    return INQUIRY_RETRY;
-  }
-  if (orderInquiry.outcome !== "ok") {
-    return INQUIRY_RETRY;
-  }
-
-  const orderBound =
-    String(orderInquiry.data.id) === String(intention.order_id);
-  if (!orderBound) {
-    return { bound: false, transactions: [] };
   }
 
   let txnId =
@@ -792,9 +1015,34 @@ async function inquireImpl(
     return INQUIRY_RETRY;
   }
 
-  const txnBound =
-    String(txnResult.data.order.id) === String(intention.order_id);
-  if (!txnBound) {
+  const transactionOrderId = String(txnResult.data.order.id);
+  const intention = await env.DB.prepare(
+    `SELECT order_id FROM paymob_intention_attempt
+     WHERE checkout_id = ? AND order_id = ? AND state = 'created'
+     ORDER BY attempt_no DESC LIMIT 1`,
+  )
+    .bind(checkoutId, transactionOrderId)
+    .first<{ order_id: string }>();
+  if (intention === null) {
+    return { bound: false, transactions: [] };
+  }
+
+  const orderInquiry = await postPaymobOrderTransactionInquiry(
+    env,
+    token,
+    intention.order_id,
+  );
+  if (orderInquiry.outcome === "unauthorized") {
+    cachedPaymobAuthToken = null;
+    return INQUIRY_RETRY;
+  }
+  if (orderInquiry.outcome === "timeout" || orderInquiry.outcome === "rate_limit") {
+    return INQUIRY_RETRY;
+  }
+  if (orderInquiry.outcome !== "ok") {
+    return INQUIRY_RETRY;
+  }
+  if (String(orderInquiry.data.id) !== transactionOrderId) {
     return { bound: false, transactions: [] };
   }
 

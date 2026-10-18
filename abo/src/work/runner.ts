@@ -567,12 +567,8 @@ export async function recordPaidConfirmation(
   ];
 
   const txnId = input.confirmedTxn.provider_txn_id ?? input.paymobTxnId;
-  if (txnId !== null && txnId !== undefined) {
-    const intention = await env.DB.prepare(
-      `SELECT order_id FROM paymob_intention WHERE checkout_id = ?`,
-    )
-      .bind(input.checkout.checkout_id)
-      .first<{ order_id: string }>();
+  const orderId = input.confirmedTxn.provider_order_id;
+  if (txnId !== null && txnId !== undefined && orderId !== undefined) {
     statements.push(
       env.DB.prepare(
         `INSERT INTO paymob_txn (
@@ -585,7 +581,7 @@ export async function recordPaidConfirmation(
            last_state_key = excluded.last_state_key`,
       ).bind(
         txnId,
-        intention?.order_id ?? "",
+        orderId,
         input.checkout.checkout_id,
         paymentId,
         input.confirmedTxn.provider_parent_txn_id ?? null,

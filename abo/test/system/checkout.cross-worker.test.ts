@@ -25,6 +25,7 @@ import {
 } from "./cross-worker-harness";
 import { CHANNEL_VERSIONS } from "vendor-contracts";
 import checkoutMigrationSql from "../../migrations/0002_checkout.sql?raw";
+import checkoutCreationAttemptsMigrationSql from "../../migrations/0011_checkout_creation_attempts.sql?raw";
 import { paymobUnifiedCheckoutUrl } from "../../src/provider/paymob/adapter";
 
 type OffersFixtureExpectations = {
@@ -40,6 +41,11 @@ async function ensureCheckoutMigration(): Promise<void> {
     await applySql(checkoutMigrationSql);
   } catch {
     // Migration not present yet.
+  }
+  try {
+    await applySql(checkoutCreationAttemptsMigrationSql);
+  } catch {
+    // Migration may already be applied by another harness setup.
   }
 }
 
@@ -121,6 +127,14 @@ async function checkoutCount(orgId: string): Promise<number> {
   }
 }
 
+async function currentTermsVersion(): Promise<number> {
+  const row = await env.DB.prepare(
+    `SELECT MAX(terms_version) AS version FROM terms_version`,
+  ).first<{ version: number | null }>();
+  expect(row?.version).toBeTypeOf("number");
+  return row!.version!;
+}
+
 async function checkoutRow(
   checkoutId: string,
 ): Promise<Record<string, unknown> | null> {
@@ -154,6 +168,22 @@ async function checkoutEventKinds(checkoutId: string): Promise<string[]> {
     }
     throw error;
   }
+}
+
+async function intentionAttempts(checkoutId: string): Promise<Array<{
+  attempt_no: number;
+  state: string;
+  special_reference: string;
+}>> {
+  const rows = await env.DB.prepare(
+    `SELECT attempt_no, state, special_reference FROM paymob_intention_attempt
+     WHERE checkout_id = ? ORDER BY attempt_no`,
+  ).bind(checkoutId).all<{
+    attempt_no: number;
+    state: string;
+    special_reference: string;
+  }>();
+  return rows.results ?? [];
 }
 
 async function postCheckout(
@@ -284,7 +314,7 @@ describe("checkout cross-worker", () => {
 
     const paymobBody = await getLastPaymobIntentionBody();
     expect(paymobBody.amount).toBe(expectations!.price_minor);
-    expect(paymobBody.special_reference).toBe(body.reference);
+    expect(paymobBody.special_reference).toBe(`${String(body.reference)}-1`);
     expect(paymobBody.expiration).toBe(1800);
 
     const row = await checkoutRow(String(body.checkout_id));
@@ -364,11 +394,41 @@ describe("checkout cross-worker", () => {
     const staleTermsBody = (await staleTerms.json()) as Record<string, unknown>;
     expect(staleTermsBody.code).toBe("terms_not_accepted");
     expect(await checkoutCount(orgStaleTerms)).toBe(0);
+
+    const latest = await env.DB.prepare(
+      `SELECT MAX(terms_version) AS version FROM terms_version`,
+    ).first<{ version: number | null }>();
+    const currentTermsVersion = (latest?.version ?? 0) + 1;
+    const currentTermsKey = `terms/en/checkout-current-${currentTermsVersion}.txt`;
+    await env.R2.put(currentTermsKey, `Current checkout terms ${currentTermsVersion}`);
+    await env.DB.prepare(
+      `INSERT INTO terms_version (
+         terms_version, locale, text_r2_key, text_sha256, published_by, contract_version
+       ) VALUES (?, 'en', ?, ?, 'fixture', 1)`,
+    ).bind(currentTermsVersion, currentTermsKey, `sha256-${currentTermsVersion}`).run();
+    const orgCurrentTerms = "org-checkout-04-current-terms";
+    await putBillingContact(orgCurrentTerms);
+    const currentTermsCheckout = await postCheckout(orgCurrentTerms, {
+      client_request_id: "req-checkout-04-current-terms",
+      offer_id: expectations!.offer_id,
+      offer_version: expectations!.version,
+      terms_version: currentTermsVersion,
+    });
+    expect(currentTermsCheckout.status).toBe(201);
+    const currentTermsBody = (await currentTermsCheckout.json()) as Record<string, unknown>;
+    const currentCheckoutRow = await checkoutRow(String(currentTermsBody.checkout_id));
+    expect(currentCheckoutRow?.terms_version).toBe(currentTermsVersion);
+    const checkoutFact = await env.DB.prepare(
+      `SELECT row_json FROM fact_log WHERE "table" = 'checkout' AND key = ?`,
+    ).bind(String(currentTermsBody.checkout_id)).first<{ row_json: string }>();
+    expect(checkoutFact).not.toBeNull();
+    expect(JSON.parse(checkoutFact!.row_json).terms_version).toBe(currentTermsVersion);
   });
 
-  it("E2E-P4.2-05 provider refuse and timeout are Abandoned", async () => {
+  it("E2E-P4.2-05 R3-C2 provider failure is durable and retry uses the next reference", async () => {
     const expectations = await seedOffersCatalogueFixture();
     expect(expectations).not.toBeNull();
+    const termsVersion = await currentTermsVersion();
     const org = "org-checkout-05";
 
     await scriptPaymobStub("refuse");
@@ -377,29 +437,56 @@ describe("checkout cross-worker", () => {
       client_request_id: "req-checkout-05-refuse",
       offer_id: expectations!.offer_id,
       offer_version: expectations!.version,
-      terms_version: expectations!.terms.version,
+      terms_version: termsVersion,
     });
     expect(refuseResponse.status).toBe(503);
     const refuseBody = (await refuseResponse.json()) as Record<string, unknown>;
     expect(refuseBody.code).toBe("provider_unavailable");
     const refuseCheckoutId = String(refuseBody.checkout_id ?? "");
-    if (refuseCheckoutId.length > 0) {
-      expect(await checkoutEventKinds(refuseCheckoutId)).toContain("open_failed");
-      const readRefuse = await billingFetch(`/v1/checkouts/${refuseCheckoutId}`, {
-        headers: (await administratorHeaders(org)).headers,
-      });
-      if (readRefuse.status === 200) {
-        const readBody = (await readRefuse.json()) as Record<string, unknown>;
-        expect(readBody.shown_state).toBe("Abandoned");
-      }
-    }
+    expect(refuseCheckoutId).toBeTruthy();
+    expect(await checkoutEventKinds(refuseCheckoutId)).toContain("open_failed");
+    const firstAttempts = await intentionAttempts(refuseCheckoutId);
+    expect(firstAttempts).toHaveLength(1);
+    expect(firstAttempts[0]).toEqual(
+      expect.objectContaining({ attempt_no: 1, state: "abandoned_unconfirmed" }),
+    );
+    const refuseCheckout = await checkoutRow(refuseCheckoutId);
+    expect(refuseCheckout).not.toBeNull();
+    expect(firstAttempts[0]?.special_reference).toBe(
+      `${String(refuseCheckout!.reference)}-1`,
+    );
+    const readRefuse = await billingFetch(`/v1/checkouts/${refuseCheckoutId}`, {
+      headers: (await administratorHeaders(org)).headers,
+    });
+    expect(readRefuse.status).toBe(200);
+    const readBody = (await readRefuse.json()) as Record<string, unknown>;
+    expect(readBody.shown_state).toBe("Abandoned");
+
+    await scriptPaymobStub("ok");
+    const retry = await postCheckout(org, {
+      client_request_id: "req-checkout-05-refuse",
+      offer_id: expectations!.offer_id,
+      offer_version: expectations!.version,
+      terms_version: termsVersion,
+    });
+    expect(retry.status).toBe(201);
+    const retryBody = (await retry.json()) as Record<string, unknown>;
+    expect(retryBody.checkout_id).toBe(refuseCheckoutId);
+    const attempts = await intentionAttempts(refuseCheckoutId);
+    expect(attempts.map((attempt) => attempt.attempt_no)).toEqual([1, 2]);
+    expect(attempts[1]?.state).toBe("created");
+    expect(attempts[1]?.special_reference).toBe(
+      `${String(refuseCheckout!.reference)}-2`,
+    );
+    expect((await getLastPaymobIntentionBody()).special_reference)
+      .toBe(`${String(refuseCheckout!.reference)}-2`);
 
     await scriptPaymobStub("timeout");
     const timeoutResponse = await postCheckout(org, {
       client_request_id: "req-checkout-05-timeout",
       offer_id: expectations!.offer_id,
       offer_version: expectations!.version,
-      terms_version: expectations!.terms.version,
+      terms_version: termsVersion,
     });
     expect(timeoutResponse.status).toBe(503);
     const timeoutBody = (await timeoutResponse.json()) as Record<string, unknown>;
@@ -420,13 +507,14 @@ describe("checkout cross-worker", () => {
     }
   });
 
-  it("E2E-P4.2-06 same client_request_id and the 11th checkout", async () => {
+  it("E2E-P4.2-06 R3-M2 same-key replay and atomic 10th checkout admission", async () => {
     const hourStart = "2026-04-01T08:00:00.000Z";
     await setClock(hourStart);
 
     const expectations = await seedOffersCatalogueFixture();
     expect(expectations).not.toBeNull();
     const org = "org-checkout-06";
+    const termsVersion = await currentTermsVersion();
     await putBillingContact(org);
     await scriptPaymobStub("ok");
 
@@ -435,7 +523,7 @@ describe("checkout cross-worker", () => {
       client_request_id: sharedClientRequestId,
       offer_id: expectations!.offer_id,
       offer_version: expectations!.version,
-      terms_version: expectations!.terms.version,
+      terms_version: termsVersion,
     });
     expect(first.status).toBe(201);
     const firstBody = (await first.json()) as Record<string, unknown>;
@@ -445,36 +533,92 @@ describe("checkout cross-worker", () => {
       client_request_id: sharedClientRequestId,
       offer_id: expectations!.offer_id,
       offer_version: expectations!.version,
-      terms_version: expectations!.terms.version,
+      terms_version: termsVersion,
     });
     expect(second.status).toBe(201);
     const secondBody = (await second.json()) as Record<string, unknown>;
     expect(secondBody.checkout_id).toBe(firstCheckoutId);
+    expect(await checkoutCount(org)).toBe(1);
 
-    for (let index = 0; index < 9; index += 1) {
+    const changedPayload = await postCheckout(org, {
+      client_request_id: sharedClientRequestId,
+      offer_id: expectations!.offer_id,
+      offer_version: expectations!.version,
+      terms_version: termsVersion + 1,
+    });
+    expect(changedPayload.status).toBe(409);
+    expect(((await changedPayload.json()) as Record<string, unknown>).code)
+      .toBe("idempotency_conflict");
+    expect(await checkoutCount(org)).toBe(1);
+
+    for (let index = 0; index < 7; index += 1) {
       const response = await postCheckout(org, {
         client_request_id: `req-checkout-06-distinct-${index}`,
         offer_id: expectations!.offer_id,
         offer_version: expectations!.version,
-        terms_version: expectations!.terms.version,
+        terms_version: termsVersion,
       });
       expect(response.status).toBe(201);
     }
+
+    const replayBeforeLastSlot = await postCheckout(org, {
+      client_request_id: sharedClientRequestId,
+      offer_id: expectations!.offer_id,
+      offer_version: expectations!.version,
+      terms_version: termsVersion,
+    });
+    expect(replayBeforeLastSlot.status).toBe(201);
+    const replayBeforeLastSlotBody =
+      (await replayBeforeLastSlot.json()) as Record<string, unknown>;
+    expect(replayBeforeLastSlotBody.checkout_id).toBe(firstCheckoutId);
+    expect(await checkoutCount(org)).toBe(8);
+
+    const ninth = await postCheckout(org, {
+      client_request_id: "req-checkout-06-ninth",
+      offer_id: expectations!.offer_id,
+      offer_version: expectations!.version,
+      terms_version: termsVersion,
+    });
+    expect(ninth.status).toBe(201);
+
+    const racing = await Promise.all(["race-a", "race-b"].map((suffix) =>
+      postCheckout(org, {
+        client_request_id: `req-checkout-06-${suffix}`,
+        offer_id: expectations!.offer_id,
+        offer_version: expectations!.version,
+        terms_version: termsVersion,
+      }),
+    ));
+    expect(racing.map((response) => response.status).sort()).toEqual([201, 429]);
+    expect(await checkoutCount(org)).toBe(10);
+
+    const replayAtLimit = await postCheckout(org, {
+      client_request_id: sharedClientRequestId,
+      offer_id: expectations!.offer_id,
+      offer_version: expectations!.version,
+      terms_version: termsVersion,
+    });
+    expect(replayAtLimit.status).toBe(201);
+    const replayAtLimitBody = (await replayAtLimit.json()) as Record<string, unknown>;
+    expect(replayAtLimitBody.checkout_id).toBe(firstCheckoutId);
+    expect(await checkoutCount(org)).toBe(10);
 
     const eleventh = await postCheckout(org, {
       client_request_id: "req-checkout-06-eleventh",
       offer_id: expectations!.offer_id,
       offer_version: expectations!.version,
-      terms_version: expectations!.terms.version,
+      terms_version: termsVersion,
     });
     expect(eleventh.status).toBe(429);
     const eleventhBody = (await eleventh.json()) as Record<string, unknown>;
     expect(eleventhBody.code).toBe("rate_limited");
+    expect(await checkoutCount(org)).toBe(10);
   });
 
   it("E2E-P4.2-07 other tenant 404 and two open checkouts listed", async () => {
     const expectations = await seedOffersCatalogueFixture();
     expect(expectations).not.toBeNull();
+    const termsVersion = await currentTermsVersion();
 
     const orgA = "org-checkout-07-a";
     const orgB = "org-checkout-07-b";
@@ -485,7 +629,7 @@ describe("checkout cross-worker", () => {
       client_request_id: "req-checkout-07-a1",
       offer_id: expectations!.offer_id,
       offer_version: expectations!.version,
-      terms_version: expectations!.terms.version,
+      terms_version: termsVersion,
     });
     expect(first.status).toBe(201);
     const firstBody = (await first.json()) as Record<string, unknown>;
@@ -494,7 +638,7 @@ describe("checkout cross-worker", () => {
       client_request_id: "req-checkout-07-a2",
       offer_id: expectations!.offer_id,
       offer_version: expectations!.version,
-      terms_version: expectations!.terms.version,
+      terms_version: termsVersion,
     });
     expect(second.status).toBe(201);
     const secondBody = (await second.json()) as Record<string, unknown>;

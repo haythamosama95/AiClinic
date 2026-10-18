@@ -614,8 +614,9 @@ describe("P4.3 notify intake", () => {
     await setClock("2026-01-15T11:00:00.000Z");
     const rateIp = "203.0.113.99";
     const notificationsBefore = await tableCount("notification");
+    const workBeforeRateWindow = await tableCount("work");
 
-    for (let index = 0; index < 60; index += 1) {
+    for (let index = 0; index < 59; index += 1) {
       const response = await postPaymobProcessedCallback(
         successFixtureWithTxnId(88000 + index),
         { connectingIp: rateIp },
@@ -623,8 +624,22 @@ describe("P4.3 notify intake", () => {
       expect(response.status).toBe(200);
     }
 
+    const racing = await Promise.all([
+      postPaymobProcessedCallback(successFixtureWithTxnId(88997),
+        { connectingIp: rateIp }),
+      postPaymobProcessedCallback(successFixtureWithTxnId(88998),
+        { connectingIp: rateIp }),
+    ]);
+    expect(racing.map((response) => response.status).sort()).toEqual([200, 429]);
+
     const notificationsAfterAcceptedWindow = await tableCount("notification");
     const workAfterAcceptedWindow = await tableCount("work");
+    const notifyRate = await env.DB.prepare(
+      `SELECT hits FROM notify_rate WHERE ip = ?`,
+    ).bind(rateIp).first<{ hits: number }>();
+    expect(notifyRate?.hits).toBe(60);
+    expect(notificationsAfterAcceptedWindow).toBe(notificationsBefore + 60);
+    expect(workAfterAcceptedWindow).toBe(workBeforeRateWindow);
     const limited = await postPaymobProcessedCallback(
       successFixtureWithTxnId(88999),
       { connectingIp: rateIp },

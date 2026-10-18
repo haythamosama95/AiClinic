@@ -60,6 +60,27 @@ async function seedOffersCatalogueFixture(): Promise<OffersFixtureExpectations |
   }
 }
 
+async function appendCatalogueTermsVersion(): Promise<{
+  version: number;
+  text: string;
+}> {
+  const latest = await env.DB.prepare(
+    `SELECT MAX(terms_version) AS version FROM terms_version`,
+  ).first<{ version: number | null }>();
+  const version = (latest?.version ?? 0) + 1;
+  const text = `Current catalogue terms v${version}.`;
+  const textR2Key = `terms/en/catalogue-current-${version}.txt`;
+  await env.R2.put(textR2Key, text);
+  await env.DB.prepare(
+    `INSERT INTO terms_version (
+       terms_version, locale, text_r2_key, text_sha256, published_by, contract_version
+     ) VALUES (?, ?, ?, ?, ?, ?)`,
+  )
+    .bind(version, "en", textR2Key, `fixture-terms-v${version}`, "fixture", 1)
+    .run();
+  return { version, text };
+}
+
 async function administratorHeaders(
   org: string,
   options?: { sub?: string; jti?: string },
@@ -371,8 +392,41 @@ describe("catalogue", () => {
     expect(await tokenUseHits(jti)).toBe(60);
   });
 
-  it("E2E-P4.1-03 GET offers lists the sellable latest version and echoes version 1", async () => {
+  it("E2E-P4.1-10 R3-M2 concurrent requests cannot exceed the 60-use token cap", async () => {
+    const pinned = await newIssuer();
+    await pinIssuer(pinned.kid, pinned.publicKey);
+    const jti = crypto.randomUUID();
+    const now = await harnessClockNowSeconds();
+    const token = await mintBilling(pinned, {
+      sub: "rate-limit-race-sub",
+      org: "org-rate-limit-race",
+      role: "administrator",
+      branch: "branch-test",
+      iat: now,
+      exp: now + 300,
+      jti,
+    });
+    const headers = {
+      authorization: `Bearer ${token}`,
+      "Abo-Contract-Version": "1",
+    };
+    for (let index = 0; index < 59; index += 1) {
+      expect((await billingFetch("/v1/offers", { headers })).status).toBe(200);
+    }
+    const racing = await Promise.all([
+      billingFetch("/v1/offers", { headers }),
+      billingFetch("/v1/offers", { headers }),
+    ]);
+    expect(racing.map((response) => response.status).sort()).toEqual([200, 429]);
+    expect(await tokenUseHits(jti)).toBe(60);
+  });
+
+  it("E2E-P4.1-03 R3-M3 GET offers lists the sellable latest version and echoes version 1", async () => {
     const expectations = await seedOffersCatalogueFixture();
+    expect(expectations).not.toBeNull();
+    const currentTerms = expectations
+      ? await appendCatalogueTermsVersion()
+      : null;
     const headers = await administratorHeaders("org-offers");
 
     const response = await billingFetch("/v1/offers", { headers });
@@ -398,8 +452,15 @@ describe("catalogue", () => {
       expect(offer.allowance_credits).toBe(expectations.allowance_credits);
       expect(offer.grace_days).toBe(expectations.grace_days);
       const terms = offer.terms as { version: number; text: string };
-      expect(terms.version).toBe(expectations.terms.version);
-      expect(terms.text).toBe(expectations.terms.text);
+      expect(currentTerms).not.toBeNull();
+      expect(terms.version).toBe(currentTerms!.version);
+      expect(terms.text).toBe(currentTerms!.text);
+      const historicalVersion = await env.DB.prepare(
+        `SELECT terms_version FROM offer_version WHERE offer_id = ? AND version = ?`,
+      )
+        .bind(expectations.offer_id, expectations.version)
+        .first<{ terms_version: number }>();
+      expect(historicalVersion?.terms_version).toBe(expectations.terms.version);
       expect(body.offers.some((row) => row.offer_id === expectations.retired_offer_id)).toBe(
         false,
       );
@@ -432,7 +493,7 @@ describe("catalogue", () => {
     const firstJson = (await first.json()) as Record<string, unknown>;
     expect(firstJson.version).toBe(1);
 
-    const second = await billingFetch("/v1/billing-contact", {
+    const changedPayload = await billingFetch("/v1/billing-contact", {
       method: "PUT",
       headers: { ...headers, "content-type": "application/json" },
       body: JSON.stringify({
@@ -440,9 +501,18 @@ describe("catalogue", () => {
         name: "Different Name",
       }),
     });
-    expect(second.status).toBe(200);
-    const secondJson = (await second.json()) as Record<string, unknown>;
-    expect(secondJson.version).toBe(1);
+    expect(changedPayload.status).toBe(409);
+    expect(((await changedPayload.json()) as Record<string, unknown>).code)
+      .toBe("idempotency_conflict");
+
+    const replay = await billingFetch("/v1/billing-contact", {
+      method: "PUT",
+      headers: { ...headers, "content-type": "application/json" },
+      body: JSON.stringify(firstBody),
+    });
+    expect(replay.status).toBe(200);
+    const replayJson = (await replay.json()) as Record<string, unknown>;
+    expect(replayJson.version).toBe(1);
     expect(await billingContactCount(org)).toBe(1);
     expect(await maxBillingContactVersion(org)).toBe(1);
 

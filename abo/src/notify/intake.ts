@@ -59,38 +59,22 @@ async function checkNotifyRate(
 ): Promise<boolean> {
   const nowMs = await clockNowMs(env);
   const windowStart = Math.floor(nowMs / RATE_LIMIT_WINDOW_MS) * RATE_LIMIT_WINDOW_MS;
-  const row = await env.DB.prepare(
-    `SELECT window_start_ms, hits FROM notify_rate WHERE ip = ?`,
+  const admitted = await env.DB.prepare(
+    `INSERT INTO notify_rate (ip, window_start_ms, hits) VALUES (?, ?, 1)
+     ON CONFLICT (ip) DO UPDATE SET
+       window_start_ms = excluded.window_start_ms,
+       hits = CASE
+         WHEN notify_rate.window_start_ms <> excluded.window_start_ms THEN 1
+         ELSE notify_rate.hits + 1
+       END
+     WHERE notify_rate.window_start_ms <> excluded.window_start_ms
+       OR notify_rate.hits < ?
+     RETURNING ip`,
   )
-    .bind(ip)
-    .first<{ window_start_ms: number; hits: number }>();
+    .bind(ip, windowStart, RATE_LIMIT_MAX)
+    .first<{ ip: string }>();
 
-  if (row === null) {
-    await env.DB.prepare(
-      `INSERT INTO notify_rate (ip, window_start_ms, hits) VALUES (?, ?, 1)`,
-    )
-      .bind(ip, windowStart)
-      .run();
-    return true;
-  }
-
-  if (row.window_start_ms !== windowStart) {
-    await env.DB.prepare(
-      `UPDATE notify_rate SET window_start_ms = ?, hits = 1 WHERE ip = ?`,
-    )
-      .bind(windowStart, ip)
-      .run();
-    return true;
-  }
-
-  if (row.hits >= RATE_LIMIT_MAX) {
-    return false;
-  }
-
-  await env.DB.prepare(`UPDATE notify_rate SET hits = hits + 1 WHERE ip = ?`)
-    .bind(ip)
-    .run();
-  return true;
+  return admitted !== null;
 }
 
 async function hmacFailuresInWindow(
@@ -494,6 +478,24 @@ async function insertUnmatchedNotification(
     .run();
 }
 
+async function recordUnmatchedNotificationAndAlert(
+  env: NotifyIntakeEnv,
+  params: {
+    notificationId: string;
+    bodySha256: string;
+    bodyR2Key: string;
+    channel: "processed" | "response";
+  },
+): Promise<void> {
+  await insertUnmatchedNotification(env, params);
+  await raiseAlert(
+    env,
+    "AL-05",
+    `AL-05:unmatched:${params.bodySha256}`,
+    params.notificationId,
+  );
+}
+
 export async function handlePostNotifyPaymob(
   request: Request,
   env: NotifyIntakeEnv,
@@ -565,14 +567,31 @@ export async function handlePostNotifyPaymob(
     return emptyResponse(500);
   }
 
+  // The adapter only supplies a checkout id after resolving the callback's
+  // authenticated provider order id against a stored attempt. Do not recover
+  // a checkout from raw merchant_reference/special_reference fields here:
+  // Paymob's callback HMAC does not cover those fields. Retain the evidence
+  // and alert, but never create confirm/reversal work without that binding.
+  if (event === null || checkoutId === null) {
+    try {
+      await recordUnmatchedNotificationAndAlert(env, {
+        notificationId,
+        bodySha256,
+        bodyR2Key,
+        channel: "processed",
+      });
+    } catch {
+      return emptyResponse(500);
+    }
+    return emptyResponse(200);
+  }
+
   const existingPayment =
-    checkoutId === null
-      ? null
-      : await env.DB.prepare(
-          `SELECT payment_id FROM payment WHERE checkout_id = ?`,
-        )
-          .bind(checkoutId)
-          .first<{ payment_id: string }>();
+    await env.DB.prepare(
+      `SELECT payment_id FROM payment WHERE checkout_id = ?`,
+    )
+      .bind(checkoutId)
+      .first<{ payment_id: string }>();
 
   // A reversal callback before any payment is the first inquiry: confirm it
   // so the payment is recorded as reversed_before_grant. Later reversals of
@@ -580,34 +599,25 @@ export async function handlePostNotifyPaymob(
   if (
     event !== null &&
     event.kind === "reversal" &&
-    (checkoutId === null || existingPayment !== null)
+    existingPayment !== null
   ) {
     try {
-      if (checkoutId !== null) {
-        await env.DB.prepare(
-          `INSERT INTO notification (
-             notification_id, provider_id, channel, hmac_valid, body_r2_key,
-             body_sha256, dedupe_key, checkout_id, disposition, adapter_version
-           ) VALUES (?, ?, 'processed', 1, ?, ?, ?, ?, 'enqueued', ?)`,
-        )
-          .bind(
-            notificationId,
-            PAYMOB_PROVIDER_ID,
-            bodyR2Key,
-            bodySha256,
-            bodySha256,
-            checkoutId,
-            PAYMOB_ADAPTER_VERSION,
-          )
-          .run();
-      } else {
-        await insertUnmatchedNotification(env, {
+      await env.DB.prepare(
+        `INSERT INTO notification (
+           notification_id, provider_id, channel, hmac_valid, body_r2_key,
+           body_sha256, dedupe_key, checkout_id, disposition, adapter_version
+         ) VALUES (?, ?, 'processed', 1, ?, ?, ?, ?, 'enqueued', ?)`,
+      )
+        .bind(
           notificationId,
-          bodySha256,
+          PAYMOB_PROVIDER_ID,
           bodyR2Key,
-          channel: "processed",
-        });
-      }
+          bodySha256,
+          bodySha256,
+          checkoutId,
+          PAYMOB_ADAPTER_VERSION,
+        )
+        .run();
       const reversalEnv = env as NotifyIntakeEnv & ReversalEnv;
       await recordReversalFromProviderTxn(
         reversalEnv,
@@ -623,34 +633,25 @@ export async function handlePostNotifyPaymob(
 
   let confirmWorkId: string | null = null;
   try {
-    if (checkoutId === null) {
-      await insertUnmatchedNotification(env, {
-        notificationId,
+    const intakeResult = await insertEnqueuedNotificationAndConfirm(env, {
+      notificationId,
+      bodySha256,
+      bodyR2Key,
+      checkoutId,
+      channel: "processed",
+    });
+    confirmWorkId = intakeResult.confirmWorkId;
+    if (intakeResult.duplicate) {
+      const duplicateId = await newId(env, 1);
+      const duplicateR2Key = `evidence/notification/${duplicateId}`;
+      await env.R2.put(duplicateR2Key, body);
+      await insertDuplicateNotification(env, {
+        notificationId: duplicateId,
         bodySha256,
-        bodyR2Key,
-        channel: "processed",
-      });
-    } else {
-      const intakeResult = await insertEnqueuedNotificationAndConfirm(env, {
-        notificationId,
-        bodySha256,
-        bodyR2Key,
+        bodyR2Key: duplicateR2Key,
         checkoutId,
         channel: "processed",
       });
-      confirmWorkId = intakeResult.confirmWorkId;
-      if (intakeResult.duplicate) {
-        const duplicateId = await newId(env, 1);
-        const duplicateR2Key = `evidence/notification/${duplicateId}`;
-        await env.R2.put(duplicateR2Key, body);
-        await insertDuplicateNotification(env, {
-          notificationId: duplicateId,
-          bodySha256,
-          bodyR2Key: duplicateR2Key,
-          checkoutId,
-          channel: "processed",
-        });
-      }
     }
   } catch {
     return emptyResponse(500);
@@ -706,10 +707,28 @@ export async function handleGetNotifyPaymob(
     return emptyResponse(401);
   }
 
-  const checkoutId = parsed.events[0]?.checkout_id ?? null;
-  if (checkoutId !== null) {
-    await scheduleConfirmForCheckout(env, checkoutId);
+  const event = parsed.events[0] ?? null;
+  const checkoutId = event?.checkout_id ?? null;
+  if (event === null || checkoutId === null) {
+    const bodyBytes = new TextEncoder().encode(query);
+    const bodySha256 = await sha256Hex(bodyBytes);
+    const notificationId = await newId(env);
+    const bodyR2Key = `evidence/notification/${notificationId}`;
+    try {
+      await env.R2.put(bodyR2Key, query);
+      await recordUnmatchedNotificationAndAlert(env, {
+        notificationId,
+        bodySha256,
+        bodyR2Key,
+        channel: "processed",
+      });
+    } catch {
+      return emptyResponse(500);
+    }
+    return emptyResponse(200);
   }
+
+  await scheduleConfirmForCheckout(env, checkoutId);
 
   return emptyResponse(200);
 }

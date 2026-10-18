@@ -33,30 +33,21 @@ export async function checkTokenRate(
   contractVersion: number,
 ): Promise<RateSuccess | RateFailure> {
   await ensureTokenUseTable(db);
-  const existing = await db
-    .prepare(`SELECT hits FROM token_use WHERE jti = ?`)
-    .bind(claims.jti)
-    .first<{ hits: number }>();
+  const admitted = await db
+    .prepare(
+      `INSERT INTO token_use (jti, org_id, hits) VALUES (?, ?, 1)
+       ON CONFLICT (jti) DO UPDATE SET hits = token_use.hits + 1
+       WHERE token_use.hits < 60
+       RETURNING jti`,
+    )
+    .bind(claims.jti, claims.org)
+    .first<{ jti: string }>();
 
-  if (existing !== null && existing.hits >= 60) {
+  if (admitted === null) {
     return {
       ok: false,
       response: clinicErrorResponse("rate_limited", 429, contractVersion),
     };
-  }
-
-  if (existing === null) {
-    await db
-      .prepare(
-        `INSERT INTO token_use (jti, org_id, hits) VALUES (?, ?, 1)`,
-      )
-      .bind(claims.jti, claims.org)
-      .run();
-  } else {
-    await db
-      .prepare(`UPDATE token_use SET hits = hits + 1 WHERE jti = ?`)
-      .bind(claims.jti)
-      .run();
   }
 
   return { ok: true };

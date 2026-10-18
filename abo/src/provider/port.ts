@@ -20,6 +20,9 @@ export type CreateCheckoutPayer = {
 
 export type CreateCheckoutInput = {
   checkout_id: string;
+  /** Precommitted provider-intention attempt being claimed by this call. */
+  attempt_no: number;
+  lease_token: string;
   reference: string;
   amount_minor: number;
   currency: string;
@@ -73,6 +76,8 @@ export type ProviderTxn = {
   reversal?: ProviderReversal;
   /** Paymob acceptance transaction id (adapter only). */
   provider_txn_id?: string;
+  /** Paymob acceptance order id attached to this confirmed transaction (adapter only). */
+  provider_order_id?: string;
   /** Paymob parent transaction id for child refunds (adapter only). */
   provider_parent_txn_id?: string | null;
 };
