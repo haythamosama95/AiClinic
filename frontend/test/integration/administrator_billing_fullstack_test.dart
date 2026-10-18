@@ -482,17 +482,11 @@ void main() {
       await _acceptTermsAndContinue(tester);
       await _fillAndSaveBillingContact(tester);
 
-      final heldPriceMinor = (await _runLiveIo(
-        tester,
-        'read current sellable price',
-        _readCurrentSellablePriceMinor,
-      ))!;
       await _runLiveIo(
         tester,
         'bump sellable offer version',
         _bumpSellableOfferVersion,
       );
-      final newPriceMinor = heldPriceMinor + 100;
 
       await _submitCheckout(tester);
 
@@ -1177,35 +1171,6 @@ Future<String> _createSecondBranch(
   );
   await ctx.signOut();
   return branchId;
-}
-
-Future<int> _readCurrentSellablePriceMinor() async {
-  final token = await _bounded(
-    'issue_billing_token',
-    LiveSupabaseHarness.client.rpc(
-      'issue_billing_token',
-      params: {'p_contract_version': backendRpc},
-    ),
-  );
-  final tokenMap = Map<String, dynamic>.from(token as Map);
-  final data = Map<String, dynamic>.from(tokenMap['data'] as Map);
-  final billingToken = data['token'] as String;
-  final response = await _bounded(
-    'GET /v1/offers price',
-    http.get(
-      Uri.parse('$_aboUrl/v1/offers'),
-      headers: {
-        'Authorization': 'Bearer $billingToken',
-        'Host': _billingHost,
-        'Abo-Contract-Version': '$aboClinic',
-      },
-    ),
-  );
-  expect(response.statusCode, 200);
-  final body = jsonDecode(response.body) as Map<String, dynamic>;
-  final offers = (body['offers'] as List).cast<Map<String, dynamic>>();
-  expect(offers, isNotEmpty);
-  return offers.first['price_minor'] as int;
 }
 
 Future<void> _bumpSellableOfferVersion() async {
