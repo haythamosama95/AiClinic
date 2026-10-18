@@ -717,4 +717,228 @@ describe("vendor entrypoint", () => {
       },
     ]);
   });
+
+  it("R2-C1 reordered identical operation params are accepted; changed, extra and missing fields are rejected", async () => {
+    const authenticator = await createSoftwareAuthenticator("EdDSA");
+    const { credentialId, row } = await bootstrapCredential(authenticator);
+    await setTestClock(String(row.activates_at));
+
+    const accessJwt = await mintVendorAccessJwt();
+    const usedBefore = await vendorTableCount("assertion_used");
+
+    const signedRevoke = async (
+      params: Record<string, unknown>,
+    ): Promise<VendorResultEnvelope> => {
+      const operation = {
+        op: "revokeOperatorCredential",
+        params,
+        actor_email: VENDOR_OPERATOR_EMAIL,
+        issued_at: getVendorTestClockIso() ?? new Date().toISOString(),
+        nonce: crypto.randomUUID(),
+        contract_version: CONTRACT_VERSION,
+      };
+      const assertion = encodeVendorAssertion(
+        await authenticator.assert({
+          operation,
+          rpId: env.WEBAUTHN_RP_ID,
+          origin: env.WEBAUTHN_ORIGIN,
+          up: true,
+          uv: true,
+        }),
+      );
+      return vendorCall(
+        "revokeOperatorCredential",
+        {
+          contract_version: CONTRACT_VERSION,
+          credential_id: credentialId,
+          signer_credential_id: credentialId,
+          operation,
+          assertion,
+        },
+        { accessJwt },
+      );
+    };
+
+    // Changed field: the operation carries a different credential_id.
+    const changed = await signedRevoke({
+      contract_version: CONTRACT_VERSION,
+      access_jwt: accessJwt,
+      credential_id: crypto.randomUUID(),
+      signer_credential_id: credentialId,
+    });
+    expect(changed.result).toBe("rejected");
+    expect(changed.code).toBe("assertion_invalid");
+
+    // Extra field in params.
+    const extra = await signedRevoke({
+      contract_version: CONTRACT_VERSION,
+      access_jwt: accessJwt,
+      credential_id: credentialId,
+      signer_credential_id: credentialId,
+      extra_field: "x",
+    });
+    expect(extra.result).toBe("rejected");
+    expect(extra.code).toBe("assertion_invalid");
+
+    // Missing field in params.
+    const missing = await signedRevoke({
+      contract_version: CONTRACT_VERSION,
+      access_jwt: accessJwt,
+      credential_id: credentialId,
+    });
+    expect(missing.result).toBe("rejected");
+    expect(missing.code).toBe("assertion_invalid");
+
+    expect(await vendorTableCount("assertion_used")).toBe(usedBefore);
+    // The rejected attempts never read the credential, so no promotion and
+    // no mutation happened.
+    const credentialStatus = await queryOne<{ status: string }>(
+      "SELECT status FROM operator_credential WHERE credential_id = ?",
+      [credentialId],
+    );
+    expect(credentialStatus?.status).toBe("pending");
+
+    // Reordered identical params (access_jwt before contract_version,
+    // credential fields in reverse order) are the same canonical map.
+    const reordered = await signedRevoke({
+      signer_credential_id: credentialId,
+      credential_id: credentialId,
+      access_jwt: accessJwt,
+      contract_version: CONTRACT_VERSION,
+    });
+    expect(reordered.result).toBe("ok");
+    expect(reordered.code).toBe("");
+    expectNoReceipt(reordered);
+    expect(await vendorTableCount("assertion_used")).toBe(usedBefore + 1);
+  });
+
+  it("R2-P3 simultaneous distinct no-assertion registrations create exactly one row; only the winner gets bootstrap audit/AL-13", async () => {
+    const authenticator = await createSoftwareAuthenticator("EdDSA");
+    const credentialIdA = crypto.randomUUID();
+    const credentialIdB = crypto.randomUUID();
+    const accessJwt = await mintVendorAccessJwt();
+
+    const [first, second] = await Promise.all([
+      vendorCall(
+        "registerOperatorCredential",
+        {
+          contract_version: CONTRACT_VERSION,
+          credential_id: credentialIdA,
+          attestation: encodeVendorAttestation(await authenticator.attest()),
+        },
+        { accessJwt },
+      ),
+      vendorCall(
+        "registerOperatorCredential",
+        {
+          contract_version: CONTRACT_VERSION,
+          credential_id: credentialIdB,
+          attestation: encodeVendorAttestation(await authenticator.attest()),
+        },
+        { accessJwt },
+      ),
+    ]);
+
+    const results = [first, second];
+    const winners = results.filter((result) => result.result === "ok");
+    const losers = results.filter((result) => result.result === "rejected");
+    expect(winners).toHaveLength(1);
+    expect(losers).toHaveLength(1);
+    expect(losers[0]!.code).toBe("assertion_required");
+    expectNoReceipt(losers[0]!);
+
+    expect(await vendorTableCount("operator_credential")).toBe(1);
+    const row = await queryOne<{ credential_id: string; status: string }>(
+      "SELECT credential_id, status FROM operator_credential",
+    );
+    expect(row?.status).toBe("pending");
+    expect([credentialIdA, credentialIdB]).toContain(row?.credential_id);
+
+    const winnerDetail = parseDetailRow(winners[0]!.detail);
+    expect(winnerDetail.credential_id).toBe(row?.credential_id);
+
+    // Only the inserted winner receives the bootstrap success alert.
+    const bootstrapEmails = getCapturedVendorEmails()
+      .map((email) => JSON.parse(email.text) as Record<string, unknown>)
+      .filter((body) => body.code === "AL-13" && body.kind === "bootstrap");
+    expect(bootstrapEmails).toHaveLength(1);
+    expect(bootstrapEmails[0]!.credential_id).toBe(row?.credential_id);
+  });
+
+  it("R2-P3 pending and revoked credential rows close bootstrap permanently; the conditional INSERT admits no second row", async () => {
+    const authenticator = await createSoftwareAuthenticator("EdDSA");
+    const accessJwt = await mintVendorAccessJwt();
+    const nowIso = getVendorTestClockIso() ?? new Date().toISOString();
+    const activatesAt = new Date(
+      Date.parse(nowIso) + 24 * 60 * 60 * 1000,
+    ).toISOString();
+
+    const pendingId = crypto.randomUUID();
+    await env.DB.prepare(
+      `INSERT INTO operator_credential
+         (credential_id, operator_email, public_key_cose, alg, status, activates_at, approved_by, revoked_by)
+       VALUES (?, ?, ?, ?, 'pending', ?, NULL, NULL)`,
+    )
+      .bind(pendingId, VENDOR_OPERATOR_EMAIL, "cose-stub", "EdDSA", activatesAt)
+      .run();
+
+    // The entrypoint's conditional INSERT (emptiness and insertion in one
+    // atomic statement) admits no row once any row exists.
+    const directInsert = await env.DB.prepare(
+      `INSERT INTO operator_credential
+         (credential_id, operator_email, public_key_cose, alg, status, activates_at, approved_by, revoked_by)
+       SELECT ?, ?, ?, ?, 'pending', ?, NULL, NULL
+       WHERE NOT EXISTS (SELECT 1 FROM operator_credential)`,
+    )
+      .bind(
+        crypto.randomUUID(),
+        VENDOR_OPERATOR_EMAIL,
+        "cose-stub",
+        "EdDSA",
+        activatesAt,
+      )
+      .run();
+    expect(directInsert.meta.changes ?? 0).toBe(0);
+    expect(await vendorTableCount("operator_credential")).toBe(1);
+
+    const attestation = encodeVendorAttestation(await authenticator.attest());
+    const bootstrapEmails = (): Array<Record<string, unknown>> =>
+      getCapturedVendorEmails()
+        .map((email) => JSON.parse(email.text) as Record<string, unknown>)
+        .filter((body) => body.code === "AL-13" && body.kind === "bootstrap");
+
+    const pendingAttempt = await vendorCall(
+      "registerOperatorCredential",
+      {
+        contract_version: CONTRACT_VERSION,
+        credential_id: crypto.randomUUID(),
+        attestation,
+      },
+      { accessJwt },
+    );
+    expect(pendingAttempt.result).toBe("rejected");
+    expect(pendingAttempt.code).toBe("assertion_required");
+    expect(await vendorTableCount("operator_credential")).toBe(1);
+    expect(bootstrapEmails()).toHaveLength(0);
+
+    await env.DB.prepare(
+      "UPDATE operator_credential SET status = 'revoked', revoked_by = ? WHERE credential_id = ?",
+    )
+      .bind(VENDOR_OPERATOR_EMAIL, pendingId)
+      .run();
+
+    const revokedAttempt = await vendorCall(
+      "registerOperatorCredential",
+      {
+        contract_version: CONTRACT_VERSION,
+        credential_id: crypto.randomUUID(),
+        attestation,
+      },
+      { accessJwt },
+    );
+    expect(revokedAttempt.result).toBe("rejected");
+    expect(revokedAttempt.code).toBe("assertion_required");
+    expect(await vendorTableCount("operator_credential")).toBe(1);
+    expect(bootstrapEmails()).toHaveLength(0);
+  });
 });

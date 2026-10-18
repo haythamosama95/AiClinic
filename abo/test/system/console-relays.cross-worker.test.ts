@@ -1668,17 +1668,23 @@ describe("console relays cross-worker", () => {
     expect(rejectedBody.result).toBe("rejected");
     expect(rejectedBody.code).toBe("exceeds_ceiling");
 
-    const baseEnvelope = await buildComplimentaryEnvelope({
+    // R2-P2: the second approval is signed over the exact submitted
+    // envelope minus ceiling_override (two-approval evidence kept); the
+    // relay rebuilds the same envelope for this action id.
+    const overrideActionId = crypto.randomUUID();
+    const overrideEnvelopeForm = await buildComplimentaryEnvelope({
       orgId,
-      actionId: crypto.randomUUID(),
+      actionId: overrideActionId,
       count: 365,
+      ceilingOverride: {},
+      operatorCredentialId: hp.credentialId,
     });
+    delete overrideEnvelopeForm.ceiling_override;
     const overrideEncoded = await encodeCeilingOverrideAssertion({
-      envelope: baseEnvelope,
+      envelope: overrideEnvelopeForm,
       accessJwt: hp.accessJwt,
       authenticator: hp.authenticator,
     });
-    const overrideActionId = crypto.randomUUID();
     const applied = await opsComplimentaryGrantRelay({
       orgId,
       accessJwt: hp.accessJwt,

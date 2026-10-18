@@ -39,6 +39,7 @@ import {
   setupVendorHarness,
   vendorCall,
   vendorClassH,
+  vendorTableCount,
   VENDOR_OPERATOR_EMAIL,
   type VendorResultEnvelope,
 } from "./harness";
@@ -370,6 +371,15 @@ async function countCeilingPolicyRows(): Promise<number> {
   return row?.count ?? 0;
 }
 
+async function countDoGrantRows(installationId: string): Promise<number> {
+  const rows = await runInDurableObject(
+    quotaDoStub(installationId),
+    async (_instance, state) =>
+      sqlSelect<{ count: number }>(state, "SELECT COUNT(*) AS count FROM grant"),
+  );
+  return rows[0]?.count ?? 0;
+}
+
 function termIntervalsOverlap(
   active: DoTermRow,
   queued: DoTermRow,
@@ -568,13 +578,10 @@ describe("complimentary grants, ceilings, adjustments, suspension", () => {
     expect(rejected.code).toBe("exceeds_ceiling");
 
     const accessJwt = await mintVendorAccessJwt();
-    const overrideEncoded = await encodeCeilingOverrideAssertion({
-      envelope: baseEnvelope,
-      accessJwt,
-    });
-    const withOverride = {
+    // R2-P2: the second approval is signed over the exact submitted envelope
+    // minus ceiling_override (including the two-approval evidence).
+    const overrideEnvelopeBase = {
       ...baseEnvelope,
-      ceiling_override: overrideEncoded.assertion,
       evidence: {
         ...(baseEnvelope.evidence as Record<string, unknown>),
         approvals: [
@@ -582,6 +589,14 @@ describe("complimentary grants, ceilings, adjustments, suspension", () => {
           { credential_id: "cred-002", assertion: "stub" },
         ],
       },
+    };
+    const overrideEncoded = await encodeCeilingOverrideAssertion({
+      envelope: overrideEnvelopeBase,
+      accessJwt,
+    });
+    const withOverride = {
+      ...overrideEnvelopeBase,
+      ceiling_override: overrideEncoded.assertion,
     };
 
     clearCapturedVendorEmails();
@@ -626,6 +641,237 @@ describe("complimentary grants, ceilings, adjustments, suspension", () => {
       accessJwt,
     });
     expect(badOverride.result).toBe("rejected");
+  });
+
+  it("R2-P2 second ceiling approval is bound to the current operation: changed envelope, actor or version, or a stale approval never reaches coverage dispatch", async () => {
+    const scenario = await newScenario();
+    await coverClinic(scenario);
+    const accessJwt = await mintVendorAccessJwt();
+
+    const usedBefore = await vendorTableCount("assertion_used");
+    const grantsBefore = await countDoGrantRows(scenario.installationId);
+
+    // Submits a 365-day grant whose ceiling override is signed over a
+    // purpose-mismatched operation; each attempt must be rejected before
+    // coverage dispatch.
+    const overrideAttempt = async (input: {
+      reason: string;
+      mutateOperation?: (operation: Record<string, unknown>) => void;
+      mutateEnvelopeBase?: (
+        envelopeBase: Record<string, unknown>,
+      ) => void;
+    }): Promise<GrantResultEnvelope> => {
+      const grantId = await grantIdComp(crypto.randomUUID().replace(/-/g, ""));
+      const signer = coverClinicSigner();
+      const envelope = await buildComplimentaryEnvelope({
+        orgId: scenario.orgId,
+        grantId,
+        count: 365,
+        operatorEmail: VENDOR_OPERATOR_EMAIL,
+        reason: input.reason,
+        ceilingOverride: {},
+      });
+      // R2-P2: the bound form is the submitted envelope minus
+      // ceiling_override (two-approval evidence kept).
+      delete envelope.ceiling_override;
+      const envelopeBase = { ...envelope };
+      input.mutateEnvelopeBase?.(envelopeBase);
+
+      const overrideOperation: Record<string, unknown> = {
+        op: "ceiling_override",
+        params: {
+          contract_version: CONTRACT_VERSION,
+          access_jwt: accessJwt,
+          envelope: envelopeBase,
+        },
+        actor_email: VENDOR_OPERATOR_EMAIL,
+        issued_at: getVendorTestClockIso() ?? new Date().toISOString(),
+        nonce: crypto.randomUUID(),
+        contract_version: CONTRACT_VERSION,
+      };
+      input.mutateOperation?.(overrideOperation);
+      const overrideAssertion = encodeVendorAssertion(
+        await signer.signerAuthenticator.assert({
+          operation: overrideOperation,
+          rpId: env.WEBAUTHN_RP_ID,
+          origin: env.WEBAUTHN_ORIGIN,
+          up: true,
+          uv: true,
+        }),
+      );
+
+      const submittedEnvelope = {
+        ...envelope,
+        ceiling_override: overrideAssertion,
+      };
+      const grantOperation = await operationForHpGrant({
+        accessJwt,
+        envelope: submittedEnvelope,
+      });
+      const grantAssertion = encodeVendorAssertion(
+        await signer.signerAuthenticator.assert({
+          operation: grantOperation,
+          rpId: env.WEBAUTHN_RP_ID,
+          origin: env.WEBAUTHN_ORIGIN,
+          up: true,
+          uv: true,
+        }),
+      );
+      return extendedVendorCall(
+        "grant",
+        {
+          contract_version: CONTRACT_VERSION,
+          envelope: submittedEnvelope,
+          signer_credential_id: signer.signerCredentialId,
+          operation: grantOperation,
+          assertion: grantAssertion,
+          ceiling_override_operation: overrideOperation,
+        },
+        { accessJwt },
+      );
+    };
+
+    // Changed envelope (org_id, grant_id and the rest are inside the
+    // envelope, so any drift breaks the binding).
+    const changedEnvelope = await overrideAttempt({
+      reason: "changed envelope",
+      mutateEnvelopeBase: (base) => {
+        (base.duration as Record<string, unknown>).count = 30;
+      },
+    });
+    expect(changedEnvelope.result).toBe("rejected");
+    expect(changedEnvelope.code).toBe("assertion_invalid");
+
+    // Wrong top-level negotiated version.
+    const changedVersion = await overrideAttempt({
+      reason: "changed version",
+      mutateOperation: (operation) => {
+        operation.contract_version = 2;
+      },
+    });
+    expect(changedVersion.result).toBe("rejected");
+    expect(changedVersion.code).toBe("assertion_invalid");
+
+    // Wrong actor.
+    const changedActor = await overrideAttempt({
+      reason: "changed actor",
+      mutateOperation: (operation) => {
+        operation.actor_email = "other-operator@clinic.test";
+      },
+    });
+    expect(changedActor.result).toBe("rejected");
+    expect(changedActor.code).toBe("actor_email_mismatch");
+
+    // Stale second approval (issued_at 6 minutes old).
+    const clockIso = getVendorTestClockIso() ?? new Date().toISOString();
+    const staleIssuedAt = new Date(
+      Date.parse(clockIso) - 6 * 60 * 1000,
+    ).toISOString();
+    const staleApproval = await overrideAttempt({
+      reason: "stale approval",
+      mutateOperation: (operation) => {
+        operation.issued_at = staleIssuedAt;
+      },
+    });
+    expect(staleApproval.result).toBe("rejected");
+    expect(staleApproval.code).toBe("assertion_expired");
+
+    // Nothing reached coverage dispatch and no claim or AL-12 was emitted.
+    expect(await vendorTableCount("assertion_used")).toBe(usedBefore);
+    expect(await countDoGrantRows(scenario.installationId)).toBe(
+      grantsBefore,
+    );
+    const al12Bodies = parseAlertBodies().filter(
+      (body) => body.code === "AL-12",
+    );
+    expect(al12Bodies).toHaveLength(0);
+  });
+
+  it("R2-P2 a correctly bound ceiling override applies once; replay returns the exact completed result and reuse with a changed envelope fails", async () => {
+    const scenario = await newScenario();
+    await coverClinic(scenario);
+    const accessJwt = await mintVendorAccessJwt();
+    const signer = coverClinicSigner();
+
+    const grantId = await grantIdComp(crypto.randomUUID().replace(/-/g, ""));
+    const envelope = await buildComplimentaryEnvelope({
+      orgId: scenario.orgId,
+      grantId,
+      count: 365,
+      operatorEmail: VENDOR_OPERATOR_EMAIL,
+      reason: "long trial override",
+      ceilingOverride: {},
+    });
+    // R2-P2: the second approval is signed over the submitted envelope
+    // minus ceiling_override.
+    delete envelope.ceiling_override;
+    const overrideOperation = await operationForCeilingOverride({
+      accessJwt,
+      envelope,
+    });
+    const overrideAssertion = encodeVendorAssertion(
+      await signer.signerAuthenticator.assert({
+        operation: overrideOperation,
+        rpId: env.WEBAUTHN_RP_ID,
+        origin: env.WEBAUTHN_ORIGIN,
+        up: true,
+        uv: true,
+      }),
+    );
+    const submittedEnvelope = {
+      ...envelope,
+      ceiling_override: overrideAssertion,
+    };
+    const grantOperation = await operationForHpGrant({
+      accessJwt,
+      envelope: submittedEnvelope,
+    });
+    const grantAssertion = encodeVendorAssertion(
+      await signer.signerAuthenticator.assert({
+        operation: grantOperation,
+        rpId: env.WEBAUTHN_RP_ID,
+        origin: env.WEBAUTHN_ORIGIN,
+        up: true,
+        uv: true,
+      }),
+    );
+    const grantArgs = {
+      contract_version: CONTRACT_VERSION,
+      envelope: submittedEnvelope,
+      signer_credential_id: signer.signerCredentialId,
+      operation: grantOperation,
+      assertion: grantAssertion,
+      ceiling_override_operation: overrideOperation,
+    };
+
+    const applied = await extendedVendorCall("grant", grantArgs, {
+      accessJwt,
+    });
+    expect(applied.result).toBe("applied");
+
+    // Exact replay of the identical call: the completed result, once.
+    const replay = await extendedVendorCall("grant", grantArgs, {
+      accessJwt,
+    });
+    expect(replay.result).toBe("already_applied");
+    expect(replay.receipt).toEqual(applied.receipt);
+
+    // Reusing both signed operations with a changed envelope (fresh
+    // grant_id) fails: the main operation no longer matches the args.
+    const changedEnvelope = {
+      ...submittedEnvelope,
+      grant_id: await grantIdComp(crypto.randomUUID().replace(/-/g, "")),
+    };
+    const reuse = await extendedVendorCall(
+      "grant",
+      {
+        ...grantArgs,
+        envelope: changedEnvelope,
+      },
+      { accessJwt },
+    );
+    expect(reuse.result).toBe("rejected");
+    expect(reuse.code).toBe("assertion_invalid");
   });
 
   it("E2E-P3.6-03 90-day window accepts 31 plus 31 days and rejects a further day", async () => {

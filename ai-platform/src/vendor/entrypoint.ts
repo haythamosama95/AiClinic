@@ -956,6 +956,20 @@ function stableJson(value: unknown): string {
   return JSON.stringify(value);
 }
 
+/** R2-C1: byte equality of the RFC 8785 canonical forms of both maps. */
+function canonicalParamsEqual(
+  params: unknown,
+  expected: Record<string, unknown>,
+): boolean {
+  try {
+    return bytesEqual(canonicalize(params), canonicalize(expected));
+  } catch {
+    // Canonicalization errors (undefined members, invalid numbers) are a
+    // failed match, never a throw.
+    return false;
+  }
+}
+
 function operationParamsMatch(
   method: HpAssertionMethod,
   operation: Record<string, unknown>,
@@ -1037,7 +1051,7 @@ function operationParamsMatch(
   } else {
     return false;
   }
-  return stableJson(params) === stableJson(expected);
+  return canonicalParamsEqual(params, expected);
 }
 
 function hpAuditTarget(
@@ -1395,9 +1409,15 @@ async function verifyCeilingOverrideAssertion(
     return { ok: false, code: "assertion_invalid" };
   }
 
-  const overrideClientData = JSON.parse(
-    new TextDecoder().decode(assertion.clientDataJSON),
-  ) as { challenge?: string };
+  let overrideClientData: { challenge?: string };
+  try {
+    overrideClientData = JSON.parse(
+      new TextDecoder().decode(assertion.clientDataJSON),
+    ) as { challenge?: string };
+  } catch {
+    // R2-P2: invalid clientDataJSON is assertion_invalid, never a throw.
+    return { ok: false, code: "assertion_invalid" };
+  }
   const overrideChallenge =
     typeof overrideClientData.challenge === "string"
       ? overrideClientData.challenge
@@ -1408,6 +1428,8 @@ async function verifyCeilingOverrideAssertion(
   }
 
   const envelopeForOverride = envelopeWithoutCeilingOverride(envelope);
+  // R2-P2: an absent explicit operation derives only the exact existing
+  // grant-metadata form; the timestamp-search fallback is removed.
   const operation = isRecord(overrideOperationRaw)
     ? overrideOperationRaw
     : buildCeilingOverrideOperation(
@@ -1420,8 +1442,41 @@ async function verifyCeilingOverrideAssertion(
   if (!validateOperation(operation).ok || operation.op !== "ceiling_override") {
     return { ok: false, code: "assertion_invalid" };
   }
+  // R2-P2: the exception is bound to this call's negotiated version, its
+  // Access actor, and the current envelope (minus ceiling_override); only
+  // the separate ceremony's nonce and issued_at may differ.
+  if (operation.contract_version !== version) {
+    return { ok: false, code: "assertion_invalid" };
+  }
+  if (
+    !canonicalParamsEqual(operation.params, {
+      contract_version: version,
+      access_jwt: accessJwt,
+      envelope: envelopeForOverride,
+    })
+  ) {
+    return { ok: false, code: "assertion_invalid" };
+  }
+  if (typeof operation.actor_email !== "string" || operation.actor_email !== accessEmail) {
+    return { ok: false, code: "actor_email_mismatch" };
+  }
+  if (
+    typeof operation.issued_at !== "string" ||
+    !(await assertionIssuedAtFresh(env, operation.issued_at))
+  ) {
+    return { ok: false, code: "assertion_expired" };
+  }
+  if (signer.status !== "active") {
+    return { ok: false, code: "credential_not_active" };
+  }
 
+  const grantDigest = await operationAssertionSha256(grantOperation);
   const assertionSha256 = await operationAssertionSha256(operation);
+  // R2-P2: replay is verified against the actually verified digest, which
+  // must differ from the first (grant) digest.
+  if (assertionSha256 === grantDigest) {
+    return { ok: false, code: "assertion_used" };
+  }
   if (await assertionChallengeUsed(env.DB, assertionSha256)) {
     return { ok: false, code: "assertion_used" };
   }
@@ -1439,52 +1494,7 @@ async function verifyCeilingOverrideAssertion(
     publicKey,
   });
   if (!verified.ok) {
-    const clientData = JSON.parse(
-      new TextDecoder().decode(assertion.clientDataJSON),
-    ) as { challenge?: string };
-    const challenge =
-      typeof clientData.challenge === "string" ? clientData.challenge : "";
-    const nowMs = await clockNowMs(env);
-    const grantOp = grantOperation;
-    for (
-      let offsetMs = 0;
-      offsetMs <= ASSERTION_FRESHNESS_MS;
-      offsetMs += 1000
-    ) {
-      const issuedAt = new Date(nowMs - offsetMs).toISOString();
-      const candidate = {
-        op: "ceiling_override",
-        params: {
-          contract_version: version,
-          access_jwt: accessJwt,
-          envelope: envelopeForOverride,
-        },
-        actor_email: grantOp.actor_email,
-        issued_at: issuedAt,
-        nonce: grantOp.nonce,
-        contract_version: grantOp.contract_version,
-      };
-      const expectedChallenge = await operationChallenge(candidate);
-      if (expectedChallenge !== challenge) {
-        continue;
-      }
-      const retry = await verifyAssertion({
-        assertion,
-        operation: candidate,
-        rpId: env.WEBAUTHN_RP_ID,
-        origin: env.WEBAUTHN_ORIGIN,
-        publicKey,
-      });
-      if (retry.ok) {
-        const verifiedSha = await operationAssertionSha256(candidate);
-        return { ok: true, assertionSha256: verifiedSha };
-      }
-    }
     return { ok: false, code: "assertion_invalid" };
-  }
-
-  if (typeof operation.actor_email !== "string" || operation.actor_email !== accessEmail) {
-    return { ok: false, code: "actor_email_mismatch" };
   }
 
   return { ok: true, assertionSha256 };
@@ -1938,13 +1948,32 @@ async function bootstrapRegister(
     ? String(attestationRaw.public_key)
     : "";
 
-  await env.DB.prepare(
+  // R2-P3: the conditional INSERT makes the emptiness test and the insertion
+  // one atomic D1 statement, so concurrent bootstrap attempts admit exactly
+  // one row (any existing row, including pending or revoked, closes
+  // bootstrap). The early count above stays only as a fast refusal.
+  const insertResult = await env.DB.prepare(
     `INSERT INTO operator_credential
        (credential_id, operator_email, public_key_cose, alg, status, activates_at, approved_by, revoked_by)
-     VALUES (?, ?, ?, ?, 'pending', ?, NULL, NULL)`,
+     SELECT ?, ?, ?, ?, 'pending', ?, NULL, NULL
+     WHERE NOT EXISTS (SELECT 1 FROM operator_credential)`,
   )
     .bind(credentialId, accessEmail, publicKeyCose, parsed.alg, activatesAt)
     .run();
+
+  const insertedRows = insertResult.meta.changes ?? 0;
+  if (insertedRows === 0) {
+    // Lost the bootstrap race: another credential already exists, so a new
+    // credential requires HP approval. No bootstrap success alert.
+    await writeEntrypointAudit(
+      env.DB,
+      accessEmail,
+      "registerOperatorCredential",
+      credentialId,
+      null,
+    );
+    return rejected(negotiatedVersion, "assertion_required");
+  }
 
   const row = await readOperatorCredential(env.DB, credentialId);
   if (row === null) {
@@ -3439,13 +3468,42 @@ export class VendorEntrypoint extends WorkerEntrypoint<VendorEnv> {
         overrideAssertionSha256 = overrideCheck.assertionSha256;
       }
 
-      await finishHpAssertion(this.env, access.email, "grant", check);
       if (overrideAssertionSha256 !== null) {
-        await insertAssertionUsed(
-          this.env,
-          overrideAssertionSha256,
-          check.signer.credential_id,
-        );
+        // R2-P2: the grant claim and the override claim land in one atomic
+        // D1 batch (with the audit row), so a second-claim failure never
+        // leaves a main-only claim; duplicate rejection stays assertion_used.
+        try {
+          await this.env.DB.batch([
+            await buildAssertionUsedStatement(
+              this.env,
+              check.assertionSha256,
+              check.signer.credential_id,
+            ),
+            await buildAssertionUsedStatement(
+              this.env,
+              overrideAssertionSha256,
+              check.signer.credential_id,
+            ),
+            buildEntrypointAuditStatement(
+              this.env.DB,
+              access.email,
+              "grant",
+              check.auditTarget,
+              check.assertionSha256,
+            ),
+          ]);
+        } catch {
+          await writeEntrypointAudit(
+            this.env.DB,
+            access.email,
+            "grant",
+            check.auditTarget,
+            check.assertionSha256,
+          );
+          return grantRejected(version, "assertion_used");
+        }
+      } else {
+        await finishHpAssertion(this.env, access.email, "grant", check);
       }
 
       const liveBinding = await readLiveTenantBinding(this.env.DB, orgId);
