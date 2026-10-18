@@ -59,7 +59,7 @@ type NotificationRow = {
   channel: string;
   checkout_id?: string | null;
   disposition?: string;
-  provider_txn_id?: string;
+  provider_txn_id?: string | null;
 };
 
 async function newId(env: WorkRunnerEnv): Promise<string> {
@@ -204,7 +204,7 @@ async function paymobTxnIdFromNotification(
   env: WorkRunnerEnv,
   notification: NotificationRow,
 ): Promise<string | null> {
-  if (notification.provider_txn_id !== undefined) {
+  if (notification.provider_txn_id != null) {
     return notification.provider_txn_id;
   }
   const object = await env.R2.get(notification.body_r2_key);

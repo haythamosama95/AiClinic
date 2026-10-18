@@ -858,7 +858,7 @@ describe("P4.3 notify intake", () => {
     const notificationFactsBeforeD1Failure = await env.DB.prepare(
       `SELECT COUNT(*) AS n FROM fact_log WHERE "table" = 'notification'`,
     ).first<{ n: number }>();
-    setD1BatchThrows(true, 1);
+    setD1BatchThrows(true, 2);
     const d1Failure = await postPaymobProcessedCallback(retryFixture, {
       connectingIp: "203.0.113.12",
     });
