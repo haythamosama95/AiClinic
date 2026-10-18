@@ -1,6 +1,7 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { env } from "cloudflare:test";
 import workLeaseMigrationSql from "../../migrations/0010_work_lease_token.sql?raw";
+import { applySql } from "./harness";
 
 describe("R3-C5 work lease token migration", () => {
   const suffix = crypto.randomUUID().replaceAll("-", "");
@@ -48,7 +49,7 @@ describe("R3-C5 work lease token migration", () => {
     )
       .bind(seedId, seedId, seedId, new Date(Date.now() + 60_000).toISOString(), new Date().toISOString())
       .run();
-    await env.DB.exec(isolatedMigrationSql);
+    await applySql(isolatedMigrationSql);
   });
 
   afterAll(async () => {

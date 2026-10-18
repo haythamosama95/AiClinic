@@ -166,6 +166,19 @@ export function platformD1DatabaseFile() {
   throw new Error(`No platform D1 sqlite under ${dir}`);
 }
 
+export function aboD1DatabaseFile() {
+  const dir = path.join(ABO_PERSIST, D1_OBJECT_DIR);
+  if (!existsSync(dir)) {
+    throw new Error(`Missing ABO D1 dir: ${dir}`);
+  }
+  for (const name of readdirSync(dir)) {
+    if (name.endsWith(".sqlite") && !name.startsWith("metadata")) {
+      return path.join(dir, name);
+    }
+  }
+  throw new Error(`No ABO D1 sqlite under ${dir}`);
+}
+
 /** Apply fixture SQL directly to the runtime D1 file. */
 export function execPlatformD1Sql(sql) {
   const db = new DatabaseSync(platformD1DatabaseFile());
@@ -206,6 +219,28 @@ export function queryPlatformD1One(sql) {
     }
     stmt.run();
     return null;
+  } finally {
+    db.close();
+  }
+}
+
+/** Apply fixture SQL directly to the ABO runtime D1 file. */
+export function execAboD1Sql(sql) {
+  const db = new DatabaseSync(aboD1DatabaseFile());
+  try {
+    db.exec("PRAGMA busy_timeout = 5000");
+    db.exec(sql);
+  } finally {
+    db.close();
+  }
+}
+
+export function queryAboD1One(sql) {
+  const db = new DatabaseSync(aboD1DatabaseFile());
+  try {
+    db.exec("PRAGMA busy_timeout = 5000");
+    const rows = db.prepare(sql).all();
+    return rows[0] ?? null;
   } finally {
     db.close();
   }

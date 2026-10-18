@@ -29,6 +29,8 @@ import {
   REGISTRY_DIR,
   preparePlatformD1,
   prepareAboD1,
+  execAboD1Sql,
+  queryAboD1One as queryAboD1Sql,
   execPlatformD1Sql,
   queryPlatformD1One as queryPlatformD1Row,
   runWranglerSync,
@@ -562,41 +564,11 @@ export function runPlatformD1Command(sql) {
 }
 
 export function queryAboD1One(sql) {
-  const stdout = runWrangler([
-    "d1",
-    "execute",
-    "abo-development",
-    "--local",
-    "--env",
-    "development",
-    "--config",
-    ABO_CONFIG,
-    "--persist-to",
-    ABO_PERSIST,
-    "--json",
-    "--command",
-    sql,
-  ]);
-  const batches = JSON.parse(stdout);
-  const results = batches[0]?.results ?? [];
-  return results[0] ?? null;
+  return queryAboD1Sql(sql);
 }
 
 export function runAboD1Command(sql) {
-  runWrangler([
-    "d1",
-    "execute",
-    "abo-development",
-    "--local",
-    "--env",
-    "development",
-    "--config",
-    ABO_CONFIG,
-    "--persist-to",
-    ABO_PERSIST,
-    "--command",
-    sql,
-  ]);
+  execAboD1Sql(sql);
 }
 
 export function countAboTable(table) {
