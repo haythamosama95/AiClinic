@@ -402,11 +402,6 @@ async function readBoundedNotifyBody(
   if (contentLength !== null && /^\d+$/u.test(contentLength)) {
     const declaredBytes = Number(contentLength);
     if (Number.isSafeInteger(declaredBytes) && declaredBytes > MAX_NOTIFY_BODY_BYTES) {
-      try {
-        await request.body?.cancel();
-      } catch {
-        // The byte cap still determines the response if cancellation races.
-      }
       return null;
     }
   }
@@ -426,11 +421,6 @@ async function readBoundedNotifyBody(
       }
       totalBytes += value.byteLength;
       if (totalBytes > MAX_NOTIFY_BODY_BYTES) {
-        try {
-          await reader.cancel();
-        } catch {
-          // The byte cap still determines the response if cancellation races.
-        }
         return null;
       }
       chunks.push(value);
