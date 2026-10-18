@@ -52,12 +52,12 @@ Validate remotely only, with the complete CI workflow:
   headSha is your commit (plan §2.9.3).
 - Wait without hitting GitHub rate limits (plan §2.9.6). Never use
   `gh run watch`. Check with one
-  `gh run view <run-id> --json status,conclusion` call: first 9 minutes
-  after dispatch, then every minute for up to 5 more checks, then every
-  5 minutes. If the run is not complete 2 hours after dispatch, stop and
-  report. Wait between checks with your wait or sleep tool. Fetch job
-  details and logs only once the run has completed. On a rate-limit
-  error, wait until the reset time and resume.
+  `gh run view <run-id> --json status,conclusion` call: first 7 minutes
+   after dispatch, then every minute for up to 5 more checks. If the run
+   is not complete 15 minutes after dispatch, stop and report. Fetch job
+   details and logs only once the run has completed. Wait between checks
+   with your wait or sleep tool. Fetch job details and logs only once the
+   run has completed. On a rate-limit error, wait until the reset time and resume.
 - Green means every test-campaign job passed, apart from unchanged known
   failures in the RM00 baseline. Confirm your new tests actually ran and
   passed. Fix your own failures with a new commit and run the complete
@@ -89,10 +89,10 @@ locally except git and gh.
    headSha matches the pushed commit (plan §2.9.3).
 3. Wait without hitting GitHub rate limits (plan §2.9.6). Never use
    `gh run watch`. Check with one
-   `gh run view <run-id> --json status,conclusion` call: first 9 minutes
-   after dispatch, then every minute for up to 5 more checks, then every
-   5 minutes. If the run is not complete 2 hours after dispatch, stop and
-   report. Fetch job details and logs only once the run has completed.
+   `gh run view <run-id> --json status,conclusion` call: first 7 minutes
+   after dispatch, then every minute for up to 5 more checks. If the run
+   is not complete 15 minutes after dispatch, stop and report. Fetch job
+   details and logs only once the run has completed.
 4. Write docs/review/abo-remediation/RM00.md with the commit SHA, the run
    URL and every failing test case (these become the known baseline
    failures). Fill the RM00 row in the plan's §5, then commit and push.
