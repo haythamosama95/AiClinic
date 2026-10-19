@@ -1857,6 +1857,7 @@ export async function applyGrantRPC(
 
     const paidDurationUnit = request.durationUnit ?? "month";
     const paidDurationCount = request.durationCount ?? 1;
+    const hot = loadHot(storage);
 
     const termId = crypto.randomUUID();
     const position = nextTermPosition(terms);
@@ -1996,6 +1997,7 @@ export async function suspendResumeRPC(
 ): Promise<SuspendResumeResponse> {
   return blockConcurrencyWhile(async () => {
     ensureHotRow(storage, request.bindingEpoch);
+    const hot = loadHot(storage);
     const terms = loadTerms(storage);
     const targetSuspended = request.kind === "suspend" ? 1 : 0;
 
