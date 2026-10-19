@@ -890,6 +890,8 @@ async function clearPlatformTransactionalTables(): Promise<void> {
       env.PLATFORM_DB.prepare("DELETE FROM grant_claim_dispute"),
       env.PLATFORM_DB.prepare("DELETE FROM grant_claim_backfill"),
       env.PLATFORM_DB.prepare("DELETE FROM reversal_command"),
+      env.PLATFORM_DB.prepare("DELETE FROM transfer_route_quarantine"),
+      env.PLATFORM_DB.prepare("DELETE FROM transfer_route_manifest"),
       env.PLATFORM_DB.prepare("DELETE FROM live_value_route"),
       env.PLATFORM_DB.prepare("DELETE FROM grant_tombstone"),
       env.PLATFORM_DB.prepare(`CREATE TRIGGER grant_claim_no_delete

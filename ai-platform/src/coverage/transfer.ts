@@ -178,11 +178,46 @@ async function readTransferStep(
     .first<TransferStepRow>();
 }
 
+async function readTransferRouteManifest(
+  db: D1Database,
+  transferId: string,
+): Promise<Map<string, TransferRouteManifest>> {
+  const rows = await db.prepare(
+    `SELECT grant_id, source_epoch, source_generation
+     FROM transfer_route_manifest WHERE transfer_id = ?`,
+  ).bind(transferId).all<TransferRouteManifest>();
+  return new Map((rows.results ?? []).map((row) => [row.grant_id, row]));
+}
+
+export async function isTransferRouteQuarantined(
+  db: D1Database,
+  transferId: string,
+): Promise<boolean> {
+  const row = await db.prepare(
+    `SELECT 1 AS quarantined FROM transfer_route_quarantine
+     WHERE transfer_id = ?
+       AND NOT EXISTS (
+         SELECT 1 FROM transfer_step
+         WHERE transfer_step.transfer_id = transfer_route_quarantine.transfer_id
+           AND transfer_step.step = 'transfer_in'
+       )
+     LIMIT 1`,
+  ).bind(transferId).first<{ quarantined: number }>();
+  return row !== null;
+}
+
 type TransferValueRoute = {
   grant_id: string;
+  binding_epoch: number;
   generation: number;
   state: string;
   transfer_id: string | null;
+};
+
+type TransferRouteManifest = {
+  grant_id: string;
+  source_epoch: number;
+  source_generation: number;
 };
 
 async function prepareValueRoutesForTransfer(
@@ -191,7 +226,7 @@ async function prepareValueRoutesForTransfer(
   nowIso: string,
 ): Promise<TransferValueRoute[] | null> {
   const routes = await env.DB.prepare(
-    `SELECT grant_id, generation, state, transfer_id FROM live_value_route
+    `SELECT grant_id, binding_epoch, generation, state, transfer_id FROM live_value_route
      WHERE org_id = ? AND installation_id = ? AND state IN ('stable', 'moving')`,
   ).bind(transfer.org_id, transfer.from_installation_id).all<TransferValueRoute>();
   const current = routes.results ?? [];
@@ -206,7 +241,7 @@ async function prepareValueRoutesForTransfer(
     ).bind(transfer.transfer_id, nowIso, row.grant_id, row.generation, transfer.from_installation_id));
   if (updates.length > 0) await env.DB.batch(updates);
   const after = await env.DB.prepare(
-    `SELECT grant_id, generation, state, transfer_id FROM live_value_route
+    `SELECT grant_id, binding_epoch, generation, state, transfer_id FROM live_value_route
      WHERE org_id = ? AND installation_id = ? AND state IN ('stable', 'moving', 'voiding')`,
   ).bind(transfer.org_id, transfer.from_installation_id).all<TransferValueRoute>();
   const rows = after.results ?? [];
@@ -220,6 +255,7 @@ async function publishTransferredValueRoutes(
   transfer: TransferRow,
   packageValue: unknown[],
   destinationEpoch: number,
+  manifestByGrant: Map<string, TransferRouteManifest>,
   nowIso: string,
 ): Promise<boolean> {
   const originIds = [...new Set(packageValue.map((row) =>
@@ -228,41 +264,74 @@ async function publishTransferredValueRoutes(
       ? (row as Record<string, unknown>).origin_grant_id as string
       : "",
   ).filter(Boolean))];
+  if (originIds.some((grantId) => !manifestByGrant.has(grantId))) return false;
+  const currentRows = originIds.length === 0
+    ? []
+    : (await env.DB.prepare(
+        `SELECT grant_id, org_id, installation_id, binding_epoch, generation,
+                state, transfer_id
+         FROM live_value_route WHERE grant_id IN (${originIds.map(() => "?").join(",")})`,
+      ).bind(...originIds).all<TransferValueRoute & { org_id: string }>()).results ?? [];
+  const currentByGrant = new Map(currentRows.map((row) => [row.grant_id, row]));
+  if (originIds.some((grantId) => {
+    const route = currentByGrant.get(grantId);
+    const manifest = manifestByGrant.get(grantId)!;
+    return route === undefined || route.org_id !== transfer.org_id || !(
+      (route.installation_id === transfer.from_installation_id &&
+        route.binding_epoch === manifest.source_epoch &&
+        route.generation === manifest.source_generation &&
+        route.state === "moving" && route.transfer_id === transfer.transfer_id) ||
+      (route.installation_id === transfer.to_installation_id &&
+        route.binding_epoch === destinationEpoch &&
+        route.generation === manifest.source_generation + 1 &&
+        route.state === "stable" && route.transfer_id === null)
+    );
+  })) return false;
   const statements = originIds.flatMap((grantId) => [
     env.DB.prepare(
       `UPDATE live_value_route
        SET installation_id = ?, binding_epoch = ?, generation = generation + 1,
            state = 'stable', transfer_id = NULL, reversal_id = NULL, updated_at = ?
        WHERE grant_id = ? AND org_id = ? AND installation_id = ?
+         AND binding_epoch = ? AND generation = ?
          AND state = 'moving' AND transfer_id = ?`,
     ).bind(
       transfer.to_installation_id, destinationEpoch, nowIso, grantId, transfer.org_id,
-      transfer.from_installation_id, transfer.transfer_id,
+      transfer.from_installation_id, manifestByGrant.get(grantId)!.source_epoch,
+      manifestByGrant.get(grantId)!.source_generation, transfer.transfer_id,
     ),
     env.DB.prepare(
       `UPDATE reversal_command SET route_installation_id = ?, route_epoch = ?,
          route_generation = route_generation + 1, updated_at = ?
        WHERE grant_id = ? AND state = 'due' AND route_installation_id = ?
-         AND route_generation = (
-           SELECT generation - 1 FROM live_value_route WHERE grant_id = ?
-             AND installation_id = ? AND state = 'stable'
+         AND route_epoch = ? AND route_generation = ?
+         AND EXISTS (
+           SELECT 1 FROM live_value_route
+           WHERE grant_id = ? AND org_id = ? AND installation_id = ?
+             AND binding_epoch = ? AND generation = ?
+             AND state = 'stable' AND transfer_id IS NULL
          )`,
     ).bind(
       transfer.to_installation_id, destinationEpoch, nowIso, grantId,
-      transfer.from_installation_id, grantId, transfer.to_installation_id,
+      transfer.from_installation_id, manifestByGrant.get(grantId)!.source_epoch,
+      manifestByGrant.get(grantId)!.source_generation, grantId, transfer.org_id,
+      transfer.to_installation_id, destinationEpoch,
+      manifestByGrant.get(grantId)!.source_generation + 1,
     ),
   ]);
   if (statements.length > 0) await env.DB.batch(statements);
   if (originIds.length === 0) return true;
   const rows = await env.DB.prepare(
-    `SELECT grant_id, installation_id, binding_epoch, state, transfer_id
+    `SELECT grant_id, installation_id, binding_epoch, generation, state, transfer_id
      FROM live_value_route WHERE grant_id IN (${originIds.map(() => "?").join(",")})`,
   ).bind(...originIds).all<{
-    grant_id: string; installation_id: string; binding_epoch: number; state: string; transfer_id: string | null;
+    grant_id: string; installation_id: string; binding_epoch: number; generation: number; state: string; transfer_id: string | null;
   }>();
   return originIds.every((id) => (rows.results ?? []).some((row) =>
     row.grant_id === id && row.installation_id === transfer.to_installation_id &&
-    row.binding_epoch === destinationEpoch && row.state === "stable" && row.transfer_id === null,
+    row.binding_epoch === destinationEpoch &&
+    row.generation === manifestByGrant.get(id)!.source_generation + 1 &&
+    row.state === "stable" && row.transfer_id === null,
   ));
 }
 
@@ -551,6 +620,10 @@ export async function executeTransferOut(
       ? [(row as Record<string, unknown>).origin_grant_id as string]
       : [],
   ));
+  const routeManifest = movingRoutes.filter((row) => movedOrigins.has(row.grant_id));
+  if (routeManifest.length !== movedOrigins.size) {
+    return { result: "transient", detail: "value_route_manifest_pending" };
+  }
   const routeSettleStatements = movingRoutes
     .filter((row) => !movedOrigins.has(row.grant_id))
     .map((row) => env.DB.prepare(
@@ -568,6 +641,11 @@ export async function executeTransferOut(
          VALUES (?, 'transfer_out', ?, ?)`,
       )
       .bind(transferId, receiptJson, appliedAt),
+    ...routeManifest.map((row) => env.DB.prepare(
+      `INSERT INTO transfer_route_manifest (
+         transfer_id, grant_id, source_epoch, source_generation
+       ) VALUES (?, ?, ?, ?)`,
+    ).bind(transferId, row.grant_id, row.binding_epoch, row.generation)),
     ...routeSettleStatements,
   ]);
 
@@ -614,17 +692,26 @@ export async function executeTransferIn(
   if (destBinding === null) return { result: "bad_request" };
 
   if (existingIn !== null) {
-    const receipt = JSON.parse(existingIn.receipt) as Record<string, unknown>;
-    if (!(await publishTransferredValueRoutes(
-      env, transfer, packageValue, destBinding.epoch, await clockNowIso(env),
-    ))) {
-      return { result: "transient", detail: "value_route_publish_pending" };
-    }
     return {
       result: "already_applied",
       detail: transfer.package,
-      receipt,
+      receipt: JSON.parse(existingIn.receipt) as Record<string, unknown>,
     };
+  }
+
+  if (await isTransferRouteQuarantined(env.DB, transferId)) {
+    return { result: "rejected", code: "transfer_route_quarantined" };
+  }
+
+  const routeManifest = await readTransferRouteManifest(env.DB, transferId);
+  const originIds = [...new Set(packageValue.flatMap((row) =>
+    typeof row === "object" && row !== null && !Array.isArray(row) &&
+    typeof (row as Record<string, unknown>).origin_grant_id === "string"
+      ? [(row as Record<string, unknown>).origin_grant_id as string]
+      : [],
+  ))];
+  if (originIds.some((grantId) => !routeManifest.has(grantId))) {
+    return { result: "transient", detail: "value_route_manifest_pending" };
   }
 
   const doResponse = await callCoverageDo(env, transfer.to_installation_id, {
@@ -655,7 +742,7 @@ export async function executeTransferIn(
   }
 
   if (!(await publishTransferredValueRoutes(
-    env, transfer, packageValue, destBinding.epoch, await clockNowIso(env),
+    env, transfer, packageValue, destBinding.epoch, routeManifest, await clockNowIso(env),
   ))) {
     return { result: "transient", detail: "value_route_publish_pending" };
   }

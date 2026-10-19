@@ -378,6 +378,29 @@ CREATE TABLE transfer (
   created_at TEXT NOT NULL
 );
 
+CREATE TABLE transfer_route_manifest (
+  transfer_id TEXT NOT NULL,
+  grant_id TEXT NOT NULL,
+  source_epoch INTEGER NOT NULL CHECK (source_epoch > 0),
+  source_generation INTEGER NOT NULL CHECK (source_generation > 0),
+  PRIMARY KEY (transfer_id, grant_id),
+  FOREIGN KEY (transfer_id) REFERENCES transfer (transfer_id),
+  FOREIGN KEY (grant_id) REFERENCES live_value_route (grant_id)
+);
+
+CREATE TABLE transfer_route_quarantine (
+  transfer_id TEXT NOT NULL,
+  grant_id TEXT NOT NULL DEFAULT '',
+  reason TEXT NOT NULL CHECK (reason IN (
+    'invalid_export_package',
+    'missing_origin_route',
+    'route_not_at_authorized_source'
+  )),
+  created_at TEXT NOT NULL,
+  PRIMARY KEY (transfer_id, grant_id),
+  FOREIGN KEY (transfer_id) REFERENCES transfer (transfer_id)
+);
+
 CREATE TABLE transfer_step (
   transfer_id TEXT NOT NULL,
   step TEXT NOT NULL,

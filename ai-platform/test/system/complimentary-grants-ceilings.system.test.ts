@@ -839,7 +839,7 @@ describe("complimentary grants, ceilings, adjustments, suspension", () => {
       ).bind(
         orphanInstallationId,
         orphanEpoch,
-        getVendorTestClockIso(),
+        getVendorTestClockIso() ?? new Date().toISOString(),
         grantId,
         before!.route_generation,
       ),
@@ -880,6 +880,86 @@ describe("complimentary grants, ceilings, adjustments, suspension", () => {
       binding_epoch: claimRoute!.binding_epoch,
       generation: claimRoute!.route_generation,
       state: "stable",
+    });
+  });
+
+  it("R6-PT1: accepted complimentary route stays put when the claim rebind CAS misses", async () => {
+    const scenario = await newScenario();
+    await coverClinic(scenario);
+    const grantId = await grantIdComp(crypto.randomUUID().replace(/-/g, ""));
+    const envelope = await buildComplimentaryEnvelope({
+      orgId: scenario.orgId,
+      grantId,
+      count: 14,
+      operatorEmail: VENDOR_OPERATOR_EMAIL,
+      reason: "stale accepted route CAS",
+    });
+    const realGet = env.DO.get.bind(env.DO);
+    const getSpy = vi.spyOn(env.DO, "get").mockImplementation((id) => {
+      const stub = realGet(id);
+      return {
+        fetch: async (input: RequestInfo | URL, init?: RequestInit) => {
+          const body = typeof init?.body === "string" ? JSON.parse(init.body) as Record<string, unknown> : {};
+          if (body.kind === "apply_grant") return new Response(null, { status: 503 });
+          return stub.fetch(input, init);
+        },
+      } as DurableObjectStub;
+    });
+    try {
+      expect((await hpComplimentaryGrant({ envelope })).result).toBe("transient");
+    } finally {
+      getSpy.mockRestore();
+    }
+    const before = await queryOne<{
+      installation_id: string;
+      binding_epoch: number;
+      route_generation: number;
+    }>(
+      `SELECT installation_id, binding_epoch, route_generation
+       FROM grant_claim WHERE grant_id = ?`,
+      [grantId],
+    );
+    expect(before).toBeTruthy();
+    const orphanInstallationId = crypto.randomUUID();
+    const orphanEpoch = before!.binding_epoch + 100;
+    await env.DB.batch([
+      env.DB.prepare(
+        `UPDATE grant_claim SET installation_id = ?, binding_epoch = ?
+         WHERE grant_id = ? AND state = 'pending' AND command_state = 'accepted'`,
+      ).bind(orphanInstallationId, orphanEpoch, grantId),
+      env.DB.prepare(
+        `UPDATE live_value_route SET installation_id = ?, binding_epoch = ?, updated_at = ?
+         WHERE grant_id = ? AND state = 'stable' AND generation = ?`,
+      ).bind(
+        orphanInstallationId,
+        orphanEpoch,
+        getVendorTestClockIso() ?? new Date().toISOString(),
+        grantId,
+        before!.route_generation,
+      ),
+    ]);
+
+    await env.DB.prepare(
+      `CREATE TRIGGER test_r6_pt1_reject_claim_rebind
+       BEFORE UPDATE ON grant_claim
+       WHEN OLD.grant_id = '${grantId}' AND NEW.installation_id = '${scenario.installationId}'
+       BEGIN SELECT RAISE(IGNORE); END`,
+    ).run();
+    let rejected: GrantResultEnvelope;
+    try {
+      rejected = await hpComplimentaryGrant({ envelope });
+    } finally {
+      await env.DB.prepare("DROP TRIGGER IF EXISTS test_r6_pt1_reject_claim_rebind").run();
+    }
+    expect(rejected!.result).toBe("transient");
+    expect(await queryOne<{ installation_id: string; binding_epoch: number; route_generation: number }>(
+      `SELECT installation_id, binding_epoch, route_generation
+       FROM live_value_route WHERE grant_id = ?`,
+      [grantId],
+    )).toEqual({
+      installation_id: orphanInstallationId,
+      binding_epoch: orphanEpoch,
+      route_generation: before!.route_generation,
     });
   });
 

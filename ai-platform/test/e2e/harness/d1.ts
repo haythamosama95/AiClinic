@@ -174,6 +174,8 @@ export async function resetPlatformState(): Promise<void> {
     db.prepare("DELETE FROM grant_claim_dispute"),
     db.prepare("DELETE FROM grant_claim_backfill"),
     db.prepare("DELETE FROM reversal_command"),
+    db.prepare("DELETE FROM transfer_route_quarantine"),
+    db.prepare("DELETE FROM transfer_route_manifest"),
     db.prepare("DELETE FROM live_value_route"),
     db.prepare("DROP TRIGGER IF EXISTS grant_tombstone_no_delete"),
     db.prepare("DROP TRIGGER IF EXISTS grant_tombstone_no_update"),

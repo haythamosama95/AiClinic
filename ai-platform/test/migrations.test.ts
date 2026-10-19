@@ -41,6 +41,8 @@ export const PLATFORM_ENTITIES = [
   "coverage_event",
   "coverage_mirror",
   "transfer",
+  "transfer_route_manifest",
+  "transfer_route_quarantine",
   "transfer_step",
   "operator_credential",
   "assertion_used",

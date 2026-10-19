@@ -921,6 +921,75 @@ describe("transfer, deletion with coverage left, ledger retention", () => {
     expect(queuedGrantId).toBeTruthy();
   });
 
+  it.each(["generation", "binding_epoch"] as const)(
+    "R6-PT1: transfer-in rejects a stale source route %s",
+    async (staleField) => {
+      const setup = await setupBeginTransferOnly();
+      const exported = await transferOut(setup.transferId);
+      expect(exported.result).toBe("applied");
+      const manifest = await queryOne<{ source_epoch: number; source_generation: number }>(
+        `SELECT source_epoch, source_generation FROM transfer_route_manifest
+         WHERE transfer_id = ? AND grant_id = ?`,
+        [setup.transferId, setup.activeGrantId],
+      );
+      expect(manifest).toBeTruthy();
+
+      await env.DB.prepare(
+        `UPDATE live_value_route SET ${staleField} = ${staleField} + 1
+         WHERE grant_id = ? AND state = 'moving' AND transfer_id = ?`,
+      ).bind(setup.activeGrantId, setup.transferId).run();
+
+      const imported = await transferIn(setup.transferId);
+      expect(imported.result).toBe("rejected");
+      expect(imported.code).toBe("bad_request");
+      expect((await readDoTerms(setup.newInstallationId)).some(
+        (term) => term.origin_grant_id === setup.activeGrantId,
+      )).toBe(false);
+      const route = await queryOne<{
+        installation_id: string;
+        binding_epoch: number;
+        generation: number;
+        state: string;
+      }>(
+        `SELECT installation_id, binding_epoch, generation, state
+         FROM live_value_route WHERE grant_id = ?`,
+        [setup.activeGrantId],
+      );
+      expect(route).toEqual({
+        installation_id: setup.oldInstallationId,
+        binding_epoch: staleField === "binding_epoch" ? manifest!.source_epoch + 1 : manifest!.source_epoch,
+        generation: staleField === "generation" ? manifest!.source_generation + 1 : manifest!.source_generation,
+        state: "moving",
+      });
+    },
+  );
+
+  it("R6-PT1: quarantined historical route blocks transfer-in pending operator adjudication", async () => {
+    const setup = await setupBeginTransferOnly();
+    const exported = await transferOut(setup.transferId);
+    expect(exported.result).toBe("applied");
+    await env.DB.prepare(
+      `INSERT INTO transfer_route_quarantine (transfer_id, grant_id, reason, created_at)
+       VALUES (?, ?, 'route_not_at_authorized_source', ?)`
+    ).bind(setup.transferId, setup.activeGrantId, new Date().toISOString()).run();
+
+    const imported = await transferIn(setup.transferId);
+    expect(imported.result).toBe("rejected");
+    expect(imported.code).toBe("transfer_route_quarantined");
+    expect((await readDoTerms(setup.newInstallationId)).some(
+      (term) => term.origin_grant_id === setup.activeGrantId,
+    )).toBe(false);
+    const route = await queryOne<{ installation_id: string; state: string; transfer_id: string | null }>(
+      `SELECT installation_id, state, transfer_id FROM live_value_route WHERE grant_id = ?`,
+      [setup.activeGrantId],
+    );
+    expect(route).toEqual({
+      installation_id: setup.oldInstallationId,
+      state: "moving",
+      transfer_id: setup.transferId,
+    });
+  });
+
   it("E2E-P3.8-04 A24 delete with paid time left holds the binding", async () => {
     const scenario = await newScenario();
     await coverClinic(scenario);

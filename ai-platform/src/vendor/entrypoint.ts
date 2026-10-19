@@ -25,6 +25,7 @@ import {
   executeDeleteInstallation,
   executeTransferIn,
   executeTransferOut,
+  isTransferRouteQuarantined,
   readTransferById,
   readTransferByAssertionSha256,
   retireHeldBindingIfEmpty,
@@ -1534,10 +1535,18 @@ async function ensureAcceptedGrantBinding(
         `UPDATE live_value_route
          SET installation_id = ?, binding_epoch = ?, generation = generation + 1, updated_at = ?
          WHERE grant_id = ? AND org_id = ? AND state = 'stable'
-           AND installation_id = ? AND binding_epoch = ? AND generation = ?`,
+           AND installation_id = ? AND binding_epoch = ? AND generation = ?
+           AND EXISTS (
+             SELECT 1 FROM grant_claim
+             WHERE grant_id = ? AND org_id = ? AND state = 'pending'
+               AND command_state = 'accepted' AND installation_id = ?
+               AND binding_epoch = ? AND route_generation = ?
+           )`,
       ).bind(
         installationId, bindingEpoch, updatedAt, claim.grant_id, claim.org_id,
         claim.installation_id, claim.binding_epoch, claim.route_generation,
+        claim.grant_id, claim.org_id, installationId, bindingEpoch,
+        claim.route_generation + 1,
       ),
     ]);
     const [updated, route] = await Promise.all([
@@ -5419,6 +5428,9 @@ export class VendorEntrypoint extends WorkerEntrypoint<VendorEnv> {
     const transfer = await readTransferById(this.env.DB, transferId);
     if (transfer === null) {
       return grantRejected(version, "bad_request");
+    }
+    if (await isTransferRouteQuarantined(this.env.DB, transferId)) {
+      return grantRejected(version, "transfer_route_quarantined");
     }
     if (transfer.package === null) {
       const step = await executeTransferIn(this.env, version, transferId);

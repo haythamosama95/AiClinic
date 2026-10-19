@@ -3585,6 +3585,13 @@ export async function transferInRPC(
         return { kind: "transfer_in", result: "bad_request" };
       }
     }
+    const quarantined = await request.db.prepare(
+      `SELECT 1 AS quarantined FROM transfer_route_quarantine
+       WHERE transfer_id = ? LIMIT 1`,
+    ).bind(request.transferId).first<{ quarantined: number }>();
+    if (quarantined !== null) {
+      return { kind: "transfer_in", result: "bad_request" };
+    }
     const transfer = await request.db.prepare(
       `SELECT org_id, from_installation_id, to_installation_id, package
        FROM transfer WHERE transfer_id = ?`,
@@ -3635,11 +3642,26 @@ export async function transferInRPC(
           transfer_id: string | null;
         }>()).results ?? [];
     const routeByGrant = new Map(routeRows.map((row) => [row.grant_id, row]));
+    const manifestRows = originGrantIds.length === 0
+      ? []
+      : (await request.db.prepare(
+          `SELECT grant_id, source_epoch, source_generation
+           FROM transfer_route_manifest
+           WHERE transfer_id = ? AND grant_id IN (${originGrantIds.map(() => "?").join(",")})`,
+        ).bind(request.transferId, ...originGrantIds).all<{
+          grant_id: string;
+          source_epoch: number;
+          source_generation: number;
+        }>()).results ?? [];
+    const manifestByGrant = new Map(manifestRows.map((row) => [row.grant_id, row]));
     if (request.package.some((term) => {
       const route = routeByGrant.get(term.origin_grant_id);
+      const manifest = manifestByGrant.get(term.origin_grant_id);
       return route === undefined || route.org_id !== transfer.org_id ||
         route.installation_id !== transfer.from_installation_id ||
-        route.state !== "moving" || route.transfer_id !== request.transferId;
+        route.state !== "moving" || route.transfer_id !== request.transferId ||
+        manifest === undefined || route.binding_epoch !== manifest.source_epoch ||
+        route.generation !== manifest.source_generation;
     })) {
       return { kind: "transfer_in", result: "bad_request" };
     }
