@@ -1332,7 +1332,7 @@ describe("complimentary grants, ceilings, adjustments, suspension", () => {
       reason: "R4-D5 original plan denominator",
     });
     expect((await hpComplimentaryGrant({ envelope: first })).result).toBe("applied");
-    await publishPlanVersionTwo(getCapabilities(), PLAN_MAX_ALLOWANCE * 2);
+    await publishPlanVersionTwo(["clinic.visit_summary"], PLAN_MAX_ALLOWANCE * 2);
 
     const secondId = await grantIdComp(crypto.randomUUID().replace(/-/g, ""));
     const second = await buildComplimentaryEnvelope({
