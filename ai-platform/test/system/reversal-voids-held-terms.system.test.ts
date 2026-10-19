@@ -717,7 +717,7 @@ describe("reversal voids, tombstones, held terms, operator voids", () => {
       [compGrantId],
     );
     expect(grantVoid?.source).toBe("operator");
-    const expectedChallenge = await operationChallenge(operation);
+    const expectedChallenge = await operationChallenge(voidOperation);
     expect(grantVoid?.evidence_sha256).toBe(expectedChallenge);
     expect(await r2Exists(`grant-ledger/${compGrantId}.void.ndjson`)).toBe(
       true,
