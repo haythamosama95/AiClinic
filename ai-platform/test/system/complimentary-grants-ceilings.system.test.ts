@@ -343,6 +343,15 @@ const LAUNCH_CEILING_POLICY = {
   max_paid_grace_days: 7,
   paid_cap_rule: "proportional",
 } as const;
+type CeilingPolicyInput = {
+  per_grant_max_days: number;
+  per_grant_max_allowance_months: number;
+  window_days: number;
+  window_max_days: number;
+  window_max_allowance_months: number;
+  max_paid_grace_days: number;
+  paid_cap_rule: string;
+};
 
 async function readDoLedger(installationId: string): Promise<{
   terms: Record<string, unknown>[];
@@ -370,6 +379,13 @@ async function readDoLedger(installationId: string): Promise<{
 async function countCeilingPolicyRows(): Promise<number> {
   const row = await env.DB.prepare(
     "SELECT COUNT(*) AS count FROM ceiling_policy",
+  ).first<{ count: number }>();
+  return row?.count ?? 0;
+}
+
+async function countCeilingPolicyCommands(): Promise<number> {
+  const row = await env.DB.prepare(
+    "SELECT COUNT(*) AS count FROM ceiling_policy_command",
   ).first<{ count: number }>();
   return row?.count ?? 0;
 }
@@ -403,13 +419,15 @@ function termIntervalsOverlap(
 
 async function operationForSetCeilingPolicy(input: {
   accessJwt: string;
+  policy?: Partial<CeilingPolicyInput>;
 }): Promise<Record<string, unknown>> {
+  const policy = { ...LAUNCH_CEILING_POLICY, ...input.policy };
   return {
     op: "setCeilingPolicy",
     params: {
       contract_version: CONTRACT_VERSION,
       access_jwt: input.accessJwt,
-      ...LAUNCH_CEILING_POLICY,
+      ...policy,
     },
     actor_email: VENDOR_OPERATOR_EMAIL,
     issued_at: getVendorTestClockIso() ?? new Date().toISOString(),
@@ -422,12 +440,13 @@ async function hpSetCeilingPolicy(input: {
   accessJwt?: string;
   operation?: Record<string, unknown>;
   assertion?: Record<string, string>;
+  policy?: Partial<CeilingPolicyInput>;
 }): Promise<VendorResultEnvelope> {
   const signer = coverClinicSigner();
   const accessJwt = input.accessJwt ?? (await mintVendorAccessJwt());
   const operation =
     input.operation ??
-    (await operationForSetCeilingPolicy({ accessJwt }));
+    (await operationForSetCeilingPolicy({ accessJwt, policy: input.policy }));
   const assertion =
     input.assertion ??
     encodeVendorAssertion(
@@ -444,6 +463,7 @@ async function hpSetCeilingPolicy(input: {
     {
       contract_version: CONTRACT_VERSION,
       ...LAUNCH_CEILING_POLICY,
+      ...input.policy,
       signer_credential_id: signer.signerCredentialId,
       operation,
       assertion,
@@ -454,6 +474,7 @@ async function hpSetCeilingPolicy(input: {
 
 async function publishPlanVersionTwo(
   capabilities: string[],
+  maxAllowance = PLAN_MAX_ALLOWANCE,
 ): Promise<void> {
   const signer = coverClinicSigner();
   const accessJwt = await mintVendorAccessJwt();
@@ -468,7 +489,7 @@ async function publishPlanVersionTwo(
       capabilities,
       max_cost_class: 2,
       concurrency_limit: 4,
-      max_allowance_per_month: PLAN_MAX_ALLOWANCE,
+      max_allowance_per_month: maxAllowance,
     },
     actor_email: VENDOR_OPERATOR_EMAIL,
     issued_at: getVendorTestClockIso() ?? new Date().toISOString(),
@@ -494,7 +515,7 @@ async function publishPlanVersionTwo(
       capabilities,
       max_cost_class: 2,
       concurrency_limit: 4,
-      max_allowance_per_month: PLAN_MAX_ALLOWANCE,
+      max_allowance_per_month: maxAllowance,
       signer_credential_id: signer.signerCredentialId,
       operation,
       assertion,
@@ -751,9 +772,11 @@ describe("complimentary grants, ceilings, adjustments, suspension", () => {
       reason: "long trial",
     });
 
+    const assertionsBefore = await vendorTableCount("assertion_used");
     const rejected = await hpComplimentaryGrant({ envelope: baseEnvelope });
     expect(rejected.result).toBe("rejected");
     expect(rejected.code).toBe("exceeds_ceiling");
+    expect(await vendorTableCount("assertion_used")).toBe(assertionsBefore);
 
     const accessJwt = await mintVendorAccessJwt();
     // R2-P2: the second approval is signed over the exact submitted envelope
@@ -777,33 +800,20 @@ describe("complimentary grants, ceilings, adjustments, suspension", () => {
       ceiling_override: overrideEncoded.assertion,
     };
 
-    const changedSameId = await hpComplimentaryGrant({
+    clearCapturedVendorEmails();
+    const applied = await hpComplimentaryGrant({
       envelope: withOverride,
       accessJwt,
       ceilingOverrideOperation: overrideEncoded.operation,
     });
-    expect(changedSameId.result).toBe("conflict");
-
-    const retryEnvelopeBase = {
-      ...overrideEnvelopeBase,
-      grant_id: await grantIdComp(crypto.randomUUID().replace(/-/g, "")),
-    };
-    const retryOverrideEncoded = await encodeCeilingOverrideAssertion({
-      envelope: retryEnvelopeBase,
-      accessJwt,
-    });
-    const retryWithOverride = {
-      ...retryEnvelopeBase,
-      ceiling_override: retryOverrideEncoded.assertion,
-    };
-
-    clearCapturedVendorEmails();
-    const applied = await hpComplimentaryGrant({
-      envelope: retryWithOverride,
-      accessJwt,
-      ceilingOverrideOperation: retryOverrideEncoded.operation,
-    });
     expect(applied.result).toBe("applied");
+    const replay = await hpComplimentaryGrant({
+      envelope: withOverride,
+      accessJwt,
+      ceilingOverrideOperation: overrideEncoded.operation,
+    });
+    expect(replay.result).toBe("already_applied");
+    expect(replay.receipt).toEqual(applied.receipt);
 
     await runDurableObjectAlarm(quotaDoStub(scenario.installationId));
     const al12Bodies = parseAlertBodies().filter((body) => body.code === "AL-12");
@@ -1149,6 +1159,280 @@ describe("complimentary grants, ceilings, adjustments, suspension", () => {
     expect(extra.code).toBe("exceeds_ceiling");
   });
 
+  it("R4-D5 complimentary ceiling history survives same-org transfer and installation recreation", async () => {
+    const scenario = await newScenario();
+    await coverClinic(scenario);
+    const firstInstallationId = scenario.installationId;
+    for (let index = 0; index < 2; index += 1) {
+      const grantId = await grantIdComp(crypto.randomUUID().replace(/-/g, ""));
+      const envelope = await buildComplimentaryEnvelope({
+        orgId: scenario.orgId,
+        grantId,
+        count: 31,
+        operatorEmail: VENDOR_OPERATOR_EMAIL,
+        reason: `R4-D5 pre-transfer contribution ${index}`,
+      });
+      expect((await hpComplimentaryGrant({ envelope })).result).toBe("applied");
+    }
+
+    const accessJwt = await mintVendorAccessJwt();
+    const signer = coverClinicSigner();
+    const params = {
+      org_id: scenario.orgId,
+      from_installation_id: firstInstallationId,
+      reason: "R4-D5 transfer continuity",
+    };
+    const operation = {
+      op: "beginTransfer",
+      params: { contract_version: CONTRACT_VERSION, access_jwt: accessJwt, ...params },
+      actor_email: VENDOR_OPERATOR_EMAIL,
+      issued_at: getVendorTestClockIso() ?? new Date().toISOString(),
+      nonce: crypto.randomUUID(),
+      contract_version: CONTRACT_VERSION,
+    };
+    const assertion = encodeVendorAssertion(
+      await signer.signerAuthenticator.assert({
+        operation,
+        rpId: env.WEBAUTHN_RP_ID,
+        origin: env.WEBAUTHN_ORIGIN,
+        up: true,
+        uv: true,
+      }),
+    );
+    const begun = await extendedVendorCall("beginTransfer", {
+      contract_version: CONTRACT_VERSION,
+      ...params,
+      signer_credential_id: signer.signerCredentialId,
+      operation,
+      assertion,
+    }, { accessJwt });
+    expect(begun.result).toBe("ok");
+    const transfer = JSON.parse(begun.detail) as { transfer_id: string };
+    expect((await extendedVendorCall("transferOut", {
+      contract_version: CONTRACT_VERSION,
+      transfer_id: transfer.transfer_id,
+    })).result).toBe("applied");
+    expect((await extendedVendorCall("transferIn", {
+      contract_version: CONTRACT_VERSION,
+      transfer_id: transfer.transfer_id,
+    })).result).toBe("applied");
+    await newClinic(scenario);
+    expect(scenario.installationId).not.toBe(firstInstallationId);
+
+    const thirdGrantId = await grantIdComp(crypto.randomUUID().replace(/-/g, ""));
+    const thirdEnvelope = await buildComplimentaryEnvelope({
+      orgId: scenario.orgId,
+      grantId: thirdGrantId,
+      count: 1,
+      operatorEmail: VENDOR_OPERATOR_EMAIL,
+      reason: "R4-D5 post-transfer further day",
+    });
+    const rejected = await hpComplimentaryGrant({ envelope: thirdEnvelope });
+    expect(rejected.result).toBe("rejected");
+    expect(rejected.code).toBe("exceeds_ceiling");
+    expect(await queryOne<{ count: number }>(
+      `SELECT COUNT(*) AS count FROM complimentary_ceiling_claim
+       WHERE org_id = ? AND status = 'applied'`,
+      [scenario.orgId],
+    )).toEqual({ count: 2 });
+  });
+
+  it("R4-D5 pending complimentary ceiling claim remains reserved beyond 90 days and exact retry counts once", async () => {
+    const scenario = await newScenario();
+    await coverClinic(scenario);
+    const firstGrantId = await grantIdComp(crypto.randomUUID().replace(/-/g, ""));
+    const firstEnvelope = await buildComplimentaryEnvelope({
+      orgId: scenario.orgId,
+      grantId: firstGrantId,
+      count: 31,
+      operatorEmail: VENDOR_OPERATOR_EMAIL,
+      reason: "R4-D5 delayed reservation",
+    });
+    const acceptedAt = getVendorTestClockIso() ?? new Date().toISOString();
+    const realGet = env.DO.get.bind(env.DO);
+    const getSpy = vi.spyOn(env.DO, "get").mockImplementation((id) => {
+      const stub = realGet(id);
+      return {
+        fetch: async (input: RequestInfo | URL, init?: RequestInit) => {
+          const body = typeof init?.body === "string"
+            ? JSON.parse(init.body) as Record<string, unknown>
+            : {};
+          if (body.kind === "apply_grant") return new Response(null, { status: 503 });
+          return stub.fetch(input, init);
+        },
+      } as DurableObjectStub;
+    });
+    let unavailable: GrantResultEnvelope;
+    try {
+      unavailable = await hpComplimentaryGrant({ envelope: firstEnvelope });
+    } finally {
+      getSpy.mockRestore();
+    }
+    expect(unavailable.result).toBe("transient");
+    expect(await queryOne<{ status: string }>(
+      "SELECT status FROM complimentary_ceiling_claim WHERE grant_id = ?",
+      [firstGrantId],
+    )).toEqual({ status: "pending" });
+
+    await setTestClock(new Date(Date.parse(acceptedAt) + 91 * 24 * 60 * 60 * 1000).toISOString());
+    const secondGrantId = await grantIdComp(crypto.randomUUID().replace(/-/g, ""));
+    const secondEnvelope = await buildComplimentaryEnvelope({
+      orgId: scenario.orgId,
+      grantId: secondGrantId,
+      count: 31,
+      operatorEmail: VENDOR_OPERATOR_EMAIL,
+      reason: "R4-D5 second reserved contribution",
+    });
+    expect((await hpComplimentaryGrant({ envelope: secondEnvelope })).result).toBe("applied");
+
+    const thirdGrantId = await grantIdComp(crypto.randomUUID().replace(/-/g, ""));
+    const thirdEnvelope = await buildComplimentaryEnvelope({
+      orgId: scenario.orgId,
+      grantId: thirdGrantId,
+      count: 1,
+      operatorEmail: VENDOR_OPERATOR_EMAIL,
+      reason: "R4-D5 third contribution",
+    });
+    const beforeThirdTouch = await vendorTableCount("assertion_used");
+    const third = await hpComplimentaryGrant({ envelope: thirdEnvelope });
+    expect(third.result).toBe("rejected");
+    expect(third.code).toBe("exceeds_ceiling");
+    expect(await vendorTableCount("assertion_used")).toBe(beforeThirdTouch);
+
+    const retried = await hpComplimentaryGrant({ envelope: firstEnvelope });
+    expect(retried.result).toBe("applied");
+    expect(retried.receipt?.grant_id).toBe(firstGrantId);
+    expect(await queryOne<{ count: number }>(
+      `SELECT COUNT(*) AS count FROM complimentary_ceiling_claim
+       WHERE org_id = ? AND status = 'applied'`,
+      [scenario.orgId],
+    )).toEqual({ count: 2 });
+    expect(await queryOne<{ count: number }>(
+      "SELECT COUNT(*) AS count FROM complimentary_ceiling_claim WHERE grant_id = ?",
+      [firstGrantId],
+    )).toEqual({ count: 1 });
+    const firstClaim = await queryOne<{ applied_at: string; receipt: string }>(
+      "SELECT applied_at, receipt FROM complimentary_ceiling_claim WHERE grant_id = ?",
+      [firstGrantId],
+    );
+    expect(firstClaim?.applied_at).toBe(retried.receipt?.applied_at);
+    expect(JSON.parse(firstClaim!.receipt)).toEqual(retried.receipt);
+  });
+
+  it("R4-D5 allowance-month history keeps each original plan denominator", async () => {
+    const scenario = await newScenario();
+    await coverClinic(scenario);
+    const firstId = await grantIdComp(crypto.randomUUID().replace(/-/g, ""));
+    const first = await buildComplimentaryEnvelope({
+      orgId: scenario.orgId,
+      grantId: firstId,
+      count: 1,
+      allowanceCredits: PLAN_MAX_ALLOWANCE,
+      operatorEmail: VENDOR_OPERATOR_EMAIL,
+      reason: "R4-D5 original plan denominator",
+    });
+    expect((await hpComplimentaryGrant({ envelope: first })).result).toBe("applied");
+    await publishPlanVersionTwo(getCapabilities(), PLAN_MAX_ALLOWANCE * 2);
+
+    const secondId = await grantIdComp(crypto.randomUUID().replace(/-/g, ""));
+    const second = await buildComplimentaryEnvelope({
+      orgId: scenario.orgId,
+      grantId: secondId,
+      count: 1,
+      allowanceCredits: PLAN_MAX_ALLOWANCE * 2,
+      operatorEmail: VENDOR_OPERATOR_EMAIL,
+      reason: "R4-D5 new plan denominator",
+      planVersion: 2,
+    });
+    expect((await hpComplimentaryGrant({ envelope: second })).result).toBe("applied");
+    expect(await queryOne<{ allowance_denominator: number }>(
+      "SELECT allowance_denominator FROM complimentary_ceiling_claim WHERE grant_id = ?",
+      [firstId],
+    )).toEqual({ allowance_denominator: PLAN_MAX_ALLOWANCE });
+    expect(await queryOne<{ allowance_denominator: number }>(
+      "SELECT allowance_denominator FROM complimentary_ceiling_claim WHERE grant_id = ?",
+      [secondId],
+    )).toEqual({ allowance_denominator: PLAN_MAX_ALLOWANCE * 2 });
+
+    const thirdId = await grantIdComp(crypto.randomUUID().replace(/-/g, ""));
+    const third = await buildComplimentaryEnvelope({
+      orgId: scenario.orgId,
+      grantId: thirdId,
+      count: 1,
+      allowanceCredits: 1,
+      operatorEmail: VENDOR_OPERATOR_EMAIL,
+      reason: "R4-D5 third allowance fraction",
+      planVersion: 2,
+    });
+    const rejected = await hpComplimentaryGrant({ envelope: third });
+    expect(rejected.result).toBe("rejected");
+    expect(rejected.code).toBe("exceeds_ceiling");
+  });
+
+  it("R4-D5 only a verified original-route no-effect seal releases a pending claim", async () => {
+    const scenario = await newScenario();
+    await coverClinic(scenario);
+    const grantId = await grantIdComp(crypto.randomUUID().replace(/-/g, ""));
+    const envelope = await buildComplimentaryEnvelope({
+      orgId: scenario.orgId,
+      grantId,
+      count: 31,
+      operatorEmail: VENDOR_OPERATOR_EMAIL,
+      reason: "R4-D5 terminal no-effect seal",
+    });
+    const realGet = env.DO.get.bind(env.DO);
+    let delayedApply: Record<string, unknown> | null = null;
+    const getSpy = vi.spyOn(env.DO, "get").mockImplementation((id) => {
+      const stub = realGet(id);
+      return {
+        fetch: async (input: RequestInfo | URL, init?: RequestInit) => {
+          const body = typeof init?.body === "string"
+            ? JSON.parse(init.body) as Record<string, unknown>
+            : {};
+          if (body.kind === "apply_grant") {
+            delayedApply = body;
+            return new Response(null, { status: 503 });
+          }
+          return stub.fetch(input, init);
+        },
+      } as DurableObjectStub;
+    });
+    let unavailable: GrantResultEnvelope;
+    try {
+      unavailable = await hpComplimentaryGrant({ envelope });
+    } finally {
+      getSpy.mockRestore();
+    }
+    expect(unavailable.result).toBe("transient");
+    const policy = { window_max_days: 30 };
+    const accessJwt = await mintVendorAccessJwt();
+    const policyOperation = await operationForSetCeilingPolicy({ accessJwt, policy });
+    expect((await hpSetCeilingPolicy({
+      accessJwt,
+      operation: policyOperation,
+      policy,
+    })).result).toBe("ok");
+
+    const terminal = await hpComplimentaryGrant({ envelope });
+    expect(terminal.result).toBe("rejected");
+    expect(terminal.code).toBe("exceeds_ceiling");
+    const sealed = await queryOne<{ status: string; receipt: string }>(
+      `SELECT status, receipt FROM complimentary_ceiling_claim WHERE grant_id = ?`,
+      [grantId],
+    );
+    expect(sealed?.status).toBe("sealed_no_effect");
+    expect(JSON.parse(sealed!.receipt).result).toBe("sealed_no_effect");
+    expect(delayedApply).not.toBeNull();
+    const delayedResponse = await realGet(env.DO.idFromName(scenario.installationId)).fetch(
+      "https://quota-do.internal/rpc",
+      { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(delayedApply) },
+    );
+    const delayedResult = await delayedResponse.json() as Record<string, unknown>;
+    expect(delayedResult.result).toBe("rejected");
+    expect(delayedResult.code).toBe("ceiling_claim_sealed");
+    expect(await countDoGrantRows(scenario.installationId)).toBe(1);
+  });
+
   it("E2E-P3.6-04 Missing reason or operator_email is rejected", async () => {
     const scenario = await newScenario();
     await coverClinic(scenario);
@@ -1454,5 +1738,55 @@ describe("complimentary grants, ceilings, adjustments, suspension", () => {
     });
     const pilot = await hpComplimentaryGrant({ envelope });
     expect(pilot.result).toBe("applied");
+  });
+
+  it("R8-CEILING1 concurrent policy updates allocate consecutive versions and exact retry records once", async () => {
+    const scenario = await newScenario();
+    await coverClinic(scenario);
+    const accessJwt = await mintVendorAccessJwt();
+    const policies: CeilingPolicyInput[] = [
+      { ...LAUNCH_CEILING_POLICY, window_max_days: 61 },
+      { ...LAUNCH_CEILING_POLICY, window_max_days: 60 },
+    ];
+    const operations = await Promise.all(policies.map((policy) =>
+      operationForSetCeilingPolicy({ accessJwt, policy }),
+    ));
+    const signer = coverClinicSigner();
+    const assertions = await Promise.all(operations.map(async (operation) =>
+      encodeVendorAssertion(await signer.signerAuthenticator.assert({
+        operation,
+        rpId: env.WEBAUTHN_RP_ID,
+        origin: env.WEBAUTHN_ORIGIN,
+        up: true,
+        uv: true,
+      })),
+    ));
+    const beforePolicies = await countCeilingPolicyRows();
+    const beforeCommands = await countCeilingPolicyCommands();
+    const results = await Promise.all(operations.map((operation, index) =>
+      hpSetCeilingPolicy({
+        accessJwt,
+        operation,
+        assertion: assertions[index]!,
+        policy: policies[index]!,
+      }),
+    ));
+    expect(results.map((result) => JSON.parse(result.detail).version).sort((a, b) => a - b)).toEqual([
+      beforePolicies + 1,
+      beforePolicies + 2,
+    ]);
+    expect(await countCeilingPolicyRows()).toBe(beforePolicies + 2);
+    expect(await countCeilingPolicyCommands()).toBe(beforeCommands + 2);
+
+    const replay = await hpSetCeilingPolicy({
+      accessJwt,
+      operation: operations[0]!,
+      assertion: assertions[0]!,
+      policy: policies[0]!,
+    });
+    expect(replay.result).toBe("ok");
+    expect(JSON.parse(replay.detail)).toEqual(JSON.parse(results[0]!.detail));
+    expect(await countCeilingPolicyRows()).toBe(beforePolicies + 2);
+    expect(await countCeilingPolicyCommands()).toBe(beforeCommands + 2);
   });
 });

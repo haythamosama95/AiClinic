@@ -12,6 +12,7 @@ import {
   verifyAccessJwt,
   verifyAssertion,
   verifyGrantSignature,
+  verifyReceiptSignature,
   signCompactJws,
   receiptSigningBytes,
   type AccessCertsDocument,
@@ -770,7 +771,9 @@ async function ensureGrantClaimsBackfilled(
   )
     .bind(orgId)
     .first<{ org_id: string }>();
-  if (done !== null) return true;
+  if (done !== null) {
+    return ensureComplimentaryCeilingClaimsBackfilled(env, orgId, version);
+  }
 
   const bindings = await env.DB.prepare(
     `SELECT installation_id, epoch FROM tenant_binding WHERE org_id = ? ORDER BY epoch ASC`,
@@ -921,7 +924,7 @@ async function ensureGrantClaimsBackfilled(
   )
     .bind(orgId, nowIso)
     .run();
-  return true;
+  return ensureComplimentaryCeilingClaimsBackfilled(env, orgId, version);
 }
 
 function buildGrantClaimInsertStatement(
@@ -1173,17 +1176,131 @@ async function persistGrantClaimReceipt(
     await alertGrantClaimDispute(env, claim.org_id, claim.grant_id, nowIso);
     return false;
   }
-  await env.DB.prepare(
+  const ceilingClaim = await readComplimentaryCeilingClaim(env.DB, claim.grant_id);
+  if (claim.source_kind === "complimentary") {
+    if (
+      ceilingClaim === null || ceilingClaim.org_id !== claim.org_id ||
+      ceilingClaim.envelope_sha256 !== claim.envelope_sha256 ||
+      receipt.result !== "applied" || typeof receipt.applied_at !== "string" ||
+      !(await verifyPlatformReceipt(env, receipt))
+    ) {
+      await alertGrantClaimDispute(env, claim.org_id, claim.grant_id, nowIso);
+      return false;
+    }
+  }
+  const statements = [env.DB.prepare(
     `UPDATE grant_claim SET state = 'completed', receipt = ?, completed_at = ?,
             command_state = CASE WHEN accepted_command IS NULL THEN command_state ELSE 'completed' END,
             lease_token = NULL, lease_until = NULL
      WHERE grant_id = ? AND state = 'pending' AND installation_id = ? AND route_generation = ?`,
   )
-    .bind(canonicalJsonText(receipt), nowIso, claim.grant_id, claim.installation_id, claim.route_generation)
-    .run();
+    .bind(canonicalJsonText(receipt), nowIso, claim.grant_id, claim.installation_id, claim.route_generation)];
+  if (claim.source_kind === "complimentary" && ceilingClaim !== null) {
+    statements.push(env.DB.prepare(
+      `UPDATE complimentary_ceiling_claim
+       SET status = 'applied', receipt = ?, applied_at = ?
+       WHERE grant_id = ? AND org_id = ? AND envelope_sha256 = ? AND status = 'pending'`,
+    ).bind(
+      canonicalJsonText(receipt),
+      receipt.applied_at as string,
+      claim.grant_id,
+      claim.org_id,
+      claim.envelope_sha256,
+    ));
+  }
+  await env.DB.batch(statements);
   const stored = await readGrantClaim(env.DB, claim.grant_id);
+  const storedCeilingClaim = claim.source_kind === "complimentary"
+    ? await readComplimentaryCeilingClaim(env.DB, claim.grant_id)
+    : null;
   return stored?.state === "completed" && stored.receipt !== null &&
-    canonicalJsonText(JSON.parse(stored.receipt)) === canonicalJsonText(receipt);
+    canonicalJsonText(JSON.parse(stored.receipt)) === canonicalJsonText(receipt) &&
+    (claim.source_kind !== "complimentary" || (
+      storedCeilingClaim?.status === "applied" &&
+      storedCeilingClaim.applied_at === receipt.applied_at &&
+      storedCeilingClaim.receipt !== null &&
+      canonicalJsonText(JSON.parse(storedCeilingClaim.receipt)) === canonicalJsonText(receipt)
+    ));
+}
+
+async function verifyPlatformReceipt(
+  env: VendorEnv,
+  receipt: Record<string, unknown>,
+): Promise<boolean> {
+  try {
+    const signing = typeof env.PLATFORM_SIGNING_KEY === "string"
+      ? JSON.parse(env.PLATFORM_SIGNING_KEY) as { public_key?: unknown }
+      : null;
+    if (typeof signing?.public_key !== "string") return false;
+    const bytes = base64UrlDecode(signing.public_key);
+    if (bytes === null) return false;
+    const publicKey = await crypto.subtle.importKey(
+      "raw",
+      bytes,
+      { name: "Ed25519" },
+      false,
+      ["verify"],
+    );
+    return verifyReceiptSignature({ receipt, publicKey });
+  } catch {
+    return false;
+  }
+}
+
+async function sealPendingCeilingClaimNoEffect(
+  env: VendorEnv,
+  grantClaim: GrantClaimRow,
+  ceilingClaim: ComplimentaryCeilingClaimRow,
+  version: number,
+  nowIso: string,
+): Promise<"sealed" | "applied" | false> {
+  if (ceilingClaim.status === "applied") return "applied";
+  if (ceilingClaim.status === "sealed_no_effect") return "sealed";
+  const response = await callCoverageDo(env, grantClaim.installation_id, {
+    kind: "seal_ceiling_claim",
+    installationId: grantClaim.installation_id,
+    orgId: grantClaim.org_id,
+    bindingEpoch: grantClaim.binding_epoch,
+    routeGeneration: grantClaim.route_generation,
+    vendorContractVersion: version,
+    grantId: grantClaim.grant_id,
+    envelopeSha256: grantClaim.envelope_sha256,
+    nowIso,
+    platformSigningKeyJson: env.PLATFORM_SIGNING_KEY,
+  });
+  if (response === null || !isRecord(response.receipt)) return false;
+  const receipt = response.receipt;
+  if (response.result === "already_applied") {
+    if (receipt.result !== "applied") return false;
+    return await persistGrantClaimReceipt(env, grantClaim, receipt, nowIso)
+      ? "applied"
+      : false;
+  }
+  if (
+    (response.result !== "sealed" && response.result !== "sealed_no_effect") ||
+    receipt.result !== "sealed_no_effect" ||
+    receipt.org_id !== grantClaim.org_id ||
+    receipt.installation_id !== grantClaim.installation_id ||
+    receipt.grant_id !== grantClaim.grant_id ||
+    receipt.envelope_sha256 !== grantClaim.envelope_sha256 ||
+    receipt.route_generation !== grantClaim.route_generation ||
+    !(await verifyPlatformReceipt(env, receipt))
+  ) return false;
+  await env.DB.prepare(
+    `UPDATE complimentary_ceiling_claim
+     SET status = 'sealed_no_effect', receipt = ?
+     WHERE grant_id = ? AND org_id = ? AND envelope_sha256 = ? AND status = 'pending'`,
+  ).bind(
+    canonicalJsonText(receipt),
+    ceilingClaim.grant_id,
+    ceilingClaim.org_id,
+    ceilingClaim.envelope_sha256,
+  ).run();
+  const stored = await readComplimentaryCeilingClaim(env.DB, ceilingClaim.grant_id);
+  return stored?.status === "sealed_no_effect" && stored.receipt !== null &&
+    canonicalJsonText(JSON.parse(stored.receipt)) === canonicalJsonText(receipt)
+    ? "sealed"
+    : false;
 }
 
 async function callCoverageDo(
@@ -1801,6 +1918,387 @@ async function readCeilingPolicyByAssertionSha256(
     )
     .bind(assertionSha256)
     .first<CeilingPolicyRow>();
+}
+
+type CeilingPolicyCommandRow = {
+  challenge_sha256: string;
+  policy_version: number;
+  actor: string;
+  operation_json: string;
+  contract_version: number;
+  result_json: string;
+};
+
+type ComplimentaryCeilingClaimRow = {
+  grant_id: string;
+  org_id: string;
+  envelope_sha256: string;
+  plan_id: string;
+  plan_version: number;
+  allowance_denominator: number;
+  day_contribution: number;
+  allowance_contribution: number;
+  apply_per_grant_caps: number;
+  override_authorized: number;
+  status: "pending" | "applied" | "sealed_no_effect";
+  receipt: string | null;
+  applied_at: string | null;
+  created_at: string;
+};
+
+type CeilingContribution = {
+  planId: string;
+  planVersion: number;
+  allowanceDenominator: number;
+  dayContribution: number;
+  allowanceContribution: number;
+  applyPerGrantCaps: boolean;
+};
+
+function complimentaryCeilingContribution(
+  envelope: Record<string, unknown>,
+  plan: PlanVersionRow,
+): CeilingContribution | null {
+  if (!Number.isInteger(plan.max_allowance_per_month) || plan.max_allowance_per_month <= 0) {
+    return null;
+  }
+  const planInput = envelope.plan;
+  if (!isRecord(planInput) || typeof planInput.plan_id !== "string" || !Number.isInteger(planInput.plan_version)) {
+    return null;
+  }
+  if (envelope.kind === "term_adjustment") {
+    const adjustment = envelope.adjustment;
+    if (!isRecord(adjustment)) return null;
+    const extendDays = adjustment.extend_days;
+    const addAllowance = adjustment.add_allowance;
+    return {
+      planId: planInput.plan_id,
+      planVersion: planInput.plan_version as number,
+      allowanceDenominator: plan.max_allowance_per_month,
+      dayContribution: Number.isInteger(extendDays) && (extendDays as number) > 0 ? extendDays as number : 0,
+      allowanceContribution: Number.isInteger(addAllowance) && (addAllowance as number) > 0 ? addAllowance as number : 0,
+      applyPerGrantCaps: false,
+    };
+  }
+  const duration = envelope.duration;
+  if (!isRecord(duration) || !Number.isInteger(duration.count) || (duration.count as number) < 1) {
+    return null;
+  }
+  const dayContribution = duration.unit === "month"
+    ? (duration.count as number) * 31
+    : duration.unit === "day" ? duration.count as number : null;
+  if (dayContribution === null || !Number.isInteger(envelope.allowance_credits)) return null;
+  return {
+    planId: planInput.plan_id,
+    planVersion: planInput.plan_version as number,
+    allowanceDenominator: plan.max_allowance_per_month,
+    dayContribution,
+    allowanceContribution: envelope.allowance_credits as number,
+    applyPerGrantCaps: true,
+  };
+}
+
+async function readComplimentaryCeilingClaim(
+  db: D1Database,
+  grantId: string,
+): Promise<ComplimentaryCeilingClaimRow | null> {
+  return db.prepare(
+    `SELECT grant_id, org_id, envelope_sha256, plan_id, plan_version,
+            allowance_denominator, day_contribution, allowance_contribution,
+            apply_per_grant_caps, override_authorized, status, receipt,
+            applied_at, created_at
+     FROM complimentary_ceiling_claim WHERE grant_id = ?`,
+  ).bind(grantId).first<ComplimentaryCeilingClaimRow>();
+}
+
+function buildComplimentaryCeilingClaimInsertStatement(
+  db: D1Database,
+  input: {
+    grantId: string;
+    orgId: string;
+    envelopeSha256: string;
+    contribution: CeilingContribution;
+    overrideAuthorized: boolean;
+    nowIso: string;
+  },
+): D1PreparedStatement {
+  return db.prepare(
+    `INSERT INTO complimentary_ceiling_claim (
+       grant_id, org_id, envelope_sha256, plan_id, plan_version,
+       allowance_denominator, day_contribution, allowance_contribution,
+       apply_per_grant_caps, override_authorized, status, receipt, applied_at, created_at
+     ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', NULL, NULL, ?)`,
+  ).bind(
+    input.grantId,
+    input.orgId,
+    input.envelopeSha256,
+    input.contribution.planId,
+    input.contribution.planVersion,
+    input.contribution.allowanceDenominator,
+    input.contribution.dayContribution,
+    input.contribution.allowanceContribution,
+    input.contribution.applyPerGrantCaps ? 1 : 0,
+    input.overrideAuthorized ? 1 : 0,
+    input.nowIso,
+  );
+}
+
+async function complimentaryCeilingClaimFitsCurrentPolicy(
+  db: D1Database,
+  claim: ComplimentaryCeilingClaimRow,
+  nowIso: string,
+): Promise<boolean> {
+  if (claim.status !== "pending") return claim.status === "applied";
+  if (claim.override_authorized === 1) return true;
+  const policy = await readCurrentCeilingPolicy(db);
+  if (policy === null) return false;
+  const sums = await db.prepare(
+    `SELECT COALESCE(SUM(day_contribution), 0) AS days,
+            COALESCE(SUM(CAST(allowance_contribution AS REAL) / allowance_denominator), 0) AS allowance_months
+     FROM complimentary_ceiling_claim
+     WHERE org_id = ?
+       AND (status = 'pending' OR (
+         status = 'applied'
+         AND julianday(applied_at) > julianday(?) - ?
+         AND julianday(applied_at) <= julianday(?)
+       ))`,
+  ).bind(claim.org_id, nowIso, policy.window_days, nowIso)
+    .first<{ days: number; allowance_months: number }>();
+  if (sums === null || sums.days > policy.window_max_days ||
+      sums.allowance_months > policy.window_max_allowance_months) return false;
+  return claim.apply_per_grant_caps === 0 || (
+    claim.day_contribution <= policy.per_grant_max_days &&
+    claim.allowance_contribution / claim.allowance_denominator <=
+      policy.per_grant_max_allowance_months
+  );
+}
+
+async function ensureComplimentaryCeilingClaimsBackfilled(
+  env: VendorEnv,
+  orgId: string,
+  version: number,
+): Promise<boolean> {
+  const done = await env.DB.prepare(
+    "SELECT org_id FROM complimentary_ceiling_claim_backfill WHERE org_id = ?",
+  ).bind(orgId).first<{ org_id: string }>();
+  if (done !== null) return true;
+  const bindings = await env.DB.prepare(
+    `SELECT installation_id FROM tenant_binding WHERE org_id = ? ORDER BY epoch ASC`,
+  ).bind(orgId).all<{ installation_id: string }>();
+  const nowIso = await clockNowIso(env);
+  const seen = new Set<string>();
+  for (const binding of bindings.results ?? []) {
+    const inspected = await callCoverageDo(env, binding.installation_id, {
+      kind: "inspect_coverage",
+      installationId: binding.installation_id,
+      orgId,
+      vendorContractVersion: version,
+    });
+    if (inspected === null || !Array.isArray(inspected.grants)) return false;
+    for (const raw of inspected.grants) {
+      if (!isRecord(raw) || raw.source_kind !== "complimentary") continue;
+      if (typeof raw.grant_id !== "string" || typeof raw.envelope_sha256 !== "string") {
+        await alertGrantClaimDispute(env, orgId, "unknown", nowIso);
+        return false;
+      }
+      const grantId = raw.grant_id;
+      const envelope = isRecord(raw.envelope)
+        ? raw.envelope
+        : typeof raw.envelope === "string" ? (() => {
+          try { const parsed: unknown = JSON.parse(raw.envelope); return isRecord(parsed) ? parsed : null; }
+          catch { return null; }
+        })() : null;
+      const receipt = await parseGrantReceipt(raw.receipt);
+      const claim = await readGrantClaim(env.DB, grantId);
+      if (
+        envelope === null || receipt === null || claim === null || !("grant_id" in claim) ||
+        claim.org_id !== orgId || claim.envelope_sha256 !== raw.envelope_sha256 ||
+        claim.installation_id !== binding.installation_id ||
+        claim.envelope !== canonicalJsonText(envelope) ||
+        receipt.org_id !== orgId || receipt.installation_id !== binding.installation_id ||
+        receipt.grant_id !== grantId || receipt.envelope_sha256 !== raw.envelope_sha256 ||
+        receipt.result !== "applied" || typeof receipt.applied_at !== "string" ||
+        await grantEnvelopeHash(envelope) !== raw.envelope_sha256 ||
+        (typeof raw.applied_at === "string" && raw.applied_at !== receipt.applied_at) ||
+        !(await verifyPlatformReceipt(env, receipt))
+      ) {
+        await alertGrantClaimDispute(env, orgId, grantId, nowIso);
+        return false;
+      }
+      const planInput = envelope.plan;
+      if (!isRecord(planInput) || typeof planInput.plan_id !== "string" || !Number.isInteger(planInput.plan_version)) {
+        await alertGrantClaimDispute(env, orgId, grantId, nowIso);
+        return false;
+      }
+      const plan = await readPlanVersion(env.DB, planInput.plan_id, planInput.plan_version as number);
+      const contribution = plan === null ? null : complimentaryCeilingContribution(envelope, plan);
+      if (contribution === null) {
+        await alertGrantClaimDispute(env, orgId, grantId, nowIso);
+        return false;
+      }
+      const ledger = await env.DB.prepare(
+        `SELECT installation_id, envelope_sha256, receipt FROM grant_ledger WHERE grant_id = ?`,
+      ).bind(grantId).first<{ installation_id: string; envelope_sha256: string; receipt: string }>();
+      if (ledger !== null) {
+        const ledgerReceipt = await parseGrantReceipt(ledger.receipt);
+        if (
+          ledger.installation_id !== binding.installation_id ||
+          ledger.envelope_sha256 !== raw.envelope_sha256 || ledgerReceipt === null ||
+          canonicalJsonText(ledgerReceipt) !== canonicalJsonText(receipt)
+        ) {
+          await alertGrantClaimDispute(env, orgId, grantId, nowIso);
+          return false;
+        }
+      }
+      const r2Row = await readGrantLedgerR2(env, grantId);
+      if (r2Row !== null) {
+        const r2Receipt = await parseGrantReceipt(r2Row.receipt);
+        if (
+          r2Row.org_id !== orgId || r2Row.installation_id !== binding.installation_id ||
+          r2Row.envelope_sha256 !== raw.envelope_sha256 || r2Receipt === null ||
+          canonicalJsonText(r2Receipt) !== canonicalJsonText(receipt)
+        ) {
+          await alertGrantClaimDispute(env, orgId, grantId, nowIso);
+          return false;
+        }
+      }
+      const prior = await readComplimentaryCeilingClaim(env.DB, grantId);
+      if (prior === null) {
+        await env.DB.prepare(
+          `INSERT INTO complimentary_ceiling_claim (
+             grant_id, org_id, envelope_sha256, plan_id, plan_version,
+             allowance_denominator, day_contribution, allowance_contribution,
+             apply_per_grant_caps, source_reconciled, override_authorized,
+             status, receipt, applied_at, created_at
+           ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 1, 0, 'applied', ?, ?, ?)`,
+        ).bind(
+          grantId, orgId, raw.envelope_sha256, contribution.planId,
+          contribution.planVersion, contribution.allowanceDenominator,
+          contribution.dayContribution, contribution.allowanceContribution,
+          contribution.applyPerGrantCaps ? 1 : 0, canonicalJsonText(receipt),
+          receipt.applied_at, typeof raw.applied_at === "string" ? raw.applied_at : receipt.applied_at,
+        ).run();
+      } else if (
+        prior.org_id !== orgId || prior.envelope_sha256 !== raw.envelope_sha256 ||
+        prior.plan_id !== contribution.planId || prior.plan_version !== contribution.planVersion ||
+        prior.allowance_denominator !== contribution.allowanceDenominator ||
+        prior.day_contribution !== contribution.dayContribution ||
+        prior.allowance_contribution !== contribution.allowanceContribution
+      ) {
+        await alertGrantClaimDispute(env, orgId, grantId, nowIso);
+        return false;
+      } else if (prior.status === "pending") {
+        await env.DB.prepare(
+          `UPDATE complimentary_ceiling_claim SET status = 'applied', receipt = ?, applied_at = ?
+           WHERE grant_id = ? AND status = 'pending'`,
+        ).bind(canonicalJsonText(receipt), receipt.applied_at, grantId).run();
+      } else if (
+        prior.status !== "applied" || prior.applied_at !== receipt.applied_at ||
+        prior.receipt === null || canonicalJsonText(JSON.parse(prior.receipt)) !== canonicalJsonText(receipt)
+      ) {
+        await alertGrantClaimDispute(env, orgId, grantId, nowIso);
+        return false;
+      }
+      seen.add(grantId);
+    }
+  }
+
+  const pending = await env.DB.prepare(
+    `SELECT grant_id, envelope, envelope_sha256, accepted_at, created_at,
+            override_assertion_sha256
+     FROM grant_claim
+     WHERE org_id = ? AND source_kind = 'complimentary' AND state = 'pending'
+       AND command_state = 'accepted'`,
+  ).bind(orgId).all<{
+    grant_id: string;
+    envelope: string;
+    envelope_sha256: string;
+    accepted_at: string | null;
+    created_at: string;
+    override_assertion_sha256: string | null;
+  }>();
+  for (const row of pending.results ?? []) {
+    if (await readComplimentaryCeilingClaim(env.DB, row.grant_id) !== null) continue;
+    let envelope: Record<string, unknown>;
+    try {
+      const parsed: unknown = JSON.parse(row.envelope);
+      if (!isRecord(parsed)) throw new Error("invalid_envelope");
+      envelope = parsed;
+    } catch {
+      await alertGrantClaimDispute(env, orgId, row.grant_id, nowIso);
+      return false;
+    }
+    const planInput = envelope.plan;
+    if (!isRecord(planInput) || typeof planInput.plan_id !== "string" || !Number.isInteger(planInput.plan_version)) {
+      await alertGrantClaimDispute(env, orgId, row.grant_id, nowIso);
+      return false;
+    }
+    const plan = await readPlanVersion(env.DB, planInput.plan_id, planInput.plan_version as number);
+    const contribution = plan === null ? null : complimentaryCeilingContribution(envelope, plan);
+    if (contribution === null || await grantEnvelopeHash(envelope) !== row.envelope_sha256) {
+      await alertGrantClaimDispute(env, orgId, row.grant_id, nowIso);
+      return false;
+    }
+    await env.DB.prepare(
+      `INSERT INTO complimentary_ceiling_claim (
+         grant_id, org_id, envelope_sha256, plan_id, plan_version,
+         allowance_denominator, day_contribution, allowance_contribution,
+         apply_per_grant_caps, source_reconciled, override_authorized,
+         status, receipt, applied_at, created_at
+       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?, 'pending', NULL, NULL, ?)`,
+    ).bind(
+      row.grant_id, orgId, row.envelope_sha256, contribution.planId,
+      contribution.planVersion, contribution.allowanceDenominator,
+      contribution.dayContribution, contribution.allowanceContribution,
+      contribution.applyPerGrantCaps ? 1 : 0,
+      row.override_assertion_sha256 === null ? 0 : 1,
+      row.accepted_at ?? row.created_at,
+    ).run();
+  }
+  const unclaimedLedger = await env.DB.prepare(
+    `SELECT grant_id FROM grant_ledger WHERE org_id = ? AND source_kind = 'complimentary'`,
+  ).bind(orgId).all<{ grant_id: string }>();
+  for (const row of unclaimedLedger.results ?? []) {
+    if (!seen.has(row.grant_id)) {
+      await alertGrantClaimDispute(env, orgId, row.grant_id, nowIso);
+      return false;
+    }
+  }
+  await env.DB.prepare(
+    `INSERT OR IGNORE INTO complimentary_ceiling_claim_backfill (org_id, completed_at) VALUES (?, ?)`,
+  ).bind(orgId, nowIso).run();
+  return true;
+}
+
+async function readCeilingPolicyCommand(
+  db: D1Database,
+  challengeSha256: string,
+): Promise<CeilingPolicyCommandRow | null> {
+  return db.prepare(
+    `SELECT challenge_sha256, policy_version, actor, operation_json,
+            contract_version, result_json
+     FROM ceiling_policy_command WHERE challenge_sha256 = ?`,
+  ).bind(challengeSha256).first<CeilingPolicyCommandRow>();
+}
+
+function ceilingPolicyCommandResult(
+  command: CeilingPolicyCommandRow,
+  operation: Record<string, unknown>,
+  actor: string,
+  version: number,
+): VendorResultEnvelope {
+  if (
+    command.operation_json !== canonicalJsonText(operation) ||
+    command.actor !== actor || command.contract_version !== version
+  ) {
+    return { contract_version: version, result: "conflict", code: "", detail: "" };
+  }
+  try {
+    const row = JSON.parse(command.result_json) as Record<string, unknown>;
+    return ok(version, JSON.stringify(row));
+  } catch {
+    return rejected(version, "storage_error");
+  }
 }
 
 async function assertionIssuedAtFresh(
@@ -3682,12 +4180,19 @@ export class VendorEntrypoint extends WorkerEntrypoint<VendorEnv> {
     }
     const operation = operationRaw as Record<string, unknown>;
     const assertionSha256 = await operationAssertionSha256(operation);
-    const existingByAssertion = await readCeilingPolicyByAssertionSha256(
-      this.env.DB,
-      assertionSha256,
-    );
-    if (existingByAssertion !== null) {
-      return ok(version, ceilingPolicyRowToDetail(existingByAssertion));
+    const existingCommand = await readCeilingPolicyCommand(this.env.DB, assertionSha256);
+    if (existingCommand !== null) {
+      return ceilingPolicyCommandResult(
+        existingCommand,
+        operation,
+        access.email,
+        version,
+      );
+    }
+    // Pre-RM18 policy rows did not retain accepted bytes or actor. They cannot
+    // be treated as exact retries without evidence, so leave them read-only.
+    if (await readCeilingPolicyByAssertionSha256(this.env.DB, assertionSha256) !== null) {
+      return { contract_version: version, result: "conflict", code: "", detail: "" };
     }
 
     const check = await runHpAssertionChecks(
@@ -3733,46 +4238,77 @@ export class VendorEntrypoint extends WorkerEntrypoint<VendorEnv> {
       return rejected(version, "bad_request");
     }
 
-    const current = await readCurrentCeilingPolicy(this.env.DB);
-    const nextVersion = (current?.version ?? 0) + 1;
-
-    await finishHpAssertion(
-      this.env,
-      access.email,
-      "setCeilingPolicy",
-      check,
-    );
-
-    await this.env.DB.prepare(
-      `INSERT INTO ceiling_policy (
-         version, per_grant_max_days, per_grant_max_allowance_months,
-         window_days, window_max_days, window_max_allowance_months,
-         max_paid_grace_days, paid_cap_rule, set_by, assertion_sha256
-       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-    )
-      .bind(
-        nextVersion,
-        perGrantMaxDays,
-        perGrantMaxAllowanceMonths,
-        windowDays,
-        windowMaxDays,
-        windowMaxAllowanceMonths,
-        maxPaidGraceDays,
-        paidCapRule,
-        access.email,
-        check.assertionSha256,
-      )
-      .run();
-
-    const row = await readCeilingPolicyByAssertionSha256(
-      this.env.DB,
-      check.assertionSha256,
-    );
-    if (row === null) {
-      return rejected(version, "bad_request");
+    const nowIso = await clockNowIso(this.env);
+    const operationJson = canonicalJsonText(operation);
+    try {
+      await this.env.DB.batch([
+        this.env.DB.prepare(
+          `INSERT INTO ceiling_policy (
+             version, per_grant_max_days, per_grant_max_allowance_months,
+             window_days, window_max_days, window_max_allowance_months,
+             max_paid_grace_days, paid_cap_rule, set_by, assertion_sha256
+           ) SELECT COALESCE(MAX(version), 0) + 1, ?, ?, ?, ?, ?, ?, ?, ?, ?
+             FROM ceiling_policy`,
+        ).bind(
+          perGrantMaxDays,
+          perGrantMaxAllowanceMonths,
+          windowDays,
+          windowMaxDays,
+          windowMaxAllowanceMonths,
+          maxPaidGraceDays,
+          paidCapRule,
+          access.email,
+          check.assertionSha256,
+        ),
+        this.env.DB.prepare(
+          `INSERT INTO ceiling_policy_command (
+             challenge_sha256, policy_version, actor, operation_json,
+             contract_version, result_json, created_at
+           ) SELECT ?, version, ?, ?, ?, json_object(
+             'version', version,
+             'per_grant_max_days', per_grant_max_days,
+             'per_grant_max_allowance_months', per_grant_max_allowance_months,
+             'window_days', window_days,
+             'window_max_days', window_max_days,
+             'window_max_allowance_months', window_max_allowance_months,
+             'max_paid_grace_days', max_paid_grace_days,
+             'paid_cap_rule', paid_cap_rule,
+             'set_by', set_by,
+             'assertion_sha256', assertion_sha256
+           ), ?
+           FROM ceiling_policy WHERE assertion_sha256 = ? ORDER BY version DESC LIMIT 1`,
+        ).bind(
+          assertionSha256,
+          access.email,
+          operationJson,
+          version,
+          nowIso,
+          assertionSha256,
+        ),
+        await buildAssertionUsedStatement(
+          this.env,
+          check.assertionSha256,
+          check.signer.credential_id,
+        ),
+        buildEntrypointAuditStatement(
+          this.env.DB,
+          access.email,
+          "setCeilingPolicy",
+          check.auditTarget,
+          check.assertionSha256,
+        ),
+      ]);
+    } catch {
+      const raced = await readCeilingPolicyCommand(this.env.DB, assertionSha256);
+      if (raced !== null) {
+        return ceilingPolicyCommandResult(raced, operation, access.email, version);
+      }
+      return rejected(version, "assertion_used");
     }
-
-    return ok(version, ceilingPolicyRowToDetail(row));
+    const command = await readCeilingPolicyCommand(this.env.DB, assertionSha256);
+    return command === null
+      ? rejected(version, "storage_error")
+      : ceilingPolicyCommandResult(command, operation, access.email, version);
   }
 
   async grant(args: Record<string, unknown>): Promise<GrantResultEnvelope> {
@@ -3983,6 +4519,10 @@ export class VendorEntrypoint extends WorkerEntrypoint<VendorEnv> {
         }
         return grantRejected(version, "plan_not_published");
       }
+      const ceilingContribution = complimentaryCeilingContribution(envelope, planRow);
+      if (ceilingContribution === null) {
+        return grantRejected(version, "coverage_unknown");
+      }
 
       const duration = envelope.duration;
       if (!isRecord(duration)) {
@@ -4134,6 +4674,14 @@ export class VendorEntrypoint extends WorkerEntrypoint<VendorEnv> {
             nowIso: acceptedAt,
             accepted,
           }),
+          buildComplimentaryCeilingClaimInsertStatement(this.env.DB, {
+            grantId: claimGrantId,
+            orgId,
+            envelopeSha256: claimEnvelopeSha256,
+            contribution: ceilingContribution,
+            overrideAuthorized: overrideAssertionSha256 !== null,
+            nowIso: acceptedAt,
+          }),
           await buildAssertionUsedStatement(
             this.env,
             assertionCheck!.assertionSha256,
@@ -4156,19 +4704,51 @@ export class VendorEntrypoint extends WorkerEntrypoint<VendorEnv> {
         ));
         try {
           await this.env.DB.batch(statements);
-        } catch {
-          await writeEntrypointAudit(
-            this.env.DB,
-            access.email,
-            "grant",
-            assertionCheck!.auditTarget,
-            assertionCheck!.assertionSha256,
-          );
-          return grantRejected(version, "assertion_used");
+        } catch (error) {
+          if (String(error).includes("complimentary_ceiling_exceeded")) {
+            return grantRejected(version, "exceeds_ceiling");
+          }
+          const raced = await readGrantClaim(this.env.DB, claimGrantId);
+          if (
+            raced === null || !("grant_id" in raced) || raced.org_id !== orgId ||
+            raced.envelope_sha256 !== claimEnvelopeSha256 ||
+            raced.accepted_actor !== access.email ||
+            raced.accepted_command !== canonicalJsonText(accepted.command)
+          ) {
+            await writeEntrypointAudit(
+              this.env.DB,
+              access.email,
+              "grant",
+              assertionCheck!.auditTarget,
+              assertionCheck!.assertionSha256,
+            );
+            return grantRejected(version, "assertion_used");
+          }
+          existingGrantClaim = raced;
         }
-        existingGrantClaim = await readGrantClaim(this.env.DB, claimGrantId);
+        if (existingGrantClaim === null) {
+          existingGrantClaim = await readGrantClaim(this.env.DB, claimGrantId);
+        }
       }
       if (existingGrantClaim === null) return grantRejected(version, "coverage_unknown");
+      const ceilingClaim = await readComplimentaryCeilingClaim(this.env.DB, claimGrantId);
+      if (
+        ceilingClaim === null || ceilingClaim.org_id !== orgId ||
+        ceilingClaim.envelope_sha256 !== claimEnvelopeSha256 ||
+        ceilingClaim.plan_id !== ceilingContribution.planId ||
+        ceilingClaim.plan_version !== ceilingContribution.planVersion ||
+        ceilingClaim.allowance_denominator !== ceilingContribution.allowanceDenominator ||
+        ceilingClaim.day_contribution !== ceilingContribution.dayContribution ||
+        ceilingClaim.allowance_contribution !== ceilingContribution.allowanceContribution
+      ) {
+        return grantRejected(version, "coverage_unknown");
+      }
+      if (ceilingClaim.status === "sealed_no_effect") {
+        if (existingGrantClaim.command_state === "accepted") {
+          await rejectAcceptedGrantCommand(this.env, existingGrantClaim, "exceeds_ceiling", "");
+        }
+        return grantRejected(version, "exceeds_ceiling");
+      }
       if (existingGrantClaim.command_state === "accepted") {
         try {
           existingGrantClaim = await ensureAcceptedGrantBinding(this.env, existingGrantClaim);
@@ -4207,6 +4787,26 @@ export class VendorEntrypoint extends WorkerEntrypoint<VendorEnv> {
       }
 
       const nowIso = await clockNowIso(this.env);
+      if (!(await complimentaryCeilingClaimFitsCurrentPolicy(this.env.DB, ceilingClaim, nowIso))) {
+        const resolution = await sealPendingCeilingClaimNoEffect(
+          this.env,
+          existingGrantClaim,
+          ceilingClaim,
+          version,
+          nowIso,
+        );
+        if (resolution === "applied") {
+          const completed = await readGrantClaim(this.env.DB, claimGrantId);
+          return completed !== null && "grant_id" in completed
+            ? claimReplayResult(version, completed, claimEnvelopeSha256, orgId) as GrantResultEnvelope
+            : grantRejected(version, "coverage_unknown");
+        }
+        if (resolution === "sealed") {
+          await rejectAcceptedGrantCommand(this.env, existingGrantClaim, "exceeds_ceiling", "");
+          return grantRejected(version, "exceeds_ceiling");
+        }
+        return grantTransient(version, "unavailable");
+      }
       const planSnapshot = existingGrantClaim.plan_snapshot === null
         ? {
         plan_id: planId,
@@ -4272,6 +4872,16 @@ export class VendorEntrypoint extends WorkerEntrypoint<VendorEnv> {
             ceilingPolicy.window_max_allowance_months,
         },
         skipCeilingCheck,
+        ceilingClaim: {
+          grantId: ceilingClaim.grant_id,
+          orgId: ceilingClaim.org_id,
+          envelopeSha256: ceilingClaim.envelope_sha256,
+          planId: ceilingClaim.plan_id,
+          planVersion: ceilingClaim.plan_version,
+          allowanceDenominator: ceilingClaim.allowance_denominator,
+          dayContribution: ceilingClaim.day_contribution,
+          allowanceContribution: ceilingClaim.allowance_contribution,
+        },
         adjustment,
       });
 

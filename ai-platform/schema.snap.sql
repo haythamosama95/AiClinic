@@ -69,6 +69,42 @@ CREATE TABLE ceiling_policy (
   assertion_sha256 TEXT NOT NULL
 );
 
+CREATE TABLE ceiling_policy_command (
+  challenge_sha256 TEXT PRIMARY KEY NOT NULL,
+  policy_version INTEGER NOT NULL UNIQUE,
+  actor TEXT NOT NULL,
+  operation_json TEXT NOT NULL,
+  contract_version INTEGER NOT NULL,
+  result_json TEXT NOT NULL,
+  created_at TEXT NOT NULL
+);
+
+CREATE TABLE complimentary_ceiling_claim (
+  grant_id TEXT PRIMARY KEY NOT NULL,
+  org_id TEXT NOT NULL,
+  envelope_sha256 TEXT NOT NULL,
+  plan_id TEXT NOT NULL,
+  plan_version INTEGER NOT NULL CHECK (plan_version > 0),
+  allowance_denominator INTEGER NOT NULL CHECK (allowance_denominator > 0),
+  day_contribution INTEGER NOT NULL CHECK (day_contribution >= 0),
+  allowance_contribution INTEGER NOT NULL CHECK (allowance_contribution >= 0),
+  apply_per_grant_caps INTEGER NOT NULL CHECK (apply_per_grant_caps IN (0, 1)),
+  source_reconciled INTEGER NOT NULL DEFAULT 0 CHECK (source_reconciled IN (0, 1)),
+  override_authorized INTEGER NOT NULL DEFAULT 0 CHECK (override_authorized IN (0, 1)),
+  status TEXT NOT NULL CHECK (status IN ('pending', 'applied', 'sealed_no_effect')),
+  receipt TEXT,
+  applied_at TEXT,
+  created_at TEXT NOT NULL,
+  CHECK ((status = 'applied' AND receipt IS NOT NULL AND applied_at IS NOT NULL)
+      OR (status = 'pending' AND receipt IS NULL AND applied_at IS NULL)
+      OR (status = 'sealed_no_effect' AND receipt IS NOT NULL AND applied_at IS NULL))
+);
+
+CREATE TABLE complimentary_ceiling_claim_backfill (
+  org_id TEXT PRIMARY KEY NOT NULL,
+  completed_at TEXT NOT NULL
+);
+
 CREATE TABLE control_audit (
   audit_id TEXT PRIMARY KEY NOT NULL,
   operator_id TEXT NOT NULL,

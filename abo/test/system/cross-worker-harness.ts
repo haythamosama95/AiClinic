@@ -51,6 +51,7 @@ import dropPlanEntitlementSql from "../../../ai-platform/migrations/202610061701
 import idempotencyFingerprintSql from "../../../ai-platform/migrations/20261014120000_ai_request_idempotency_fingerprint.sql?raw";
 import grantClaimsSql from "../../../ai-platform/migrations/20261019120000_r4_pg1_global_grant_claims.sql?raw";
 import acceptedGrantCommandsSql from "../../../ai-platform/migrations/20261019130000_r4_pg3_accepted_grant_commands.sql?raw";
+import rm18CeilingClaimsSql from "../../../ai-platform/migrations/20261019140000_rm18_complimentary_ceiling_claims.sql?raw";
 
 const PLATFORM_MIGRATION_SQL: string[] = [
   platformSchemaSql,
@@ -79,6 +80,7 @@ const PLATFORM_MIGRATION_SQL: string[] = [
   idempotencyFingerprintSql,
   grantClaimsSql,
   acceptedGrantCommandsSql,
+  rm18CeilingClaimsSql,
 ];
 
 const VENDOR_CONTRACT_VERSION = CHANNEL_VERSIONS.vendorEntrypoint;
@@ -903,13 +905,28 @@ async function clearPlatformTransactionalTables(): Promise<void> {
   try {
     await env.PLATFORM_DB.batch([
       env.PLATFORM_DB.prepare("DROP TRIGGER IF EXISTS grant_claim_no_delete"),
+      env.PLATFORM_DB.prepare("DROP TRIGGER IF EXISTS complimentary_ceiling_claim_no_delete_guard"),
+      env.PLATFORM_DB.prepare("DROP TRIGGER IF EXISTS ceiling_policy_command_no_delete"),
       env.PLATFORM_DB.prepare("DELETE FROM grant_claim"),
+      env.PLATFORM_DB.prepare("DELETE FROM complimentary_ceiling_claim"),
+      env.PLATFORM_DB.prepare("DELETE FROM complimentary_ceiling_claim_backfill"),
+      env.PLATFORM_DB.prepare("DELETE FROM ceiling_policy_command"),
       env.PLATFORM_DB.prepare("DELETE FROM grant_claim_dispute"),
       env.PLATFORM_DB.prepare("DELETE FROM grant_claim_backfill"),
       env.PLATFORM_DB.prepare(`CREATE TRIGGER grant_claim_no_delete
         BEFORE DELETE ON grant_claim
         BEGIN
           SELECT RAISE(ABORT, 'grant_claim is append-only');
+        END`),
+      env.PLATFORM_DB.prepare(`CREATE TRIGGER complimentary_ceiling_claim_no_delete_guard
+        BEFORE DELETE ON complimentary_ceiling_claim
+        BEGIN
+          SELECT RAISE(ABORT, 'complimentary_ceiling_claim is append-only');
+        END`),
+      env.PLATFORM_DB.prepare(`CREATE TRIGGER ceiling_policy_command_no_delete
+        BEFORE DELETE ON ceiling_policy_command
+        BEGIN
+          SELECT RAISE(ABORT, 'ceiling_policy_command is append-only');
         END`),
     ]);
   } catch {

@@ -91,6 +91,7 @@ import malformedIssuerKeyCleanupSql from "../../migrations/20261018120000_r1_c3_
 import tenantCreationCapTriggerSql from "../../migrations/20261018120100_r1_c2_tenant_creation_cap_trigger.sql?raw";
 import grantClaimsSql from "../../migrations/20261019120000_r4_pg1_global_grant_claims.sql?raw";
 import acceptedGrantCommandsSql from "../../migrations/20261019130000_r4_pg3_accepted_grant_commands.sql?raw";
+import rm18CeilingClaimsSql from "../../migrations/20261019140000_rm18_complimentary_ceiling_claims.sql?raw";
 import { applySqlStatements } from "../split-sql-statements";
 import {
   createCapabilityRegistry,
@@ -284,6 +285,7 @@ const MIGRATION_SQL = [
   tenantCreationCapTriggerSql,
   grantClaimsSql,
   acceptedGrantCommandsSql,
+  rm18CeilingClaimsSql,
 ];
 
 const CATALOGUE_PLAN_NAME = "standard";
@@ -355,13 +357,28 @@ export async function resetPlatformState(): Promise<void> {
   nextCoverPlanVersion = 1;
   await env.DB.batch([
     env.DB.prepare("DROP TRIGGER IF EXISTS grant_claim_no_delete"),
+    env.DB.prepare("DROP TRIGGER IF EXISTS complimentary_ceiling_claim_no_delete_guard"),
+    env.DB.prepare("DROP TRIGGER IF EXISTS ceiling_policy_command_no_delete"),
     env.DB.prepare("DELETE FROM grant_claim"),
+    env.DB.prepare("DELETE FROM complimentary_ceiling_claim"),
+    env.DB.prepare("DELETE FROM complimentary_ceiling_claim_backfill"),
+    env.DB.prepare("DELETE FROM ceiling_policy_command"),
     env.DB.prepare("DELETE FROM grant_claim_dispute"),
     env.DB.prepare("DELETE FROM grant_claim_backfill"),
     env.DB.prepare(`CREATE TRIGGER grant_claim_no_delete
       BEFORE DELETE ON grant_claim
       BEGIN
         SELECT RAISE(ABORT, 'grant_claim is append-only');
+      END`),
+    env.DB.prepare(`CREATE TRIGGER complimentary_ceiling_claim_no_delete_guard
+      BEFORE DELETE ON complimentary_ceiling_claim
+      BEGIN
+        SELECT RAISE(ABORT, 'complimentary_ceiling_claim is append-only');
+      END`),
+    env.DB.prepare(`CREATE TRIGGER ceiling_policy_command_no_delete
+      BEFORE DELETE ON ceiling_policy_command
+      BEGIN
+        SELECT RAISE(ABORT, 'ceiling_policy_command is append-only');
       END`),
   ]);
   await env.DB.batch([
@@ -386,6 +403,16 @@ export async function resetPlatformState(): Promise<void> {
     env.DB.prepare("DELETE FROM transfer_step"),
     env.DB.prepare("DELETE FROM transfer"),
     env.DB.prepare("DELETE FROM grant_ledger"),
+    env.DB.prepare("DELETE FROM ceiling_policy WHERE version > 1"),
+    env.DB.prepare(`UPDATE ceiling_policy SET
+      per_grant_max_days = 31,
+      per_grant_max_allowance_months = 1,
+      window_days = 90,
+      window_max_days = 62,
+      window_max_allowance_months = 2,
+      max_paid_grace_days = 7,
+      paid_cap_rule = 'proportional',
+      set_by = '', assertion_sha256 = '' WHERE version = 1`),
     env.DB.prepare("DELETE FROM coverage_mirror"),
     env.DB.prepare("DELETE FROM plan_version"),
     env.DB.prepare("DELETE FROM service_key"),

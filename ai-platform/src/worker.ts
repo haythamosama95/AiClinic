@@ -102,6 +102,7 @@ import {
   openAwaitingTransferRPC,
   readCoverageRPC,
   releaseHeldRPC,
+  sealCeilingClaimRPC,
   sealGrantRouteRPC,
   setTransferPendingRPC,
   transferInRPC,
@@ -118,6 +119,7 @@ import {
   type AdmissionRequest,
   type SettleFallbackRequest,
   type ApplyGrantRequest,
+  type SealCeilingClaimRequest,
   type CreditIdempotencyState,
   type CreditRequest,
   type CoverageShipEnv,
@@ -1909,6 +1911,35 @@ export class GatewayObject extends DurableObject {
           this.ctx.storage,
           (fn) => this.ctx.blockConcurrencyWhile(fn),
           sealBody,
+        );
+        return platformDoResponse(result, contractVersion);
+      }
+      if (kind === "seal_ceiling_claim") {
+        const sealBody = body as Omit<SealCeilingClaimRequest, "db">;
+        if (
+          typeof sealBody.installationId !== "string" ||
+          typeof sealBody.orgId !== "string" ||
+          typeof sealBody.grantId !== "string" ||
+          typeof sealBody.envelopeSha256 !== "string" ||
+          !Number.isInteger(sealBody.routeGeneration) ||
+          !Number.isInteger(sealBody.bindingEpoch) ||
+          typeof sealBody.nowIso !== "string"
+        ) {
+          return platformDoResponse(
+            { kind: "seal_ceiling_claim", result: "conflict" },
+            contractVersion,
+            { status: 400 },
+          );
+        }
+        const runtimeEnv = this.env as Env;
+        const result = await sealCeilingClaimRPC(
+          this.ctx.storage,
+          (fn) => this.ctx.blockConcurrencyWhile(fn),
+          {
+            ...sealBody,
+            platformSigningKeyJson: sealBody.platformSigningKeyJson ?? runtimeEnv.PLATFORM_SIGNING_KEY,
+            db: runtimeEnv.DB,
+          },
         );
         return platformDoResponse(result, contractVersion);
       }

@@ -1980,6 +1980,24 @@ const COVERAGE_DO_SCHEMA_STATEMENTS = [
     route_generation INTEGER NOT NULL,
     sealed_at TEXT NOT NULL
   )`,
+  `CREATE TABLE IF NOT EXISTS grant_ceiling_claim (
+    grant_id TEXT PRIMARY KEY NOT NULL,
+    org_id TEXT NOT NULL,
+    envelope_sha256 TEXT NOT NULL,
+    plan_id TEXT NOT NULL,
+    plan_version INTEGER NOT NULL,
+    allowance_denominator INTEGER NOT NULL,
+    day_contribution INTEGER NOT NULL,
+    allowance_contribution INTEGER NOT NULL
+  )`,
+  `CREATE TABLE IF NOT EXISTS grant_ceiling_no_effect_seal (
+    grant_id TEXT PRIMARY KEY NOT NULL,
+    org_id TEXT NOT NULL,
+    envelope_sha256 TEXT NOT NULL,
+    route_generation INTEGER NOT NULL,
+    sealed_at TEXT NOT NULL,
+    receipt TEXT NOT NULL
+  )`,
 ] as const;
 
 /** Per-clinic coverage tables (P3.3); idempotent on every versioned fetch. */
@@ -2000,6 +2018,7 @@ export async function ensureCoverageDoTables(
 
 export {
   applyGrantRPC,
+  sealCeilingClaimRPC,
   inspectCoverageRPC,
   openAwaitingTransferRPC,
   readCoverageRPC,
@@ -2019,12 +2038,15 @@ export {
   runRebuildGrantLedger,
   runRefreshCoverageSnapshot,
   type ApplyGrantRequest,
+  type ComplimentaryCeilingClaimIdentity,
   type RebuildClinicDoRequest,
   type RebuildClinicDoResponse,
   type RefreshCoverageSnapshotRequest,
   type RefreshCoverageSnapshotResponse,
   type RunRebuildClinicDoResult,
   type ApplyGrantResponse,
+  type SealCeilingClaimRequest,
+  type SealCeilingClaimResponse,
   type SealGrantRouteRequest,
   type SealGrantRouteResponse,
   type InspectCoverageRequest,

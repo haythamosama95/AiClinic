@@ -105,6 +105,17 @@ export type CeilingPolicyNumbers = {
   window_max_allowance_months: number;
 };
 
+export type ComplimentaryCeilingClaimIdentity = {
+  grantId: string;
+  orgId: string;
+  envelopeSha256: string;
+  planId: string;
+  planVersion: number;
+  allowanceDenominator: number;
+  dayContribution: number;
+  allowanceContribution: number;
+};
+
 export interface ApplyGrantRequest {
   kind: "apply_grant";
   installationId: string;
@@ -129,9 +140,31 @@ export interface ApplyGrantRequest {
   envelopeKind?: "term" | "term_adjustment";
   planMaxAllowancePerMonth?: number;
   ceilingPolicy?: CeilingPolicyNumbers;
+  ceilingClaim?: ComplimentaryCeilingClaimIdentity;
   skipCeilingCheck?: boolean;
   adjustment?: Record<string, unknown>;
   routeGeneration?: number;
+}
+
+export interface SealCeilingClaimRequest {
+  kind: "seal_ceiling_claim";
+  installationId: string;
+  orgId: string;
+  bindingEpoch: number;
+  routeGeneration: number;
+  vendorContractVersion: number;
+  grantId: string;
+  envelopeSha256: string;
+  nowIso: string;
+  platformSigningKeyJson?: string;
+  environment?: string;
+  db: D1Database;
+}
+
+export interface SealCeilingClaimResponse {
+  kind: "seal_ceiling_claim";
+  result: "sealed" | "already_applied" | "sealed_no_effect" | "conflict";
+  receipt?: Record<string, unknown>;
 }
 
 export interface ApplyGrantResponse {
@@ -211,6 +244,104 @@ export async function sealGrantRouteRPC(
        VALUES (${sqlString(request.grantId)}, ${sqlString(request.envelopeSha256)}, ${request.routeGeneration}, ${sqlString(request.sealedAt)})`,
     );
     return { kind: "seal_grant_route", result: "sealed" };
+  });
+}
+
+export async function sealCeilingClaimRPC(
+  storage: DurableObjectStorage,
+  blockConcurrencyWhile: <T>(fn: () => Promise<T>) => Promise<T>,
+  request: SealCeilingClaimRequest,
+): Promise<SealCeilingClaimResponse> {
+  return blockConcurrencyWhile(async () => {
+    ensureHotRow(storage, request.bindingEpoch);
+    const grant = sqlSelect<{ envelope_sha256: string; receipt: string | null }>(
+      storage,
+      `SELECT envelope_sha256, receipt FROM grant WHERE grant_id = ${sqlString(request.grantId)} LIMIT 1`,
+    )[0];
+    if (grant !== undefined) {
+      if (grant.envelope_sha256 !== request.envelopeSha256) {
+        return { kind: "seal_ceiling_claim", result: "conflict" };
+      }
+      if (typeof grant.receipt === "string") {
+        return {
+          kind: "seal_ceiling_claim",
+          result: "already_applied",
+          receipt: JSON.parse(grant.receipt) as Record<string, unknown>,
+        };
+      }
+      return { kind: "seal_ceiling_claim", result: "conflict" };
+    }
+    const existing = sqlSelect<{ envelope_sha256: string; receipt: string }>(
+      storage,
+      `SELECT envelope_sha256, receipt FROM grant_ceiling_no_effect_seal
+       WHERE grant_id = ${sqlString(request.grantId)} LIMIT 1`,
+    )[0];
+    if (existing !== undefined) {
+      return existing.envelope_sha256 === request.envelopeSha256
+        ? {
+          kind: "seal_ceiling_claim",
+          result: "sealed_no_effect",
+          receipt: JSON.parse(existing.receipt) as Record<string, unknown>,
+        }
+        : { kind: "seal_ceiling_claim", result: "conflict" };
+    }
+    const claim = await request.db.prepare(
+      `SELECT grant_id FROM complimentary_ceiling_claim
+       WHERE grant_id = ? AND org_id = ? AND envelope_sha256 = ? AND status = 'pending'`,
+    ).bind(request.grantId, request.orgId, request.envelopeSha256).first<{ grant_id: string }>();
+    const route = await request.db.prepare(
+      `SELECT grant_id FROM grant_claim
+       WHERE grant_id = ? AND org_id = ? AND envelope_sha256 = ?
+         AND installation_id = ? AND route_generation = ? AND state = 'pending'`,
+    ).bind(
+      request.grantId,
+      request.orgId,
+      request.envelopeSha256,
+      request.installationId,
+      request.routeGeneration,
+    ).first<{ grant_id: string }>();
+    if (claim === null || route === null) {
+      return { kind: "seal_ceiling_claim", result: "conflict" };
+    }
+    const signingKey = await loadPlatformSigningKey(
+      request.platformSigningKeyJson,
+      request.environment,
+    );
+    if (signingKey === null) return { kind: "seal_ceiling_claim", result: "conflict" };
+    const hot = loadHot(storage);
+    const unsigned = {
+      contract_version: request.vendorContractVersion,
+      grant_id: request.grantId,
+      installation_id: request.installationId,
+      org_id: request.orgId,
+      result: "sealed_no_effect",
+      term_ids: [],
+      applied_at: request.nowIso,
+      ledger_seq: hot.clinic_seq,
+      envelope_sha256: request.envelopeSha256,
+      route_generation: request.routeGeneration,
+      kid: signingKey.kid,
+    };
+    const receipt = {
+      ...unsigned,
+      signature: await signCompactJws({
+        payload: receiptSigningBytes(unsigned),
+        privateKey: signingKey.privateKey,
+        kid: signingKey.kid,
+      }),
+    };
+    const storageWithSql = storage as DurableObjectStorage & {
+      sql?: { exec: (query: string, ...bindings: unknown[]) => Iterable<Record<string, unknown>> };
+    };
+    if (!storageWithSql.sql) return { kind: "seal_ceiling_claim", result: "conflict" };
+    storage.transactionSync(() => sqlExec(storage, `INSERT INTO grant_ceiling_no_effect_seal (
+      grant_id, org_id, envelope_sha256, route_generation, sealed_at, receipt
+    ) VALUES (
+      ${sqlString(request.grantId)}, ${sqlString(request.orgId)},
+      ${sqlString(request.envelopeSha256)}, ${request.routeGeneration},
+      ${sqlString(request.nowIso)}, ${sqlString(JSON.stringify(receipt))}
+    )`));
+    return { kind: "seal_ceiling_claim", result: "sealed", receipt };
   });
 }
 
@@ -1204,74 +1335,7 @@ function complimentaryDurationDays(unit: string, count: number): number {
   return count;
 }
 
-type WindowGrantRow = {
-  kind: string;
-  source_kind: string;
-  envelope: string;
-};
-
-function windowGrantRows(
-  storage: DurableObjectStorage,
-  appliedAtIso: string,
-  windowDays: number,
-): WindowGrantRow[] {
-  const windowStart = new Date(
-    Date.parse(appliedAtIso) - windowDays * ONE_DAY_MS,
-  ).toISOString();
-  return sqlSelect<WindowGrantRow>(
-    storage,
-    `SELECT kind, source_kind, envelope FROM grant
-     WHERE applied_at > ${sqlString(windowStart)}
-       AND applied_at <= ${sqlString(appliedAtIso)}`,
-  );
-}
-
-function contributionFromGrantRow(row: WindowGrantRow): {
-  days: number;
-  credits: number;
-} {
-  try {
-    const envelope = JSON.parse(row.envelope) as Record<string, unknown>;
-    if (row.kind === "term_adjustment" && row.source_kind === "complimentary") {
-      const adjustment = envelope.adjustment;
-      let days = 0;
-      let credits = 0;
-      if (isEnvelopeRecord(adjustment)) {
-        const extendDays = adjustment.extend_days;
-        if (Number.isInteger(extendDays) && (extendDays as number) > 0) {
-          days = extendDays as number;
-        }
-        const addAllowance = adjustment.add_allowance;
-        if (Number.isInteger(addAllowance) && (addAllowance as number) > 0) {
-          credits = addAllowance as number;
-        }
-      }
-      return { days, credits };
-    }
-    if (row.kind === "term" && row.source_kind === "complimentary") {
-      const duration = envelope.duration;
-      if (!isEnvelopeRecord(duration)) {
-        return { days: 0, credits: 0 };
-      }
-      const unit = String(duration.unit);
-      const count = Number(duration.count);
-      const days = Number.isFinite(count)
-        ? complimentaryDurationDays(unit, count)
-        : 0;
-      const credits = Number.isInteger(envelope.allowance_credits)
-        ? (envelope.allowance_credits as number)
-        : 0;
-      return { days, credits };
-    }
-  } catch {
-    return { days: 0, credits: 0 };
-  }
-  return { days: 0, credits: 0 };
-}
-
 function grantExceedsCeiling(input: {
-  storage: DurableObjectStorage;
-  appliedAtIso: string;
   policy: CeilingPolicyNumbers;
   planMaxAllowancePerMonth: number;
   grantDays: number;
@@ -1288,28 +1352,6 @@ function grantExceedsCeiling(input: {
     ) {
       return true;
     }
-  }
-  let windowDays = 0;
-  let windowCredits = 0;
-  for (const row of windowGrantRows(
-    input.storage,
-    input.appliedAtIso,
-    input.policy.window_days,
-  )) {
-    const part = contributionFromGrantRow(row);
-    windowDays += part.days;
-    windowCredits += part.credits;
-  }
-  windowDays += input.grantDays;
-  windowCredits += input.grantCredits;
-  if (windowDays > input.policy.window_max_days) {
-    return true;
-  }
-  if (
-    windowCredits >
-    input.policy.window_max_allowance_months * input.planMaxAllowancePerMonth
-  ) {
-    return true;
   }
   return false;
 }
@@ -1481,6 +1523,17 @@ async function finalizeGrantApply(input: {
         ${sqlString(JSON.stringify(receipt))}, ${sqlString(request.nowIso)}, NULL, NULL
       )`,
     );
+    if (request.ceilingClaim !== undefined) {
+      const claim = request.ceilingClaim;
+      sqlExec(storage, `INSERT INTO grant_ceiling_claim (
+        grant_id, org_id, envelope_sha256, plan_id, plan_version,
+        allowance_denominator, day_contribution, allowance_contribution
+      ) VALUES (
+        ${sqlString(claim.grantId)}, ${sqlString(claim.orgId)}, ${sqlString(claim.envelopeSha256)},
+        ${sqlString(claim.planId)}, ${claim.planVersion}, ${claim.allowanceDenominator},
+        ${claim.dayContribution}, ${claim.allowanceContribution}
+      )`);
+    }
     for (const row of outboxRows) insertOutbox(storage, row.kind, row.payload);
     return { kind: "committed" as const };
   });
@@ -1535,8 +1588,6 @@ async function applyComplimentaryTermGrant(
     !request.skipCeilingCheck &&
     request.ceilingPolicy !== undefined &&
     grantExceedsCeiling({
-      storage,
-      appliedAtIso: request.nowIso,
       policy: request.ceilingPolicy,
       planMaxAllowancePerMonth: planMax,
       grantDays,
@@ -1681,8 +1732,6 @@ async function applyTermAdjustmentGrant(
     !request.skipCeilingCheck &&
     request.ceilingPolicy !== undefined &&
     grantExceedsCeiling({
-      storage,
-      appliedAtIso: request.nowIso,
       policy: request.ceilingPolicy,
       planMaxAllowancePerMonth: planMax,
       grantDays,
@@ -1762,6 +1811,30 @@ export async function applyGrantRPC(
       `SELECT grant_id, kind, source_kind, envelope_sha256, receipt FROM grant WHERE grant_id = ${sqlString(grantId)} LIMIT 1`,
     )[0];
     if (existing !== undefined) {
+      if (request.sourceKind === "complimentary") {
+        const storedCeilingClaim = sqlSelect<ComplimentaryCeilingClaimIdentity & Record<string, unknown>>(
+          storage,
+          `SELECT grant_id AS grantId, org_id AS orgId, envelope_sha256 AS envelopeSha256,
+                  plan_id AS planId, plan_version AS planVersion,
+                  allowance_denominator AS allowanceDenominator,
+                  day_contribution AS dayContribution,
+                  allowance_contribution AS allowanceContribution
+           FROM grant_ceiling_claim WHERE grant_id = ${sqlString(grantId)} LIMIT 1`,
+        )[0];
+        if (
+          request.ceilingClaim === undefined || storedCeilingClaim === undefined ||
+          storedCeilingClaim.grantId !== request.ceilingClaim.grantId ||
+          storedCeilingClaim.orgId !== request.ceilingClaim.orgId ||
+          storedCeilingClaim.envelopeSha256 !== request.ceilingClaim.envelopeSha256 ||
+          storedCeilingClaim.planId !== request.ceilingClaim.planId ||
+          storedCeilingClaim.planVersion !== request.ceilingClaim.planVersion ||
+          storedCeilingClaim.allowanceDenominator !== request.ceilingClaim.allowanceDenominator ||
+          storedCeilingClaim.dayContribution !== request.ceilingClaim.dayContribution ||
+          storedCeilingClaim.allowanceContribution !== request.ceilingClaim.allowanceContribution
+        ) {
+          return { kind: "apply_grant", result: "rejected", code: "grant_ceiling_claim_reconciliation_required" };
+        }
+      }
       if (existing.envelope_sha256 === envelopeSha256 && existing.receipt) {
         const termCount = sqlSelect<{ count: number }>(
           storage,
@@ -1796,6 +1869,72 @@ export async function applyGrantRPC(
       return routeSeal.envelope_sha256 === envelopeSha256
         ? { kind: "apply_grant", result: "rejected", code: "route_sealed" }
         : { kind: "apply_grant", result: "conflict" };
+    }
+
+    const noEffectSeal = sqlSelect<{ envelope_sha256: string }>(
+      storage,
+      `SELECT envelope_sha256 FROM grant_ceiling_no_effect_seal
+       WHERE grant_id = ${sqlString(grantId)} LIMIT 1`,
+    )[0];
+    if (noEffectSeal !== undefined) {
+      return noEffectSeal.envelope_sha256 === envelopeSha256
+        ? { kind: "apply_grant", result: "rejected", code: "ceiling_claim_sealed" }
+        : { kind: "apply_grant", result: "conflict" };
+    }
+
+    if (request.sourceKind === "complimentary") {
+      const claim = request.ceilingClaim;
+      if (
+        claim === undefined || claim.grantId !== grantId || claim.orgId !== request.orgId ||
+        claim.envelopeSha256 !== envelopeSha256 ||
+        claim.allowanceDenominator < 1 ||
+        !Number.isInteger(claim.planVersion) || !Number.isInteger(claim.dayContribution) ||
+        !Number.isInteger(claim.allowanceContribution)
+      ) {
+        return { kind: "apply_grant", result: "rejected", code: "complimentary_ceiling_claim_required" };
+      }
+      const storedClaim = await request.db.prepare(
+        `SELECT grant_id, org_id, envelope_sha256, plan_id, plan_version,
+                allowance_denominator, day_contribution, allowance_contribution,
+                status
+         FROM complimentary_ceiling_claim WHERE grant_id = ?`,
+      ).bind(grantId).first<{
+        grant_id: string;
+        org_id: string;
+        envelope_sha256: string;
+        plan_id: string;
+        plan_version: number;
+        allowance_denominator: number;
+        day_contribution: number;
+        allowance_contribution: number;
+        status: string;
+      }>();
+      if (
+        storedClaim === null || storedClaim.status !== "pending" ||
+        storedClaim.org_id !== claim.orgId ||
+        storedClaim.envelope_sha256 !== claim.envelopeSha256 ||
+        storedClaim.plan_id !== claim.planId || storedClaim.plan_version !== claim.planVersion ||
+        storedClaim.allowance_denominator !== claim.allowanceDenominator ||
+        storedClaim.day_contribution !== claim.dayContribution ||
+        storedClaim.allowance_contribution !== claim.allowanceContribution
+      ) {
+        return { kind: "apply_grant", result: "rejected", code: "complimentary_ceiling_claim_reconciliation_required" };
+      }
+      const boundClaim = await request.db.prepare(
+        `SELECT grant_id FROM grant_claim
+         WHERE grant_id = ? AND org_id = ? AND envelope_sha256 = ?
+           AND installation_id = ? AND route_generation = ? AND state = 'pending'
+           AND command_state = 'accepted'`,
+      ).bind(
+        grantId,
+        request.orgId,
+        envelopeSha256,
+        request.installationId,
+        request.routeGeneration ?? 1,
+      ).first<{ grant_id: string }>();
+      if (boundClaim === null) {
+        return { kind: "apply_grant", result: "rejected", code: "complimentary_ceiling_claim_route_mismatch" };
+      }
     }
 
     const hotForTransfer = loadHot(storage);
