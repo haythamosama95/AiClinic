@@ -180,6 +180,7 @@ async function buildComplimentaryEnvelope(input: {
   adjustment?: Record<string, unknown>;
   planVersion?: number;
 }): Promise<Record<string, unknown>> {
+  const signerCredentialId = coverClinicSigner().signerCredentialId;
   const ref = crypto.randomUUID().replace(/-/g, "");
   const contentSha256 = await sha256Hex(new TextEncoder().encode(ref));
   const source: Record<string, unknown> = {
@@ -212,7 +213,7 @@ async function buildComplimentaryEnvelope(input: {
     grace: { days: 7, cap_rule: "proportional" },
     evidence: {
       content_sha256: contentSha256,
-      approvals: [{ credential_id: "cred-001", assertion: "stub" }],
+      approvals: [{ credential_id: signerCredentialId, assertion: "stub" }],
     },
   };
 
@@ -221,7 +222,7 @@ async function buildComplimentaryEnvelope(input: {
     envelope.evidence = {
       content_sha256: contentSha256,
       approvals: [
-        { credential_id: "cred-001", assertion: "stub" },
+        { credential_id: signerCredentialId, assertion: "stub" },
         { credential_id: "cred-002", assertion: "stub" },
       ],
     };
@@ -520,6 +521,8 @@ describe("complimentary grants, ceilings, adjustments, suspension", () => {
   it("R4-PG4 complimentary attribution uses the verified signer and mismatched evidence credential is rejected", async () => {
     const scenario = await newScenario();
     await coverClinic(scenario);
+    const signerCredentialId = coverClinicSigner().signerCredentialId;
+    const initialGrantCount = await countDoGrantRows(scenario.installationId);
     const accessJwt = await mintVendorAccessJwt();
     const before = await vendorTableCount("assertion_used");
     const badGrantId = await grantIdComp(crypto.randomUUID().replace(/-/g, ""));
@@ -536,7 +539,7 @@ describe("complimentary grants, ceilings, adjustments, suspension", () => {
     expect(rejected.result).toBe("rejected");
     expect(rejected.code).toBe("bad_assertion");
     expect(await vendorTableCount("assertion_used")).toBe(before);
-    expect(await countDoGrantRows(scenario.installationId)).toBe(0);
+    expect(await countDoGrantRows(scenario.installationId)).toBe(initialGrantCount);
 
     const grantId = await grantIdComp(crypto.randomUUID().replace(/-/g, ""));
     const envelope = await buildComplimentaryEnvelope({
@@ -557,7 +560,7 @@ describe("complimentary grants, ceilings, adjustments, suspension", () => {
       [grantId],
     );
     expect(ledger).toEqual({
-      operator_credential_id: "cred-001",
+      operator_credential_id: signerCredentialId,
       operator_email: VENDOR_OPERATOR_EMAIL,
       applied_at: expect.any(String),
     });
@@ -565,12 +568,12 @@ describe("complimentary grants, ceilings, adjustments, suspension", () => {
     expect(ledgerObject).not.toBeNull();
     const ledgerR2 = JSON.parse((await ledgerObject!.text()).trim().split("\n")[0]!) as Record<string, unknown>;
     expect(ledgerR2).toMatchObject({
-      operator_credential_id: "cred-001",
+      operator_credential_id: signerCredentialId,
       operator_email: VENDOR_OPERATOR_EMAIL,
     });
     const listed = await extendedVendorCall("listGrantsForVoid", {
       contract_version: CONTRACT_VERSION,
-      credential_id: "cred-001",
+      credential_id: signerCredentialId,
       window: {
         applied_from: ledger!.applied_at,
         applied_to: new Date(Date.parse(ledger!.applied_at) + 1).toISOString(),
@@ -578,13 +581,15 @@ describe("complimentary grants, ceilings, adjustments, suspension", () => {
     }, { accessJwt });
     expect(listed.result).toBe("ok");
     expect(JSON.parse(listed.detail)).toEqual(expect.arrayContaining([
-      expect.objectContaining({ grant_id: grantId, operator_credential_id: "cred-001" }),
+      expect.objectContaining({ grant_id: grantId, operator_credential_id: signerCredentialId }),
     ]));
   });
 
   it("R4-PG3 accepted complimentary command survives a lost dispatch and is resumed by the scheduled dispatcher", async () => {
     const scenario = await newScenario();
     await coverClinic(scenario);
+    const signerCredentialId = coverClinicSigner().signerCredentialId;
+    const initialGrantCount = await countDoGrantRows(scenario.installationId);
     const grantId = await grantIdComp(crypto.randomUUID().replace(/-/g, ""));
     const envelope = await buildComplimentaryEnvelope({
       orgId: scenario.orgId,
@@ -626,7 +631,7 @@ describe("complimentary grants, ceilings, adjustments, suspension", () => {
       command_state: "accepted",
       accepted_at: acceptedAt,
       accepted_actor: VENDOR_OPERATOR_EMAIL,
-      signer_credential_id: "cred-001",
+      signer_credential_id: signerCredentialId,
     });
     expect(JSON.parse((await queryOne<{ accepted_command: string }>(
       "SELECT accepted_command FROM grant_claim WHERE grant_id = ?", [grantId],
@@ -638,12 +643,12 @@ describe("complimentary grants, ceilings, adjustments, suspension", () => {
     expect(await queryOne<{ state: string; command_state: string }>(
       "SELECT state, command_state FROM grant_claim WHERE grant_id = ?", [grantId],
     )).toEqual({ state: "completed", command_state: "completed" });
-    expect(await countDoGrantRows(scenario.installationId)).toBe(1);
+    expect(await countDoGrantRows(scenario.installationId)).toBe(initialGrantCount + 1);
     expect(await queryOne<{ operator_credential_id: string; operator_email: string }>(
       "SELECT operator_credential_id, operator_email FROM grant_ledger WHERE grant_id = ?",
       [grantId],
     )).toEqual({
-      operator_credential_id: "cred-001",
+      operator_credential_id: signerCredentialId,
       operator_email: VENDOR_OPERATOR_EMAIL,
     });
   });
@@ -756,7 +761,7 @@ describe("complimentary grants, ceilings, adjustments, suspension", () => {
       evidence: {
         ...(baseEnvelope.evidence as Record<string, unknown>),
         approvals: [
-          { credential_id: "cred-001", assertion: "stub" },
+          { credential_id: coverClinicSigner().signerCredentialId, assertion: "stub" },
           { credential_id: "cred-002", assertion: "stub" },
         ],
       },
@@ -822,7 +827,7 @@ describe("complimentary grants, ceilings, adjustments, suspension", () => {
       evidence: {
         ...(baseEnvelope.evidence as Record<string, unknown>),
         approvals: [
-          { credential_id: "cred-001", assertion: "stub" },
+          { credential_id: coverClinicSigner().signerCredentialId, assertion: "stub" },
           { credential_id: "cred-002", assertion: "stub" },
         ],
       },

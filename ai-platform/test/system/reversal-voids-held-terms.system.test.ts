@@ -311,6 +311,7 @@ async function buildComplimentaryEnvelope(input: {
   orgId: string;
   grantId: string;
 }): Promise<Record<string, unknown>> {
+  const signerCredentialId = coverClinicSigner().signerCredentialId;
   const ref = crypto.randomUUID().replace(/-/g, "");
   const contentSha256 = await sha256Hex(new TextEncoder().encode(ref));
   return {
@@ -331,7 +332,7 @@ async function buildComplimentaryEnvelope(input: {
     grace: { days: 7, cap_rule: "proportional" },
     evidence: {
       content_sha256: contentSha256,
-      approvals: [{ credential_id: "cred-001", assertion: "stub" }],
+      approvals: [{ credential_id: signerCredentialId, assertion: "stub" }],
     },
   };
 }

@@ -50,6 +50,7 @@ import dropInvoicingSql from "../../../ai-platform/migrations/20261006170000_dro
 import dropPlanEntitlementSql from "../../../ai-platform/migrations/20261006170100_drop_plan_entitlement.sql?raw";
 import idempotencyFingerprintSql from "../../../ai-platform/migrations/20261014120000_ai_request_idempotency_fingerprint.sql?raw";
 import grantClaimsSql from "../../../ai-platform/migrations/20261019120000_r4_pg1_global_grant_claims.sql?raw";
+import acceptedGrantCommandsSql from "../../../ai-platform/migrations/20261019130000_r4_pg3_accepted_grant_commands.sql?raw";
 
 const PLATFORM_MIGRATION_SQL: string[] = [
   platformSchemaSql,
@@ -77,6 +78,7 @@ const PLATFORM_MIGRATION_SQL: string[] = [
   dropPlanEntitlementSql,
   idempotencyFingerprintSql,
   grantClaimsSql,
+  acceptedGrantCommandsSql,
 ];
 
 const VENDOR_CONTRACT_VERSION = CHANNEL_VERSIONS.vendorEntrypoint;
