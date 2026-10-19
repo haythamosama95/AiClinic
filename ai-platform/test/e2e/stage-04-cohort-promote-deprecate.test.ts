@@ -395,7 +395,7 @@ describe("Stage 04 — cohort activate/promote and deprecate failures (S04-066�
     });
   });
 
-  it("S04-071 — Activate already-current version is a no-op without a duplicate audit", async () => {
+  it("R8-AUDIT1 S04-071 — Activate already-current version is a no-op without a duplicate audit", async () => {
     await enrollAndEntitleI0();
     const beforeGrant = await latestGrant(installationScope(I0));
     expect(beforeGrant?.capability_version).toBe("1.0.0");
@@ -581,7 +581,7 @@ describe("Stage 04 — cohort activate/promote and deprecate failures (S04-066�
     });
   });
 
-  it("S04-075 — Promote with empty fleet is a no-op", async () => {
+  it("R8-AUDIT1 S04-075 — Promote with empty fleet is a no-op", async () => {
     expect(await count("installation")).toBe(0);
     expect(await count("capability_grant")).toBe(0);
     expect(await count("control_audit")).toBe(0);
@@ -666,7 +666,7 @@ describe("Stage 04 — cohort activate/promote and deprecate failures (S04-066�
     });
   });
 
-  it("S04-079 — Promote ignores the request body while changing the cohort", async () => {
+  it("R8-AUDIT1 S04-079 — Promote ignores the request body while changing the cohort", async () => {
     await enrollAndEntitleI0();
     const grantBefore = await latestGrant(installationScope(I0));
     expect(grantBefore?.capability_version).toBe("1.0.0");
@@ -693,7 +693,7 @@ describe("Stage 04 — cohort activate/promote and deprecate failures (S04-066�
         "cohort_promote",
         "clinic.visit_summary@2.0.0",
       );
-      expect(audits).toHaveLength(auditsBefore.length + 1);
+      expect(audits).toHaveLength(1);
       expect(audits.at(-1)?.operator_id).toBe(OPERATOR_ID);
       expect(JSON.parse(String(audits.at(-1)?.after_pointer))).toMatchObject({
         capability_version: "2.0.0",

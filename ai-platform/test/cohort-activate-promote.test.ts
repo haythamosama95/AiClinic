@@ -8,6 +8,7 @@ import killSwitchMigrationSql from "../migrations/20260807120000_kill_switch.sql
 import issuerKeyTenantBindingMigrationSql from "../migrations/20261003130000_issuer_key_tenant_binding.sql?raw";
 import planVersionPaidGrantCoverageMigrationSql from "../migrations/20261003140000_plan_version_paid_grant_coverage.sql?raw";
 import idempotencyFingerprintMigrationSql from "../migrations/20261014120000_ai_request_idempotency_fingerprint.sql?raw";
+import operatorAuditMigrationSql from "../migrations/20261003120000_operator_credential_and_platform_alert.sql?raw";
 import { applySqlStatements } from "./split-sql-statements";
 import schemaSnapSql from "../schema.snap.sql?raw";
 import {
@@ -490,6 +491,7 @@ beforeAll(async () => {
   await applySqlStatements(env.DB, issuerKeyTenantBindingMigrationSql);
   await applySqlStatements(env.DB, planVersionPaidGrantCoverageMigrationSql);
   await applySqlStatements(env.DB, idempotencyFingerprintMigrationSql);
+  await applySqlStatements(env.DB, operatorAuditMigrationSql);
 });
 
 beforeEach(async () => {
@@ -517,6 +519,7 @@ describe("T-J3-01 cohort_receives_new_build_others_previous", () => {
     expect(response.ok).toBe(true);
     await assertControlAudit(env.DB, {
       operatorId: FAKE_OPERATOR_ID,
+      actor: FAKE_OPERATOR_ID,
       action: "cohort_activate",
     });
     await assertAuditPointersNonNull(env.DB, "cohort_activate");
@@ -558,6 +561,7 @@ describe("T-J3-02 promotion_moves_all_cohorts", () => {
     expect(promoteResponse.ok).toBe(true);
     await assertControlAudit(env.DB, {
       operatorId: FAKE_OPERATOR_ID,
+      actor: FAKE_OPERATOR_ID,
       action: "cohort_promote",
     });
     await assertAuditPointersNonNull(env.DB, "cohort_promote");

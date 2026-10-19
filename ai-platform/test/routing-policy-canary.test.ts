@@ -620,10 +620,12 @@ describe("R8-AUDIT1 T-J3-04 every_activation_writes_control_audit_with_operator_
     );
     await assertControlAudit(env.DB, {
       operatorId: FAKE_OPERATOR_ID,
+      actor: FAKE_OPERATOR_ID,
       action: "routing_policy_publish",
     });
     await assertControlAudit(env.DB, {
       operatorId: FAKE_OPERATOR_ID,
+      actor: FAKE_OPERATOR_ID,
       action: "routing_policy_promote",
     });
     await assertAuditPointersNonNull(env.DB, "routing_policy_promote", {
@@ -646,6 +648,7 @@ describe("R8-AUDIT1 T-J3-04 every_activation_writes_control_audit_with_operator_
     expect(canary.ok).toBe(true);
     await assertControlAudit(env.DB, {
       operatorId: FAKE_OPERATOR_ID,
+      actor: FAKE_OPERATOR_ID,
       action: "routing_policy_canary",
     });
     await assertAuditPointersNonNull(env.DB, "routing_policy_canary", {
@@ -665,6 +668,7 @@ describe("R8-AUDIT1 T-J3-04 every_activation_writes_control_audit_with_operator_
     expect(activate.ok).toBe(true);
     const activateAudit = await assertControlAudit(env.DB, {
       operatorId: FAKE_OPERATOR_ID,
+      actor: FAKE_OPERATOR_ID,
       action: "cohort_activate",
     });
     expect(activateAudit.actor).toBe(FAKE_OPERATOR_ID);
@@ -677,6 +681,23 @@ describe("R8-AUDIT1 T-J3-04 every_activation_writes_control_audit_with_operator_
       installation_ids: [COHORT_INSTALLATION_ID],
     });
 
+    await env.DB.prepare(
+      `INSERT INTO capability_grant (
+        grant_id, scope, capability_id, capability_version, granted_at,
+        revoked_at, changed_at, changed_by
+      ) VALUES (?, ?, ?, ?, ?, NULL, ?, ?)`,
+    )
+      .bind(
+        "grant-j3-routing-other",
+        `installation:${OTHER_INSTALLATION_ID}`,
+        FIXTURE_CAPABILITY_ID,
+        FIXTURE_CAPABILITY_V1,
+        FIXTURE_NOW,
+        FIXTURE_NOW,
+        FAKE_OPERATOR_ID,
+      )
+      .run();
+
     const promote = await handleCohortPromote(
       buildCohortPromoteRequest(FIXTURE_CAPABILITY_ID, FIXTURE_CAPABILITY_V2),
       { DB: env.DB },
@@ -685,6 +706,7 @@ describe("R8-AUDIT1 T-J3-04 every_activation_writes_control_audit_with_operator_
     expect(promote.ok).toBe(true);
     const promoteAudit = await assertControlAudit(env.DB, {
       operatorId: FAKE_OPERATOR_ID,
+      actor: FAKE_OPERATOR_ID,
       action: "cohort_promote",
     });
     expect(promoteAudit.actor).toBe(FAKE_OPERATOR_ID);
@@ -708,6 +730,7 @@ describe("R8-AUDIT1 T-J3-04 every_activation_writes_control_audit_with_operator_
     expect(rollback.ok).toBe(true);
     await assertControlAudit(env.DB, {
       operatorId: FAKE_OPERATOR_ID,
+      actor: FAKE_OPERATOR_ID,
       action: "routing_policy_rollback",
     });
     await assertAuditPointersNonNull(env.DB, "routing_policy_rollback");

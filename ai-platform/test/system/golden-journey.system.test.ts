@@ -453,6 +453,6 @@ describe("golden journey", () => {
     const auditAfter = await env.DB.prepare(
       "SELECT COUNT(*) AS c FROM control_audit",
     ).first<{ c: number }>();
-    expect(auditAfter?.c).toBe(auditBefore?.c);
+    expect(auditAfter?.c).toBe((auditBefore?.c ?? 0) + 1);
   });
 });

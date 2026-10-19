@@ -362,6 +362,7 @@ describe("T-J4-05 begin_rotation_adds_ver_and_keeps_prior", () => {
 
     await assertControlAudit(env.DB, {
       operatorId: FAKE_OPERATOR_ID,
+      actor: FAKE_OPERATOR_ID,
       action: "token_contract_begin_rotation",
       target: NEW_VER,
     });
@@ -401,6 +402,7 @@ describe("T-J4-06 retire_stamps_retired_at_and_returns_set_to_one", () => {
 
     await assertControlAudit(env.DB, {
       operatorId: FAKE_OPERATOR_ID,
+      actor: FAKE_OPERATOR_ID,
       action: "token_contract_retire",
       target: PRIOR_VER,
     });

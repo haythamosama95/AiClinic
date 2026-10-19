@@ -525,7 +525,7 @@ describe("Stage 12 — support lookup (S12-041…S12-055)", () => {
     await assertHappyLookupBody(result, settled, {
       clinicResult: clinicBody.result,
     });
-    expect(await count("control_audit")).toBe(auditBefore);
+    expect(await count("control_audit")).toBe(auditBefore + 1);
   });
 
   it("S12-042 — Support lookup trims then normalizes mixed-case ambiguous refs", async () => {

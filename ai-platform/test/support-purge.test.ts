@@ -1,6 +1,7 @@
 import { env } from "cloudflare:test";
 import { beforeAll, beforeEach, describe, expect, it } from "vitest";
 import migrationSql from "../migrations/20260731120000_platform_schema.sql?raw";
+import operatorAuditMigrationSql from "../migrations/20261003120000_operator_credential_and_platform_alert.sql?raw";
 import graceQueueMigrationSql from "../migrations/20260821120000_grace_admission_queue.sql?raw";
 import fallbackAdmissionFeedMigrationSql from "../migrations/20261006160000_fallback_admission_feed.sql?raw";
 import { assertControlAudit } from "./helpers/control-audit-assert";
@@ -197,6 +198,7 @@ async function clearTables(): Promise<void> {
 
 beforeAll(async () => {
   await applySql(env.DB, migrationSql);
+  await applySql(env.DB, operatorAuditMigrationSql);
   await applySql(env.DB, graceQueueMigrationSql);
   await applySql(env.DB, fallbackAdmissionFeedMigrationSql);
 });

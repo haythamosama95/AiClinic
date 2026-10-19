@@ -419,6 +419,8 @@ describe("P3.10 control-plane port", () => {
 
   it("R8-AUDIT1 and R8-SUPPORT1 audit support reads and page metadata without payloads", async () => {
     const scenario = await newScenario();
+    await coverClinic(scenario);
+    await newClinic(scenario);
     const createdAt = "2026-08-01T12:00:00.000Z";
     for (const [index, requestId] of [
       "01RM13SUPPORT00000001",

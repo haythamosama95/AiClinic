@@ -707,7 +707,7 @@ describe("Stage 05 — canary and promote (S05-021…S05-041)", () => {
     ).toHaveLength(0);
   });
 
-  it("S05-039 — Promote already-active is an idempotent no-op", async () => {
+  it("R8-AUDIT1 S05-039 — Promote already-active is an idempotent no-op", async () => {
     await setupActiveV1();
     const before = await snapshotPolicy(POLICY_VERSION);
     expect(before.status).toBe("active");

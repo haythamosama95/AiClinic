@@ -1,6 +1,7 @@
 import { env } from "cloudflare:test";
 import { beforeAll, beforeEach, describe, expect, it } from "vitest";
 import migrationSql from "../migrations/20260731120000_platform_schema.sql?raw";
+import operatorAuditMigrationSql from "../migrations/20261003120000_operator_credential_and_platform_alert.sql?raw";
 import { MS_PER_DAY } from "../src/retention";
 import { supportLookup } from "../src/support";
 import type { Envelope } from "../src/journal";
@@ -231,6 +232,7 @@ async function loadControlHandlers(): Promise<{
 
 beforeAll(async () => {
   await applyPlatformSchema(env.DB, migrationSql);
+  await applyPlatformSchema(env.DB, operatorAuditMigrationSql);
   await env.DB.prepare(
     `CREATE TABLE IF NOT EXISTS tenant_binding (
       org_id TEXT NOT NULL,
@@ -449,12 +451,12 @@ describe("support_lookup_audit_failure", () => {
   it("R8-AUDIT1 does not release lookup data when the audit insert fails", async () => {
     await seedRequest();
     const { handleSupportLookup } = await loadControlHandlers();
-    const failingDb = {
-      ...env.DB,
+    const failingDb = Object.assign(Object.create(env.DB) as D1Database, {
+      prepare: env.DB.prepare.bind(env.DB),
       async batch() {
         throw new Error("audit unavailable");
       },
-    } as D1Database;
+    }) as D1Database;
 
     const response = await handleSupportLookup(
       new Request(

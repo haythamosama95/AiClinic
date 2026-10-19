@@ -276,7 +276,7 @@ describe("Stage 01 — rotation and retire (S01-017…S01-031)", () => {
     expect(metrics.some((row) => row.count >= 1)).toBe(true);
   });
 
-  it("S01-027 — retire happy path stamps ver=2 after a new version is open", async () => {
+  it("R8-AUDIT1 S01-027 — retire happy path stamps ver=2 after a new version is open", async () => {
     await seedLiveVer3();
     await openNewRotation();
     const ver3Before = await queryOne<TokenContractRow>(

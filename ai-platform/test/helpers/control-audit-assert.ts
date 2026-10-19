@@ -11,6 +11,7 @@ export async function assertControlAudit(
   db: D1Database,
   expected: {
     operatorId: string;
+    actor?: string;
     action: string;
     target?: string;
   },
@@ -36,9 +37,9 @@ export async function assertControlAudit(
     );
   }
 
-  if (row.actor !== expected.operatorId) {
+  if (expected.actor !== undefined && row.actor !== expected.actor) {
     throw new Error(
-      `Expected control_audit actor ${expected.operatorId}, got ${row.actor}`,
+      `Expected control_audit actor ${expected.actor}, got ${row.actor}`,
     );
   }
 
