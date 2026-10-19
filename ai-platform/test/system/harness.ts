@@ -128,6 +128,7 @@ declare module "cloudflare:test" {
         args: Record<string, unknown>,
       ): Promise<VendorResultEnvelope>;
       dispatchAcceptedGrantCommands(): Promise<number>;
+      shipDueReversalExports(): Promise<number>;
     };
     TEST_CLOCK: string;
     ACCESS_TEAM_DOMAIN: string;

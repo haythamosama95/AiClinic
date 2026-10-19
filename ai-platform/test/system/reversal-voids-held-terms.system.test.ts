@@ -413,6 +413,48 @@ beforeEach(async () => {
 });
 
 describe("reversal voids, tombstones, held terms, operator voids", () => {
+  it("R6-PT1: retries a failed reversal export from its durable original payload", async () => {
+    const scenario = await newScenario();
+    await coverClinic(scenario);
+    const grantId = await grantIdPaid(crypto.randomUUID().replace(/-/g, ""));
+    const reversalId = randomHex64();
+    const reason = "export-retry";
+    const evidenceSha256 = randomHex64();
+    const put = vi.spyOn(env.R2, "put");
+    put
+      .mockRejectedValueOnce(new Error("temporary R2 failure"))
+      .mockRejectedValueOnce(new Error("temporary R2 failure"));
+
+    const first = await callVoidForReversal({
+      grantId, partial: false, reversalId, reason, evidenceSha256,
+    });
+    expect(first.result).toBe("applied");
+    const due = await queryOne<{ state: string; export_state: string; receipt: string }>(
+      `SELECT state, export_state, receipt FROM reversal_command WHERE reversal_id = ?`,
+      [reversalId],
+    );
+    expect(due?.state).toBe("terminal");
+    expect(due?.export_state).toBe("due");
+
+    const replay = await callVoidForReversal({
+      grantId, partial: false, reversalId, reason, evidenceSha256,
+    });
+    expect(replay.result).toBe("already_applied");
+    expect(replay.receipt).toEqual(first.receipt);
+    expect((await queryOne<{ export_state: string }>(
+      `SELECT export_state FROM reversal_command WHERE reversal_id = ?`,
+      [reversalId],
+    ))?.export_state).toBe("due");
+
+    expect(await env.VENDOR.shipDueReversalExports()).toBe(1);
+    expect(put).toHaveBeenCalledTimes(3);
+    expect(await r2Exists(`grant-ledger/${grantId}.void.ndjson`)).toBe(true);
+    expect((await queryOne<{ export_state: string }>(
+      `SELECT export_state FROM reversal_command WHERE reversal_id = ?`,
+      [reversalId],
+    ))?.export_state).toBe("shipped");
+  });
+
   it("R6-PT1: reverses applied DO value while the asynchronous grant ledger is absent", async () => {
     const scenario = await newScenario();
     await coverClinic(scenario, { runAlarm: false });

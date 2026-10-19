@@ -4695,6 +4695,14 @@ export class VendorEntrypoint extends WorkerEntrypoint<VendorEnv> {
             nowIso: acceptedAt,
             accepted,
           }),
+          this.env.DB.prepare(
+            `INSERT OR IGNORE INTO live_value_route (
+               grant_id, org_id, installation_id, binding_epoch, generation, state, updated_at
+             ) SELECT grant_id, org_id, installation_id, binding_epoch, route_generation,
+                      'stable', ?
+               FROM grant_claim WHERE grant_id = ? AND state <> 'disputed'
+                 AND NOT EXISTS (SELECT 1 FROM grant_tombstone WHERE grant_id = ?)`
+          ).bind(acceptedAt, claimGrantId, claimGrantId),
           buildComplimentaryCeilingClaimInsertStatement(this.env.DB, {
             grantId: claimGrantId,
             orgId,
@@ -6933,5 +6941,21 @@ export class VendorEntrypoint extends WorkerEntrypoint<VendorEnv> {
       });
     }
     return attempted;
+  }
+
+  async shipDueReversalExports(): Promise<number> {
+    const rows = await this.env.DB.prepare(
+      `SELECT reversal_id, grant_id, request_sha256, request_body,
+              route_installation_id, route_epoch, route_generation, state,
+              receipt, export_payload, export_state, created_at, updated_at
+       FROM reversal_command
+       WHERE state = 'terminal' AND export_state = 'due'
+       ORDER BY updated_at, reversal_id LIMIT 25`,
+    ).all<ReversalCommandRow>();
+    let shipped = 0;
+    for (const command of rows.results ?? []) {
+      if (await shipReversalExport(this.env, command)) shipped += 1;
+    }
+    return shipped;
   }
 }

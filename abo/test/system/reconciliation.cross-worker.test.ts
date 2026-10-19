@@ -1487,7 +1487,7 @@ describe("reconciliation cross-worker", () => {
     expect(await findingResolutionCount(finding!.finding_id)).toBe(1);
   });
 
-  it("E2E-P4.10-03 complimentary and transfer grants without ABO authorisation raise findings", async () => {
+  it("R6-PT1: E2E-P4.10-03 complimentary and transfer grants without ABO authorisation raise findings", async () => {
     await setupReconciliationHarness();
     await ensureGrantTenantBinding(ORG_RC_03A);
     const hp = await ensureActiveHpCredential();

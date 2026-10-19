@@ -33,6 +33,7 @@ declare module "cloudflare:test" {
         detail: string;
       }>;
       dispatchAcceptedGrantCommands(): Promise<number>;
+      shipDueReversalExports(): Promise<number>;
     };
   }
 }

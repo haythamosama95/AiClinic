@@ -1759,7 +1759,7 @@ describe("console relays cross-worker", () => {
     expect(await platformAlertCount("AL-12")).toBeGreaterThan(0);
   });
 
-  it("E2E-P4.8-03 trial complimentary grant then paid checkout queues the paid term", async () => {
+  it("R6-PT1: E2E-P4.8-03 trial complimentary grant then paid checkout queues the paid term", async () => {
     const orgId = ORG_CR_03;
     const expectations = await setupConsoleRelaysHarness();
     await ensureGrantTenantBinding(orgId);
@@ -1813,7 +1813,7 @@ describe("console relays cross-worker", () => {
     expect(snapshot?.queued_count).toBeGreaterThanOrEqual(1);
   });
 
-  it("E2E-P4.8-06 list-for-void and void end listed grants voided after credential revocation", async () => {
+  it("R6-PT1: E2E-P4.8-06 list-for-void and void end listed grants voided after credential revocation", async () => {
     const orgId = ORG_CR_06;
     await setupConsoleRelaysHarness();
     await ensureGrantTenantBinding(orgId);
@@ -1918,7 +1918,7 @@ describe("console relays cross-worker", () => {
     }
   });
 
-  it("E2E-P4.8-07 suspend refuses admission and resume restores it", async () => {
+  it("R6-PT1: E2E-P4.8-07 suspend refuses admission and resume restores it", async () => {
     const orgId = ORG_CR_07;
     await setupConsoleRelaysHarness();
     await setupPromotedRoutingPolicy();

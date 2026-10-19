@@ -714,7 +714,7 @@ describe("complimentary grants, ceilings, adjustments, suspension", () => {
     expect(await queryOne<{ state: string }>("SELECT state FROM grant_claim WHERE grant_id = ?", [grantId])).toEqual({ state: "completed" });
   });
 
-  it("E2E-P3.6-01 A20 14-day complimentary grant to a paying clinic queues after current coverage", async () => {
+  it("R6-PT1: accepted complimentary grant receives a stable value route before DO dispatch", async () => {
     const scenario = await newScenario();
     await coverClinic(scenario);
 
@@ -730,6 +730,34 @@ describe("complimentary grants, ceilings, adjustments, suspension", () => {
     const applied = await hpComplimentaryGrant({ envelope });
     expect(applied.result).toBe("applied");
     expect(applied.code).toBe("");
+    const claimRoute = await queryOne<{
+      org_id: string;
+      installation_id: string;
+      binding_epoch: number;
+      route_generation: number;
+    }>(
+      `SELECT org_id, installation_id, binding_epoch, route_generation
+       FROM grant_claim WHERE grant_id = ?`,
+      [grantId],
+    });
+    expect(claimRoute).toBeTruthy();
+    expect(await queryOne<{
+      org_id: string;
+      installation_id: string;
+      binding_epoch: number;
+      generation: number;
+      state: string;
+    }>(
+      `SELECT org_id, installation_id, binding_epoch, generation, state
+       FROM live_value_route WHERE grant_id = ?`,
+      [grantId],
+    )).toEqual({
+      org_id: claimRoute!.org_id,
+      installation_id: claimRoute!.installation_id,
+      binding_epoch: claimRoute!.binding_epoch,
+      generation: claimRoute!.route_generation,
+      state: "stable",
+    });
 
     const terms = await readDoTerms(scenario.installationId);
     expect(terms.filter((row) => row.state === "active")).toHaveLength(1);

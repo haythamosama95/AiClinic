@@ -2059,6 +2059,7 @@ export async function applyGrantRPC(
     const paidSourceKind = "paid";
 
     const eventKinds: string[] = [];
+    const termWrites: string[] = [];
 
     let newTermState: "active" | "queued" = "active";
     let calendarStart: string | null = request.nowIso;
