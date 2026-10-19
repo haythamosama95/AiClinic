@@ -1523,6 +1523,9 @@ describe.sequential("sweeps cross-worker", () => {
   });
 
   it("R6-BR1 E2E-P4.5-08 parent cumulative 400/800 stays in review", async () => {
+    // Keep all three inquiries on the same UTC date so the final full
+    // cumulative is evaluated while the granted term is still active.
+    await setClock("2026-06-01T00:00:00.000Z");
     const { expectations, offerVersions } = await setupReversalHarness();
     const org = ORG_SWEEP_08;
     const txnId = 95111;
@@ -1552,7 +1555,7 @@ describe.sequential("sweeps cross-worker", () => {
     expect(await platformGrantVoidCount(grantId)).toBe(0);
     expect(await alertCountByCode("AL-06")).toBe(1);
 
-    await setClock("2026-06-01T18:00:00.000Z");
+    await setClock("2026-06-01T06:00:00.000Z");
     await scriptPaymobInquiry("reversed", 1000, 800);
     await runScheduled("0 */6 * * *");
     await runScheduled("* * * * *");
@@ -1568,7 +1571,7 @@ describe.sequential("sweeps cross-worker", () => {
     expect(await reverseWorkCount()).toBe(0);
     expect(await platformGrantVoidCount(grantId)).toBe(0);
 
-    await setClock("2026-06-02T00:00:00.000Z");
+    await setClock("2026-06-01T12:00:00.000Z");
     await scriptPaymobInquiry("reversed", 1000, 1000);
     await runScheduled("0 */6 * * *");
     await runScheduled("* * * * *");
