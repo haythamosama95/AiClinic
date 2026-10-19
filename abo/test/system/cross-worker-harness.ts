@@ -761,9 +761,9 @@ async function listPlatformInstallations(): Promise<
   }));
 }
 
-/** Let GatewayObject outbox alarms finish (minimum 5s wall-clock deferral). */
+/** Explicitly drain GatewayObject outbox alarms before guarded cleanup. */
 export async function settlePlatformDurableObjectAlarms(): Promise<void> {
-  await new Promise((resolve) => setTimeout(resolve, 5200));
+  await drainPlatformDurableObjects();
 }
 
 /** Flush platform DO outbox so isolated storage can pop cleanly after grants/voids. */

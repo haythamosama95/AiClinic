@@ -44,6 +44,7 @@ const platformWorkerBindings = {
   ENVIRONMENT: "development",
   LOG_VERBOSITY: "2",
   CONFIG_CACHE_TTL_MS: "100",
+  TEST_DO_ALARM_DELIVERY_DELAY_MS: "86400000",
   DURATION_SCALE: "staging",
   TEST_CLOCK: "1",
   ACCESS_TEAM_DOMAIN: "access.test",
