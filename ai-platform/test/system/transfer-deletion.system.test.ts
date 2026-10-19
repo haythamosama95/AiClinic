@@ -516,7 +516,7 @@ async function completePaidGrantTransfer(): Promise<{
   await runDurableObjectAlarm(quotaDoStub(oldInstallationId));
 
   const inResult = await transferIn(transferRow.transfer_id);
-  expect(inResult.result).toBe("applied");
+  expect(inResult.result, JSON.stringify(inResult)).toBe("applied");
   await runDurableObjectAlarm(quotaDoStub(transferRow.to_installation_id));
 
   return {
@@ -652,7 +652,7 @@ describe("transfer, deletion with coverage left, ledger retention", () => {
 
     clearCapturedVendorEmails();
     const inResult = await transferIn(transferRow.transfer_id);
-    expect(inResult.result).toBe("applied");
+    expect(inResult.result, JSON.stringify(inResult)).toBe("applied");
     expect(inResult.receipt).toBeDefined();
     await runDurableObjectAlarm(quotaDoStub(transferRow.to_installation_id));
 
@@ -756,7 +756,8 @@ describe("transfer, deletion with coverage left, ledger retention", () => {
     expect(begun.result).toBe("ok");
     const transfer = JSON.parse(begun.detail) as { transfer_id: string; to_installation_id: string };
     expect((await transferOut(transfer.transfer_id)).result).toBe("applied");
-    expect((await transferIn(transfer.transfer_id)).result).toBe("applied");
+    const transferInResult = await transferIn(transfer.transfer_id);
+    expect(transferInResult.result, JSON.stringify(transferInResult)).toBe("applied");
 
     const applied = await p38VendorCall("grant", grantArgs);
     expect(applied.result).toBe("applied");
@@ -788,7 +789,7 @@ describe("transfer, deletion with coverage left, ledger retention", () => {
     await runDurableObjectAlarm(quotaDoStub(setup.oldInstallationId));
 
     const inResult = await transferIn(transferId);
-    expect(inResult.result).toBe("applied");
+    expect(inResult.result, JSON.stringify(inResult)).toBe("applied");
     await runDurableObjectAlarm(quotaDoStub(newInstallationId));
 
     const applied = await paidGrant(scenario, pendingGrantId);
@@ -822,7 +823,7 @@ describe("transfer, deletion with coverage left, ledger retention", () => {
     const packageBefore = await readTransferPackage(transferId);
 
     const earlyIn = await transferIn(transferId);
-    expect(earlyIn.result).toBe("transient");
+    expect(earlyIn.result, JSON.stringify(earlyIn)).toBe("transient");
     expect(earlyIn.detail).toBe("awaiting_transfer_out");
     const termsAfterEarly = await readDoTerms(oldInstallationId);
     expect(termsAfterEarly).toEqual(termsBefore);
@@ -834,7 +835,7 @@ describe("transfer, deletion with coverage left, ledger retention", () => {
     const outReceipt = out.receipt as Record<string, unknown>;
 
     const inResult = await transferIn(transferId);
-    expect(inResult.result).toBe("applied");
+    expect(inResult.result, JSON.stringify(inResult)).toBe("applied");
     expect(inResult.receipt).toBeDefined();
     const inReceipt = inResult.receipt as Record<string, unknown>;
 

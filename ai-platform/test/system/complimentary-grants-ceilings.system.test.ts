@@ -637,11 +637,31 @@ describe("complimentary grants, ceilings, adjustments, suspension", () => {
       ceiling_override: overrideEncoded.assertion,
     };
 
-    clearCapturedVendorEmails();
-    const applied = await hpComplimentaryGrant({
+    const changedSameId = await hpComplimentaryGrant({
       envelope: withOverride,
       accessJwt,
       ceilingOverrideOperation: overrideEncoded.operation,
+    });
+    expect(changedSameId.result).toBe("conflict");
+
+    const retryEnvelopeBase = {
+      ...overrideEnvelopeBase,
+      grant_id: await grantIdComp(crypto.randomUUID().replace(/-/g, "")),
+    };
+    const retryOverrideEncoded = await encodeCeilingOverrideAssertion({
+      envelope: retryEnvelopeBase,
+      accessJwt,
+    });
+    const retryWithOverride = {
+      ...retryEnvelopeBase,
+      ceiling_override: retryOverrideEncoded.assertion,
+    };
+
+    clearCapturedVendorEmails();
+    const applied = await hpComplimentaryGrant({
+      envelope: retryWithOverride,
+      accessJwt,
+      ceilingOverrideOperation: retryOverrideEncoded.operation,
     });
     expect(applied.result).toBe("applied");
 

@@ -911,6 +911,7 @@ describe("paid grant coverage", () => {
     expect([first.result, second.result].sort()).toEqual(["already_applied", "applied"]);
     expect(first.receipt).toEqual(second.receipt);
     expect(await count("grant_claim", "grant_id = ?", [fixture.grantId])).toBe(1);
+    await runDurableObjectAlarm(quotaDoStub(await installationIdForOrg(fixture.orgId)));
     expect(await grantLedgerCount(fixture.grantId)).toBe(1);
   });
 
@@ -975,6 +976,7 @@ describe("paid grant coverage", () => {
     const replayed = await grantPaid({ envelope: afterCommit.envelope, aboKid: fixture.aboKid, aboSignature: afterCommit.signature });
     expect(replayed.result).toBe("already_applied");
     expect(replayed.receipt?.grant_id).toBe(afterCommit.grantId);
+    await runDurableObjectAlarm(quotaDoStub(await installationIdForOrg(fixture.orgId)));
     expect(await grantLedgerCount(afterCommit.grantId)).toBe(1);
   });
 

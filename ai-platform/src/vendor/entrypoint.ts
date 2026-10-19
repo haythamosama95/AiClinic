@@ -4129,6 +4129,20 @@ export class VendorEntrypoint extends WorkerEntrypoint<VendorEnv> {
       ) {
         return grantRejected(version, "placement_not_supported");
       }
+      const rejectedGrace = envelope.grace;
+      const rejectedSource = envelope.source;
+      const rejectedDuration = envelope.duration;
+      if (
+        isRecord(rejectedSource) && rejectedSource.kind === "paid" &&
+        isRecord(rejectedDuration) && rejectedDuration.unit === "month" &&
+        Number.isInteger(rejectedDuration.count) &&
+        [1, 3, 12].includes(rejectedDuration.count as number) &&
+        isRecord(rejectedGrace) && Number.isInteger(rejectedGrace.days) &&
+        (rejectedGrace.days as number) > 7 &&
+        rejectedGrace.cap_rule === "proportional"
+      ) {
+        return grantRejected(version, "exceeds_plan_bound");
+      }
       return grantRejected(version, "unit_not_allowed");
     }
     const claimOrgId = envelope.org_id;
@@ -4459,7 +4473,7 @@ export class VendorEntrypoint extends WorkerEntrypoint<VendorEnv> {
     }
 
     const transfer = await readTransferById(this.env.DB, transferId);
-    if (transfer === null || transfer.package === null) {
+    if (transfer === null) {
       return grantRejected(version, "bad_request");
     }
     if (!(await ensureGrantClaimsBackfilled(this.env, transfer.org_id, version))) {
