@@ -148,9 +148,9 @@ async function buildPaidGrantEnvelope(input: {
 async function paidGrant(
   scenario: Scenario,
   grantId: string,
-  opts: { installationId?: string } = {},
+  opts: { installationId?: string; envelope?: Record<string, unknown> } = {},
 ): Promise<GrantResultEnvelope> {
-  const envelope = await buildPaidGrantEnvelope({
+  const envelope = opts.envelope ?? await buildPaidGrantEnvelope({
     orgId: scenario.orgId,
     grantId,
   });
@@ -823,7 +823,11 @@ describe("transfer, deletion with coverage left, ledger retention", () => {
     );
 
     const pendingGrantId = await grantIdPaid(crypto.randomUUID().replace(/-/g, ""));
-    const pending = await paidGrant(scenario, pendingGrantId);
+    const pendingEnvelope = await buildPaidGrantEnvelope({
+      orgId: scenario.orgId,
+      grantId: pendingGrantId,
+    });
+    const pending = await paidGrant(scenario, pendingGrantId, { envelope: pendingEnvelope });
     expect(pending.result).toBe("transient");
     expect(pending.detail).toBe("awaiting_transfer");
     const termsMid = await readDoTerms(newInstallationId);
@@ -858,7 +862,7 @@ describe("transfer, deletion with coverage left, ledger retention", () => {
     expect(inResult.result, JSON.stringify({ inResult, transferDiagnostics })).toBe("applied");
     await runDurableObjectAlarm(quotaDoStub(newInstallationId));
 
-    const applied = await paidGrant(scenario, pendingGrantId);
+    const applied = await paidGrant(scenario, pendingGrantId, { envelope: pendingEnvelope });
     expect(applied.result).toBe("applied");
     await runDurableObjectAlarm(quotaDoStub(newInstallationId));
 
