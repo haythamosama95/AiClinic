@@ -429,6 +429,15 @@ async function readTransferPackage(
   return row?.package ?? null;
 }
 
+async function readDoGrants(installationId: string): Promise<Record<string, unknown>[]> {
+  return runInDurableObject(quotaDoStub(installationId), async (_instance, state) =>
+    sqlSelect<Record<string, unknown>>(
+      state,
+      "SELECT grant_id, source_kind, envelope_sha256, envelope, receipt FROM grant ORDER BY applied_at ASC",
+    ),
+  );
+}
+
 type TransferSetup = {
   scenario: Scenario;
   oldInstallationId: string;
@@ -519,12 +528,14 @@ async function completePaidGrantTransfer(): Promise<{
   const transferDiagnostics = {
     claims: await queryAll<{
       grant_id: string;
+      org_id: string;
       source_kind: string;
+      envelope_sha256: string;
       installation_id: string;
       route_generation: number;
       state: string;
     }>(
-      `SELECT grant_id, source_kind, installation_id, route_generation, state
+      `SELECT grant_id, org_id, source_kind, envelope_sha256, installation_id, route_generation, state
        FROM grant_claim WHERE org_id = ? AND source_kind = 'transfer'`,
       [scenario.orgId],
     ),
@@ -532,6 +543,7 @@ async function completePaidGrantTransfer(): Promise<{
       "SELECT grant_id, reason, count FROM grant_claim_dispute WHERE org_id = ?",
       [scenario.orgId],
     ),
+    doGrants: await readDoGrants(transferRow.to_installation_id),
   };
   expect(inResult.result, JSON.stringify({ inResult, transferDiagnostics })).toBe("applied");
   await runDurableObjectAlarm(quotaDoStub(transferRow.to_installation_id));
@@ -824,12 +836,14 @@ describe("transfer, deletion with coverage left, ledger retention", () => {
     const transferDiagnostics = {
       claims: await queryAll<{
         grant_id: string;
+        org_id: string;
         source_kind: string;
+        envelope_sha256: string;
         installation_id: string;
         route_generation: number;
         state: string;
       }>(
-        `SELECT grant_id, source_kind, installation_id, route_generation, state
+        `SELECT grant_id, org_id, source_kind, envelope_sha256, installation_id, route_generation, state
          FROM grant_claim WHERE org_id = ? AND source_kind = 'transfer'`,
         [scenario.orgId],
       ),
@@ -837,6 +851,7 @@ describe("transfer, deletion with coverage left, ledger retention", () => {
         "SELECT grant_id, reason, count FROM grant_claim_dispute WHERE org_id = ?",
         [scenario.orgId],
       ),
+      doGrants: await readDoGrants(newInstallationId),
     };
     expect(inResult.result, JSON.stringify({ inResult, transferDiagnostics })).toBe("applied");
     await runDurableObjectAlarm(quotaDoStub(newInstallationId));
