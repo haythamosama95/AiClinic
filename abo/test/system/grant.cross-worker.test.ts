@@ -1384,7 +1384,6 @@ describe("grant cross-worker", () => {
   });
 
   it("R4-A1: compatibility view preserves the first terminal outcome after later attempts", async () => {
-    await setupGrantHarness();
     const grantId = "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff";
     await env.DB.batch([
       env.DB.prepare(
