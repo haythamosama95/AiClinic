@@ -73,6 +73,7 @@ import {
   createManifestRetentionClassResolver,
 } from "../retention";
 import { supportLookup as runSupportLookup } from "../support";
+import { normalizeRequestReference } from "../reference";
 import { raiseAl19FromOutbox } from "../alert/index";
 import {
   runRebuildClinicDo,
@@ -2480,9 +2481,9 @@ export class VendorEntrypoint extends WorkerEntrypoint<VendorEnv> {
     }
 
     // R8-KEY1: the transition is guarded on the row still being `active`, and
-    // it is batched atomically with the assertion consumption and the audit
-    // write so a concurrent revoke can never be overwritten. The dedicated
-    // AUDIT1 helper from RM13 will replace this local batching (seam for RM13).
+    // the shared audit-statement helper keeps its audit in the same D1 batch.
+    // A losing active→retiring race has no transition audit; an already-
+    // retiring idempotent request still records the accepted operator action.
     await this.env.DB.batch([
       await buildAssertionUsedStatement(
         this.env,
@@ -2498,6 +2499,9 @@ export class VendorEntrypoint extends WorkerEntrypoint<VendorEnv> {
         "retireIssuerKey",
         check.auditTarget,
         check.assertionSha256,
+        existing.status,
+        existing.status === "active" ? "retiring" : existing.status,
+        existing.status === "active",
       ),
     ]);
 
@@ -5193,7 +5197,7 @@ export class VendorEntrypoint extends WorkerEntrypoint<VendorEnv> {
   async supportLookup(
     args: Record<string, unknown>,
   ): Promise<VendorResultEnvelope> {
-    return this.invokeClassH(args, async (version) => {
+    return this.invokeClassH(args, async (version, email) => {
       const reference =
         typeof args.reference === "string" ? args.reference : undefined;
       const subscriptionRefArg =
@@ -5201,17 +5205,46 @@ export class VendorEntrypoint extends WorkerEntrypoint<VendorEnv> {
           ? args.subscription_ref
           : undefined;
       const orgId = typeof args.org_id === "string" ? args.org_id : undefined;
+      const limit = typeof args.limit === "number" ? args.limit : undefined;
+      const cursor = typeof args.cursor === "string" ? args.cursor : undefined;
 
       if (!reference && !subscriptionRefArg && !orgId) {
         return rejected(version, "missing_lookup_key");
       }
+      if (
+        (args.limit !== undefined &&
+          (typeof args.limit !== "number" ||
+            !Number.isInteger(args.limit) ||
+            args.limit < 1 ||
+            args.limit > 100)) ||
+        (args.cursor !== undefined && typeof args.cursor !== "string")
+      ) {
+        return rejected(version, "bad_request");
+      }
+
+      const normalizedReference = reference === undefined
+        ? undefined
+        : normalizeRequestReference(reference.trim());
+      const normalizedSubscriptionRef = subscriptionRefArg?.trim();
+      const normalizedOrgId = orgId?.trim().toLowerCase();
+      const selector = normalizedReference !== undefined
+        ? { reference: normalizedReference }
+        : normalizedSubscriptionRef !== undefined
+          ? { subscription_ref: normalizedSubscriptionRef }
+          : { org_id: normalizedOrgId! };
 
       // Diagnostic-retention gate reads the harness clock so TEST_CLOCK
       // runs age rows deterministically; production falls back to
       // Date.now() (single snapshot per lookup).
       const lookupNowMs = await clockNowMs(this.env);
       const result = await runSupportLookup(
-        { reference, subscription_ref: subscriptionRefArg, org_id: orgId },
+        {
+          reference: normalizedReference,
+          subscription_ref: normalizedSubscriptionRef,
+          org_id: normalizedOrgId,
+          limit,
+          cursor,
+        },
         {
           db: this.env.DB,
           r2: this.env.R2,
@@ -5224,6 +5257,18 @@ export class VendorEntrypoint extends WorkerEntrypoint<VendorEnv> {
         return rejected(version, "not_found");
       }
 
+      try {
+        await writeEntrypointAudit(
+          this.env.DB,
+          email,
+          "support_lookup",
+          JSON.stringify(selector),
+          null,
+        );
+      } catch {
+        return rejected(version, "storage_error");
+      }
+
       if ("requests" in result) {
         const body = {
           requests: result.requests.map((entry) => ({
@@ -5231,6 +5276,8 @@ export class VendorEntrypoint extends WorkerEntrypoint<VendorEnv> {
             attempts: entry.attempts,
             envelope: entry.envelope,
           })),
+          next_after: result.next_after,
+          has_more: result.has_more,
         };
         return ok(version, JSON.stringify(body));
       }

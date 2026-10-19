@@ -30,24 +30,40 @@ export function buildEntrypointAuditStatement(
   assertionSha256: string | null,
   beforePointer: string | null = null,
   afterPointer: string | null = null,
+  onlyIfPreviousStatementChanged:
+    | boolean
+    | { sql: string; bindings: unknown[] } = false,
 ): D1PreparedStatement {
+  const where = onlyIfPreviousStatementChanged === true
+    ? "WHERE changes() > 0"
+    : typeof onlyIfPreviousStatementChanged === "object"
+      ? `WHERE ${onlyIfPreviousStatementChanged.sql}`
+      : "";
+  const values: (string | null)[] = [
+    newId(),
+    actor,
+    actor,
+    action,
+    target,
+    assertionSha256,
+    beforePointer,
+    afterPointer,
+    nowIso(),
+  ];
+  if (typeof onlyIfPreviousStatementChanged === "object") {
+    values.push(...onlyIfPreviousStatementChanged.bindings as (string | null)[]);
+  }
   return db
     .prepare(
-      `INSERT INTO control_audit
+      where
+        ? `INSERT INTO control_audit
+         (audit_id, operator_id, actor, action, target, assertion_sha256, before_pointer, after_pointer, recorded_at)
+       SELECT ?, ?, ?, ?, ?, ?, ?, ?, ? ${where}`
+        : `INSERT INTO control_audit
          (audit_id, operator_id, actor, action, target, assertion_sha256, before_pointer, after_pointer, recorded_at)
        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     )
-    .bind(
-      newId(),
-      actor,
-      actor,
-      action,
-      target,
-      assertionSha256,
-      beforePointer,
-      afterPointer,
-      nowIso(),
-    );
+    .bind(...values);
 }
 
 export async function writeEntrypointAudit(

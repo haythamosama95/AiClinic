@@ -2,6 +2,7 @@
 
 export type ControlAuditRow = {
   operator_id: string;
+  actor: string;
   action: string;
   target: string;
 };
@@ -16,7 +17,7 @@ export async function assertControlAudit(
 ): Promise<ControlAuditRow> {
   const row = await db
     .prepare(
-      `SELECT operator_id, action, target FROM control_audit
+      `SELECT operator_id, actor, action, target FROM control_audit
        WHERE action = ? AND operator_id = ?
        ORDER BY recorded_at DESC LIMIT 1`,
     )
@@ -32,6 +33,12 @@ export async function assertControlAudit(
   if (expected.target !== undefined && row.target !== expected.target) {
     throw new Error(
       `Expected control_audit target ${expected.target}, got ${row.target}`,
+    );
+  }
+
+  if (row.actor !== expected.operatorId) {
+    throw new Error(
+      `Expected control_audit actor ${expected.operatorId}, got ${row.actor}`,
     );
   }
 

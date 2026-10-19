@@ -1,5 +1,8 @@
 import { isCanonicalUuid } from "../platform-vocabulary";
-import { nowIso, writeEntrypointAudit } from "./audit";
+import {
+  buildEntrypointAuditStatement,
+  nowIso,
+} from "./audit";
 import type { ControlActionResult, ControlBindings } from "./types";
 import { requireNonEmptyString } from "./types";
 
@@ -41,18 +44,6 @@ function disarmAuditAction(scope: KillSwitchScope): string {
 
 function isKillSwitchRowActive(row: KillSwitchRow): boolean {
   return row.active === 1 || row.active === true;
-}
-
-async function runControlBatch(
-  db: D1Database,
-  statements: D1PreparedStatement[],
-): Promise<ControlActionResult | null> {
-  try {
-    await db.batch(statements);
-    return null;
-  } catch {
-    return { ok: false, status: 500, error: "storage_error" };
-  }
 }
 
 async function assertInstallationExists(
@@ -129,27 +120,36 @@ export async function armKillSwitchAction(
   const recordedAt = nowIso();
   const target = auditTarget(payload.scope, payload.target);
 
-  const batchError = await runControlBatch(DB, [
-    DB.prepare(
-      `INSERT INTO kill_switch (scope, target, active, changed_at, changed_by)
-       VALUES (?, ?, 1, ?, ?)
-       ON CONFLICT(scope, target) DO UPDATE SET
-         active = 1,
-         changed_at = excluded.changed_at,
-         changed_by = excluded.changed_by`,
-    ).bind(payload.scope, payload.target, recordedAt, actor),
-  ]);
-  if (batchError) {
-    return batchError;
+  let transitioned = false;
+  try {
+    const results = await DB.batch([
+      DB.prepare(
+        `INSERT INTO kill_switch (scope, target, active, changed_at, changed_by)
+         VALUES (?, ?, 1, ?, ?)
+         ON CONFLICT(scope, target) DO UPDATE SET
+           active = 1,
+           changed_at = excluded.changed_at,
+           changed_by = excluded.changed_by
+         WHERE kill_switch.active = 0`,
+      ).bind(payload.scope, payload.target, recordedAt, actor),
+      buildEntrypointAuditStatement(
+        DB,
+        actor,
+        armAuditAction(payload.scope),
+        target,
+        null,
+        existing ? "inactive" : null,
+        "active",
+        true,
+      ),
+    ]);
+    transitioned = (results[0]?.meta.changes ?? 0) > 0;
+  } catch {
+    return { ok: false, status: 500, error: "storage_error" };
   }
-
-  await writeEntrypointAudit(
-    DB,
-    actor,
-    armAuditAction(payload.scope),
-    target,
-    null,
-  );
+  if (!transitioned) {
+    return { ok: false, status: 409, error: "illegal_kill_switch_transition" };
+  }
 
   return { ok: true, body: {} };
 }
@@ -174,24 +174,32 @@ export async function disarmKillSwitchAction(
   const recordedAt = nowIso();
   const target = auditTarget(payload.scope, payload.target);
 
-  const batchError = await runControlBatch(DB, [
-    DB.prepare(
-      `UPDATE kill_switch
-       SET active = 0, changed_at = ?, changed_by = ?
-       WHERE scope = ? AND target = ? AND active = 1`,
-    ).bind(recordedAt, actor, payload.scope, payload.target),
-  ]);
-  if (batchError) {
-    return batchError;
+  let transitioned = false;
+  try {
+    const results = await DB.batch([
+      DB.prepare(
+        `UPDATE kill_switch
+         SET active = 0, changed_at = ?, changed_by = ?
+         WHERE scope = ? AND target = ? AND active = 1`,
+      ).bind(recordedAt, actor, payload.scope, payload.target),
+      buildEntrypointAuditStatement(
+        DB,
+        actor,
+        disarmAuditAction(payload.scope),
+        target,
+        null,
+        "active",
+        "inactive",
+        true,
+      ),
+    ]);
+    transitioned = (results[0]?.meta.changes ?? 0) > 0;
+  } catch {
+    return { ok: false, status: 500, error: "storage_error" };
   }
-
-  await writeEntrypointAudit(
-    DB,
-    actor,
-    disarmAuditAction(payload.scope),
-    target,
-    null,
-  );
+  if (!transitioned) {
+    return { ok: false, status: 409, error: "illegal_kill_switch_transition" };
+  }
 
   return { ok: true, body: {} };
 }

@@ -1,4 +1,7 @@
-import { newId, nowIso, writeEntrypointAudit } from "./audit";
+import {
+  buildEntrypointAuditStatement,
+  nowIso,
+} from "./audit";
 import type { ControlActionResult, ControlBindings } from "./types";
 import { requireNonEmptyString } from "./types";
 
@@ -28,6 +31,16 @@ export async function beginTokenContractRotationAction(
        WHERE (SELECT COUNT(*) FROM token_contract WHERE retired_at IS NULL) < 2
          AND NOT EXISTS (SELECT 1 FROM token_contract WHERE ver = ?)`,
     ).bind(ver, addedAt, actor, ver),
+    buildEntrypointAuditStatement(
+      DB,
+      actor,
+      "token_contract_begin_rotation",
+      ver,
+      null,
+      null,
+      "active",
+      true,
+    ),
   ]);
 
   if ((batchResults[0]?.meta.changes ?? 0) === 0) {
@@ -39,14 +52,6 @@ export async function beginTokenContractRotationAction(
     }
     return { ok: false, status: 409, error: "rotation_already_open" };
   }
-
-  await writeEntrypointAudit(
-    DB,
-    actor,
-    "token_contract_begin_rotation",
-    ver,
-    null,
-  );
 
   return { ok: true, body: { ver } };
 }
@@ -64,7 +69,6 @@ export async function retireTokenContractAction(
 
   const { DB } = bindings;
   const retiredAt = nowIso();
-  const auditId = newId();
   const batchResults = await DB.batch([
     DB.prepare(
       `UPDATE token_contract
@@ -75,14 +79,16 @@ export async function retireTokenContractAction(
            SELECT COUNT(*) AS cnt FROM token_contract WHERE retired_at IS NULL
          )) >= 2`,
     ).bind(retiredAt, actor, ver),
-    DB.prepare(
-      `INSERT INTO control_audit
-         (audit_id, operator_id, action, target, before_pointer, after_pointer, recorded_at)
-       SELECT ?, ?, 'token_contract_retire', ?, NULL, NULL, ?
-       WHERE EXISTS (
-         SELECT 1 FROM token_contract WHERE ver = ? AND retired_at = ?
-       )`,
-    ).bind(auditId, actor, ver, retiredAt, ver, retiredAt),
+    buildEntrypointAuditStatement(
+      DB,
+      actor,
+      "token_contract_retire",
+      ver,
+      null,
+      "active",
+      "retired",
+      true,
+    ),
   ]);
 
   if ((batchResults[0]?.meta.changes ?? 0) === 0) {

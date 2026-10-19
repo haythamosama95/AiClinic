@@ -50,12 +50,17 @@ export type SupportLookupResult =
 export type SupportLookupListEntry = {
   request: SupportLookupRequestTrace;
   attempts: SupportLookupAttemptTrace[];
-  envelope: Envelope | null;
+  envelope: null;
 };
 
 export type SupportLookupListResult =
   | { found: false }
-  | { found: true; requests: SupportLookupListEntry[] };
+  | {
+      found: true;
+      requests: SupportLookupListEntry[];
+      next_after: string | null;
+      has_more: boolean;
+    };
 
 export type SupportLookupQuery =
   | string
@@ -63,6 +68,8 @@ export type SupportLookupQuery =
       reference?: string;
       subscription_ref?: string;
       org_id?: string;
+      limit?: number;
+      cursor?: string;
     };
 
 export type SupportLookupBindings = {
@@ -121,7 +128,14 @@ const LOOKUP_BY_INSTALLATION_SQL = `SELECT
 FROM ai_request r
 LEFT JOIN ai_attempt a ON a.request_id = r.request_id
 WHERE r.installation_id = ?
-ORDER BY r.created_at DESC, a.attempt_no ASC`;
+ORDER BY r.created_at DESC, r.request_id DESC, a.attempt_no ASC`;
+
+const PAGE_REQUESTS_BY_INSTALLATION_SQL = `SELECT request_id, created_at
+FROM ai_request
+WHERE installation_id = ?
+  AND (? IS NULL OR created_at < ? OR (created_at = ? AND request_id < ?))
+ORDER BY created_at DESC, request_id DESC
+LIMIT ?`;
 
 function envelopeKey(requestId: string): string {
   return `request/${requestId}/envelope`;
@@ -263,7 +277,13 @@ async function resolveInstallationId(
 
 function normalizeQuery(
   query: SupportLookupQuery,
-): { reference?: string; subscription_ref?: string; org_id?: string } {
+): {
+  reference?: string;
+  subscription_ref?: string;
+  org_id?: string;
+  limit?: number;
+  cursor?: string;
+} {
   if (typeof query === "string") {
     return { reference: query };
   }
@@ -275,7 +295,42 @@ function normalizeQuery(
         ? query.subscription_ref
         : undefined,
     org_id: typeof query.org_id === "string" ? query.org_id : undefined,
+    limit: typeof query.limit === "number" ? query.limit : undefined,
+    cursor: typeof query.cursor === "string" ? query.cursor : undefined,
   };
+}
+
+type SupportPageCursor = { created_at: string; request_id: string };
+
+function encodePageCursor(cursor: SupportPageCursor): string {
+  return btoa(JSON.stringify(cursor))
+    .replace(/\+/gu, "-")
+    .replace(/\//gu, "_")
+    .replace(/=+$/gu, "");
+}
+
+function decodePageCursor(value: string | undefined): SupportPageCursor | null {
+  if (value === undefined) {
+    return null;
+  }
+  if (value.length > 256 || !/^[A-Za-z0-9_-]+$/u.test(value)) {
+    return null;
+  }
+  try {
+    const base64 = value.replace(/-/gu, "+").replace(/_/gu, "/");
+    const parsed = JSON.parse(atob(base64 + "=".repeat((4 - base64.length % 4) % 4))) as unknown;
+    if (
+      parsed === null ||
+      typeof parsed !== "object" ||
+      typeof (parsed as SupportPageCursor).created_at !== "string" ||
+      typeof (parsed as SupportPageCursor).request_id !== "string"
+    ) {
+      return null;
+    }
+    return parsed as SupportPageCursor;
+  } catch {
+    return null;
+  }
 }
 
 export async function supportLookup(
@@ -306,39 +361,72 @@ export async function supportLookup(
     return buildSingleLookupFromRows(result.results ?? [], bindings);
   }
 
+  const limit = normalized.limit ?? 50;
+  if (!Number.isInteger(limit) || limit < 1 || limit > 100) {
+    return { found: false };
+  }
+  const cursor = decodePageCursor(normalized.cursor);
+  if (normalized.cursor !== undefined && cursor === null) {
+    return { found: false };
+  }
+
   const installationId = await resolveInstallationId(bindings.db, normalized);
   if (!installationId) {
     return { found: false };
   }
 
-  const result = await bindings.db
-    .prepare(LOOKUP_BY_INSTALLATION_SQL)
-    .bind(installationId)
-    .all<LookupRow>();
-  const rows = result.results ?? [];
-  if (rows.length === 0) {
-    return { found: true, requests: [] };
+  const pageResult = await bindings.db
+    .prepare(PAGE_REQUESTS_BY_INSTALLATION_SQL)
+    .bind(
+      installationId,
+      cursor?.created_at ?? null,
+      cursor?.created_at ?? null,
+      cursor?.created_at ?? null,
+      cursor?.request_id ?? null,
+      limit + 1,
+    )
+    .all<{ request_id: string; created_at: string }>();
+  const pageRows = pageResult.results ?? [];
+  const hasMore = pageRows.length > limit;
+  const selected = pageRows.slice(0, limit);
+  if (selected.length === 0) {
+    return {
+      found: true,
+      requests: [],
+      next_after: null,
+      has_more: false,
+    };
   }
 
-  const now = bindings.now?.() ?? new Date();
-  const resolveRetentionClass =
-    bindings.resolveRetentionClass ?? defaultRetentionClassResolver();
+  const placeholders = selected.map(() => "?").join(", ");
+  const rowsResult = await bindings.db
+    .prepare(
+      LOOKUP_BY_INSTALLATION_SQL.replace(
+        "WHERE r.installation_id = ?",
+        `WHERE r.request_id IN (${placeholders})`,
+      ),
+    )
+    .bind(...selected.map((row) => row.request_id))
+    .all<LookupRow>();
+  const rows = rowsResult.results ?? [];
 
   const requests: SupportLookupListEntry[] = [];
   for (const group of groupRowsByRequest(rows)) {
     const first = group[0];
-    const envelope = await loadEnvelopeIfWithinRetention(
-      first,
-      bindings,
-      now,
-      resolveRetentionClass,
-    );
     requests.push({
       request: requestTraceFromRow(first),
       attempts: attemptsFromRows(group),
-      envelope,
+      envelope: null,
     });
   }
 
-  return { found: true, requests };
+  const last = selected[selected.length - 1]!;
+  return {
+    found: true,
+    requests,
+    next_after: hasMore
+      ? encodePageCursor({ created_at: last.created_at, request_id: last.request_id })
+      : null,
+    has_more: hasMore,
+  };
 }

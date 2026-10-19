@@ -1,4 +1,4 @@
-import { writeEntrypointAudit } from "./audit";
+import { buildEntrypointAuditStatement } from "./audit";
 import type { ControlActionResult, ControlBindings } from "./types";
 
 export async function setInstallationSuspendedAction(
@@ -23,13 +23,35 @@ export async function setInstallationSuspendedAction(
     return { ok: true, body: { installation_id: installationId, status } };
   }
 
-  await DB.prepare(
-    "UPDATE installation SET status = ? WHERE installation_id = ?",
-  )
-    .bind(status, installationId)
-    .run();
+  const results = await DB.batch([
+    DB.prepare(
+      "UPDATE installation SET status = ? WHERE installation_id = ? AND status = ?",
+    ).bind(status, installationId, existing.status),
+    buildEntrypointAuditStatement(
+      DB,
+      actor,
+      action,
+      installationId,
+      null,
+      existing.status,
+      status,
+      true,
+    ),
+  ]);
 
-  await writeEntrypointAudit(DB, actor, action, installationId, null);
+  if ((results[0]?.meta.changes ?? 0) === 0) {
+    const current = await DB.prepare(
+      "SELECT status FROM installation WHERE installation_id = ?",
+    )
+      .bind(installationId)
+      .first<{ status: string }>();
+    if (!current) {
+      return { ok: false, status: 404, error: "installation_not_found" };
+    }
+    if (current.status !== status) {
+      return { ok: false, status: 409, error: "illegal_installation_transition" };
+    }
+  }
 
   return { ok: true, body: { installation_id: installationId, status } };
 }

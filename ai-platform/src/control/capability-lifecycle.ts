@@ -3,7 +3,11 @@ import {
   isCapabilityVersionRegistered,
   isSuccessorRegistered,
 } from "../capability";
-import { newId, nowIso, writeEntrypointAudit } from "./audit";
+import {
+  buildEntrypointAuditStatement,
+  newId,
+  nowIso,
+} from "./audit";
 import type { ControlActionResult, ControlBindings } from "./types";
 import { requireNonEmptyString } from "./types";
 
@@ -17,7 +21,7 @@ async function loadGlobalOverlay(
       `SELECT lifecycle_state, successor_id, deprecated_at, retire_after
        FROM capability_grant
        WHERE scope = 'global' AND capability_id = ? AND capability_version = ?
-       ORDER BY changed_at DESC LIMIT 1`,
+       ORDER BY changed_at DESC, rowid DESC LIMIT 1`,
     )
     .bind(capabilityId, version)
     .first<Record<string, unknown>>();
@@ -107,7 +111,12 @@ export async function deprecateCapabilityAction(
          grant_id, scope, capability_id, capability_version,
          granted_at, revoked_at, changed_at, changed_by,
          lifecycle_state, successor_id, deprecated_at, retire_after
-       ) VALUES (?, 'global', ?, ?, ?, ?, ?, ?, 'deprecated', ?, ?, ?)`,
+       ) SELECT ?, 'global', ?, ?, ?, ?, ?, ?, 'deprecated', ?, ?, ?
+       WHERE COALESCE((
+         SELECT lifecycle_state FROM capability_grant
+         WHERE scope = 'global' AND capability_id = ? AND capability_version = ?
+         ORDER BY changed_at DESC, rowid DESC LIMIT 1
+       ), 'active') NOT IN ('deprecated', 'retired')`,
     ).bind(
       grantId,
       capabilityId,
@@ -119,21 +128,31 @@ export async function deprecateCapabilityAction(
       successorId,
       deprecatedAt,
       retireAfter,
+      capabilityId,
+      version,
+    ),
+    buildEntrypointAuditStatement(
+      DB,
+      actor,
+      "deprecate",
+      target,
+      null,
+      null,
+      successorId,
+      true,
     ),
   ]);
   if (batchError) {
     return batchError;
   }
 
-  await writeEntrypointAudit(
-    DB,
-    actor,
-    "deprecate",
-    target,
-    null,
-    null,
-    successorId,
-  );
+  const transitioned = await loadGlobalOverlay(DB, capabilityId, version);
+  if (transitioned?.lifecycle_state !== "deprecated") {
+    return { ok: false, status: 409, error: "already_deprecated" };
+  }
+  if (transitioned.successor_id !== successorId) {
+    return { ok: false, status: 409, error: "already_deprecated" };
+  }
 
   return { ok: true, body: {} };
 }
@@ -182,7 +201,27 @@ export async function retireCapabilityAction(
          grant_id, scope, capability_id, capability_version,
          granted_at, revoked_at, changed_at, changed_by,
          lifecycle_state, successor_id, deprecated_at, retire_after
-       ) VALUES (?, 'global', ?, ?, ?, ?, ?, ?, 'retired', ?, ?, ?)`,
+       ) SELECT ?, 'global', ?, ?, ?, ?, ?, ?, 'retired', ?, ?, ?
+       WHERE (
+         SELECT lifecycle_state FROM capability_grant
+         WHERE scope = 'global' AND capability_id = ? AND capability_version = ?
+         ORDER BY changed_at DESC, rowid DESC LIMIT 1
+       ) = 'deprecated'
+         AND (
+           SELECT successor_id FROM capability_grant
+           WHERE scope = 'global' AND capability_id = ? AND capability_version = ?
+           ORDER BY changed_at DESC, rowid DESC LIMIT 1
+         ) = ?
+         AND (
+           SELECT deprecated_at FROM capability_grant
+           WHERE scope = 'global' AND capability_id = ? AND capability_version = ?
+           ORDER BY changed_at DESC, rowid DESC LIMIT 1
+         ) IS ?
+         AND (
+           SELECT retire_after FROM capability_grant
+           WHERE scope = 'global' AND capability_id = ? AND capability_version = ?
+           ORDER BY changed_at DESC, rowid DESC LIMIT 1
+         ) IS ?`,
     ).bind(
       grantId,
       capabilityId,
@@ -194,21 +233,37 @@ export async function retireCapabilityAction(
       overlay.successor_id,
       overlay.deprecated_at,
       overlay.retire_after,
+      capabilityId,
+      version,
+      capabilityId,
+      version,
+      overlay.successor_id,
+      capabilityId,
+      version,
+      overlay.deprecated_at,
+      capabilityId,
+      version,
+      overlay.retire_after,
+    ),
+    buildEntrypointAuditStatement(
+      DB,
+      actor,
+      "retire",
+      target,
+      null,
+      null,
+      overlay.successor_id,
+      true,
     ),
   ]);
   if (batchError) {
     return batchError;
   }
 
-  await writeEntrypointAudit(
-    DB,
-    actor,
-    "retire",
-    target,
-    null,
-    null,
-    overlay.successor_id,
-  );
+  const transitioned = await loadGlobalOverlay(DB, capabilityId, version);
+  if (transitioned?.lifecycle_state !== "retired") {
+    return { ok: false, status: 409, error: "not_deprecated" };
+  }
 
   return { ok: true, body: {} };
 }

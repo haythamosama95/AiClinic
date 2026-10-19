@@ -45,7 +45,8 @@ type P310VendorMethod =
   | "deprecateCapability"
   | "retireCapability"
   | "beginTokenContractRotation"
-  | "supportLookup";
+  | "supportLookup"
+  | "inspectCoverage";
 
 const rawP310VendorCall = vendorCall as (
   method: P310VendorMethod,
@@ -173,7 +174,7 @@ describe("P3.10 control-plane port", () => {
     expect(quota.status).toBe(404);
   });
 
-  it("E2E-P3.10-02 routing policy publish canary promote and traffic follows", async () => {
+  it("R8-AUDIT1 E2E-P3.10-02 routing policy publish canary promote and traffic follows", async () => {
     const scenario = await newScenario();
     await coverClinic(scenario);
     await newClinic(scenario);
@@ -214,6 +215,18 @@ describe("P3.10 control-plane port", () => {
         { accessJwt },
       ),
     );
+    const canaryAudit = await env.DB.prepare(
+      `SELECT actor, operator_id, after_pointer FROM control_audit
+       WHERE action = 'routing_policy_canary' AND target = ?
+       ORDER BY recorded_at DESC LIMIT 1`,
+    )
+      .bind(`${POLICY_ID}@2`)
+      .first<{ actor: string; operator_id: string; after_pointer: string }>();
+    expect(canaryAudit?.actor).toBe(VENDOR_OPERATOR_EMAIL);
+    expect(canaryAudit?.operator_id).toBe(VENDOR_OPERATOR_EMAIL);
+    expect(JSON.parse(canaryAudit?.after_pointer ?? "null")).toEqual([
+      scenario.installationId,
+    ]);
     expectClassHOk(
       await p310VendorCall(
         "promoteRoutingPolicy",
@@ -242,7 +255,7 @@ describe("P3.10 control-plane port", () => {
     expect(decision.rule_id).toBe("promoted-v2");
   });
 
-  it("E2E-P3.10-03 kill switch answers capability_disabled and raises AL-19", async () => {
+  it("R8-AUDIT1 E2E-P3.10-03 kill switch answers capability_disabled and raises AL-19", async () => {
     await setupVendorHarness();
     const scenario = await newScenario();
     await setupPromotedFakePolicy(scenario);
@@ -279,7 +292,7 @@ describe("P3.10 control-plane port", () => {
     expect(audit?.assertion_sha256).toBeNull();
   });
 
-  it("E2E-P3.10-04 capability deprecate and retire show on discovery", async () => {
+  it("R8-AUDIT1 E2E-P3.10-04 capability deprecate and retire show on discovery", async () => {
     const scenario = await newScenario();
     await setupPromotedFakePolicy(scenario);
     const token = await mintAat(scenario, {
@@ -336,7 +349,7 @@ describe("P3.10 control-plane port", () => {
     );
   });
 
-  it("E2E-P3.10-05 token-contract rotation leaves version 2 current", async () => {
+  it("R8-AUDIT1 E2E-P3.10-05 token-contract rotation leaves version 2 current", async () => {
     const accessJwt = await mintVendorAccessJwt();
 
     expectClassHOk(
@@ -358,7 +371,7 @@ describe("P3.10 control-plane port", () => {
     expect(repeat.code).toBe("");
   });
 
-  it("E2E-P3.10-06 supportLookup by subscription ref and by reference", async () => {
+  it("R8-AUDIT1 and R8-SUPPORT1 E2E-P3.10-06 supportLookup by subscription ref and by reference", async () => {
     const scenario = await newScenario();
     await setupPromotedFakePolicy(scenario);
     const accessJwt = await mintVendorAccessJwt();
@@ -389,6 +402,95 @@ describe("P3.10 control-plane port", () => {
     expect(
       requests.some((entry) => entry.request?.requestReference === ref),
     ).toBe(true);
+    expect(requests.every((entry) => entry.envelope === null)).toBe(true);
+    const supportAudit = await env.DB.prepare(
+      `SELECT actor, operator_id, target FROM control_audit
+       WHERE action = 'support_lookup' AND target = ?
+       ORDER BY recorded_at DESC LIMIT 1`,
+    )
+      .bind(JSON.stringify({ subscription_ref: subRef }))
+      .first<{ actor: string; operator_id: string; target: string }>();
+    expect(supportAudit).toEqual({
+      actor: VENDOR_OPERATOR_EMAIL,
+      operator_id: VENDOR_OPERATOR_EMAIL,
+      target: JSON.stringify({ subscription_ref: subRef }),
+    });
+  });
+
+  it("R8-AUDIT1 and R8-SUPPORT1 audit support reads and page metadata without payloads", async () => {
+    const scenario = await newScenario();
+    const createdAt = "2026-08-01T12:00:00.000Z";
+    for (const [index, requestId] of [
+      "01RM13SUPPORT00000001",
+      "01RM13SUPPORT00000002",
+      "01RM13SUPPORT00000003",
+    ].entries()) {
+      await env.DB.prepare(
+        `INSERT INTO ai_request (
+          request_id, request_reference, installation_id, actor_id, branch_id,
+          capability_id, capability_version, prompt_artifact_hash, idempotency_key,
+          state, created_at, updated_at, completed_at, terminal_error_code,
+          trace_id, payload_pointer, conversation_id, turn_ordinal
+        ) VALUES (?, ?, ?, 'support-actor', NULL, 'clinic.visit_summary', '1.0.0',
+          'prompt/support@v1', ?, 'Completed', ?, ?, ?, NULL, ?, NULL, NULL, NULL)`,
+      )
+        .bind(
+          requestId,
+          `7RM1-3${index}0A`,
+          scenario.installationId,
+          `rm13-idem-${index}`,
+          createdAt,
+          createdAt,
+          createdAt,
+          `trace-${requestId}`,
+        )
+        .run();
+    }
+
+    const accessJwt = await mintVendorAccessJwt();
+    const subRef = await subscriptionRef(scenario.orgId);
+    const allRefs: string[] = [];
+    let cursor: string | undefined;
+    do {
+      const page = expectClassHOk(
+        await p310VendorCall(
+          "supportLookup",
+          { subscription_ref: subRef, limit: 1, ...(cursor ? { cursor } : {}) },
+          { accessJwt },
+        ),
+      );
+      const requests = page.requests as Array<{
+        request: { requestReference: string };
+        envelope: unknown;
+      }>;
+      expect(requests).toHaveLength(1);
+      expect(requests[0]?.envelope).toBeNull();
+      allRefs.push(requests[0]!.request.requestReference);
+      cursor = typeof page.next_after === "string" ? page.next_after : undefined;
+      if (page.has_more === false) {
+        break;
+      }
+    } while (cursor !== undefined);
+    expect(allRefs).toEqual(["7RM1-320A", "7RM1-310A", "7RM1-300A"]);
+    expect(new Set(allRefs).size).toBe(3);
+    const overLimit = await p310VendorCall(
+      "supportLookup",
+      { subscription_ref: subRef, limit: 101 },
+      { accessJwt },
+    );
+    expect(overLimit.result).toBe("rejected");
+    expect(overLimit.code).toBe("bad_request");
+
+    const beforeInspectAudits = await env.DB.prepare(
+      "SELECT COUNT(*) AS n FROM control_audit",
+    ).first<{ n: number }>();
+    expectClassHOk(
+      await p310VendorCall("inspectCoverage", { org_id: scenario.orgId }, { accessJwt }),
+    );
+    const afterInspectAudits = await env.DB.prepare(
+      "SELECT COUNT(*) AS n FROM control_audit",
+    ).first<{ n: number }>();
+    expect(afterInspectAudits?.n).toBe(beforeInspectAudits?.n);
   });
 
   it("E2E-P3.10-07 monthly period close is gone and 0 3 and 0 4 run retention and rollup", async () => {

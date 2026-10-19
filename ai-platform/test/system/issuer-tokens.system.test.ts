@@ -1020,6 +1020,26 @@ describe("remediation RM03 (R1-C2 / R1-C3 / R8-KEY1)", () => {
     });
     expect(secondRetire.result).toBe("ok");
     expect(parseDetailRow(secondRetire.detail!).status).toBe("retiring");
+    const retireAudit = await queryOne<{
+      actor: string;
+      operator_id: string;
+      assertion_sha256: string | null;
+      before_pointer: string | null;
+      after_pointer: string | null;
+    }>(
+      `SELECT actor, operator_id, assertion_sha256, before_pointer, after_pointer
+       FROM control_audit WHERE action = 'retireIssuerKey' AND actor = ?
+         AND before_pointer = 'retiring' AND after_pointer = 'retiring'
+       ORDER BY recorded_at DESC LIMIT 1`,
+      [VENDOR_OPERATOR_EMAIL],
+    );
+    expect(retireAudit).toEqual({
+      actor: VENDOR_OPERATOR_EMAIL,
+      operator_id: VENDOR_OPERATOR_EMAIL,
+      assertion_sha256: expect.any(String),
+      before_pointer: "retiring",
+      after_pointer: "retiring",
+    });
 
     const [retireResult, revokeResult] = await Promise.all([
       issuerKidVendorCall({

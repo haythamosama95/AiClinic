@@ -1,7 +1,7 @@
 import { isCapabilityVersionRegistered } from "../capability";
 import { mirrorTermViewFromSnapshot } from "../quota-do/coverage";
 import { toCanonicalUuid } from "../platform-vocabulary";
-import { newId, nowIso } from "./audit";
+import { buildEntrypointAuditStatement, newId, nowIso } from "./audit";
 import type { ControlActionResult, ControlBindings } from "./types";
 import { requireNonEmptyString } from "./types";
 
@@ -162,12 +162,15 @@ export async function activateCohortAction(
     priorVersions[installationId] = existing?.capability_version ?? null;
 
     if (existing) {
+      if (existing.capability_version === version) {
+        continue;
+      }
       statements.push(
         DB.prepare(
           `UPDATE capability_grant
            SET capability_version = ?, changed_at = ?, changed_by = ?
-           WHERE grant_id = ?`,
-        ).bind(version, recordedAt, actor, existing.grant_id),
+           WHERE grant_id = ? AND capability_version = ?`,
+        ).bind(version, recordedAt, actor, existing.grant_id, existing.capability_version),
       );
     } else {
       statements.push(
@@ -191,16 +194,41 @@ export async function activateCohortAction(
 
   const beforePointer =
     Object.values(priorVersions).some((v) => v !== null)
-      ? JSON.stringify(priorVersions)
+      ? JSON.stringify(
+          Object.fromEntries(
+            Object.entries(priorVersions).sort(([left], [right]) =>
+              left.localeCompare(right),
+            ),
+          ),
+        )
       : null;
-  const afterPointer = version;
+  const afterPointer = JSON.stringify({
+    capability_version: version,
+    installation_ids: [...installationIds].sort(),
+  });
+
+  if (statements.length === 0) {
+    return { ok: true, body: {} };
+  }
 
   statements.push(
-    DB.prepare(
-      `INSERT INTO control_audit
-         (audit_id, operator_id, action, target, before_pointer, after_pointer, recorded_at)
-       VALUES (?, ?, 'cohort_activate', ?, ?, ?, ?)`,
-    ).bind(newId(), actor, target, beforePointer, afterPointer, recordedAt),
+    buildEntrypointAuditStatement(
+      DB,
+      actor,
+      "cohort_activate",
+      target,
+      null,
+      beforePointer,
+      afterPointer,
+      {
+        sql: `EXISTS (
+          SELECT 1 FROM capability_grant
+          WHERE capability_id = ? AND scope LIKE 'installation:%'
+            AND changed_at = ? AND changed_by = ? AND capability_version = ?
+        )`,
+        bindings: [capabilityId, recordedAt, actor, version],
+      },
+    ),
   );
 
   const batchError = await runControlBatch(DB, statements);
@@ -244,36 +272,38 @@ export async function promoteCohortAction(
     .all<{ grant_id: string; scope: string; capability_version: string }>();
 
   const beforePointer = JSON.stringify({
-    installation: (liveInstallationGrants.results ?? []).map((g) => ({
-      scope: g.scope,
-      version: g.capability_version,
-    })),
-    plan: (livePlanGrants.results ?? []).map((g) => ({
-      scope: g.scope,
-      version: g.capability_version,
-    })),
+    installation: (liveInstallationGrants.results ?? [])
+      .map((g) => ({ scope: g.scope, version: g.capability_version }))
+      .sort((left, right) => left.scope.localeCompare(right.scope)),
+    plan: (livePlanGrants.results ?? [])
+      .map((g) => ({ scope: g.scope, version: g.capability_version }))
+      .sort((left, right) => left.scope.localeCompare(right.scope)),
   });
-  const afterPointer = version;
-
   const statements: D1PreparedStatement[] = [];
 
   for (const grant of liveInstallationGrants.results ?? []) {
+    if (grant.capability_version === version) {
+      continue;
+    }
     statements.push(
       DB.prepare(
         `UPDATE capability_grant
          SET capability_version = ?, changed_at = ?, changed_by = ?
-         WHERE grant_id = ?`,
-      ).bind(version, recordedAt, actor, grant.grant_id),
+         WHERE grant_id = ? AND capability_version != ?`,
+      ).bind(version, recordedAt, actor, grant.grant_id, version),
     );
   }
 
   for (const grant of livePlanGrants.results ?? []) {
+    if (grant.capability_version === version) {
+      continue;
+    }
     statements.push(
       DB.prepare(
         `UPDATE capability_grant
          SET capability_version = ?, changed_at = ?, changed_by = ?
-         WHERE grant_id = ?`,
-      ).bind(version, recordedAt, actor, grant.grant_id),
+         WHERE grant_id = ? AND capability_version != ?`,
+      ).bind(version, recordedAt, actor, grant.grant_id, version),
     );
   }
 
@@ -300,6 +330,26 @@ export async function promoteCohortAction(
     DB,
     capabilityId,
   );
+
+  const afterPointer = JSON.stringify({
+    capability_version: version,
+    installation_ids: [
+      ...new Set([
+        ...(liveInstallationGrants.results ?? []).map((grant) =>
+          grant.scope.replace(/^installation:/u, ""),
+        ),
+        ...entitledInstallations,
+      ]),
+    ].sort(),
+    plan_ids: [
+      ...new Set([
+        ...(livePlanGrants.results ?? []).map((grant) =>
+          grant.scope.replace(/^plan:/u, ""),
+        ),
+        ...plansNeedingGrant,
+      ]),
+    ].sort(),
+  });
 
   for (const plan of plansNeedingGrant) {
     const scope = `plan:${plan}`;
@@ -380,18 +430,26 @@ export async function promoteCohortAction(
     }
   }
 
+  if (statements.length === 0) {
+    return { ok: true, body: {} };
+  }
   statements.push(
-    DB.prepare(
-      `INSERT INTO control_audit
-         (audit_id, operator_id, action, target, before_pointer, after_pointer, recorded_at)
-       VALUES (?, ?, 'cohort_promote', ?, ?, ?, ?)`,
-    ).bind(
-      newId(),
+    buildEntrypointAuditStatement(
+      DB,
       actor,
+      "cohort_promote",
       target,
+      null,
       beforePointer,
       afterPointer,
-      recordedAt,
+      {
+        sql: `EXISTS (
+          SELECT 1 FROM capability_grant
+          WHERE capability_id = ? AND (scope LIKE 'installation:%' OR scope LIKE 'plan:%')
+            AND changed_at = ? AND changed_by = ? AND capability_version = ?
+        )`,
+        bindings: [capabilityId, recordedAt, actor, version],
+      },
     ),
   );
 

@@ -597,7 +597,7 @@ beforeEach(async () => {
   registerClinicJ3Capabilities();
 });
 
-describe("T-J3-04 every_activation_writes_control_audit_with_operator_identity", () => {
+describe("R8-AUDIT1 T-J3-04 every_activation_writes_control_audit_with_operator_identity", () => {
   it("covers all six control actions including routing_policy_promote", async () => {
     await seedInstallation(env.DB, COHORT_INSTALLATION_ID);
     await seedInstallation(env.DB, OTHER_INSTALLATION_ID);
@@ -663,9 +663,18 @@ describe("T-J3-04 every_activation_writes_control_audit_with_operator_identity",
       operatorAuth,
     );
     expect(activate.ok).toBe(true);
-    await assertControlAudit(env.DB, {
+    const activateAudit = await assertControlAudit(env.DB, {
       operatorId: FAKE_OPERATOR_ID,
       action: "cohort_activate",
+    });
+    expect(activateAudit.actor).toBe(FAKE_OPERATOR_ID);
+    const activatePointers = await env.DB.prepare(
+      `SELECT before_pointer, after_pointer FROM control_audit
+       WHERE action = 'cohort_activate' ORDER BY recorded_at DESC LIMIT 1`,
+    ).first<{ before_pointer: string | null; after_pointer: string | null }>();
+    expect(JSON.parse(activatePointers?.after_pointer ?? "null")).toEqual({
+      capability_version: FIXTURE_CAPABILITY_V2,
+      installation_ids: [COHORT_INSTALLATION_ID],
     });
 
     const promote = await handleCohortPromote(
@@ -674,9 +683,21 @@ describe("T-J3-04 every_activation_writes_control_audit_with_operator_identity",
       operatorAuth,
     );
     expect(promote.ok).toBe(true);
-    await assertControlAudit(env.DB, {
+    const promoteAudit = await assertControlAudit(env.DB, {
       operatorId: FAKE_OPERATOR_ID,
       action: "cohort_promote",
+    });
+    expect(promoteAudit.actor).toBe(FAKE_OPERATOR_ID);
+    const promotePointers = await env.DB.prepare(
+      `SELECT after_pointer FROM control_audit
+       WHERE action = 'cohort_promote' ORDER BY recorded_at DESC LIMIT 1`,
+    ).first<{ after_pointer: string | null }>();
+    expect(JSON.parse(promotePointers?.after_pointer ?? "null")).toMatchObject({
+      capability_version: FIXTURE_CAPABILITY_V2,
+      installation_ids: expect.arrayContaining([
+        COHORT_INSTALLATION_ID,
+        OTHER_INSTALLATION_ID,
+      ]),
     });
 
     const rollback = await handleRoutingPolicyRollback(

@@ -760,7 +760,7 @@ describe("Stage 12 — support lookup (S12-041…S12-055)", () => {
     await assertHappyLookupBody(result, settled, { envelope: "null" });
   });
 
-  it("S12-054 — Support lookup writes no control_audit row", async () => {
+  it("R8-AUDIT1 S12-054 — Support lookup records the normalized operator selector", async () => {
     const settled = await settleCompleted();
     const clinic = await getRequestByRef(settled.token, settled.ref);
     const clinicBody = clinic.json as { result?: unknown };
@@ -769,7 +769,16 @@ describe("Stage 12 — support lookup (S12-041…S12-055)", () => {
     await assertHappyLookupBody(result, settled, {
       clinicResult: clinicBody.result,
     });
-    expect(await count("control_audit")).toBe(auditBefore);
+    expect(await count("control_audit")).toBe(auditBefore + 1);
+    const audit = await env.DB.prepare(
+      `SELECT actor, operator_id, target FROM control_audit
+       WHERE action = 'support_lookup' ORDER BY recorded_at DESC LIMIT 1`,
+    ).first<{ actor: string; operator_id: string; target: string }>();
+    expect(audit).toEqual({
+      actor: "operator@clinic.test",
+      operator_id: "operator@clinic.test",
+      target: JSON.stringify({ reference: settled.ref.toUpperCase() }),
+    });
   });
 
 });
