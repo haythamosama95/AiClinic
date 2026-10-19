@@ -682,7 +682,12 @@ describe("reversal voids, tombstones, held terms, operator voids", () => {
     expect((await paidGrant(scenario, successorGrantId)).result).toBe("applied");
     await runDurableObjectAlarm(quotaDoStub(scenario.installationId));
 
-    const { result: voided, operation } = await hpVoidOp({
+    const {
+      result: voided,
+      operation: voidOperation,
+      accessJwt: voidAccessJwt,
+      assertion: voidAssertion,
+    } = await hpVoidOp({
       op: "voidGrant",
       grantId: compGrantId,
       reason: "operator correction",
@@ -690,7 +695,11 @@ describe("reversal voids, tombstones, held terms, operator voids", () => {
     expect(voided.result).toBe("applied");
     const voidedRetry = await hpVoidOp({
       op: "voidGrant", grantId: compGrantId, reason: "operator correction",
-      replay: { accessJwt: voided.accessJwt, operation: voided.operation, assertion: voided.assertion },
+      replay: {
+        accessJwt: voidAccessJwt,
+        operation: voidOperation,
+        assertion: voidAssertion,
+      },
     });
     expect(voidedRetry.result.result).toBe("already_applied");
     expect(voidedRetry.result.receipt).toEqual(voided.receipt);
