@@ -1312,6 +1312,56 @@ async function resolveOrInsertGrantBinding(
   return installationId;
 }
 
+/** Provision the route only after the complimentary command is durably accepted. */
+async function ensureAcceptedGrantBinding(
+  env: VendorEnv,
+  claim: GrantClaimRow,
+): Promise<GrantClaimRow | null> {
+  const existingRoute = await readTenantBindingForInstallation(
+    env.DB,
+    claim.org_id,
+    claim.installation_id,
+  );
+  if (existingRoute !== null) return claim;
+
+  const active = await readLiveTenantBinding(env.DB, claim.org_id);
+  if (active !== null) {
+    await env.DB.prepare(
+      `UPDATE grant_claim SET installation_id = ?, binding_epoch = ?
+       WHERE grant_id = ? AND state = 'pending' AND command_state = 'accepted'`,
+    ).bind(active.installation_id, active.epoch, claim.grant_id).run();
+    const updated = await readGrantClaim(env.DB, claim.grant_id);
+    return updated !== null && "grant_id" in updated ? updated : null;
+  }
+
+  const createdAt = await clockNowIso(env);
+  try {
+    await env.DB.batch([
+      env.DB.prepare(
+        `INSERT INTO installation (
+           installation_id, org_id, status, display_name, region, enrolled_at
+         ) VALUES (?, ?, 'active', '', '', ?)`,
+      ).bind(claim.installation_id, claim.org_id, createdAt),
+      env.DB.prepare(
+        `INSERT INTO tenant_binding (
+           org_id, installation_id, epoch, status, retired_at, reason, created_at
+         ) VALUES (?, ?, ?, 'active', NULL, NULL, ?)`,
+      ).bind(claim.org_id, claim.installation_id, claim.binding_epoch, createdAt),
+    ]);
+  } catch {
+    const winner = await readLiveTenantBinding(env.DB, claim.org_id);
+    if (winner === null) return null;
+    if (winner.installation_id !== claim.installation_id) {
+      await env.DB.prepare(
+        `UPDATE grant_claim SET installation_id = ?, binding_epoch = ?
+         WHERE grant_id = ? AND state = 'pending' AND command_state = 'accepted'`,
+      ).bind(winner.installation_id, winner.epoch, claim.grant_id).run();
+    }
+  }
+  const updated = await readGrantClaim(env.DB, claim.grant_id);
+  return updated !== null && "grant_id" in updated ? updated : null;
+}
+
 function serviceKeyActiveAt(row: ServiceKeyRow, nowIso: string): boolean {
   if (row.status !== "active") {
     return false;
@@ -4040,18 +4090,10 @@ export class VendorEntrypoint extends WorkerEntrypoint<VendorEnv> {
       const liveBinding = existingGrantClaim === null
         ? await readLiveTenantBinding(this.env.DB, orgId)
         : null;
-      if (existingGrantClaim === null && liveBinding === null) {
-        return grantRejected(version, "coverage_unknown");
-      }
-      const installationId = existingGrantClaim?.installation_id ?? liveBinding!.installation_id;
-      let binding = existingGrantClaim === null ? liveBinding : {
-        installation_id: existingGrantClaim.installation_id,
-        epoch: existingGrantClaim.binding_epoch,
-        status: "active",
-      };
-      if (binding === null) {
-        return grantRejected(version, "coverage_unknown");
-      }
+      const installationId = existingGrantClaim?.installation_id ??
+        liveBinding?.installation_id ?? crypto.randomUUID();
+      const bindingEpoch = existingGrantClaim?.binding_epoch ?? liveBinding?.epoch ??
+        (await readMaxTenantBindingEpoch(this.env.DB, orgId)) + 1;
 
       if (existingGrantClaim === null) {
         const acceptedAt = await clockNowIso(this.env);
@@ -4088,7 +4130,7 @@ export class VendorEntrypoint extends WorkerEntrypoint<VendorEnv> {
             envelope,
             envelopeSha256: claimEnvelopeSha256,
             installationId,
-            bindingEpoch: binding.epoch,
+            bindingEpoch,
             nowIso: acceptedAt,
             accepted,
           }),
@@ -4127,6 +4169,14 @@ export class VendorEntrypoint extends WorkerEntrypoint<VendorEnv> {
         existingGrantClaim = await readGrantClaim(this.env.DB, claimGrantId);
       }
       if (existingGrantClaim === null) return grantRejected(version, "coverage_unknown");
+      if (existingGrantClaim.command_state === "accepted") {
+        try {
+          existingGrantClaim = await ensureAcceptedGrantBinding(this.env, existingGrantClaim);
+        } catch {
+          return grantTransient(version, "unavailable");
+        }
+        if (existingGrantClaim === null) return grantTransient(version, "unavailable");
+      }
       const routedClaim = await routePendingGrantClaim(this.env, existingGrantClaim, version);
       if (routedClaim === null || !("grant_id" in routedClaim)) {
         return routedClaim === null ? grantRejected(version, "coverage_unknown") : routedClaim;

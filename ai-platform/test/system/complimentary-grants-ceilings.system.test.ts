@@ -550,6 +550,7 @@ describe("complimentary grants, ceilings, adjustments, suspension", () => {
     });
     const applied = await hpComplimentaryGrant({ envelope, accessJwt });
     expect(applied.result).toBe("applied");
+    await runDurableObjectAlarm(quotaDoStub(scenario.installationId));
     const ledger = await queryOne<{
       operator_credential_id: string;
       operator_email: string | null;
@@ -644,6 +645,7 @@ describe("complimentary grants, ceilings, adjustments, suspension", () => {
       "SELECT state, command_state FROM grant_claim WHERE grant_id = ?", [grantId],
     )).toEqual({ state: "completed", command_state: "completed" });
     expect(await countDoGrantRows(scenario.installationId)).toBe(initialGrantCount + 1);
+    await runDurableObjectAlarm(quotaDoStub(scenario.installationId));
     expect(await queryOne<{ operator_credential_id: string; operator_email: string }>(
       "SELECT operator_credential_id, operator_email FROM grant_ledger WHERE grant_id = ?",
       [grantId],

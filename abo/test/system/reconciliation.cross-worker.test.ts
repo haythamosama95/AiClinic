@@ -1489,6 +1489,7 @@ describe("reconciliation cross-worker", () => {
 
   it("E2E-P4.10-03 complimentary and transfer grants without ABO authorisation raise findings", async () => {
     await setupReconciliationHarness();
+    await ensureGrantTenantBinding(ORG_RC_03A);
     const hp = await ensureActiveHpCredential();
 
     const compActionId = crypto.randomUUID();
