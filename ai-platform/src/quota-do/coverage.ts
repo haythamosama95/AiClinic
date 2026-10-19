@@ -543,6 +543,8 @@ function snapshotTermObject(
 ): Record<string, unknown> {
   const used =
     term.term_id === hot.active_term_id ? hot.used : (term.used_final ?? 0);
+  const reserved = (JSON.parse(hot.reservations || "[]") as Array<{ term_id?: string; weight?: number }>)
+    .reduce((sum, reservation) => sum + (reservation.term_id === term.term_id ? (reservation.weight ?? 0) : 0), 0);
   const snapshot = JSON.parse(term.plan_snapshot) as {
     display_name?: string;
     capabilities?: unknown;
@@ -559,7 +561,7 @@ function snapshotTermObject(
     grace_ends_at: termGraceEndsAtDisplay(term),
     allowance,
     used,
-    band: allowanceBand(used, allowance, term.state),
+    band: allowanceBand(used + reserved, allowance, term.state),
     capabilities,
   };
 }

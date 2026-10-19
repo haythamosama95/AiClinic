@@ -824,16 +824,34 @@ type ParsedHot = {
 };
 
 function parseHotRow(row: HotRow): ParsedHot {
+  const replay = JSON.parse(row.replay || "{}") as Record<string, StoredReplayEntry>;
+  const idempotency = JSON.parse(row.idempotency || "{}") as Record<string, StoredAnswerEntry>;
+  // Older versions persisted never-admitted refusals as idempotent answers.
+  // They must be reevaluated against current coverage and concurrency.
+  for (const [key, entry] of Object.entries(replay)) {
+    if (entry.answer !== undefined && isNeverAdmittedRefusal(entry.answer)) delete replay[key];
+  }
+  for (const [key, entry] of Object.entries(idempotency)) {
+    if (isNeverAdmittedRefusal(entry.answer)) delete idempotency[key];
+  }
   return {
     row,
     reservations: JSON.parse(row.reservations || "[]") as ReservationRow[],
-    replay: JSON.parse(row.replay || "{}") as Record<string, StoredReplayEntry>,
-    idempotency: JSON.parse(row.idempotency || "{}") as Record<
-      string,
-      StoredAnswerEntry
-    >,
+    replay,
+    idempotency,
     band_emitted: parseBandEmitted(row.band_emitted || "{}"),
   };
+}
+
+function isNeverAdmittedRefusal(answer: AdmissionResponse): boolean {
+  return answer.kind === "admission" && answer.outcome !== "admitted" && answer.outcome !== "idempotent";
+}
+
+function reservedForTerm(hot: ParsedHot, termId: string): number {
+  return hot.reservations.reduce(
+    (total, reservation) => total + (reservation.term_id === termId ? reservation.weight : 0),
+    0,
+  );
 }
 
 function parseBandEmitted(raw: string): Record<string, TermBandEmitted> {
@@ -929,6 +947,9 @@ function returnStoredAdmission(
   answer: AdmissionResponse,
   now: number,
 ): AdmissionResponse {
+  if (isNeverAdmittedRefusal(answer)) {
+    return answer;
+  }
   storeAnswer(hot, request, answer, now);
   recordHotWrites(storage, request.requestId, () =>
     persistParsedHot(storage, hot),
@@ -1040,6 +1061,8 @@ function chargeStaleReservations(
     if (now - reservation.admitted_at > STALE_RESERVATION_MS) {
       if (reservation.term_id === hot.row.active_term_id) {
         hot.row.used += reservation.weight;
+      } else {
+        adjustEndedTermUsedFinal(storage, reservation.term_id, reservation.weight);
       }
       hot.row.reserved = Math.max(0, hot.row.reserved - reservation.weight);
       insertOutbox(storage, "usage_adjustment", {
@@ -1086,8 +1109,7 @@ function endGraceIfExhausted(
     nowIso: string;
   },
 ): boolean {
-  const graceUsed =
-    hot.row.used + hot.row.reserved - hot.row.grace_base_used;
+  const graceUsed = hot.row.used + reservedForTerm(hot, graceTerm.term_id) - hot.row.grace_base_used;
   const graceAllowance = computeGraceAllowance(
     graceTerm,
     hot.row.grace_base_used,
@@ -1095,7 +1117,7 @@ function endGraceIfExhausted(
   if (graceUsed < graceAllowance) {
     return false;
   }
-  const usedFinal = hot.row.used + hot.row.reserved;
+  const usedFinal = hot.row.used;
   sqlExecLocal(
     storage,
     `UPDATE term SET state = 'ended', end_reason = 'grace_exhausted', used_final = ${usedFinal}, ended_at = ${sqlStringLocal(context.nowIso)}
@@ -1386,11 +1408,12 @@ function admitOnHotRow(
   }
 
   const allowance = billableTerm.allowance ?? 0;
+  const termReserved = reservedForTerm(hot, billableTerm.term_id);
   const creditsRemaining =
     billableTerm.state === "grace"
       ? computeGraceAllowance(billableTerm, hot.row.grace_base_used) -
-        (hot.row.used + hot.row.reserved - hot.row.grace_base_used)
-      : allowance - hot.row.used - hot.row.reserved;
+        (hot.row.used + termReserved - hot.row.grace_base_used)
+      : allowance - hot.row.used - termReserved;
   if (creditsRemaining < 1) {
     if (billableTerm.state === "grace") {
       const graceEnded = endGraceIfExhausted(storage, hot, billableTerm, {
@@ -1431,7 +1454,7 @@ function admitOnHotRow(
   hot.row.reserved += quotaWeight;
 
   const admittingTermId = billableTerm.term_id;
-  const usageTotal = hot.row.used + hot.row.reserved;
+  const usageTotal = hot.row.used + reservedForTerm(hot, admittingTermId);
   const willExhaust =
     billableTerm.state === "active" && usageTotal >= allowance;
 
@@ -1447,7 +1470,7 @@ function admitOnHotRow(
   );
 
   if (willExhaust) {
-    const usedFinal = hot.row.used + hot.row.reserved;
+    const usedFinal = hot.row.used;
     const trackId = request.requestId;
     recordEventWrites(storage, trackId, () => {
       sqlExecLocal(
@@ -1609,11 +1632,11 @@ function settleReservationOnHot(
   if (consumed) {
     if (onActiveTerm) {
       hot.row.used += reservation.weight;
+    } else {
+      recordEventWrites(storage, request.requestId, () =>
+        adjustEndedTermUsedFinal(storage, reservation.term_id, reservation.weight),
+      );
     }
-  } else if (!onActiveTerm) {
-    recordEventWrites(storage, request.requestId, () =>
-      adjustEndedTermUsedFinal(storage, reservation.term_id, -reservation.weight),
-    );
   }
   hot.row.reserved = Math.max(0, hot.row.reserved - reservation.weight);
   hot.reservations.splice(index, 1);
@@ -1917,6 +1940,7 @@ export async function inspectRPC(
 
 type SqlExecStorage = DurableObjectStorage & {
   sql?: { exec: (query: string) => unknown };
+  transactionSync?: <T>(closure: () => T) => T;
 };
 
 const COVERAGE_DO_SCHEMA_STATEMENTS = [
@@ -2006,6 +2030,10 @@ const COVERAGE_DO_SCHEMA_STATEMENTS = [
     sealed_at TEXT NOT NULL,
     receipt TEXT NOT NULL
   )`,
+  `CREATE TABLE IF NOT EXISTS quota_do_migration (
+    migration_id TEXT PRIMARY KEY NOT NULL,
+    applied_at TEXT NOT NULL
+  )`,
 ] as const;
 
 /** Per-clinic coverage tables (P3.3); idempotent on every versioned fetch. */
@@ -2020,6 +2048,40 @@ export async function ensureCoverageDoTables(
     }
     for (const statement of COVERAGE_DO_SCHEMA_STATEMENTS) {
       sqlStorage.sql.exec(statement);
+    }
+    const migrated = sqlSelect<{ migration_id: string }>(
+      storage,
+      "SELECT migration_id FROM quota_do_migration WHERE migration_id = 'rm22-settled-only-exhaustion-v1'",
+    );
+    if (migrated.length === 0) {
+      const hot = sqlSelect<HotRow>(storage, "SELECT * FROM hot LIMIT 1")[0];
+      const reservations = hot === undefined
+        ? []
+        : (JSON.parse(hot.reservations || "[]") as ReservationRow[]);
+      const outstandingByTerm = new Map<string, number>();
+      for (const reservation of reservations) {
+        outstandingByTerm.set(
+          reservation.term_id,
+          (outstandingByTerm.get(reservation.term_id) ?? 0) + reservation.weight,
+        );
+      }
+      const migrate = (): void => {
+        for (const [termId, outstanding] of outstandingByTerm) {
+          sqlStorage.sql.exec(
+            `UPDATE term SET used_final = MAX(0, COALESCE(used_final, 0) - ${outstanding})
+             WHERE term_id = ${sqlStringLocal(termId)} AND state = 'exhausted' AND used_final IS NOT NULL`,
+          );
+        }
+        sqlStorage.sql.exec(
+          `INSERT INTO quota_do_migration (migration_id, applied_at)
+           VALUES ('rm22-settled-only-exhaustion-v1', ${sqlStringLocal(new Date().toISOString())})`,
+        );
+      };
+      if (sqlStorage.transactionSync !== undefined) {
+        sqlStorage.transactionSync(migrate);
+      } else {
+        migrate();
+      }
     }
   });
 }

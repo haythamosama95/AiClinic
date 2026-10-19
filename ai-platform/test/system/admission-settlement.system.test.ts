@@ -34,6 +34,8 @@ import {
   type Scenario,
 } from "./harness";
 import { addDuration } from "../../src/coverage/calendar";
+import { CHANNEL_VERSIONS } from "vendor-contracts";
+import { getPerRequestWriteCounts } from "../../src/quota-do/index";
 
 const QUOTA_WEIGHT = 1;
 const W_MAX = QUOTA_WEIGHT;
@@ -297,6 +299,30 @@ async function seedOpenReservations(
   }
 }
 
+async function directDoAdmission(
+  scenario: Scenario,
+  input: { now: number; jti?: string; idempotencyKey?: string; requestReference?: string; requestId?: string },
+): Promise<Record<string, unknown>> {
+  const response = await quotaDoStub(scenario.installationId).fetch("https://quota-do.internal/rpc", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      contract_version: CHANNEL_VERSIONS.platformDo,
+      kind: "admission",
+      now: input.now,
+      requestId: input.requestId,
+      jti: input.jti ?? crypto.randomUUID(),
+      installationId: scenario.installationId,
+      idempotencyKey: input.idempotencyKey ?? crypto.randomUUID(),
+      requestReference: input.requestReference ?? crypto.randomUUID(),
+      capabilityId: CAPABILITY_ID,
+      quotaWeight: QUOTA_WEIGHT,
+      orgId: scenario.orgId,
+    }),
+  });
+  return await response.json() as Record<string, unknown>;
+}
+
 async function setupPromotedPolicy(scenario: Scenario): Promise<string> {
   const document = fakePolicyDocument(POLICY_ID, POLICY_VERSION);
   const published = await publishPolicy(POLICY_ID, POLICY_VERSION, document);
@@ -444,6 +470,135 @@ describe("admission settlement against terms", () => {
     expect(limited.body?.code).toBe("concurrency_limited");
     expect(limited.body?.retry_after).toBeTruthy();
     expect(limited.body?.code).not.toBe("rate_limited");
+  });
+
+  it("R5-A1/R5-A2: predecessor reservations keep their term attribution after successor activation", async () => {
+    const scenario = await newScenario();
+    await setTestClock("2026-04-01T12:00:00.000Z");
+    await coverClinic(scenario, { max_allowance_per_month: 3 });
+    await coverClinic(scenario, { max_allowance_per_month: 3 });
+    await newClinic(scenario);
+    const firstTerm = (await readDoTerms(scenario.installationId)).find((row) => row.state === "active")!;
+    const now = await harnessNowMs();
+    const firstJti = crypto.randomUUID();
+    const firstKey = crypto.randomUUID();
+    const secondJti = crypto.randomUUID();
+    const secondKey = crypto.randomUUID();
+    const first = await directDoAdmission(scenario, { now, jti: firstJti, idempotencyKey: firstKey });
+    const second = await directDoAdmission(scenario, { now, jti: secondJti, idempotencyKey: secondKey });
+    expect(first.outcome).toBe("admitted");
+    expect(second.outcome).toBe("admitted");
+
+    const successorAdmission = await directDoAdmission(scenario, {
+      now: Date.parse(String(firstTerm.ends_at)) + 1,
+    });
+    expect(successorAdmission.outcome).toBe("admitted");
+    const afterActivation = await readDoTerms(scenario.installationId);
+    const ended = afterActivation.find((row) => row.term_id === firstTerm.term_id);
+    const active = afterActivation.find((row) => row.state === "active");
+    expect(ended?.used_final).toBe(0);
+    expect(active?.term_id).not.toBe(firstTerm.term_id);
+    expect(active?.allowance).toBe(3);
+
+    const stub = quotaDoStub(scenario.installationId);
+    const consumedId = String(first.reservation_id);
+    const credit = await stub.fetch("https://quota-do.internal/rpc", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        contract_version: CHANNEL_VERSIONS.platformDo,
+        kind: "credit",
+        installationId: scenario.installationId,
+        requestId: consumedId,
+        reservation_id: consumedId,
+        requestReference: "R5-A2-consumed-old-term",
+        usage: { tokens: 1, cost: 0 },
+        partial: false,
+        credits: 1,
+      }),
+    });
+    expect((await credit.json() as Record<string, unknown>).ok).toBe(true);
+    const releasedId = String(second.reservation_id);
+    const release = await stub.fetch("https://quota-do.internal/rpc", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        contract_version: CHANNEL_VERSIONS.platformDo,
+        kind: "release",
+        installationId: scenario.installationId,
+        requestId: releasedId,
+        idempotencyKey: secondKey,
+        jti: secondJti,
+      }),
+    });
+    expect((await release.json() as Record<string, unknown>).ok).toBe(true);
+
+    const afterSettlement = await readDoTerms(scenario.installationId);
+    expect(afterSettlement.find((row) => row.term_id === firstTerm.term_id)?.used_final).toBe(1);
+    expect(await readHotUsed(scenario.installationId)).toBe(0);
+  });
+
+  it("R5-A7: a temporary concurrency refusal is reevaluated for the same idempotency key", async () => {
+    const scenario = await newScenario();
+    await setTestClock("2026-04-01T12:00:00.000Z");
+    await coverClinic(scenario, { concurrency_limit: 1, max_allowance_per_month: 3 });
+    await newClinic(scenario);
+    const now = await harnessNowMs();
+    const heldJti = crypto.randomUUID();
+    const heldKey = crypto.randomUUID();
+    const held = await directDoAdmission(scenario, { now, jti: heldJti, idempotencyKey: heldKey });
+    expect(held.outcome).toBe("admitted");
+    const retryKey = crypto.randomUUID();
+    const deniedRequestId = crypto.randomUUID();
+    const denied = await directDoAdmission(scenario, { now, idempotencyKey: retryKey, requestId: deniedRequestId });
+    expect(denied.outcome).toBe("concurrency_exhausted");
+    expect(getPerRequestWriteCounts(deniedRequestId)).toBeUndefined();
+
+    const release = await quotaDoStub(scenario.installationId).fetch("https://quota-do.internal/rpc", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        contract_version: CHANNEL_VERSIONS.platformDo,
+        kind: "release",
+        installationId: scenario.installationId,
+        requestId: String(held.reservation_id),
+        idempotencyKey: heldKey,
+        jti: heldJti,
+      }),
+    });
+    expect((await release.json() as Record<string, unknown>).ok).toBe(true);
+    const retried = await directDoAdmission(scenario, { now, idempotencyKey: retryKey });
+    expect(retried.outcome).toBe("admitted");
+  });
+
+  it("R5-A2: exhaustion closes at settled usage and stays final after reservation release", async () => {
+    const scenario = await newScenario();
+    await setTestClock("2026-04-01T12:00:00.000Z");
+    await coverClinic(scenario, { max_allowance_per_month: 1 });
+    await newClinic(scenario);
+    const now = await harnessNowMs();
+    const jti = crypto.randomUUID();
+    const idempotencyKey = crypto.randomUUID();
+    const admitted = await directDoAdmission(scenario, { now, jti, idempotencyKey });
+    expect(admitted.outcome).toBe("admitted");
+    const exhausted = (await readDoTerms(scenario.installationId)).find((row) => row.state === "exhausted");
+    expect(exhausted?.used_final).toBe(0);
+
+    const release = await quotaDoStub(scenario.installationId).fetch("https://quota-do.internal/rpc", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        contract_version: CHANNEL_VERSIONS.platformDo,
+        kind: "release",
+        installationId: scenario.installationId,
+        requestId: String(admitted.reservation_id),
+        idempotencyKey,
+        jti,
+      }),
+    });
+    expect((await release.json() as Record<string, unknown>).ok).toBe(true);
+    expect((await readDoTerms(scenario.installationId)).find((row) => row.term_id === exhausted?.term_id)?.state).toBe("exhausted");
+    expect((await readDoTerms(scenario.installationId)).find((row) => row.term_id === exhausted?.term_id)?.used_final).toBe(0);
   });
 
   it("E2E-P3.4-05 Reaching the allowance with nothing queued exhausts the term", async () => {
