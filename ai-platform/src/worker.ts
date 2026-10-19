@@ -2003,7 +2003,7 @@ export class GatewayObject extends DurableObject {
           this.ctx,
           this.ctx.storage,
           (fn) => this.ctx.blockConcurrencyWhile(fn),
-          body as Parameters<typeof voidForReversalRPC>[3],
+          { ...body, db: this.env.DB } as Parameters<typeof voidForReversalRPC>[3],
           quotaLog,
         );
         return platformDoResponse(result, contractVersion);
@@ -2041,7 +2041,7 @@ export class GatewayObject extends DurableObject {
           this.ctx,
           this.ctx.storage,
           (fn) => this.ctx.blockConcurrencyWhile(fn),
-          body as Parameters<typeof transferOutRPC>[3],
+          { ...body, db: this.env.DB } as Parameters<typeof transferOutRPC>[3],
         );
         return platformDoResponse(result, contractVersion);
       }
@@ -2050,7 +2050,7 @@ export class GatewayObject extends DurableObject {
           this.ctx,
           this.ctx.storage,
           (fn) => this.ctx.blockConcurrencyWhile(fn),
-          body as Parameters<typeof transferInRPC>[3],
+          { ...body, db: this.env.DB } as Parameters<typeof transferInRPC>[3],
         );
         return platformDoResponse(result, contractVersion);
       }

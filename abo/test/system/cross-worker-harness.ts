@@ -52,6 +52,7 @@ import idempotencyFingerprintSql from "../../../ai-platform/migrations/202610141
 import grantClaimsSql from "../../../ai-platform/migrations/20261019120000_r4_pg1_global_grant_claims.sql?raw";
 import acceptedGrantCommandsSql from "../../../ai-platform/migrations/20261019130000_r4_pg3_accepted_grant_commands.sql?raw";
 import rm18CeilingClaimsSql from "../../../ai-platform/migrations/20261019140000_rm18_complimentary_ceiling_claims.sql?raw";
+import r6Pt1ReversalRoutesSql from "../../../ai-platform/migrations/20261019150000_r6_pt1_reversal_routes.sql?raw";
 
 const PLATFORM_MIGRATION_SQL: string[] = [
   platformSchemaSql,
@@ -81,6 +82,7 @@ const PLATFORM_MIGRATION_SQL: string[] = [
   grantClaimsSql,
   acceptedGrantCommandsSql,
   rm18CeilingClaimsSql,
+  r6Pt1ReversalRoutesSql,
 ];
 
 const VENDOR_CONTRACT_VERSION = CHANNEL_VERSIONS.vendorEntrypoint;
@@ -877,12 +879,19 @@ async function clearPlatformTransactionalTables(): Promise<void> {
       env.PLATFORM_DB.prepare("DROP TRIGGER IF EXISTS grant_claim_no_delete"),
       env.PLATFORM_DB.prepare("DROP TRIGGER IF EXISTS complimentary_ceiling_claim_no_delete_guard"),
       env.PLATFORM_DB.prepare("DROP TRIGGER IF EXISTS ceiling_policy_command_no_delete"),
+      env.PLATFORM_DB.prepare("DROP TRIGGER IF EXISTS live_value_route_no_delete"),
+      env.PLATFORM_DB.prepare("DROP TRIGGER IF EXISTS reversal_command_no_delete"),
+      env.PLATFORM_DB.prepare("DROP TRIGGER IF EXISTS grant_tombstone_no_delete"),
+      env.PLATFORM_DB.prepare("DROP TRIGGER IF EXISTS grant_tombstone_no_update"),
       env.PLATFORM_DB.prepare("DELETE FROM grant_claim"),
       env.PLATFORM_DB.prepare("DELETE FROM complimentary_ceiling_claim"),
       env.PLATFORM_DB.prepare("DELETE FROM complimentary_ceiling_claim_backfill"),
       env.PLATFORM_DB.prepare("DELETE FROM ceiling_policy_command"),
       env.PLATFORM_DB.prepare("DELETE FROM grant_claim_dispute"),
       env.PLATFORM_DB.prepare("DELETE FROM grant_claim_backfill"),
+      env.PLATFORM_DB.prepare("DELETE FROM reversal_command"),
+      env.PLATFORM_DB.prepare("DELETE FROM live_value_route"),
+      env.PLATFORM_DB.prepare("DELETE FROM grant_tombstone"),
       env.PLATFORM_DB.prepare(`CREATE TRIGGER grant_claim_no_delete
         BEFORE DELETE ON grant_claim
         BEGIN
@@ -897,6 +906,26 @@ async function clearPlatformTransactionalTables(): Promise<void> {
         BEFORE DELETE ON ceiling_policy_command
         BEGIN
           SELECT RAISE(ABORT, 'ceiling_policy_command is append-only');
+        END`),
+      env.PLATFORM_DB.prepare(`CREATE TRIGGER live_value_route_no_delete
+        BEFORE DELETE ON live_value_route
+        BEGIN
+          SELECT RAISE(ABORT, 'live value route is permanent');
+        END`),
+      env.PLATFORM_DB.prepare(`CREATE TRIGGER reversal_command_no_delete
+        BEFORE DELETE ON reversal_command
+        BEGIN
+          SELECT RAISE(ABORT, 'reversal command is permanent');
+        END`),
+      env.PLATFORM_DB.prepare(`CREATE TRIGGER grant_tombstone_no_update
+        BEFORE UPDATE ON grant_tombstone
+        BEGIN
+          SELECT RAISE(ABORT, 'grant tombstone is immutable');
+        END`),
+      env.PLATFORM_DB.prepare(`CREATE TRIGGER grant_tombstone_no_delete
+        BEFORE DELETE ON grant_tombstone
+        BEGIN
+          SELECT RAISE(ABORT, 'grant tombstone is permanent');
         END`),
     ]);
   } catch {

@@ -413,6 +413,35 @@ beforeEach(async () => {
 });
 
 describe("reversal voids, tombstones, held terms, operator voids", () => {
+  it("R6-PT1: reverses applied DO value while the asynchronous grant ledger is absent", async () => {
+    const scenario = await newScenario();
+    await coverClinic(scenario, { runAlarm: false });
+    const grants = await readDoGrants(scenario.installationId);
+    const grantId = grants[0]!.grant_id;
+    expect(await queryOne(
+      "SELECT grant_id FROM grant_ledger WHERE grant_id = ?",
+      [grantId],
+    )).toBeNull();
+
+    const reversalId = randomHex64();
+    const reason = "delayed-ledger-refund";
+    const evidenceSha256 = randomHex64();
+    const applied = await callVoidForReversal({
+      grantId, partial: false, reversalId, reason, evidenceSha256,
+    });
+    expect(applied.result).toBe("applied");
+    expect(applied.receipt?.installation_id).toBe(scenario.installationId);
+    expect((await inspectCoverageTerms(scenario)).find((row) => row.grant_id === grantId)?.end_reason)
+      .toBe("reversed");
+
+    const replay = await callVoidForReversal({
+      grantId, partial: false, reversalId, reason, evidenceSha256,
+    });
+    expect(replay.result).toBe("already_applied");
+    expect(replay.receipt).toEqual(applied.receipt);
+    expect(await r2Exists(`grant-ledger/${grantId}.void.ndjson`)).toBe(true);
+  });
+
   it("E2E-P3.7-01 A15 void of the active term holds T2 and refuses coverage_lapsed reversed", async () => {
     const scenario = await newScenario();
     await coverClinic(scenario);

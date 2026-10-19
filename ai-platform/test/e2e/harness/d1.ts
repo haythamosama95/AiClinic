@@ -26,6 +26,7 @@ import tenantCreationCapTriggerSql from "../../../migrations/20261018120100_r1_c
 import grantClaimsSql from "../../../migrations/20261019120000_r4_pg1_global_grant_claims.sql?raw";
 import acceptedGrantCommandsSql from "../../../migrations/20261019130000_r4_pg3_accepted_grant_commands.sql?raw";
 import rm18CeilingClaimsSql from "../../../migrations/20261019140000_rm18_complimentary_ceiling_claims.sql?raw";
+import r6Pt1ReversalRoutesSql from "../../../migrations/20261019150000_r6_pt1_reversal_routes.sql?raw";
 import { splitSqlStatements } from "../../split-sql-statements";
 import { isolateConfigCache } from "../../../src/config-cache";
 import { clearE2eIssuerRegistry } from "./aat";
@@ -62,6 +63,7 @@ export const MIGRATION_SQL: readonly string[] = [
   grantClaimsSql,
   acceptedGrantCommandsSql,
   rm18CeilingClaimsSql,
+  r6Pt1ReversalRoutesSql,
 ];
 
 const TOKEN_CONTRACT_V2_SEED = {
@@ -163,16 +165,43 @@ export async function resetPlatformState(): Promise<void> {
     db.prepare("DROP TRIGGER IF EXISTS grant_claim_no_delete"),
     db.prepare("DROP TRIGGER IF EXISTS complimentary_ceiling_claim_no_delete_guard"),
     db.prepare("DROP TRIGGER IF EXISTS ceiling_policy_command_no_delete"),
+    db.prepare("DROP TRIGGER IF EXISTS live_value_route_no_delete"),
+    db.prepare("DROP TRIGGER IF EXISTS reversal_command_no_delete"),
     db.prepare("DELETE FROM grant_claim"),
     db.prepare("DELETE FROM complimentary_ceiling_claim"),
     db.prepare("DELETE FROM complimentary_ceiling_claim_backfill"),
     db.prepare("DELETE FROM ceiling_policy_command"),
     db.prepare("DELETE FROM grant_claim_dispute"),
     db.prepare("DELETE FROM grant_claim_backfill"),
+    db.prepare("DELETE FROM reversal_command"),
+    db.prepare("DELETE FROM live_value_route"),
+    db.prepare("DROP TRIGGER IF EXISTS grant_tombstone_no_delete"),
+    db.prepare("DROP TRIGGER IF EXISTS grant_tombstone_no_update"),
+    db.prepare("DELETE FROM grant_tombstone"),
     db.prepare(`CREATE TRIGGER grant_claim_no_delete
       BEFORE DELETE ON grant_claim
       BEGIN
         SELECT RAISE(ABORT, 'grant_claim is append-only');
+      END`),
+    db.prepare(`CREATE TRIGGER grant_tombstone_no_update
+      BEFORE UPDATE ON grant_tombstone
+      BEGIN
+        SELECT RAISE(ABORT, 'grant tombstone is immutable');
+      END`),
+    db.prepare(`CREATE TRIGGER grant_tombstone_no_delete
+      BEFORE DELETE ON grant_tombstone
+      BEGIN
+        SELECT RAISE(ABORT, 'grant tombstone is permanent');
+      END`),
+    db.prepare(`CREATE TRIGGER live_value_route_no_delete
+      BEFORE DELETE ON live_value_route
+      BEGIN
+        SELECT RAISE(ABORT, 'live value route is permanent');
+      END`),
+    db.prepare(`CREATE TRIGGER reversal_command_no_delete
+      BEFORE DELETE ON reversal_command
+      BEGIN
+        SELECT RAISE(ABORT, 'reversal command is permanent');
       END`),
     db.prepare(`CREATE TRIGGER complimentary_ceiling_claim_no_delete_guard
       BEFORE DELETE ON complimentary_ceiling_claim

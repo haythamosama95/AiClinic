@@ -189,6 +189,45 @@ CREATE TABLE grant_claim_dispute (
   count INTEGER NOT NULL
 );
 
+CREATE TABLE live_value_route (
+  grant_id TEXT PRIMARY KEY NOT NULL,
+  org_id TEXT NOT NULL,
+  installation_id TEXT NOT NULL,
+  binding_epoch INTEGER NOT NULL CHECK (binding_epoch > 0),
+  generation INTEGER NOT NULL CHECK (generation > 0),
+  state TEXT NOT NULL CHECK (state IN ('stable', 'moving', 'voiding', 'retired')),
+  transfer_id TEXT,
+  reversal_id TEXT,
+  updated_at TEXT NOT NULL,
+  CHECK ((state = 'moving' AND transfer_id IS NOT NULL) OR state <> 'moving'),
+  CHECK ((state = 'voiding' AND reversal_id IS NOT NULL) OR state <> 'voiding')
+);
+
+CREATE TABLE reversal_command (
+  reversal_id TEXT PRIMARY KEY NOT NULL,
+  grant_id TEXT NOT NULL UNIQUE,
+  request_sha256 TEXT NOT NULL,
+  request_body TEXT NOT NULL,
+  route_installation_id TEXT,
+  route_epoch INTEGER,
+  route_generation INTEGER,
+  state TEXT NOT NULL CHECK (state IN ('due', 'terminal')),
+  receipt TEXT,
+  export_payload TEXT,
+  export_state TEXT NOT NULL CHECK (export_state IN ('none', 'due', 'shipped')),
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL
+);
+
+CREATE TABLE grant_tombstone (
+  grant_id TEXT PRIMARY KEY NOT NULL,
+  reversal_id TEXT NOT NULL UNIQUE,
+  request_sha256 TEXT NOT NULL,
+  receipt TEXT NOT NULL,
+  export_payload TEXT NOT NULL,
+  created_at TEXT NOT NULL
+);
+
 CREATE TABLE grant_ledger (
   grant_id TEXT PRIMARY KEY NOT NULL,
   origin_grant_id TEXT NOT NULL,

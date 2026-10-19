@@ -678,6 +678,33 @@ type GrantClaimRow = {
   terminal_detail: string | null;
 };
 
+type LiveValueRouteRow = {
+  grant_id: string;
+  org_id: string;
+  installation_id: string;
+  binding_epoch: number;
+  generation: number;
+  state: "stable" | "moving" | "voiding" | "retired";
+  transfer_id: string | null;
+  reversal_id: string | null;
+};
+
+type ReversalCommandRow = {
+  reversal_id: string;
+  grant_id: string;
+  request_sha256: string;
+  request_body: string;
+  route_installation_id: string | null;
+  route_epoch: number | null;
+  route_generation: number | null;
+  state: "due" | "terminal";
+  receipt: string | null;
+  export_payload: string | null;
+  export_state: "none" | "due" | "shipped";
+  created_at: string;
+  updated_at: string;
+};
+
 function canonicalJsonText(value: unknown): string {
   return new TextDecoder().decode(canonicalize(value));
 }
@@ -700,6 +727,23 @@ async function readGrantClaim(
     )
     .bind(grantId)
     .first<GrantClaimRow>();
+}
+
+async function readLiveValueRoute(
+  db: D1Database,
+  grantId: string,
+): Promise<LiveValueRouteRow | null> {
+  return db.prepare(
+    `SELECT grant_id, org_id, installation_id, binding_epoch, generation,
+            state, transfer_id, reversal_id
+     FROM live_value_route WHERE grant_id = ?`,
+  ).bind(grantId).first<LiveValueRouteRow>();
+}
+
+function isGrantResultEnvelope(
+  value: GrantClaimRow | GrantResultEnvelope,
+): value is GrantResultEnvelope {
+  return "result" in value && !("grant_id" in value);
 }
 
 async function alertGrantClaimDispute(
@@ -910,6 +954,13 @@ async function ensureGrantClaimsBackfilled(
           )
           .run();
       }
+      await env.DB.prepare(
+        `INSERT OR IGNORE INTO live_value_route (
+           grant_id, org_id, installation_id, binding_epoch, generation, state, updated_at
+         ) SELECT grant_id, org_id, installation_id, binding_epoch, route_generation,
+                  'stable', ?
+           FROM grant_claim WHERE grant_id = ? AND state <> 'disputed'`,
+      ).bind(nowIso, grantId).run();
       seen.add(grantId);
     }
   }
@@ -961,8 +1012,9 @@ function buildGrantClaimInsertStatement(
        accepted_contract_version, accepted_ceiling_policy_version,
        plan_snapshot, accepted_at, due_at,
        command_state
-     ) VALUES (?, ?, ?, ?, ?, ?, ?, 1, 'pending', NULL, ?, NULL,
-       ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+     ) SELECT ?, ?, ?, ?, ?, ?, ?, 1, 'pending', NULL, ?, NULL,
+       ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
+       WHERE NOT EXISTS (SELECT 1 FROM grant_tombstone WHERE grant_id = ?)`
   ).bind(
     input.grantId,
     input.orgId,
@@ -983,6 +1035,7 @@ function buildGrantClaimInsertStatement(
     accepted?.command === undefined ? null : input.nowIso,
     accepted?.command === undefined ? null : input.nowIso,
     accepted === undefined ? "none" : "accepted",
+    input.grantId,
   );
 }
 
@@ -990,7 +1043,17 @@ async function createOrReadGrantClaim(
   env: VendorEnv,
   input: Parameters<typeof buildGrantClaimInsertStatement>[1],
 ): Promise<GrantClaimRow | null> {
-  await buildGrantClaimInsertStatement(env.DB, input).run();
+  await env.DB.batch([
+    buildGrantClaimInsertStatement(env.DB, input),
+    env.DB.prepare(
+      `INSERT OR IGNORE INTO live_value_route (
+         grant_id, org_id, installation_id, binding_epoch, generation, state, updated_at
+       ) SELECT grant_id, org_id, installation_id, binding_epoch, route_generation,
+                'stable', ?
+         FROM grant_claim WHERE grant_id = ? AND state <> 'disputed'
+           AND NOT EXISTS (SELECT 1 FROM grant_tombstone WHERE grant_id = ?)`
+    ).bind(input.nowIso, input.grantId, input.grantId),
+  ]);
   const claim = await readGrantClaim(env.DB, input.grantId);
   if (
     claim === null || claim.org_id !== input.orgId ||
@@ -1090,6 +1153,8 @@ async function routePendingGrantClaim(
   if (claim.state !== "pending") {
     return null;
   }
+  const valueRoute = await readLiveValueRoute(env.DB, claim.grant_id);
+  if (valueRoute === null || valueRoute.state !== "stable") return null;
   const oldBinding = await readTenantBindingForInstallation(
     env.DB,
     claim.org_id,
@@ -1144,21 +1209,28 @@ async function routePendingGrantClaim(
     return null;
   }
 
-  await env.DB.prepare(
-    `UPDATE grant_claim
-     SET installation_id = ?, binding_epoch = ?, route_generation = route_generation + 1
-     WHERE grant_id = ? AND state = 'pending' AND installation_id = ?
-       AND binding_epoch = ? AND route_generation = ?`,
-  )
-    .bind(
-      liveBinding.installation_id,
-      liveBinding.epoch,
-      claim.grant_id,
-      claim.installation_id,
-      claim.binding_epoch,
-      claim.route_generation,
-    )
-    .run();
+  await env.DB.batch([
+    env.DB.prepare(
+      `UPDATE grant_claim
+       SET installation_id = ?, binding_epoch = ?, route_generation = route_generation + 1
+       WHERE grant_id = ? AND state = 'pending' AND installation_id = ?
+         AND binding_epoch = ? AND route_generation = ?
+         AND EXISTS (SELECT 1 FROM live_value_route WHERE grant_id = ?
+           AND state = 'stable' AND generation = ? AND installation_id = ?)`,
+    ).bind(
+      liveBinding.installation_id, liveBinding.epoch, claim.grant_id,
+      claim.installation_id, claim.binding_epoch, claim.route_generation,
+      claim.grant_id, claim.route_generation, claim.installation_id,
+    ),
+    env.DB.prepare(
+      `UPDATE live_value_route SET installation_id = ?, binding_epoch = ?,
+         generation = generation + 1, updated_at = ?
+       WHERE grant_id = ? AND state = 'stable' AND generation = ? AND installation_id = ?`,
+    ).bind(
+      liveBinding.installation_id, liveBinding.epoch, sealedAt, claim.grant_id,
+      claim.route_generation, claim.installation_id,
+    ),
+  ]);
   return readGrantClaim(env.DB, claim.grant_id);
 }
 
@@ -2655,35 +2727,6 @@ async function verifyCeilingOverrideAssertion(
   return { ok: true, assertionSha256 };
 }
 
-function mapVoidForReversalDoResponse(
-  version: number,
-  doResponse: Record<string, unknown>,
-): GrantResultEnvelope {
-  const doResult = doResponse.result;
-  if (doResult === "conflict") {
-    return {
-      contract_version: version,
-      result: "conflict",
-      code: "",
-      detail: "",
-    };
-  }
-  if (doResult === "already_applied" || doResult === "applied") {
-    const receipt = doResponse.receipt;
-    if (!isRecord(receipt)) {
-      return grantRejected(version, "coverage_unknown");
-    }
-    return {
-      contract_version: version,
-      result: doResult,
-      code: "",
-      detail: "",
-      receipt,
-    };
-  }
-  return grantRejected(version, "coverage_unknown");
-}
-
 function mapHpVoidDoResponse(
   version: number,
   doResponse: Record<string, unknown>,
@@ -2779,139 +2822,88 @@ function isHex64(value: unknown): value is string {
   return typeof value === "string" && HEX64_RE.test(value);
 }
 
-async function readVoidReceiptFromR2(
-  env: VendorEnv,
-  grantId: string,
-): Promise<Record<string, unknown> | null> {
-  const key = `grant-ledger/${grantId}.void.ndjson`;
-  const object = await env.R2.get(key);
-  if (object === null) {
-    return null;
-  }
-  const text = await object.text();
-  const line = text.trimEnd().split("\n")[0];
-  if (!line) {
-    return null;
-  }
-  try {
-    const parsed = JSON.parse(line) as Record<string, unknown>;
-    if (!isRecord(parsed.receipt)) {
-      return null;
-    }
-    return parsed.receipt;
-  } catch {
-    return null;
-  }
-}
-
-type StoredReversalVoid = {
-  grant_id: string;
-  reason: string;
-  evidence_sha256: string;
-  receipt: Record<string, unknown>;
-};
-
-async function findStoredReversalVoid(
-  env: VendorEnv,
-  version: number,
+async function readReversalCommand(
+  db: D1Database,
   reversalId: string,
-  ledgerRow: { org_id: string; installation_id: string } | null,
-  grantId: string,
-  reason: string,
-  evidenceSha256: string,
-  envelopeSha256: string,
-  nowIso: string,
-): Promise<StoredReversalVoid | "conflict" | null> {
-  if (ledgerRow !== null) {
-    const binding = await readActiveTenantBinding(env.DB, ledgerRow.org_id);
-    if (binding !== null) {
-      const doResponse = await callCoverageDo(env, ledgerRow.installation_id, {
-        kind: "void_for_reversal",
-        installationId: ledgerRow.installation_id,
-        orgId: ledgerRow.org_id,
-        vendorContractVersion: version,
-        bindingEpoch: binding.epoch,
-        grantId,
-        reversalId,
-        reason,
-        evidenceSha256,
-        envelopeSha256,
-        nowIso,
-        platformSigningKeyJson: env.PLATFORM_SIGNING_KEY,
-        durationScale: durationScaleFromEnv(env),
-        replayOnly: true,
-      });
-      if (doResponse !== null) {
-        if (doResponse.result === "conflict") {
-          return "conflict";
-        }
-        if (
-          doResponse.result === "already_applied" &&
-          isRecord(doResponse.receipt)
-        ) {
-          return {
-            grant_id: grantId,
-            reason,
-            evidence_sha256: evidenceSha256,
-            receipt: doResponse.receipt,
-          };
-        }
-      }
-    }
-  }
-
-  const rows = await env.DB.prepare(
-    "SELECT grant_id, reason, evidence_sha256 FROM grant_void",
-  ).all<{ grant_id: string; reason: string; evidence_sha256: string }>();
-
-  for (const row of rows.results ?? []) {
-    const receipt = await readVoidReceiptFromR2(env, row.grant_id);
-    if (receipt === null) {
-      continue;
-    }
-    const storedReversalId = receipt.reversal_id;
-    if (typeof storedReversalId !== "string" || storedReversalId !== reversalId) {
-      continue;
-    }
-    return {
-      grant_id: row.grant_id,
-      reason: row.reason,
-      evidence_sha256: row.evidence_sha256,
-      receipt,
-    };
-  }
-
-  return null;
+): Promise<ReversalCommandRow | null> {
+  return db.prepare(
+    `SELECT reversal_id, grant_id, request_sha256, request_body,
+            route_installation_id, route_epoch, route_generation, state,
+            receipt, export_payload, export_state, created_at, updated_at
+     FROM reversal_command WHERE reversal_id = ?`,
+  ).bind(reversalId).first<ReversalCommandRow>();
 }
 
-function mapStoredReversalVoidReplay(
-  version: number,
-  stored: StoredReversalVoid,
-  grantId: string,
-  reason: string,
-  evidenceSha256: string,
-  partial: boolean,
-): GrantResultEnvelope {
-  if (
-    stored.grant_id === grantId &&
-    stored.reason === reason &&
-    stored.evidence_sha256 === evidenceSha256 &&
-    partial === false
-  ) {
-    return {
-      contract_version: version,
-      result: "already_applied",
-      code: "",
-      detail: "",
-      receipt: stored.receipt,
-    };
+async function shipReversalExport(
+  env: VendorEnv,
+  command: ReversalCommandRow,
+): Promise<boolean> {
+  if (command.state !== "terminal" || command.export_payload === null) return false;
+  if (command.export_state === "shipped") return true;
+  try {
+    await env.R2.put(
+      `grant-ledger/${command.grant_id}.void.ndjson`,
+      command.export_payload,
+    );
+  } catch {
+    return false;
   }
-  return {
-    contract_version: version,
-    result: "conflict",
-    code: "",
-    detail: "",
-  };
+  await env.DB.prepare(
+    `UPDATE reversal_command SET export_state = 'shipped', updated_at = ?
+     WHERE reversal_id = ? AND state = 'terminal' AND export_payload = ?`,
+  ).bind(await clockNowIso(env), command.reversal_id, command.export_payload).run();
+  return true;
+}
+
+async function recoverExactLegacyReversal(
+  env: VendorEnv,
+  input: {
+    grantId: string;
+    reversalId: string;
+    reason: string;
+    evidenceSha256: string;
+    requestSha256: string;
+    requestBody: string;
+    nowIso: string;
+  },
+): Promise<"recovered" | "unavailable" | "mismatch"> {
+  let object: R2ObjectBody | null;
+  try {
+    object = await env.R2.get(`grant-ledger/${input.grantId}.void.ndjson`);
+  } catch {
+    return "unavailable";
+  }
+  if (object === null) return "unavailable";
+  const exportPayload = await object.text();
+  const line = exportPayload.trimEnd().split("\n")[0];
+  if (line === undefined || line.length === 0) return "mismatch";
+  let row: Record<string, unknown>;
+  try { row = JSON.parse(line) as Record<string, unknown>; } catch { return "mismatch"; }
+  if (
+    row.grant_id !== input.grantId || row.reason !== input.reason ||
+    row.evidence_sha256 !== input.evidenceSha256 || !isRecord(row.receipt) ||
+    row.receipt.reversal_id !== input.reversalId ||
+    !(await verifyPlatformReceipt(env, row.receipt))
+  ) return "mismatch";
+  const now = await clockNowIso(env);
+  await env.DB.prepare(
+    `INSERT OR IGNORE INTO reversal_command (
+       reversal_id, grant_id, request_sha256, request_body,
+       state, receipt, export_payload, export_state, created_at, updated_at
+     ) VALUES (?, ?, ?, ?, 'terminal', ?, ?, 'shipped', ?, ?)`,
+  ).bind(
+    input.reversalId, input.grantId, input.requestSha256, input.requestBody,
+    canonicalJsonText(row.receipt), exportPayload, now, now,
+  ).run();
+  const stored = await readReversalCommand(env.DB, input.reversalId);
+  return stored !== null && stored.grant_id === input.grantId &&
+      stored.request_sha256 === input.requestSha256 && stored.state === "terminal"
+    ? "recovered"
+    : "mismatch";
+}
+
+function reversalConflict(version: number): GrantResultEnvelope {
+  return { contract_version: version, result: "conflict", code: "", detail: "" };
 }
 
 async function signReversalVoidReceipt(input: {
@@ -5173,7 +5165,14 @@ export class VendorEntrypoint extends WorkerEntrypoint<VendorEnv> {
         nowIso,
       });
     }
-    if (existingGrantClaim === null) return grantRejected(version, "coverage_unknown");
+    if (existingGrantClaim === null) {
+      const tombstone = await this.env.DB.prepare(
+        "SELECT grant_id FROM grant_tombstone WHERE grant_id = ?",
+      ).bind(claimGrantId).first<{ grant_id: string }>();
+      return tombstone !== null
+        ? grantRejected(version, "grant_voided")
+        : grantRejected(version, "coverage_unknown");
+    }
     const routedClaim = await routePendingGrantClaim(this.env, existingGrantClaim, version);
     if (routedClaim === null || !("grant_id" in routedClaim)) {
       return routedClaim === null ? grantRejected(version, "coverage_unknown") : routedClaim;
@@ -5604,153 +5603,264 @@ export class VendorEntrypoint extends WorkerEntrypoint<VendorEnv> {
     }
 
     const envelopeSha256 = await sha256Hex(canonicalize(signedBody));
+    const requestBody = canonicalJsonText(signedBody);
+    let command = await readReversalCommand(this.env.DB, reversalId);
+    if (command !== null && (
+      command.grant_id !== grantId || command.request_sha256 !== envelopeSha256 ||
+      command.request_body !== requestBody
+    )) return reversalConflict(version);
+    if (command?.state === "terminal") {
+      await shipReversalExport(this.env, command);
+      return {
+        contract_version: version,
+        result: "already_applied",
+        code: "",
+        detail: "",
+        receipt: JSON.parse(command.receipt!) as Record<string, unknown>,
+      };
+    }
+    const priorGrantVoid = await this.env.DB.prepare(
+      "SELECT grant_id FROM grant_void WHERE grant_id = ?",
+    ).bind(grantId).first<{ grant_id: string }>();
+    if (priorGrantVoid !== null) {
+      const recovered = await recoverExactLegacyReversal(this.env, {
+        grantId, reversalId, reason, evidenceSha256,
+        requestSha256: envelopeSha256, requestBody, nowIso,
+      });
+      if (recovered === "unavailable") return grantTransient(version, "reversal_receipt_unavailable");
+      if (recovered === "mismatch") return reversalConflict(version);
+      const legacyCommand = await readReversalCommand(this.env.DB, reversalId);
+      if (legacyCommand === null || legacyCommand.receipt === null) return grantRejected(version, "coverage_unknown");
+      return {
+        contract_version: version,
+        result: "already_applied",
+        code: "",
+        detail: "",
+        receipt: JSON.parse(legacyCommand.receipt) as Record<string, unknown>,
+      };
+    }
+    if (partial) return grantRejected(version, "partial_void", "");
 
-    const ledgerRow = await this.env.DB.prepare(
-      `SELECT gl.grant_id, gl.org_id, gl.installation_id
-       FROM grant_ledger gl
-       WHERE gl.grant_id = ? OR gl.origin_grant_id = ?
-       ORDER BY gl.applied_at DESC,
-         CASE
-           WHEN gl.installation_id = (
-             SELECT tb.installation_id FROM tenant_binding tb
-             WHERE tb.org_id = gl.org_id AND tb.status = 'active'
-             LIMIT 1
-           ) THEN 0
-           ELSE 1
-         END,
-         gl.grant_id DESC
-       LIMIT 1`,
-    )
-      .bind(grantId, grantId)
-      .first<{ grant_id: string; org_id: string; installation_id: string }>();
+    let route = await readLiveValueRoute(this.env.DB, grantId);
+    let claim = await readGrantClaim(this.env.DB, grantId);
+    if (route === null && claim !== null && !isGrantResultEnvelope(claim)) {
+      await this.env.DB.prepare(
+        `INSERT OR IGNORE INTO live_value_route (
+           grant_id, org_id, installation_id, binding_epoch, generation, state, updated_at
+         ) VALUES (?, ?, ?, ?, ?, 'stable', ?)`,
+      ).bind(grantId, claim.org_id, claim.installation_id, claim.binding_epoch,
+        claim.route_generation, nowIso).run();
+      route = await readLiveValueRoute(this.env.DB, grantId);
+    }
 
-    const storedVoid = await findStoredReversalVoid(
-      this.env,
-      version,
-      reversalId,
-      ledgerRow,
+    if (route === null) {
+      if (claim !== null) return grantRejected(version, "coverage_unknown");
+      const priorVoid = await this.env.DB.prepare(
+        "SELECT grant_id FROM grant_void WHERE grant_id = ?",
+      ).bind(grantId).first<{ grant_id: string }>();
+      if (priorVoid !== null) return reversalConflict(version);
+      const signingKey = await loadPlatformSigningKey(
+        this.env.PLATFORM_SIGNING_KEY, this.env.ENVIRONMENT,
+      );
+      if (signingKey === null) return grantRejected(version, "coverage_unknown");
+      const receipt = await signReversalVoidReceipt({
+        signingKey,
+        vendorContractVersion: version,
+        reversalId,
+        installationId: VOID_NIL_UUID,
+        orgId: VOID_NIL_UUID,
+        termIds: [],
+        appliedAt: nowIso,
+        ledgerSeq: 0,
+        envelopeSha256,
+      });
+      const exportPayload = `${JSON.stringify({
+        grant_id: grantId, reason, source: "reversal", evidence_sha256: evidenceSha256,
+        at: nowIso, receipt,
+      })}\n`;
+      await this.env.DB.batch([
+        this.env.DB.prepare(
+          `INSERT OR IGNORE INTO grant_tombstone (
+             grant_id, reversal_id, request_sha256, receipt, export_payload, created_at
+           ) SELECT ?, ?, ?, ?, ?, ?
+             WHERE NOT EXISTS (SELECT 1 FROM grant_claim WHERE grant_id = ?)
+               AND NOT EXISTS (SELECT 1 FROM grant_void WHERE grant_id = ?)`,
+        ).bind(grantId, reversalId, envelopeSha256, canonicalJsonText(receipt),
+          exportPayload, nowIso, grantId, grantId),
+        this.env.DB.prepare(
+          `INSERT OR IGNORE INTO grant_void (grant_id, reason, source, evidence_sha256, at)
+           SELECT grant_id, ?, 'reversal', ?, ? FROM grant_tombstone
+           WHERE grant_id = ? AND reversal_id = ? AND request_sha256 = ?`,
+        ).bind(reason, evidenceSha256, nowIso, grantId, reversalId, envelopeSha256),
+        this.env.DB.prepare(
+          `INSERT OR IGNORE INTO reversal_command (
+             reversal_id, grant_id, request_sha256, request_body,
+             state, receipt, export_payload, export_state, created_at, updated_at
+           ) SELECT ?, ?, ?, ?, 'terminal', ?, ?, 'due', ?, ?
+             FROM grant_tombstone WHERE grant_id = ? AND reversal_id = ?
+               AND request_sha256 = ?`,
+        ).bind(reversalId, grantId, envelopeSha256, requestBody,
+          canonicalJsonText(receipt), exportPayload, nowIso, nowIso,
+          grantId, reversalId, envelopeSha256),
+      ]);
+      command = await readReversalCommand(this.env.DB, reversalId);
+      if (command === null) {
+        const racedRoute = await readLiveValueRoute(this.env.DB, grantId);
+        return racedRoute === null
+          ? reversalConflict(version)
+          : grantTransient(version, "grant_route_claim_race");
+      }
+      if (command.request_sha256 !== envelopeSha256 || command.grant_id !== grantId) {
+        return reversalConflict(version);
+      }
+      await shipReversalExport(this.env, command);
+      return { contract_version: version, result: "applied", code: "", detail: "", receipt };
+    }
+
+    if (route.org_id !== (claim !== null && !isGrantResultEnvelope(claim) ? claim.org_id : route.org_id)) {
+      return grantRejected(version, "coverage_unknown");
+    }
+    if (route.state === "moving") {
+      if (command === null) {
+        await this.env.DB.prepare(
+          `INSERT OR IGNORE INTO reversal_command (
+             reversal_id, grant_id, request_sha256, request_body,
+             route_installation_id, route_epoch, route_generation,
+             state, receipt, export_payload, export_state, created_at, updated_at
+           ) VALUES (?, ?, ?, ?, ?, ?, ?, 'due', NULL, NULL, 'none', ?, ?)`,
+        ).bind(reversalId, grantId, envelopeSha256, requestBody, route.installation_id,
+          route.binding_epoch, route.generation, nowIso, nowIso).run();
+        command = await readReversalCommand(this.env.DB, reversalId);
+      }
+      if (command === null || command.grant_id !== grantId ||
+          command.request_sha256 !== envelopeSha256 || command.request_body !== requestBody) {
+        return reversalConflict(version);
+      }
+      return grantTransient(version, "transfer_pending");
+    }
+    if (route.state === "retired") return reversalConflict(version);
+    if (route.state === "voiding" && route.reversal_id !== reversalId) return reversalConflict(version);
+    if (route.state === "stable") {
+      const currentBinding = await readTenantBindingForInstallation(
+        this.env.DB, route.org_id, route.installation_id,
+      );
+      if (currentBinding === null || currentBinding.epoch !== route.binding_epoch ||
+          (currentBinding.status !== "active" && currentBinding.status !== "held_for_transfer")) {
+        await this.env.DB.prepare(
+          `INSERT OR IGNORE INTO reversal_command (
+             reversal_id, grant_id, request_sha256, request_body,
+             route_installation_id, route_epoch, route_generation,
+             state, receipt, export_payload, export_state, created_at, updated_at
+           ) VALUES (?, ?, ?, ?, ?, ?, ?, 'due', NULL, NULL, 'none', ?, ?)`,
+        ).bind(reversalId, grantId, envelopeSha256, requestBody, route.installation_id,
+          route.binding_epoch, route.generation, nowIso, nowIso).run();
+        return grantTransient(version, "binding_route_pending");
+      }
+      await this.env.DB.batch([
+        this.env.DB.prepare(
+          `UPDATE live_value_route SET state = 'voiding', reversal_id = ?, updated_at = ?
+           WHERE grant_id = ? AND state = 'stable' AND generation = ?`,
+        ).bind(reversalId, nowIso, grantId, route.generation),
+        this.env.DB.prepare(
+          `INSERT OR IGNORE INTO reversal_command (
+             reversal_id, grant_id, request_sha256, request_body,
+             route_installation_id, route_epoch, route_generation,
+             state, receipt, export_payload, export_state, created_at, updated_at
+           ) VALUES (?, ?, ?, ?, ?, ?, ?, 'due', NULL, NULL, 'none', ?, ?)`,
+        ).bind(reversalId, grantId, envelopeSha256, requestBody, route.installation_id,
+          route.binding_epoch, route.generation, nowIso, nowIso),
+      ]);
+      route = await readLiveValueRoute(this.env.DB, grantId);
+      command = await readReversalCommand(this.env.DB, reversalId);
+    }
+    if (
+      route === null || command === null || command.grant_id !== grantId ||
+      command.request_sha256 !== envelopeSha256 || command.request_body !== requestBody
+    ) return reversalConflict(version);
+    if (route.state !== "voiding" || route.reversal_id !== reversalId) {
+      return grantTransient(version, "transfer_pending");
+    }
+    if (command.route_installation_id !== route.installation_id ||
+        command.route_epoch !== route.binding_epoch || command.route_generation !== route.generation) {
+      return reversalConflict(version);
+    }
+    if (claim === null || isGrantResultEnvelope(claim) || claim.state === "disputed" ||
+        claim.org_id !== route.org_id) {
+      return grantRejected(version, "coverage_unknown");
+    }
+    const doResponse = await callCoverageDo(this.env, route.installation_id, {
+      kind: "void_for_reversal",
+      installationId: route.installation_id,
+      orgId: route.org_id,
+      vendorContractVersion: version,
+      bindingEpoch: route.binding_epoch,
+      routeGeneration: route.generation,
+      grantEnvelopeSha256: claim.envelope_sha256,
       grantId,
+      reversalId,
       reason,
       evidenceSha256,
       envelopeSha256,
       nowIso,
-    );
-    if (storedVoid === "conflict") {
-      return {
-        contract_version: version,
-        result: "conflict",
-        code: "",
-        detail: "",
-      };
+      platformSigningKeyJson: this.env.PLATFORM_SIGNING_KEY,
+      durationScale: durationScaleFromEnv(this.env),
+    });
+    if (doResponse === null || doResponse.result === "transient") {
+      return grantTransient(version, "reversal_due");
     }
-    if (storedVoid !== null) {
-      return mapStoredReversalVoidReplay(
-        version,
-        storedVoid,
-        grantId,
-        reason,
-        evidenceSha256,
-        partial,
-      );
-    }
-
-    const voidForGrant = await this.env.DB.prepare(
-      "SELECT grant_id FROM grant_void WHERE grant_id = ?",
-    )
-      .bind(grantId)
-      .first<{ grant_id: string }>();
-    if (voidForGrant !== null) {
-      const receiptForGrant = await readVoidReceiptFromR2(this.env, grantId);
-      if (receiptForGrant === null) {
-        return grantRejected(version, "coverage_unknown");
-      }
-      const storedReversalIdForGrant = receiptForGrant.reversal_id;
-      if (
-        typeof storedReversalIdForGrant !== "string" ||
-        storedReversalIdForGrant !== reversalId
-      ) {
-        return {
-          contract_version: version,
-          result: "conflict",
-          code: "",
-          detail: "",
-        };
-      }
-    }
-
-    if (partial) {
-      return grantRejected(version, "partial_void", "");
-    }
-
-    if (ledgerRow !== null) {
-      const binding = await readActiveTenantBinding(this.env.DB, ledgerRow.org_id);
-      if (binding === null) {
-        return grantRejected(version, "coverage_unknown");
-      }
-      const doResponse = await callCoverageDo(this.env, ledgerRow.installation_id, {
-        kind: "void_for_reversal",
-        installationId: ledgerRow.installation_id,
-        orgId: ledgerRow.org_id,
-        vendorContractVersion: version,
-        bindingEpoch: binding.epoch,
-        grantId,
-        reversalId,
-        reason,
-        evidenceSha256,
-        envelopeSha256,
-        nowIso,
-        platformSigningKeyJson: this.env.PLATFORM_SIGNING_KEY,
-        durationScale: durationScaleFromEnv(this.env),
-      });
-      if (doResponse === null) {
-        return grantRejected(version, "coverage_unknown");
-      }
-      return mapVoidForReversalDoResponse(version, doResponse);
-    }
-    const signingKey = await loadPlatformSigningKey(
-      this.env.PLATFORM_SIGNING_KEY,
-      this.env.ENVIRONMENT,
-    );
-    if (signingKey === null) {
+    if (doResponse.result === "conflict") return reversalConflict(version);
+    if (doResponse.result !== "applied" && doResponse.result !== "already_applied") {
       return grantRejected(version, "coverage_unknown");
     }
-
-    const receipt = await signReversalVoidReceipt({
-      signingKey,
-      vendorContractVersion: version,
-      reversalId,
-      installationId: VOID_NIL_UUID,
-      orgId: VOID_NIL_UUID,
-      termIds: [],
-      appliedAt: nowIso,
-      ledgerSeq: 0,
-      envelopeSha256,
-    });
-
-    await this.env.DB.prepare(
-      `INSERT INTO grant_void (grant_id, reason, source, evidence_sha256, at)
-       VALUES (?, ?, 'reversal', ?, ?)`,
-    )
-      .bind(grantId, reason, evidenceSha256, nowIso)
-      .run();
-
-    const voidKey = `grant-ledger/${grantId}.void.ndjson`;
-    const voidLine = JSON.stringify({
-      grant_id: grantId,
-      reason,
-      source: "reversal",
-      evidence_sha256: evidenceSha256,
-      at: nowIso,
-      receipt,
-    });
-    await this.env.R2.put(voidKey, `${voidLine}\n`);
-
+    if (!isRecord(doResponse.receipt)) return grantRejected(version, "coverage_unknown");
+    const receipt = doResponse.receipt;
+    if (
+      receipt.reversal_id !== reversalId || receipt.installation_id !== route.installation_id ||
+      receipt.org_id !== route.org_id || receipt.envelope_sha256 !== envelopeSha256 ||
+      (receipt.result !== "applied" && receipt.result !== "already_applied") ||
+      !(await verifyPlatformReceipt(this.env, receipt))
+    ) return grantRejected(version, "coverage_unknown");
+    const exportPayload = `${JSON.stringify({
+      grant_id: grantId, reason, source: "reversal", evidence_sha256: evidenceSha256,
+      at: typeof receipt.applied_at === "string" ? receipt.applied_at : nowIso, receipt,
+    })}\n`;
+    const completedAt = await clockNowIso(this.env);
+    await this.env.DB.batch([
+      this.env.DB.prepare(
+        `UPDATE live_value_route SET state = 'retired', transfer_id = NULL,
+           updated_at = ? WHERE grant_id = ? AND state = 'voiding' AND reversal_id = ?
+           AND generation = ?`,
+      ).bind(completedAt, grantId, reversalId, route.generation),
+      this.env.DB.prepare(
+        `INSERT OR IGNORE INTO grant_void (grant_id, reason, source, evidence_sha256, at)
+         SELECT ?, ?, 'reversal', ?, ? WHERE EXISTS (
+           SELECT 1 FROM live_value_route WHERE grant_id = ? AND state = 'retired'
+             AND reversal_id = ? AND generation = ?
+         )`,
+      ).bind(grantId, reason, evidenceSha256,
+        typeof receipt.applied_at === "string" ? receipt.applied_at : completedAt,
+        grantId, reversalId, route.generation),
+      this.env.DB.prepare(
+        `UPDATE reversal_command SET state = 'terminal', receipt = ?, export_payload = ?,
+           export_state = 'due', updated_at = ? WHERE reversal_id = ? AND grant_id = ?
+           AND request_sha256 = ? AND state = 'due' AND EXISTS (
+             SELECT 1 FROM live_value_route WHERE grant_id = ? AND state = 'retired'
+               AND reversal_id = ? AND generation = ?
+           )`,
+      ).bind(canonicalJsonText(receipt), exportPayload, completedAt, reversalId,
+        grantId, envelopeSha256, grantId, reversalId, route.generation),
+    ]);
+    command = await readReversalCommand(this.env.DB, reversalId);
+    if (command === null || command.state !== "terminal" || command.receipt === null) {
+      return grantTransient(version, "reversal_commit_pending");
+    }
+    await shipReversalExport(this.env, command);
     return {
       contract_version: version,
-      result: "applied",
+      result: doResponse.result,
       code: "",
       detail: "",
-      receipt,
+      receipt: JSON.parse(command.receipt) as Record<string, unknown>,
     };
   }
 

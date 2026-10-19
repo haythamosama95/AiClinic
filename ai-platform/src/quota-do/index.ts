@@ -1980,6 +1980,14 @@ const COVERAGE_DO_SCHEMA_STATEMENTS = [
     route_generation INTEGER NOT NULL,
     sealed_at TEXT NOT NULL
   )`,
+  `CREATE TABLE IF NOT EXISTS transfer_replay (
+    transfer_id TEXT NOT NULL,
+    step TEXT NOT NULL CHECK (step IN ('transfer_out', 'transfer_in')),
+    request_sha256 TEXT NOT NULL,
+    response_json TEXT NOT NULL,
+    created_at TEXT NOT NULL,
+    PRIMARY KEY (transfer_id, step)
+  )`,
   `CREATE TABLE IF NOT EXISTS grant_ceiling_claim (
     grant_id TEXT PRIMARY KEY NOT NULL,
     org_id TEXT NOT NULL,

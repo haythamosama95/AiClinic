@@ -1049,7 +1049,7 @@ describe("transfer, deletion with coverage left, ledger retention", () => {
     expect(latest?.epoch).toBe((held?.epoch ?? 0) + 1);
   });
 
-  it("E2E-P3.8-07 voidForReversal of a moved paid grant lands on the new installation", async () => {
+  it("R6-PT1: voidForReversal of a moved paid grant lands on the new installation", async () => {
     const {
       scenario,
       oldInstallationId,
@@ -1077,6 +1077,68 @@ describe("transfer, deletion with coverage left, ledger retention", () => {
       (row) => row.origin_grant_id === paidOriginGrantId,
     );
     expect(transferred?.end_reason).toBe("transferred");
+  });
+
+  it("R6-PT1: reversal stays due while value moves and then voids the imported route", async () => {
+    const scenario = await newScenario();
+    await coverClinic(scenario);
+    const oldInstallationId = scenario.installationId;
+    const grant = (await readDoGrants(oldInstallationId))[0]!;
+    const begun = await hpBeginTransfer({
+      orgId: scenario.orgId,
+      fromInstallationId: oldInstallationId,
+    });
+    expect(begun.result).toBe("ok");
+    const transfer = JSON.parse(begun.detail) as {
+      transfer_id: string; to_installation_id: string;
+    };
+    expect(await queryOne<{ state: string }>(
+      "SELECT state FROM live_value_route WHERE grant_id = ?",
+      [grant.grant_id],
+    )).toEqual({ state: "moving" });
+
+    const reversal = {
+      grantId: grant.grant_id,
+      partial: false,
+      reversalId: crypto.randomUUID().replace(/-/g, "").padEnd(64, "0"),
+      reason: "refund-during-transfer",
+      evidenceSha256: crypto.randomUUID().replace(/-/g, "").padEnd(64, "0"),
+    };
+    const pending = await callVoidForReversal(reversal);
+    expect(pending.result).toBe("transient");
+
+    expect((await transferOut(transfer.transfer_id)).result).toBe("applied");
+    await runDurableObjectAlarm(quotaDoStub(oldInstallationId));
+    expect((await transferIn(transfer.transfer_id)).result).toBe("applied");
+    const settledRoute = await queryOne<{ installation_id: string; state: string }>(
+      "SELECT installation_id, state FROM live_value_route WHERE grant_id = ?",
+      [grant.grant_id],
+    );
+    expect(settledRoute).toEqual({ installation_id: transfer.to_installation_id, state: "stable" });
+
+    const applied = await callVoidForReversal(reversal);
+    expect(applied.result).toBe("applied");
+    await runDurableObjectAlarm(quotaDoStub(transfer.to_installation_id));
+    const destinationTerms = await readDoTerms(transfer.to_installation_id);
+    expect(destinationTerms.find((row) => row.origin_grant_id === grant.grant_id)?.end_reason)
+      .toBe("reversed");
+  });
+
+  it("R6-PT1: full reversal accepts the exact held installation route after deletion", async () => {
+    const scenario = await newScenario();
+    await coverClinic(scenario);
+    const grant = (await readDoGrants(scenario.installationId))[0]!;
+    expect((await hpDeleteInstallation({ orgId: scenario.orgId })).result).toBe("ok");
+    expect(await queryOne<{ status: string }>(
+      "SELECT status FROM tenant_binding WHERE org_id = ? AND installation_id = ?",
+      [scenario.orgId, scenario.installationId],
+    )).toEqual({ status: "held_for_transfer" });
+
+    const voided = await callVoidForReversal({ grantId: grant.grant_id, partial: false });
+    expect(voided.result).toBe("applied");
+    await runDurableObjectAlarm(quotaDoStub(scenario.installationId));
+    expect((await readDoTerms(scenario.installationId)).find((row) => row.grant_id === grant.grant_id)?.end_reason)
+      .toBe("reversed");
   });
 
   it("E2E-P3.8-08 purge of a deleted installation keeps the ledger", async () => {
