@@ -966,6 +966,13 @@ describe("paid grant coverage", () => {
     await runInDurableObject(quotaDoStub(installationId), async (_instance, state) => {
       await state.storage.deleteAlarm();
     });
+    // Recreate the persisted-claim state after a lost DO reply so the public
+    // grant path routes the exact replay back through applyGrantRPC.
+    await env.DB.prepare(
+      "UPDATE grant_claim SET state = 'pending', receipt = NULL, completed_at = NULL WHERE grant_id = ? AND state = 'completed'",
+    )
+      .bind(fixture.grantId)
+      .run();
     const replay = await grantPaid({
       envelope: fixture.envelope,
       aboKid: fixture.aboKid,
