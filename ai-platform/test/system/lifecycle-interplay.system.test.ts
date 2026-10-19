@@ -157,7 +157,7 @@ function assertInvokeCompleted(events: { event: string }[]): void {
 }
 
 describe("lifecycle interplay", () => {
-  it("SYS-2.1 — Suspend blocks, resume restores", async () => {
+  it("R6-DM5: suspend and resume emit ordered suspension_changed snapshots without duplicate transitions", async () => {
     const scenario = await newScenario();
     await setupPromotedFakePolicy(scenario);
 
@@ -167,6 +167,8 @@ describe("lifecycle interplay", () => {
 
     const suspended = await vendorSuspend(scenario);
     expect(suspended.status).toBe(200);
+    const repeatedSuspend = await vendorSuspend(scenario);
+    expect(repeatedSuspend.status).toBe(200);
     clearConfigCache();
 
     const beforeRequests = await count("ai_request");
@@ -179,11 +181,30 @@ describe("lifecycle interplay", () => {
 
     const resumed = await vendorResume(scenario);
     expect(resumed.status).toBe(200);
+    const repeatedResume = await vendorResume(scenario);
+    expect(repeatedResume.status).toBe(200);
     clearConfigCache();
 
     const afterResume = await invoke(scenario);
     expect(afterResume.status).toBe(200);
     assertInvokeCompleted(afterResume.events);
+
+    const eventsResult = await env.DB.prepare(
+      "SELECT clinic_seq, kind, snapshot FROM coverage_event WHERE org_id = ? ORDER BY clinic_seq",
+    ).bind(scenario.orgId).all<{ clinic_seq: number; kind: string; snapshot: string }>();
+    const suspensionEvents = (eventsResult.results ?? []).filter((event) =>
+      event.kind === "suspension_changed" || event.kind === "suspend" || event.kind === "resume",
+    );
+    expect(suspensionEvents).toHaveLength(2);
+    expect(suspensionEvents.map((event) => event.kind)).toEqual([
+      "suspension_changed", "suspension_changed",
+    ]);
+    expect(suspensionEvents[0]!.clinic_seq).toBeLessThan(suspensionEvents[1]!.clinic_seq);
+    const suspendedSnapshot = JSON.parse(suspensionEvents[0]!.snapshot) as Record<string, unknown>;
+    const resumedSnapshot = JSON.parse(suspensionEvents[1]!.snapshot) as Record<string, unknown>;
+    expect(suspendedSnapshot.suspended).toBe(true);
+    expect(resumedSnapshot.suspended).toBe(false);
+    expect(suspendedSnapshot.terms).toEqual(resumedSnapshot.terms);
   });
 
   it("SYS-2.2 — Illegal transitions", async () => {

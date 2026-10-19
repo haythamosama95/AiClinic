@@ -362,19 +362,20 @@ async function hpVoidOp(input: {
   op: "releaseHeld" | "voidGrant";
   grantId: string;
   reason?: string;
+  replay?: { accessJwt: string; operation: Record<string, unknown>; assertion: string };
 }): Promise<{
   result: GrantResultEnvelope;
   operation: Record<string, unknown>;
+  accessJwt: string;
+  assertion: string;
 }> {
   const signer = coverClinicSigner();
-  const accessJwt = await mintVendorAccessJwt();
-  const operation = await operationForHp({
-    op: input.op,
-    accessJwt,
-    grantId: input.grantId,
+  const accessJwt = input.replay?.accessJwt ?? await mintVendorAccessJwt();
+  const operation = input.replay?.operation ?? await operationForHp({
+    op: input.op, accessJwt, grantId: input.grantId,
     reason: input.reason ?? "operator void",
   });
-  const assertion = encodeVendorAssertion(
+  const assertion = input.replay?.assertion ?? encodeVendorAssertion(
     await signer.signerAuthenticator.assert({
       operation,
       rpId: env.WEBAUTHN_RP_ID,
@@ -395,7 +396,7 @@ async function hpVoidOp(input: {
     },
     { accessJwt },
   );
-  return { result, operation };
+  return { result, operation, accessJwt, assertion };
 }
 
 beforeAll(async () => {
@@ -558,7 +559,7 @@ describe("reversal voids, tombstones, held terms, operator voids", () => {
     expect(rejected.detail).toBe("");
   });
 
-  it("E2E-P3.7-05 releaseHeld re-queues a held term and activates it when nothing is active", async () => {
+  it("R6-DM3: releaseHeld retries return the original receipt while re-queueing and activation remain correct", async () => {
     const scenario = await newScenario();
     await coverClinic(scenario);
 
@@ -590,6 +591,12 @@ describe("reversal voids, tombstones, held terms, operator voids", () => {
       grantId: firstHeldGrantId,
     });
     expect(firstRelease.result.result).toBe("applied");
+    const firstReleaseRetry = await hpVoidOp({
+      op: "releaseHeld", grantId: firstHeldGrantId,
+      replay: { accessJwt: firstRelease.accessJwt, operation: firstRelease.operation, assertion: firstRelease.assertion },
+    });
+    expect(firstReleaseRetry.result.result).toBe("already_applied");
+    expect(firstReleaseRetry.result.receipt).toEqual(firstRelease.result.receipt);
     await runDurableObjectAlarm(quotaDoStub(scenario.installationId));
 
     let terms = await readDoTerms(scenario.installationId);
@@ -618,7 +625,7 @@ describe("reversal voids, tombstones, held terms, operator voids", () => {
     expect(positions[positions.length - 1]?.grant_id).toBe(secondHeldGrantId);
   });
 
-  it("E2E-P3.7-06 voidGrant ends an active complimentary term and activates the successor", async () => {
+  it("R6-DM3: voidGrant retries return the original receipt and activate the successor", async () => {
     const scenario = await newScenario();
     await coverClinic(scenario);
 
@@ -681,6 +688,12 @@ describe("reversal voids, tombstones, held terms, operator voids", () => {
       reason: "operator correction",
     });
     expect(voided.result).toBe("applied");
+    const voidedRetry = await hpVoidOp({
+      op: "voidGrant", grantId: compGrantId, reason: "operator correction",
+      replay: { accessJwt: voided.accessJwt, operation: voided.operation, assertion: voided.assertion },
+    });
+    expect(voidedRetry.result.result).toBe("already_applied");
+    expect(voidedRetry.result.receipt).toEqual(voided.receipt);
     await runDurableObjectAlarm(quotaDoStub(scenario.installationId));
 
     const terms = await inspectCoverageTerms(scenario);
@@ -785,7 +798,7 @@ describe("reversal voids, tombstones, held terms, operator voids", () => {
     expect(inverted.detail).toBe("");
   });
 
-  it("E2E-P3.7-08 reversal replay is already_applied, a changed body is conflict, and a rejected call does not consume reversal_id", async () => {
+  it("R6-DM3: reversal replay returns the original receipt and sequence, while changed bodies conflict", async () => {
     const scenario = await newScenario();
     await coverClinic(scenario);
 

@@ -827,6 +827,14 @@ type StoredVoidReplay = {
   grant_id: string;
   reason: string;
   evidence_sha256: string;
+  envelope_sha256: string;
+  partial: boolean;
+  receipt: Record<string, unknown>;
+};
+
+type StoredHpReplay = {
+  operation: string;
+  arguments_sha256: string;
   receipt: Record<string, unknown>;
 };
 
@@ -850,10 +858,10 @@ function writeVoidReplay(
   updateHot(storage, { replay: JSON.stringify(replay) });
 }
 
-function readHpReplayReceipt(
+function readHpReplayEntry(
   storage: DurableObjectStorage,
   key: string,
-): Record<string, unknown> | null {
+): StoredHpReplay | null {
   const hot = loadHot(storage);
   try {
     const parsed = JSON.parse(hot.replay) as Record<string, Record<string, unknown>>;
@@ -861,16 +869,16 @@ function readHpReplayReceipt(
     if (entry === undefined || typeof entry.receipt !== "object" || entry.receipt === null) {
       return null;
     }
-    return entry.receipt as Record<string, unknown>;
+    return entry as unknown as StoredHpReplay;
   } catch {
     return null;
   }
 }
 
-function writeHpReplayReceipt(
+function writeHpReplayEntry(
   storage: DurableObjectStorage,
   key: string,
-  receipt: Record<string, unknown>,
+  entry: StoredHpReplay,
 ): void {
   const hot = loadHot(storage);
   let parsed: Record<string, Record<string, unknown>> = {};
@@ -879,7 +887,7 @@ function writeHpReplayReceipt(
   } catch {
     parsed = {};
   }
-  parsed[key] = { receipt };
+  parsed[key] = entry as unknown as Record<string, unknown>;
   updateHot(storage, { replay: JSON.stringify(parsed) });
 }
 
@@ -923,6 +931,51 @@ function emitCoverageEvent(
     snapshot,
   });
   return hot.clinic_seq;
+}
+
+function prepareCoverageEvents(input: {
+  installationId: string;
+  orgId: string;
+  vendorContractVersion: number;
+  at: string;
+  durationScale?: DurationScale;
+  kinds: string[];
+  hotAfter: HotRow;
+  termsAfter: TermRow[];
+  eventHots?: HotRow[];
+  eventTerms?: TermRow[][];
+}): { rows: Record<string, unknown>[]; finalHot: HotRow; lastSeq: number } {
+  let seq = input.hotAfter.clinic_seq;
+  const rows = input.kinds.map((kind) => {
+    seq += 1;
+    const eventHot = { ...(input.eventHots?.[index] ?? input.hotAfter), clinic_seq: seq };
+    const snapshot = buildCoverageSnapshot({
+      vendorContractVersion: input.vendorContractVersion,
+      orgId: input.orgId,
+      hot: eventHot,
+      terms: input.eventTerms?.[index] ?? input.termsAfter,
+      durationScale: input.durationScale,
+    });
+    snapshot.clinic_seq = seq;
+    return {
+      event_id: coverageEventId(input.installationId, seq),
+      org_id: input.orgId,
+      installation_id: input.installationId,
+      binding_epoch: eventHot.binding_epoch,
+      clinic_seq: seq,
+      kind,
+      at: input.at,
+      snapshot,
+    };
+  });
+  return { rows, finalHot: { ...input.hotAfter, clinic_seq: seq }, lastSeq: seq };
+}
+
+function commitPreparedEvents(
+  storage: DurableObjectStorage,
+  rows: Record<string, unknown>[],
+): void {
+  for (const row of rows) insertOutbox(storage, "coverage_event", row);
 }
 
 async function scheduleCoverageAlarm(
@@ -2164,7 +2217,7 @@ export async function suspendResumeRPC(
         installation_id: request.installationId,
         binding_epoch: hotAfterToggle.binding_epoch,
         clinic_seq: hotAfterToggle.clinic_seq,
-        kind: request.kind,
+        kind: "suspension_changed",
         at: request.nowIso,
         snapshot: snapshotAfterToggle,
       });
@@ -2327,8 +2380,11 @@ export async function voidForReversalRPC(
       if (
         stored.grant_id === request.grantId &&
         stored.reason === request.reason &&
-        stored.evidence_sha256 === request.evidenceSha256
+        stored.evidence_sha256 === request.evidenceSha256 &&
+        stored.envelope_sha256 === request.envelopeSha256 &&
+        stored.partial === false
       ) {
+        await scheduleCoverageAlarm(state, storage, request.nowIso);
         return {
           kind: "void_for_reversal",
           result: "already_applied",
@@ -2366,76 +2422,49 @@ export async function voidForReversalRPC(
       return { kind: "void_for_reversal", result: "bad_request" };
     }
 
-    const endedTermIds: string[] = [];
-    const heldTermIds: string[] = [];
-
+    const termsAfter = terms.map((row) => ({ ...row }));
+    const termWrites: string[] = [];
+    const eventKinds: string[] = [];
+    const eventTerms: TermRow[][] = [];
+    const eventHots: HotRow[] = [];
+    const hotBefore = loadHot(storage);
+    let hotAfter = { ...hotBefore };
     if (effect === "end_current") {
-      sqlExec(
-        storage,
-        `UPDATE term SET state = 'ended', end_reason = 'reversed', ended_at = ${sqlString(request.nowIso)}, grace_ends_at = NULL
-         WHERE term_id = ${sqlString(term.term_id)}`,
-      );
-      endedTermIds.push(term.term_id);
-      const hot = loadHot(storage);
-      if (hot.active_term_id === term.term_id) {
-        updateHot(storage, { active_term_id: null });
-      }
-      const queuedBeforeHold = loadTerms(storage).filter(
-        (row) => row.state === "queued",
-      );
-      for (const queued of queuedBeforeHold) {
-        sqlExec(
-          storage,
-          `UPDATE term SET state = 'held' WHERE term_id = ${sqlString(queued.term_id)}`,
-        );
-        heldTermIds.push(queued.term_id);
-      }
-      emitCoverageEvent(storage, {
-        installationId: request.installationId,
-        orgId: request.orgId,
-        vendorContractVersion: request.vendorContractVersion,
-        kind: "term_ended",
-        at: request.nowIso,
-        durationScale: request.durationScale,
+      Object.assign(termsAfter.find((row) => row.term_id === term.term_id)!, {
+        state: "ended", end_reason: "reversed", ended_at: request.nowIso, grace_ends_at: null,
       });
-      for (const heldId of heldTermIds) {
-        emitCoverageEvent(storage, {
-          installationId: request.installationId,
-          orgId: request.orgId,
-          vendorContractVersion: request.vendorContractVersion,
-          kind: "term_held",
-          at: request.nowIso,
-          durationScale: request.durationScale,
-        });
+      if (hotAfter.active_term_id === term.term_id) hotAfter.active_term_id = null;
+      termWrites.push(`UPDATE term SET state = 'ended', end_reason = 'reversed', ended_at = ${sqlString(request.nowIso)}, grace_ends_at = NULL WHERE term_id = ${sqlString(term.term_id)}`);
+      eventKinds.push("term_ended");
+      eventTerms.push(termsAfter.map((row) => ({ ...row })));
+      eventHots.push({ ...hotAfter });
+      for (const queued of termsAfter.filter((row) => row.state === "queued")) {
+        queued.state = "held";
+        termWrites.push(`UPDATE term SET state = 'held' WHERE term_id = ${sqlString(queued.term_id)}`);
+        eventKinds.push("term_held");
+        eventTerms.push(termsAfter.map((row) => ({ ...row })));
+        eventHots.push({ ...hotAfter });
       }
     } else if (effect === "remove_queued") {
-      sqlExec(
-        storage,
-        `UPDATE term SET state = 'ended', end_reason = 'reversed', ended_at = ${sqlString(request.nowIso)}
-         WHERE term_id = ${sqlString(term.term_id)}`,
-      );
-      endedTermIds.push(term.term_id);
-      emitCoverageEvent(storage, {
-        installationId: request.installationId,
-        orgId: request.orgId,
-        vendorContractVersion: request.vendorContractVersion,
-        kind: "term_ended",
-        at: request.nowIso,
-        durationScale: request.durationScale,
+      Object.assign(termsAfter.find((row) => row.term_id === term.term_id)!, {
+        state: "ended", end_reason: "reversed", ended_at: request.nowIso,
       });
+      termWrites.push(`UPDATE term SET state = 'ended', end_reason = 'reversed', ended_at = ${sqlString(request.nowIso)} WHERE term_id = ${sqlString(term.term_id)}`);
+      eventKinds.push("term_ended");
+      eventTerms.push(termsAfter.map((row) => ({ ...row })));
+      eventHots.push({ ...hotAfter });
     }
-
-    const grantVoidedSeq = emitCoverageEvent(storage, {
-      installationId: request.installationId,
-      orgId: request.orgId,
-      vendorContractVersion: request.vendorContractVersion,
-      kind: "grant_voided",
-      at: request.nowIso,
-      durationScale: request.durationScale,
+    eventKinds.push("grant_voided");
+    eventTerms.push(termsAfter.map((row) => ({ ...row })));
+    eventHots.push({ ...hotAfter });
+    const prepared = prepareCoverageEvents({
+      installationId: request.installationId, orgId: request.orgId,
+      vendorContractVersion: request.vendorContractVersion, at: request.nowIso,
+      durationScale: request.durationScale, kinds: eventKinds, hotAfter, termsAfter,
+      eventHots, eventTerms,
     });
-
-    const termIdsForReceipt =
-      effect === "none" ? [] : endedTermIds.length > 0 ? [endedTermIds[0]!] : [];
+    const grantVoidedSeq = prepared.lastSeq;
+    const termIdsForReceipt = effect === "none" ? [] : [term.term_id];
 
     const receipt = await signReversalVoidReceipt({
       signingKey,
@@ -2449,22 +2478,42 @@ export async function voidForReversalRPC(
       envelopeSha256: request.envelopeSha256,
     });
 
-    insertOutbox(storage, "grant_void", {
+    const voidPayload = {
       grant_id: request.grantId,
       reason: request.reason,
       source: "reversal",
       evidence_sha256: request.evidenceSha256,
       at: request.nowIso,
       receipt,
-    });
-
-    writeVoidReplay(storage, request.reversalId, {
+    };
+    const replayEntry = {
       grant_id: request.grantId,
       reason: request.reason,
       evidence_sha256: request.evidenceSha256,
+      envelope_sha256: request.envelopeSha256,
+      partial: false,
       receipt,
+    };
+    await prearmGrantWakeup(state);
+    const transactionResult = storage.transactionSync(() => {
+      const current = readVoidReplay(storage)[request.reversalId];
+      if (current !== undefined) {
+        return current.grant_id === request.grantId && current.reason === request.reason &&
+          current.evidence_sha256 === request.evidenceSha256 && current.envelope_sha256 === request.envelopeSha256 && current.partial === false
+          ? { result: "already_applied" as const, receipt: current.receipt }
+          : { result: "conflict" as const };
+      }
+      for (const statement of termWrites) sqlExec(storage, statement);
+      updateHot(storage, prepared.finalHot);
+      commitPreparedEvents(storage, prepared.rows);
+      insertOutbox(storage, "grant_void", voidPayload);
+      writeVoidReplay(storage, request.reversalId, replayEntry);
+      return { result: "applied" as const, receipt };
     });
-
+    if (transactionResult.result !== "applied") {
+      await scheduleCoverageAlarm(state, storage, request.nowIso);
+      return { kind: "void_for_reversal", ...transactionResult };
+    }
     await scheduleCoverageAlarm(state, storage, request.nowIso);
 
     logger.info("void_for_reversal completed", {
@@ -2532,12 +2581,20 @@ export async function releaseHeldRPC(
   return blockConcurrencyWhile(async () => {
     ensureHotRow(storage, request.bindingEpoch);
     const replayKey = `release_held:${request.assertionSha256}`;
-    const existingReceipt = readHpReplayReceipt(storage, replayKey);
-    if (existingReceipt !== null) {
+    const argumentsSha256 = await sha256Hex(canonicalize({
+      org_id: request.orgId, grant_id: request.grantId, reason: request.reason,
+      assertion_sha256: request.assertionSha256,
+    }));
+    const existing = readHpReplayEntry(storage, replayKey);
+    if (existing !== null) {
+      await scheduleCoverageAlarm(state, storage, request.nowIso);
+      if (existing.operation !== "release_held" || existing.arguments_sha256 !== argumentsSha256) {
+        return { kind: "release_held", result: "bad_request" };
+      }
       return {
         kind: "release_held",
         result: "already_applied",
-        receipt: existingReceipt,
+        receipt: existing.receipt,
       };
     }
     if (request.replayOnly === true) {
@@ -2563,6 +2620,8 @@ export async function releaseHeldRPC(
     const position = nextTermPosition(terms);
     const hasActive = terms.some((term) => term.state === "active");
 
+    const termAfter = { ...held };
+    const termWrites: string[] = [];
     if (!hasActive) {
       const endsAt =
         held.duration_unit !== null && held.duration_count !== null
@@ -2573,41 +2632,24 @@ export async function releaseHeldRPC(
               request.durationScale,
             )
           : addDuration(request.nowIso, "month", 1, request.durationScale);
-      sqlExec(
-        storage,
-        `UPDATE term SET state = 'active', position = ${position},
-         starts_at = ${sqlString(request.nowIso)}, calendar_start = ${sqlString(request.nowIso)},
-         ends_at = ${sqlString(endsAt)}
-         WHERE term_id = ${sqlString(held.term_id)}`,
-      );
-      updateHot(storage, { active_term_id: held.term_id, used: 0 });
+      Object.assign(termAfter, { state: "active", position, starts_at: request.nowIso, calendar_start: request.nowIso, ends_at: endsAt });
+      termWrites.push(`UPDATE term SET state = 'active', position = ${position}, starts_at = ${sqlString(request.nowIso)}, calendar_start = ${sqlString(request.nowIso)}, ends_at = ${sqlString(endsAt)} WHERE term_id = ${sqlString(held.term_id)}`);
     } else {
-      sqlExec(
-        storage,
-        `UPDATE term SET state = 'queued', position = ${position}
-         WHERE term_id = ${sqlString(held.term_id)}`,
-      );
+      Object.assign(termAfter, { state: "queued", position });
+      termWrites.push(`UPDATE term SET state = 'queued', position = ${position} WHERE term_id = ${sqlString(held.term_id)}`);
     }
-
-    const releasedSeq = emitCoverageEvent(storage, {
-      installationId: request.installationId,
-      orgId: request.orgId,
-      vendorContractVersion: request.vendorContractVersion,
-      kind: "term_released",
-      at: request.nowIso,
-      durationScale: request.durationScale,
+    const hotBefore = loadHot(storage);
+    const hotAfter = !hasActive
+      ? { ...hotBefore, active_term_id: held.term_id, used: 0 }
+      : hotBefore;
+    const termsAfter = terms.map((row) => row.term_id === held.term_id ? termAfter : { ...row });
+    const eventKinds = hasActive ? ["term_released"] : ["term_released", "term_activated"];
+    const prepared = prepareCoverageEvents({
+      installationId: request.installationId, orgId: request.orgId,
+      vendorContractVersion: request.vendorContractVersion, at: request.nowIso,
+      durationScale: request.durationScale, kinds: eventKinds, hotAfter, termsAfter,
     });
-
-    if (!hasActive) {
-      emitCoverageEvent(storage, {
-        installationId: request.installationId,
-        orgId: request.orgId,
-        vendorContractVersion: request.vendorContractVersion,
-        kind: "term_activated",
-        at: request.nowIso,
-        durationScale: request.durationScale,
-      });
-    }
+    const releasedSeq = prepared.rows[0]!.clinic_seq as number;
 
     const receipt = await signReceipt({
       signingKey,
@@ -2621,7 +2663,21 @@ export async function releaseHeldRPC(
       envelopeSha256: "",
     });
 
-    writeHpReplayReceipt(storage, replayKey, receipt);
+    const replayEntry = { operation: "release_held", arguments_sha256: argumentsSha256, receipt };
+    await prearmGrantWakeup(state);
+    const transactionResult = storage.transactionSync(() => {
+      const current = readHpReplayEntry(storage, replayKey);
+      if (current !== null) {
+        return current.operation === "release_held" && current.arguments_sha256 === argumentsSha256
+          ? { result: "already_applied" as const, receipt: current.receipt }
+          : { result: "bad_request" as const };
+      }
+      for (const statement of termWrites) sqlExec(storage, statement);
+      updateHot(storage, prepared.finalHot);
+      commitPreparedEvents(storage, prepared.rows);
+      writeHpReplayEntry(storage, replayKey, replayEntry);
+      return { result: "applied" as const, receipt };
+    });
     await scheduleCoverageAlarm(state, storage, request.nowIso);
 
     logger.info("release_held completed", {
@@ -2629,7 +2685,7 @@ export async function releaseHeldRPC(
       grant_id: request.grantId,
     });
 
-    return { kind: "release_held", result: "applied", receipt };
+    return { kind: "release_held", ...transactionResult };
   });
 }
 
@@ -2643,12 +2699,20 @@ export async function voidGrantRPC(
   return blockConcurrencyWhile(async () => {
     ensureHotRow(storage, request.bindingEpoch);
     const replayKey = `void_grant:${request.evidenceSha256}`;
-    const existingReceipt = readHpReplayReceipt(storage, replayKey);
-    if (existingReceipt !== null) {
+    const argumentsSha256 = await sha256Hex(canonicalize({
+      org_id: request.orgId, grant_id: request.grantId, reason: request.reason,
+      assertion_sha256: request.assertionSha256, evidence_sha256: request.evidenceSha256,
+    }));
+    const existing = readHpReplayEntry(storage, replayKey);
+    if (existing !== null) {
+      await scheduleCoverageAlarm(state, storage, request.nowIso);
+      if (existing.operation !== "void_grant" || existing.arguments_sha256 !== argumentsSha256) {
+        return { kind: "void_grant", result: "bad_request" };
+      }
       return {
         kind: "void_grant",
         result: "already_applied",
-        receipt: existingReceipt,
+        receipt: existing.receipt,
       };
     }
     if (request.replayOnly === true) {
@@ -2670,27 +2734,20 @@ export async function voidGrantRPC(
     }
 
     const wasActive = term.state === "active";
-    sqlExec(
-      storage,
-      `UPDATE term SET state = 'ended', end_reason = 'voided', ended_at = ${sqlString(request.nowIso)}, grace_ends_at = NULL
-       WHERE term_id = ${sqlString(term.term_id)}`,
-    );
-    const hot = loadHot(storage);
-    if (hot.active_term_id === term.term_id) {
-      updateHot(storage, { active_term_id: null });
-    }
-
-    emitCoverageEvent(storage, {
-      installationId: request.installationId,
-      orgId: request.orgId,
-      vendorContractVersion: request.vendorContractVersion,
-      kind: "term_ended",
-      at: request.nowIso,
-      durationScale: request.durationScale,
-    });
-
+    const termsAfter = terms.map((row) => ({ ...row }));
+    const endingTerm = termsAfter.find((row) => row.term_id === term.term_id)!;
+    Object.assign(endingTerm, { state: "ended", end_reason: "voided", ended_at: request.nowIso, grace_ends_at: null });
+    const termWrites = [`UPDATE term SET state = 'ended', end_reason = 'voided', ended_at = ${sqlString(request.nowIso)}, grace_ends_at = NULL WHERE term_id = ${sqlString(term.term_id)}`];
+    const eventKinds = ["term_ended"];
+    const eventTerms: TermRow[][] = [termsAfter.map((row) => ({ ...row }))];
+    const hotBefore = loadHot(storage);
+    let hotAfter = {
+      ...hotBefore,
+      active_term_id: hotBefore.active_term_id === term.term_id ? null : hotBefore.active_term_id,
+    };
+    const eventHots: HotRow[] = [{ ...hotAfter }];
     if (wasActive) {
-      const successor = loadTerms(storage)
+      const successor = termsAfter
         .filter((row) => row.state === "queued")
         .sort((left, right) => left.position - right.position)[0];
       if (successor !== undefined) {
@@ -2704,32 +2761,24 @@ export async function voidGrantRPC(
                 request.durationScale,
               )
             : addDuration(request.nowIso, "month", 1, request.durationScale);
-        sqlExec(
-          storage,
-          `UPDATE term SET state = 'active', starts_at = ${sqlString(request.nowIso)},
-           calendar_start = ${sqlString(request.nowIso)}, ends_at = ${sqlString(endsAt)}
-           WHERE term_id = ${sqlString(successor.term_id)}`,
-        );
-        updateHot(storage, { active_term_id: successor.term_id, used: 0 });
-        emitCoverageEvent(storage, {
-          installationId: request.installationId,
-          orgId: request.orgId,
-          vendorContractVersion: request.vendorContractVersion,
-          kind: "term_activated",
-          at: request.nowIso,
-          durationScale: request.durationScale,
-        });
+        Object.assign(successor, { state: "active", starts_at: request.nowIso, calendar_start: request.nowIso, ends_at: endsAt });
+        termWrites.push(`UPDATE term SET state = 'active', starts_at = ${sqlString(request.nowIso)}, calendar_start = ${sqlString(request.nowIso)}, ends_at = ${sqlString(endsAt)} WHERE term_id = ${sqlString(successor.term_id)}`);
+        hotAfter = { ...hotAfter, active_term_id: successor.term_id, used: 0 };
+        eventKinds.push("term_activated");
+        eventTerms.push(termsAfter.map((row) => ({ ...row })));
+        eventHots.push({ ...hotAfter });
       }
     }
-
-    const grantVoidedSeq = emitCoverageEvent(storage, {
-      installationId: request.installationId,
-      orgId: request.orgId,
-      vendorContractVersion: request.vendorContractVersion,
-      kind: "grant_voided",
-      at: request.nowIso,
-      durationScale: request.durationScale,
+    eventKinds.push("grant_voided");
+    eventTerms.push(termsAfter.map((row) => ({ ...row })));
+    eventHots.push({ ...hotAfter });
+    const prepared = prepareCoverageEvents({
+      installationId: request.installationId, orgId: request.orgId,
+      vendorContractVersion: request.vendorContractVersion, at: request.nowIso,
+      durationScale: request.durationScale, kinds: eventKinds, hotAfter, termsAfter,
+      eventHots, eventTerms,
     });
+    const grantVoidedSeq = prepared.lastSeq;
 
     const receipt = await signReceipt({
       signingKey,
@@ -2743,16 +2792,30 @@ export async function voidGrantRPC(
       envelopeSha256: "",
     });
 
-    insertOutbox(storage, "grant_void", {
+    const voidPayload = {
       grant_id: request.grantId,
       reason: request.reason,
       source: "operator",
       evidence_sha256: request.evidenceSha256,
       at: request.nowIso,
       receipt,
+    };
+    const replayEntry = { operation: "void_grant", arguments_sha256: argumentsSha256, receipt };
+    await prearmGrantWakeup(state);
+    const transactionResult = storage.transactionSync(() => {
+      const current = readHpReplayEntry(storage, replayKey);
+      if (current !== null) {
+        return current.operation === "void_grant" && current.arguments_sha256 === argumentsSha256
+          ? { result: "already_applied" as const, receipt: current.receipt }
+          : { result: "bad_request" as const };
+      }
+      for (const statement of termWrites) sqlExec(storage, statement);
+      updateHot(storage, prepared.finalHot);
+      commitPreparedEvents(storage, prepared.rows);
+      insertOutbox(storage, "grant_void", voidPayload);
+      writeHpReplayEntry(storage, replayKey, replayEntry);
+      return { result: "applied" as const, receipt };
     });
-
-    writeHpReplayReceipt(storage, replayKey, receipt);
     await scheduleCoverageAlarm(state, storage, request.nowIso);
 
     logger.info("void_grant completed", {
@@ -2760,7 +2823,7 @@ export async function voidGrantRPC(
       grant_id: request.grantId,
     });
 
-    return { kind: "void_grant", result: "applied", receipt };
+    return { kind: "void_grant", ...transactionResult };
   });
 }
 
