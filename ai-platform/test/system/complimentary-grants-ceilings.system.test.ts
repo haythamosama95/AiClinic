@@ -848,7 +848,7 @@ describe("complimentary grants, ceilings, adjustments, suspension", () => {
     expect(al12Bodies).toHaveLength(0);
   });
 
-  it("R2-P2 a correctly bound ceiling override applies once; replay returns the exact completed result and reuse with a changed envelope fails", async () => {
+  it("R4-D1 / R2-P2 a correctly bound ceiling override applies once; replay returns the exact result and no second term", async () => {
     const scenario = await newScenario();
     await coverClinic(scenario);
     const accessJwt = await mintVendorAccessJwt();
@@ -909,6 +909,7 @@ describe("complimentary grants, ceilings, adjustments, suspension", () => {
       accessJwt,
     });
     expect(applied.result).toBe("applied");
+    const termsAfterApply = await readDoTerms(scenario.installationId);
 
     // Exact replay of the identical call: the completed result, once.
     const replay = await extendedVendorCall("grant", grantArgs, {
@@ -916,6 +917,7 @@ describe("complimentary grants, ceilings, adjustments, suspension", () => {
     });
     expect(replay.result).toBe("already_applied");
     expect(replay.receipt).toEqual(applied.receipt);
+    expect(await readDoTerms(scenario.installationId)).toEqual(termsAfterApply);
 
     // Reusing both signed operations with a changed envelope (fresh
     // grant_id) fails: the main operation no longer matches the args.
@@ -1042,7 +1044,7 @@ describe("complimentary grants, ceilings, adjustments, suspension", () => {
     expect(noOperator.code).toBe("bad_request");
   });
 
-  it("E2E-P3.6-05 term_adjustment moves ends_at later, rejects a shortening, and shows a plan change", async () => {
+  it("R4-D1 / E2E-P3.6-05 term_adjustment replay does not add allowance or extend twice", async () => {
     const scenario = await newScenario();
     await coverClinic(scenario);
     await newClinic(scenario);
@@ -1067,6 +1069,10 @@ describe("complimentary grants, ceilings, adjustments, suspension", () => {
     expect(afterExtendEndsAt).toBe(
       addDuration(String(beforeEndsAt), "day", 7, "staging"),
     );
+    const extendReplay = await hpComplimentaryGrant({ envelope: extendEnvelope });
+    expect(extendReplay.result).toBe("already_applied");
+    expect(extendReplay.receipt).toEqual(extended.receipt);
+    expect(await readActiveTermEndsAt(scenario.installationId)).toBe(afterExtendEndsAt);
 
     const shortenGrantId = await grantIdComp(crypto.randomUUID().replace(/-/g, ""));
     const shortenEnvelope = await buildComplimentaryEnvelope({

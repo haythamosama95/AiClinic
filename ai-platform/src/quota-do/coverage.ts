@@ -82,6 +82,8 @@ export type TermRow = {
 
 type GrantRow = {
   grant_id: string;
+  kind: string;
+  source_kind: string;
   envelope_sha256: string;
   receipt: string | null;
 };
@@ -797,7 +799,6 @@ async function scheduleCoverageAlarm(
   nowIso: string,
 ): Promise<void> {
   const terms = loadTerms(storage);
-  const hot = loadHot(storage);
   const outboxCount =
     sqlSelect<{ count: number }>(
       storage,
@@ -805,7 +806,7 @@ async function scheduleCoverageAlarm(
     )[0]?.count ?? 0;
   const nextAlarm = computeNextAlarmAt(terms, outboxCount > 0, nowIso);
   updateHot(storage, { next_alarm_at: nextAlarm });
-  await syncAlarm(state, storage, nextAlarm, hot.next_alarm_at);
+  await syncAlarm(state, storage, nextAlarm);
 }
 
 export function insertOutbox(
@@ -1122,20 +1123,27 @@ export function updateHot(
 
 async function syncAlarm(
   state: DurableObjectState,
-  _storage: DurableObjectStorage,
+  storage: DurableObjectStorage,
   nextAlarmAt: string | null,
-  currentAlarmAt: string | null,
 ): Promise<void> {
-  if (nextAlarmAt === currentAlarmAt) {
-    return;
-  }
+  const actualAlarmAt = await storage.getAlarm();
   if (nextAlarmAt === null) {
-    await state.storage.deleteAlarm();
+    if (actualAlarmAt !== null) await state.storage.deleteAlarm();
     return;
   }
   const targetMs = Date.parse(nextAlarmAt);
   const scheduleMs = Math.max(targetMs, Date.now() + 5_000);
-  await state.storage.setAlarm(scheduleMs);
+  if (actualAlarmAt === null || actualAlarmAt > scheduleMs) {
+    await state.storage.setAlarm(scheduleMs);
+  }
+}
+
+async function prearmGrantWakeup(state: DurableObjectState): Promise<void> {
+  const alarmAt = await state.storage.getAlarm();
+  const wakeAt = Date.now() + 5_000;
+  if (alarmAt === null || alarmAt > wakeAt) {
+    await state.storage.setAlarm(wakeAt);
+  }
 }
 
 export async function scheduleOutboxAlarmIfPending(
@@ -1151,11 +1159,10 @@ export async function scheduleOutboxAlarmIfPending(
   if (outboxCount === 0) {
     return;
   }
-  const hot = loadHot(storage);
   const terms = loadTerms(storage);
   const nextAlarm = computeNextAlarmAt(terms, true, nowIso);
   updateHot(storage, { next_alarm_at: nextAlarm });
-  await syncAlarm(state, storage, nextAlarm, hot.next_alarm_at);
+  await syncAlarm(state, storage, nextAlarm);
 }
 
 function computeNextAlarmAt(
@@ -1332,37 +1339,42 @@ async function finalizeGrantApply(input: {
   termIds: string[];
   grantKind: string;
   grantSourceKind: string;
+  termWrites: string[];
+  hotAfter: HotRow;
+  termsAfter: TermRow[];
+  eventKinds: string[];
   attentionAl11: boolean;
   emitAl12: boolean;
+  observePaidVelocity?: boolean;
+  clinicVelocityAlert?: boolean;
   logger: Logger;
 }): Promise<ApplyGrantResponse> {
   const { storage, request, signingKey, grantId, envelopeSha256 } = input;
-  let hot = loadHot(storage);
-  let terms = loadTerms(storage);
-
-  hot = { ...hot, clinic_seq: hot.clinic_seq + 1 };
-  updateHot(storage, { clinic_seq: hot.clinic_seq });
-  terms = loadTerms(storage);
-  const grantAppliedSnapshot = buildCoverageSnapshot({
-    vendorContractVersion: request.vendorContractVersion,
-    orgId: request.orgId,
-    hot,
-    terms,
-    durationScale: request.durationScale,
+  const currentHot = loadHot(storage);
+  const firstSeq = currentHot.clinic_seq + 1;
+  const ledgerSeq = currentHot.clinic_seq + input.eventKinds.length;
+  const finalHot = { ...input.hotAfter, clinic_seq: ledgerSeq };
+  const eventPayloads = input.eventKinds.map((kind, index) => {
+    const clinicSeq = firstSeq + index;
+    const snapshot = buildCoverageSnapshot({
+      vendorContractVersion: request.vendorContractVersion,
+      orgId: request.orgId,
+      hot: { ...finalHot, clinic_seq: clinicSeq },
+      terms: input.termsAfter,
+      durationScale: request.durationScale,
+    });
+    snapshot.clinic_seq = clinicSeq;
+    return {
+      event_id: coverageEventId(request.installationId, clinicSeq),
+      org_id: request.orgId,
+      installation_id: request.installationId,
+      binding_epoch: finalHot.binding_epoch,
+      clinic_seq: clinicSeq,
+      kind,
+      at: request.nowIso,
+      snapshot,
+    };
   });
-  grantAppliedSnapshot.clinic_seq = hot.clinic_seq;
-  const ledgerSeq = hot.clinic_seq;
-  insertOutbox(storage, "coverage_event", {
-    event_id: coverageEventId(request.installationId, hot.clinic_seq),
-    org_id: request.orgId,
-    installation_id: request.installationId,
-    binding_epoch: hot.binding_epoch,
-    clinic_seq: hot.clinic_seq,
-    kind: "grant_applied",
-    at: request.nowIso,
-    snapshot: grantAppliedSnapshot,
-  });
-
   const receipt = await signReceipt({
     signingKey,
     vendorContractVersion: request.vendorContractVersion,
@@ -1374,21 +1386,7 @@ async function finalizeGrantApply(input: {
     ledgerSeq,
     envelopeSha256,
   });
-
-  sqlExec(
-    storage,
-    `INSERT INTO grant (
-      grant_id, kind, source_kind, envelope_sha256, envelope, evidence, receipt, applied_at, voided_at, void_reason
-    ) VALUES (
-      ${sqlString(grantId)}, ${sqlString(input.grantKind)}, ${sqlString(input.grantSourceKind)}, ${sqlString(envelopeSha256)},
-      ${sqlString(JSON.stringify(request.envelope))},
-      ${sqlString(JSON.stringify(request.envelope.evidence ?? {}))},
-      ${sqlString(JSON.stringify(receipt))},
-      ${sqlString(request.nowIso)}, NULL, NULL
-    )`,
-  );
-
-  insertOutbox(storage, "grant_ledger", {
+  const ledgerRow = {
     grant_id: grantId,
     origin_grant_id: grantId,
     org_id: request.orgId,
@@ -1399,9 +1397,11 @@ async function finalizeGrantApply(input: {
     envelope_sha256: envelopeSha256,
     receipt,
     applied_at: request.nowIso,
-  });
-
-  insertOutbox(storage, "alert", {
+  };
+  const outboxRows: Array<{ kind: string; payload: unknown }> = [
+    ...eventPayloads.map((payload) => ({ kind: "coverage_event", payload })),
+    { kind: "grant_ledger", payload: ledgerRow },
+    { kind: "alert", payload: {
     alert_key: `AL-11:${grantId}`,
     code: "AL-11",
     body: buildGrantAlertBody(
@@ -1409,10 +1409,11 @@ async function finalizeGrantApply(input: {
       request.envelope,
       input.attentionAl11,
     ),
-  });
+    } },
+  ];
 
   if (input.emitAl12) {
-    insertOutbox(storage, "alert", {
+    outboxRows.push({ kind: "alert", payload: {
       alert_key: `AL-12:${grantId}`,
       code: "AL-12",
       body: {
@@ -1420,19 +1421,78 @@ async function finalizeGrantApply(input: {
         org_id: request.orgId,
         operation: { op: "grant", params: request.envelope },
       },
+    } });
+  }
+  if (input.observePaidVelocity) {
+    outboxRows.push({
+      kind: "paid_velocity_observation",
+      payload: { now_iso: request.nowIso },
     });
   }
+  if (input.clinicVelocityAlert) {
+    outboxRows.push({ kind: "alert", payload: {
+      alert_key: `AL-17:clinic:${request.orgId}`,
+      code: "AL-17",
+      body: { code: "AL-17", org_id: request.orgId },
+    } });
+  }
 
-  hot = loadHot(storage);
-  terms = loadTerms(storage);
-  const outboxCount =
-    sqlSelect<{ count: number }>(
+  await prearmGrantWakeup(input.state);
+  const sqlStorage = storage as DurableObjectStorage & {
+    sql?: { exec: (query: string, ...bindings: unknown[]) => Iterable<Record<string, unknown>> };
+  };
+  if (!sqlStorage.sql) throw new Error("grant_storage_unavailable");
+  const commitResult = storage.transactionSync(() => {
+    const existing = sqlSelect<GrantRow>(
       storage,
-      "SELECT COUNT(*) AS count FROM outbox",
-    )[0]?.count ?? 0;
-  const nextAlarm = computeNextAlarmAt(terms, outboxCount > 0, request.nowIso);
-  updateHot(storage, { next_alarm_at: nextAlarm });
-  await syncAlarm(input.state, storage, nextAlarm, hot.next_alarm_at);
+      `SELECT grant_id, kind, source_kind, envelope_sha256, receipt FROM grant WHERE grant_id = ${sqlString(grantId)} LIMIT 1`,
+    )[0];
+    if (existing !== undefined) {
+      const termCount = sqlSelect<{ count: number }>(
+        storage,
+        `SELECT COUNT(*) AS count FROM term WHERE grant_id = ${sqlString(grantId)}`,
+      )[0]?.count ?? 0;
+      if ((existing.kind === "term" && termCount !== 1) || (existing.kind !== "term" && termCount !== 0)) {
+        return { kind: "reconciliation_required" as const };
+      }
+      return existing.envelope_sha256 === envelopeSha256 && existing.receipt
+        ? { kind: "already_applied" as const, receipt: existing.receipt }
+        : { kind: "conflict" as const };
+    }
+    if (input.termWrites.some((statement) => statement.startsWith("INSERT INTO term"))) {
+      const existingTerms = sqlSelect<{ count: number }>(
+        storage,
+        `SELECT COUNT(*) AS count FROM term WHERE grant_id = ${sqlString(grantId)}`,
+      )[0]?.count ?? 0;
+      if (existingTerms !== 0) throw new Error("grant_term_reconciliation_required");
+    }
+    for (const statement of input.termWrites) sqlExec(storage, statement);
+    updateHot(storage, finalHot);
+    sqlExec(
+      storage,
+      `INSERT INTO grant (
+        grant_id, kind, source_kind, envelope_sha256, envelope, evidence, receipt, applied_at, voided_at, void_reason
+      ) VALUES (
+        ${sqlString(grantId)}, ${sqlString(input.grantKind)}, ${sqlString(input.grantSourceKind)}, ${sqlString(envelopeSha256)},
+        ${sqlString(JSON.stringify(request.envelope))},
+        ${sqlString(JSON.stringify(request.envelope.evidence ?? {}))},
+        ${sqlString(JSON.stringify(receipt))}, ${sqlString(request.nowIso)}, NULL, NULL
+      )`,
+    );
+    for (const row of outboxRows) insertOutbox(storage, row.kind, row.payload);
+    return { kind: "committed" as const };
+  });
+  if (commitResult.kind !== "committed") {
+    await scheduleCoverageAlarm(input.state, storage, request.nowIso);
+    if (commitResult.kind === "already_applied") {
+      return { kind: "apply_grant", result: "already_applied", receipt: JSON.parse(commitResult.receipt) as Record<string, unknown> };
+    }
+    if (commitResult.kind === "reconciliation_required") {
+      return { kind: "apply_grant", result: "rejected", code: "grant_term_reconciliation_required" };
+    }
+    return { kind: "apply_grant", result: "conflict" };
+  }
+  await scheduleCoverageAlarm(input.state, storage, request.nowIso);
 
   input.logger.info("apply_grant completed", {
     installation_id: request.installationId,
@@ -1485,7 +1545,7 @@ async function applyComplimentaryTermGrant(
     return { kind: "apply_grant", result: "exceeds_ceiling" };
   }
 
-  let terms = loadTerms(storage);
+  const terms = loadTerms(storage);
   const hasActiveGraceOrQueued = terms.some(
     (term) =>
       term.state === "active" ||
@@ -1513,9 +1573,8 @@ async function applyComplimentaryTermGrant(
       durationCount as number,
       request.durationScale,
     );
-    sqlExec(
-      storage,
-      `INSERT INTO term (
+    // The prepared SQL is executed only after the receipt has been signed.
+    const insertTerm = `INSERT INTO term (
         term_id, grant_id, origin_grant_id, position, state, end_reason,
         plan_snapshot, allowance, used_final, duration_unit, duration_count,
         grace_days, grace_cap, calendar_start, starts_at, ends_at, grace_ends_at, ended_at
@@ -1526,35 +1585,25 @@ async function applyComplimentaryTermGrant(
         ${graceDays}, ${sqlString(graceCap)},
         ${sqlString(calendarStart!)}, ${sqlString(startsAt!)},
         ${sqlString(endsAt!)}, NULL, NULL
-      )`,
-    );
-    updateHot(storage, { active_term_id: termId, used: 0 });
-    let hot = loadHot(storage);
-    hot = { ...hot, clinic_seq: hot.clinic_seq + 1 };
-    updateHot(storage, { clinic_seq: hot.clinic_seq });
-    terms = loadTerms(storage);
-    const activatedSnapshot = buildCoverageSnapshot({
-      vendorContractVersion: request.vendorContractVersion,
-      orgId: request.orgId,
-      hot,
-      terms,
-      durationScale: request.durationScale,
-    });
-    activatedSnapshot.clinic_seq = hot.clinic_seq;
-    insertOutbox(storage, "coverage_event", {
-      event_id: coverageEventId(request.installationId, hot.clinic_seq),
-      org_id: request.orgId,
-      installation_id: request.installationId,
-      binding_epoch: hot.binding_epoch,
-      clinic_seq: hot.clinic_seq,
-      kind: "term_activated",
-      at: request.nowIso,
-      snapshot: activatedSnapshot,
+      )`;
+    return finalizeGrantApply({
+      state, storage, request, signingKey, grantId, envelopeSha256,
+      termIds: [termId], grantKind: "term", grantSourceKind: "complimentary",
+      termWrites: [insertTerm],
+      hotAfter: { ...loadHot(storage), active_term_id: termId, used: 0 },
+      termsAfter: [...terms, {
+        term_id: termId, grant_id: grantId, origin_grant_id: grantId, position,
+        state: "active", end_reason: null, plan_snapshot: planSnapshotJson,
+        allowance: request.allowanceCredits, used_final: null, duration_unit: durationUnit,
+        duration_count: durationCount as number, grace_days: graceDays, grace_cap: graceCap,
+        calendar_start: calendarStart, starts_at: startsAt, ends_at: endsAt,
+        grace_ends_at: null, ended_at: null,
+      }],
+      eventKinds: ["term_activated", "grant_applied"],
+      attentionAl11: true, emitAl12: request.skipCeilingCheck === true, logger,
     });
   } else {
-    sqlExec(
-      storage,
-      `INSERT INTO term (
+    const insertTerm = `INSERT INTO term (
         term_id, grant_id, origin_grant_id, position, state, end_reason,
         plan_snapshot, allowance, used_final, duration_unit, duration_count,
         grace_days, grace_cap, calendar_start, starts_at, ends_at, grace_ends_at, ended_at
@@ -1564,24 +1613,23 @@ async function applyComplimentaryTermGrant(
         NULL, ${sqlString(durationUnit)}, ${durationCount as number},
         ${graceDays}, ${sqlString(graceCap)},
         NULL, NULL, NULL, NULL, NULL
-      )`,
-    );
+      )`;
+    return finalizeGrantApply({
+      state, storage, request, signingKey, grantId, envelopeSha256,
+      termIds: [termId], grantKind: "term", grantSourceKind: "complimentary",
+      termWrites: [insertTerm],
+      hotAfter: loadHot(storage),
+      termsAfter: [...terms, {
+        term_id: termId, grant_id: grantId, origin_grant_id: grantId, position,
+        state: "queued", end_reason: null, plan_snapshot: planSnapshotJson,
+        allowance: request.allowanceCredits, used_final: null, duration_unit: durationUnit,
+        duration_count: durationCount as number, grace_days: graceDays, grace_cap: graceCap,
+        calendar_start: null, starts_at: null, ends_at: null, grace_ends_at: null, ended_at: null,
+      }],
+      eventKinds: ["grant_applied"],
+      attentionAl11: true, emitAl12: request.skipCeilingCheck === true, logger,
+    });
   }
-
-  return finalizeGrantApply({
-    state,
-    storage,
-    request,
-    signingKey,
-    grantId,
-    envelopeSha256,
-    termIds: [termId],
-    grantKind: "term",
-    grantSourceKind: "complimentary",
-    attentionAl11: true,
-    emitAl12: request.skipCeilingCheck === true,
-    logger,
-  });
 }
 
 async function applyTermAdjustmentGrant(
@@ -1668,11 +1716,8 @@ async function applyTermAdjustmentGrant(
     );
   }
 
-  sqlExec(
-    storage,
-    `UPDATE term SET ${termSets.join(", ")}
-     WHERE term_id = ${sqlString(activeTerm.term_id)}`,
-  );
+  const updateTerm = `UPDATE term SET ${termSets.join(", ")}
+     WHERE term_id = ${sqlString(activeTerm.term_id)}`;
 
   return finalizeGrantApply({
     state,
@@ -1684,6 +1729,15 @@ async function applyTermAdjustmentGrant(
     termIds: [activeTerm.term_id],
     grantKind: "term_adjustment",
     grantSourceKind: "complimentary",
+    termWrites: [updateTerm],
+    hotAfter: loadHot(storage),
+    termsAfter: terms.map((term) => term.term_id === activeTerm.term_id
+      ? { ...term, allowance, ends_at: endsAt,
+          ...(isEnvelopeRecord(adjustmentPlan)
+            ? { plan_snapshot: JSON.stringify(request.planSnapshot) }
+            : {}) }
+      : term),
+    eventKinds: ["grant_applied"],
     attentionAl11: true,
     emitAl12: request.skipCeilingCheck === true,
     logger,
@@ -1703,10 +1757,18 @@ export async function applyGrantRPC(
     const envelopeSha256 = await grantEnvelopeHash(request.envelope);
     const existing = sqlSelect<GrantRow>(
       storage,
-      `SELECT grant_id, envelope_sha256, receipt FROM grant WHERE grant_id = ${sqlString(grantId)} LIMIT 1`,
+      `SELECT grant_id, kind, source_kind, envelope_sha256, receipt FROM grant WHERE grant_id = ${sqlString(grantId)} LIMIT 1`,
     )[0];
     if (existing !== undefined) {
       if (existing.envelope_sha256 === envelopeSha256 && existing.receipt) {
+        const termCount = sqlSelect<{ count: number }>(
+          storage,
+          `SELECT COUNT(*) AS count FROM term WHERE grant_id = ${sqlString(grantId)}`,
+        )[0]?.count ?? 0;
+        if ((existing.kind === "term" && termCount !== 1) || (existing.kind !== "term" && termCount !== 0)) {
+          return { kind: "apply_grant", result: "rejected", code: "grant_term_reconciliation_required" };
+        }
+        await scheduleCoverageAlarm(state, storage, request.nowIso);
         return {
           kind: "apply_grant",
           result: "already_applied",
@@ -1714,6 +1776,14 @@ export async function applyGrantRPC(
         };
       }
       return { kind: "apply_grant", result: "conflict" };
+    }
+
+    const orphanTermCount = sqlSelect<{ count: number }>(
+      storage,
+      `SELECT COUNT(*) AS count FROM term WHERE grant_id = ${sqlString(grantId)}`,
+    )[0]?.count ?? 0;
+    if (orphanTermCount > 0) {
+      return { kind: "apply_grant", result: "rejected", code: "grant_term_reconciliation_required" };
     }
 
     const routeSeal = sqlSelect<{ envelope_sha256: string }>(
@@ -1780,8 +1850,7 @@ export async function applyGrantRPC(
       );
     }
 
-    let hot = loadHot(storage);
-    let terms = loadTerms(storage);
+    const terms = loadTerms(storage);
     const graceTerm = terms.find((term) => term.state === "grace");
     const activeTerm = terms.find((term) => term.state === "active");
     const hasQueued = terms.some((term) => term.state === "queued");
@@ -1794,11 +1863,8 @@ export async function applyGrantRPC(
     const planSnapshotJson = JSON.stringify(request.planSnapshot);
     const paidSourceKind = "paid";
 
-    type PendingEvent = {
-      kind: string;
-      mutate?: () => void;
-    };
-    const pendingEvents: PendingEvent[] = [];
+    const eventKinds: string[] = [];
+    const termWrites: string[] = [];
 
     let newTermState: "active" | "queued" = "active";
     let calendarStart: string | null = request.nowIso;
@@ -1806,19 +1872,11 @@ export async function applyGrantRPC(
     let endsAt: string | null = null;
 
     if (graceTerm !== undefined) {
-      pendingEvents.push({
-        kind: "term_ended",
-        mutate: () => {
-          const hotBeforeRenewal = loadHot(storage);
-          sqlExec(
-            storage,
-            `UPDATE term SET state = 'ended', end_reason = 'renewed', ended_at = ${sqlString(request.nowIso)}, used_final = ${hotBeforeRenewal.used}
-             WHERE term_id = ${sqlString(graceTerm.term_id)}`,
-          );
-          updateHot(storage, { grace_base_used: 0 });
-          terms = loadTerms(storage);
-        },
-      });
+      eventKinds.push("term_ended");
+      termWrites.push(
+        `UPDATE term SET state = 'ended', end_reason = 'renewed', ended_at = ${sqlString(request.nowIso)}, used_final = ${hot.used}
+         WHERE term_id = ${sqlString(graceTerm.term_id)}`,
+      );
       newTermState = "active";
       calendarStart = graceTerm.ends_at ?? request.nowIso;
       startsAt = graceTerm.ends_at ?? request.nowIso;
@@ -1843,12 +1901,8 @@ export async function applyGrantRPC(
     }
 
     if (newTermState === "active") {
-      pendingEvents.push({
-        kind: "term_activated",
-        mutate: () => {
-          sqlExec(
-            storage,
-            `INSERT INTO term (
+      eventKinds.push("term_activated");
+      termWrites.push(`INSERT INTO term (
               term_id, grant_id, origin_grant_id, position, state, end_reason,
               plan_snapshot, allowance, used_final, duration_unit, duration_count,
               grace_days, grace_cap, calendar_start, starts_at, ends_at, grace_ends_at, ended_at
@@ -1859,17 +1913,9 @@ export async function applyGrantRPC(
               ${request.graceDays ?? 0}, 'proportional',
               ${sqlString(calendarStart!)}, ${sqlString(startsAt!)},
               ${sqlString(endsAt!)}, NULL, NULL
-            )`,
-          );
-          updateHot(storage, { active_term_id: termId, used: 0 });
-          terms = loadTerms(storage);
-          hot = loadHot(storage);
-        },
-      });
+            )`);
     } else {
-      sqlExec(
-        storage,
-        `INSERT INTO term (
+      termWrites.push(`INSERT INTO term (
           term_id, grant_id, origin_grant_id, position, state, end_reason,
           plan_snapshot, allowance, used_final, duration_unit, duration_count,
           grace_days, grace_cap, calendar_start, starts_at, ends_at, grace_ends_at, ended_at
@@ -1879,152 +1925,37 @@ export async function applyGrantRPC(
           NULL, ${sqlString(paidDurationUnit)}, ${paidDurationCount},
           ${request.graceDays ?? 0}, 'proportional',
           NULL, NULL, NULL, NULL, NULL
-        )`,
-      );
-      terms = loadTerms(storage);
+        )`);
     }
-
-    const eventPayloads: Record<string, unknown>[] = [];
-    for (const pending of pendingEvents) {
-      pending.mutate?.();
-      hot = loadHot(storage);
-      hot = { ...hot, clinic_seq: hot.clinic_seq + 1 };
-      updateHot(storage, { clinic_seq: hot.clinic_seq });
-      terms = loadTerms(storage);
-      const snapshot = buildCoverageSnapshot({
-        vendorContractVersion: request.vendorContractVersion,
-        orgId: request.orgId,
-        hot,
-        terms,
-        durationScale: request.durationScale,
-      });
-      snapshot.clinic_seq = hot.clinic_seq;
-      eventPayloads.push({
-        event_id: coverageEventId(request.installationId, hot.clinic_seq),
-        org_id: request.orgId,
-        installation_id: request.installationId,
-        binding_epoch: hot.binding_epoch,
-        clinic_seq: hot.clinic_seq,
-        kind: pending.kind,
-        at: request.nowIso,
-        snapshot,
-      });
-    }
-
-    hot = loadHot(storage);
-    hot = { ...hot, clinic_seq: hot.clinic_seq + 1 };
-    updateHot(storage, { clinic_seq: hot.clinic_seq });
-    terms = loadTerms(storage);
-    const grantAppliedSnapshot = buildCoverageSnapshot({
-      vendorContractVersion: request.vendorContractVersion,
-      orgId: request.orgId,
-      hot,
-      terms,
-      durationScale: request.durationScale,
-    });
-    grantAppliedSnapshot.clinic_seq = hot.clinic_seq;
-    const ledgerSeq = hot.clinic_seq;
-    eventPayloads.push({
-      event_id: coverageEventId(request.installationId, hot.clinic_seq),
-      org_id: request.orgId,
-      installation_id: request.installationId,
-      binding_epoch: hot.binding_epoch,
-      clinic_seq: hot.clinic_seq,
-      kind: "grant_applied",
-      at: request.nowIso,
-      snapshot: grantAppliedSnapshot,
-    });
-
-    const receipt = await signReceipt({
-      signingKey,
-      vendorContractVersion: request.vendorContractVersion,
-      grantId,
-      installationId: request.installationId,
-      orgId: request.orgId,
-      termIds: [termId],
-      appliedAt: request.nowIso,
-      ledgerSeq,
-      envelopeSha256,
-    });
-
-    sqlExec(
-      storage,
-      `INSERT INTO grant (
-        grant_id, kind, source_kind, envelope_sha256, envelope, evidence, receipt, applied_at, voided_at, void_reason
-      ) VALUES (
-        ${sqlString(grantId)}, 'term', ${sqlString(paidSourceKind)}, ${sqlString(envelopeSha256)},
-        ${sqlString(JSON.stringify(request.envelope))},
-        ${sqlString(JSON.stringify(request.envelope.evidence ?? {}))},
-        ${sqlString(JSON.stringify(receipt))},
-        ${sqlString(request.nowIso)}, NULL, NULL
-      )`,
-    );
-
-    for (const event of eventPayloads) {
-      insertOutbox(storage, "coverage_event", event);
-    }
-
-    const ledgerRow = {
-      grant_id: grantId,
-      origin_grant_id: grantId,
-      org_id: request.orgId,
-      installation_id: request.installationId,
-      kind: "term",
-      source_kind: paidSourceKind,
-      operator_credential_id: request.operatorCredentialId,
-      envelope_sha256: envelopeSha256,
-      receipt,
-      applied_at: request.nowIso,
+    eventKinds.push("grant_applied");
+    const finalTerms = terms.map((term) => term.term_id === graceTerm?.term_id
+      ? { ...term, state: "ended", end_reason: "renewed", ended_at: request.nowIso, used_final: hot.used }
+      : term);
+    const newTerm: TermRow = {
+      term_id: termId, grant_id: grantId, origin_grant_id: grantId, position,
+      state: newTermState, end_reason: null, plan_snapshot: planSnapshotJson,
+      allowance: request.allowanceCredits, used_final: null, duration_unit: paidDurationUnit,
+      duration_count: paidDurationCount, grace_days: request.graceDays ?? 0,
+      grace_cap: "proportional", calendar_start: newTermState === "active" ? calendarStart : null,
+      starts_at: newTermState === "active" ? startsAt : null,
+      ends_at: newTermState === "active" ? endsAt : null, grace_ends_at: null, ended_at: null,
     };
-    insertOutbox(storage, "grant_ledger", ledgerRow);
-
-    insertOutbox(
-      storage,
-      "alert",
-      {
-        alert_key: `AL-11:${grantId}`,
-        code: "AL-11",
-        body: buildGrantAlertBody(request.orgId, request.envelope, false),
-      },
-    );
-
-    if (countDoPaidGrantsLast24Hours(storage, request.nowIso) > 3) {
-      insertOutbox(storage, "alert", {
-        alert_key: `AL-17:clinic:${request.orgId}`,
-        code: "AL-17",
-        body: { code: "AL-17", org_id: request.orgId },
-      });
-    }
-
-    const globalPaidLastHour = await countD1PaidGrantsLastHour(
-      request.db,
-      request.nowIso,
-    );
-    if (globalPaidLastHour + 1 > 20) {
-      insertOutbox(storage, "alert", {
-        alert_key: "AL-17:global",
-        code: "AL-17",
-        body: { code: "AL-17" },
-      });
-    }
-
-    hot = loadHot(storage);
-    terms = loadTerms(storage);
-    const outboxCount = sqlSelect<{ count: number }>(
-      storage,
-      "SELECT COUNT(*) AS count FROM outbox",
-    )[0]?.count ?? 0;
-    const nextAlarm = computeNextAlarmAt(terms, outboxCount > 0, request.nowIso);
-    updateHot(storage, { next_alarm_at: nextAlarm });
-    await syncAlarm(state, storage, nextAlarm, hot.next_alarm_at);
-
-    logger.info("apply_grant completed", {
-      installation_id: request.installationId,
-      grant_id: grantId,
-      result: "applied",
+    finalTerms.push(newTerm);
+    const hotAfter = {
+      ...hot,
+      active_term_id: newTermState === "active" ? termId : hot.active_term_id,
+      used: newTermState === "active" ? 0 : hot.used,
+      grace_base_used: graceTerm !== undefined ? 0 : hot.grace_base_used,
+    };
+    const clinicVelocityAlert =
+      countDoPaidGrantsLast24Hours(storage, request.nowIso) + 1 > 3;
+    return finalizeGrantApply({
+      state, storage, request, signingKey, grantId, envelopeSha256,
+      termIds: [termId], grantKind: "term", grantSourceKind: paidSourceKind,
+      termWrites, hotAfter, termsAfter: finalTerms, eventKinds,
+      attentionAl11: false, emitAl12: false, observePaidVelocity: true,
+      clinicVelocityAlert, logger,
     });
-
-    return { kind: "apply_grant", result: "applied", receipt };
   });
 }
 
@@ -2065,7 +1996,6 @@ export async function suspendResumeRPC(
 ): Promise<SuspendResumeResponse> {
   return blockConcurrencyWhile(async () => {
     ensureHotRow(storage, request.bindingEpoch);
-    const hot = loadHot(storage);
     const terms = loadTerms(storage);
     const targetSuspended = request.kind === "suspend" ? 1 : 0;
 
@@ -2119,7 +2049,7 @@ export async function suspendResumeRPC(
         request.nowIso,
       );
       updateHot(storage, { next_alarm_at: nextAlarm });
-      await syncAlarm(state, storage, nextAlarm, hot.next_alarm_at);
+      await syncAlarm(state, storage, nextAlarm);
     }
 
     const hotAfter = loadHot(storage);
@@ -2945,12 +2875,23 @@ async function shipCoverageOutboxInLock(
           code: String(payload.code),
           body: payload.body as Record<string, unknown>,
         });
+      } else if (row.kind === "paid_velocity_observation") {
+        const globalPaidLastHour = await countD1PaidGrantsLastHour(
+          env.DB,
+          String(payload.now_iso),
+        );
+        if (globalPaidLastHour > 20) {
+          shippedAlerts.push({
+            alert_key: "AL-17:global",
+            code: "AL-17",
+            body: { code: "AL-17" },
+          });
+        }
       }
 
       sqlExec(storage, `DELETE FROM outbox WHERE seq = ${row.seq}`);
     }
 
-    const hot = loadHot(storage);
     const terms = loadTerms(storage);
     const outboxCount = sqlSelect<{ count: number }>(
       storage,
@@ -2958,7 +2899,7 @@ async function shipCoverageOutboxInLock(
     )[0]?.count ?? 0;
     const nextAlarm = computeNextAlarmAt(terms, outboxCount > 0, nowIso);
     updateHot(storage, { next_alarm_at: nextAlarm });
-    await syncAlarm(state, storage, nextAlarm, hot.next_alarm_at);
+    await syncAlarm(state, storage, nextAlarm);
 
     logger.info("coverage outbox shipped", {
       installation_id: installationId,
@@ -2977,17 +2918,24 @@ export async function shipCoverageOutboxAlarm(
   logger: Logger = noopLogger,
   durationScale?: DurationScale,
 ): Promise<ShippedCoverageAlert[]> {
-  return blockConcurrencyWhile(async () =>
-    shipCoverageOutboxInLock(
-      state,
-      storage,
-      env,
-      installationId,
-      nowIso,
-      logger,
-      durationScale,
-    ),
-  );
+  return blockConcurrencyWhile(async () => {
+    try {
+      return await shipCoverageOutboxInLock(
+        state,
+        storage,
+        env,
+        installationId,
+        nowIso,
+        logger,
+        durationScale,
+      );
+    } catch (error) {
+      // Alarm delivery is at-least-once. Preserve the pending row and restore
+      // a durable wake-up if a downstream write or D1 observation fails.
+      await scheduleOutboxAlarmIfPending(state, storage, nowIso);
+      throw error;
+    }
+  });
 }
 
 export interface OpenAwaitingTransferRequest {

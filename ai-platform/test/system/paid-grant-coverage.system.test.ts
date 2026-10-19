@@ -902,6 +902,91 @@ describe("paid grant coverage", () => {
     expect(await count("grant_claim", "grant_id = ?", [fixture.grantId])).toBe(1);
   });
 
+  it("R4-D1 paid grant commits one term, receipt, and final-state ordered events atomically", async () => {
+    const fixture = await bootstrapPaidGrantFixture();
+    const applied = await grantPaid({
+      envelope: fixture.envelope,
+      aboKid: fixture.aboKid,
+      aboSignature: fixture.aboSignature,
+    });
+    expect(applied.result).toBe("applied");
+    const installationId = await installationIdForOrg(fixture.orgId);
+    const committed = await runInDurableObject(
+      quotaDoStub(installationId),
+      async (_instance, state) => {
+        const grant = sqlSelect<{ receipt: string; envelope_sha256: string }>(
+          state,
+          `SELECT receipt, envelope_sha256 FROM grant WHERE grant_id = '${fixture.grantId}'`,
+        )[0];
+        const terms = sqlSelect<{ term_id: string; state: string }>(
+          state,
+          `SELECT term_id, state FROM term WHERE grant_id = '${fixture.grantId}'`,
+        );
+        const events = sqlSelect<{ kind: string; clinic_seq: number; payload: string }>(
+          state,
+          "SELECT kind, seq AS clinic_seq, payload FROM outbox WHERE kind = 'coverage_event' ORDER BY seq",
+        ).map((row) => JSON.parse(row.payload) as Record<string, unknown>);
+        return { grant, terms, events };
+      },
+    );
+    expect(committed.grant).toBeDefined();
+    expect(committed.terms).toHaveLength(1);
+    expect(committed.events.map((event) => event.kind)).toEqual([
+      "term_activated",
+      "grant_applied",
+    ]);
+    for (const event of committed.events) {
+      const snapshot = event.snapshot as Record<string, unknown>;
+      expect(snapshot.state).toBe("active");
+      expect(snapshot.term).toMatchObject({ ref: committed.terms[0]?.term_id });
+      expect(snapshot.clinic_seq).toBe(event.clinic_seq);
+    }
+    expect((applied.receipt as Record<string, unknown>).ledger_seq).toBe(
+      committed.events[1]?.clinic_seq,
+    );
+    const replay = await grantPaid({
+      envelope: fixture.envelope,
+      aboKid: fixture.aboKid,
+      aboSignature: fixture.aboSignature,
+    });
+    expect(replay.result).toBe("already_applied");
+    expect(replay.receipt).toEqual(applied.receipt);
+    expect(await readDoTerms(installationId)).toHaveLength(1);
+  });
+
+  it("R4-D4 exact grant replay restores an absent alarm despite a populated hot alarm cache", async () => {
+    const fixture = await bootstrapPaidGrantFixture();
+    const applied = await grantPaid({
+      envelope: fixture.envelope,
+      aboKid: fixture.aboKid,
+      aboSignature: fixture.aboSignature,
+    });
+    expect(applied.result).toBe("applied");
+    const installationId = await installationIdForOrg(fixture.orgId);
+    await runInDurableObject(quotaDoStub(installationId), async (_instance, state) => {
+      await state.storage.deleteAlarm();
+    });
+    const replay = await grantPaid({
+      envelope: fixture.envelope,
+      aboKid: fixture.aboKid,
+      aboSignature: fixture.aboSignature,
+    });
+    expect(replay.result).toBe("already_applied");
+    expect(replay.receipt).toEqual(applied.receipt);
+    const repaired = await runInDurableObject(
+      quotaDoStub(installationId),
+      async (_instance, state) => ({
+        alarm: await state.storage.getAlarm(),
+        outboxCount: sqlSelect<{ count: number }>(
+          state,
+          "SELECT COUNT(*) AS count FROM outbox",
+        )[0]?.count ?? 0,
+      }),
+    );
+    expect(repaired.alarm).not.toBeNull();
+    expect(repaired.outboxCount).toBeGreaterThan(0);
+  });
+
   it("R4-PG1 concurrent identical new claims share one route and one receipt", async () => {
     const fixture = await bootstrapPaidGrantFixture();
     const [first, second] = await Promise.all([
