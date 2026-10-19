@@ -759,7 +759,7 @@ Agents update only their own row (rule 2.11). Status values: `not started`, `in 
 | RM12 | complete | `624cd46d097611bb449718fe56d2a017d0ecc08f` | [39178262128](https://github.com/haythamosama95/AiClinic/actions/runs/39178262128) | 2026-10-19 | R6-O1/R6-O2 and R8-CONSOLE3 implemented; all campaigns passed. |
 | RM13 | complete | `3f932cc371e3edaee219ffaae22a1ae5ab0e1822` | [39182334598](https://github.com/haythamosama95/AiClinic/actions/runs/39182334598) | 2026-10-19 | R8-AUDIT1 and R8-SUPPORT1 passed complete CI; support reads are attributable/bounded and same-state configuration retries do not duplicate audits. See RM13.md |
 | RM14 | complete | `2930db1ff40e04c33627685dc6c76df69934ef19` | [39189622673](https://github.com/haythamosama95/AiClinic/actions/runs/39189622673) | 2026-10-19 | R4-PG1 global claims, route seals and fail-closed backfill plus R4-PG2 decoder classification passed complete CI. CI rounds fixed fixture migrations, canonical D1 text, async mirror timing, paid grace mapping, transfer retry identity and canonical-byte hashing; see RM14.md |
-| RM15 | not started | — | — | — | — |
+| RM15 | complete | `73232a94034fc4f7b9ac1c12b2230e63d72b4a14` | [39192822142](https://github.com/haythamosama95/AiClinic/actions/runs/39192822142) | 2026-10-19 | R4-D1 atomic grant state/events and R4-D4 durable alarm recovery passed all 14 campaign jobs; workers passed 657/657 including both RM15 acceptance tests. Two earlier CI rounds exposed and resolved the missing hot reads and a replay-test short-circuit; see RM15.md |
 | RM16 | not started | — | — | — | — |
 | RM17 | not started | — | — | — | — |
 | RM18 | not started | — | — | — | — |
