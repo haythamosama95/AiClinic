@@ -89,6 +89,7 @@ import dropPlanEntitlementSql from "../../migrations/20261006170100_drop_plan_en
 import idempotencyFingerprintSql from "../../migrations/20261014120000_ai_request_idempotency_fingerprint.sql?raw";
 import malformedIssuerKeyCleanupSql from "../../migrations/20261018120000_r1_c3_malformed_issuer_key_cleanup.sql?raw";
 import tenantCreationCapTriggerSql from "../../migrations/20261018120100_r1_c2_tenant_creation_cap_trigger.sql?raw";
+import grantClaimsSql from "../../migrations/20261019120000_r4_pg1_global_grant_claims.sql?raw";
 import { applySqlStatements } from "../split-sql-statements";
 import {
   createCapabilityRegistry,
@@ -279,6 +280,7 @@ const MIGRATION_SQL = [
   idempotencyFingerprintSql,
   malformedIssuerKeyCleanupSql,
   tenantCreationCapTriggerSql,
+  grantClaimsSql,
 ];
 
 const CATALOGUE_PLAN_NAME = "standard";
@@ -348,6 +350,17 @@ export async function applyAllMigrations(db: D1Database): Promise<void> {
 export async function resetPlatformState(): Promise<void> {
   await ensureHarnessTestClockTable();
   nextCoverPlanVersion = 1;
+  await env.DB.batch([
+    env.DB.prepare("DROP TRIGGER IF EXISTS grant_claim_no_delete"),
+    env.DB.prepare("DELETE FROM grant_claim"),
+    env.DB.prepare("DELETE FROM grant_claim_dispute"),
+    env.DB.prepare("DELETE FROM grant_claim_backfill"),
+    env.DB.prepare(`CREATE TRIGGER grant_claim_no_delete
+      BEFORE DELETE ON grant_claim
+      BEGIN
+        SELECT RAISE(ABORT, 'grant_claim is append-only');
+      END`),
+  ]);
   await env.DB.batch([
     env.DB.prepare("DELETE FROM platform_alert"),
     env.DB.prepare("DELETE FROM assertion_used"),

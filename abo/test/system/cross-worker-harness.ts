@@ -49,6 +49,7 @@ import fallbackAdmissionFeedSql from "../../../ai-platform/migrations/2026100616
 import dropInvoicingSql from "../../../ai-platform/migrations/20261006170000_drop_invoicing.sql?raw";
 import dropPlanEntitlementSql from "../../../ai-platform/migrations/20261006170100_drop_plan_entitlement.sql?raw";
 import idempotencyFingerprintSql from "../../../ai-platform/migrations/20261014120000_ai_request_idempotency_fingerprint.sql?raw";
+import grantClaimsSql from "../../../ai-platform/migrations/20261019120000_r4_pg1_global_grant_claims.sql?raw";
 
 const PLATFORM_MIGRATION_SQL: string[] = [
   platformSchemaSql,
@@ -75,6 +76,7 @@ const PLATFORM_MIGRATION_SQL: string[] = [
   dropInvoicingSql,
   dropPlanEntitlementSql,
   idempotencyFingerprintSql,
+  grantClaimsSql,
 ];
 
 const VENDOR_CONTRACT_VERSION = CHANNEL_VERSIONS.vendorEntrypoint;
@@ -896,6 +898,21 @@ async function clearAboTransactionalTables(): Promise<void> {
 }
 
 async function clearPlatformTransactionalTables(): Promise<void> {
+  try {
+    await env.PLATFORM_DB.batch([
+      env.PLATFORM_DB.prepare("DROP TRIGGER IF EXISTS grant_claim_no_delete"),
+      env.PLATFORM_DB.prepare("DELETE FROM grant_claim"),
+      env.PLATFORM_DB.prepare("DELETE FROM grant_claim_dispute"),
+      env.PLATFORM_DB.prepare("DELETE FROM grant_claim_backfill"),
+      env.PLATFORM_DB.prepare(`CREATE TRIGGER grant_claim_no_delete
+        BEFORE DELETE ON grant_claim
+        BEGIN
+          SELECT RAISE(ABORT, 'grant_claim is append-only');
+        END`),
+    ]);
+  } catch {
+    // The global grant-claim migration may not have run in older fixtures.
+  }
   for (const table of [
     "grant_void",
     "coverage_event",

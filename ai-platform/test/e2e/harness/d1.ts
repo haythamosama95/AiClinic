@@ -23,6 +23,7 @@ import dropPlanEntitlementSql from "../../../migrations/20261006170100_drop_plan
 import idempotencyFingerprintSql from "../../../migrations/20261014120000_ai_request_idempotency_fingerprint.sql?raw";
 import malformedIssuerKeyCleanupSql from "../../../migrations/20261018120000_r1_c3_malformed_issuer_key_cleanup.sql?raw";
 import tenantCreationCapTriggerSql from "../../../migrations/20261018120100_r1_c2_tenant_creation_cap_trigger.sql?raw";
+import grantClaimsSql from "../../../migrations/20261019120000_r4_pg1_global_grant_claims.sql?raw";
 import { splitSqlStatements } from "../../split-sql-statements";
 import { isolateConfigCache } from "../../../src/config-cache";
 import { clearE2eIssuerRegistry } from "./aat";
@@ -56,6 +57,7 @@ export const MIGRATION_SQL: readonly string[] = [
   idempotencyFingerprintSql,
   malformedIssuerKeyCleanupSql,
   tenantCreationCapTriggerSql,
+  grantClaimsSql,
 ];
 
 const TOKEN_CONTRACT_V2_SEED = {
@@ -153,6 +155,17 @@ async function resetR2(): Promise<void> {
 
 export async function resetPlatformState(): Promise<void> {
   const db = env.DB;
+  await db.batch([
+    db.prepare("DROP TRIGGER IF EXISTS grant_claim_no_delete"),
+    db.prepare("DELETE FROM grant_claim"),
+    db.prepare("DELETE FROM grant_claim_dispute"),
+    db.prepare("DELETE FROM grant_claim_backfill"),
+    db.prepare(`CREATE TRIGGER grant_claim_no_delete
+      BEFORE DELETE ON grant_claim
+      BEGIN
+        SELECT RAISE(ABORT, 'grant_claim is append-only');
+      END`),
+  ]);
   await db.batch([
     db.prepare("DELETE FROM assertion_used"),
     db.prepare("DELETE FROM platform_alert"),

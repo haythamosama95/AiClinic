@@ -120,6 +120,38 @@ CREATE TABLE feed_consumer (
   last_cursor INTEGER
 );
 
+CREATE TABLE grant_claim (
+  grant_id TEXT PRIMARY KEY NOT NULL,
+  org_id TEXT NOT NULL,
+  source_kind TEXT NOT NULL CHECK (source_kind IN ('paid', 'complimentary', 'transfer')),
+  envelope TEXT NOT NULL,
+  envelope_sha256 TEXT NOT NULL,
+  installation_id TEXT NOT NULL,
+  binding_epoch INTEGER NOT NULL CHECK (binding_epoch > 0),
+  route_generation INTEGER NOT NULL CHECK (route_generation > 0),
+  state TEXT NOT NULL CHECK (state IN ('pending', 'completed', 'disputed')),
+  receipt TEXT,
+  created_at TEXT NOT NULL,
+  completed_at TEXT,
+  CHECK ((state = 'completed' AND receipt IS NOT NULL AND completed_at IS NOT NULL)
+      OR (state = 'pending' AND receipt IS NULL AND completed_at IS NULL)
+      OR state = 'disputed')
+);
+
+CREATE TABLE grant_claim_backfill (
+  org_id TEXT PRIMARY KEY NOT NULL,
+  completed_at TEXT NOT NULL
+);
+
+CREATE TABLE grant_claim_dispute (
+  grant_id TEXT PRIMARY KEY NOT NULL,
+  org_id TEXT NOT NULL,
+  reason TEXT NOT NULL,
+  first_at TEXT NOT NULL,
+  last_at TEXT NOT NULL,
+  count INTEGER NOT NULL
+);
+
 CREATE TABLE grant_ledger (
   grant_id TEXT PRIMARY KEY NOT NULL,
   origin_grant_id TEXT NOT NULL,
