@@ -4,11 +4,11 @@ import {
   grantIdPaid,
   sha256Hex,
   signCompactJws,
-  verifyReceiptSignature,
 } from "vendor-contracts";
 import { raiseAlert, type AlertEnv } from "../alert/index.js";
 import { clockNowIso, clockNowMs, type ClockEnv } from "../clock.js";
 import { insertFactLog } from "../records/append.js";
+import { validateGrantReceipt } from "./grant-receipt.js";
 
 const LEASE_MS = 60_000;
 const MIN_BACKOFF_MS = 60_000;
@@ -17,21 +17,9 @@ const GRANT_BATCH_LIMIT = 50;
 const AL04_AFTER_MS = 5 * 60_000;
 const GATE_ROW_ID = 1;
 
-type GrantResult =
-  | "applied"
-  | "already_applied"
-  | "transient"
-  | "rejected"
-  | "conflict";
-
 type AboGrantKey = {
   kid: string;
   pkcs8: string;
-  public_key: string;
-};
-
-type PlatformPublicKey = {
-  kid: string;
   public_key: string;
 };
 
@@ -50,6 +38,7 @@ type WorkRow = {
   attempts: number;
   next_attempt_at: string | null;
   lease_until: string | null;
+  lease_token: string | null;
   last_error: string | null;
 };
 
@@ -133,29 +122,6 @@ function parseAboGrantKey(json: string): AboGrantKey | null {
     };
   } catch {
     return null;
-  }
-}
-
-function parsePlatformPublicKeys(json: string): PlatformPublicKey[] {
-  try {
-    const parsed = JSON.parse(json) as unknown;
-    if (!Array.isArray(parsed)) {
-      return [];
-    }
-    const keys: PlatformPublicKey[] = [];
-    for (const item of parsed) {
-      if (
-        typeof item === "object" &&
-        item !== null &&
-        typeof (item as PlatformPublicKey).kid === "string" &&
-        typeof (item as PlatformPublicKey).public_key === "string"
-      ) {
-        keys.push(item as PlatformPublicKey);
-      }
-    }
-    return keys;
-  } catch {
-    return [];
   }
 }
 
@@ -295,17 +261,18 @@ async function takeGrantWork(
   const nowMs = await clockNowMs(env);
   const nowIso = new Date(nowMs).toISOString();
   const leaseUntil = new Date(nowMs + LEASE_MS).toISOString();
+  const leaseToken = crypto.randomUUID();
 
   const leased = await env.DB.prepare(
     `UPDATE work
-     SET lease_until = ?
+     SET lease_until = ?, lease_token = ?
      WHERE work_id = ?
        AND kind = 'grant'
        AND state = 'open'
        AND (lease_until IS NULL OR lease_until <= ?)
        AND (next_attempt_at IS NULL OR next_attempt_at <= ?)`,
   )
-    .bind(leaseUntil, workId, nowIso, nowIso)
+    .bind(leaseUntil, leaseToken, workId, nowIso, nowIso)
     .run();
   if ((leased.meta.changes ?? 0) === 0) {
     return null;
@@ -313,16 +280,16 @@ async function takeGrantWork(
 
   return env.DB.prepare(
     `SELECT work_id, kind, subject_id, state, attempts, next_attempt_at,
-            lease_until, last_error
-     FROM work WHERE work_id = ? AND lease_until = ?`,
+            lease_until, lease_token, last_error
+     FROM work WHERE work_id = ? AND lease_until = ? AND lease_token = ?`,
   )
-    .bind(workId, leaseUntil)
+    .bind(workId, leaseUntil, leaseToken)
     .first<WorkRow>();
 }
 
 async function releaseLease(env: GrantEnv, workId: string, leaseUntil: string): Promise<void> {
   await env.DB.prepare(
-    `UPDATE work SET lease_until = NULL WHERE work_id = ? AND lease_until = ?`,
+    `UPDATE work SET lease_until = NULL, lease_token = NULL WHERE work_id = ? AND lease_until = ?`,
   )
     .bind(workId, leaseUntil)
     .run();
@@ -331,7 +298,6 @@ async function releaseLease(env: GrantEnv, workId: string, leaseUntil: string): 
 async function releaseLeaseRetry(
   env: GrantEnv,
   work: WorkRow,
-  leaseUntil: string,
   lastError: string,
 ): Promise<void> {
   const nowMs = await clockNowMs(env);
@@ -341,10 +307,10 @@ async function releaseLeaseRetry(
   ).toISOString();
   await env.DB.prepare(
     `UPDATE work
-     SET attempts = ?, next_attempt_at = ?, lease_until = NULL, last_error = ?
-     WHERE work_id = ? AND lease_until = ?`,
+     SET attempts = ?, next_attempt_at = ?, lease_until = NULL, lease_token = NULL, last_error = ?
+     WHERE work_id = ? AND state = 'open' AND lease_token = ?`,
   )
-    .bind(attempts, nextAttempt, lastError, work.work_id, leaseUntil)
+    .bind(attempts, nextAttempt, lastError, work.work_id, work.lease_token)
     .run();
 }
 
@@ -473,26 +439,6 @@ async function buildGrantEnvelope(
   return { envelope, envelopeBytes, grantId };
 }
 
-async function verifyGrantReceipt(
-  env: GrantEnv,
-  receipt: Record<string, unknown>,
-): Promise<boolean> {
-  const kid = typeof receipt.kid === "string" ? receipt.kid : null;
-  if (kid === null) {
-    return false;
-  }
-  const configured = parsePlatformPublicKeys(env.PLATFORM_PUBLIC_KEYS);
-  const match = configured.find((key) => key.kid === kid);
-  if (match === undefined) {
-    return false;
-  }
-  const publicKey = await importEd25519PublicKey(match.public_key);
-  if (publicKey === null) {
-    return false;
-  }
-  return verifyReceiptSignature({ receipt, publicKey });
-}
-
 function grantRequestCanonical(input: {
   grantId: string;
   orgId: string;
@@ -511,34 +457,96 @@ function grantRequestCanonical(input: {
   };
 }
 
-function grantOutcomeCanonical(input: {
-  grantId: string;
-  result: GrantResult;
-  aboKid: string | null;
-  aboSignature: string | null;
-  receipt: Record<string, unknown> | null;
-  termIds: string[] | null;
-  at: string;
-}): Record<string, unknown> {
-  return {
+async function grantOutcomeEventStatements(
+  env: GrantEnv,
+  input: {
+    attemptId: string;
+    grantId: string;
+    result: string;
+    code: string | null;
+    terminal: boolean;
+    aboKid: string | null;
+    aboSignature: string | null;
+    receipt: Record<string, unknown> | null;
+    termIds: string[] | null;
+    at: string;
+    work?: { workId: string; leaseToken: string };
+  },
+): Promise<D1PreparedStatement[]> {
+  const row = {
+    attempt_id: input.attemptId,
     grant_id: input.grantId,
     result: input.result,
+    code: input.code,
+    terminal: input.terminal ? 1 : 0,
     abo_kid: input.aboKid,
     abo_signature: input.aboSignature,
     receipt: input.receipt === null ? null : JSON.stringify(input.receipt),
     term_ids: input.termIds === null ? null : JSON.stringify(input.termIds),
     at: input.at,
   };
+  const guard = input.work === undefined
+    ? ""
+    : ` WHERE EXISTS (SELECT 1 FROM work WHERE work_id = ? AND kind = 'grant' AND state = 'open' AND lease_token = ?)`;
+  const args: unknown[] = [
+    row.attempt_id, row.grant_id, row.result, row.code, row.terminal,
+    row.abo_kid, row.abo_signature, row.receipt, row.term_ids, row.at,
+  ];
+  if (input.work !== undefined) args.push(input.work.workId, input.work.leaseToken);
+  const insert = env.DB.prepare(
+    `INSERT OR IGNORE INTO grant_outcome_event (
+       attempt_id, grant_id, result, code, terminal, abo_kid, abo_signature,
+       receipt, term_ids, at
+     ) SELECT ?, ?, ?, ?, ?, ?, ?, ?, ?, ?${guard}`,
+  ).bind(...args);
+  const rowJsonBytes = canonicalize(row);
+  const rowJson = new TextDecoder().decode(rowJsonBytes);
+  const rowSha256 = await sha256Hex(rowJsonBytes);
+  const fact = env.DB.prepare(
+    `INSERT INTO fact_log ("table", key, row_sha256, row_json, created_at)
+     SELECT 'grant_outcome_event', ?, ?, ?, ? WHERE changes() > 0`,
+  ).bind(input.attemptId, rowSha256, rowJson, input.at);
+  return [insert, fact];
 }
 
-async function factLogStatement(
+async function finishPaidGrantAttempt(
   env: GrantEnv,
-  table: string,
-  key: string,
-  canonicalRow: Record<string, unknown>,
-  createdAt: string,
-): Promise<D1PreparedStatement> {
-  return insertFactLog(env, table, key, canonicalRow, createdAt);
+  input: {
+    work: WorkRow;
+    grantId: string;
+    result: string;
+    code: string | null;
+    terminal: boolean;
+    aboKid: string | null;
+    aboSignature: string | null;
+    receipt: Record<string, unknown> | null;
+    termIds: string[] | null;
+    at: string;
+    state: "done" | "parked";
+    lastError: string | null;
+  },
+): Promise<boolean> {
+  if (input.work.lease_token === null) return false;
+  const statements = await grantOutcomeEventStatements(env, {
+    attemptId: input.work.lease_token,
+    grantId: input.grantId,
+    result: input.result,
+    code: input.code,
+    terminal: input.terminal,
+    aboKid: input.aboKid,
+    aboSignature: input.aboSignature,
+    receipt: input.receipt,
+    termIds: input.termIds,
+    at: input.at,
+    work: { workId: input.work.work_id, leaseToken: input.work.lease_token },
+  });
+  statements.push(env.DB.prepare(
+    `UPDATE work
+     SET state = ?, lease_until = NULL, lease_token = NULL, last_error = ?
+     WHERE work_id = ? AND kind = 'grant' AND state = 'open' AND lease_token = ?`,
+  ).bind(input.state, input.lastError, input.work.work_id, input.work.lease_token));
+  const results = await env.DB.batch(statements);
+  return (results[statements.length - 1]?.meta.changes ?? 0) > 0;
 }
 
 function insertGrantRequestIfAbsent(
@@ -638,28 +646,28 @@ async function maybeRaiseAl04(
 async function handleTransientFailure(
   env: GrantEnv,
   work: WorkRow,
-  leaseUntil: string,
 ): Promise<void> {
   const nowIso = await clockNowIso(env);
   const waitIso = parseWaitIso(work.last_error);
   const lastError = waitIso === null ? `wait:${nowIso}` : work.last_error!;
-  await releaseLeaseRetry(env, work, leaseUntil, lastError);
+  await releaseLeaseRetry(env, work, lastError);
   await maybeRaiseAl04(env, work.work_id, lastError);
 }
 
 async function processGrantWork(env: GrantEnv, work: WorkRow): Promise<void> {
   const leaseUntil = work.lease_until;
-  if (leaseUntil === null) {
+  const leaseToken = work.lease_token;
+  if (leaseUntil === null || leaseToken === null) {
     return;
   }
 
   const payment = await loadPayment(env, work.subject_id);
   if (payment === null) {
     await env.DB.prepare(
-      `UPDATE work SET state = 'done', lease_until = NULL, last_error = NULL
-       WHERE work_id = ? AND lease_until = ?`,
+      `UPDATE work SET state = 'done', lease_until = NULL, lease_token = NULL, last_error = NULL
+       WHERE work_id = ? AND lease_token = ?`,
     )
-      .bind(work.work_id, leaseUntil)
+      .bind(work.work_id, leaseToken)
       .run();
     return;
   }
@@ -667,10 +675,10 @@ async function processGrantWork(env: GrantEnv, work: WorkRow): Promise<void> {
   const released = await paymentReleaseExists(env, payment.payment_id);
   if (payment.disposition !== "grant" && !released) {
     await env.DB.prepare(
-      `UPDATE work SET state = 'done', lease_until = NULL, last_error = NULL
-       WHERE work_id = ? AND lease_until = ?`,
+      `UPDATE work SET state = 'done', lease_until = NULL, lease_token = NULL, last_error = NULL
+       WHERE work_id = ? AND lease_token = ?`,
     )
-      .bind(work.work_id, leaseUntil)
+      .bind(work.work_id, leaseToken)
       .run();
     return;
   }
@@ -678,28 +686,28 @@ async function processGrantWork(env: GrantEnv, work: WorkRow): Promise<void> {
   const checkout = await loadCheckout(env, payment.checkout_id);
   if (checkout === null) {
     await env.DB.prepare(
-      `UPDATE work SET state = 'done', lease_until = NULL, last_error = NULL
-       WHERE work_id = ? AND lease_until = ?`,
+      `UPDATE work SET state = 'done', lease_until = NULL, lease_token = NULL, last_error = NULL
+       WHERE work_id = ? AND lease_token = ?`,
     )
-      .bind(work.work_id, leaseUntil)
+      .bind(work.work_id, leaseToken)
       .run();
     return;
   }
 
   const contentSha256 = await paymentFactSha256(env, payment.payment_id);
   if (contentSha256 === null) {
-    await releaseLeaseRetry(env, work, leaseUntil, "missing_payment_fact");
+    await releaseLeaseRetry(env, work, "missing_payment_fact");
     return;
   }
 
   const aboKey = parseAboGrantKey(env.ABO_GRANT_KEY);
   if (aboKey === null) {
-    await handleTransientFailure(env, work, leaseUntil);
+    await handleTransientFailure(env, work);
     return;
   }
   const privateKey = await importEd25519PrivateKey(aboKey.pkcs8);
   if (privateKey === null) {
-    await handleTransientFailure(env, work, leaseUntil);
+    await handleTransientFailure(env, work);
     return;
   }
 
@@ -712,6 +720,17 @@ async function processGrantWork(env: GrantEnv, work: WorkRow): Promise<void> {
   const candidateText = new TextDecoder().decode(candidate.envelopeBytes);
   const candidateSha256 = await sha256Hex(candidate.envelopeBytes);
   const nowIso = await clockNowIso(env);
+
+  const existingTerminal = await env.DB.prepare(
+    `SELECT 1 FROM grant_outcome_event WHERE grant_id = ? AND terminal = 1 LIMIT 1`,
+  ).bind(grantId).first();
+  if (existingTerminal !== null) {
+    await env.DB.prepare(
+      `UPDATE work SET state = 'done', lease_until = NULL, lease_token = NULL, last_error = NULL
+       WHERE work_id = ? AND state = 'open' AND lease_token = ?`,
+    ).bind(work.work_id, leaseToken).run();
+    return;
+  }
   let storedRequest: StoredGrantRequest;
   try {
     storedRequest = await persistGrantRequest(env, {
@@ -723,14 +742,14 @@ async function processGrantWork(env: GrantEnv, work: WorkRow): Promise<void> {
       at: nowIso,
     });
   } catch {
-    await handleTransientFailure(env, work, leaseUntil);
+    await handleTransientFailure(env, work);
     return;
   }
   let envelope: Record<string, unknown>;
   try {
     envelope = JSON.parse(storedRequest.envelope) as Record<string, unknown>;
   } catch {
-    await releaseLeaseRetry(env, work, leaseUntil, "invalid_stored_grant_request");
+    await releaseLeaseRetry(env, work, "invalid_stored_grant_request");
     return;
   }
   if (
@@ -740,14 +759,14 @@ async function processGrantWork(env: GrantEnv, work: WorkRow): Promise<void> {
     storedRequest.source_ref !== payment.payment_id ||
     typeof envelope.contract_version !== "number"
   ) {
-    await releaseLeaseRetry(env, work, leaseUntil, "invalid_stored_grant_request");
+    await releaseLeaseRetry(env, work, "invalid_stored_grant_request");
     return;
   }
   const envelopeText = storedRequest.envelope;
   const envelopeBytes = new TextEncoder().encode(envelopeText);
   const envelopeSha256 = await sha256Hex(envelopeBytes);
   if (envelopeSha256 !== storedRequest.envelope_sha256) {
-    await releaseLeaseRetry(env, work, leaseUntil, "invalid_stored_grant_request");
+    await releaseLeaseRetry(env, work, "invalid_stored_grant_request");
     return;
   }
   const aboSignature = await signCompactJws({
@@ -765,13 +784,13 @@ async function processGrantWork(env: GrantEnv, work: WorkRow): Promise<void> {
       envelope_b64: envelopeB64(envelopeBytes),
     });
   } catch {
-    await handleTransientFailure(env, work, leaseUntil);
+    await handleTransientFailure(env, work);
     return;
   }
 
   const result = platformResult.result;
   if (result === "transient") {
-    await handleTransientFailure(env, work, leaseUntil);
+    await handleTransientFailure(env, work);
     return;
   }
 
@@ -782,63 +801,44 @@ async function processGrantWork(env: GrantEnv, work: WorkRow): Promise<void> {
       receipt === null ||
       Array.isArray(receipt)
     ) {
-      await handleTransientFailure(env, work, leaseUntil);
+      await handleTransientFailure(env, work);
       return;
     }
     const receiptRecord = receipt as Record<string, unknown>;
-    const verified = await verifyGrantReceipt(env, receiptRecord);
+    const verified = await validateGrantReceipt({
+      platformPublicKeys: env.PLATFORM_PUBLIC_KEYS,
+      request: storedRequest,
+      receipt: receiptRecord,
+    });
     if (!verified) {
       const statements: D1PreparedStatement[] = [
         env.DB.prepare(
           `UPDATE work
-           SET state = 'parked', lease_until = NULL, last_error = 'receipt_unverified'
-           WHERE work_id = ? AND lease_until = ?`,
-        ).bind(work.work_id, leaseUntil),
+           SET state = 'parked', lease_until = NULL, lease_token = NULL, last_error = 'receipt_unverified'
+           WHERE work_id = ? AND state = 'open' AND lease_token = ?`,
+        ).bind(work.work_id, leaseToken),
       ];
       await env.DB.batch(statements);
       await raiseAlert(env, "AL-07", `AL-07:${work.work_id}`, work.work_id);
       return;
     }
 
-    const termIds = Array.isArray(receiptRecord.term_ids)
-      ? receiptRecord.term_ids.filter(
-          (value): value is string => typeof value === "string",
-        )
-      : [];
-    const outcomeCanonical = grantOutcomeCanonical({
-      grantId,
-      result: result as GrantResult,
-      aboKid: aboKey.kid,
-      aboSignature,
-      receipt: receiptRecord,
-      termIds,
-      at: nowIso,
-    });
-    const statements: D1PreparedStatement[] = [
-      env.DB.prepare(
-        `INSERT INTO grant_outcome (
-           grant_id, result, abo_kid, abo_signature, receipt, term_ids, at
-         ) VALUES (?, ?, ?, ?, ?, ?, ?)`,
-      ).bind(
+    try {
+      const finished = await finishPaidGrantAttempt(env, {
+        work,
         grantId,
         result,
-        aboKey.kid,
+        code: typeof platformResult.code === "string" ? platformResult.code : null,
+        terminal: true,
+        aboKid: aboKey.kid,
         aboSignature,
-        JSON.stringify(receiptRecord),
-        JSON.stringify(termIds),
-        nowIso,
-      ),
-      await factLogStatement(env, "grant_outcome", grantId, outcomeCanonical, nowIso),
-      env.DB.prepare(
-        `UPDATE work SET state = 'done', lease_until = NULL, last_error = NULL
-         WHERE work_id = ? AND lease_until = ?`,
-      ).bind(work.work_id, leaseUntil),
-    ];
-
-    try {
-      const results = await env.DB.batch(statements);
-      const workIdx = statements.length - 1;
-      if ((results[workIdx]?.meta.changes ?? 0) === 0) {
+        receipt: receiptRecord,
+        termIds: receiptRecord.term_ids as string[],
+        at: nowIso,
+        state: "done",
+        lastError: null,
+      });
+      if (!finished) {
         throw new Error("lease_lost");
       }
       await clearAlertActive(env, `AL-04:${work.work_id}`);
@@ -849,32 +849,13 @@ async function processGrantWork(env: GrantEnv, work: WorkRow): Promise<void> {
   }
 
   if (result === "rejected" && platformResult.code === "voided") {
-    const outcomeCanonical = grantOutcomeCanonical({
-      grantId,
-      result: "rejected",
-      aboKid: null,
-      aboSignature: null,
-      receipt: null,
-      termIds: null,
-      at: nowIso,
-    });
-    const statements: D1PreparedStatement[] = [
-      env.DB.prepare(
-        `INSERT INTO grant_outcome (
-           grant_id, result, abo_kid, abo_signature, receipt, term_ids, at
-         ) VALUES (?, ?, NULL, NULL, NULL, NULL, ?)`,
-      ).bind(grantId, "rejected", nowIso),
-      await factLogStatement(env, "grant_outcome", grantId, outcomeCanonical, nowIso),
-      env.DB.prepare(
-        `UPDATE work SET state = 'done', lease_until = NULL, last_error = NULL
-         WHERE work_id = ? AND lease_until = ?`,
-      ).bind(work.work_id, leaseUntil),
-    ];
-
     try {
-      const results = await env.DB.batch(statements);
-      const workIdx = statements.length - 1;
-      if ((results[workIdx]?.meta.changes ?? 0) === 0) {
+      const finished = await finishPaidGrantAttempt(env, {
+        work, grantId, result: "rejected", code: "voided", terminal: true,
+        aboKid: null, aboSignature: null, receipt: null, termIds: null,
+        at: nowIso, state: "done", lastError: null,
+      });
+      if (!finished) {
         throw new Error("lease_lost");
       }
     } catch {
@@ -884,33 +865,14 @@ async function processGrantWork(env: GrantEnv, work: WorkRow): Promise<void> {
   }
 
   if (result === "conflict" || result === "rejected") {
-    const outcomeCanonical = grantOutcomeCanonical({
-      grantId,
-      result: result as GrantResult,
-      aboKid: null,
-      aboSignature: null,
-      receipt: null,
-      termIds: null,
-      at: nowIso,
-    });
-    const statements: D1PreparedStatement[] = [
-      env.DB.prepare(
-        `INSERT INTO grant_outcome (
-           grant_id, result, abo_kid, abo_signature, receipt, term_ids, at
-         ) VALUES (?, ?, NULL, NULL, NULL, NULL, ?)`,
-      ).bind(grantId, result, nowIso),
-      await factLogStatement(env, "grant_outcome", grantId, outcomeCanonical, nowIso),
-      env.DB.prepare(
-        `UPDATE work
-         SET state = 'parked', lease_until = NULL, last_error = ?
-         WHERE work_id = ? AND lease_until = ?`,
-      ).bind(String(result), work.work_id, leaseUntil),
-    ];
-
     try {
-      const results = await env.DB.batch(statements);
-      const workIdx = statements.length - 1;
-      if ((results[workIdx]?.meta.changes ?? 0) === 0) {
+      const errorCode = typeof platformResult.code === "string" ? platformResult.code : String(result);
+      const finished = await finishPaidGrantAttempt(env, {
+        work, grantId, result, code: errorCode, terminal: false,
+        aboKid: null, aboSignature: null, receipt: null, termIds: null,
+        at: nowIso, state: "parked", lastError: String(result),
+      });
+      if (!finished) {
         throw new Error("lease_lost");
       }
       await raiseAlert(env, "AL-07", `AL-07:${work.work_id}`, work.work_id);
@@ -920,7 +882,7 @@ async function processGrantWork(env: GrantEnv, work: WorkRow): Promise<void> {
     return;
   }
 
-  await handleTransientFailure(env, work, leaseUntil);
+  await handleTransientFailure(env, work);
 }
 
 export async function runDueGrantWork(

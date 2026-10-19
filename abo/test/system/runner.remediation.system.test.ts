@@ -263,9 +263,10 @@ describe("RM08 confirm runner — R3-C5", () => {
       .first<{ payment_id: string }>();
     const grantId = await grantIdPaid(payment!.payment_id);
     await env.DB.prepare(
-      `INSERT INTO grant_outcome (grant_id, result, at) VALUES (?, 'applied', '2026-01-15T09:31:00.000Z')`,
+      `INSERT INTO grant_outcome_event (attempt_id, grant_id, result, terminal, at)
+       VALUES (?, ?, 'applied', 1, '2026-01-15T09:31:00.000Z')`,
     )
-      .bind(grantId)
+      .bind(`fixture:${grantId}`, grantId)
       .run();
     await env.DB.prepare(`DELETE FROM work WHERE dedupe_key = ?`)
       .bind(`grant:${payment!.payment_id}`)

@@ -21,6 +21,7 @@ import {
 } from "../clinic-api/version.js";
 import { clockNowIso, clockNowMs, type ClockEnv } from "../clock.js";
 import { insertFactLog } from "../records/append.js";
+import { validateGrantReceipt } from "../work/grant-receipt.js";
 import {
   PAYMOB_PROVIDER_ID,
   providerForId,
@@ -2686,6 +2687,67 @@ async function grantRequestExists(
   return row !== null;
 }
 
+async function persistComplimentaryGrantRequest(
+  env: OpsEnv,
+  input: {
+    grantId: string;
+    orgId: string;
+    actionId: string;
+    envelope: Record<string, unknown>;
+    assertion: unknown;
+  },
+): Promise<{ grant_id: string; org_id: string; source_kind: string; source_ref: string; envelope: string; envelope_sha256: string; assertion: string | null }> {
+  const envelopeBytes = canonicalize(input.envelope);
+  const envelopeText = new TextDecoder().decode(envelopeBytes);
+  const envelopeSha256 = await sha256Hex(envelopeBytes);
+  const assertionText = input.assertion == null ? null : JSON.stringify(input.assertion);
+  const prior = await env.DB.prepare(
+    `SELECT grant_id, org_id, source_kind, source_ref, envelope, envelope_sha256, assertion
+     FROM grant_request WHERE grant_id = ?`,
+  ).bind(input.grantId).first<{
+    grant_id: string; org_id: string; source_kind: string; source_ref: string;
+    envelope: string; envelope_sha256: string; assertion: string | null;
+  }>();
+  if (prior !== null) {
+    if (
+      prior.org_id !== input.orgId || prior.source_kind !== "complimentary" ||
+      prior.source_ref !== input.actionId || prior.envelope !== envelopeText ||
+      prior.envelope_sha256 !== envelopeSha256 || prior.assertion !== assertionText
+    ) throw new Error("grant_request_conflict");
+    return prior;
+  }
+  const canonical = complimentaryGrantRequestCanonical({
+    grantId: input.grantId, orgId: input.orgId, actionId: input.actionId,
+    envelopeText, envelopeSha256, assertion: assertionText,
+  });
+  const rowJsonBytes = canonicalize(canonical);
+  const rowJson = new TextDecoder().decode(rowJsonBytes);
+  const rowSha = await sha256Hex(rowJsonBytes);
+  const now = await clockNowIso(env);
+  await env.DB.batch([
+    env.DB.prepare(
+      `INSERT OR IGNORE INTO grant_request (
+         grant_id, org_id, source_kind, source_ref, envelope, envelope_sha256, assertion
+       ) VALUES (?, ?, 'complimentary', ?, ?, ?, ?)`,
+    ).bind(input.grantId, input.orgId, input.actionId, envelopeText, envelopeSha256, assertionText),
+    env.DB.prepare(
+      `INSERT INTO fact_log ("table", key, row_sha256, row_json, created_at)
+       SELECT 'grant_request', ?, ?, ?, ? WHERE changes() > 0`,
+    ).bind(input.grantId, rowSha, rowJson, now),
+  ]);
+  const stored = await env.DB.prepare(
+    `SELECT grant_id, org_id, source_kind, source_ref, envelope, envelope_sha256, assertion
+     FROM grant_request WHERE grant_id = ?`,
+  ).bind(input.grantId).first<{
+    grant_id: string; org_id: string; source_kind: string; source_ref: string;
+    envelope: string; envelope_sha256: string; assertion: string | null;
+  }>();
+  if (stored === null || stored.org_id !== input.orgId || stored.source_ref !== input.actionId || stored.envelope_sha256 !== envelopeSha256 || stored.assertion !== assertionText) {
+    throw new Error("grant_request_conflict");
+  }
+  return stored;
+}
+
 async function relayFactLogStatement(
   env: OpsEnv,
   table: string,
@@ -2712,24 +2774,6 @@ function complimentaryGrantRequestCanonical(input: {
     envelope: input.envelopeText,
     envelope_sha256: input.envelopeSha256,
     assertion: input.assertion,
-  };
-}
-
-function relayGrantOutcomeCanonical(input: {
-  grantId: string;
-  result: string;
-  receipt: Record<string, unknown> | null;
-  termIds: string[] | null;
-  at: string;
-}): Record<string, unknown> {
-  return {
-    grant_id: input.grantId,
-    result: input.result,
-    abo_kid: null,
-    abo_signature: null,
-    receipt: input.receipt === null ? null : JSON.stringify(input.receipt),
-    term_ids: input.termIds === null ? null : JSON.stringify(input.termIds),
-    at: input.at,
   };
 }
 
@@ -2774,14 +2818,10 @@ async function insertRelayOperatorAction(
 async function recordComplimentaryGrantRows(
   env: OpsEnv,
   input: {
-    grantId: string;
-    orgId: string;
-    actionId: string;
-    envelope: Record<string, unknown>;
-    assertion: unknown;
+    request: { grant_id: string; org_id: string; source_kind: string; source_ref: string; envelope: string; envelope_sha256: string; assertion: string | null };
     platformResult: Record<string, unknown>;
   },
-): Promise<void> {
+): Promise<boolean> {
   const result = String(input.platformResult.result ?? "");
   if (
     result !== "applied" &&
@@ -2789,90 +2829,82 @@ async function recordComplimentaryGrantRows(
     result !== "rejected" &&
     result !== "conflict"
   ) {
-    return;
+    return true;
   }
-
-  const envelopeBytes = canonicalize(input.envelope);
-  const envelopeText = new TextDecoder().decode(envelopeBytes);
-  const envelopeSha256 = await sha256Hex(envelopeBytes);
-  const assertionText =
-    input.assertion === undefined || input.assertion === null
-      ? null
-      : JSON.stringify(input.assertion);
-
   const nowIso = await clockNowIso(env);
-  const requestCanonical = complimentaryGrantRequestCanonical({
-    grantId: input.grantId,
-    orgId: input.orgId,
-    actionId: input.actionId,
-    envelopeText,
-    envelopeSha256,
-    assertion: assertionText,
-  });
   const receipt =
     typeof input.platformResult.receipt === "object" &&
     input.platformResult.receipt !== null &&
     !Array.isArray(input.platformResult.receipt)
       ? (input.platformResult.receipt as Record<string, unknown>)
       : null;
+  if (result === "applied" || result === "already_applied") {
+    const valid = receipt !== null && await validateGrantReceipt({
+      platformPublicKeys: env.PLATFORM_PUBLIC_KEYS,
+      request: input.request,
+      receipt,
+    });
+    if (!valid) {
+      await raiseAlert(env, "AL-07", `AL-07:${input.request.source_ref}`, input.request.grant_id);
+      return false;
+    }
+    const terminal = await env.DB.prepare(
+      `SELECT result, receipt FROM grant_outcome_event
+       WHERE grant_id = ? AND terminal = 1 ORDER BY outcome_seq ASC LIMIT 1`,
+    ).bind(input.request.grant_id).first<{ result: string; receipt: string | null }>();
+    if (terminal !== null) {
+      let priorReceipt: unknown = null;
+      try { priorReceipt = terminal.receipt === null ? null : JSON.parse(terminal.receipt); } catch { /* fail closed below */ }
+      const sameReceipt = priorReceipt !== null && receipt !== null &&
+        new TextDecoder().decode(canonicalize(priorReceipt)) ===
+        new TextDecoder().decode(canonicalize(receipt));
+      if (!sameReceipt) {
+        await raiseAlert(env, "AL-07", `AL-07:${input.request.source_ref}`, input.request.grant_id);
+        return false;
+      }
+      return true;
+    }
+  }
   const termIds =
     receipt !== null && Array.isArray(receipt.term_ids)
       ? receipt.term_ids.filter(
           (value): value is string => typeof value === "string",
         )
       : null;
-  const outcomeCanonical = relayGrantOutcomeCanonical({
-    grantId: input.grantId,
+  const code = typeof input.platformResult.code === "string" ? input.platformResult.code : null;
+  const attemptId = `${input.request.source_ref}:${result}:${code ?? (receipt?.signature ?? "none")}`;
+  const terminal = (result === "applied" || result === "already_applied") || code === "voided";
+  const event = {
+    attempt_id: attemptId,
+    grant_id: input.request.grant_id,
     result,
-    receipt,
-    termIds,
+    code,
+    terminal: terminal ? 1 : 0,
+    abo_kid: null,
+    abo_signature: null,
+    receipt: receipt === null ? null : JSON.stringify(receipt),
+    term_ids: termIds === null ? null : JSON.stringify(termIds),
     at: nowIso,
-  });
-  const statements: D1PreparedStatement[] = [];
-  if (!(await grantRequestExists(env, input.grantId))) {
-    statements.push(
-      env.DB.prepare(
-        `INSERT OR IGNORE INTO grant_request (
-           grant_id, org_id, source_kind, source_ref, envelope, envelope_sha256, assertion
-         ) VALUES (?, ?, 'complimentary', ?, ?, ?, ?)`,
-      ).bind(
-        input.grantId,
-        input.orgId,
-        input.actionId,
-        envelopeText,
-        envelopeSha256,
-        assertionText,
-      ),
-    );
-  }
-  statements.push(
+  };
+  const rowBytes = canonicalize(event);
+  const rowJson = new TextDecoder().decode(rowBytes);
+  const rowSha = await sha256Hex(rowBytes);
+  await env.DB.batch([
     env.DB.prepare(
-      `INSERT OR IGNORE INTO grant_outcome (
-         grant_id, result, abo_kid, abo_signature, receipt, term_ids, at
-       ) VALUES (?, ?, NULL, NULL, ?, ?, ?)`,
+      `INSERT OR IGNORE INTO grant_outcome_event (
+         attempt_id, grant_id, result, code, terminal, abo_kid, abo_signature,
+         receipt, term_ids, at
+       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     ).bind(
-      input.grantId,
-      result,
-      receipt === null ? null : JSON.stringify(receipt),
-      termIds === null ? null : JSON.stringify(termIds),
-      nowIso,
+      event.attempt_id, event.grant_id, event.result, event.code, event.terminal,
+      event.abo_kid, event.abo_signature, event.receipt, event.term_ids, event.at,
     ),
-    await relayFactLogStatement(
-      env,
-      "grant_request",
-      input.grantId,
-      requestCanonical,
-      nowIso,
-    ),
-    await relayFactLogStatement(
-      env,
-      "grant_outcome",
-      input.grantId,
-      outcomeCanonical,
-      nowIso,
-    ),
-  );
-  await env.DB.batch(statements);
+    env.DB.prepare(
+      `INSERT INTO fact_log ("table", key, row_sha256, row_json, created_at)
+       SELECT 'grant_outcome_event', ?, ?, ?, ? WHERE changes() > 0`,
+    ).bind(attemptId, rowSha, rowJson, nowIso),
+  ]);
+  return true;
 }
 
 async function forwardPlatformRelay(
@@ -3313,6 +3345,15 @@ async function handlePostComplimentaryGrant(
     return clinicErrorResponse("assertion_invalid", 400, contractVersion);
   }
 
+  const expectedGrantId = await grantIdComp(actionId);
+  const source = isRecord(envelope.source) ? envelope.source : null;
+  if (
+    envelope.org_id !== orgId || envelope.grant_id !== expectedGrantId ||
+    source?.kind !== "complimentary" || source.ref !== actionId
+  ) {
+    return clinicErrorResponse("conflict", 409, contractVersion);
+  }
+
   const platformArgs: Record<string, unknown> = {
     contract_version: CHANNEL_VERSIONS.vendorEntrypoint,
     access_jwt: access.jwt,
@@ -3347,6 +3388,19 @@ async function handlePostComplimentaryGrant(
   const replay = await completedRelayResponse(env, actionId, contractVersion);
   if (replay !== null) return replay;
 
+  let storedRequest;
+  try {
+    storedRequest = await persistComplimentaryGrantRequest(env, {
+      grantId: expectedGrantId,
+      orgId,
+      actionId,
+      envelope,
+      assertion: body.assertion,
+    });
+  } catch {
+    return clinicErrorResponse("conflict", 409, contractVersion);
+  }
+
   const platformResult = await env.PLATFORM.grant(platformArgs);
   await setAcceptedCommandStage(env, reservation.challengeSha256, "platform_succeeded", JSON.stringify(platformResult));
   const result = String(platformResult.result ?? "");
@@ -3359,6 +3413,13 @@ async function handlePostComplimentaryGrant(
       ? await sha256Hex(canonicalize(operation))
       : null;
 
+  const outcomeRecorded = await recordComplimentaryGrantRows(env, {
+    request: storedRequest,
+    platformResult,
+  });
+  if (!outcomeRecorded) {
+    return clinicErrorResponse("platform_unavailable", 503, contractVersion);
+  }
   await insertRelayOperatorAction(env, {
     action_id: actionId,
     actor_email: access.email,
@@ -3368,16 +3429,6 @@ async function handlePostComplimentaryGrant(
     params_sha256: paramsSha256,
     assertion_sha256: assertionSha256,
     result,
-  });
-
-  const grantId = await grantIdComp(actionId);
-  await recordComplimentaryGrantRows(env, {
-    grantId,
-    orgId,
-    actionId,
-    envelope,
-    assertion: body.assertion,
-    platformResult,
   });
   await setAcceptedCommandStage(env, reservation.challengeSha256, "complete", JSON.stringify(platformResult));
 

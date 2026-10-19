@@ -940,6 +940,9 @@ async function opsComplimentaryGrantRelay(input: {
   accessJwt: string;
   hpCredential: ActiveHpCredential;
   actionId?: string;
+  envelopeOrgId?: string;
+  envelopeGrantId?: string;
+  envelopeSourceRef?: string;
   kind?: "term" | "term_adjustment";
   count?: number;
   adjustment?: Record<string, unknown>;
@@ -948,7 +951,7 @@ async function opsComplimentaryGrantRelay(input: {
 }): Promise<{ response: Response; actionId: string }> {
   const actionId = input.actionId ?? crypto.randomUUID();
   const envelope = await buildComplimentaryEnvelope({
-    orgId: input.orgId,
+    orgId: input.envelopeOrgId ?? input.orgId,
     actionId,
     kind: input.kind,
     count: input.count,
@@ -956,6 +959,10 @@ async function opsComplimentaryGrantRelay(input: {
     ceilingOverride: input.ceilingOverride,
     operatorCredentialId: input.hpCredential.credentialId,
   });
+  if (input.envelopeGrantId !== undefined) envelope.grant_id = input.envelopeGrantId;
+  if (input.envelopeSourceRef !== undefined && typeof envelope.source === "object" && envelope.source !== null) {
+    (envelope.source as Record<string, unknown>).ref = input.envelopeSourceRef;
+  }
   const operation = await operationForHpGrant({
     accessJwt: input.accessJwt,
     envelope,
@@ -1595,7 +1602,39 @@ beforeEach(async () => {
 });
 
 describe("console relays cross-worker", () => {
-  it("E2E-P4.8-01 complimentary grant and term adjustment link operator_action to grant_request", async () => {
+  it("R4-A2: rejects a complimentary grant whose envelope tenant differs before dispatch", async () => {
+    const orgId = ORG_CR_01;
+    await setupConsoleRelaysHarness();
+    await setupActivePlatformCoverage(orgId);
+    const hp = await ensureActiveHpCredential();
+    const actionId = crypto.randomUUID();
+    const mismatch = await opsComplimentaryGrantRelay({
+      orgId,
+      envelopeOrgId: ORG_CR_02,
+      accessJwt: hp.accessJwt,
+      hpCredential: hp,
+      actionId,
+    });
+    expect(mismatch.response.status).toBe(409);
+    expect(await grantRequestForAction(actionId)).toBeNull();
+    expect(await grantOutcomeResult(await grantIdComp(actionId))).toBeNull();
+    const badGrantAction = crypto.randomUUID();
+    const badGrant = await opsComplimentaryGrantRelay({
+      orgId, envelopeGrantId: "f".repeat(64), accessJwt: hp.accessJwt,
+      hpCredential: hp, actionId: badGrantAction,
+    });
+    expect(badGrant.response.status).toBe(409);
+    expect(await grantRequestForAction(badGrantAction)).toBeNull();
+    const badSourceAction = crypto.randomUUID();
+    const badSource = await opsComplimentaryGrantRelay({
+      orgId, envelopeSourceRef: "different-action", accessJwt: hp.accessJwt,
+      hpCredential: hp, actionId: badSourceAction,
+    });
+    expect(badSource.response.status).toBe(409);
+    expect(await grantRequestForAction(badSourceAction)).toBeNull();
+  });
+
+  it("R4-A2: complimentary grant and term adjustment link verified receipts to durable requests", async () => {
     const orgId = ORG_CR_01;
     await setupConsoleRelaysHarness();
     await setupActivePlatformCoverage(orgId);
@@ -1644,6 +1683,17 @@ describe("console relays cross-worker", () => {
     expect(grantRow).not.toBeNull();
     expect(grantRow!.source_ref).toBe(extensionActionId);
     expect(grantRow!.grant_id).toBe(await grantIdComp(extensionActionId));
+    const outcome = await env.DB.prepare(
+      `SELECT receipt FROM grant_outcome WHERE grant_id = ?`,
+    ).bind(grantRow!.grant_id).first<{ receipt: string }>();
+    const event = await env.DB.prepare(
+      `SELECT terminal FROM grant_outcome_event WHERE grant_id = ?`,
+    ).bind(grantRow!.grant_id).first<{ terminal: number }>();
+    const receipt = JSON.parse(outcome!.receipt) as Record<string, unknown>;
+    expect(event?.terminal).toBe(1);
+    expect(receipt.grant_id).toBe(grantRow!.grant_id);
+    expect(receipt.org_id).toBe(orgId);
+    expect(typeof receipt.signature).toBe("string");
 
     const adjustmentGrantRow = await grantRequestForAction(adjustmentActionId);
     expect(adjustmentGrantRow).not.toBeNull();

@@ -484,7 +484,7 @@ export async function recordPaidConfirmation(
     if (existing.disposition === "grant") {
       const grantId = await grantIdPaid(paymentId);
       const applied = await env.DB.prepare(
-        `SELECT 1 FROM grant_outcome WHERE grant_id = ?`,
+        `SELECT 1 FROM grant_outcome_event WHERE grant_id = ? AND terminal = 1`,
       )
         .bind(grantId)
         .first();
@@ -1327,7 +1327,7 @@ async function recoverMissingConfirmWork(env: WorkRunnerEnv): Promise<void> {
         if (payment?.disposition === "grant") {
           const grantId = await grantIdPaid(mapped!.payment_id);
           const outcome = await env.DB.prepare(
-            `SELECT 1 FROM grant_outcome WHERE grant_id = ?`,
+            `SELECT 1 FROM grant_outcome_event WHERE grant_id = ? AND terminal = 1`,
           )
             .bind(grantId)
             .first();

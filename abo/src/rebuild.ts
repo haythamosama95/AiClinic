@@ -113,8 +113,9 @@ function ledgerInsertStatement(
   const columns = Object.keys(row);
   const placeholders = columns.map(() => "?").join(", ");
   const values = columns.map((column) => row[column]);
+  const insertVerb = table === "grant_outcome_event" ? "INSERT OR IGNORE" : "INSERT";
   return env.DB.prepare(
-    `INSERT INTO ${table} (${columns.join(", ")}) VALUES (${placeholders})`,
+    `${insertVerb} INTO ${table} (${columns.join(", ")}) VALUES (${placeholders})`,
   ).bind(...values);
 }
 
@@ -183,7 +184,33 @@ async function replayLedger(env: RebuildEnv, lines: LedgerLine[]): Promise<void>
         admissionAt !== undefined
       ? { ...row, created_at: admissionAt }
       : row;
-    await ledgerInsertStatement(env, line.table, insertedRow).run();
+    if (line.table === "grant_outcome") {
+      const grantId = typeof row.grant_id === "string" ? row.grant_id : line.key;
+      const result = typeof row.result === "string" ? row.result : "rejected";
+      const event = {
+        attempt_id: `legacy:${grantId}`,
+        grant_id: grantId,
+        result,
+        code: null,
+        terminal: result === "applied" || result === "already_applied" ? 1 : 0,
+        abo_kid: row.abo_kid ?? null,
+        abo_signature: row.abo_signature ?? null,
+        receipt: row.receipt ?? null,
+        term_ids: row.term_ids ?? null,
+        at: row.at,
+      };
+      await env.DB.prepare(
+        `INSERT OR IGNORE INTO grant_outcome_event (
+           attempt_id, grant_id, result, code, terminal, abo_kid, abo_signature,
+           receipt, term_ids, at
+         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      ).bind(
+        event.attempt_id, event.grant_id, event.result, event.code, event.terminal,
+        event.abo_kid, event.abo_signature, event.receipt, event.term_ids, event.at,
+      ).run();
+    } else {
+      await ledgerInsertStatement(env, line.table, insertedRow).run();
+    }
     await (
       await insertFactLog(
         env,
@@ -581,7 +608,7 @@ async function grantOutcomeExists(
   grantId: string,
 ): Promise<boolean> {
   const row = await env.DB.prepare(
-    `SELECT 1 FROM grant_outcome WHERE grant_id = ?`,
+    `SELECT 1 FROM grant_outcome_event WHERE grant_id = ? AND terminal = 1`,
   )
     .bind(grantId)
     .first();

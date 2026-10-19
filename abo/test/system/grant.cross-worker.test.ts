@@ -1298,7 +1298,7 @@ describe("grant cross-worker", () => {
     expect(term?.starts_at).not.toBe(paidAt);
   });
 
-  it("E2E-P4.4-03 rejected parks the grant row and raises AL-07", async () => {
+  it("R4-A1: rejected attempts remain nonterminal history while parked work stays visible", async () => {
     const { expectations, offerVersions } = await setupGrantHarness();
     await retirePlanProOnPlatform();
 
@@ -1315,12 +1315,23 @@ describe("grant cross-worker", () => {
 
     expect(await grantWorkState(paymentId!)).toBe("parked");
     expect(await alertCountByCode("AL-07")).toBeGreaterThan(0);
+    const request = await env.DB.prepare(
+      `SELECT gr.grant_id FROM grant_request gr WHERE gr.source_ref = ?`,
+    ).bind(paymentId).first<{ grant_id: string }>();
+    const event = await env.DB.prepare(
+      `SELECT result, terminal FROM grant_outcome_event WHERE grant_id = ?`,
+    ).bind(request!.grant_id).first<{ result: string; terminal: number }>();
+    expect(event).toEqual({ result: "rejected", terminal: 0 });
+    const effective = await env.DB.prepare(
+      `SELECT result FROM grant_outcome WHERE grant_id = ?`,
+    ).bind(request!.grant_id).first<{ result: string }>();
+    expect(effective?.result).toBe("rejected");
 
     await runGrantStep();
     expect(await grantWorkState(paymentId!)).toBe("parked");
   });
 
-  it("E2E-P4.4-04 lost outcome retries as already_applied with one term", async () => {
+  it("R4-A1: lost outcome retries as already_applied with one terminal receipt and one term", async () => {
     const { expectations, offerVersions } = await setupGrantHarness();
     const org = ORG_GRANT_04;
     const txnId = 94040;
@@ -1360,12 +1371,39 @@ describe("grant cross-worker", () => {
       .bind(paymentId)
       .first<{ result: string }>();
     expect(outcome?.result).toBe("already_applied");
+    const terminalEvents = await env.DB.prepare(
+      `SELECT COUNT(*) AS n FROM grant_outcome_event WHERE terminal = 1 AND grant_id = ?`,
+    ).bind(await grantIdPaid(paymentId!)).first<{ n: number }>();
+    expect(terminalEvents?.n).toBe(1);
 
     const snapshot = await platformCoverageSnapshot(org);
     expect(snapshot?.queued_count ?? 0).toBe(0);
     expect((snapshot?.term as { allowance?: number } | undefined)?.allowance).toBe(
       ALLOWANCE_CREDITS,
     );
+  });
+
+  it("R4-A1: compatibility view preserves the first terminal outcome after later attempts", async () => {
+    await setupGrantHarness();
+    const grantId = "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff";
+    await env.DB.batch([
+      env.DB.prepare(
+        `INSERT INTO grant_outcome_event (attempt_id, grant_id, result, code, terminal, at)
+         VALUES ('r4a1-rejected', ?, 'rejected', 'unavailable', 0, '2026-01-01T00:00:00Z')`,
+      ).bind(grantId),
+      env.DB.prepare(
+        `INSERT INTO grant_outcome_event (attempt_id, grant_id, result, code, terminal, receipt, at)
+         VALUES ('r4a1-applied', ?, 'already_applied', NULL, 1, '{"receipt":"original"}', '2026-01-02T00:00:00Z')`,
+      ).bind(grantId),
+      env.DB.prepare(
+        `INSERT INTO grant_outcome_event (attempt_id, grant_id, result, code, terminal, receipt, at)
+         VALUES ('r4a1-repeat', ?, 'already_applied', NULL, 1, '{"receipt":"later"}', '2026-01-03T00:00:00Z')`,
+      ).bind(grantId),
+    ]);
+    const effective = await env.DB.prepare(
+      `SELECT result, receipt FROM grant_outcome WHERE grant_id = ?`,
+    ).bind(grantId).first<{ result: string; receipt: string }>();
+    expect(effective).toEqual({ result: "already_applied", receipt: '{"receipt":"original"}' });
   });
 
   it("E2E-P4.4-06 unregistered ABO kid pauses grant work and raises AL-23", async () => {
