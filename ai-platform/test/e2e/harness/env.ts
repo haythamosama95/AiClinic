@@ -32,6 +32,7 @@ declare module "cloudflare:test" {
         code: string;
         detail: string;
       }>;
+      dispatchAcceptedGrantCommands(): Promise<number>;
     };
   }
 }

@@ -90,6 +90,7 @@ import idempotencyFingerprintSql from "../../migrations/20261014120000_ai_reques
 import malformedIssuerKeyCleanupSql from "../../migrations/20261018120000_r1_c3_malformed_issuer_key_cleanup.sql?raw";
 import tenantCreationCapTriggerSql from "../../migrations/20261018120100_r1_c2_tenant_creation_cap_trigger.sql?raw";
 import grantClaimsSql from "../../migrations/20261019120000_r4_pg1_global_grant_claims.sql?raw";
+import acceptedGrantCommandsSql from "../../migrations/20261019130000_r4_pg3_accepted_grant_commands.sql?raw";
 import { applySqlStatements } from "../split-sql-statements";
 import {
   createCapabilityRegistry,
@@ -124,6 +125,7 @@ declare module "cloudflare:test" {
       registerIssuerKey(
         args: Record<string, unknown>,
       ): Promise<VendorResultEnvelope>;
+      dispatchAcceptedGrantCommands(): Promise<number>;
     };
     TEST_CLOCK: string;
     ACCESS_TEAM_DOMAIN: string;
@@ -281,6 +283,7 @@ const MIGRATION_SQL = [
   malformedIssuerKeyCleanupSql,
   tenantCreationCapTriggerSql,
   grantClaimsSql,
+  acceptedGrantCommandsSql,
 ];
 
 const CATALOGUE_PLAN_NAME = "standard";

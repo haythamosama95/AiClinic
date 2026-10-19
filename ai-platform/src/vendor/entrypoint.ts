@@ -658,6 +658,22 @@ type GrantClaimRow = {
   route_generation: number;
   state: "pending" | "completed" | "disputed";
   receipt: string | null;
+  accepted_command: string | null;
+  accepted_actor: string | null;
+  signer_credential_id: string | null;
+  assertion_sha256: string | null;
+  override_assertion_sha256: string | null;
+  accepted_contract_version: number | null;
+  accepted_ceiling_policy_version: number | null;
+  plan_snapshot: string | null;
+  accepted_at: string | null;
+  due_at: string | null;
+  lease_token: string | null;
+  lease_until: string | null;
+  dispatch_attempts: number;
+  command_state: "none" | "accepted" | "completed" | "rejected";
+  terminal_code: string | null;
+  terminal_detail: string | null;
 };
 
 function canonicalJsonText(value: unknown): string {
@@ -671,7 +687,13 @@ async function readGrantClaim(
   return db
     .prepare(
       `SELECT grant_id, org_id, source_kind, envelope, envelope_sha256,
-              installation_id, binding_epoch, route_generation, state, receipt
+              installation_id, binding_epoch, route_generation, state, receipt,
+              accepted_command, accepted_actor, signer_credential_id,
+              assertion_sha256, override_assertion_sha256,
+              accepted_contract_version, accepted_ceiling_policy_version,
+              plan_snapshot, accepted_at, due_at,
+              lease_token, lease_until, dispatch_attempts, command_state,
+              terminal_code, terminal_detail
        FROM grant_claim WHERE grant_id = ?`,
     )
     .bind(grantId)
@@ -902,8 +924,8 @@ async function ensureGrantClaimsBackfilled(
   return true;
 }
 
-async function createOrReadGrantClaim(
-  env: VendorEnv,
+function buildGrantClaimInsertStatement(
+  db: D1Database,
   input: {
     grantId: string;
     orgId: string;
@@ -913,26 +935,58 @@ async function createOrReadGrantClaim(
     installationId: string;
     bindingEpoch: number;
     nowIso: string;
+    accepted?: {
+      command: Record<string, unknown>;
+      actor: string;
+      signerCredentialId: string;
+      assertionSha256: string;
+      overrideAssertionSha256: string | null;
+      contractVersion: number;
+      ceilingPolicyVersion: number;
+      planSnapshot: Record<string, unknown>;
+    };
   },
-): Promise<GrantClaimRow | null> {
-  await env.DB.prepare(
+): D1PreparedStatement {
+  const accepted = input.accepted;
+  return db.prepare(
     `INSERT OR IGNORE INTO grant_claim (
        grant_id, org_id, source_kind, envelope, envelope_sha256,
        installation_id, binding_epoch, route_generation, state, receipt,
-       created_at, completed_at
-     ) VALUES (?, ?, ?, ?, ?, ?, ?, 1, 'pending', NULL, ?, NULL)`,
-  )
-    .bind(
-      input.grantId,
-      input.orgId,
-      input.sourceKind,
-      canonicalJsonText(input.envelope),
-      input.envelopeSha256,
-      input.installationId,
-      input.bindingEpoch,
-      input.nowIso,
-    )
-    .run();
+       created_at, completed_at, accepted_command, accepted_actor,
+       signer_credential_id, assertion_sha256, override_assertion_sha256,
+       accepted_contract_version, accepted_ceiling_policy_version,
+       plan_snapshot, accepted_at, due_at,
+       command_state
+     ) VALUES (?, ?, ?, ?, ?, ?, ?, 1, 'pending', NULL, ?, NULL,
+       ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+  ).bind(
+    input.grantId,
+    input.orgId,
+    input.sourceKind,
+    canonicalJsonText(input.envelope),
+    input.envelopeSha256,
+    input.installationId,
+    input.bindingEpoch,
+    input.nowIso,
+    accepted === undefined ? null : canonicalJsonText(accepted.command),
+    accepted?.actor ?? null,
+    accepted?.signerCredentialId ?? null,
+    accepted?.assertionSha256 ?? null,
+    accepted?.overrideAssertionSha256 ?? null,
+    accepted?.contractVersion ?? null,
+    accepted?.ceilingPolicyVersion ?? null,
+    accepted === undefined ? null : canonicalJsonText(accepted.planSnapshot),
+    accepted?.command === undefined ? null : input.nowIso,
+    accepted?.command === undefined ? null : input.nowIso,
+    accepted === undefined ? "none" : "accepted",
+  );
+}
+
+async function createOrReadGrantClaim(
+  env: VendorEnv,
+  input: Parameters<typeof buildGrantClaimInsertStatement>[1],
+): Promise<GrantClaimRow | null> {
+  await buildGrantClaimInsertStatement(env.DB, input).run();
   const claim = await readGrantClaim(env.DB, input.grantId);
   if (
     claim === null || claim.org_id !== input.orgId ||
@@ -945,6 +999,50 @@ async function createOrReadGrantClaim(
   return claim;
 }
 
+async function acquireAcceptedGrantLease(
+  env: VendorEnv,
+  grantId: string,
+  nowIso: string,
+): Promise<string | null> {
+  const leaseToken = crypto.randomUUID();
+  const leaseUntil = new Date(Date.parse(nowIso) + 60_000).toISOString();
+  await env.DB.prepare(
+    `UPDATE grant_claim
+     SET lease_token = ?, lease_until = ?, dispatch_attempts = dispatch_attempts + 1
+     WHERE grant_id = ? AND state = 'pending' AND command_state = 'accepted'
+       AND (lease_until IS NULL OR lease_until <= ?)`,
+  ).bind(leaseToken, leaseUntil, grantId, nowIso).run();
+  const claim = await readGrantClaim(env.DB, grantId);
+  return claim?.lease_token === leaseToken ? leaseToken : null;
+}
+
+async function releaseAcceptedGrantLease(
+  env: VendorEnv,
+  claim: GrantClaimRow,
+  leaseToken: string,
+  nowIso: string,
+): Promise<void> {
+  const dueAt = new Date(Date.parse(nowIso) + 60_000).toISOString();
+  await env.DB.prepare(
+    `UPDATE grant_claim SET lease_token = NULL, lease_until = NULL, due_at = ?
+     WHERE grant_id = ? AND command_state = 'accepted' AND lease_token = ?`,
+  ).bind(dueAt, claim.grant_id, leaseToken).run();
+}
+
+async function rejectAcceptedGrantCommand(
+  env: VendorEnv,
+  claim: GrantClaimRow,
+  code: string,
+  detail: string,
+): Promise<void> {
+  await env.DB.prepare(
+    `UPDATE grant_claim
+     SET command_state = 'rejected', terminal_code = ?, terminal_detail = ?,
+         lease_token = NULL, lease_until = NULL
+     WHERE grant_id = ? AND command_state = 'accepted'`,
+  ).bind(code, detail, claim.grant_id).run();
+}
+
 function claimReplayResult(
   version: number,
   claim: GrantClaimRow,
@@ -955,6 +1053,14 @@ function claimReplayResult(
     return "conflict";
   }
   if (claim.state === "disputed") return "disputed";
+  if (claim.command_state === "rejected") {
+    return {
+      contract_version: version,
+      result: "rejected",
+      code: claim.terminal_code ?? "coverage_unknown",
+      detail: claim.terminal_detail ?? "",
+    };
+  }
   if (claim.state === "pending") return "pending";
   if (claim.receipt === null) return "disputed";
   try {
@@ -1017,7 +1123,9 @@ async function routePendingGrantClaim(
       return null;
     }
     await env.DB.prepare(
-      `UPDATE grant_claim SET state = 'completed', receipt = ?, completed_at = ?
+      `UPDATE grant_claim SET state = 'completed', receipt = ?, completed_at = ?,
+              command_state = CASE WHEN accepted_command IS NULL THEN command_state ELSE 'completed' END,
+              lease_token = NULL, lease_until = NULL
        WHERE grant_id = ? AND state = 'pending' AND installation_id = ? AND route_generation = ?`,
     )
       .bind(canonicalJsonText(receipt), sealedAt, claim.grant_id, claim.installation_id, claim.route_generation)
@@ -1066,7 +1174,9 @@ async function persistGrantClaimReceipt(
     return false;
   }
   await env.DB.prepare(
-    `UPDATE grant_claim SET state = 'completed', receipt = ?, completed_at = ?
+    `UPDATE grant_claim SET state = 'completed', receipt = ?, completed_at = ?,
+            command_state = CASE WHEN accepted_command IS NULL THEN command_state ELSE 'completed' END,
+            lease_token = NULL, lease_until = NULL
      WHERE grant_id = ? AND state = 'pending' AND installation_id = ? AND route_generation = ?`,
   )
     .bind(canonicalJsonText(receipt), nowIso, claim.grant_id, claim.installation_id, claim.route_generation)
@@ -3747,8 +3857,25 @@ export class VendorEntrypoint extends WorkerEntrypoint<VendorEnv> {
         return grantRejected(version, "placement_not_supported");
       }
 
-      const access = await verifyHpAccess(this.env, args.access_jwt);
-      if (!access.ok) {
+      let access: { ok: true; email: string } | { ok: false };
+      if (args.accepted_command_dispatch === true) {
+        const requestedGrantId = args.accepted_command_grant_id;
+        const acceptedClaim = typeof requestedGrantId === "string"
+          ? await readGrantClaim(this.env.DB, requestedGrantId)
+          : null;
+        if (
+          acceptedClaim === null ||
+          acceptedClaim.command_state !== "accepted" ||
+          acceptedClaim.state !== "pending" ||
+          acceptedClaim.envelope !== canonicalJsonText(envelope)
+        ) {
+          return grantRejected(version, "unauthenticated");
+        }
+        access = { ok: true, email: acceptedClaim.accepted_actor ?? "" };
+      } else {
+        access = await verifyHpAccess(this.env, args.access_jwt);
+      }
+      if (!access.ok || access.email.length === 0) {
         return grantRejected(version, "unauthenticated");
       }
 
@@ -3797,7 +3924,13 @@ export class VendorEntrypoint extends WorkerEntrypoint<VendorEnv> {
       }
       const planVersion = planVersionRaw as number;
       const planRow = await readPlanVersion(this.env.DB, planId, planVersion);
-      if (planRow === null || (planRow.status !== "published" && existingGrantClaim === null)) {
+      if (
+        planRow === null ||
+        (planRow.status !== "published" && existingGrantClaim?.command_state !== "completed")
+      ) {
+        if (existingGrantClaim?.command_state === "accepted") {
+          await rejectAcceptedGrantCommand(this.env, existingGrantClaim, "plan_not_published", "");
+        }
         return grantRejected(version, "plan_not_published");
       }
 
@@ -3832,6 +3965,10 @@ export class VendorEntrypoint extends WorkerEntrypoint<VendorEnv> {
       if (ceilingPolicy === null && existingGrantClaim === null) {
         return grantRejected(version, "coverage_unknown");
       }
+      if (ceilingPolicy === null && existingGrantClaim?.command_state === "accepted") {
+        await rejectAcceptedGrantCommand(this.env, existingGrantClaim, "coverage_unknown", "");
+        return grantRejected(version, "coverage_unknown");
+      }
 
       const accessJwt =
         typeof args.access_jwt === "string" ? args.access_jwt : "";
@@ -3859,9 +3996,29 @@ export class VendorEntrypoint extends WorkerEntrypoint<VendorEnv> {
             detail: rejectedEnvelope.detail,
           };
         }
+        const approvals =
+          isRecord(envelope.evidence) && Array.isArray(envelope.evidence.approvals)
+            ? envelope.evidence.approvals
+            : [];
+        const evidenceCredentialId = isRecord(approvals[0]) &&
+            typeof approvals[0].credential_id === "string"
+          ? approvals[0].credential_id
+          : null;
+        if (evidenceCredentialId !== assertionCheck.signer.credential_id) {
+          await writeEntrypointAudit(
+            this.env.DB,
+            access.email,
+            "grant",
+            assertionCheck.auditTarget,
+            assertionCheck.assertionSha256,
+          );
+          return grantRejected(version, "bad_assertion");
+        }
       }
 
-      let skipCeilingCheck = existingGrantClaim !== null && ceilingPolicy === null;
+      let skipCeilingCheck = existingGrantClaim !== null &&
+        existingGrantClaim.override_assertion_sha256 !== null &&
+        ceilingPolicy?.version === existingGrantClaim.accepted_ceiling_policy_version;
       let overrideAssertionSha256: string | null = null;
       if (existingGrantClaim === null && envelope.ceiling_override !== undefined) {
         const overrideCheck = await verifyCeilingOverrideAssertion(
@@ -3880,30 +4037,83 @@ export class VendorEntrypoint extends WorkerEntrypoint<VendorEnv> {
         overrideAssertionSha256 = overrideCheck.assertionSha256;
       }
 
-      if (overrideAssertionSha256 !== null) {
-        // R2-P2: the grant claim and the override claim land in one atomic
-        // D1 batch (with the audit row), so a second-claim failure never
-        // leaves a main-only claim; duplicate rejection stays assertion_used.
+      const liveBinding = existingGrantClaim === null
+        ? await readLiveTenantBinding(this.env.DB, orgId)
+        : null;
+      if (existingGrantClaim === null && liveBinding === null) {
+        return grantRejected(version, "coverage_unknown");
+      }
+      const installationId = existingGrantClaim?.installation_id ?? liveBinding!.installation_id;
+      let binding = existingGrantClaim === null ? liveBinding : {
+        installation_id: existingGrantClaim.installation_id,
+        epoch: existingGrantClaim.binding_epoch,
+        status: "active",
+      };
+      if (binding === null) {
+        return grantRejected(version, "coverage_unknown");
+      }
+
+      if (existingGrantClaim === null) {
+        const acceptedAt = await clockNowIso(this.env);
+        const planSnapshot = {
+          plan_id: planId,
+          version: planVersion,
+          display_name: planRow.display_name,
+          capabilities: JSON.parse(planRow.capabilities) as unknown,
+          max_cost_class: planRow.max_cost_class,
+          concurrency_limit: planRow.concurrency_limit,
+        };
+        const accepted = {
+          command: {
+            contract_version: version,
+            operation: assertionCheck!.operation,
+            override_operation: isRecord(args.ceiling_override_operation)
+              ? args.ceiling_override_operation
+              : null,
+            envelope,
+          },
+          actor: access.email,
+          signerCredentialId: assertionCheck!.signer.credential_id,
+          assertionSha256: assertionCheck!.assertionSha256,
+          overrideAssertionSha256,
+          contractVersion: version,
+          ceilingPolicyVersion: ceilingPolicy!.version,
+          planSnapshot,
+        };
+        const statements = [
+          buildGrantClaimInsertStatement(this.env.DB, {
+            grantId: claimGrantId,
+            orgId,
+            sourceKind: "complimentary",
+            envelope,
+            envelopeSha256: claimEnvelopeSha256,
+            installationId,
+            bindingEpoch: binding.epoch,
+            nowIso: acceptedAt,
+            accepted,
+          }),
+          await buildAssertionUsedStatement(
+            this.env,
+            assertionCheck!.assertionSha256,
+            assertionCheck!.signer.credential_id,
+          ),
+        ];
+        if (overrideAssertionSha256 !== null) {
+          statements.push(await buildAssertionUsedStatement(
+            this.env,
+            overrideAssertionSha256,
+            assertionCheck!.signer.credential_id,
+          ));
+        }
+        statements.push(buildEntrypointAuditStatement(
+          this.env.DB,
+          access.email,
+          "grant",
+          assertionCheck!.auditTarget,
+          assertionCheck!.assertionSha256,
+        ));
         try {
-          await this.env.DB.batch([
-            await buildAssertionUsedStatement(
-              this.env,
-              assertionCheck!.assertionSha256,
-              assertionCheck!.signer.credential_id,
-            ),
-            await buildAssertionUsedStatement(
-              this.env,
-              overrideAssertionSha256,
-              assertionCheck!.signer.credential_id,
-            ),
-            buildEntrypointAuditStatement(
-              this.env.DB,
-              access.email,
-              "grant",
-              assertionCheck!.auditTarget,
-              assertionCheck!.assertionSha256,
-            ),
-          ]);
+          await this.env.DB.batch(statements);
         } catch {
           await writeEntrypointAudit(
             this.env.DB,
@@ -3914,35 +4124,7 @@ export class VendorEntrypoint extends WorkerEntrypoint<VendorEnv> {
           );
           return grantRejected(version, "assertion_used");
         }
-      } else if (assertionCheck !== null) {
-        await finishHpAssertion(this.env, access.email, "grant", assertionCheck);
-      }
-
-      const liveBinding = await readLiveTenantBinding(this.env.DB, orgId);
-      const installationId = existingGrantClaim?.installation_id ??
-        liveBinding?.installation_id ??
-        (await resolveOrInsertGrantBinding(this.env, orgId));
-      let binding = existingGrantClaim === null ? liveBinding : {
-        installation_id: existingGrantClaim.installation_id,
-        epoch: existingGrantClaim.binding_epoch,
-        status: "active",
-      };
-      if (binding === null) binding = await readLiveTenantBinding(this.env.DB, orgId);
-      if (binding === null) {
-        return grantRejected(version, "coverage_unknown");
-      }
-
-      if (existingGrantClaim === null) {
-        existingGrantClaim = await createOrReadGrantClaim(this.env, {
-          grantId: claimGrantId,
-          orgId,
-          sourceKind: "complimentary",
-          envelope,
-          envelopeSha256: claimEnvelopeSha256,
-          installationId,
-          bindingEpoch: binding.epoch,
-          nowIso: await clockNowIso(this.env),
-        });
+        existingGrantClaim = await readGrantClaim(this.env.DB, claimGrantId);
       }
       if (existingGrantClaim === null) return grantRejected(version, "coverage_unknown");
       const routedClaim = await routePendingGrantClaim(this.env, existingGrantClaim, version);
@@ -3962,28 +4144,29 @@ export class VendorEntrypoint extends WorkerEntrypoint<VendorEnv> {
           complimentaryGrantId,
         );
         if (voided !== null) {
+          if (existingGrantClaim.command_state === "accepted") {
+            await rejectAcceptedGrantCommand(
+              this.env,
+              existingGrantClaim,
+              voided.code || "voided",
+              voided.detail,
+            );
+          }
           return voided;
         }
       }
 
       const nowIso = await clockNowIso(this.env);
-      const approvals =
-        isRecord(envelope.evidence) && Array.isArray(envelope.evidence.approvals)
-          ? envelope.evidence.approvals
-          : [];
-      const approvalsCredentialId =
-        isRecord(approvals[0]) && typeof approvals[0].credential_id === "string"
-          ? approvals[0].credential_id
-          : "";
-
-      const planSnapshot = {
+      const planSnapshot = existingGrantClaim.plan_snapshot === null
+        ? {
         plan_id: planId,
         version: planVersion,
         display_name: planRow.display_name,
         capabilities: JSON.parse(planRow.capabilities) as unknown,
         max_cost_class: planRow.max_cost_class,
         concurrency_limit: planRow.concurrency_limit,
-      };
+        }
+        : JSON.parse(existingGrantClaim.plan_snapshot) as Record<string, unknown>;
 
       const grace = envelope.grace;
       const graceDays =
@@ -3995,6 +4178,13 @@ export class VendorEntrypoint extends WorkerEntrypoint<VendorEnv> {
         envelopeKind === "term_adjustment" && isRecord(envelope.adjustment)
           ? (envelope.adjustment as Record<string, unknown>)
           : undefined;
+
+      const dispatchLeaseToken = existingGrantClaim.command_state === "accepted"
+        ? await acquireAcceptedGrantLease(this.env, existingGrantClaim.grant_id, nowIso)
+        : null;
+      if (existingGrantClaim.command_state === "accepted" && dispatchLeaseToken === null) {
+        return grantTransient(version, "unavailable");
+      }
 
       const doCall = await callGrantCoverageDo(this.env, dispatchInstallationId, {
         kind: "apply_grant",
@@ -4014,7 +4204,8 @@ export class VendorEntrypoint extends WorkerEntrypoint<VendorEnv> {
             : (durationCount as number),
         allowanceCredits: allowanceCredits as number,
         graceDays,
-        operatorCredentialId: approvalsCredentialId,
+        operatorCredentialId: existingGrantClaim.signer_credential_id ?? "",
+        operatorEmail: existingGrantClaim.accepted_actor ?? access.email,
         platformSigningKeyJson: this.env.PLATFORM_SIGNING_KEY,
         durationScale: durationScaleFromEnv(this.env),
         nowIso,
@@ -4035,9 +4226,15 @@ export class VendorEntrypoint extends WorkerEntrypoint<VendorEnv> {
       });
 
       if (doCall.kind === "unavailable") {
+        if (dispatchLeaseToken !== null) {
+          await releaseAcceptedGrantLease(this.env, existingGrantClaim, dispatchLeaseToken, nowIso);
+        }
         return grantTransient(version, "unavailable");
       }
       if (doCall.kind === "version_refusal") {
+        if (dispatchLeaseToken !== null) {
+          await rejectAcceptedGrantCommand(this.env, existingGrantClaim, "contract_version_unsupported", "");
+        }
         return grantRejected(version, "contract_version_unsupported");
       }
       const doResponse = doCall.response;
@@ -4046,6 +4243,15 @@ export class VendorEntrypoint extends WorkerEntrypoint<VendorEnv> {
         if (!(await persistGrantClaimReceipt(this.env, existingGrantClaim, mapped.receipt, await clockNowIso(this.env)))) {
           return grantRejected(version, "coverage_unknown");
         }
+      } else if (mapped.result === "rejected" && dispatchLeaseToken !== null) {
+        await rejectAcceptedGrantCommand(
+          this.env,
+          existingGrantClaim,
+          mapped.code,
+          mapped.detail,
+        );
+      } else if (dispatchLeaseToken !== null) {
+        await releaseAcceptedGrantLease(this.env, existingGrantClaim, dispatchLeaseToken, await clockNowIso(this.env));
       }
       return mapped;
     }
@@ -5893,5 +6099,40 @@ export class VendorEntrypoint extends WorkerEntrypoint<VendorEnv> {
       last_cursor: row?.last_cursor ?? null,
     });
     return ok(version, detail);
+  }
+
+  async dispatchAcceptedGrantCommands(): Promise<number> {
+    const nowIso = await clockNowIso(this.env);
+    const rows = await this.env.DB.prepare(
+      `SELECT grant_id, accepted_command
+       FROM grant_claim
+       WHERE command_state = 'accepted' AND state = 'pending'
+         AND due_at <= ? AND (lease_until IS NULL OR lease_until <= ?)
+       ORDER BY due_at, grant_id LIMIT 25`,
+    ).bind(nowIso, nowIso).all<{ grant_id: string; accepted_command: string | null }>();
+    let attempted = 0;
+    for (const row of rows.results ?? []) {
+      if (row.accepted_command === null) continue;
+      let accepted: unknown;
+      try {
+        accepted = JSON.parse(row.accepted_command);
+      } catch {
+        await this.env.DB.prepare(
+          `UPDATE grant_claim SET command_state = 'rejected',
+             terminal_code = 'coverage_unknown', terminal_detail = 'invalid accepted command'
+           WHERE grant_id = ? AND command_state = 'accepted'`,
+        ).bind(row.grant_id).run();
+        continue;
+      }
+      if (!isRecord(accepted) || !isRecord(accepted.envelope)) continue;
+      attempted += 1;
+      await this.grant({
+        contract_version: accepted.contract_version,
+        envelope: accepted.envelope,
+        accepted_command_dispatch: true,
+        accepted_command_grant_id: row.grant_id,
+      });
+    }
+    return attempted;
   }
 }

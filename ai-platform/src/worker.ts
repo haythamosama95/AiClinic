@@ -168,6 +168,9 @@ interface Env extends AlertEnv {
   RATE_LIMITER_INSTALLATION: RateLimit;
   RATE_LIMITER_INSTALLATION_ACTOR: RateLimit;
   RATE_LIMITER_INSTALLATION_CAPABILITY: RateLimit;
+  VENDOR?: {
+    dispatchAcceptedGrantCommands(): Promise<number>;
+  };
 }
 
 function createWorkerLogFactory(runtimeEnv: Env): LoggerFactory {
@@ -2640,6 +2643,14 @@ export default {
       }
     } else if (cron === "*/5 * * * *") {
       log.info("scheduled_five_minute_start");
+      try {
+        const dispatched = await runtimeEnv.VENDOR?.dispatchAcceptedGrantCommands() ?? 0;
+        log.info("scheduled_accepted_grant_commands", { dispatched });
+      } catch (error) {
+        log.error("scheduled_accepted_grant_commands_failed", {
+          error: error instanceof Error ? error.message : String(error),
+        });
+      }
       try {
         await reconcileGraceUsage(
           { DO: runtimeEnv.DO, DB: runtimeEnv.DB },

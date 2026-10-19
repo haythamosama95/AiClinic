@@ -132,7 +132,8 @@ CREATE TABLE grant_claim (
   state TEXT NOT NULL CHECK (state IN ('pending', 'completed', 'disputed')),
   receipt TEXT,
   created_at TEXT NOT NULL,
-  completed_at TEXT,
+  completed_at TEXT, accepted_command TEXT, accepted_actor TEXT, signer_credential_id TEXT, assertion_sha256 TEXT, override_assertion_sha256 TEXT, accepted_contract_version INTEGER, accepted_ceiling_policy_version INTEGER, plan_snapshot TEXT, accepted_at TEXT, due_at TEXT, lease_token TEXT, lease_until TEXT, dispatch_attempts INTEGER NOT NULL DEFAULT 0, command_state TEXT NOT NULL DEFAULT 'none'
+  CHECK (command_state IN ('none', 'accepted', 'completed', 'rejected')), terminal_code TEXT, terminal_detail TEXT,
   CHECK ((state = 'completed' AND receipt IS NOT NULL AND completed_at IS NOT NULL)
       OR (state = 'pending' AND receipt IS NULL AND completed_at IS NULL)
       OR state = 'disputed')
@@ -163,7 +164,7 @@ CREATE TABLE grant_ledger (
   envelope_sha256 TEXT NOT NULL,
   receipt TEXT NOT NULL,
   applied_at TEXT NOT NULL
-);
+, operator_email TEXT);
 
 CREATE TABLE grant_void (
   grant_id TEXT PRIMARY KEY NOT NULL,

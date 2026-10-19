@@ -119,6 +119,7 @@ export interface ApplyGrantRequest {
   allowanceCredits: number;
   graceDays?: number;
   operatorCredentialId: string;
+  operatorEmail?: string;
   platformSigningKeyJson?: string;
   environment?: string;
   durationScale?: DurationScale;
@@ -1394,6 +1395,7 @@ async function finalizeGrantApply(input: {
     kind: input.grantKind,
     source_kind: input.grantSourceKind,
     operator_credential_id: request.operatorCredentialId,
+    operator_email: request.operatorEmail ?? null,
     envelope_sha256: envelopeSha256,
     receipt,
     applied_at: request.nowIso,
@@ -2790,8 +2792,8 @@ async function shipCoverageOutboxInLock(
         await env.DB.prepare(
           `INSERT OR IGNORE INTO grant_ledger (
             grant_id, origin_grant_id, org_id, installation_id, kind, source_kind,
-            operator_credential_id, envelope_sha256, receipt, applied_at
-          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+            operator_credential_id, operator_email, envelope_sha256, receipt, applied_at
+          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         )
           .bind(
             payload.grant_id,
@@ -2801,6 +2803,7 @@ async function shipCoverageOutboxInLock(
             payload.kind,
             payload.source_kind,
             payload.operator_credential_id,
+            payload.operator_email ?? null,
             payload.envelope_sha256,
             JSON.stringify(payload.receipt),
             payload.applied_at,
@@ -2819,6 +2822,7 @@ async function shipCoverageOutboxInLock(
             kind: payload.kind,
             source_kind: payload.source_kind,
             operator_credential_id: payload.operator_credential_id,
+            operator_email: payload.operator_email ?? null,
             envelope_sha256: payload.envelope_sha256,
             applied_at: payload.applied_at,
             receipt: payload.receipt,
@@ -3712,6 +3716,8 @@ type GrantLedgerRebuildRow = {
   installation_id: string;
   kind: string;
   source_kind: string;
+  operator_credential_id: string;
+  operator_email: string | null;
   envelope_sha256: string;
   receipt: string;
   applied_at: string;
@@ -3777,7 +3783,7 @@ async function restoreDoGrantRowsFromLedger(
   const rows = await db
     .prepare(
       `SELECT grant_id, origin_grant_id, org_id, installation_id, kind, source_kind,
-              envelope_sha256, receipt, applied_at
+              operator_credential_id, operator_email, envelope_sha256, receipt, applied_at
        FROM grant_ledger
        WHERE installation_id = ? AND applied_at <= ?
        ORDER BY applied_at ASC, grant_id ASC`,
@@ -3986,7 +3992,7 @@ export async function rebuildClinicDoRPC(
     const ledgerRows = await request.db
       .prepare(
         `SELECT grant_id, origin_grant_id, org_id, installation_id, kind, source_kind,
-                operator_credential_id, envelope_sha256, receipt, applied_at
+                operator_credential_id, operator_email, envelope_sha256, receipt, applied_at
          FROM grant_ledger
          WHERE installation_id = ? AND applied_at > ?
          ORDER BY applied_at ASC, grant_id ASC`,
@@ -4000,6 +4006,7 @@ export async function rebuildClinicDoRPC(
         kind: string;
         source_kind: string;
         operator_credential_id: string;
+        operator_email: string | null;
         envelope_sha256: string;
         receipt: string;
         applied_at: string;
@@ -4286,8 +4293,8 @@ export async function runRebuildGrantLedger(
         await env.DB.prepare(
           `INSERT OR IGNORE INTO grant_ledger (
             grant_id, origin_grant_id, org_id, installation_id, kind, source_kind,
-            operator_credential_id, envelope_sha256, receipt, applied_at
-          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+            operator_credential_id, operator_email, envelope_sha256, receipt, applied_at
+          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         )
           .bind(
             parsed.grant_id,
@@ -4297,6 +4304,7 @@ export async function runRebuildGrantLedger(
             parsed.kind,
             parsed.source_kind,
             parsed.operator_credential_id,
+            parsed.operator_email ?? null,
             parsed.envelope_sha256,
             JSON.stringify(parsed.receipt),
             parsed.applied_at,

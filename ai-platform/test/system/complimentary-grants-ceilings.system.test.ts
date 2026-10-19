@@ -34,6 +34,7 @@ import {
   queryOne,
   visitSummaryManifest,
   resetPlatformState,
+  runScheduled,
   setTestClock,
   setupPromotedFakePolicy,
   setupVendorHarness,
@@ -105,7 +106,8 @@ type ExtendedVendorMethod =
   | "suspend"
   | "resume"
   | "inspectCoverage"
-  | "setCeilingPolicy";
+  | "setCeilingPolicy"
+  | "listGrantsForVoid";
 
 const extendedVendorCall = vendorCall as (
   method: ExtendedVendorMethod,
@@ -515,6 +517,137 @@ beforeEach(async () => {
 });
 
 describe("complimentary grants, ceilings, adjustments, suspension", () => {
+  it("R4-PG4 complimentary attribution uses the verified signer and mismatched evidence credential is rejected", async () => {
+    const scenario = await newScenario();
+    await coverClinic(scenario);
+    const accessJwt = await mintVendorAccessJwt();
+    const before = await vendorTableCount("assertion_used");
+    const badGrantId = await grantIdComp(crypto.randomUUID().replace(/-/g, ""));
+    const mismatched = await buildComplimentaryEnvelope({
+      orgId: scenario.orgId,
+      grantId: badGrantId,
+      operatorEmail: VENDOR_OPERATOR_EMAIL,
+      reason: "mismatched attribution",
+    });
+    (mismatched.evidence as Record<string, unknown>).approvals = [
+      { credential_id: "cred-elsewhere", assertion: "stub" },
+    ];
+    const rejected = await hpComplimentaryGrant({ envelope: mismatched, accessJwt });
+    expect(rejected.result).toBe("rejected");
+    expect(rejected.code).toBe("bad_assertion");
+    expect(await vendorTableCount("assertion_used")).toBe(before);
+    expect(await countDoGrantRows(scenario.installationId)).toBe(0);
+
+    const grantId = await grantIdComp(crypto.randomUUID().replace(/-/g, ""));
+    const envelope = await buildComplimentaryEnvelope({
+      orgId: scenario.orgId,
+      grantId,
+      operatorEmail: "untrusted-source@example.test",
+      reason: "verified attribution",
+    });
+    const applied = await hpComplimentaryGrant({ envelope, accessJwt });
+    expect(applied.result).toBe("applied");
+    const ledger = await queryOne<{
+      operator_credential_id: string;
+      operator_email: string | null;
+      applied_at: string;
+    }>(
+      `SELECT operator_credential_id, operator_email, applied_at
+       FROM grant_ledger WHERE grant_id = ?`,
+      [grantId],
+    );
+    expect(ledger).toEqual({
+      operator_credential_id: "cred-001",
+      operator_email: VENDOR_OPERATOR_EMAIL,
+      applied_at: expect.any(String),
+    });
+    const ledgerObject = await env.R2.get(`grant-ledger/${grantId}.ndjson`);
+    expect(ledgerObject).not.toBeNull();
+    const ledgerR2 = JSON.parse((await ledgerObject!.text()).trim().split("\n")[0]!) as Record<string, unknown>;
+    expect(ledgerR2).toMatchObject({
+      operator_credential_id: "cred-001",
+      operator_email: VENDOR_OPERATOR_EMAIL,
+    });
+    const listed = await extendedVendorCall("listGrantsForVoid", {
+      contract_version: CONTRACT_VERSION,
+      credential_id: "cred-001",
+      window: {
+        applied_from: ledger!.applied_at,
+        applied_to: new Date(Date.parse(ledger!.applied_at) + 1).toISOString(),
+      },
+    }, { accessJwt });
+    expect(listed.result).toBe("ok");
+    expect(JSON.parse(listed.detail)).toEqual(expect.arrayContaining([
+      expect.objectContaining({ grant_id: grantId, operator_credential_id: "cred-001" }),
+    ]));
+  });
+
+  it("R4-PG3 accepted complimentary command survives a lost dispatch and is resumed by the scheduled dispatcher", async () => {
+    const scenario = await newScenario();
+    await coverClinic(scenario);
+    const grantId = await grantIdComp(crypto.randomUUID().replace(/-/g, ""));
+    const envelope = await buildComplimentaryEnvelope({
+      orgId: scenario.orgId,
+      grantId,
+      count: 14,
+      operatorEmail: VENDOR_OPERATOR_EMAIL,
+      reason: "accepted command recovery",
+    });
+    const acceptedAt = getVendorTestClockIso() ?? new Date().toISOString();
+    const realGet = env.DO.get.bind(env.DO);
+    const getSpy = vi.spyOn(env.DO, "get").mockImplementation((id) => {
+      const stub = realGet(id);
+      return {
+        fetch: async (input: RequestInfo | URL, init?: RequestInit) => {
+          const body = typeof init?.body === "string" ? JSON.parse(init.body) as Record<string, unknown> : {};
+          if (body.kind === "apply_grant") return new Response(null, { status: 503 });
+          return stub.fetch(input, init);
+        },
+      } as DurableObjectStub;
+    });
+    let unavailable: GrantResultEnvelope;
+    try {
+      unavailable = await hpComplimentaryGrant({ envelope });
+    } finally {
+      getSpy.mockRestore();
+    }
+    expect(unavailable.result).toBe("transient");
+    expect(await queryOne<{
+      command_state: string;
+      accepted_at: string;
+      accepted_actor: string;
+      signer_credential_id: string;
+      accepted_command: string;
+    }>(
+      `SELECT command_state, accepted_at, accepted_actor, signer_credential_id, accepted_command
+       FROM grant_claim WHERE grant_id = ?`,
+      [grantId],
+    )).toMatchObject({
+      command_state: "accepted",
+      accepted_at: acceptedAt,
+      accepted_actor: VENDOR_OPERATOR_EMAIL,
+      signer_credential_id: "cred-001",
+    });
+    expect(JSON.parse((await queryOne<{ accepted_command: string }>(
+      "SELECT accepted_command FROM grant_claim WHERE grant_id = ?", [grantId],
+    ))!.accepted_command).envelope).toEqual(envelope);
+
+    await setTestClock(new Date(Date.parse(acceptedAt) + 2 * 60_000).toISOString());
+    await runScheduled("*/5 * * * *");
+
+    expect(await queryOne<{ state: string; command_state: string }>(
+      "SELECT state, command_state FROM grant_claim WHERE grant_id = ?", [grantId],
+    )).toEqual({ state: "completed", command_state: "completed" });
+    expect(await countDoGrantRows(scenario.installationId)).toBe(1);
+    expect(await queryOne<{ operator_credential_id: string; operator_email: string }>(
+      "SELECT operator_credential_id, operator_email FROM grant_ledger WHERE grant_id = ?",
+      [grantId],
+    )).toEqual({
+      operator_credential_id: "cred-001",
+      operator_email: VENDOR_OPERATOR_EMAIL,
+    });
+  });
+
   it("R4-PG2 a complimentary DO outage stays pending and the same claim completes on retry", async () => {
     const scenario = await newScenario();
     await coverClinic(scenario);

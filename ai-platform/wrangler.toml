@@ -14,6 +14,11 @@ port = 8787
 [triggers]
 crons = ["0 3 * * *", "0 4 * * *", "*/5 * * * *"]
 
+[[services]]
+binding = "VENDOR"
+service = "ai-platform-gateway"
+entrypoint = "VendorEntrypoint"
+
 [[rules]]
 type = "Text"
 globs = ["**/prompts/**/*.md"]
@@ -73,6 +78,11 @@ name = "RATE_LIMITER_INSTALLATION_CAPABILITY"
 namespace_id = "1003"
 simple = { limit = 300, period = 60 }
 
+[[env.development.services]]
+binding = "VENDOR"
+service = "ai-platform-gateway-development"
+entrypoint = "VendorEntrypoint"
+
 [env.staging]
 name = "ai-platform-gateway-staging"
 workers_dev = false
@@ -124,6 +134,11 @@ name = "RATE_LIMITER_INSTALLATION_CAPABILITY"
 namespace_id = "2003"
 simple = { limit = 300, period = 60 }
 
+[[env.staging.services]]
+binding = "VENDOR"
+service = "ai-platform-gateway-staging"
+entrypoint = "VendorEntrypoint"
+
 [env.production]
 name = "ai-platform-gateway-production"
 
@@ -171,3 +186,8 @@ simple = { limit = 120, period = 60 }
 name = "RATE_LIMITER_INSTALLATION_CAPABILITY"
 namespace_id = "3003"
 simple = { limit = 300, period = 60 }
+
+[[env.production.services]]
+binding = "VENDOR"
+service = "ai-platform-gateway-production"
+entrypoint = "VendorEntrypoint"
