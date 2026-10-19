@@ -13,6 +13,7 @@ import {
 import { beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   applyAllMigrations,
+  CAPABILITY_ID,
   coverClinic,
   coverClinicAboKid,
   coverClinicSigner,
@@ -87,6 +88,44 @@ function quotaDoStub(installationId: string) {
   return env.DO.get(env.DO.idFromName(installationId));
 }
 
+async function settleOneQuotaCredit(scenario: Scenario, requestReference: string): Promise<void> {
+  const now = Date.parse(getVendorTestClockIso() ?? new Date().toISOString());
+  const admitted = await quotaDoStub(scenario.installationId).fetch("https://quota-do.internal/rpc", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      contract_version: CHANNEL_VERSIONS.platformDo,
+      kind: "admission",
+      now,
+      jti: crypto.randomUUID(),
+      installationId: scenario.installationId,
+      idempotencyKey: crypto.randomUUID(),
+      requestReference,
+      capabilityId: CAPABILITY_ID,
+      quotaWeight: 1,
+      orgId: scenario.orgId,
+    }),
+  });
+  const admission = await admitted.json() as { outcome?: string; reservation_id?: string };
+  expect(admission.outcome).toBe("admitted");
+  const credit = await quotaDoStub(scenario.installationId).fetch("https://quota-do.internal/rpc", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      contract_version: CHANNEL_VERSIONS.platformDo,
+      kind: "credit",
+      installationId: scenario.installationId,
+      requestId: admission.reservation_id,
+      reservation_id: admission.reservation_id,
+      requestReference,
+      usage: { tokens: 1, cost: 0 },
+      partial: false,
+      credits: 1,
+    }),
+  });
+  expect((await credit.json() as { ok?: boolean }).ok).toBe(true);
+}
+
 function sqlSelect<T extends Record<string, unknown>>(
   state: DurableObjectState,
   query: string,
@@ -109,6 +148,7 @@ type DoTermRow = {
   position: number;
   ends_at: string | null;
   grace_ends_at: string | null;
+  used_final: number | null;
 };
 
 type DoGrantRow = {
@@ -119,7 +159,7 @@ async function readDoTerms(installationId: string): Promise<DoTermRow[]> {
   return runInDurableObject(quotaDoStub(installationId), async (_instance, state) =>
     sqlSelect<DoTermRow>(
       state,
-      `SELECT term_id, grant_id, origin_grant_id, state, end_reason, position, ends_at, grace_ends_at
+      `SELECT term_id, grant_id, origin_grant_id, state, end_reason, position, ends_at, grace_ends_at, used_final
        FROM term ORDER BY position ASC`,
     ),
   );
@@ -455,7 +495,7 @@ describe("reversal voids, tombstones, held terms, operator voids", () => {
     ))?.export_state).toBe("shipped");
   });
 
-  it("R6-PT1: reverses applied DO value while the asynchronous grant ledger is absent", async () => {
+  it("R5-A2/R6-PT1: reversal preserves settled usage while the asynchronous grant ledger is absent", async () => {
     const scenario = await newScenario();
     await coverClinic(scenario, { runAlarm: false });
     const grants = await readDoGrants(scenario.installationId);
@@ -464,6 +504,8 @@ describe("reversal voids, tombstones, held terms, operator voids", () => {
       "SELECT grant_id FROM grant_ledger WHERE grant_id = ?",
       [grantId],
     )).toBeNull();
+
+    await settleOneQuotaCredit(scenario, "R5-A2-reversed-term-usage");
 
     const reversalId = randomHex64();
     const reason = "delayed-ledger-refund";
@@ -475,6 +517,7 @@ describe("reversal voids, tombstones, held terms, operator voids", () => {
     expect(applied.receipt?.installation_id).toBe(scenario.installationId);
     expect((await inspectCoverageTerms(scenario)).find((row) => row.grant_id === grantId)?.end_reason)
       .toBe("reversed");
+    expect((await readDoTerms(scenario.installationId).then((rows) => rows.find((row) => row.grant_id === grantId)))?.used_final).toBe(1);
 
     const replay = await callVoidForReversal({
       grantId, partial: false, reversalId, reason, evidenceSha256,
@@ -696,7 +739,7 @@ describe("reversal voids, tombstones, held terms, operator voids", () => {
     expect(positions[positions.length - 1]?.grant_id).toBe(secondHeldGrantId);
   });
 
-  it("R6-DM3: voidGrant retries return the original receipt and activate the successor", async () => {
+  it("R5-A2/R6-DM3: voidGrant closes the term at settled usage and activates the successor", async () => {
     const scenario = await newScenario();
     await coverClinic(scenario);
 
@@ -749,6 +792,8 @@ describe("reversal voids, tombstones, held terms, operator voids", () => {
       afterComp.find((row) => row.grant_id === compGrantId)?.state,
     ).toBe("active");
 
+    await settleOneQuotaCredit(scenario, "R5-A2-voided-term-usage");
+
     const successorGrantId = await grantIdPaid(crypto.randomUUID().replace(/-/g, ""));
     expect((await paidGrant(scenario, successorGrantId)).result).toBe("applied");
     await runDurableObjectAlarm(quotaDoStub(scenario.installationId));
@@ -781,6 +826,7 @@ describe("reversal voids, tombstones, held terms, operator voids", () => {
     const successor = terms.find((row) => row.grant_id === successorGrantId);
     expect(compTerm?.state).toBe("ended");
     expect(compTerm?.end_reason).toBe("voided");
+    expect(compTerm?.used_final).toBe(1);
     expect(successor?.state).toBe("active");
 
     const grantVoid = await queryOne<{ source: string; evidence_sha256: string }>(

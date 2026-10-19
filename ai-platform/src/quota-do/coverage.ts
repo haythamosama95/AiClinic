@@ -2510,12 +2510,16 @@ export async function voidForReversalRPC(
     const eventHots: HotRow[] = [];
     const hotBefore = loadHot(storage);
     let hotAfter = { ...hotBefore };
+    const closedUsedFinal = term.term_id === hotBefore.active_term_id
+      ? hotBefore.used
+      : (term.used_final ?? 0);
     if (effect === "end_current") {
       Object.assign(termsAfter.find((row) => row.term_id === term.term_id)!, {
         state: "ended", end_reason: "reversed", ended_at: request.nowIso, grace_ends_at: null,
+        used_final: closedUsedFinal,
       });
       if (hotAfter.active_term_id === term.term_id) hotAfter.active_term_id = null;
-      termWrites.push(`UPDATE term SET state = 'ended', end_reason = 'reversed', ended_at = ${sqlString(request.nowIso)}, grace_ends_at = NULL WHERE term_id = ${sqlString(term.term_id)}`);
+      termWrites.push(`UPDATE term SET state = 'ended', end_reason = 'reversed', ended_at = ${sqlString(request.nowIso)}, grace_ends_at = NULL, used_final = ${closedUsedFinal} WHERE term_id = ${sqlString(term.term_id)}`);
       eventKinds.push("term_ended");
       eventTerms.push(termsAfter.map((row) => ({ ...row })));
       eventHots.push({ ...hotAfter });
@@ -2529,8 +2533,9 @@ export async function voidForReversalRPC(
     } else if (effect === "remove_queued") {
       Object.assign(termsAfter.find((row) => row.term_id === term.term_id)!, {
         state: "ended", end_reason: "reversed", ended_at: request.nowIso,
+        used_final: closedUsedFinal,
       });
-      termWrites.push(`UPDATE term SET state = 'ended', end_reason = 'reversed', ended_at = ${sqlString(request.nowIso)} WHERE term_id = ${sqlString(term.term_id)}`);
+      termWrites.push(`UPDATE term SET state = 'ended', end_reason = 'reversed', ended_at = ${sqlString(request.nowIso)}, used_final = ${closedUsedFinal} WHERE term_id = ${sqlString(term.term_id)}`);
       eventKinds.push("term_ended");
       eventTerms.push(termsAfter.map((row) => ({ ...row })));
       eventHots.push({ ...hotAfter });
@@ -2817,11 +2822,17 @@ export async function voidGrantRPC(
     const wasActive = term.state === "active";
     const termsAfter = terms.map((row) => ({ ...row }));
     const endingTerm = termsAfter.find((row) => row.term_id === term.term_id)!;
-    Object.assign(endingTerm, { state: "ended", end_reason: "voided", ended_at: request.nowIso, grace_ends_at: null });
-    const termWrites = [`UPDATE term SET state = 'ended', end_reason = 'voided', ended_at = ${sqlString(request.nowIso)}, grace_ends_at = NULL WHERE term_id = ${sqlString(term.term_id)}`];
+    const hotBefore = loadHot(storage);
+    const closedUsedFinal = hotBefore.active_term_id === term.term_id
+      ? hotBefore.used
+      : (term.used_final ?? 0);
+    Object.assign(endingTerm, {
+      state: "ended", end_reason: "voided", ended_at: request.nowIso,
+      grace_ends_at: null, used_final: closedUsedFinal,
+    });
+    const termWrites = [`UPDATE term SET state = 'ended', end_reason = 'voided', ended_at = ${sqlString(request.nowIso)}, grace_ends_at = NULL, used_final = ${closedUsedFinal} WHERE term_id = ${sqlString(term.term_id)}`];
     const eventKinds = ["term_ended"];
     const eventTerms: TermRow[][] = [termsAfter.map((row) => ({ ...row }))];
-    const hotBefore = loadHot(storage);
     let hotAfter = {
       ...hotBefore,
       active_term_id: hotBefore.active_term_id === term.term_id ? null : hotBefore.active_term_id,
@@ -3407,7 +3418,10 @@ export async function transferOutRPC(
     );
     const endedTermIds = notEnded.map((term) => term.term_id);
     const termsAfter = terms.map((term) => notEnded.some((row) => row.term_id === term.term_id)
-      ? { ...term, state: "ended", end_reason: "transferred", ended_at: request.nowIso }
+      ? {
+          ...term, state: "ended", end_reason: "transferred", ended_at: request.nowIso,
+          used_final: term.term_id === hot.active_term_id ? hot.used : (term.used_final ?? 0),
+        }
       : term);
     const hotAfter = { ...hot, transferred_out_to: request.toInstallationId, active_term_id: null };
     const prepared = prepareCoverageEvents({
@@ -3444,8 +3458,9 @@ export async function transferOutRPC(
     await prearmGrantWakeup(state);
     storage.transactionSync(() => {
       for (const term of notEnded) {
+        const usedFinal = term.term_id === hot.active_term_id ? hot.used : (term.used_final ?? 0);
         sqlExec(storage,
-          `UPDATE term SET state = 'ended', end_reason = 'transferred', ended_at = ${sqlString(request.nowIso)}
+          `UPDATE term SET state = 'ended', end_reason = 'transferred', ended_at = ${sqlString(request.nowIso)}, used_final = ${usedFinal}
            WHERE term_id = ${sqlString(term.term_id)} AND state IN ('active', 'grace', 'queued', 'held')`,
         );
       }
