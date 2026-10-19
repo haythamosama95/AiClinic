@@ -479,6 +479,8 @@ describe("admission settlement against terms", () => {
     await coverClinic(scenario, { max_allowance_per_month: 3 });
     await newClinic(scenario);
     const firstTerm = (await readDoTerms(scenario.installationId)).find((row) => row.state === "active")!;
+    const oldTermEndMs = Date.parse(String(firstTerm.ends_at));
+    await setTestClock(new Date(oldTermEndMs - 60_000).toISOString());
     const now = await harnessNowMs();
     const firstJti = crypto.randomUUID();
     const firstKey = crypto.randomUUID();
@@ -490,7 +492,7 @@ describe("admission settlement against terms", () => {
     expect(second.outcome).toBe("admitted");
 
     const successorAdmission = await directDoAdmission(scenario, {
-      now: Date.parse(String(firstTerm.ends_at)) + 1,
+      now: oldTermEndMs + 1,
     });
     expect(successorAdmission.outcome).toBe("admitted");
     const afterActivation = await readDoTerms(scenario.installationId);
@@ -499,6 +501,9 @@ describe("admission settlement against terms", () => {
     expect(ended?.used_final).toBe(0);
     expect(active?.term_id).not.toBe(firstTerm.term_id);
     expect(active?.allowance).toBe(3);
+    const reservationsAfterActivation = await readHotReservations(scenario.installationId);
+    expect(reservationsAfterActivation.map((reservation) => reservation.id)).toContain(first.reservation_id);
+    expect(reservationsAfterActivation.map((reservation) => reservation.id)).toContain(second.reservation_id);
 
     const stub = quotaDoStub(scenario.installationId);
     const consumedId = String(first.reservation_id);
