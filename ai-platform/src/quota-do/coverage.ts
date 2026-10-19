@@ -946,7 +946,7 @@ function prepareCoverageEvents(input: {
   eventTerms?: TermRow[][];
 }): { rows: Record<string, unknown>[]; finalHot: HotRow; lastSeq: number } {
   let seq = input.hotAfter.clinic_seq;
-  const rows = input.kinds.map((kind) => {
+  const rows = input.kinds.map((kind, index) => {
     seq += 1;
     const eventHot = { ...(input.eventHots?.[index] ?? input.hotAfter), clinic_seq: seq };
     const snapshot = buildCoverageSnapshot({

@@ -2,7 +2,7 @@
  * Suite 2 — lifecycle interplay (plan §4, SYS-2.1–SYS-2.6).
  */
 
-import { env, SELF } from "cloudflare:test";
+import { env, runDurableObjectAlarm, SELF } from "cloudflare:test";
 import { beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { purgeByInstallationId } from "../../src/retention";
 import {
@@ -169,6 +169,7 @@ describe("lifecycle interplay", () => {
     expect(suspended.status).toBe(200);
     const repeatedSuspend = await vendorSuspend(scenario);
     expect(repeatedSuspend.status).toBe(200);
+    await runDurableObjectAlarm(env.DO.get(env.DO.idFromName(scenario.installationId)));
     clearConfigCache();
 
     const beforeRequests = await count("ai_request");
@@ -183,6 +184,7 @@ describe("lifecycle interplay", () => {
     expect(resumed.status).toBe(200);
     const repeatedResume = await vendorResume(scenario);
     expect(repeatedResume.status).toBe(200);
+    await runDurableObjectAlarm(env.DO.get(env.DO.idFromName(scenario.installationId)));
     clearConfigCache();
 
     const afterResume = await invoke(scenario);
