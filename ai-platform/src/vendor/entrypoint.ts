@@ -660,6 +660,10 @@ type GrantClaimRow = {
   receipt: string | null;
 };
 
+function canonicalJsonText(value: unknown): string {
+  return new TextDecoder().decode(canonicalize(value));
+}
+
 async function readGrantClaim(
   db: D1Database,
   grantId: string,
@@ -821,7 +825,7 @@ async function ensureGrantClaimsBackfilled(
           ledger.installation_id !== binding.installation_id ||
           ledger.source_kind !== raw.source_kind ||
           ledger.envelope_sha256 !== raw.envelope_sha256 ||
-          ledgerReceipt === null || canonicalize(ledgerReceipt) !== canonicalize(receipt)
+          ledgerReceipt === null || canonicalJsonText(ledgerReceipt) !== canonicalJsonText(receipt)
         ) {
           await alertGrantClaimDispute(env, orgId, grantId, nowIso);
           return false;
@@ -836,7 +840,7 @@ async function ensureGrantClaimsBackfilled(
           r2Row.installation_id !== binding.installation_id ||
           r2Row.source_kind !== raw.source_kind ||
           r2Row.envelope_sha256 !== raw.envelope_sha256 ||
-          r2Receipt === null || canonicalize(r2Receipt) !== canonicalize(receipt)
+          r2Receipt === null || canonicalJsonText(r2Receipt) !== canonicalJsonText(receipt)
         ) {
           await alertGrantClaimDispute(env, orgId, grantId, nowIso);
           return false;
@@ -850,9 +854,9 @@ async function ensureGrantClaimsBackfilled(
           claim.source_kind !== raw.source_kind ||
           claim.envelope_sha256 !== raw.envelope_sha256 ||
           claim.installation_id !== binding.installation_id ||
-          claim.envelope !== canonicalize(envelope) ||
+          claim.envelope !== canonicalJsonText(envelope) ||
           (claim.state === "completed" && (
-            claimReceipt === null || canonicalize(claimReceipt) !== canonicalize(receipt)
+            claimReceipt === null || canonicalJsonText(claimReceipt) !== canonicalJsonText(receipt)
           ))
         ) {
           await alertGrantClaimDispute(env, orgId, grantId, nowIso);
@@ -870,11 +874,11 @@ async function ensureGrantClaimsBackfilled(
             grantId,
             orgId,
             raw.source_kind,
-            canonicalize(envelope),
+            canonicalJsonText(envelope),
             raw.envelope_sha256,
             binding.installation_id,
             binding.epoch,
-            canonicalize(receipt),
+            canonicalJsonText(receipt),
             typeof raw.applied_at === "string" ? raw.applied_at : nowIso,
             typeof raw.applied_at === "string" ? raw.applied_at : nowIso,
           )
@@ -922,7 +926,7 @@ async function createOrReadGrantClaim(
       input.grantId,
       input.orgId,
       input.sourceKind,
-      canonicalize(input.envelope),
+      canonicalJsonText(input.envelope),
       input.envelopeSha256,
       input.installationId,
       input.bindingEpoch,
@@ -934,7 +938,7 @@ async function createOrReadGrantClaim(
     claim === null || claim.org_id !== input.orgId ||
     claim.envelope_sha256 !== input.envelopeSha256 ||
     claim.source_kind !== input.sourceKind ||
-    claim.envelope !== canonicalize(input.envelope)
+    claim.envelope !== canonicalJsonText(input.envelope)
   ) {
     return null;
   }
@@ -1016,7 +1020,7 @@ async function routePendingGrantClaim(
       `UPDATE grant_claim SET state = 'completed', receipt = ?, completed_at = ?
        WHERE grant_id = ? AND state = 'pending' AND installation_id = ? AND route_generation = ?`,
     )
-      .bind(canonicalize(receipt), sealedAt, claim.grant_id, claim.installation_id, claim.route_generation)
+      .bind(canonicalJsonText(receipt), sealedAt, claim.grant_id, claim.installation_id, claim.route_generation)
       .run();
     const reread = await readGrantClaim(env.DB, claim.grant_id);
     if (reread === null) return null;
@@ -1065,11 +1069,11 @@ async function persistGrantClaimReceipt(
     `UPDATE grant_claim SET state = 'completed', receipt = ?, completed_at = ?
      WHERE grant_id = ? AND state = 'pending' AND installation_id = ? AND route_generation = ?`,
   )
-    .bind(canonicalize(receipt), nowIso, claim.grant_id, claim.installation_id, claim.route_generation)
+    .bind(canonicalJsonText(receipt), nowIso, claim.grant_id, claim.installation_id, claim.route_generation)
     .run();
   const stored = await readGrantClaim(env.DB, claim.grant_id);
   return stored?.state === "completed" && stored.receipt !== null &&
-    canonicalize(JSON.parse(stored.receipt)) === canonicalize(receipt);
+    canonicalJsonText(JSON.parse(stored.receipt)) === canonicalJsonText(receipt);
 }
 
 async function callCoverageDo(
