@@ -5,6 +5,7 @@
 let mode = "ok";
 let inquiryScript = "bound_success";
 let inquiryAmountCents = "800";
+let inquiryReversedAmountCents = "800";
 let intentionOrderId = "9001";
 let lastIntentionBody = null;
 
@@ -57,6 +58,12 @@ export default {
       }
       if (body.amount_cents !== undefined && body.amount_cents !== null) {
         inquiryAmountCents = String(body.amount_cents);
+      }
+      if (
+        body.refunded_amount_cents !== undefined &&
+        body.refunded_amount_cents !== null
+      ) {
+        inquiryReversedAmountCents = String(body.refunded_amount_cents);
       }
       if (
         body.intention_order_id !== undefined &&
@@ -158,7 +165,7 @@ export default {
           transactionPayload(DEFAULT_ORDER_ID, {
             id: txnId,
             is_refunded: true,
-            refunded_amount_cents: DEFAULT_AMOUNT_CENTS,
+            refunded_amount_cents: inquiryReversedAmountCents,
           }),
         );
       }
@@ -167,7 +174,7 @@ export default {
           transactionPayload(DEFAULT_ORDER_ID, {
             id: txnId,
             is_voided: true,
-            refunded_amount_cents: DEFAULT_AMOUNT_CENTS,
+            refunded_amount_cents: inquiryReversedAmountCents,
           }),
         );
       }

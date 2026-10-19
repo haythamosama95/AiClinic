@@ -1587,6 +1587,26 @@ describe("hp-actions cross-worker", () => {
       .first<{ n: number }>();
     expect(reversalCount?.n).toBe(1);
 
+    const acceptedRequest = await env.DB.prepare(
+      `SELECT rr.reason, rr.partial, rr.contract_version, rr.canonical_body
+       FROM reversal_request rr
+       INNER JOIN reversal r ON r.reversal_id = rr.reversal_id
+       WHERE r.payment_id = ?`,
+    )
+      .bind(activePaymentId)
+      .first<{
+        reason: string;
+        partial: number;
+        contract_version: number;
+        canonical_body: string;
+      }>();
+    expect(acceptedRequest?.reason).toBe("end_current");
+    expect(acceptedRequest?.partial).toBe(0);
+    expect(JSON.parse(acceptedRequest!.canonical_body)).toMatchObject({
+      contract_version: acceptedRequest?.contract_version,
+      partial: false,
+    });
+
     const reversal = await env.DB.prepare(
       `SELECT source, detected_via, kind, is_full, recorded_by, effect
        FROM reversal WHERE payment_id = ?`,

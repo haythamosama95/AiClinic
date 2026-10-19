@@ -1358,14 +1358,14 @@ describe.sequential("sweeps cross-worker", () => {
     );
     expect(refundIntake.status).toBe(200);
     expect(await reversalCount()).toBe(0);
-    await scriptPaymobInquiry("reversed");
+    await scriptPaymobInquiry("reversed", 1000, 1000);
     await runScheduled("* * * * *");
     expect(await tableCount("payment")).toBe(paymentsBefore);
     expect(await reversalCount()).toBe(1);
     expect(await reversalEffectForPayment(activePaymentId)).toBe("end_current");
 
     await setClock("2026-06-01T12:01:00.000Z");
-    await scriptPaymobInquiry("reversed");
+    await scriptPaymobInquiry("reversed", 1000, 1000);
     await runScheduled("* * * * *");
     await syncPlatformGrantVoids();
 
@@ -1400,7 +1400,7 @@ describe.sequential("sweeps cross-worker", () => {
     );
     expect(parentRefund.status).toBe(200);
     expect(await reversalCount()).toBe(0);
-    await scriptPaymobInquiry("reversed");
+    await scriptPaymobInquiry("reversed", 1000, 1000);
     await runScheduled("* * * * *");
     expect(await reversalCount()).toBe(1);
     expect(await reversalEffectForPayment(activePaymentId)).toBe("end_current");
@@ -1415,7 +1415,7 @@ describe.sequential("sweeps cross-worker", () => {
     expect(await tableCount("payment")).toBe(2);
 
     await setClock("2026-06-01T12:01:00.000Z");
-    await scriptPaymobInquiry("reversed");
+    await scriptPaymobInquiry("reversed", 1000, 1000);
     await runScheduled("* * * * *");
     await syncPlatformGrantVoids();
 
@@ -1451,12 +1451,13 @@ describe.sequential("sweeps cross-worker", () => {
     );
     expect(refundIntake.status).toBe(200);
     expect(await reversalCount()).toBe(0);
-    await scriptPaymobInquiry("reversed");
+    await setClock("2026-06-01T12:46:00.000Z");
+    await scriptPaymobInquiry("reversed", 1000, 1000);
     await runScheduled("* * * * *");
     expect(await reversalCount()).toBe(1);
     expect(await reversalEffectForPayment(paymentId!)).toBe("none");
 
-    await scriptPaymobInquiry("reversed");
+    await scriptPaymobInquiry("reversed", 1000, 1000);
     await runScheduled("* * * * *");
 
     const grantId = await grantIdPaid(paymentId!);
@@ -1499,12 +1500,12 @@ describe.sequential("sweeps cross-worker", () => {
     );
     expect(refundIntake.status).toBe(200);
     expect(await reversalCount()).toBe(0);
-    await scriptPaymobInquiry("reversed");
+    await scriptPaymobInquiry("reversed", 1000, 1000);
     await runScheduled("* * * * *");
     expect(await reversalCount()).toBe(1);
     expect(await reversalEffectForPayment(paymentId!)).toBe("tombstone");
 
-    await scriptPaymobInquiry("reversed");
+    await scriptPaymobInquiry("reversed", 1000, 1000);
     await runScheduled("* * * * *");
 
     const grantId = await grantIdPaid(paymentId!);
@@ -1552,7 +1553,7 @@ describe.sequential("sweeps cross-worker", () => {
     expect(await alertCountByCode("AL-06")).toBe(1);
 
     await setClock("2026-06-01T18:00:00.000Z");
-    await scriptPaymobInquiry("reversed");
+    await scriptPaymobInquiry("reversed", 1000, 800);
     await runScheduled("0 */6 * * *");
     await runScheduled("* * * * *");
     expect(await reversalCount()).toBe(2);
@@ -1563,7 +1564,22 @@ describe.sequential("sweeps cross-worker", () => {
       .bind(paymentId!)
       .all<{ cumulative_reversed_minor: number; effect: string }>();
     expect(cumulativeRows.results?.map((row) => row.cumulative_reversed_minor)).toEqual([400, 800]);
-    expect(cumulativeRows.results?.[1]?.effect).toBe("end_current");
+    expect(cumulativeRows.results?.every((row) => row.effect === "review_partial")).toBe(true);
+    expect(await reverseWorkCount()).toBe(0);
+    expect(await platformGrantVoidCount(grantId)).toBe(0);
+
+    await setClock("2026-06-02T00:00:00.000Z");
+    await scriptPaymobInquiry("reversed", 1000, 1000);
+    await runScheduled("0 */6 * * *");
+    await runScheduled("* * * * *");
+    expect(await reversalCount()).toBe(3);
+    const escalated = await env.DB.prepare(
+      `SELECT cumulative_reversed_minor, effect FROM reversal
+       WHERE payment_id = ? AND cumulative_reversed_minor = 1000`,
+    )
+      .bind(paymentId!)
+      .first<{ cumulative_reversed_minor: number; effect: string }>();
+    expect(escalated?.effect).toBe("end_current");
     expect(await platformGrantVoidCount(grantId)).toBe(1);
   });
 
@@ -1610,7 +1626,8 @@ describe.sequential("sweeps cross-worker", () => {
     const paymentId = await paymentIdForCheckout(checkoutId);
     expect(paymentId).not.toBeNull();
 
-    await scriptPaymobInquiry("voided");
+    await setClock("2026-06-01T12:01:00.000Z");
+    await scriptPaymobInquiry("voided", 1000, 1000);
     await runScheduled("0 * * * *");
     await runScheduled("* * * * *");
 
@@ -1636,8 +1653,9 @@ describe.sequential("sweeps cross-worker", () => {
     expect(history.status).toBe(200);
     expect(historyBody.payments.flatMap((payment) => payment.reversals).map((item) => item.kind)).toContain("void");
 
+    await setClock("2026-06-01T12:02:00.000Z");
     await postPaymobCallback(refundParentFixtureWithTxnId(txnId));
-    await scriptPaymobInquiry("reversed");
+    await scriptPaymobInquiry("reversed", 1000, 1000);
     await runScheduled("* * * * *");
     expect(await reversalCount()).toBe(1);
     expect(await findingCount("reversal_kind_conflict")).toBe(1);

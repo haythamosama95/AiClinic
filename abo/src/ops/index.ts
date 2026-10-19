@@ -2,6 +2,7 @@ import {
   canonicalize,
   CHANNEL_VERSIONS,
   grantIdComp,
+  grantIdPaid,
   grantIdTransfer,
   humanRef,
   parseRegistrationAttestation,
@@ -32,6 +33,7 @@ import { runReconciliation } from "../reconciliation/run.js";
 import { rememberOperatorCredential } from "../watch/hourly.js";
 import {
   determineReversalEffect,
+  buildReversalRequestDraft,
   processReverseWork,
   reversalDedupeKey,
   reversalIdFromDedupeKey,
@@ -1630,6 +1632,12 @@ async function handleHpManualChargeback(
     effect,
     dedupe_key: dedupeKey,
   };
+  const requestDraft = await buildReversalRequestDraft({
+    reversal_id: reversalId,
+    grant_id: await grantIdPaid(paymentId),
+    reason: effect,
+    evidence_sha256: hp.challengeSha256,
+  }, env as ReversalEnv);
   await env.DB.batch([
     env.DB.prepare(
       `INSERT INTO reversal (
@@ -1652,6 +1660,28 @@ async function handleHpManualChargeback(
       hp.challengeSha256,
       effect,
       dedupeKey,
+      hp.challengeSha256,
+      hp.leaseToken,
+    ),
+    env.DB.prepare(
+      `INSERT INTO reversal_request (
+         reversal_id, grant_id, reason, evidence_sha256, partial,
+         contract_version, canonical_body, body_sha256, created_at
+       ) SELECT ?, ?, ?, ?, 0, ?, ?, ?, ?
+       WHERE EXISTS (
+         SELECT 1 FROM accepted_operator_command c
+         WHERE c.challenge_sha256 = ? AND c.lease_token = ?
+       )
+       ON CONFLICT(reversal_id) DO NOTHING`,
+    ).bind(
+      requestDraft.reversal_id,
+      requestDraft.grant_id,
+      requestDraft.reason,
+      requestDraft.evidence_sha256,
+      requestDraft.contract_version,
+      requestDraft.canonical_body,
+      requestDraft.body_sha256,
+      requestDraft.created_at,
       hp.challengeSha256,
       hp.leaseToken,
     ),

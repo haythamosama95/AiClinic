@@ -580,11 +580,17 @@ export function setD1BatchThrows(
 
 export async function scriptPaymobInquiry(
   script: PaymobInquiryScript,
+  amountCents?: number | string,
+  refundedAmountCents?: number | string,
 ): Promise<void> {
   await env.PAYMOB_STUB.fetch("http://paymob.stub/__script", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ inquiry: script }),
+    body: JSON.stringify({
+      inquiry: script,
+      amount_cents: amountCents,
+      refunded_amount_cents: refundedAmountCents,
+    }),
   });
 }
 

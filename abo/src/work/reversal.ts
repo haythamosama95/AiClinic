@@ -454,6 +454,44 @@ type ReversalRequestRow = {
   body_sha256: string;
 };
 
+export type ReversalRequestDraft = ReversalRequestRow & {
+  created_at: string;
+};
+
+export async function buildReversalRequestDraft(
+  input: {
+    reversal_id: string;
+    grant_id: string;
+    reason: string;
+    evidence_sha256: string;
+    partial?: boolean;
+    contract_version?: number;
+  },
+  env: ReversalEnv,
+): Promise<ReversalRequestDraft> {
+  const body = {
+    contract_version: input.contract_version ?? CHANNEL_VERSIONS.vendorEntrypoint,
+    grant_id: input.grant_id,
+    reversal_id: input.reversal_id,
+    reason: input.reason,
+    evidence_sha256: input.evidence_sha256,
+    partial: input.partial ?? false,
+  };
+  const canonicalBody = new TextDecoder().decode(canonicalize(body));
+  const bodySha256 = await sha256Hex(new TextEncoder().encode(canonicalBody));
+  return {
+    reversal_id: input.reversal_id,
+    grant_id: input.grant_id,
+    reason: input.reason,
+    evidence_sha256: input.evidence_sha256,
+    partial: body.partial ? 1 : 0,
+    contract_version: body.contract_version,
+    canonical_body: canonicalBody,
+    body_sha256: bodySha256,
+    created_at: await clockNowIso(env),
+  };
+}
+
 async function reversalRequestForDispatch(
   env: ReversalEnv,
   reversal: ReversalRow,
@@ -469,17 +507,12 @@ async function reversalRequestForDispatch(
 
   if (row === null && allowCreate) {
     const grantId = await grantIdPaid(reversal.payment_id);
-    const body = {
-      contract_version: CHANNEL_VERSIONS.vendorEntrypoint,
-      grant_id: grantId,
+    const draft = await buildReversalRequestDraft({
       reversal_id: reversal.reversal_id,
+      grant_id: grantId,
       reason: reversal.effect,
       evidence_sha256: reversal.evidence_sha256,
-      partial: false,
-    };
-    const canonicalBody = new TextDecoder().decode(canonicalize(body));
-    const bodySha256 = await sha256Hex(new TextEncoder().encode(canonicalBody));
-    const createdAt = await clockNowIso(env);
+    }, env);
     await env.DB.prepare(
       `INSERT OR IGNORE INTO reversal_request (
          reversal_id, grant_id, reason, evidence_sha256, partial,
@@ -487,14 +520,14 @@ async function reversalRequestForDispatch(
        ) VALUES (?, ?, ?, ?, 0, ?, ?, ?, ?)`,
     )
       .bind(
-        reversal.reversal_id,
-        grantId,
-        reversal.effect,
-        reversal.evidence_sha256,
-        CHANNEL_VERSIONS.vendorEntrypoint,
-        canonicalBody,
-        bodySha256,
-        createdAt,
+        draft.reversal_id,
+        draft.grant_id,
+        draft.reason,
+        draft.evidence_sha256,
+        draft.contract_version,
+        draft.canonical_body,
+        draft.body_sha256,
+        draft.created_at,
       )
       .run();
     row = await env.DB.prepare(
