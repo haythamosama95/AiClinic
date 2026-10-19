@@ -739,7 +739,7 @@ describe("complimentary grants, ceilings, adjustments, suspension", () => {
       `SELECT org_id, installation_id, binding_epoch, route_generation
        FROM grant_claim WHERE grant_id = ?`,
       [grantId],
-    });
+    );
     expect(claimRoute).toBeTruthy();
     expect(await queryOne<{
       org_id: string;
@@ -785,6 +785,102 @@ describe("complimentary grants, ceilings, adjustments, suspension", () => {
           ?.grant_id === grantId,
     );
     expect(al11ForGrant).toHaveLength(al11First.length);
+  });
+
+  it("R6-PT1: accepted complimentary claim rebinding advances claim and route identity together", async () => {
+    const scenario = await newScenario();
+    await coverClinic(scenario);
+    const grantId = await grantIdComp(crypto.randomUUID().replace(/-/g, ""));
+    const envelope = await buildComplimentaryEnvelope({
+      orgId: scenario.orgId,
+      grantId,
+      count: 14,
+      operatorEmail: VENDOR_OPERATOR_EMAIL,
+      reason: "accepted route rebind",
+    });
+    const realGet = env.DO.get.bind(env.DO);
+    const getSpy = vi.spyOn(env.DO, "get").mockImplementation((id) => {
+      const stub = realGet(id);
+      return {
+        fetch: async (input: RequestInfo | URL, init?: RequestInit) => {
+          const body = typeof init?.body === "string" ? JSON.parse(init.body) as Record<string, unknown> : {};
+          if (body.kind === "apply_grant") return new Response(null, { status: 503 });
+          return stub.fetch(input, init);
+        },
+      } as DurableObjectStub;
+    });
+    try {
+      const unavailable = await hpComplimentaryGrant({ envelope });
+      expect(unavailable.result).toBe("transient");
+    } finally {
+      getSpy.mockRestore();
+    }
+
+    const before = await queryOne<{
+      installation_id: string;
+      binding_epoch: number;
+      route_generation: number;
+    }>(
+      `SELECT installation_id, binding_epoch, route_generation
+       FROM grant_claim WHERE grant_id = ?`,
+      [grantId],
+    );
+    expect(before).toBeTruthy();
+    const orphanInstallationId = crypto.randomUUID();
+    const orphanEpoch = before!.binding_epoch + 100;
+    await env.DB.batch([
+      env.DB.prepare(
+        `UPDATE grant_claim SET installation_id = ?, binding_epoch = ?
+         WHERE grant_id = ? AND state = 'pending' AND command_state = 'accepted'`,
+      ).bind(orphanInstallationId, orphanEpoch, grantId),
+      env.DB.prepare(
+        `UPDATE live_value_route SET installation_id = ?, binding_epoch = ?, updated_at = ?
+         WHERE grant_id = ? AND state = 'stable' AND generation = ?`,
+      ).bind(
+        orphanInstallationId,
+        orphanEpoch,
+        getVendorTestClockIso(),
+        grantId,
+        before!.route_generation,
+      ),
+    ]);
+
+    const rebound = await hpComplimentaryGrant({ envelope });
+    expect(rebound.result).toBe("applied");
+    const claimRoute = await queryOne<{
+      org_id: string;
+      installation_id: string;
+      binding_epoch: number;
+      route_generation: number;
+    }>(
+      `SELECT org_id, installation_id, binding_epoch, route_generation
+       FROM grant_claim WHERE grant_id = ?`,
+      [grantId],
+    );
+    const liveRoute = await queryOne<{
+      org_id: string;
+      installation_id: string;
+      binding_epoch: number;
+      generation: number;
+      state: string;
+    }>(
+      `SELECT org_id, installation_id, binding_epoch, generation, state
+       FROM live_value_route WHERE grant_id = ?`,
+      [grantId],
+    );
+    expect(claimRoute).toEqual({
+      org_id: scenario.orgId,
+      installation_id: scenario.installationId,
+      binding_epoch: before!.binding_epoch,
+      route_generation: before!.route_generation + 1,
+    });
+    expect(liveRoute).toEqual({
+      org_id: claimRoute!.org_id,
+      installation_id: claimRoute!.installation_id,
+      binding_epoch: claimRoute!.binding_epoch,
+      generation: claimRoute!.route_generation,
+      state: "stable",
+    });
   });
 
   it("E2E-P3.6-02 A27 365-day complimentary grant is exceeds_ceiling unless a second assertion overrides it", async () => {

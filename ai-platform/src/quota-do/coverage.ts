@@ -3585,16 +3585,61 @@ export async function transferInRPC(
         return { kind: "transfer_in", result: "bad_request" };
       }
     }
-    const routeRows = await request.db.prepare(
-      `SELECT grant_id, state, transfer_id FROM live_value_route
-       WHERE org_id = ? AND installation_id = ?`,
-    ).bind(request.orgId, request.installationId).all<{
-      grant_id: string; state: string; transfer_id: string | null;
+    const transfer = await request.db.prepare(
+      `SELECT org_id, from_installation_id, to_installation_id, package
+       FROM transfer WHERE transfer_id = ?`,
+    ).bind(request.transferId).first<{
+      org_id: string;
+      from_installation_id: string;
+      to_installation_id: string;
+      package: string | null;
     }>();
-    const routeByGrant = new Map((routeRows.results ?? []).map((row) => [row.grant_id, row]));
+    const destinationBinding = await request.db.prepare(
+      `SELECT installation_id FROM tenant_binding
+       WHERE org_id = ? AND installation_id = ? AND epoch = ? AND status = 'active'`,
+    ).bind(request.orgId, request.installationId, request.bindingEpoch).first<{
+      installation_id: string;
+    }>();
+    if (
+      transfer === null || transfer.org_id !== request.orgId ||
+      transfer.to_installation_id !== request.installationId ||
+      transfer.package === null || destinationBinding === null
+    ) {
+      return { kind: "transfer_in", result: "bad_request" };
+    }
+    let authorizedPackage: unknown;
+    try {
+      authorizedPackage = JSON.parse(transfer.package) as unknown;
+    } catch {
+      return { kind: "transfer_in", result: "bad_request" };
+    }
+    if (
+      !Array.isArray(authorizedPackage) ||
+      await sha256Hex(canonicalize(authorizedPackage)) !== await sha256Hex(canonicalize(request.package))
+    ) {
+      return { kind: "transfer_in", result: "bad_request" };
+    }
+
+    const originGrantIds = request.package.map((term) => term.origin_grant_id);
+    const routeRows = originGrantIds.length === 0
+      ? []
+      : (await request.db.prepare(
+          `SELECT grant_id, org_id, installation_id, binding_epoch, state, transfer_id
+           FROM live_value_route WHERE grant_id IN (${originGrantIds.map(() => "?").join(",")})`,
+        ).bind(...originGrantIds).all<{
+          grant_id: string;
+          org_id: string;
+          installation_id: string;
+          binding_epoch: number;
+          state: string;
+          transfer_id: string | null;
+        }>()).results ?? [];
+    const routeByGrant = new Map(routeRows.map((row) => [row.grant_id, row]));
     if (request.package.some((term) => {
       const route = routeByGrant.get(term.origin_grant_id);
-      return route === undefined || route.state !== "moving" || route.transfer_id !== request.transferId;
+      return route === undefined || route.org_id !== transfer.org_id ||
+        route.installation_id !== transfer.from_installation_id ||
+        route.state !== "moving" || route.transfer_id !== request.transferId;
     })) {
       return { kind: "transfer_in", result: "bad_request" };
     }

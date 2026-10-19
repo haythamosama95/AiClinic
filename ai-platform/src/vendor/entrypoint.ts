@@ -1507,6 +1507,56 @@ async function ensureAcceptedGrantBinding(
   env: VendorEnv,
   claim: GrantClaimRow,
 ): Promise<GrantClaimRow | null> {
+  const rebindAcceptedClaim = async (
+    installationId: string,
+    bindingEpoch: number,
+  ): Promise<GrantClaimRow | null> => {
+    const updatedAt = await clockNowIso(env);
+    await env.DB.batch([
+      env.DB.prepare(
+        `UPDATE grant_claim
+         SET installation_id = ?, binding_epoch = ?, route_generation = route_generation + 1
+         WHERE grant_id = ? AND org_id = ? AND state = 'pending'
+           AND command_state = 'accepted' AND installation_id = ?
+           AND binding_epoch = ? AND route_generation = ?
+           AND EXISTS (
+             SELECT 1 FROM live_value_route
+             WHERE grant_id = ? AND org_id = ? AND state = 'stable'
+               AND installation_id = ? AND binding_epoch = ? AND generation = ?
+           )`,
+      ).bind(
+        installationId, bindingEpoch, claim.grant_id, claim.org_id,
+        claim.installation_id, claim.binding_epoch, claim.route_generation,
+        claim.grant_id, claim.org_id, claim.installation_id,
+        claim.binding_epoch, claim.route_generation,
+      ),
+      env.DB.prepare(
+        `UPDATE live_value_route
+         SET installation_id = ?, binding_epoch = ?, generation = generation + 1, updated_at = ?
+         WHERE grant_id = ? AND org_id = ? AND state = 'stable'
+           AND installation_id = ? AND binding_epoch = ? AND generation = ?`,
+      ).bind(
+        installationId, bindingEpoch, updatedAt, claim.grant_id, claim.org_id,
+        claim.installation_id, claim.binding_epoch, claim.route_generation,
+      ),
+    ]);
+    const [updated, route] = await Promise.all([
+      readGrantClaim(env.DB, claim.grant_id),
+      readLiveValueRoute(env.DB, claim.grant_id),
+    ]);
+    if (
+      updated === null || !("grant_id" in updated) || route === null ||
+      updated.org_id !== claim.org_id || route.org_id !== claim.org_id ||
+      updated.installation_id !== installationId || updated.binding_epoch !== bindingEpoch ||
+      updated.route_generation !== claim.route_generation + 1 ||
+      route.installation_id !== installationId || route.binding_epoch !== bindingEpoch ||
+      route.generation !== updated.route_generation || route.state !== "stable"
+    ) {
+      return null;
+    }
+    return updated;
+  };
+
   const existingRoute = await readTenantBindingForInstallation(
     env.DB,
     claim.org_id,
@@ -1516,12 +1566,7 @@ async function ensureAcceptedGrantBinding(
 
   const active = await readLiveTenantBinding(env.DB, claim.org_id);
   if (active !== null) {
-    await env.DB.prepare(
-      `UPDATE grant_claim SET installation_id = ?, binding_epoch = ?
-       WHERE grant_id = ? AND state = 'pending' AND command_state = 'accepted'`,
-    ).bind(active.installation_id, active.epoch, claim.grant_id).run();
-    const updated = await readGrantClaim(env.DB, claim.grant_id);
-    return updated !== null && "grant_id" in updated ? updated : null;
+    return rebindAcceptedClaim(active.installation_id, active.epoch);
   }
 
   const createdAt = await clockNowIso(env);
@@ -1542,10 +1587,7 @@ async function ensureAcceptedGrantBinding(
     const winner = await readLiveTenantBinding(env.DB, claim.org_id);
     if (winner === null) return null;
     if (winner.installation_id !== claim.installation_id) {
-      await env.DB.prepare(
-        `UPDATE grant_claim SET installation_id = ?, binding_epoch = ?
-         WHERE grant_id = ? AND state = 'pending' AND command_state = 'accepted'`,
-      ).bind(winner.installation_id, winner.epoch, claim.grant_id).run();
+      return rebindAcceptedClaim(winner.installation_id, winner.epoch);
     }
   }
   const updated = await readGrantClaim(env.DB, claim.grant_id);
