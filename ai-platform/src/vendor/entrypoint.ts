@@ -24,6 +24,7 @@ import {
   executeDeleteInstallation,
   executeTransferIn,
   executeTransferOut,
+  readTransferById,
   readTransferByAssertionSha256,
   retireHeldBindingIfEmpty,
   transferRowToDetail,
@@ -646,6 +647,431 @@ async function readMaxTenantBindingEpoch(
   return row?.max_epoch ?? 0;
 }
 
+type GrantClaimRow = {
+  grant_id: string;
+  org_id: string;
+  source_kind: string;
+  envelope: string;
+  envelope_sha256: string;
+  installation_id: string;
+  binding_epoch: number;
+  route_generation: number;
+  state: "pending" | "completed" | "disputed";
+  receipt: string | null;
+};
+
+async function readGrantClaim(
+  db: D1Database,
+  grantId: string,
+): Promise<GrantClaimRow | GrantResultEnvelope | null> {
+  return db
+    .prepare(
+      `SELECT grant_id, org_id, source_kind, envelope, envelope_sha256,
+              installation_id, binding_epoch, route_generation, state, receipt
+       FROM grant_claim WHERE grant_id = ?`,
+    )
+    .bind(grantId)
+    .first<GrantClaimRow>();
+}
+
+async function alertGrantClaimDispute(
+  env: VendorEnv,
+  orgId: string,
+  grantId: string,
+  nowIso: string,
+): Promise<void> {
+  const alertKey = `AL-10:grant-claim:${grantId}`;
+  await env.DB.prepare(
+    `INSERT INTO grant_claim_dispute (grant_id, org_id, reason, first_at, last_at, count)
+     VALUES (?, ?, 'grant_identity_mismatch', ?, ?, 1)
+     ON CONFLICT(grant_id) DO UPDATE SET last_at = excluded.last_at, count = count + 1`,
+  )
+    .bind(grantId, orgId, nowIso, nowIso)
+    .run();
+  await env.DB.prepare(
+    `INSERT INTO platform_alert
+       (alert_key, code, severity, first_at, last_at, count, send_state, next_send_at, resolved_at)
+     VALUES (?, 'AL-10', 'high', ?, ?, 1, 'unsent', NULL, NULL)
+     ON CONFLICT(alert_key) DO UPDATE SET last_at = excluded.last_at, count = count + 1`,
+  )
+    .bind(alertKey, nowIso, nowIso)
+    .run();
+  const existing = await readGrantClaim(env.DB, grantId);
+  if (existing !== null && existing.state !== "disputed") {
+    await env.DB.prepare(
+      `UPDATE grant_claim SET state = 'disputed' WHERE grant_id = ?`,
+    )
+      .bind(grantId)
+      .run();
+  }
+}
+
+async function parseGrantReceipt(value: unknown): Promise<Record<string, unknown> | null> {
+  if (isRecord(value)) return value;
+  if (typeof value !== "string") return null;
+  try {
+    const parsed: unknown = JSON.parse(value);
+    return isRecord(parsed) ? parsed : null;
+  } catch {
+    return null;
+  }
+}
+
+async function readGrantLedgerR2(
+  env: VendorEnv,
+  grantId: string,
+): Promise<Record<string, unknown> | null> {
+  const object = await env.R2.get(`grant-ledger/${grantId}.ndjson`);
+  if (object === null) return null;
+  try {
+    const line = (await object.text()).trim().split("\n")[0] ?? "";
+    if (line.length === 0) return null;
+    const parsed: unknown = JSON.parse(line);
+    return isRecord(parsed) ? parsed : null;
+  } catch {
+    return null;
+  }
+}
+
+/** Reconcile every retained route before the first dispatcher uses global claims. */
+async function ensureGrantClaimsBackfilled(
+  env: VendorEnv,
+  orgId: string,
+  version: number,
+): Promise<boolean> {
+  const done = await env.DB.prepare(
+    "SELECT org_id FROM grant_claim_backfill WHERE org_id = ?",
+  )
+    .bind(orgId)
+    .first<{ org_id: string }>();
+  if (done !== null) return true;
+
+  const bindings = await env.DB.prepare(
+    `SELECT installation_id, epoch FROM tenant_binding WHERE org_id = ? ORDER BY epoch ASC`,
+  )
+    .bind(orgId)
+    .all<{ installation_id: string; epoch: number }>();
+  const ledgerRows = await env.DB.prepare(
+    `SELECT grant_id, installation_id, envelope_sha256, receipt, source_kind, applied_at
+     FROM grant_ledger WHERE org_id = ? ORDER BY applied_at, grant_id`,
+  )
+    .bind(orgId)
+    .all<{
+      grant_id: string;
+      installation_id: string;
+      envelope_sha256: string;
+      receipt: string;
+      source_kind: string;
+      applied_at: string;
+    }>();
+  const ledgerById = new Map((ledgerRows.results ?? []).map((row) => [row.grant_id, row]));
+  const seen = new Set<string>();
+  const nowIso = await clockNowIso(env);
+
+  for (const binding of bindings.results ?? []) {
+    const inspected = await callCoverageDo(env, binding.installation_id, {
+      kind: "inspect_coverage",
+      installationId: binding.installation_id,
+      orgId,
+      vendorContractVersion: version,
+    });
+    if (inspected === null || !Array.isArray(inspected.grants)) return false;
+    for (const raw of inspected.grants) {
+      if (!isRecord(raw) || typeof raw.grant_id !== "string") {
+        await alertGrantClaimDispute(env, orgId, "unknown", nowIso);
+        return false;
+      }
+      const grantId = raw.grant_id;
+      const envelopeRaw = raw.envelope;
+      const envelopeText = typeof envelopeRaw === "string"
+        ? envelopeRaw
+        : JSON.stringify(envelopeRaw) ?? "";
+      let envelope: unknown;
+      try { envelope = JSON.parse(envelopeText); } catch { envelope = null; }
+      if (
+        raw.source_kind === "transfer" && isRecord(envelope) &&
+        typeof envelope.transfer_id === "string" && Number.isInteger(envelope.index)
+      ) {
+        const transfer = await readTransferById(env.DB, envelope.transfer_id);
+        const transferPackage: unknown = transfer?.package === null || transfer?.package === undefined
+          ? null
+          : JSON.parse(transfer.package);
+        envelope = Array.isArray(transferPackage)
+          ? transferPackage[envelope.index as number] ?? null
+          : null;
+      }
+      const receipt = await parseGrantReceipt(raw.receipt);
+      if (
+        !isRecord(envelope) || receipt === null ||
+        typeof raw.envelope_sha256 !== "string" ||
+        typeof raw.source_kind !== "string" ||
+        receipt.org_id !== orgId ||
+        receipt.installation_id !== binding.installation_id ||
+        receipt.grant_id !== grantId ||
+        receipt.envelope_sha256 !== raw.envelope_sha256 ||
+        await grantEnvelopeHash(envelope) !== raw.envelope_sha256
+      ) {
+        await alertGrantClaimDispute(env, orgId, grantId, nowIso);
+        return false;
+      }
+      const ledger = ledgerById.get(grantId);
+      if (ledger !== undefined) {
+        const ledgerReceipt = await parseGrantReceipt(ledger.receipt);
+        if (
+          ledger.installation_id !== binding.installation_id ||
+          ledger.source_kind !== raw.source_kind ||
+          ledger.envelope_sha256 !== raw.envelope_sha256 ||
+          ledgerReceipt === null || canonicalize(ledgerReceipt) !== canonicalize(receipt)
+        ) {
+          await alertGrantClaimDispute(env, orgId, grantId, nowIso);
+          return false;
+        }
+      }
+      const r2Row = await readGrantLedgerR2(env, grantId);
+      if (r2Row !== null) {
+        const r2Receipt = await parseGrantReceipt(r2Row.receipt);
+        if (
+          r2Row.org_id !== orgId ||
+          r2Row.grant_id !== grantId ||
+          r2Row.installation_id !== binding.installation_id ||
+          r2Row.source_kind !== raw.source_kind ||
+          r2Row.envelope_sha256 !== raw.envelope_sha256 ||
+          r2Receipt === null || canonicalize(r2Receipt) !== canonicalize(receipt)
+        ) {
+          await alertGrantClaimDispute(env, orgId, grantId, nowIso);
+          return false;
+        }
+      }
+      const claim = await readGrantClaim(env.DB, grantId);
+      if (claim !== null) {
+        const claimReceipt = await parseGrantReceipt(claim.receipt);
+        if (
+          claim.org_id !== orgId ||
+          claim.source_kind !== raw.source_kind ||
+          claim.envelope_sha256 !== raw.envelope_sha256 ||
+          claim.installation_id !== binding.installation_id ||
+          claim.envelope !== canonicalize(envelope) ||
+          (claim.state === "completed" && (
+            claimReceipt === null || canonicalize(claimReceipt) !== canonicalize(receipt)
+          ))
+        ) {
+          await alertGrantClaimDispute(env, orgId, grantId, nowIso);
+          return false;
+        }
+      } else {
+        await env.DB.prepare(
+          `INSERT OR IGNORE INTO grant_claim (
+             grant_id, org_id, source_kind, envelope, envelope_sha256,
+             installation_id, binding_epoch, route_generation, state, receipt,
+             created_at, completed_at
+           ) VALUES (?, ?, ?, ?, ?, ?, ?, 1, 'completed', ?, ?, ?)`,
+        )
+          .bind(
+            grantId,
+            orgId,
+            raw.source_kind,
+            canonicalize(envelope),
+            raw.envelope_sha256,
+            binding.installation_id,
+            binding.epoch,
+            canonicalize(receipt),
+            typeof raw.applied_at === "string" ? raw.applied_at : nowIso,
+            typeof raw.applied_at === "string" ? raw.applied_at : nowIso,
+          )
+          .run();
+      }
+      seen.add(grantId);
+    }
+  }
+
+  for (const row of ledgerRows.results ?? []) {
+    if (!seen.has(row.grant_id)) {
+      await alertGrantClaimDispute(env, orgId, row.grant_id, nowIso);
+      return false;
+    }
+  }
+  await env.DB.prepare(
+    `INSERT OR IGNORE INTO grant_claim_backfill (org_id, completed_at) VALUES (?, ?)`,
+  )
+    .bind(orgId, nowIso)
+    .run();
+  return true;
+}
+
+async function createOrReadGrantClaim(
+  env: VendorEnv,
+  input: {
+    grantId: string;
+    orgId: string;
+    sourceKind: "paid" | "complimentary" | "transfer";
+    envelope: Record<string, unknown>;
+    envelopeSha256: string;
+    installationId: string;
+    bindingEpoch: number;
+    nowIso: string;
+  },
+): Promise<GrantClaimRow | null> {
+  await env.DB.prepare(
+    `INSERT OR IGNORE INTO grant_claim (
+       grant_id, org_id, source_kind, envelope, envelope_sha256,
+       installation_id, binding_epoch, route_generation, state, receipt,
+       created_at, completed_at
+     ) VALUES (?, ?, ?, ?, ?, ?, ?, 1, 'pending', NULL, ?, NULL)`,
+  )
+    .bind(
+      input.grantId,
+      input.orgId,
+      input.sourceKind,
+      canonicalize(input.envelope),
+      input.envelopeSha256,
+      input.installationId,
+      input.bindingEpoch,
+      input.nowIso,
+    )
+    .run();
+  const claim = await readGrantClaim(env.DB, input.grantId);
+  if (
+    claim === null || claim.org_id !== input.orgId ||
+    claim.envelope_sha256 !== input.envelopeSha256 ||
+    claim.source_kind !== input.sourceKind ||
+    claim.envelope !== canonicalize(input.envelope)
+  ) {
+    return null;
+  }
+  return claim;
+}
+
+function claimReplayResult(
+  version: number,
+  claim: GrantClaimRow,
+  envelopeSha256: string,
+  orgId: string,
+): GrantResultEnvelope | "pending" | "conflict" | "disputed" {
+  if (claim.org_id !== orgId || claim.envelope_sha256 !== envelopeSha256) {
+    return "conflict";
+  }
+  if (claim.state === "disputed") return "disputed";
+  if (claim.state === "pending") return "pending";
+  if (claim.receipt === null) return "disputed";
+  try {
+    const receipt: unknown = JSON.parse(claim.receipt);
+    if (!isRecord(receipt)) return "disputed";
+    return {
+      contract_version: version,
+      result: "already_applied",
+      code: "",
+      detail: "",
+      receipt,
+    };
+  } catch {
+    return "disputed";
+  }
+}
+
+async function routePendingGrantClaim(
+  env: VendorEnv,
+  claim: GrantClaimRow,
+  version: number,
+): Promise<GrantClaimRow | null> {
+  if (claim.state !== "pending") {
+    return null;
+  }
+  const oldBinding = await readTenantBindingForInstallation(
+    env.DB,
+    claim.org_id,
+    claim.installation_id,
+  );
+  if (oldBinding === null || oldBinding.status !== "retired") return claim;
+
+  let liveBinding = await readActiveTenantBinding(env.DB, claim.org_id);
+  if (liveBinding === null) {
+    await resolveOrInsertGrantBinding(env, claim.org_id);
+    liveBinding = await readActiveTenantBinding(env.DB, claim.org_id);
+  }
+  if (liveBinding === null) return null;
+  const sealedAt = await clockNowIso(env);
+  const sealed = await callCoverageDo(env, claim.installation_id, {
+    kind: "seal_grant_route",
+    installationId: claim.installation_id,
+    orgId: claim.org_id,
+    bindingEpoch: claim.binding_epoch,
+    grantId: claim.grant_id,
+    envelopeSha256: claim.envelope_sha256,
+    routeGeneration: claim.route_generation,
+    sealedAt,
+  });
+  if (sealed === null) return null;
+  if (sealed.result === "already_applied" && isRecord(sealed.receipt)) {
+    const receipt = sealed.receipt;
+    if (
+      receipt.org_id !== claim.org_id ||
+      receipt.installation_id !== claim.installation_id ||
+      receipt.grant_id !== claim.grant_id ||
+      receipt.envelope_sha256 !== claim.envelope_sha256
+    ) {
+      await alertGrantClaimDispute(env, claim.org_id, claim.grant_id, sealedAt);
+      return null;
+    }
+    await env.DB.prepare(
+      `UPDATE grant_claim SET state = 'completed', receipt = ?, completed_at = ?
+       WHERE grant_id = ? AND state = 'pending' AND installation_id = ? AND route_generation = ?`,
+    )
+      .bind(canonicalize(receipt), sealedAt, claim.grant_id, claim.installation_id, claim.route_generation)
+      .run();
+    const reread = await readGrantClaim(env.DB, claim.grant_id);
+    if (reread === null) return null;
+    const replay = claimReplayResult(version, reread, claim.envelope_sha256, claim.org_id);
+    return typeof replay === "object" ? replay : null;
+  }
+  if (sealed.result !== "sealed") {
+    await alertGrantClaimDispute(env, claim.org_id, claim.grant_id, sealedAt);
+    return null;
+  }
+
+  await env.DB.prepare(
+    `UPDATE grant_claim
+     SET installation_id = ?, binding_epoch = ?, route_generation = route_generation + 1
+     WHERE grant_id = ? AND state = 'pending' AND installation_id = ?
+       AND binding_epoch = ? AND route_generation = ?`,
+  )
+    .bind(
+      liveBinding.installation_id,
+      liveBinding.epoch,
+      claim.grant_id,
+      claim.installation_id,
+      claim.binding_epoch,
+      claim.route_generation,
+    )
+    .run();
+  return readGrantClaim(env.DB, claim.grant_id);
+}
+
+async function persistGrantClaimReceipt(
+  env: VendorEnv,
+  claim: GrantClaimRow,
+  receipt: Record<string, unknown>,
+  nowIso: string,
+): Promise<boolean> {
+  if (
+    receipt.org_id !== claim.org_id ||
+    receipt.installation_id !== claim.installation_id ||
+    receipt.grant_id !== claim.grant_id ||
+    receipt.envelope_sha256 !== claim.envelope_sha256
+  ) {
+    await alertGrantClaimDispute(env, claim.org_id, claim.grant_id, nowIso);
+    return false;
+  }
+  await env.DB.prepare(
+    `UPDATE grant_claim SET state = 'completed', receipt = ?, completed_at = ?
+     WHERE grant_id = ? AND state = 'pending' AND installation_id = ? AND route_generation = ?`,
+  )
+    .bind(canonicalize(receipt), nowIso, claim.grant_id, claim.installation_id, claim.route_generation)
+    .run();
+  const stored = await readGrantClaim(env.DB, claim.grant_id);
+  return stored?.state === "completed" && stored.receipt !== null &&
+    canonicalize(JSON.parse(stored.receipt)) === canonicalize(receipt);
+}
+
 async function callCoverageDo(
   env: VendorEnv,
   installationId: string,
@@ -674,6 +1100,55 @@ async function callCoverageDo(
   } catch {
     return null;
   }
+}
+
+type GrantDoCallResult =
+  | { kind: "response"; response: Record<string, unknown> }
+  | { kind: "unavailable" }
+  | { kind: "version_refusal" };
+
+async function callGrantCoverageDo(
+  env: VendorEnv,
+  installationId: string,
+  body: Record<string, unknown>,
+): Promise<GrantDoCallResult> {
+  const stub = env.DO.get(env.DO.idFromName(installationId));
+  let response: Response;
+  try {
+    response = await stub.fetch("https://quota-do.internal/rpc", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        contract_version: CHANNEL_VERSIONS.platformDo,
+        installationId,
+        ...body,
+        environment: env.ENVIRONMENT,
+      }),
+    });
+  } catch {
+    return { kind: "unavailable" };
+  }
+  if (!response.ok) return { kind: "unavailable" };
+  let raw: unknown;
+  try {
+    raw = await response.json();
+  } catch {
+    return { kind: "unavailable" };
+  }
+  if (
+    isRecord(raw) &&
+    raw.result === "rejected" &&
+    raw.code === "contract_version_unsupported"
+  ) {
+    return { kind: "version_refusal" };
+  }
+  const decoded = decodeDoResponse<Record<string, unknown>>(
+    raw,
+    CHANNEL_VERSIONS.platformDo,
+  );
+  return decoded === undefined
+    ? { kind: "unavailable" }
+    : { kind: "response", response: decoded };
 }
 
 function durationScaleFromEnv(env: VendorEnv): DurationScale | undefined {
@@ -1515,73 +1990,6 @@ async function verifyCeilingOverrideAssertion(
   }
 
   return { ok: true, assertionSha256 };
-}
-
-async function tryComplimentaryGrantIdempotency(
-  env: VendorEnv,
-  version: number,
-  orgId: string,
-  envelope: Record<string, unknown>,
-): Promise<GrantResultEnvelope | null> {
-  const grantId = envelope.grant_id;
-  if (typeof grantId !== "string" || grantId.length === 0) {
-    return null;
-  }
-
-  const installationId = await resolveOrInsertGrantBinding(env, orgId);
-  const envelopeSha256 = await grantEnvelopeHash(envelope);
-  const inspect = await callCoverageDo(env, installationId, {
-    kind: "inspect_coverage",
-    orgId,
-    vendorContractVersion: version,
-  });
-  if (inspect === null || !Array.isArray(inspect.grants)) {
-    return null;
-  }
-
-  for (const row of inspect.grants) {
-    if (!isRecord(row)) {
-      continue;
-    }
-    if (row.grant_id !== grantId) {
-      continue;
-    }
-    const storedHash = row.envelope_sha256;
-    if (typeof storedHash !== "string") {
-      return null;
-    }
-    if (storedHash !== envelopeSha256) {
-      return {
-        contract_version: version,
-        result: "conflict",
-        code: "",
-        detail: "",
-      };
-    }
-    const receiptRaw = row.receipt;
-    let receipt: Record<string, unknown> | null = null;
-    if (typeof receiptRaw === "string") {
-      try {
-        receipt = JSON.parse(receiptRaw) as Record<string, unknown>;
-      } catch {
-        receipt = null;
-      }
-    } else if (isRecord(receiptRaw)) {
-      receipt = receiptRaw;
-    }
-    if (receipt === null) {
-      return null;
-    }
-    return {
-      contract_version: version,
-      result: "already_applied",
-      code: "",
-      detail: "",
-      receipt,
-    };
-  }
-
-  return null;
 }
 
 function mapVoidForReversalDoResponse(
@@ -3340,15 +3748,38 @@ export class VendorEntrypoint extends WorkerEntrypoint<VendorEnv> {
         return grantRejected(version, "unauthenticated");
       }
 
-      const envelopeValidation = validateGrantEnvelope(envelope);
-      if (!envelopeValidation.ok) {
+      const grantEnvelopeValidation = validateGrantEnvelope(envelope);
+      if (!grantEnvelopeValidation.ok) {
         if (
-          "code" in envelopeValidation &&
-          envelopeValidation.code === "placement_not_supported"
+          "code" in grantEnvelopeValidation &&
+          grantEnvelopeValidation.code === "placement_not_supported"
         ) {
           return grantRejected(version, "placement_not_supported");
         }
         return grantRejected(version, "unit_not_allowed");
+      }
+      const claimOrgId = envelope.org_id;
+      const claimGrantId = envelope.grant_id;
+      if (typeof claimOrgId !== "string" || typeof claimGrantId !== "string") {
+        return grantRejected(version, "bad_signature");
+      }
+      const claimEnvelopeSha256 = await grantEnvelopeHash(envelope);
+      if (!(await ensureGrantClaimsBackfilled(this.env, claimOrgId, version))) {
+        return grantRejected(version, "coverage_unknown");
+      }
+      let existingGrantClaim = await readGrantClaim(this.env.DB, claimGrantId);
+      if (existingGrantClaim !== null) {
+        const replay = claimReplayResult(
+          version,
+          existingGrantClaim,
+          claimEnvelopeSha256,
+          claimOrgId,
+        );
+        if (replay === "conflict") {
+          return { contract_version: version, result: "conflict", code: "", detail: "" };
+        }
+        if (replay === "disputed") return grantRejected(version, "coverage_unknown");
+        if (replay !== "pending") return replay;
       }
 
       const plan = envelope.plan;
@@ -3362,7 +3793,7 @@ export class VendorEntrypoint extends WorkerEntrypoint<VendorEnv> {
       }
       const planVersion = planVersionRaw as number;
       const planRow = await readPlanVersion(this.env.DB, planId, planVersion);
-      if (planRow === null || planRow.status !== "published") {
+      if (planRow === null || (planRow.status !== "published" && existingGrantClaim === null)) {
         return grantRejected(version, "plan_not_published");
       }
 
@@ -3391,54 +3822,44 @@ export class VendorEntrypoint extends WorkerEntrypoint<VendorEnv> {
         return grantRejected(version, "exceeds_plan_bound");
       }
 
-      const orgId = envelope.org_id;
-      if (typeof orgId !== "string") {
-        return grantRejected(version, "bad_signature");
-      }
+      const orgId = claimOrgId;
 
       const ceilingPolicy = await readCurrentCeilingPolicy(this.env.DB);
-      if (ceilingPolicy === null) {
+      if (ceilingPolicy === null && existingGrantClaim === null) {
         return grantRejected(version, "coverage_unknown");
       }
 
       const accessJwt =
         typeof args.access_jwt === "string" ? args.access_jwt : "";
 
-      const idempotent = await tryComplimentaryGrantIdempotency(
-        this.env,
-        version,
-        orgId,
-        envelope,
-      );
-      if (idempotent !== null) {
-        return idempotent;
-      }
-
-      const check = await runHpAssertionChecks(
-        this.env,
-        "grant",
-        args,
-        access.email,
-        version,
-      );
-      if (!check.ok) {
-        const rejectedEnvelope = await rejectHpAssertion(
+      let assertionCheck: Awaited<ReturnType<typeof runHpAssertionChecks>> | null = null;
+      if (existingGrantClaim === null) {
+        assertionCheck = await runHpAssertionChecks(
           this.env,
-          access.email,
           "grant",
-          check,
+          args,
+          access.email,
+          version,
         );
-        return {
-          contract_version: rejectedEnvelope.contract_version,
-          result: "rejected",
-          code: rejectedEnvelope.code,
-          detail: rejectedEnvelope.detail,
-        };
+        if (!assertionCheck.ok) {
+          const rejectedEnvelope = await rejectHpAssertion(
+            this.env,
+            access.email,
+            "grant",
+            assertionCheck,
+          );
+          return {
+            contract_version: rejectedEnvelope.contract_version,
+            result: "rejected",
+            code: rejectedEnvelope.code,
+            detail: rejectedEnvelope.detail,
+          };
+        }
       }
 
-      let skipCeilingCheck = false;
+      let skipCeilingCheck = existingGrantClaim !== null && ceilingPolicy === null;
       let overrideAssertionSha256: string | null = null;
-      if (envelope.ceiling_override !== undefined) {
+      if (existingGrantClaim === null && envelope.ceiling_override !== undefined) {
         const overrideCheck = await verifyCeilingOverrideAssertion(
           this.env,
           args,
@@ -3446,7 +3867,7 @@ export class VendorEntrypoint extends WorkerEntrypoint<VendorEnv> {
           accessJwt,
           version,
           envelope,
-          check.signer,
+          assertionCheck!.signer,
         );
         if (!overrideCheck.ok) {
           return grantRejected(version, overrideCheck.code);
@@ -3463,20 +3884,20 @@ export class VendorEntrypoint extends WorkerEntrypoint<VendorEnv> {
           await this.env.DB.batch([
             await buildAssertionUsedStatement(
               this.env,
-              check.assertionSha256,
-              check.signer.credential_id,
+              assertionCheck!.assertionSha256,
+              assertionCheck!.signer.credential_id,
             ),
             await buildAssertionUsedStatement(
               this.env,
               overrideAssertionSha256,
-              check.signer.credential_id,
+              assertionCheck!.signer.credential_id,
             ),
             buildEntrypointAuditStatement(
               this.env.DB,
               access.email,
               "grant",
-              check.auditTarget,
-              check.assertionSha256,
+              assertionCheck!.auditTarget,
+              assertionCheck!.assertionSha256,
             ),
           ]);
         } catch {
@@ -3484,25 +3905,50 @@ export class VendorEntrypoint extends WorkerEntrypoint<VendorEnv> {
             this.env.DB,
             access.email,
             "grant",
-            check.auditTarget,
-            check.assertionSha256,
+            assertionCheck!.auditTarget,
+            assertionCheck!.assertionSha256,
           );
           return grantRejected(version, "assertion_used");
         }
-      } else {
-        await finishHpAssertion(this.env, access.email, "grant", check);
+      } else if (assertionCheck !== null) {
+        await finishHpAssertion(this.env, access.email, "grant", assertionCheck);
       }
 
       const liveBinding = await readLiveTenantBinding(this.env.DB, orgId);
-      const installationId =
+      const installationId = existingGrantClaim?.installation_id ??
         liveBinding?.installation_id ??
         (await resolveOrInsertGrantBinding(this.env, orgId));
-      const binding =
-        liveBinding ??
-        (await readLiveTenantBinding(this.env.DB, orgId));
+      let binding = existingGrantClaim === null ? liveBinding : {
+        installation_id: existingGrantClaim.installation_id,
+        epoch: existingGrantClaim.binding_epoch,
+        status: "active",
+      };
+      if (binding === null) binding = await readLiveTenantBinding(this.env.DB, orgId);
       if (binding === null) {
         return grantRejected(version, "coverage_unknown");
       }
+
+      if (existingGrantClaim === null) {
+        existingGrantClaim = await createOrReadGrantClaim(this.env, {
+          grantId: claimGrantId,
+          orgId,
+          sourceKind: "complimentary",
+          envelope,
+          envelopeSha256: claimEnvelopeSha256,
+          installationId,
+          bindingEpoch: binding.epoch,
+          nowIso: await clockNowIso(this.env),
+        });
+      }
+      if (existingGrantClaim === null) return grantRejected(version, "coverage_unknown");
+      const routedClaim = await routePendingGrantClaim(this.env, existingGrantClaim, version);
+      if (routedClaim === null || !("grant_id" in routedClaim)) {
+        return routedClaim === null ? grantRejected(version, "coverage_unknown") : routedClaim;
+      }
+      existingGrantClaim = routedClaim;
+      const dispatchInstallationId = existingGrantClaim.installation_id;
+      const dispatchBinding = await readTenantBindingForInstallation(this.env.DB, orgId, dispatchInstallationId);
+      if (dispatchBinding === null) return grantRejected(version, "coverage_unknown");
 
       const complimentaryGrantId = envelope.grant_id;
       if (typeof complimentaryGrantId === "string" && complimentaryGrantId.length > 0) {
@@ -3546,9 +3992,10 @@ export class VendorEntrypoint extends WorkerEntrypoint<VendorEnv> {
           ? (envelope.adjustment as Record<string, unknown>)
           : undefined;
 
-      const doResponse = await callCoverageDo(this.env, installationId, {
+      const doCall = await callGrantCoverageDo(this.env, dispatchInstallationId, {
         kind: "apply_grant",
-        bindingEpoch: binding.epoch,
+        bindingEpoch: dispatchBinding.epoch,
+        routeGeneration: existingGrantClaim.route_generation,
         vendorContractVersion: version,
         orgId,
         envelope,
@@ -3570,7 +4017,7 @@ export class VendorEntrypoint extends WorkerEntrypoint<VendorEnv> {
         sourceKind: "complimentary",
         envelopeKind: envelopeKind ?? "term",
         planMaxAllowancePerMonth: planRow.max_allowance_per_month,
-        ceilingPolicy: {
+        ceilingPolicy: ceilingPolicy === null ? undefined : {
           per_grant_max_days: ceilingPolicy.per_grant_max_days,
           per_grant_max_allowance_months:
             ceilingPolicy.per_grant_max_allowance_months,
@@ -3583,11 +4030,20 @@ export class VendorEntrypoint extends WorkerEntrypoint<VendorEnv> {
         adjustment,
       });
 
-      if (doResponse === null) {
-        return grantRejected(version, "coverage_unknown");
+      if (doCall.kind === "unavailable") {
+        return grantTransient(version, "unavailable");
       }
-
-      return mapApplyGrantDoResponse(version, doResponse);
+      if (doCall.kind === "version_refusal") {
+        return grantRejected(version, "contract_version_unsupported");
+      }
+      const doResponse = doCall.response;
+      const mapped = mapApplyGrantDoResponse(version, doResponse);
+      if ((mapped.result === "applied" || mapped.result === "already_applied") && mapped.receipt !== undefined) {
+        if (!(await persistGrantClaimReceipt(this.env, existingGrantClaim, mapped.receipt, await clockNowIso(this.env)))) {
+          return grantRejected(version, "coverage_unknown");
+        }
+      }
+      return mapped;
     }
 
     const aboKid = args.abo_kid;
@@ -3661,6 +4117,40 @@ export class VendorEntrypoint extends WorkerEntrypoint<VendorEnv> {
       return grantRejected(version, "bad_signature");
     }
 
+    const envelopeValidation = validateGrantEnvelope(envelope);
+    if (!envelopeValidation.ok) {
+      if (
+        "code" in envelopeValidation &&
+        envelopeValidation.code === "placement_not_supported"
+      ) {
+        return grantRejected(version, "placement_not_supported");
+      }
+      return grantRejected(version, "unit_not_allowed");
+    }
+    const claimOrgId = envelope.org_id;
+    const claimGrantId = envelope.grant_id;
+    if (typeof claimOrgId !== "string" || typeof claimGrantId !== "string") {
+      return grantRejected(version, "bad_signature");
+    }
+    const claimEnvelopeSha256 = await grantEnvelopeHash(envelope);
+    if (!(await ensureGrantClaimsBackfilled(this.env, claimOrgId, version))) {
+      return grantRejected(version, "coverage_unknown");
+    }
+    let existingGrantClaim = await readGrantClaim(this.env.DB, claimGrantId);
+    if (existingGrantClaim !== null) {
+      const replay = claimReplayResult(
+        version,
+        existingGrantClaim,
+        claimEnvelopeSha256,
+        claimOrgId,
+      );
+      if (replay === "conflict") {
+        return { contract_version: version, result: "conflict", code: "", detail: "" };
+      }
+      if (replay === "disputed") return grantRejected(version, "coverage_unknown");
+      if (replay !== "pending") return replay;
+    }
+
     const plan = envelope.plan;
     if (!isRecord(plan)) {
       return grantRejected(version, "plan_not_published");
@@ -3673,7 +4163,7 @@ export class VendorEntrypoint extends WorkerEntrypoint<VendorEnv> {
     const planVersion = planVersionRaw as number;
 
     const planRow = await readPlanVersion(this.env.DB, planId, planVersion);
-    if (planRow === null || planRow.status !== "published") {
+    if (planRow === null || (planRow.status !== "published" && existingGrantClaim === null)) {
       return grantRejected(version, "plan_not_published");
     }
 
@@ -3706,17 +4196,16 @@ export class VendorEntrypoint extends WorkerEntrypoint<VendorEnv> {
     }
 
     const ceilingPolicy = await readCurrentCeilingPolicy(this.env.DB);
-    if (ceilingPolicy === null) {
+    if (ceilingPolicy === null && existingGrantClaim === null) {
       return grantRejected(version, "coverage_unknown");
     }
 
     const grace = envelope.grace;
-    if (
-      !isRecord(grace) ||
-      !Number.isInteger(grace.days) ||
+    if (!isRecord(grace) || (existingGrantClaim === null && (
+      !Number.isInteger(grace.days) || ceilingPolicy === null ||
       (grace.days as number) > ceilingPolicy.max_paid_grace_days ||
       grace.cap_rule !== ceilingPolicy.paid_cap_rule
-    ) {
+    ))) {
       return grantRejected(version, "exceeds_plan_bound");
     }
 
@@ -3724,50 +4213,19 @@ export class VendorEntrypoint extends WorkerEntrypoint<VendorEnv> {
       return grantRejected(version, "placement_not_supported");
     }
 
-    const envelopeValidation = validateGrantEnvelope(envelope);
-    if (!envelopeValidation.ok) {
-      if (
-        "code" in envelopeValidation &&
-        envelopeValidation.code === "placement_not_supported"
-      ) {
-        return grantRejected(version, "placement_not_supported");
-      }
-      return grantRejected(version, "unit_not_allowed");
-    }
-
-    const orgId = envelope.org_id;
-    if (typeof orgId !== "string") {
-      return grantRejected(version, "bad_signature");
-    }
+    const orgId = claimOrgId;
 
     const heldBinding = await readLiveTenantBinding(this.env.DB, orgId);
-    if (heldBinding?.status === "held_for_transfer") {
+    if (existingGrantClaim === null && heldBinding?.status === "held_for_transfer") {
       return grantTransient(version, "transfer_pending");
     }
 
-    const installationOverride =
-      typeof args.installation_id === "string" ? args.installation_id : null;
-    const installationId =
-      installationOverride ??
-      (await resolveOrInsertGrantBinding(this.env, orgId));
-    let bindingEpoch = 1;
-    if (installationOverride !== null) {
-      const bindingRow = await this.env.DB.prepare(
-        `SELECT epoch FROM tenant_binding WHERE org_id = ? AND installation_id = ?`,
-      )
-        .bind(orgId, installationOverride)
-        .first<{ epoch: number }>();
-      if (bindingRow === null) {
-        return grantRejected(version, "coverage_unknown");
-      }
-      bindingEpoch = bindingRow.epoch;
-    } else {
-      const binding = await readActiveTenantBinding(this.env.DB, orgId);
-      if (binding === null) {
-        return grantRejected(version, "coverage_unknown");
-      }
-      bindingEpoch = binding.epoch;
-    }
+    let binding = existingGrantClaim === null
+      ? await readActiveTenantBinding(this.env.DB, orgId)
+      : { installation_id: existingGrantClaim.installation_id, epoch: existingGrantClaim.binding_epoch };
+    let installationId = binding?.installation_id ?? (await resolveOrInsertGrantBinding(this.env, orgId));
+    if (binding === null) binding = await readActiveTenantBinding(this.env.DB, orgId);
+    if (binding === null) return grantRejected(version, "coverage_unknown");
 
     const paidGrantId = envelope.grant_id;
     if (typeof paidGrantId === "string" && paidGrantId.length > 0) {
@@ -3790,9 +4248,32 @@ export class VendorEntrypoint extends WorkerEntrypoint<VendorEnv> {
       concurrency_limit: planRow.concurrency_limit,
     };
 
-    const doResponse = await callCoverageDo(this.env, installationId, {
+    if (existingGrantClaim === null) {
+      existingGrantClaim = await createOrReadGrantClaim(this.env, {
+        grantId: claimGrantId,
+        orgId,
+        sourceKind: "paid",
+        envelope,
+        envelopeSha256: claimEnvelopeSha256,
+        installationId,
+        bindingEpoch: binding.epoch,
+        nowIso,
+      });
+    }
+    if (existingGrantClaim === null) return grantRejected(version, "coverage_unknown");
+    const routedClaim = await routePendingGrantClaim(this.env, existingGrantClaim, version);
+    if (routedClaim === null || !("grant_id" in routedClaim)) {
+      return routedClaim === null ? grantRejected(version, "coverage_unknown") : routedClaim;
+    }
+    existingGrantClaim = routedClaim;
+    installationId = existingGrantClaim.installation_id;
+    const dispatchBinding = await readTenantBindingForInstallation(this.env.DB, orgId, installationId);
+    if (dispatchBinding === null) return grantRejected(version, "coverage_unknown");
+
+    const doCall = await callGrantCoverageDo(this.env, installationId, {
       kind: "apply_grant",
-      bindingEpoch,
+      bindingEpoch: dispatchBinding.epoch,
+      routeGeneration: existingGrantClaim.route_generation,
       vendorContractVersion: version,
       orgId,
       envelope,
@@ -3808,9 +4289,13 @@ export class VendorEntrypoint extends WorkerEntrypoint<VendorEnv> {
       nowIso,
     });
 
-    if (doResponse === null) {
-      return grantRejected(version, "coverage_unknown");
+    if (doCall.kind === "unavailable") {
+      return grantTransient(version, "unavailable");
     }
+    if (doCall.kind === "version_refusal") {
+      return grantRejected(version, "contract_version_unsupported");
+    }
+    const doResponse = doCall.response;
 
     const doResult = doResponse.result;
     if (doResult === "conflict") {
@@ -3821,7 +4306,13 @@ export class VendorEntrypoint extends WorkerEntrypoint<VendorEnv> {
         detail: "",
       };
     }
-    return mapApplyGrantDoResponse(version, doResponse);
+    const mapped = mapApplyGrantDoResponse(version, doResponse);
+    if ((mapped.result === "applied" || mapped.result === "already_applied") && mapped.receipt !== undefined) {
+      if (!(await persistGrantClaimReceipt(this.env, existingGrantClaim, mapped.receipt, await clockNowIso(this.env)))) {
+        return grantRejected(version, "coverage_unknown");
+      }
+    }
+    return mapped;
   }
 
   async beginTransfer(
@@ -3963,6 +4454,50 @@ export class VendorEntrypoint extends WorkerEntrypoint<VendorEnv> {
       return grantRejected(version, "bad_request");
     }
 
+    const transfer = await readTransferById(this.env.DB, transferId);
+    if (transfer === null || transfer.package === null) {
+      return grantRejected(version, "bad_request");
+    }
+    if (!(await ensureGrantClaimsBackfilled(this.env, transfer.org_id, version))) {
+      return grantRejected(version, "coverage_unknown");
+    }
+    const packageValue: unknown = JSON.parse(transfer.package);
+    if (!Array.isArray(packageValue)) return grantRejected(version, "bad_request");
+    const targetBinding = await readTenantBindingForInstallation(
+      this.env.DB,
+      transfer.org_id,
+      transfer.to_installation_id,
+    );
+    if (targetBinding === null) return grantRejected(version, "coverage_unknown");
+    const claimCreatedAt = await clockNowIso(this.env);
+    const transferClaims: GrantClaimRow[] = [];
+    for (let index = 0; index < packageValue.length; index += 1) {
+      const packageTerm = packageValue[index];
+      if (!isRecord(packageTerm)) return grantRejected(version, "bad_request");
+      const grantId = await sha256Hex(
+        new TextEncoder().encode(`grant:transfer:${transferId}:${index}`),
+      );
+      const envelopeSha256 = await grantEnvelopeHash(packageTerm);
+      const claim = await createOrReadGrantClaim(this.env, {
+        grantId,
+        orgId: transfer.org_id,
+        sourceKind: "transfer",
+        envelope: packageTerm,
+        envelopeSha256,
+        installationId: transfer.to_installation_id,
+        bindingEpoch: targetBinding.epoch,
+        nowIso: claimCreatedAt,
+      });
+      if (claim === null || claim.state === "disputed") {
+        await alertGrantClaimDispute(this.env, transfer.org_id, grantId, claimCreatedAt);
+        return grantRejected(version, "coverage_unknown");
+      }
+      if (claim.state === "completed") {
+        continue;
+      }
+      transferClaims.push(claim);
+    }
+
     const step = await executeTransferIn(this.env, version, transferId);
     if (step.result === "bad_request") {
       return grantRejected(version, "bad_request");
@@ -3972,6 +4507,26 @@ export class VendorEntrypoint extends WorkerEntrypoint<VendorEnv> {
     }
     if (step.result === "rejected") {
       return grantRejected(version, step.code);
+    }
+    const inspected = await callCoverageDo(this.env, transfer.to_installation_id, {
+      kind: "inspect_coverage",
+      installationId: transfer.to_installation_id,
+      orgId: transfer.org_id,
+      vendorContractVersion: version,
+    });
+    if (inspected === null || !Array.isArray(inspected.grants)) {
+      return grantTransient(version, "unavailable");
+    }
+    for (const claim of transferClaims) {
+      const stored = inspected.grants.find((row) => isRecord(row) && row.grant_id === claim.grant_id);
+      if (!isRecord(stored) || typeof stored.receipt !== "string") {
+        return grantTransient(version, "unavailable");
+      }
+      const receipt: unknown = JSON.parse(stored.receipt);
+      if (!isRecord(receipt) || !(await persistGrantClaimReceipt(this.env, claim, receipt, await clockNowIso(this.env)))) {
+        await alertGrantClaimDispute(this.env, transfer.org_id, claim.grant_id, await clockNowIso(this.env));
+        return grantRejected(version, "coverage_unknown");
+      }
     }
     return {
       contract_version: version,

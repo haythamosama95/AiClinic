@@ -515,6 +515,44 @@ beforeEach(async () => {
 });
 
 describe("complimentary grants, ceilings, adjustments, suspension", () => {
+  it("R4-PG2 a complimentary DO outage stays pending and the same claim completes on retry", async () => {
+    const scenario = await newScenario();
+    await coverClinic(scenario);
+    const grantId = await grantIdComp(crypto.randomUUID().replace(/-/g, ""));
+    const envelope = await buildComplimentaryEnvelope({
+      orgId: scenario.orgId,
+      grantId,
+      count: 14,
+      operatorEmail: VENDOR_OPERATOR_EMAIL,
+      reason: "RM14 retry",
+    });
+    const realGet = env.DO.get.bind(env.DO);
+    const getSpy = vi.spyOn(env.DO, "get").mockImplementation((id) => {
+      const stub = realGet(id);
+      return {
+        fetch: async (input: RequestInfo | URL, init?: RequestInit) => {
+          const body = typeof init?.body === "string" ? JSON.parse(init.body) as Record<string, unknown> : {};
+          if (body.kind === "apply_grant") return new Response(null, { status: 503 });
+          return stub.fetch(input, init);
+        },
+      } as DurableObjectStub;
+    });
+    let unavailable: GrantResultEnvelope;
+    try {
+      unavailable = await hpComplimentaryGrant({ envelope });
+    } finally {
+      getSpy.mockRestore();
+    }
+    expect(unavailable.result).toBe("transient");
+    expect(unavailable.detail).toBe("unavailable");
+    expect(await queryOne<{ state: string }>("SELECT state FROM grant_claim WHERE grant_id = ?", [grantId])).toEqual({ state: "pending" });
+
+    const retried = await hpComplimentaryGrant({ envelope });
+    expect(retried.result).toBe("applied");
+    expect(retried.receipt?.grant_id).toBe(grantId);
+    expect(await queryOne<{ state: string }>("SELECT state FROM grant_claim WHERE grant_id = ?", [grantId])).toEqual({ state: "completed" });
+  });
+
   it("E2E-P3.6-01 A20 14-day complimentary grant to a paying clinic queues after current coverage", async () => {
     const scenario = await newScenario();
     await coverClinic(scenario);

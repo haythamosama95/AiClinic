@@ -618,7 +618,7 @@ describe("transfer, deletion with coverage left, ledger retention", () => {
     ).toEqual(stepsBefore);
   });
 
-  it("E2E-P3.8-01 A14 beginTransfer moves an active term and a queued term", async () => {
+  it("R4-PG1 E2E-P3.8-01 A14 beginTransfer moves terms and ignores a client-selected old route", async () => {
     const { scenario, activeGrantId, queuedGrantId } =
       await setupActiveAndQueuedTerms();
     const oldInstallationId = scenario.installationId;
@@ -657,6 +657,15 @@ describe("transfer, deletion with coverage left, ledger retention", () => {
     await runDurableObjectAlarm(quotaDoStub(transferRow.to_installation_id));
 
     const newTerms = await readDoTerms(transferRow.to_installation_id);
+    for (let index = 0; index < newTerms.length; index += 1) {
+      const transferredGrantId = await sha256Hex(
+        new TextEncoder().encode(`grant:transfer:${transferRow.transfer_id}:${index}`),
+      );
+      expect(await queryOne<{ source_kind: string; state: string }>(
+        "SELECT source_kind, state FROM grant_claim WHERE grant_id = ?",
+        [transferredGrantId],
+      )).toEqual({ source_kind: "transfer", state: "completed" });
+    }
     const oldOrigins = termsBefore.map((row) => row.origin_grant_id).sort();
     const newOrigins = newTerms.map((row) => row.origin_grant_id).sort();
     expect(newOrigins).toEqual(oldOrigins);
@@ -680,13 +689,19 @@ describe("transfer, deletion with coverage left, ledger retention", () => {
     };
     expect(oldSnapshot.snapshot.state).toBe("transferred");
 
-    const rejected = await paidGrant(
+    const overrideGrantId = await grantIdPaid(crypto.randomUUID().replace(/-/g, ""));
+    const routed = await paidGrant(
       scenario,
-      await grantIdPaid(crypto.randomUUID().replace(/-/g, "")),
+      overrideGrantId,
       { installationId: oldInstallationId },
     );
-    expect(rejected.result).toBe("rejected");
-    expect(rejected.code).toBe("transferred_out");
+    expect(routed.result).toBe("applied");
+    expect((await readDoTerms(oldInstallationId)).some((row) => row.grant_id === overrideGrantId)).toBe(false);
+    expect((await readDoTerms(transferRow.to_installation_id)).some((row) => row.grant_id === overrideGrantId)).toBe(true);
+    expect(await queryOne<{ installation_id: string }>(
+      "SELECT installation_id FROM grant_claim WHERE grant_id = ?",
+      [overrideGrantId],
+    )).toEqual({ installation_id: transferRow.to_installation_id });
 
     const al11Bodies = parseAlEmailBodies().filter(
       (body) => body.code === "AL-11",
@@ -703,6 +718,54 @@ describe("transfer, deletion with coverage left, ledger retention", () => {
     );
     expect(events.length).toBeGreaterThan(0);
     expect(events.every((row) => row.binding_epoch === 2)).toBe(true);
+  });
+
+  it("R4-PG1 a pending no-effect claim seals its retired route before applying once on the live route", async () => {
+    const { scenario } = await setupActiveAndQueuedTerms();
+    const oldInstallationId = scenario.installationId;
+    const grantId = await grantIdPaid(crypto.randomUUID().replace(/-/g, ""));
+    const envelope = await buildPaidGrantEnvelope({ orgId: scenario.orgId, grantId });
+    const aboSignature = await signCoverAbo(envelope);
+    const grantArgs = {
+      contract_version: CONTRACT_VERSION,
+      envelope,
+      abo_kid: coverClinicAboKid(),
+      abo_signature: aboSignature,
+    };
+    const realGet = env.DO.get.bind(env.DO);
+    const getSpy = vi.spyOn(env.DO, "get").mockImplementation((id) => {
+      const stub = realGet(id);
+      return {
+        fetch: async (input: RequestInfo | URL, init?: RequestInit) => {
+          const body = typeof init?.body === "string" ? JSON.parse(init.body) as Record<string, unknown> : {};
+          if (body.kind === "apply_grant") return new Response(null, { status: 503 });
+          return stub.fetch(input, init);
+        },
+      } as DurableObjectStub;
+    });
+    let pending: GrantResultEnvelope;
+    try {
+      pending = await p38VendorCall("grant", grantArgs);
+    } finally {
+      getSpy.mockRestore();
+    }
+    expect(pending.result).toBe("transient");
+    expect(pending.detail).toBe("unavailable");
+
+    const begun = await hpBeginTransfer({ orgId: scenario.orgId, fromInstallationId: oldInstallationId });
+    expect(begun.result).toBe("ok");
+    const transfer = JSON.parse(begun.detail) as { transfer_id: string; to_installation_id: string };
+    expect((await transferOut(transfer.transfer_id)).result).toBe("applied");
+    expect((await transferIn(transfer.transfer_id)).result).toBe("applied");
+
+    const applied = await p38VendorCall("grant", grantArgs);
+    expect(applied.result).toBe("applied");
+    expect((await readDoTerms(oldInstallationId)).some((row) => row.grant_id === grantId)).toBe(false);
+    expect((await readDoTerms(transfer.to_installation_id)).some((row) => row.grant_id === grantId)).toBe(true);
+    expect(await queryOne<{ installation_id: string; route_generation: number }>(
+      "SELECT installation_id, route_generation FROM grant_claim WHERE grant_id = ?",
+      [grantId],
+    )).toEqual({ installation_id: transfer.to_installation_id, route_generation: 2 });
   });
 
   it("E2E-P3.8-02 a non-transfer grant during awaiting_transfer is transient and then queues behind the moved terms", async () => {

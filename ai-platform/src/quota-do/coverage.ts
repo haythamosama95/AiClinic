@@ -128,6 +128,7 @@ export interface ApplyGrantRequest {
   ceilingPolicy?: CeilingPolicyNumbers;
   skipCeilingCheck?: boolean;
   adjustment?: Record<string, unknown>;
+  routeGeneration?: number;
 }
 
 export interface ApplyGrantResponse {
@@ -143,6 +144,71 @@ export interface ApplyGrantResponse {
   code?: string;
   detail?: string;
   receipt?: Record<string, unknown>;
+}
+
+export interface SealGrantRouteRequest {
+  kind: "seal_grant_route";
+  installationId: string;
+  orgId: string;
+  grantId: string;
+  envelopeSha256: string;
+  routeGeneration: number;
+  bindingEpoch: number;
+  sealedAt: string;
+}
+
+export interface SealGrantRouteResponse {
+  kind: "seal_grant_route";
+  result: "sealed" | "already_applied" | "conflict";
+  receipt?: Record<string, unknown>;
+}
+
+/** Persist a no-effect proof before a pending grant claim changes routes. */
+export async function sealGrantRouteRPC(
+  storage: DurableObjectStorage,
+  blockConcurrencyWhile: <T>(fn: () => Promise<T>) => Promise<T>,
+  request: SealGrantRouteRequest,
+): Promise<SealGrantRouteResponse> {
+  return blockConcurrencyWhile(async () => {
+    ensureHotRow(storage, request.bindingEpoch);
+    const existingGrant = sqlSelect<{ envelope_sha256: string; receipt: string | null }>(
+      storage,
+      `SELECT envelope_sha256, receipt FROM grant WHERE grant_id = ${sqlString(request.grantId)} LIMIT 1`,
+    )[0];
+    if (existingGrant !== undefined) {
+      if (existingGrant.envelope_sha256 !== request.envelopeSha256) {
+        return { kind: "seal_grant_route", result: "conflict" };
+      }
+      if (typeof existingGrant.receipt === "string") {
+        try {
+          return {
+            kind: "seal_grant_route",
+            result: "already_applied",
+            receipt: JSON.parse(existingGrant.receipt) as Record<string, unknown>,
+          };
+        } catch {
+          return { kind: "seal_grant_route", result: "conflict" };
+        }
+      }
+      return { kind: "seal_grant_route", result: "conflict" };
+    }
+
+    const seal = sqlSelect<{ envelope_sha256: string; route_generation: number }>(
+      storage,
+      `SELECT envelope_sha256, route_generation FROM grant_route_seal WHERE grant_id = ${sqlString(request.grantId)} LIMIT 1`,
+    )[0];
+    if (seal !== undefined) {
+      return seal.envelope_sha256 === request.envelopeSha256
+        ? { kind: "seal_grant_route", result: "sealed" }
+        : { kind: "seal_grant_route", result: "conflict" };
+    }
+    sqlExec(
+      storage,
+      `INSERT INTO grant_route_seal (grant_id, envelope_sha256, route_generation, sealed_at)
+       VALUES (${sqlString(request.grantId)}, ${sqlString(request.envelopeSha256)}, ${request.routeGeneration}, ${sqlString(request.sealedAt)})`,
+    );
+    return { kind: "seal_grant_route", result: "sealed" };
+  });
 }
 
 export interface ReadCoverageRequest {
@@ -1633,6 +1699,33 @@ export async function applyGrantRPC(
 ): Promise<ApplyGrantResponse> {
   return blockConcurrencyWhile(async () => {
     ensureHotRow(storage, request.bindingEpoch);
+    const grantId = String(request.envelope.grant_id);
+    const envelopeSha256 = await grantEnvelopeHash(request.envelope);
+    const existing = sqlSelect<GrantRow>(
+      storage,
+      `SELECT grant_id, envelope_sha256, receipt FROM grant WHERE grant_id = ${sqlString(grantId)} LIMIT 1`,
+    )[0];
+    if (existing !== undefined) {
+      if (existing.envelope_sha256 === envelopeSha256 && existing.receipt) {
+        return {
+          kind: "apply_grant",
+          result: "already_applied",
+          receipt: JSON.parse(existing.receipt) as Record<string, unknown>,
+        };
+      }
+      return { kind: "apply_grant", result: "conflict" };
+    }
+
+    const routeSeal = sqlSelect<{ envelope_sha256: string }>(
+      storage,
+      `SELECT envelope_sha256 FROM grant_route_seal WHERE grant_id = ${sqlString(grantId)} LIMIT 1`,
+    )[0];
+    if (routeSeal !== undefined) {
+      return routeSeal.envelope_sha256 === envelopeSha256
+        ? { kind: "apply_grant", result: "rejected", code: "route_sealed" }
+        : { kind: "apply_grant", result: "conflict" };
+    }
+
     const hotForTransfer = loadHot(storage);
     if (hotForTransfer.awaiting_transfer !== 0) {
       return {
@@ -1652,24 +1745,6 @@ export async function applyGrantRPC(
         code: "transferred_out",
       };
     }
-    const grantId = String(request.envelope.grant_id);
-    const envelopeSha256 = await grantEnvelopeHash(request.envelope);
-
-    const existing = sqlSelect<GrantRow>(
-      storage,
-      `SELECT grant_id, envelope_sha256, receipt FROM grant WHERE grant_id = ${sqlString(grantId)} LIMIT 1`,
-    )[0];
-    if (existing !== undefined) {
-      if (existing.envelope_sha256 === envelopeSha256 && existing.receipt) {
-        return {
-          kind: "apply_grant",
-          result: "already_applied",
-          receipt: JSON.parse(existing.receipt) as Record<string, unknown>,
-        };
-      }
-      return { kind: "apply_grant", result: "conflict" };
-    }
-
     const signingKey = await loadPlatformSigningKey(
       request.platformSigningKeyJson,
       request.environment,
@@ -3305,7 +3380,7 @@ export async function transferInRPC(
           grant_id, kind, source_kind, envelope_sha256, envelope, evidence, receipt, applied_at, voided_at, void_reason
         ) VALUES (
           ${sqlString(grantId)}, 'term', 'transfer', ${sqlString(envelopeSha256)},
-          ${sqlString(JSON.stringify({ transfer_id: request.transferId, index }))},
+          ${sqlString(JSON.stringify(pkg))},
           ${sqlString("{}")},
           ${sqlString(JSON.stringify(receipt))},
           ${sqlString(request.nowIso)}, NULL, NULL

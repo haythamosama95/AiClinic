@@ -102,6 +102,7 @@ import {
   openAwaitingTransferRPC,
   readCoverageRPC,
   releaseHeldRPC,
+  sealGrantRouteRPC,
   setTransferPendingRPC,
   transferInRPC,
   transferOutRPC,
@@ -123,6 +124,7 @@ import {
   type EntitlementSnapshot,
   type ReadCoverageRequest,
   type ReleaseRequest,
+  type SealGrantRouteRequest,
 } from "./quota-do/index";
 import { mirrorTermViewFromSnapshot } from "./quota-do/coverage";
 import { clockNowIso } from "./clock";
@@ -1880,6 +1882,30 @@ export class GatewayObject extends DurableObject {
             db: runtimeEnv.DB,
           },
           quotaLog,
+        );
+        return platformDoResponse(result, contractVersion);
+      }
+      if (kind === "seal_grant_route") {
+        const sealBody = body as SealGrantRouteRequest;
+        if (
+          typeof sealBody.installationId !== "string" ||
+          typeof sealBody.orgId !== "string" ||
+          typeof sealBody.grantId !== "string" ||
+          typeof sealBody.envelopeSha256 !== "string" ||
+          !Number.isInteger(sealBody.routeGeneration) ||
+          !Number.isInteger(sealBody.bindingEpoch) ||
+          typeof sealBody.sealedAt !== "string"
+        ) {
+          return platformDoResponse(
+            { kind: "seal_grant_route", result: "conflict" },
+            contractVersion,
+            { status: 400 },
+          );
+        }
+        const result = await sealGrantRouteRPC(
+          this.ctx.storage,
+          (fn) => this.ctx.blockConcurrencyWhile(fn),
+          sealBody,
         );
         return platformDoResponse(result, contractVersion);
       }

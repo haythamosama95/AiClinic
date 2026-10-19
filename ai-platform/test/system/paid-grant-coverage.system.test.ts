@@ -846,7 +846,7 @@ describe("paid grant coverage", () => {
     expect(activeTerms.some((row) => row.state === "active")).toBe(true);
   });
 
-  it("R2-C3: a grant with a mismatched DO reply version does not record success", async () => {
+  it("R4-PG2 R2-C3: an unknown DO reply is transient and does not record success", async () => {
     const fixture = await bootstrapPaidGrantFixture();
     const doFetch = vi.fn(async () =>
       Response.json({
@@ -871,11 +871,111 @@ describe("paid grant coverage", () => {
     }
 
     expect(doFetch).toHaveBeenCalledTimes(1);
-    expect(result.result).toBe("rejected");
-    expect(result.code).toBe("coverage_unknown");
+    expect(result.result).toBe("transient");
+    expect(result.detail).toBe("unavailable");
     expect(result.receipt).toBeUndefined();
     expect(await grantLedgerCount(fixture.grantId)).toBe(0);
     expect(await listCoverageEventsForOrg(fixture.orgId)).toHaveLength(0);
+  });
+
+  it("R4-PG1 authenticated exact replay returns the original receipt after plan retirement", async () => {
+    const fixture = await bootstrapPaidGrantFixture();
+    const applied = await grantPaid({
+      envelope: fixture.envelope,
+      aboKid: fixture.aboKid,
+      aboSignature: fixture.aboSignature,
+    });
+    expect(applied.result).toBe("applied");
+    const retired = await retirePlanVersionHp({
+      signerCredentialId: fixture.signerCredentialId,
+      signerAuthenticator: fixture.signerAuthenticator,
+    });
+    expect(retired.result).toBe("ok");
+
+    const replay = await grantPaid({
+      envelope: fixture.envelope,
+      aboKid: fixture.aboKid,
+      aboSignature: fixture.aboSignature,
+    });
+    expect(replay.result).toBe("already_applied");
+    expect(replay.receipt).toEqual(applied.receipt);
+    expect(await count("grant_claim", "grant_id = ?", [fixture.grantId])).toBe(1);
+  });
+
+  it("R4-PG1 concurrent identical new claims share one route and one receipt", async () => {
+    const fixture = await bootstrapPaidGrantFixture();
+    const [first, second] = await Promise.all([
+      grantPaid({ envelope: fixture.envelope, aboKid: fixture.aboKid, aboSignature: fixture.aboSignature }),
+      grantPaid({ envelope: fixture.envelope, aboKid: fixture.aboKid, aboSignature: fixture.aboSignature }),
+    ]);
+    expect([first.result, second.result].sort()).toEqual(["already_applied", "applied"]);
+    expect(first.receipt).toEqual(second.receipt);
+    expect(await count("grant_claim", "grant_id = ?", [fixture.grantId])).toBe(1);
+    expect(await grantLedgerCount(fixture.grantId)).toBe(1);
+  });
+
+  it("R4-PG2 transport loss before and after DO commit keeps the same claim retryable", async () => {
+    const fixture = await bootstrapPaidGrantFixture();
+    const initial = await grantPaid({
+      envelope: fixture.envelope,
+      aboKid: fixture.aboKid,
+      aboSignature: fixture.aboSignature,
+    });
+    expect(initial.result).toBe("applied");
+
+    const makeNext = async () => {
+      const grantId = await grantIdPaid(crypto.randomUUID().replace(/-/g, ""));
+      const envelope = await buildPaidGrantEnvelope({ orgId: fixture.orgId, grantId });
+      return { grantId, envelope, signature: await fixture.aboSigner.sign(envelope) };
+    };
+    const beforeCommit = await makeNext();
+    const realGet = env.DO.get.bind(env.DO);
+    const beforeGet = vi.spyOn(env.DO, "get").mockImplementation((id) => {
+      const stub = realGet(id);
+      return {
+        fetch: async (input: RequestInfo | URL, init?: RequestInit) => {
+          const body = typeof init?.body === "string" ? JSON.parse(init.body) as Record<string, unknown> : {};
+          if (body.kind === "apply_grant") return new Response(null, { status: 503 });
+          return stub.fetch(input, init);
+        },
+      } as DurableObjectStub;
+    });
+    let unavailable: GrantResultEnvelope;
+    try {
+      unavailable = await grantPaid({ envelope: beforeCommit.envelope, aboKid: fixture.aboKid, aboSignature: beforeCommit.signature });
+    } finally {
+      beforeGet.mockRestore();
+    }
+    expect(unavailable.result).toBe("transient");
+    expect(unavailable.detail).toBe("unavailable");
+    expect(await queryOne<{ state: string }>("SELECT state FROM grant_claim WHERE grant_id = ?", [beforeCommit.grantId])).toEqual({ state: "pending" });
+    const appliedAfterRetry = await grantPaid({ envelope: beforeCommit.envelope, aboKid: fixture.aboKid, aboSignature: beforeCommit.signature });
+    expect(appliedAfterRetry.result).toBe("applied");
+
+    const afterCommit = await makeNext();
+    const afterGet = vi.spyOn(env.DO, "get").mockImplementation((id) => {
+      const stub = realGet(id);
+      return {
+        fetch: async (input: RequestInfo | URL, init?: RequestInit) => {
+          const body = typeof init?.body === "string" ? JSON.parse(init.body) as Record<string, unknown> : {};
+          const response = await stub.fetch(input, init);
+          if (body.kind === "apply_grant") throw new Error("reply_lost_after_commit");
+          return response;
+        },
+      } as DurableObjectStub;
+    });
+    let lostReply: GrantResultEnvelope;
+    try {
+      lostReply = await grantPaid({ envelope: afterCommit.envelope, aboKid: fixture.aboKid, aboSignature: afterCommit.signature });
+    } finally {
+      afterGet.mockRestore();
+    }
+    expect(lostReply.result).toBe("transient");
+    expect(await queryOne<{ state: string }>("SELECT state FROM grant_claim WHERE grant_id = ?", [afterCommit.grantId])).toEqual({ state: "pending" });
+    const replayed = await grantPaid({ envelope: afterCommit.envelope, aboKid: fixture.aboKid, aboSignature: afterCommit.signature });
+    expect(replayed.result).toBe("already_applied");
+    expect(replayed.receipt?.grant_id).toBe(afterCommit.grantId);
+    expect(await grantLedgerCount(afterCommit.grantId)).toBe(1);
   });
 
   it("E2E-P3.3-02 The same grant resent is already_applied with the identical receipt and one ledger row", async () => {
@@ -903,7 +1003,7 @@ describe("paid grant coverage", () => {
     expect(await grantLedgerCount(fixture.grantId)).toBe(1);
   });
 
-  it("E2E-P3.3-03 The same grant_id with a changed allowance is conflict and nothing changes", async () => {
+  it("R4-PG1 E2E-P3.3-03 The same global grant_id with changed content conflicts and changes nothing", async () => {
     const fixture = await bootstrapPaidGrantFixture();
 
     const first = await grantPaid({

@@ -1974,6 +1974,12 @@ const COVERAGE_DO_SCHEMA_STATEMENTS = [
     kind TEXT NOT NULL,
     payload TEXT NOT NULL
   )`,
+  `CREATE TABLE IF NOT EXISTS grant_route_seal (
+    grant_id TEXT PRIMARY KEY NOT NULL,
+    envelope_sha256 TEXT NOT NULL,
+    route_generation INTEGER NOT NULL,
+    sealed_at TEXT NOT NULL
+  )`,
 ] as const;
 
 /** Per-clinic coverage tables (P3.3); idempotent on every versioned fetch. */
@@ -1998,6 +2004,7 @@ export {
   openAwaitingTransferRPC,
   readCoverageRPC,
   releaseHeldRPC,
+  sealGrantRouteRPC,
   scheduleOutboxAlarmIfPending,
   setTransferPendingRPC,
   shipCoverageOutboxAlarm,
@@ -2018,6 +2025,8 @@ export {
   type RefreshCoverageSnapshotResponse,
   type RunRebuildClinicDoResult,
   type ApplyGrantResponse,
+  type SealGrantRouteRequest,
+  type SealGrantRouteResponse,
   type InspectCoverageRequest,
   type InspectCoverageResponse,
   type ReadCoverageRequest,

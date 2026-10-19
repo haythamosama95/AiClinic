@@ -143,6 +143,8 @@ The platform validates, in order, and answers `rejected` with the named code on 
 
 On success the DO applies the grant atomically, stores the envelope and evidence, and emits the ledger mirror, the coverage event and the out-of-band alert through its outbox (01 §3.5). Every grant alerts, paid ones included (AL-11); complimentary grants, overrides and transfers are marked for attention. Paid grants also feed a velocity check: more than 3 paid grants for one clinic in 24 hours, or more than 20 across all clinics in an hour, raises a platform alert.
 
+Validation steps 3–5 govern new application. After the caller has been authenticated (the current paid signing key and signature for paid grants, or human Access for complimentary grants) and the supplied envelope has been validated and hashed, an exact matching claim in the global `grant_claim` table returns its original completed receipt before mutable plan, policy, tombstone, or live-binding checks. A matching pending claim dispatches only to its stored route. A different org or envelope hash for the same `grant_id` is `conflict`. This authenticated replay exception never newly applies a grant whose plan has been retired.
+
 ### 1.5 Operator assertion
 
 The ABO console runs the WebAuthn `get` ceremony and forwards the result. The platform verifies it; the ABO's own check is only for UX.
