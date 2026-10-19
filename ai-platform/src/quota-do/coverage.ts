@@ -1008,6 +1008,28 @@ export function insertOutbox(
 const ONE_DAY_MS = 24 * 60 * 60 * 1000;
 const ONE_HOUR_MS = 60 * 60 * 1000;
 const MS_PER_DAY = ONE_DAY_MS;
+const MAX_TEST_ALARM_DELIVERY_DELAY_MS = ONE_DAY_MS;
+
+// Workers-pool tests isolate and restore Durable Object SQLite storage after
+// each test. Keep a real alarm scheduled (R4-D4 depends on it), but let tests
+// invoke it explicitly before the pool can deliver it concurrently with a
+// storage-frame teardown. Production never configures this delay.
+let testAlarmDeliveryDelayMs = 0;
+
+export function configureTestAlarmDeliveryDelay(runtimeEnv: {
+  TEST_DO_ALARM_DELIVERY_DELAY_MS?: string;
+}): void {
+  const delayMs = Number(runtimeEnv.TEST_DO_ALARM_DELIVERY_DELAY_MS);
+  testAlarmDeliveryDelayMs = Number.isSafeInteger(delayMs) && delayMs > 0
+    ? Math.min(delayMs, MAX_TEST_ALARM_DELIVERY_DELAY_MS)
+    : 0;
+}
+
+function physicalAlarmAt(targetMs: number): number {
+  const earliestMs = Math.max(targetMs, Date.now() + 5_000);
+  if (testAlarmDeliveryDelayMs === 0) return earliestMs;
+  return Math.max(earliestMs, Date.now() + testAlarmDeliveryDelayMs);
+}
 
 export function unscaledTermLengthDays(term: TermRow): number {
   if (
@@ -1317,7 +1339,7 @@ async function syncAlarm(
     return;
   }
   const targetMs = Date.parse(nextAlarmAt);
-  const scheduleMs = Math.max(targetMs, Date.now() + 5_000);
+  const scheduleMs = physicalAlarmAt(targetMs);
   if (actualAlarmAt === null || actualAlarmAt > scheduleMs) {
     await state.storage.setAlarm(scheduleMs);
   }
@@ -1325,7 +1347,7 @@ async function syncAlarm(
 
 async function prearmGrantWakeup(state: DurableObjectState): Promise<void> {
   const alarmAt = await state.storage.getAlarm();
-  const wakeAt = Date.now() + 5_000;
+  const wakeAt = physicalAlarmAt(Date.now() + 5_000);
   if (alarmAt === null || alarmAt > wakeAt) {
     await state.storage.setAlarm(wakeAt);
   }

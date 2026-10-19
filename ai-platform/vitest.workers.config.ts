@@ -75,6 +75,7 @@ export default defineWorkersConfig({
           },
           bindings: {
             TEST_CLOCK: "1",
+            TEST_DO_ALARM_DELIVERY_DELAY_MS: "86400000",
             DURATION_SCALE: "staging",
             ACCESS_TEAM_DOMAIN: "access.test",
             ACCESS_AUD: "vendor-access-aud",

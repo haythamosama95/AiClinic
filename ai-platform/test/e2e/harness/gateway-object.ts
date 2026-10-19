@@ -59,17 +59,25 @@ export async function gatewayObjectJson(
 }
 
 /**
- * Drain only this installation's pending coverage outbox before its isolated
+ * Drain this installation's pending coverage outbox before its isolated
  * Durable Object storage frame is restored. A bounded loop handles an alarm
- * that ships work in batches, while leaving unrelated/future alarms alone.
+ * that ships work in batches. Once the outbox is empty, cancel and verify any
+ * re-armed alarm while holding a DO turn; this also joins an alarm turn that
+ * was already queued/running before isolated storage is restored.
  */
 export async function drainGatewayObjectOutbox(
   installationId: string,
   maxAlarmRuns = 8,
 ): Promise<void> {
   const stub = env.DO.get(env.DO.idFromName(installationId));
-  const pendingOutboxCount = async (): Promise<number> =>
-    runInDurableObject(stub, (_instance, state) => {
+  // getAlarm/deleteAlarm are asynchronous storage operations, so perform them
+  // in a DO turn alongside the SQL inspection rather than racing an alarm
+  // callback from outside the object.
+  const inspectWithAlarm = async (): Promise<{
+    outboxCount: number;
+    alarm: number | null;
+  }> =>
+    runInDurableObject(stub, async (_instance, state) => {
       const storage = state.storage as DurableObjectStorage & {
         sql?: {
           exec: (query: string) => Iterable<{ count: number }>;
@@ -79,11 +87,42 @@ export async function drainGatewayObjectOutbox(
         throw new Error("quota DO sql storage unavailable while draining outbox");
       }
       const rows = [...storage.sql.exec("SELECT COUNT(*) AS count FROM outbox")];
-      return Number(rows[0]?.count ?? 0);
+      return {
+        outboxCount: Number(rows[0]?.count ?? 0),
+        alarm: await state.storage.getAlarm(),
+      };
+    });
+
+  const cancelAndVerifyAlarm = async (): Promise<boolean> =>
+    runInDurableObject(stub, async (_instance, state) => {
+      if ((await state.storage.getAlarm()) !== null) {
+        await state.storage.deleteAlarm();
+      }
+      return (await state.storage.getAlarm()) === null;
     });
 
   for (let run = 0; run < maxAlarmRuns; run += 1) {
-    if ((await pendingOutboxCount()) === 0) return;
+    const state = await inspectWithAlarm();
+    if (state.outboxCount === 0) {
+      if (state.alarm === null) return;
+      // A DO turn is a serialization barrier with any alarm callback already
+      // in flight. Cancel its re-arm, then inspect again so a racing callback
+      // cannot leave an alarm behind as the isolated frame is popped.
+      if (!(await cancelAndVerifyAlarm())) {
+        throw new Error(
+          `quota DO alarm remained scheduled after cleanup for ${installationId}`,
+        );
+      }
+      const afterCancel = await inspectWithAlarm();
+      if (afterCancel.outboxCount === 0 && afterCancel.alarm === null) return;
+      continue;
+    }
+    if (state.alarm === null) {
+      throw new Error(
+        `quota DO outbox remains pending without a scheduled alarm for ${installationId}`,
+      );
+    }
+
     const alarmRan = await runDurableObjectAlarm(stub);
     if (!alarmRan) {
       throw new Error(
@@ -92,9 +131,21 @@ export async function drainGatewayObjectOutbox(
     }
   }
 
-  if ((await pendingOutboxCount()) !== 0) {
+  const remaining = await inspectWithAlarm();
+  if (remaining.outboxCount !== 0) {
     throw new Error(
       `quota DO outbox did not drain after ${maxAlarmRuns} alarm runs for ${installationId}`,
+    );
+  }
+  if (remaining.alarm !== null && !(await cancelAndVerifyAlarm())) {
+    throw new Error(
+      `quota DO alarm remained scheduled after cleanup for ${installationId}`,
+    );
+  }
+  const finalState = await inspectWithAlarm();
+  if (finalState.outboxCount !== 0 || finalState.alarm !== null) {
+    throw new Error(
+      `quota DO cleanup did not reach an idle state for ${installationId}`,
     );
   }
 }

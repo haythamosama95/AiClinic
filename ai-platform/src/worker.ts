@@ -128,7 +128,11 @@ import {
   type ReleaseRequest,
   type SealGrantRouteRequest,
 } from "./quota-do/index";
-import { mirrorTermViewFromSnapshot, sqlSelect } from "./quota-do/coverage";
+import {
+  configureTestAlarmDeliveryDelay,
+  mirrorTermViewFromSnapshot,
+  sqlSelect,
+} from "./quota-do/coverage";
 import { clockNowIso } from "./clock";
 import {
   createChunkSourceFromInvocationEvents,
@@ -165,6 +169,7 @@ interface Env extends AlertEnv {
   CONFIG_CACHE_TTL_MS?: string;
   ISSUER_ID: string;
   TEST_CLOCK?: string;
+  TEST_DO_ALARM_DELIVERY_DELAY_MS?: string;
   PLATFORM_SIGNING_KEY?: string;
   DURATION_SCALE?: string;
   RATE_LIMITER_INSTALLATION: RateLimit;
@@ -195,6 +200,7 @@ function assertRequiredBindings(runtimeEnv: Env): void {
 }
 
 assertRequiredBindings(env as Env);
+configureTestAlarmDeliveryDelay(env as Env);
 configureIsolateConfigCache(
   resolveConfigCacheTtlMs((env as Env).CONFIG_CACHE_TTL_MS),
 );

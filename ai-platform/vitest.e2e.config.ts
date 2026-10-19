@@ -42,6 +42,7 @@ export default defineWorkersConfig({
             },
           },
           bindings: {
+            TEST_DO_ALARM_DELIVERY_DELAY_MS: "86400000",
             DURATION_SCALE: "staging",
             // TTL 0: no cross-request caching. Same-request preload still
             // serves consult (`now > expiresAt`) and the worker passes the
