@@ -20,6 +20,8 @@ export default defineWorkersConfig({
     retry: 1,
     poolOptions: {
       workers: {
+        // Keep E2E file runtimes from overlapping their isolated storage stacks.
+        singleWorker: true,
         main: "./src/worker.ts",
         wrangler: {
           configPath: "./wrangler.toml",

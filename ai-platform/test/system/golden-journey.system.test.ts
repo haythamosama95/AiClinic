@@ -391,7 +391,7 @@ describe("golden journey", () => {
       }),
     });
     const ref = String(invoked.events[0]?.data.request_reference);
-    await flushBackgroundWork();
+    await waitForSettledRequest(ref);
 
     const request = await getAiRequest(ref);
     const envelopeKey = String(request?.payload_pointer);
