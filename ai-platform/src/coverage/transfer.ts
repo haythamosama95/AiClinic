@@ -210,9 +210,7 @@ async function verifyTransferOutPackageReceipt(
     typeof signed.signature !== "string" ||
     !Array.isArray(termIds) || termIds.length !== packageValue.length ||
     !termIds.every((id) => typeof id === "string") ||
-    signed.envelope_sha256 !== await sha256Hex(
-      new TextEncoder().encode(canonicalize(packageValue)),
-    )
+    signed.envelope_sha256 !== await sha256Hex(canonicalize(packageValue))
   ) {
     return false;
   }

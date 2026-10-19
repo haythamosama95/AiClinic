@@ -952,14 +952,14 @@ describe("complimentary grants, ceilings, adjustments, suspension", () => {
       await env.DB.prepare("DROP TRIGGER IF EXISTS test_r6_pt1_reject_claim_rebind").run();
     }
     expect(rejected!.result).toBe("transient");
-    expect(await queryOne<{ installation_id: string; binding_epoch: number; route_generation: number }>(
-      `SELECT installation_id, binding_epoch, route_generation
+    expect(await queryOne<{ installation_id: string; binding_epoch: number; generation: number }>(
+      `SELECT installation_id, binding_epoch, generation
        FROM live_value_route WHERE grant_id = ?`,
       [grantId],
     )).toEqual({
       installation_id: orphanInstallationId,
       binding_epoch: orphanEpoch,
-      route_generation: before!.route_generation,
+      generation: before!.route_generation,
     });
   });
 
