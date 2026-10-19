@@ -182,7 +182,18 @@ describe("capability lifecycle", () => {
     expect(promoted.status).toBe(200);
 
     const promoteAudits = await getAudits("cohort_promote", CAPABILITY_PIN);
-    expect(promoteAudits).toHaveLength(0);
+    expect(promoteAudits).toHaveLength(1);
+    const promoteAudit = promoteAudits[0]!;
+    expect(promoteAudit.actor).toBeTruthy();
+    expect(promoteAudit.actor).toBe(promoteAudit.operator_id);
+    const afterPointer = JSON.parse(String(promoteAudit.after_pointer)) as {
+      capability_version: string;
+      installation_ids: string[];
+      plan_ids: string[];
+    };
+    expect(afterPointer.capability_version).toBe(CAPABILITY_VERSION);
+    expect(afterPointer.installation_ids).toContain(scenario.installationId);
+    expect(Array.isArray(afterPointer.plan_ids)).toBe(true);
   });
 
   it("SYS-10.2 — Deprecate lifecycle", async () => {
