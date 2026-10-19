@@ -5,9 +5,11 @@
 import { env } from "cloudflare:test";
 import { beforeEach, describe, expect, it } from "vitest";
 import {
+  canonicalize,
   CHANNEL_VERSIONS,
   grantIdPaid,
   humanRef,
+  sha256Hex,
   subscriptionRef,
 } from "vendor-contracts";
 import offersFixture from "../../fixtures/offers.json";
@@ -1119,6 +1121,81 @@ describe("ops cross-worker", () => {
       auditCount,
     );
     expect(await tableCount("operator_action")).toBe(1);
+  });
+
+  it("R8-RETRY1 parked reverse retry reuses its accepted body and refuses legacy rows", async () => {
+    await setupOpsHarness();
+    await setClock("2026-06-01T12:00:00.000Z");
+    const reversalId = "01JRM21RETRYREVERSAL000001";
+    const workId = "01JRM21RETRYWORK0000000001";
+    const acceptedBody = {
+      contract_version: CONTRACT_VERSION,
+      grant_id: "pay_01JRM21RETRY0000000000001",
+      reversal_id: reversalId,
+      reason: "end_current",
+      evidence_sha256: "a".repeat(64),
+      partial: false,
+    };
+    const canonicalBody = new TextDecoder().decode(canonicalize(acceptedBody));
+    const bodySha = await sha256Hex(new TextEncoder().encode(canonicalBody));
+    const createdAt = "2026-06-01T12:00:00.000Z";
+    await env.DB.batch([
+      env.DB.prepare(
+        `INSERT INTO work (
+           work_id, kind, subject_id, dedupe_key, state, attempts,
+           next_attempt_at, lease_until, last_error, opened_at
+         ) VALUES (?, 'reverse', ?, ?, 'parked', 1, NULL, NULL, 'rejected', ?)`,
+      ).bind(workId, reversalId, `reverse:${reversalId}`, createdAt),
+      env.DB.prepare(
+        `INSERT INTO reversal_request (
+           reversal_id, grant_id, reason, evidence_sha256, partial,
+           contract_version, canonical_body, body_sha256, created_at
+         ) VALUES (?, ?, ?, ?, 0, ?, ?, ?, ?)`,
+      ).bind(
+        reversalId,
+        acceptedBody.grant_id,
+        acceptedBody.reason,
+        acceptedBody.evidence_sha256,
+        CONTRACT_VERSION,
+        canonicalBody,
+        bodySha,
+        createdAt,
+      ),
+    ]);
+
+    const accessJwt = await mintVendorAccessJwt(OPS_OPERATOR_EMAIL);
+    const sessionHeaders = await opsHeaders(accessJwt);
+    const retry = await opsFetch(`/ops/parked/${workId}/retry`, {
+      method: "POST",
+      headers: sessionHeaders,
+    });
+    expect(retry.status).toBe(200);
+    const retryBody = (await retry.json()) as Record<string, unknown>;
+    const actionId = String(retryBody.action_id);
+    expect(actionId.length).toBeGreaterThan(0);
+    expect(await env.DB.prepare(`SELECT state FROM work WHERE work_id = ?`)
+      .bind(workId).first<{ state: string }>()).toEqual({ state: "open" });
+    expect(await env.DB.prepare(
+      `SELECT canonical_body, body_sha256 FROM reversal_request WHERE reversal_id = ?`,
+    ).bind(reversalId).first()).toEqual({ canonical_body: canonicalBody, body_sha256: bodySha });
+    expect(await operatorActionRow(actionId)).not.toBeNull();
+
+    const legacyWorkId = "01JRM21LEGACYREVERSEWORK0001";
+    await env.DB.prepare(
+      `INSERT INTO work (
+         work_id, kind, subject_id, dedupe_key, state, attempts,
+         next_attempt_at, lease_until, last_error, opened_at
+       ) VALUES (?, 'reverse', ?, ?, 'parked', 1, NULL, NULL, 'rejected', ?)`,
+    ).bind(legacyWorkId, "01JRM21LEGACYREVERSAL000001", "reverse:01JRM21LEGACYREVERSAL000001", createdAt).run();
+    const actionsBeforeLegacyRetry = await tableCount("operator_action");
+    const legacyRetry = await opsFetch(`/ops/parked/${legacyWorkId}/retry`, {
+      method: "POST",
+      headers: sessionHeaders,
+    });
+    expect(legacyRetry.status).toBe(409);
+    expect(await env.DB.prepare(`SELECT state FROM work WHERE work_id = ?`)
+      .bind(legacyWorkId).first<{ state: string }>()).toEqual({ state: "parked" });
+    expect(await tableCount("operator_action")).toBe(actionsBeforeLegacyRetry);
   });
 
   it("E2E-P4.6-05 cancel open checkout then later payment is paid_late", async () => {

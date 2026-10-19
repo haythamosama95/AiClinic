@@ -61,7 +61,8 @@ export type ProviderReversal = {
   kind: ProviderReversalKind;
   amount_minor: number;
   cumulative_reversed_minor: number;
-  is_full: boolean;
+  /** True only when the authenticated original-parent inquiry supplied a valid cumulative. */
+  cumulative_verified: boolean;
 };
 
 /** Normalised provider transaction (04 §5.2). */

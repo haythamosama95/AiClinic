@@ -900,16 +900,6 @@ async function confirmSuccessBatch(
   }
 
   if (effectiveKind === "reversal") {
-    if (confirmedTxn.reversal?.is_full !== true) {
-      await releaseLeaseRetry(
-        env,
-        work.work_id,
-        leaseToken,
-        work.attempts + 1,
-        "partial_reversal",
-      );
-      return;
-    }
     const paymentId = confirmedTxn.payment_id;
     const reference = humanRef("PAY", paymentId);
     const classification = await classificationForPayment(env, checkout);
@@ -964,6 +954,31 @@ async function confirmSuccessBatch(
       ),
       await insertFencedFactLog(env, "payment", paymentId, paymentCanonical, nowIso, work.work_id, leaseToken),
     );
+    const reversalTxnId = confirmedTxn.provider_txn_id;
+    const reversalOrderId = confirmedTxn.provider_order_id;
+    if (reversalTxnId !== undefined && reversalOrderId !== undefined) {
+      statements.push(
+        env.DB.prepare(
+          `INSERT INTO paymob_txn (
+             txn_id, order_id, checkout_id, payment_id, parent_txn_id, last_state_key
+           ) SELECT ?, ?, ?, ?, ?, ?
+           WHERE EXISTS (SELECT 1 FROM work WHERE work_id = ? AND state = 'open' AND lease_token = ?)
+           ON CONFLICT(txn_id) DO UPDATE SET
+             payment_id = excluded.payment_id,
+             parent_txn_id = excluded.parent_txn_id,
+             last_state_key = excluded.last_state_key`,
+        ).bind(
+          reversalTxnId,
+          reversalOrderId,
+          checkout.checkout_id,
+          paymentId,
+          confirmedTxn.provider_parent_txn_id ?? null,
+          confirmedTxn.dedupe_key,
+          work.work_id,
+          leaseToken,
+        ),
+      );
+    }
     statements.push(
       env.DB.prepare(
         `UPDATE work SET state = 'done', lease_until = NULL, lease_token = NULL, last_error = NULL

@@ -1337,7 +1337,7 @@ describe.sequential("sweeps cross-worker", () => {
     expect(await alertCountByCode("AL-03")).toBe(1);
   });
 
-  it("E2E-P4.5-04 parent-flag refund ends the active term and holds the queue", async () => {
+  it("R6-BR1 E2E-P4.5-04 parent-flag refund ends the active term and holds the queue", async () => {
     const { expectations, offerVersions } = await setupReversalHarness();
     const org = ORG_SWEEP_04;
     const firstTxnId = 95104;
@@ -1357,6 +1357,9 @@ describe.sequential("sweeps cross-worker", () => {
       { connectingIp: "203.0.113.104" },
     );
     expect(refundIntake.status).toBe(200);
+    expect(await reversalCount()).toBe(0);
+    await scriptPaymobInquiry("reversed");
+    await runScheduled("* * * * *");
     expect(await tableCount("payment")).toBe(paymentsBefore);
     expect(await reversalCount()).toBe(1);
     expect(await reversalEffectForPayment(activePaymentId)).toBe("end_current");
@@ -1377,7 +1380,7 @@ describe.sequential("sweeps cross-worker", () => {
     expect(await recentTermState(org, activePaymentId)).toBe("ended");
   });
 
-  it("E2E-P4.5-05 child refund is the same reversal", async () => {
+  it("R6-BR1 E2E-P4.5-05 child callback is only a hint for the same parent reversal", async () => {
     const { expectations, offerVersions } = await setupReversalHarness();
     const org = ORG_SWEEP_05;
     const firstTxnId = 95106;
@@ -1396,6 +1399,9 @@ describe.sequential("sweeps cross-worker", () => {
       { connectingIp: "203.0.113.105" },
     );
     expect(parentRefund.status).toBe(200);
+    expect(await reversalCount()).toBe(0);
+    await scriptPaymobInquiry("reversed");
+    await runScheduled("* * * * *");
     expect(await reversalCount()).toBe(1);
     expect(await reversalEffectForPayment(activePaymentId)).toBe("end_current");
 
@@ -1404,6 +1410,7 @@ describe.sequential("sweeps cross-worker", () => {
       { connectingIp: "203.0.113.106" },
     );
     expect(childRefund.status).toBe(200);
+    await runScheduled("* * * * *");
     expect(await reversalCount()).toBe(1);
     expect(await tableCount("payment")).toBe(2);
 
@@ -1423,7 +1430,7 @@ describe.sequential("sweeps cross-worker", () => {
     await settlePlatformDurableObjectAlarms();
   });
 
-  it("E2E-P4.5-06 ended term reversal is effect none", async () => {
+  it("R6-BR1 E2E-P4.5-06 ended term reversal is effect none", async () => {
     const { expectations, offerVersions } = await setupReversalHarness();
     const org = ORG_SWEEP_06;
     const txnId = 95109;
@@ -1443,6 +1450,9 @@ describe.sequential("sweeps cross-worker", () => {
       { connectingIp: "203.0.113.107" },
     );
     expect(refundIntake.status).toBe(200);
+    expect(await reversalCount()).toBe(0);
+    await scriptPaymobInquiry("reversed");
+    await runScheduled("* * * * *");
     expect(await reversalCount()).toBe(1);
     expect(await reversalEffectForPayment(paymentId!)).toBe("none");
 
@@ -1456,7 +1466,7 @@ describe.sequential("sweeps cross-worker", () => {
     expect(await recentTermState(org, paymentId!)).toBe("ended");
   });
 
-  it("E2E-P4.5-07 full reversal while granting stores a tombstone", async () => {
+  it("R6-BR1 E2E-P4.5-07 full reversal while granting stores a tombstone", async () => {
     const { expectations, offerVersions } = await setupReversalHarness();
     const org = ORG_SWEEP_07;
     const txnId = 95110;
@@ -1488,6 +1498,9 @@ describe.sequential("sweeps cross-worker", () => {
       { connectingIp: "203.0.113.108" },
     );
     expect(refundIntake.status).toBe(200);
+    expect(await reversalCount()).toBe(0);
+    await scriptPaymobInquiry("reversed");
+    await runScheduled("* * * * *");
     expect(await reversalCount()).toBe(1);
     expect(await reversalEffectForPayment(paymentId!)).toBe("tombstone");
 
@@ -1508,7 +1521,7 @@ describe.sequential("sweeps cross-worker", () => {
     expect(outcome?.result).toBe("rejected");
   });
 
-  it("E2E-P4.5-08 partial refund stays in review", async () => {
+  it("R6-BR1 E2E-P4.5-08 parent cumulative 400/800 stays in review", async () => {
     const { expectations, offerVersions } = await setupReversalHarness();
     const org = ORG_SWEEP_08;
     const txnId = 95111;
@@ -1528,18 +1541,33 @@ describe.sequential("sweeps cross-worker", () => {
       { connectingIp: "203.0.113.109" },
     );
     expect(refundIntake.status).toBe(200);
-    expect(await reversalCount()).toBe(1);
-    expect(await reversalEffectForPayment(paymentId!)).toBe("review_partial");
-
+    expect(await reversalCount()).toBe(0);
     await scriptPaymobInquiry("partial_refund");
     await runScheduled("* * * * *");
+    expect(await reversalCount()).toBe(1);
+    expect(await reversalEffectForPayment(paymentId!)).toBe("review_partial");
 
     expect(await reverseWorkCount()).toBe(0);
     expect(await platformGrantVoidCount(grantId)).toBe(0);
     expect(await alertCountByCode("AL-06")).toBe(1);
+
+    await setClock("2026-06-01T18:00:00.000Z");
+    await scriptPaymobInquiry("reversed");
+    await runScheduled("0 */6 * * *");
+    await runScheduled("* * * * *");
+    expect(await reversalCount()).toBe(2);
+    const cumulativeRows = await env.DB.prepare(
+      `SELECT cumulative_reversed_minor, effect FROM reversal
+       WHERE payment_id = ? ORDER BY cumulative_reversed_minor ASC`,
+    )
+      .bind(paymentId!)
+      .all<{ cumulative_reversed_minor: number; effect: string }>();
+    expect(cumulativeRows.results?.map((row) => row.cumulative_reversed_minor)).toEqual([400, 800]);
+    expect(cumulativeRows.results?.[1]?.effect).toBe("end_current");
+    expect(await platformGrantVoidCount(grantId)).toBe(1);
   });
 
-  it("E2E-P4.5-11 inquiry that contradicts a refund dismisses it", async () => {
+  it("R6-BR1 callback amount cannot create a reversal when parent inquiry disagrees", async () => {
     const { expectations, offerVersions } = await setupReversalHarness();
     const org = ORG_SWEEP_11;
     const txnId = 95112;
@@ -1557,20 +1585,69 @@ describe.sequential("sweeps cross-worker", () => {
       { connectingIp: "203.0.113.111" },
     );
     expect(refundIntake.status).toBe(200);
-    expect(await reversalCount()).toBe(1);
+    expect(await reversalCount()).toBe(0);
 
     await scriptPaymobInquiry("bound_success");
     await runScheduled("* * * * *");
 
-    expect(await findingCount("inquiry_disagrees")).toBe(1);
-    const reversalSubject = await findingSubjectForKind("inquiry_disagrees");
-    expect(reversalSubject).not.toBeNull();
+    expect(await reversalCount()).toBe(0);
+    expect(await findingCount("inquiry_disagrees")).toBe(0);
     const grantId = await grantIdPaid(paymentId!);
     expect(await platformGrantVoidCount(grantId)).toBe(0);
     expect(await reverseWorkCount()).toBe(0);
   });
 
-  it("E2E-P4.5-09 hourly, 6-hour, and daily tiers find a lost refund", async () => {
+  it("R6-BR3 provider void kind is retained in reversal facts and payment history", async () => {
+    const { expectations, offerVersions } = await setupReversalHarness();
+    const org = ORG_SWEEP_08;
+    const txnId = 95118;
+    const { checkoutId } = await paidCheckoutWithGrant(
+      org,
+      offerVersions[1],
+      expectations,
+      txnId,
+    );
+    const paymentId = await paymentIdForCheckout(checkoutId);
+    expect(paymentId).not.toBeNull();
+
+    await scriptPaymobInquiry("voided");
+    await runScheduled("0 * * * *");
+    await runScheduled("* * * * *");
+
+    const reversal = await env.DB.prepare(
+      `SELECT reversal_id, kind FROM reversal WHERE payment_id = ?`,
+    )
+      .bind(paymentId!)
+      .first<{ reversal_id: string; kind: string }>();
+    expect(reversal?.kind).toBe("void");
+    const fact = await env.DB.prepare(
+      `SELECT row_json FROM fact_log WHERE "table" = 'reversal' AND key = ?`,
+    )
+      .bind(reversal!.reversal_id)
+      .first<{ row_json: string }>();
+    expect(JSON.parse(fact!.row_json).kind).toBe("void");
+
+    const history = await billingFetch("/v1/payments", {
+      headers: await administratorHeaders(org),
+    });
+    const historyBody = (await history.json()) as {
+      payments: Array<{ reversals: Array<{ kind: string }> }>;
+    };
+    expect(history.status).toBe(200);
+    expect(historyBody.payments.flatMap((payment) => payment.reversals).map((item) => item.kind)).toContain("void");
+
+    await postPaymobCallback(refundParentFixtureWithTxnId(txnId));
+    await scriptPaymobInquiry("reversed");
+    await runScheduled("* * * * *");
+    expect(await reversalCount()).toBe(1);
+    expect(await findingCount("reversal_kind_conflict")).toBe(1);
+    const retainedKind = await env.DB.prepare(
+      `SELECT kind FROM reversal WHERE payment_id = ?`,
+    ).bind(paymentId!).first<{ kind: string }>();
+    expect(retainedKind?.kind).toBe("void");
+  });
+
+  it("R6-BR2 E2E-P4.5-09 tiers keep every live payment due after reversals", async () => {
     const { expectations, offerVersions } = await setupReversalHarness();
     const baseClock = "2026-06-01T12:00:00.000Z";
     await setClock(baseClock);
@@ -1621,11 +1698,11 @@ describe.sequential("sweeps cross-worker", () => {
     await runScheduled("* * * * *");
 
     expect(await tableCount("payment")).toBe(paymentsBeforeSixHour);
-    expect(await reversalCount()).toBe(reversalsBeforeSixHour + 1);
+    expect(await reversalCount()).toBe(reversalsBeforeSixHour + 2);
     const sixHourDetected = await Promise.all(
       [sixHourPaymentId, sixHourQueuedPaymentId].map(reversalDetectedVia),
     );
-    expect(sixHourDetected).toContain("inquiry");
+    expect(sixHourDetected).toEqual(["inquiry", "inquiry"]);
 
     const dailyRunDay = addDays(baseClock, 100);
     const dailyTxnId = await findTxnIdForTodaySlot(dailyRunDay);

@@ -10,8 +10,6 @@ import {
 
 import type { ProviderNotificationRequest } from "../provider/port.js";
 import { runMinuteInquiryBudget } from "../work/inquiry-budget.js";
-import { recordReversalFromProviderTxn } from "../work/reversal.js";
-import type { ReversalEnv } from "../work/reversal.js";
 import { runConfirmForWorkId } from "../work/runner.js";
 import type { GrantEnv } from "../work/grant.js";
 import {
@@ -663,13 +661,15 @@ export async function handlePostNotifyPaymob(
     existingPayment !== null
   ) {
     try {
-      await env.DB.prepare(
-        `INSERT INTO notification (
-           notification_id, provider_id, channel, hmac_valid, body_r2_key, provider_txn_id,
-           body_sha256, dedupe_key, checkout_id, disposition, adapter_version
-         ) VALUES (?, ?, 'processed', 1, ?, ?, ?, ?, ?, 'enqueued', ?)`,
-      )
-        .bind(
+      const nowIso = await clockNowIso(env);
+      const workId = await newId(env);
+      await env.DB.batch([
+        env.DB.prepare(
+          `INSERT INTO notification (
+             notification_id, provider_id, channel, hmac_valid, body_r2_key, provider_txn_id,
+             body_sha256, dedupe_key, checkout_id, disposition, adapter_version
+           ) VALUES (?, ?, 'processed', 1, ?, ?, ?, ?, ?, 'enqueued', ?)`,
+        ).bind(
           notificationId,
           PAYMOB_PROVIDER_ID,
           bodyR2Key,
@@ -678,15 +678,26 @@ export async function handlePostNotifyPaymob(
           bodySha256,
           checkoutId,
           PAYMOB_ADAPTER_VERSION,
-        )
-        .run();
-      const reversalEnv = env as NotifyIntakeEnv & ReversalEnv;
-      await recordReversalFromProviderTxn(
-        reversalEnv,
-        event,
-        "notification",
-        bodySha256,
-      );
+        ),
+        env.DB.prepare(
+          `INSERT INTO work (
+             work_id, kind, subject_id, dedupe_key, state, attempts,
+             next_attempt_at, lease_until, last_error, opened_at
+           ) SELECT ?, 'sweep_payment', ?, ?, 'open', 0, ?, NULL, NULL, ?
+             WHERE EXISTS (
+               SELECT 1 FROM notification WHERE notification_id = ?
+                 AND disposition = 'enqueued'
+             )
+           ON CONFLICT(dedupe_key) DO NOTHING`,
+        ).bind(
+          workId,
+          existingPayment.payment_id,
+          `sweep_payment:notification:${notificationId}`,
+          nowIso,
+          nowIso,
+          notificationId,
+        ),
+      ]);
     } catch {
       return emptyResponse(500);
     }

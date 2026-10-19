@@ -2431,41 +2431,76 @@ async function handlePostRetry(
   contractVersion: number,
 ): Promise<Response> {
   const work = await env.DB.prepare(
-    `SELECT work_id, kind, state FROM work WHERE work_id = ?`,
+    `SELECT work_id, kind, state, subject_id FROM work WHERE work_id = ?`,
   )
     .bind(workId)
-    .first<{ work_id: string; kind: string; state: string }>();
-  if (work === null || work.kind !== "grant" || work.state !== "parked") {
+    .first<{ work_id: string; kind: string; state: string; subject_id: string }>();
+  if (
+    work === null ||
+    !["grant", "reverse"].includes(work.kind) ||
+    work.state !== "parked"
+  ) {
     return clinicErrorResponse("not_found", 404, contractVersion);
   }
 
-  await env.DB.prepare(
-    `UPDATE work
-     SET state = 'open', lease_until = NULL, last_error = NULL, next_attempt_at = NULL
-     WHERE work_id = ?`,
-  )
-    .bind(workId)
-    .run();
+  if (work.kind === "reverse") {
+    const request = await env.DB.prepare(
+      `SELECT reversal_id FROM reversal_request WHERE reversal_id = ?`,
+    )
+      .bind(work.subject_id)
+      .first<{ reversal_id: string }>();
+    if (request === null) {
+      // Legacy parked requests have no authenticated original body to replay.
+      return clinicErrorResponse("conflict", 409, contractVersion);
+    }
+  }
 
   const action = "Retry parked work";
   const actionId = crypto.randomUUID();
-  const paramsSha256 = await sha256Hex(canonicalize({ action, subject: workId }));
+  const canonicalAction = {
+    action_id: actionId,
+    actor_email: access.email,
+    access_jti: access.jti,
+    action,
+    subject: workId,
+    params_sha256: await sha256Hex(canonicalize({ action, subject: workId })),
+    assertion_sha256: null,
+    result: "open",
+  };
   const createdAt = await clockNowIso(env);
+  const actionJsonBytes = canonicalize(canonicalAction);
+  const actionJson = new TextDecoder().decode(actionJsonBytes);
+  const actionSha = await sha256Hex(actionJsonBytes);
 
-  await insertOperatorAction(
-    env,
-    {
-      action_id: actionId,
-      actor_email: access.email,
-      access_jti: access.jti,
+  const retryResults = await env.DB.batch([
+    env.DB.prepare(
+      `UPDATE work
+       SET state = 'open', lease_until = NULL, lease_token = NULL,
+           last_error = NULL, next_attempt_at = NULL
+       WHERE work_id = ? AND kind = ? AND state = 'parked'`,
+    ).bind(workId, work.kind),
+    env.DB.prepare(
+      `INSERT INTO operator_action (
+         action_id, actor_email, access_jti, action, subject,
+         params_sha256, assertion_sha256, result
+       ) SELECT ?, ?, ?, ?, ?, ?, NULL, 'open' WHERE changes() = 1`,
+    ).bind(
+      actionId,
+      access.email,
+      access.jti,
       action,
-      subject: workId,
-      params_sha256: paramsSha256,
-      assertion_sha256: null,
-      result: "open",
-    },
-    createdAt,
-  );
+      workId,
+      canonicalAction.params_sha256,
+    ),
+    env.DB.prepare(
+      `INSERT INTO fact_log ("table", key, row_sha256, row_json, created_at)
+       SELECT 'operator_action', ?, ?, ?, ?
+       WHERE EXISTS (SELECT 1 FROM operator_action WHERE action_id = ?)`,
+    ).bind(actionId, actionSha, actionJson, createdAt, actionId),
+  ]);
+  if ((retryResults[0]?.meta.changes ?? 0) === 0) {
+    return clinicErrorResponse("conflict", 409, contractVersion);
+  }
 
   await recordPlatformOperatorAction(
     env,

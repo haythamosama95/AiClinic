@@ -684,20 +684,12 @@ export async function enqueueSixHourReversalPopulation(
      INNER JOIN grant_request gr ON gr.source_ref = p.payment_id
      INNER JOIN grant_outcome go ON go.grant_id = gr.grant_id
        AND go.result IN ('applied', 'already_applied')
-     WHERE NOT EXISTS (
-       SELECT 1 FROM reversal r WHERE r.payment_id = p.payment_id
-     )
      ORDER BY p.confirmed_at ASC, p.checkout_id ASC`,
   ).all<{ payment_id: string; org_id: string }>();
 
   const coverageByOrg = new Map<string, CoverageDetail | null>();
-  const seenOrgs = new Set<string>();
 
   const enqueueSixHourRow = async (paymentId: string, orgId: string) => {
-    if (seenOrgs.has(orgId)) {
-      return;
-    }
-    seenOrgs.add(orgId);
     await insertSweepWorkRow(
       env,
       "sweep_payment",
@@ -708,9 +700,6 @@ export async function enqueueSixHourReversalPopulation(
   };
 
   for (const row of rows.results ?? []) {
-    if (seenOrgs.has(row.org_id)) {
-      continue;
-    }
     const termIds = await grantTermIdsForPayment(env, row.payment_id);
     if (termIds.length === 0) {
       continue;

@@ -62,12 +62,6 @@ async function dueOpenSweepWork(
      WHERE kind IN ('sweep_checkout', 'sweep_payment')
        AND state = 'open'
        AND (next_attempt_at IS NULL OR next_attempt_at <= ?)
-       AND (
-         kind = 'sweep_checkout'
-         OR NOT EXISTS (
-           SELECT 1 FROM reversal r WHERE r.payment_id = subject_id
-         )
-       )
      ORDER BY CASE kind WHEN 'sweep_payment' THEN 0 ELSE 1 END,
               CASE
                 WHEN kind = 'sweep_checkout'

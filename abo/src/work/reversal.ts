@@ -44,6 +44,9 @@ type PaymentRow = {
   payment_id: string;
   org_id: string;
   amount_minor: number;
+  currency: string;
+  provider_id: string;
+  checkout_id: string;
 };
 
 type ReversalRow = {
@@ -235,7 +238,8 @@ async function loadPayment(
   paymentIdValue: string,
 ): Promise<PaymentRow | null> {
   return env.DB.prepare(
-    `SELECT payment_id, org_id, amount_minor FROM payment WHERE payment_id = ?`,
+    `SELECT payment_id, org_id, amount_minor, currency, provider_id, checkout_id
+     FROM payment WHERE payment_id = ?`,
   )
     .bind(paymentIdValue)
     .first<PaymentRow>();
@@ -382,13 +386,16 @@ function needsVoid(effect: ReversalEffect): boolean {
   );
 }
 
-async function reversalExists(dedupeKey: string, env: ReversalEnv): Promise<boolean> {
+async function reversalKindForDedupeKey(
+  dedupeKey: string,
+  env: ReversalEnv,
+): Promise<string | null> {
   const row = await env.DB.prepare(
-    `SELECT 1 FROM reversal WHERE dedupe_key = ?`,
+    `SELECT kind FROM reversal WHERE dedupe_key = ?`,
   )
     .bind(dedupeKey)
-    .first();
-  return row !== null;
+    .first<{ kind: string }>();
+  return row?.kind ?? null;
 }
 
 async function findingExists(
@@ -436,21 +443,115 @@ async function verifyVoidReceipt(
   return verifyReceiptSignature({ receipt, publicKey });
 }
 
+type ReversalRequestRow = {
+  reversal_id: string;
+  grant_id: string;
+  reason: string;
+  evidence_sha256: string;
+  partial: number;
+  contract_version: number;
+  canonical_body: string;
+  body_sha256: string;
+};
+
+async function reversalRequestForDispatch(
+  env: ReversalEnv,
+  reversal: ReversalRow,
+  allowCreate: boolean,
+): Promise<ReversalRequestRow | null> {
+  let row = await env.DB.prepare(
+    `SELECT reversal_id, grant_id, reason, evidence_sha256, partial,
+            contract_version, canonical_body, body_sha256
+     FROM reversal_request WHERE reversal_id = ?`,
+  )
+    .bind(reversal.reversal_id)
+    .first<ReversalRequestRow>();
+
+  if (row === null && allowCreate) {
+    const grantId = await grantIdPaid(reversal.payment_id);
+    const body = {
+      contract_version: CHANNEL_VERSIONS.vendorEntrypoint,
+      grant_id: grantId,
+      reversal_id: reversal.reversal_id,
+      reason: reversal.effect,
+      evidence_sha256: reversal.evidence_sha256,
+      partial: false,
+    };
+    const canonicalBody = new TextDecoder().decode(canonicalize(body));
+    const bodySha256 = await sha256Hex(new TextEncoder().encode(canonicalBody));
+    const createdAt = await clockNowIso(env);
+    await env.DB.prepare(
+      `INSERT OR IGNORE INTO reversal_request (
+         reversal_id, grant_id, reason, evidence_sha256, partial,
+         contract_version, canonical_body, body_sha256, created_at
+       ) VALUES (?, ?, ?, ?, 0, ?, ?, ?, ?)`,
+    )
+      .bind(
+        reversal.reversal_id,
+        grantId,
+        reversal.effect,
+        reversal.evidence_sha256,
+        CHANNEL_VERSIONS.vendorEntrypoint,
+        canonicalBody,
+        bodySha256,
+        createdAt,
+      )
+      .run();
+    row = await env.DB.prepare(
+      `SELECT reversal_id, grant_id, reason, evidence_sha256, partial,
+              contract_version, canonical_body, body_sha256
+       FROM reversal_request WHERE reversal_id = ?`,
+    )
+      .bind(reversal.reversal_id)
+      .first<ReversalRequestRow>();
+  }
+
+  if (row === null) return null;
+  try {
+    const bytes = new TextEncoder().encode(row.canonical_body);
+    const parsed = JSON.parse(row.canonical_body) as Record<string, unknown>;
+    const canonicalAgain = new TextDecoder().decode(canonicalize(parsed));
+    if (
+      row.reversal_id !== reversal.reversal_id ||
+      row.grant_id !== await grantIdPaid(reversal.payment_id) ||
+      row.reason !== reversal.effect ||
+      row.evidence_sha256 !== reversal.evidence_sha256 ||
+      row.partial !== 0 ||
+      canonicalAgain !== row.canonical_body ||
+      (await sha256Hex(bytes)) !== row.body_sha256 ||
+      parsed.contract_version !== row.contract_version ||
+      parsed.grant_id !== row.grant_id ||
+      parsed.reversal_id !== row.reversal_id ||
+      parsed.reason !== row.reason ||
+      parsed.evidence_sha256 !== row.evidence_sha256 ||
+      parsed.partial !== false
+    ) {
+      return null;
+    }
+  } catch {
+    return null;
+  }
+  return row;
+}
+
 export function inquiryAgreesWithReversal(
   txn: ProviderTxn,
   parentRef: string,
   cumulativeReversedMinor: number,
+  paymentIdValue: string,
 ): boolean {
-  if (txn.kind !== "reversal") {
+  if (
+    txn.kind !== "reversal" ||
+    txn.payment_id !== paymentIdValue ||
+    txn.reversal?.cumulative_verified !== true
+  ) {
     return false;
   }
   const txnParent = txn.provider_parent_txn_id ?? txn.provider_txn_id;
   if (txnParent !== undefined && txnParent !== parentRef) {
     return false;
   }
-  const cumulative =
-    txn.reversal?.cumulative_reversed_minor ?? txn.amount_minor;
-  return cumulative >= cumulativeReversedMinor;
+  return txn.reversal.cumulative_reversed_minor === cumulativeReversedMinor;
 }
 
 async function insertReversalRow(
@@ -460,6 +561,7 @@ async function insertReversalRow(
     paymentIdValue: string;
     reference: string;
     amountMinor: number;
+    kind: string;
     cumulativeReversedMinor: number;
     isFull: boolean;
     detectedVia: "notification" | "inquiry";
@@ -474,7 +576,7 @@ async function insertReversalRow(
     payment_id: input.paymentIdValue,
     reference: input.reference,
     amount_minor: input.amountMinor,
-    kind: "refund",
+    kind: input.kind,
     is_full: input.isFull ? 1 : 0,
     source: "provider",
     cumulative_reversed_minor: input.cumulativeReversedMinor,
@@ -490,12 +592,13 @@ async function insertReversalRow(
          reversal_id, payment_id, reference, amount_minor, kind, is_full,
          source, cumulative_reversed_minor, detected_via, recorded_by,
          evidence_sha256, effect, dedupe_key
-       ) VALUES (?, ?, ?, ?, 'refund', ?, 'provider', ?, ?, 'abo', ?, ?, ?)`,
+       ) VALUES (?, ?, ?, ?, ?, ?, 'provider', ?, ?, 'abo', ?, ?, ?)`,
     ).bind(
       input.reversalId,
       input.paymentIdValue,
       input.reference,
       input.amountMinor,
+      input.kind,
       input.isFull ? 1 : 0,
       input.cumulativeReversedMinor,
       input.detectedVia,
@@ -518,22 +621,75 @@ export async function recordReversalFromProviderTxn(
   if (txn.kind !== "reversal") {
     return null;
   }
-
-  const parentRef = await resolveParentTxnRef(env, txn);
-  const paymentIdValue =
-    paymentIdOverride ?? (await paymentIdForParentRef(parentRef));
-  const cumulative =
-    txn.reversal?.cumulative_reversed_minor ?? txn.amount_minor;
-  const dedupeKey = reversalDedupeKey(parentRef, cumulative);
-
-  if (await reversalExists(dedupeKey, env)) {
+  if (txn.reversal === undefined) {
     return null;
   }
 
+  const parentRef = await resolveParentTxnRef(env, txn);
+  if (parentRef === "unknown") {
+    return null;
+  }
+  const paymentIdValue =
+    paymentIdOverride ?? (await paymentIdForParentRef(parentRef));
+  const expectedPaymentId = await paymentIdForParentRef(parentRef);
+  if (paymentIdValue !== expectedPaymentId || txn.payment_id !== expectedPaymentId) {
+    return null;
+  }
+  const cumulative = txn.reversal.cumulative_reversed_minor;
+  if (!Number.isSafeInteger(cumulative) || cumulative < 0) {
+    return null;
+  }
+  if (!Number.isSafeInteger(txn.amount_minor) || txn.amount_minor < 0) {
+    return null;
+  }
+  const dedupeKey = reversalDedupeKey(parentRef, cumulative);
+
   const payment = await loadPayment(env, paymentIdValue);
-  const paymentAmount = payment?.amount_minor ?? txn.amount_minor;
+  if (
+    payment === null ||
+    payment.provider_id !== PAYMOB_PROVIDER_ID ||
+    txn.amount_minor !== payment.amount_minor ||
+    txn.currency !== payment.currency
+  ) {
+    return null;
+  }
+  if (
+    txn.provider_order_id !== undefined &&
+    (await env.DB.prepare(
+      `SELECT 1 FROM paymob_intention_attempt
+       WHERE checkout_id = ? AND order_id = ? AND state = 'created' LIMIT 1`,
+    )
+      .bind(payment.checkout_id, txn.provider_order_id)
+      .first()) === null
+  ) {
+    return null;
+  }
+
+  const existingKind = await reversalKindForDedupeKey(dedupeKey, env);
+  if (existingKind !== null) {
+    if (existingKind !== txn.reversal.kind) {
+      const reversalId = await reversalIdFromDedupeKey(dedupeKey);
+      if (!(await findingExists(env, reversalId, "reversal_kind_conflict"))) {
+        const nowIso = await clockNowIso(env);
+        const findingId = await newId(env);
+        await env.DB.prepare(
+          `INSERT INTO finding (finding_id, kind, subject, detail, detected_at)
+           VALUES (?, 'reversal_kind_conflict', ?, ?, ?)`,
+        )
+          .bind(findingId, reversalId, JSON.stringify({
+            existing_kind: existingKind,
+            observed_kind: txn.reversal.kind,
+            dedupe_key: dedupeKey,
+          }), nowIso)
+          .run();
+        await raiseAlert(env, "AL-06", `AL-06:kind:${reversalId}`, reversalId);
+      }
+    }
+    return null;
+  }
+
   const isFull =
-    txn.reversal?.is_full === true || cumulative >= paymentAmount;
+    txn.reversal.cumulative_verified && cumulative >= payment.amount_minor;
   const effect = await determineReversalEffect(env, paymentIdValue, isFull);
   const reversalId = await reversalIdFromDedupeKey(dedupeKey);
   const reference = humanRef("REV", reversalId);
@@ -543,6 +699,7 @@ export async function recordReversalFromProviderTxn(
     paymentIdValue,
     reference,
     amountMinor: txn.amount_minor,
+    kind: txn.reversal.kind,
     cumulativeReversedMinor: cumulative,
     isFull,
     detectedVia,
@@ -554,20 +711,13 @@ export async function recordReversalFromProviderTxn(
     return null;
   }
 
-  await env.DB.prepare(
-    `UPDATE work SET state = 'done', lease_until = NULL
-     WHERE kind = 'sweep_payment' AND subject_id = ? AND state = 'open'`,
-  )
-    .bind(paymentIdValue)
-    .run();
-
   await raiseAlert(env, "AL-06", `AL-06:${reversalId}`, reversalId);
 
   if (needsVoid(effect) && detectedVia === "inquiry") {
     await insertReverseWorkRow(env, reversalId);
     const reversal = await loadReversal(env, reversalId);
     if (reversal !== null) {
-      await callVoidForReversal(env, reversal);
+      await callVoidForReversal(env, reversal, true);
     }
   }
 
@@ -669,10 +819,14 @@ export async function verifyNotificationReversal(
   )
     .bind(reversal.payment_id)
     .first<{ txn_id: string }>();
+  if (txnRow === null) {
+    await recordInquiryDisagreesFinding(env, reversalId);
+    return { inquired: false, agreed: false };
+  }
 
   const inquiry = await provider.inquire({
     checkout_id: checkoutRow.checkout_id,
-    paymob_txn_id: txnRow?.txn_id,
+    paymob_txn_id: txnRow.txn_id,
   });
   if (inquiry.deferred) {
     return { inquired: false, agreed: false };
@@ -685,11 +839,11 @@ export async function verifyNotificationReversal(
   }
 
   const inquiryTxn = inquiry.transactions[0]!;
-  const resolvedParent = await resolveParentTxnRef(env, inquiryTxn);
   const agrees = inquiryAgreesWithReversal(
     inquiryTxn,
-    resolvedParent,
+    txnRow.txn_id,
     reversal.cumulative_reversed_minor,
+    reversal.payment_id,
   );
   if (!agrees) {
     if (inquiry.transactions.length > 0) {
@@ -706,7 +860,18 @@ export async function verifyNotificationReversal(
 async function callVoidForReversal(
   env: ReversalEnv,
   reversal: ReversalRow,
+  allowCreateRequest = false,
 ): Promise<void> {
+  const request = await reversalRequestForDispatch(
+    env,
+    reversal,
+    allowCreateRequest,
+  );
+  if (request === null) {
+    await parkReverseWorkRow(env, reversal.reversal_id, "request_unrecoverable");
+    await raiseAlert(env, "AL-07", `AL-07:request:${reversal.reversal_id}`, reversal.reversal_id);
+    return;
+  }
   if (await readSigningGatePaused(env)) {
     return;
   }
@@ -720,17 +885,8 @@ async function callVoidForReversal(
     return;
   }
 
-  const grantId = await grantIdPaid(reversal.payment_id);
-  const signedBody = {
-    contract_version: CHANNEL_VERSIONS.vendorEntrypoint,
-    grant_id: grantId,
-    reversal_id: reversal.reversal_id,
-    reason: reversal.effect,
-    evidence_sha256: reversal.evidence_sha256,
-    partial: false,
-  };
   const aboSignature = await signCompactJws({
-    payload: canonicalize(signedBody),
+    payload: new TextEncoder().encode(request.canonical_body),
     privateKey,
     kid: aboKey.kid,
   });
@@ -738,12 +894,12 @@ async function callVoidForReversal(
   let platformResult: Record<string, unknown>;
   try {
     platformResult = await env.PLATFORM.voidForReversal({
-      contract_version: CHANNEL_VERSIONS.vendorEntrypoint,
-      grant_id: grantId,
-      reversal_id: reversal.reversal_id,
-      reason: reversal.effect,
-      evidence_sha256: reversal.evidence_sha256,
-      partial: false,
+      contract_version: request.contract_version,
+      grant_id: request.grant_id,
+      reversal_id: request.reversal_id,
+      reason: request.reason,
+      evidence_sha256: request.evidence_sha256,
+      partial: request.partial === 1,
       abo_kid: aboKey.kid,
       abo_signature: aboSignature,
     });

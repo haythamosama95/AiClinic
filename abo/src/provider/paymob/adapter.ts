@@ -684,39 +684,34 @@ function amountMinorFromCents(value: string | number): number {
   return Number.isFinite(parsed) ? Math.trunc(parsed) : 0;
 }
 
+function safeMinorFromCents(value: string | number | undefined): number | null {
+  if (value === undefined) return null;
+  const parsed = typeof value === "number" ? value : /^\d+$/u.test(value) ? Number(value) : NaN;
+  return Number.isSafeInteger(parsed) && parsed >= 0 ? parsed : null;
+}
+
 function reversalFromTxn(
   txn: PaymobAcceptanceTransaction,
 ): ProviderReversal | undefined {
-  const cumulative = amountMinorFromCents(
-    txn.refunded_amount_cents ?? txn.amount_cents,
-  );
+  const cumulative = safeMinorFromCents(txn.refunded_amount_cents);
   const amount = amountMinorFromCents(txn.amount_cents);
-  if (txn.is_voided) {
+  if (txn.is_voided || txn.is_refunded || (cumulative ?? 0) > 0) {
     return {
-      kind: "void",
+      kind: txn.is_voided ? "void" : "refund",
       amount_minor: amount,
-      cumulative_reversed_minor: amount,
-      is_full: true,
-    };
-  }
-  if (txn.is_refunded || txn.has_parent_transaction) {
-    const isFull = cumulative >= amount;
-    return {
-      kind: txn.has_parent_transaction ? "refund" : "refund",
-      amount_minor: amount,
-      cumulative_reversed_minor: cumulative,
-      is_full: isFull,
+      cumulative_reversed_minor: cumulative ?? 0,
+      cumulative_verified: cumulative !== null,
     };
   }
   return undefined;
 }
 
 function txnKindFromAcceptance(txn: PaymobAcceptanceTransaction): ProviderTxnKind {
-  if (txn.is_refunded || txn.is_voided || txn.has_parent_transaction) {
-    return "reversal";
-  }
   if (txn.pending) {
     return "payment_pending";
+  }
+  if (txn.is_refunded || txn.is_voided || txn.has_parent_transaction) {
+    return "reversal";
   }
   if (txn.success) {
     return "payment_succeeded";
@@ -725,106 +720,16 @@ function txnKindFromAcceptance(txn: PaymobAcceptanceTransaction): ProviderTxnKin
 }
 
 function txnKindFromCallback(obj: PaymobCallbackObj): ProviderTxnKind {
-  if (obj.is_refunded || obj.is_voided || obj.has_parent_transaction) {
-    return "reversal";
-  }
   if (obj.pending) {
     return "payment_pending";
+  }
+  if (obj.is_refunded || obj.is_voided || obj.has_parent_transaction) {
+    return "reversal";
   }
   if (obj.success) {
     return "payment_succeeded";
   }
   return "payment_failed";
-}
-
-async function parentTxnRefForCallback(
-  env: PaymobAdapterEnv,
-  obj: PaymobCallbackObj,
-  checkoutId: string,
-): Promise<string> {
-  const txnId = String(obj.id);
-  if (obj.has_parent_transaction) {
-    const intention = await env.DB.prepare(
-      `SELECT order_id FROM paymob_intention_attempt
-       WHERE checkout_id = ? AND order_id = ? AND state = 'created'
-       ORDER BY attempt_no DESC LIMIT 1`,
-    )
-      .bind(checkoutId, String(obj.order.id))
-      .first<{ order_id: string }>();
-    if (intention === null) {
-      return txnId;
-    }
-    const checkout = await env.DB.prepare(
-      `SELECT org_id FROM checkout WHERE checkout_id = ?`,
-    )
-      .bind(checkoutId)
-      .first<{ org_id: string }>();
-    if (checkout !== null) {
-      const reversedParent = await env.DB.prepare(
-        `SELECT pt.txn_id
-         FROM reversal r
-         INNER JOIN payment p ON p.payment_id = r.payment_id
-         INNER JOIN paymob_txn pt
-           ON pt.payment_id = r.payment_id AND pt.parent_txn_id IS NULL
-         INNER JOIN paymob_intention_attempt ia
-           ON ia.checkout_id = pt.checkout_id AND ia.order_id = pt.order_id
-              AND ia.state = 'created'
-         WHERE ia.order_id = ? AND p.org_id = ?
-         ORDER BY pt.txn_id ASC
-         LIMIT 1`,
-      )
-        .bind(intention.order_id, checkout.org_id)
-        .first<{ txn_id: string }>();
-      if (reversedParent !== null) {
-        return reversedParent.txn_id;
-      }
-    }
-    const parentRow = await env.DB.prepare(
-      `SELECT pt.txn_id FROM paymob_txn pt
-       INNER JOIN paymob_intention_attempt ia
-         ON ia.checkout_id = pt.checkout_id AND ia.order_id = pt.order_id
-            AND ia.state = 'created'
-       WHERE pt.checkout_id = ? AND pt.order_id = ? AND pt.parent_txn_id IS NULL
-       ORDER BY pt.txn_id ASC
-       LIMIT 1`,
-    )
-      .bind(checkoutId, intention.order_id)
-      .first<{ txn_id: string }>();
-    if (parentRow !== null) {
-      return parentRow.txn_id;
-    }
-  }
-  return txnId;
-}
-
-function reversalFromCallback(
-  obj: PaymobCallbackObj,
-): ProviderReversal | undefined {
-  const amountMinor = amountMinorFromCents(obj.amount_cents);
-  if (obj.is_voided) {
-    return {
-      kind: "void",
-      amount_minor: amountMinor,
-      cumulative_reversed_minor: amountMinor,
-      is_full: true,
-    };
-  }
-  if (obj.is_refunded || obj.has_parent_transaction) {
-    const cumulative = amountMinorFromCents(
-      obj.refunded_amount_cents ?? obj.amount_cents,
-    );
-    const parentFlagFullRefund =
-      obj.is_refunded &&
-      !obj.has_parent_transaction &&
-      obj.refunded_amount_cents === undefined;
-    return {
-      kind: "refund",
-      amount_minor: amountMinor,
-      cumulative_reversed_minor: cumulative,
-      is_full: parentFlagFullRefund ? true : cumulative >= amountMinor,
-    };
-  }
-  return undefined;
 }
 
 async function providerTxnFromCallback(
@@ -843,10 +748,10 @@ async function providerTxnFromCallback(
   if (checkoutId === null) {
     return null;
   }
-  const parentRef = await parentTxnRefForCallback(env, obj, checkoutId);
-  const resolvedPaymentId = await paymentId(PAYMOB_PROVIDER_ID, parentRef);
+  // A callback only schedules an inquiry. Its child identity and unsigned
+  // cumulative fields must not be promoted to a commercial payment/reversal.
+  const resolvedPaymentId = await paymentId(PAYMOB_PROVIDER_ID, txnId);
   const kind = txnKindFromCallback(obj);
-  const reversal = kind === "reversal" ? reversalFromCallback(obj) : undefined;
   return {
     kind,
     checkout_id: checkoutId,
@@ -856,9 +761,7 @@ async function providerTxnFromCallback(
     currency: obj.currency,
     occurred_at: obj.created_at,
     dedupe_key: `paymob:txn:${txnId}:${kind}`,
-    reversal,
     provider_txn_id: txnId,
-    provider_parent_txn_id: obj.has_parent_transaction ? parentRef : null,
   };
 }
 
@@ -880,7 +783,7 @@ async function providerTxnFromAcceptanceAsync(
     currency: txn.currency,
     occurred_at: await clockNowIso(env),
     dedupe_key: `paymob:txn:${txnId}:${kind}`,
-    reversal: reversalFromTxn(txn),
+    reversal: kind === "reversal" ? reversalFromTxn(txn) : undefined,
     provider_txn_id: txnId,
     provider_parent_txn_id: paymobParentTxnId(txn),
   };
@@ -1039,7 +942,8 @@ async function inquireImpl(
     return INQUIRY_RETRY;
   }
 
-  const transactionOrderId = String(txnResult.data.order.id);
+  const hintedTxn = txnResult.data;
+  const transactionOrderId = String(hintedTxn.order.id);
   const intention = await env.DB.prepare(
     `SELECT order_id FROM paymob_intention_attempt
      WHERE checkout_id = ? AND order_id = ? AND state = 'created'
@@ -1049,6 +953,53 @@ async function inquireImpl(
     .first<{ order_id: string }>();
   if (intention === null) {
     return { bound: false, transactions: [] };
+  }
+
+  if (String(hintedTxn.id) !== txnId) {
+    return { bound: false, transactions: [] };
+  }
+
+  // Child ids from notifications are only inquiry hints. Resolve the exact
+  // authenticated parent, then use that parent's cumulative as reversal truth.
+  let authoritativeTxn = hintedTxn;
+  const hintedParentId = paymobParentTxnId(hintedTxn);
+  if (hintedTxn.pending) {
+    const pendingTxn = await providerTxnFromAcceptanceAsync(
+      env,
+      hintedTxn,
+      checkoutId,
+    );
+    return { bound: true, transactions: [pendingTxn] };
+  }
+  if (hintedParentId !== null) {
+    const parentResult = await getPaymobAcceptanceTransaction(
+      env,
+      token,
+      hintedParentId,
+    );
+    if (parentResult.outcome === "unauthorized") {
+      cachedPaymobAuthToken = null;
+      return INQUIRY_RETRY;
+    }
+    if (parentResult.outcome !== "ok") {
+      return INQUIRY_RETRY;
+    }
+    if (
+      String(parentResult.data.id) !== hintedParentId ||
+      String(parentResult.data.order.id) !== transactionOrderId ||
+      paymobParentTxnId(parentResult.data) !== null
+    ) {
+      return { bound: false, transactions: [] };
+    }
+    if (parentResult.data.pending) {
+      const pendingTxn = await providerTxnFromAcceptanceAsync(
+        env,
+        parentResult.data,
+        checkoutId,
+      );
+      return { bound: true, transactions: [pendingTxn] };
+    }
+    authoritativeTxn = parentResult.data;
   }
 
   const orderInquiry = await postPaymobOrderTransactionInquiry(
@@ -1072,9 +1023,14 @@ async function inquireImpl(
 
   const txn = await providerTxnFromAcceptanceAsync(
     env,
-    txnResult.data,
+    authoritativeTxn,
     checkoutId,
   );
+  if (hintedParentId !== null && txn.kind !== "reversal") {
+    // A child notification without corroborating parent reversal evidence is
+    // still due; it cannot fall back to the child's amount or parent flag.
+    return INQUIRY_RETRY;
+  }
   return { bound: true, transactions: [txn] };
 }
 

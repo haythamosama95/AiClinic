@@ -18,6 +18,7 @@ import checkoutCreationAttemptsMigrationSql from "../../migrations/0011_checkout
 import acceptedCommandsErasureFenceMigrationSql from "../../migrations/0012_accepted_commands_erasure_fence.sql?raw";
 import notificationProviderTxnIdMigrationSql from "../../migrations/0013_notification_provider_txn_id.sql?raw";
 import grantOutcomeEventsMigrationSql from "../../migrations/0014_grant_outcome_events.sql?raw";
+import reversalRequestMigrationSql from "../../migrations/0015_reversal_request.sql?raw";
 
 const ABO_LEGACY_MIGRATION_SQL: string[] = [
   recordsMigrationSql,
@@ -37,6 +38,7 @@ const ABO_MIGRATION_SQL: string[] = [
   acceptedCommandsErasureFenceMigrationSql,
   notificationProviderTxnIdMigrationSql,
   grantOutcomeEventsMigrationSql,
+  reversalRequestMigrationSql,
 ];
 
 function base64UrlEncode(bytes: Uint8Array): string {
