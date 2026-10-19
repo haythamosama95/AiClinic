@@ -4476,6 +4476,16 @@ export class VendorEntrypoint extends WorkerEntrypoint<VendorEnv> {
     if (transfer === null) {
       return grantRejected(version, "bad_request");
     }
+    if (transfer.package === null) {
+      const step = await executeTransferIn(this.env, version, transferId);
+      if (step.result === "transient") {
+        return grantTransient(version, step.detail);
+      }
+      if (step.result === "rejected") {
+        return grantRejected(version, step.code);
+      }
+      return grantRejected(version, "bad_request");
+    }
     if (!(await ensureGrantClaimsBackfilled(this.env, transfer.org_id, version))) {
       return grantRejected(version, "coverage_unknown");
     }

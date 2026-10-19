@@ -516,7 +516,24 @@ async function completePaidGrantTransfer(): Promise<{
   await runDurableObjectAlarm(quotaDoStub(oldInstallationId));
 
   const inResult = await transferIn(transferRow.transfer_id);
-  expect(inResult.result, JSON.stringify(inResult)).toBe("applied");
+  const transferDiagnostics = {
+    claims: await queryAll<{
+      grant_id: string;
+      source_kind: string;
+      installation_id: string;
+      route_generation: number;
+      state: string;
+    }>(
+      `SELECT grant_id, source_kind, installation_id, route_generation, state
+       FROM grant_claim WHERE org_id = ? AND source_kind = 'transfer'`,
+      [scenario.orgId],
+    ),
+    disputes: await queryAll<{ grant_id: string; reason: string; count: number }>(
+      "SELECT grant_id, reason, count FROM grant_claim_dispute WHERE org_id = ?",
+      [scenario.orgId],
+    ),
+  };
+  expect(inResult.result, JSON.stringify({ inResult, transferDiagnostics })).toBe("applied");
   await runDurableObjectAlarm(quotaDoStub(transferRow.to_installation_id));
 
   return {
@@ -757,7 +774,22 @@ describe("transfer, deletion with coverage left, ledger retention", () => {
     const transfer = JSON.parse(begun.detail) as { transfer_id: string; to_installation_id: string };
     expect((await transferOut(transfer.transfer_id)).result).toBe("applied");
     const transferInResult = await transferIn(transfer.transfer_id);
-    expect(transferInResult.result, JSON.stringify(transferInResult)).toBe("applied");
+    const transferClaims = await queryAll<{
+      grant_id: string;
+      source_kind: string;
+      installation_id: string;
+      route_generation: number;
+      state: string;
+    }>(
+      `SELECT grant_id, source_kind, installation_id, route_generation, state
+       FROM grant_claim WHERE org_id = ? AND source_kind = 'transfer'`,
+      [scenario.orgId],
+    );
+    const transferDisputes = await queryAll<{ grant_id: string; reason: string; count: number }>(
+      "SELECT grant_id, reason, count FROM grant_claim_dispute WHERE org_id = ?",
+      [scenario.orgId],
+    );
+    expect(transferInResult.result, JSON.stringify({ transferInResult, transferClaims, transferDisputes })).toBe("applied");
 
     const applied = await p38VendorCall("grant", grantArgs);
     expect(applied.result).toBe("applied");
@@ -789,7 +821,24 @@ describe("transfer, deletion with coverage left, ledger retention", () => {
     await runDurableObjectAlarm(quotaDoStub(setup.oldInstallationId));
 
     const inResult = await transferIn(transferId);
-    expect(inResult.result, JSON.stringify(inResult)).toBe("applied");
+    const transferDiagnostics = {
+      claims: await queryAll<{
+        grant_id: string;
+        source_kind: string;
+        installation_id: string;
+        route_generation: number;
+        state: string;
+      }>(
+        `SELECT grant_id, source_kind, installation_id, route_generation, state
+         FROM grant_claim WHERE org_id = ? AND source_kind = 'transfer'`,
+        [scenario.orgId],
+      ),
+      disputes: await queryAll<{ grant_id: string; reason: string; count: number }>(
+        "SELECT grant_id, reason, count FROM grant_claim_dispute WHERE org_id = ?",
+        [scenario.orgId],
+      ),
+    };
+    expect(inResult.result, JSON.stringify({ inResult, transferDiagnostics })).toBe("applied");
     await runDurableObjectAlarm(quotaDoStub(newInstallationId));
 
     const applied = await paidGrant(scenario, pendingGrantId);
