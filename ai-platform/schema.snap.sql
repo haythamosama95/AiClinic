@@ -394,7 +394,8 @@ CREATE TABLE transfer_route_quarantine (
   reason TEXT NOT NULL CHECK (reason IN (
     'invalid_export_package',
     'missing_origin_route',
-    'route_not_at_authorized_source'
+    'route_not_at_authorized_source',
+    'receipt_export_mismatch'
   )),
   created_at TEXT NOT NULL,
   PRIMARY KEY (transfer_id, grant_id),

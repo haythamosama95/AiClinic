@@ -933,6 +933,14 @@ describe("transfer, deletion with coverage left, ledger retention", () => {
         [setup.transferId, setup.activeGrantId],
       );
       expect(manifest).toBeTruthy();
+      const beforeImport = await queryOne<{ binding_epoch: number; generation: number }>(
+        `SELECT binding_epoch, generation FROM live_value_route WHERE grant_id = ?`,
+        [setup.activeGrantId],
+      );
+      expect(beforeImport).toEqual({
+        binding_epoch: manifest!.source_epoch,
+        generation: manifest!.source_generation,
+      });
 
       await env.DB.prepare(
         `UPDATE live_value_route SET ${staleField} = ${staleField} + 1
@@ -988,6 +996,29 @@ describe("transfer, deletion with coverage left, ledger retention", () => {
       state: "moving",
       transfer_id: setup.transferId,
     });
+  });
+
+  it("R6-PT1: transfer-out receipt identity must authenticate its package before import", async () => {
+    const setup = await setupBeginTransferOnly();
+    expect((await transferOut(setup.transferId)).result).toBe("applied");
+    const stored = await queryOne<{ receipt: string }>(
+      `SELECT receipt FROM transfer_step WHERE transfer_id = ? AND step = 'transfer_out'`,
+      [setup.transferId],
+    );
+    expect(stored).toBeTruthy();
+    const altered = JSON.parse(stored!.receipt) as Record<string, unknown>;
+    altered.org_id = "different-org";
+    await env.DB.prepare(
+      `UPDATE transfer_step SET receipt = ? WHERE transfer_id = ? AND step = 'transfer_out'`,
+    ).bind(JSON.stringify(altered), setup.transferId).run();
+
+    const imported = await transferIn(setup.transferId);
+    expect(imported.result).toBe("rejected");
+    expect(imported.code).toBe("transfer_route_quarantined");
+    expect(await count("transfer_route_quarantine", "transfer_id = ?", [setup.transferId])).toBe(1);
+    expect((await readDoTerms(setup.newInstallationId)).some(
+      (term) => term.origin_grant_id === setup.activeGrantId,
+    )).toBe(false);
   });
 
   it("E2E-P3.8-04 A24 delete with paid time left holds the binding", async () => {

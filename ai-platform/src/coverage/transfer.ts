@@ -4,6 +4,7 @@ import {
   receiptSigningBytes,
   sha256Hex,
   signCompactJws,
+  verifyReceiptSignature,
 } from "vendor-contracts";
 import { raiseAl11Transfer, raiseAl18HeldBinding, type CoverageAlertEnv } from "../alert/index";
 import { clockNowIso, type ClockEnv } from "../clock";
@@ -11,7 +12,7 @@ import { purgeByInstallationId } from "../retention/index";
 import { generateUlid } from "../trace";
 import { decodeDoResponse } from "../quota-do/response-decoder";
 
-type TransferEnv = ClockEnv &
+export type TransferEnv = ClockEnv &
   CoverageAlertEnv & {
     DB: D1Database;
     DO: DurableObjectNamespace;
@@ -187,6 +188,74 @@ async function readTransferRouteManifest(
      FROM transfer_route_manifest WHERE transfer_id = ?`,
   ).bind(transferId).all<TransferRouteManifest>();
   return new Map((rows.results ?? []).map((row) => [row.grant_id, row]));
+}
+
+async function verifyTransferOutPackageReceipt(
+  env: TransferEnv,
+  transfer: TransferRow,
+  packageValue: unknown,
+  receipt: unknown,
+): Promise<boolean> {
+  if (!Array.isArray(packageValue) || typeof receipt !== "object" || receipt === null || Array.isArray(receipt)) {
+    return false;
+  }
+  const signed = receipt as Record<string, unknown>;
+  const termIds = signed.term_ids;
+  if (
+    signed.transfer_id !== transfer.transfer_id ||
+    signed.installation_id !== transfer.from_installation_id ||
+    signed.org_id !== transfer.org_id ||
+    signed.result !== "applied" ||
+    typeof signed.envelope_sha256 !== "string" ||
+    typeof signed.signature !== "string" ||
+    !Array.isArray(termIds) || termIds.length !== packageValue.length ||
+    !termIds.every((id) => typeof id === "string") ||
+    signed.envelope_sha256 !== await sha256Hex(
+      new TextEncoder().encode(canonicalize(packageValue)),
+    )
+  ) {
+    return false;
+  }
+  try {
+    const signing = JSON.parse(env.PLATFORM_SIGNING_KEY) as { public_key?: unknown };
+    if (typeof signing.public_key !== "string") return false;
+    const bytes = base64UrlDecode(signing.public_key);
+    if (bytes === null) return false;
+    const publicKey = await crypto.subtle.importKey(
+      "raw", bytes, { name: "Ed25519" }, false, ["verify"],
+    );
+    return await verifyReceiptSignature({ receipt: signed, publicKey });
+  } catch {
+    return false;
+  }
+}
+
+export async function verifyTransferOutEvidence(
+  env: TransferEnv,
+  transfer: TransferRow,
+): Promise<boolean> {
+  if (await readTransferStep(env.DB, transfer.transfer_id, "transfer_in") !== null) {
+    return true;
+  }
+  const step = await readTransferStep(env.DB, transfer.transfer_id, "transfer_out");
+  let packageValue: unknown;
+  let receipt: unknown;
+  try {
+    packageValue = transfer.package === null ? null : JSON.parse(transfer.package) as unknown;
+    receipt = step === null ? null : JSON.parse(step.receipt) as unknown;
+  } catch {
+    packageValue = null;
+    receipt = null;
+  }
+  if (step !== null && await verifyTransferOutPackageReceipt(env, transfer, packageValue, receipt)) {
+    return true;
+  }
+  await env.DB.prepare(
+    `INSERT OR IGNORE INTO transfer_route_quarantine
+       (transfer_id, grant_id, reason, created_at)
+     VALUES (?, '', 'receipt_export_mismatch', ?)`,
+  ).bind(transfer.transfer_id, await clockNowIso(env)).run();
+  return false;
 }
 
 export async function isTransferRouteQuarantined(
@@ -550,6 +619,9 @@ export async function executeTransferOut(
 
   const existingStep = await readTransferStep(env.DB, transferId, "transfer_out");
   if (existingStep !== null) {
+    if (!(await verifyTransferOutEvidence(env, transfer))) {
+      return { result: "rejected", code: "transfer_route_quarantined" };
+    }
     const receipt = JSON.parse(existingStep.receipt) as Record<string, unknown>;
     const packageJson =
       transfer.package !== null ? transfer.package : "[]";
@@ -609,6 +681,14 @@ export async function executeTransferOut(
     receiptRaw === null
   ) {
     return { result: "bad_request" };
+  }
+  if (!(await verifyTransferOutPackageReceipt(env, transfer, packageValue, receiptRaw))) {
+    await env.DB.prepare(
+      `INSERT OR IGNORE INTO transfer_route_quarantine
+         (transfer_id, grant_id, reason, created_at)
+       VALUES (?, '', 'receipt_export_mismatch', ?)`,
+    ).bind(transferId, await clockNowIso(env)).run();
+    return { result: "rejected", code: "transfer_route_quarantined" };
   }
 
   const packageJson = JSON.stringify(packageValue);
@@ -700,6 +780,9 @@ export async function executeTransferIn(
   }
 
   if (await isTransferRouteQuarantined(env.DB, transferId)) {
+    return { result: "rejected", code: "transfer_route_quarantined" };
+  }
+  if (!(await verifyTransferOutEvidence(env, transfer))) {
     return { result: "rejected", code: "transfer_route_quarantined" };
   }
 

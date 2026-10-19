@@ -17,7 +17,8 @@ CREATE TABLE transfer_route_quarantine (
   reason TEXT NOT NULL CHECK (reason IN (
     'invalid_export_package',
     'missing_origin_route',
-    'route_not_at_authorized_source'
+    'route_not_at_authorized_source',
+    'receipt_export_mismatch'
   )),
   created_at TEXT NOT NULL,
   PRIMARY KEY (transfer_id, grant_id),
@@ -42,6 +43,29 @@ JOIN live_value_route r ON r.grant_id = json_extract(item.value, '$.origin_grant
 WHERE t.package IS NOT NULL AND json_valid(t.package)
   AND json_type(t.package) = 'array'
   AND json_valid(s.receipt)
+  AND json_extract(CASE WHEN json_valid(s.receipt) THEN s.receipt ELSE '{}' END,
+                   '$.transfer_id') = t.transfer_id
+  AND json_extract(CASE WHEN json_valid(s.receipt) THEN s.receipt ELSE '{}' END,
+                   '$.installation_id') = t.from_installation_id
+  AND json_extract(CASE WHEN json_valid(s.receipt) THEN s.receipt ELSE '{}' END,
+                   '$.org_id') = t.org_id
+  AND json_extract(CASE WHEN json_valid(s.receipt) THEN s.receipt ELSE '{}' END,
+                   '$.result') = 'applied'
+  AND json_type(CASE WHEN json_valid(s.receipt) THEN s.receipt ELSE '{}' END,
+                '$.term_ids') = 'array'
+  AND json_array_length(CASE WHEN json_valid(s.receipt) THEN s.receipt ELSE '{}' END,
+                        '$.term_ids') = json_array_length(t.package)
+  AND NOT EXISTS (
+    SELECT 1 FROM json_each(
+      CASE WHEN json_valid(s.receipt) THEN s.receipt ELSE '{"term_ids":[]}' END,
+      '$.term_ids'
+    ) term_id
+    WHERE term_id.type <> 'text'
+  )
+  AND json_type(CASE WHEN json_valid(s.receipt) THEN s.receipt ELSE '{}' END,
+                '$.envelope_sha256') = 'text'
+  AND json_type(CASE WHEN json_valid(s.receipt) THEN s.receipt ELSE '{}' END,
+                '$.signature') = 'text'
   AND json_type(item.value, '$.origin_grant_id') = 'text'
   AND r.org_id = t.org_id
   AND r.installation_id = t.from_installation_id
@@ -63,6 +87,44 @@ JOIN transfer_step s ON s.transfer_id = t.transfer_id AND s.step = 'transfer_out
 WHERE (t.package IS NULL OR NOT json_valid(t.package)
        OR json_type(CASE WHEN json_valid(t.package) THEN t.package ELSE 'null' END) <> 'array'
        OR NOT json_valid(s.receipt))
+  AND NOT EXISTS (
+    SELECT 1 FROM transfer_step imported
+    WHERE imported.transfer_id = t.transfer_id AND imported.step = 'transfer_in'
+  );
+
+INSERT OR IGNORE INTO transfer_route_quarantine (transfer_id, grant_id, reason, created_at)
+SELECT t.transfer_id, '', 'receipt_export_mismatch', s.applied_at
+FROM transfer t
+JOIN transfer_step s ON s.transfer_id = t.transfer_id AND s.step = 'transfer_out'
+WHERE t.package IS NOT NULL AND json_valid(t.package)
+  AND json_type(t.package) = 'array'
+  AND (
+    NOT json_valid(s.receipt)
+    OR COALESCE(json_extract(CASE WHEN json_valid(s.receipt) THEN s.receipt ELSE '{}' END,
+                             '$.transfer_id'), '') <> t.transfer_id
+    OR COALESCE(json_extract(CASE WHEN json_valid(s.receipt) THEN s.receipt ELSE '{}' END,
+                             '$.installation_id'), '') <> t.from_installation_id
+    OR COALESCE(json_extract(CASE WHEN json_valid(s.receipt) THEN s.receipt ELSE '{}' END,
+                             '$.org_id'), '') <> t.org_id
+    OR COALESCE(json_extract(CASE WHEN json_valid(s.receipt) THEN s.receipt ELSE '{}' END,
+                             '$.result'), '') <> 'applied'
+    OR COALESCE(json_type(CASE WHEN json_valid(s.receipt) THEN s.receipt ELSE '{}' END,
+                          '$.term_ids'), '') <> 'array'
+    OR COALESCE(json_array_length(
+         CASE WHEN json_valid(s.receipt) THEN s.receipt ELSE '{}' END, '$.term_ids'
+       ), -1) <> json_array_length(t.package)
+    OR EXISTS (
+      SELECT 1 FROM json_each(
+        CASE WHEN json_valid(s.receipt) THEN s.receipt ELSE '{"term_ids":[]}' END,
+        '$.term_ids'
+      ) term_id
+      WHERE term_id.type <> 'text'
+    )
+    OR COALESCE(json_type(CASE WHEN json_valid(s.receipt) THEN s.receipt ELSE '{}' END,
+                          '$.envelope_sha256'), '') <> 'text'
+    OR COALESCE(json_type(CASE WHEN json_valid(s.receipt) THEN s.receipt ELSE '{}' END,
+                          '$.signature'), '') <> 'text'
+  )
   AND NOT EXISTS (
     SELECT 1 FROM transfer_step imported
     WHERE imported.transfer_id = t.transfer_id AND imported.step = 'transfer_in'

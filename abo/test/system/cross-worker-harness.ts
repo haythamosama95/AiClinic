@@ -53,6 +53,7 @@ import grantClaimsSql from "../../../ai-platform/migrations/20261019120000_r4_pg
 import acceptedGrantCommandsSql from "../../../ai-platform/migrations/20261019130000_r4_pg3_accepted_grant_commands.sql?raw";
 import rm18CeilingClaimsSql from "../../../ai-platform/migrations/20261019140000_rm18_complimentary_ceiling_claims.sql?raw";
 import r6Pt1ReversalRoutesSql from "../../../ai-platform/migrations/20261019150000_r6_pt1_reversal_routes.sql?raw";
+import r6Pt1TransferRouteManifestSql from "../../../ai-platform/migrations/20261019160000_r6_pt1_transfer_route_manifest.sql?raw";
 
 const PLATFORM_MIGRATION_SQL: string[] = [
   platformSchemaSql,
@@ -83,6 +84,7 @@ const PLATFORM_MIGRATION_SQL: string[] = [
   acceptedGrantCommandsSql,
   rm18CeilingClaimsSql,
   r6Pt1ReversalRoutesSql,
+  r6Pt1TransferRouteManifestSql,
 ];
 
 const VENDOR_CONTRACT_VERSION = CHANNEL_VERSIONS.vendorEntrypoint;

@@ -3631,13 +3631,14 @@ export async function transferInRPC(
     const routeRows = originGrantIds.length === 0
       ? []
       : (await request.db.prepare(
-          `SELECT grant_id, org_id, installation_id, binding_epoch, state, transfer_id
+          `SELECT grant_id, org_id, installation_id, binding_epoch, generation, state, transfer_id
            FROM live_value_route WHERE grant_id IN (${originGrantIds.map(() => "?").join(",")})`,
         ).bind(...originGrantIds).all<{
           grant_id: string;
           org_id: string;
           installation_id: string;
           binding_epoch: number;
+          generation: number;
           state: string;
           transfer_id: string | null;
         }>()).results ?? [];

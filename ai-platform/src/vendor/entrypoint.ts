@@ -30,6 +30,7 @@ import {
   readTransferByAssertionSha256,
   retireHeldBindingIfEmpty,
   transferRowToDetail,
+  verifyTransferOutEvidence,
 } from "../coverage/transfer";
 import {
   insertDoRebuildMismatchAlert,
@@ -5430,6 +5431,9 @@ export class VendorEntrypoint extends WorkerEntrypoint<VendorEnv> {
       return grantRejected(version, "bad_request");
     }
     if (await isTransferRouteQuarantined(this.env.DB, transferId)) {
+      return grantRejected(version, "transfer_route_quarantined");
+    }
+    if (transfer.package !== null && !(await verifyTransferOutEvidence(this.env, transfer))) {
       return grantRejected(version, "transfer_route_quarantined");
     }
     if (transfer.package === null) {
