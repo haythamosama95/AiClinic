@@ -52,10 +52,6 @@ export default defineWorkersConfig({
     retry: 1,
     poolOptions: {
       workers: {
-        // `fileParallelism: false` does not prevent this pool from creating
-        // one Worker runtime per file. Share one runtime so D1/R2/DO snapshots
-        // cannot collide across simultaneous file runtimes in constrained CI.
-        singleWorker: true,
         main: "./src/worker.ts",
         wrangler: {
           configPath: "./wrangler.toml",
