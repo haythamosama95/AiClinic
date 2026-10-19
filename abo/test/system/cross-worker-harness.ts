@@ -725,81 +725,26 @@ export async function syncPlatformGrantVoids(): Promise<void> {
   }
 }
 
-async function ensurePlatformCoverageEventGate(
-  orgId: string,
-  installationId: string,
-): Promise<void> {
-  const existing = await env.PLATFORM_DB.prepare(
-    `SELECT event_id FROM coverage_event WHERE installation_id = ? LIMIT 1`,
-  )
-    .bind(installationId)
-    .first<{ event_id: string }>();
-  if (existing?.event_id) {
-    return;
-  }
-  const snapshot = buildHarnessCoverageSnapshot(1, 1);
-  await env.PLATFORM_DB.prepare(
-    `INSERT INTO coverage_event (
-       event_id, org_id, installation_id, binding_epoch, clinic_seq, kind, snapshot, at
-     ) VALUES (?, ?, ?, 1, 1, 'snapshot', ?, '2026-06-01T12:00:00.000Z')`,
-  )
-    .bind(
-      crypto.randomUUID(),
-      orgId,
-      installationId,
-      JSON.stringify(snapshot),
-    )
-    .run();
-}
-
 async function listPlatformInstallations(): Promise<
   Array<{ org_id: string; installation_id: string }>
 > {
   const byInstallation = new Map<string, string>();
-  const ingest = async (sql: string): Promise<void> => {
-    try {
-      const rows = await env.PLATFORM_DB.prepare(sql).all<{
-        org_id: string;
-        installation_id: string;
-      }>();
-      for (const row of rows.results ?? []) {
-        if (row.installation_id.length > 0 && row.org_id.length > 0) {
-          byInstallation.set(row.installation_id, row.org_id);
-        }
-      }
-    } catch {
-      // Table may not exist before migrations run.
+  const rows = await env.PLATFORM_DB.prepare(
+    `SELECT org_id, installation_id FROM tenant_binding
+     UNION SELECT org_id, installation_id FROM installation
+     UNION SELECT org_id, installation_id FROM grant_ledger
+     UNION SELECT org_id, installation_id FROM coverage_event`,
+  ).all<{ org_id: string; installation_id: string }>();
+  for (const row of rows.results ?? []) {
+    if (row.installation_id.length > 0 && row.org_id.length > 0) {
+      byInstallation.set(row.installation_id, row.org_id);
     }
-  };
-
-  await ingest(`SELECT org_id, installation_id FROM tenant_binding`);
-  await ingest(`SELECT org_id, installation_id FROM installation`);
-  await ingest(`SELECT org_id, installation_id FROM grant_ledger`);
-  await ingest(`SELECT org_id, installation_id FROM coverage_event`);
+  }
 
   return [...byInstallation.entries()].map(([installation_id, org_id]) => ({
     org_id,
     installation_id,
   }));
-}
-
-async function flushPlatformInstallationOutbox(
-  orgId: string,
-  installationId: string,
-  accessJwt: string,
-): Promise<void> {
-  await ensurePlatformCoverageEventGate(orgId, installationId);
-  for (let pass = 0; pass < 3; pass += 1) {
-    await platformCall(
-      "refreshCoverageSnapshot",
-      {
-        contract_version: VENDOR_CONTRACT_VERSION,
-        installation_id: installationId,
-      },
-      { accessJwt },
-    );
-    await new Promise((resolve) => setTimeout(resolve, 50));
-  }
 }
 
 /** Let GatewayObject outbox alarms finish (minimum 5s wall-clock deferral). */
@@ -813,35 +758,15 @@ export async function drainPlatformDurableObjects(): Promise<void> {
   if (installations.length === 0) {
     return;
   }
-
-  let accessJwt: string | undefined;
-  try {
-    accessJwt = await mintVendorAccessJwt();
-  } catch {
-    accessJwt = undefined;
+  const result = await env.PLATFORM.drainDurableObjectsForHarness({
+    installation_ids: installations.map((row) => row.installation_id),
+  });
+  if (
+    !isRecord(result) || result.result !== "drained" ||
+    result.count !== installations.length
+  ) {
+    throw new Error("platform durable object drain was not confirmed");
   }
-
-  await settlePlatformDurableObjectAlarms();
-
-  for (const row of installations) {
-    try {
-      if (accessJwt !== undefined) {
-        await flushPlatformInstallationOutbox(
-          row.org_id,
-          row.installation_id,
-          accessJwt,
-        );
-      }
-      await platformCall("getCoverage", {
-        contract_version: VENDOR_CONTRACT_VERSION,
-        org_id: row.org_id,
-      });
-    } catch {
-      // Best-effort settle before isolated storage pop.
-    }
-  }
-
-  await new Promise((resolve) => setTimeout(resolve, 500));
 }
 
 export async function syncPlatformGrantLedger(orgId: string): Promise<void> {

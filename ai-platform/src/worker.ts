@@ -128,7 +128,7 @@ import {
   type ReleaseRequest,
   type SealGrantRouteRequest,
 } from "./quota-do/index";
-import { mirrorTermViewFromSnapshot } from "./quota-do/coverage";
+import { mirrorTermViewFromSnapshot, sqlSelect } from "./quota-do/coverage";
 import { clockNowIso } from "./clock";
 import {
   createChunkSourceFromInvocationEvents,
@@ -1734,6 +1734,33 @@ async function readHarnessAdmissionFault(
 }
 
 export class GatewayObject extends DurableObject {
+  async drainForHarness(): Promise<{
+    result: "drained";
+    pendingOutboxRows: 0;
+    alarmAt: null;
+  }> {
+    const runtimeEnv = this.env as Env;
+    if (runtimeEnv.ENVIRONMENT !== "development" || runtimeEnv.TEST_CLOCK !== "1") {
+      throw new Error("harness_drain_unavailable");
+    }
+
+    await this.alarm();
+    const pendingOutboxRows = sqlSelect<{ count: number }>(
+      this.ctx.storage,
+      "SELECT COUNT(*) AS count FROM outbox",
+    )[0]?.count ?? 0;
+    if (pendingOutboxRows !== 0) {
+      throw new Error(`harness_drain_outbox_pending:${pendingOutboxRows}`);
+    }
+
+    await this.ctx.storage.deleteAlarm();
+    const alarmAt = await this.ctx.storage.getAlarm();
+    if (alarmAt !== null) {
+      throw new Error(`harness_drain_alarm_pending:${alarmAt}`);
+    }
+    return { result: "drained", pendingOutboxRows: 0, alarmAt: null };
+  }
+
   async fetch(request: Request): Promise<Response> {
     const makeLog = createWorkerLogFactory(this.env as Env);
     const log = makeLog("worker.ts");

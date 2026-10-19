@@ -188,6 +188,7 @@ type VendorEnv = ClockEnv & {
   DO: DurableObjectNamespace;
   ISSUER_ID: string;
   ENVIRONMENT: string;
+  TEST_CLOCK?: string;
   ACCESS_TEAM_DOMAIN: string;
   ACCESS_AUD: string;
   /** Local full-stack tests provide the generated Access certificates here. */
@@ -3051,6 +3052,34 @@ async function bootstrapRegister(
 }
 
 export class VendorEntrypoint extends WorkerEntrypoint<VendorEnv> {
+  async drainDurableObjectsForHarness(
+    args: Record<string, unknown>,
+  ): Promise<{ result: "drained"; count: number }> {
+    if (this.env.ENVIRONMENT !== "development" || this.env.TEST_CLOCK !== "1") {
+      throw new Error("harness_drain_unavailable");
+    }
+    const installationIds = args.installation_ids;
+    if (
+      !Array.isArray(installationIds) ||
+      installationIds.some((installationId) =>
+        typeof installationId !== "string" || installationId.length === 0
+      )
+    ) {
+      throw new Error("harness_drain_invalid_installations");
+    }
+
+    for (const installationId of [...new Set(installationIds as string[])].sort()) {
+      const stub = this.env.DO.get(this.env.DO.idFromName(installationId)) as unknown as {
+        drainForHarness(): Promise<{ result: "drained" }>;
+      };
+      const result = await stub.drainForHarness();
+      if (result.result !== "drained") {
+        throw new Error(`harness_drain_not_confirmed:${installationId}`);
+      }
+    }
+    return { result: "drained", count: new Set(installationIds as string[]).size };
+  }
+
   async registerOperatorCredential(
     args: Record<string, unknown>,
   ): Promise<VendorResultEnvelope> {
