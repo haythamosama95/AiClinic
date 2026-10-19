@@ -55,7 +55,7 @@ scoped to one subcampaign and are removed from progress and summary reporting.
 
 ## CI
 
-GitHub Actions runs named campaign subcampaign jobs. Frontend runs `unit` and `boundary`; AI Platform runs `unit`, `workers`, `e2e`, and `version-matrix`; E2E Fullstack runs `p5-core`, `p5-2b`, and `p7-2`. Backend, ABO, vendor-contracts, and ops-launch remain whole-area jobs. `frontend/fullstack` and `e2e-fullstack/p7-3` are excluded from CI and the campaign picker.
+GitHub Actions runs named campaign subcampaign jobs. Frontend runs four balanced unit shards (`unit-1` through `unit-4`) and `boundary`; AI Platform runs two unit shards (`unit-1` and `unit-2`), `workers`, `e2e`, and `version-matrix`; E2E Fullstack runs `p5-core`, `p5-2b`, and `p7-2`. Backend, ABO, vendor-contracts, and ops-launch remain whole-area jobs. `frontend/fullstack` and `e2e-fullstack/p7-3` are excluded from CI and the campaign picker.
 
 Split jobs invoke one campaign directly:
 
@@ -71,7 +71,7 @@ Per-area setup on Linux CI:
 bash .github/scripts/setup-campaign-area.sh <area> <subcampaign>
 ```
 
-Frontend setup uses the subcampaign to install only its prerequisites: `unit` sets up Flutter without Supabase or npm packages, and `boundary` adds Supabase. Omitting the subcampaign retains full-area setup.
+Frontend setup uses the subcampaign to install only its prerequisites: unit shards set up Flutter without Supabase or npm packages, and `boundary` adds Supabase. Omitting the subcampaign retains full-area setup.
 
 Failed cases are listed in the job log, GitHub **Step summary**, and `::error` annotations via:
 

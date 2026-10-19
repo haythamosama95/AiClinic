@@ -176,7 +176,7 @@ def parse_args() -> argparse.Namespace:
         type=Path,
         help="JSON campaign runner config (parallelism, coverage).",
     )
-    parser.add_argument("--shard", type=int, choices=(1, 2))
+    parser.add_argument("--shard", type=int, choices=(1, 2, 3, 4))
     return parser.parse_args()
 
 
@@ -204,7 +204,7 @@ def main():
         )
 
     test_files = (
-        unit_test_shards(ROOT)[args.shard - 1]
+        unit_test_shards(ROOT, shard_count=4)[args.shard - 1]
         if args.shard is not None
         else unit_test_files(ROOT)
     )

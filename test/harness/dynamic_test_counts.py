@@ -108,9 +108,10 @@ def _frontend_count(subcampaign: str) -> int | None:
 
     if subcampaign == "unit":
         return count_expected_tests(frontend_root, unit_test_files(frontend_root))
-    if subcampaign in {"unit-1", "unit-2"}:
+    if subcampaign in {"unit-1", "unit-2", "unit-3", "unit-4"}:
         return count_expected_tests(
-            frontend_root, unit_test_shards(frontend_root)[int(subcampaign[-1]) - 1]
+            frontend_root,
+            unit_test_shards(frontend_root, shard_count=4)[int(subcampaign[-1]) - 1],
         )
     if subcampaign == "boundary":
         return count_expected_tests(
@@ -150,6 +151,8 @@ def _ai_platform_vitest_specs() -> dict[str, list[list[str]]]:
     return {
         "manifests": [manifests],
         "unit": [[]],
+        "unit-1": [["--shard=1/2"]],
+        "unit-2": [["--shard=2/2"]],
         "workers": [["--config", "vitest.workers.config.ts"]],
         # ``npm-test`` runs manifests, then default unit pool, then workers pool; manifest
         # cases are already included in the unit ``vitest list`` scope (no double-count).

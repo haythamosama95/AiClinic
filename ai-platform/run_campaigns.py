@@ -170,6 +170,11 @@ def run_unit(_: str) -> int:
     return _run("unit", ["npx", "vitest", "run"])
 
 
+def run_unit_shard(subcampaign: str) -> int:
+    shard = int(subcampaign[-1])
+    return _run(subcampaign, ["npx", "vitest", "run", f"--shard={shard}/2"])
+
+
 def run_workers(_: str) -> int:
     return _run(
         "workers",
@@ -271,6 +276,8 @@ def run_version_matrix(_: str) -> int:
 SUBCAMPAIGNS = {
     "manifests": run_manifests,
     "unit": run_unit,
+    "unit-1": run_unit_shard,
+    "unit-2": run_unit_shard,
     "workers": run_workers,
     "npm-test": run_npm_test,
     "load": run_load,

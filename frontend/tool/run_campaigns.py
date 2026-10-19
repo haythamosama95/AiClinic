@@ -285,6 +285,8 @@ SUBCAMPAIGNS: dict[str, object] = {
     "unit": _run_unit,
     "unit-1": _run_unit_shard,
     "unit-2": _run_unit_shard,
+    "unit-3": _run_unit_shard,
+    "unit-4": _run_unit_shard,
     "fullstack": _run_fullstack,
     "boundary": _run_boundary,
     **{name: _run_boundary_subset for name in BOUNDARY_SUBSET_BY_SUBCAMPAIGN},

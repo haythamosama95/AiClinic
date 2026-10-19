@@ -41,6 +41,8 @@ CATALOG: dict[str, AreaCatalog] = {
             ),
             "unit-1": "First balanced shard of frontend unit, widget, and isolated integration tests.",
             "unit-2": "Second balanced shard of frontend unit, widget, and isolated integration tests.",
+            "unit-3": "Third balanced shard of frontend unit, widget, and isolated integration tests.",
+            "unit-4": "Fourth balanced shard of frontend unit, widget, and isolated integration tests.",
             "fullstack": (
                 "End-to-end UI flows that call a running billing worker and platform worker "
                 "on the machine, plus local database state those flows expect."
@@ -122,6 +124,8 @@ CATALOG: dict[str, AreaCatalog] = {
             "with D1 and durable objects, staged multi-step flows, and prompt quality checks."
         ),
         subcampaigns={
+            "unit-1": "First half of the AI Platform unit tests.",
+            "unit-2": "Second half of the AI Platform unit tests.",
             "manifests": "Registered prompts and manifests are valid and internally consistent.",
             "unit": "Pure TypeScript behaviour without booting a worker (routing helpers, parsers, taxonomies).",
             "workers": (

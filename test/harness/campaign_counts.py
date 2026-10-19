@@ -181,7 +181,9 @@ def _frontend_counts() -> dict[str, int]:
     counts: dict[str, int] = {}
     unit_files = unit_test_files(frontend_root)
     counts["unit"] = count_expected_tests(frontend_root, unit_files)
-    for shard_number, shard_files in enumerate(unit_test_shards(frontend_root), 1):
+    for shard_number, shard_files in enumerate(
+        unit_test_shards(frontend_root, shard_count=4), 1
+    ):
         counts[f"unit-{shard_number}"] = count_expected_tests(
             frontend_root, shard_files
         )
@@ -223,6 +225,8 @@ def _ai_platform_counts() -> dict[str, int]:
     return {
         "manifests": m,
         "unit": u,
+        "unit-1": (u + 1) // 2,
+        "unit-2": u // 2,
         "workers": w,
         # Same scope as ``run_npm_test`` (unit pool then workers); manifest gates live in unit.
         "npm-test": u + w,
