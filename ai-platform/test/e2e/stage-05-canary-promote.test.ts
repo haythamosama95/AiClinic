@@ -707,14 +707,14 @@ describe("Stage 05 — canary and promote (S05-021…S05-041)", () => {
     ).toHaveLength(0);
   });
 
-  it("S05-039 — Promote already-active is illegal_policy_transition", async () => {
+  it("S05-039 — Promote already-active is an idempotent no-op", async () => {
     await setupActiveV1();
     const before = await snapshotPolicy(POLICY_VERSION);
     expect(before.status).toBe("active");
 
     const result = await promotePolicy(POLICY_ID, POLICY_VERSION);
 
-    assertControlError(result, 409, "illegal_policy_transition");
+    assertEmptySuccess(result);
     await assertNoPromoteMutation(POLICY_VERSION, before, 1);
   });
 

@@ -312,8 +312,8 @@ describe("Stage 01 — rotation and retire (S01-017…S01-031)", () => {
     expect(audit.operator_id).toBe(OPERATOR_ID);
     expect(audit.action).toBe("token_contract_retire");
     expect(audit.target).toBe("2");
-    expect(audit.before_pointer).toBeNull();
-    expect(audit.after_pointer).toBeNull();
+    expect(audit.before_pointer).toBe("active");
+    expect(audit.after_pointer).toBe("retired");
     expect(String(audit.audit_id)).toMatch(UUID);
     assertIsoApproxNow(audit.recorded_at);
 

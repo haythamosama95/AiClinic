@@ -445,6 +445,31 @@ describe("support_lookup_non_operator_denied", () => {
   });
 });
 
+describe("support_lookup_audit_failure", () => {
+  it("R8-AUDIT1 does not release lookup data when the audit insert fails", async () => {
+    await seedRequest();
+    const { handleSupportLookup } = await loadControlHandlers();
+    const failingDb = {
+      ...env.DB,
+      async batch() {
+        throw new Error("audit unavailable");
+      },
+    } as D1Database;
+
+    const response = await handleSupportLookup(
+      new Request(
+        `https://gateway.test/control/support/lookup?reference=${FIXTURE_REFERENCE}`,
+        { method: "POST" },
+      ),
+      { DB: failingDb, R2: env.R2 },
+      createFakeOperatorAuth(),
+    );
+
+    expect(response.status).toBe(500);
+    expect(await response.json()).toEqual({ error: "storage_error" });
+  });
+});
+
 describe("R8-SUPPORT1 bounded_support_history_pages", () => {
   it("pages request IDs before attempts, breaks timestamp ties, and never gets list envelopes", async () => {
     for (const [index, requestId] of [

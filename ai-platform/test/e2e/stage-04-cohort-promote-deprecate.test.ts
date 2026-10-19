@@ -249,7 +249,10 @@ describe("Stage 04 â€” cohort activate/promote and deprecate failures (S04-066â€
       expect(audits).toHaveLength(1);
       expect(audits[0]?.operator_id).toBe(OPERATOR_ID);
       expect(audits[0]?.before_pointer).toBe(JSON.stringify({ [I0]: "1.0.0" }));
-      expect(audits[0]?.after_pointer).toBe("2.0.0");
+      expect(JSON.parse(String(audits[0]?.after_pointer))).toEqual({
+        capability_version: "2.0.0",
+        installation_ids: [I0],
+      });
     });
   });
 
@@ -258,31 +261,32 @@ describe("Stage 04 â€” cohort activate/promote and deprecate failures (S04-066â€
     const beforeGrant = await latestGrant(installationScope(I0));
     expect(beforeGrant?.capability_version).toBe("1.0.0");
 
-    await waitForClockTick();
-    const result = await controlFetch(activatePath("1.0.0"), {
-      body: { installation_ids: [I0], cohort_name: "pilot-clinics" },
+    await withTwoVersionRegistry(async () => {
+      await waitForClockTick();
+      const result = await controlFetch(activatePath("2.0.0"), {
+        body: { installation_ids: [I0], cohort_name: "pilot-clinics" },
+      });
+      assertEmptySuccess(result);
+
+      const afterGrant = await queryOne(
+        "SELECT * FROM capability_grant WHERE grant_id = ?",
+        [String(beforeGrant?.grant_id)],
+      );
+      expect(afterGrant?.grant_id).toBe(beforeGrant?.grant_id);
+      expect(afterGrant?.capability_version).toBe("2.0.0");
+      expect(afterGrant?.changed_by).toBe(OPERATOR_ID);
+
+      const audits = await getAudits(
+        "cohort_activate",
+        "clinic.visit_summary@2.0.0:pilot-clinics",
+      );
+      expect(audits).toHaveLength(1);
+      expect(audits[0]?.operator_id).toBe(OPERATOR_ID);
+      expect(JSON.parse(String(audits[0]?.after_pointer))).toEqual({
+        capability_version: "2.0.0",
+        installation_ids: [I0],
+      });
     });
-    assertEmptySuccess(result);
-
-    const afterGrant = await queryOne(
-      "SELECT * FROM capability_grant WHERE grant_id = ?",
-      [String(beforeGrant?.grant_id)],
-    );
-    expect(afterGrant?.grant_id).toBe(beforeGrant?.grant_id);
-    expect(afterGrant?.capability_version).toBe("1.0.0");
-    expect(afterGrant?.changed_by).toBe(OPERATOR_ID);
-    expectIsoTimestamp(afterGrant?.changed_at);
-    expect(Date.parse(String(afterGrant?.changed_at))).toBeGreaterThan(
-      Date.parse(String(beforeGrant?.changed_at)),
-    );
-
-    const audits = await getAudits(
-      "cohort_activate",
-      "clinic.visit_summary@1.0.0:pilot-clinics",
-    );
-    expect(audits).toHaveLength(1);
-    expect(audits[0]?.operator_id).toBe(OPERATOR_ID);
-    expect(audits[0]?.after_pointer).toBe("1.0.0");
   });
 
   it("S04-068 â€” Activate inserts grant when none is live", async () => {
@@ -311,7 +315,10 @@ describe("Stage 04 â€” cohort activate/promote and deprecate failures (S04-066â€
     );
     expect(audits).toHaveLength(1);
     expect(audits[0]?.before_pointer).toBeNull();
-    expect(audits[0]?.after_pointer).toBe("1.0.0");
+    expect(JSON.parse(String(audits[0]?.after_pointer))).toEqual({
+      capability_version: "1.0.0",
+      installation_ids: [I1],
+    });
     expect(audits[0]?.operator_id).toBe(OPERATOR_ID);
   });
 
@@ -349,10 +356,14 @@ describe("Stage 04 â€” cohort activate/promote and deprecate failures (S04-066â€
         "clinic.visit_summary@2.0.0:pilot-clinics",
       );
       expect(audits).toHaveLength(1);
-      expect(audits[0]?.before_pointer).toBe(
-        JSON.stringify({ [I0]: "1.0.0", [I1]: null }),
-      );
-      expect(audits[0]?.after_pointer).toBe("2.0.0");
+      expect(JSON.parse(String(audits[0]?.before_pointer))).toEqual({
+        [I0]: "1.0.0",
+        [I1]: null,
+      });
+      expect(JSON.parse(String(audits[0]?.after_pointer))).toEqual({
+        capability_version: "2.0.0",
+        installation_ids: [I0, I1].sort(),
+      });
       expect(audits[0]?.operator_id).toBe(OPERATOR_ID);
     });
   });
@@ -378,10 +389,13 @@ describe("Stage 04 â€” cohort activate/promote and deprecate failures (S04-066â€
     );
     expect(audits).toHaveLength(1);
     expect(audits[0]?.before_pointer).toBeNull();
-    expect(audits[0]?.after_pointer).toBe("1.0.0");
+    expect(JSON.parse(String(audits[0]?.after_pointer))).toEqual({
+      capability_version: "1.0.0",
+      installation_ids: [I1],
+    });
   });
 
-  it("S04-071 â€” Activate already-current version re-stamps grant", async () => {
+  it("S04-071 â€” Activate already-current version is a no-op without a duplicate audit", async () => {
     await enrollAndEntitleI0();
     const beforeGrant = await latestGrant(installationScope(I0));
     expect(beforeGrant?.capability_version).toBe("1.0.0");
@@ -391,7 +405,6 @@ describe("Stage 04 â€” cohort activate/promote and deprecate failures (S04-066â€
       "clinic.visit_summary@1.0.0",
     );
 
-    await waitForClockTick();
     const result = await controlFetch(activatePath("1.0.0"), {
       body: { installation_ids: [I0] },
     });
@@ -405,20 +418,14 @@ describe("Stage 04 â€” cohort activate/promote and deprecate failures (S04-066â€
     expect(afterGrant?.capability_version).toBe("1.0.0");
     expect(afterGrant?.changed_by).toBe(OPERATOR_ID);
     expectIsoTimestamp(afterGrant?.changed_at);
-    expect(Date.parse(String(afterGrant?.changed_at))).toBeGreaterThan(
-      Date.parse(String(beforeGrant?.changed_at)),
-    );
+    expect(afterGrant?.changed_at).toBe(beforeGrant?.changed_at);
     expect(await count("capability_grant")).toBe(grantCountBefore);
 
     const audits = await getAudits(
       "cohort_activate",
       "clinic.visit_summary@1.0.0",
     );
-    expect(audits).toHaveLength(auditsBefore.length + 1);
-    expect(audits.at(-1)?.before_pointer).toBe(
-      JSON.stringify({ [I0]: "1.0.0" }),
-    );
-    expect(audits.at(-1)?.after_pointer).toBe("1.0.0");
+    expect(audits).toHaveLength(auditsBefore.length);
   });
 
   it("S04-072 â€” Promote rejects missing operator bearer", async () => {
@@ -532,7 +539,25 @@ describe("Stage 04 â€” cohort activate/promote and deprecate failures (S04-066â€
       );
       expect(audits).toHaveLength(1);
       expect(audits[0]?.operator_id).toBe(OPERATOR_ID);
-      expect(audits[0]?.after_pointer).toBe("2.0.0");
+      const afterPointer = JSON.parse(String(audits[0]?.after_pointer)) as {
+        capability_version: string;
+        installation_ids: string[];
+        plan_ids: string[];
+      };
+      expect(afterPointer.capability_version).toBe("2.0.0");
+      expect(afterPointer.installation_ids).toEqual([I0, I1].sort());
+      const finalMembership = await queryAll<{ scope: string }>(
+        `SELECT scope FROM capability_grant
+         WHERE capability_id = ? AND revoked_at IS NULL
+           AND (scope LIKE 'installation:%' OR scope LIKE 'plan:%')`,
+        [CAPABILITY_ID],
+      );
+      expect(afterPointer.plan_ids).toEqual(
+        finalMembership
+          .filter((grant) => grant.scope.startsWith("plan:"))
+          .map((grant) => grant.scope.slice("plan:".length))
+          .sort(),
+      );
       const beforePointer = JSON.parse(String(audits[0]?.before_pointer)) as {
         installation: Array<{ scope: string; version: string }>;
         plan: Array<{ scope: string; version: string }>;
@@ -556,7 +581,7 @@ describe("Stage 04 â€” cohort activate/promote and deprecate failures (S04-066â€
     });
   });
 
-  it("S04-075 â€” Promote with empty fleet writes only audit", async () => {
+  it("S04-075 â€” Promote with empty fleet is a no-op", async () => {
     expect(await count("installation")).toBe(0);
     expect(await count("capability_grant")).toBe(0);
     expect(await count("control_audit")).toBe(0);
@@ -565,18 +590,13 @@ describe("Stage 04 â€” cohort activate/promote and deprecate failures (S04-066â€
     assertEmptySuccess(result);
 
     expect(await count("capability_grant")).toBe(0);
-    expect(await count("control_audit")).toBe(1);
+    expect(await count("control_audit")).toBe(0);
 
     const audits = await getAudits(
       "cohort_promote",
       "clinic.visit_summary@1.0.0",
     );
-    expect(audits).toHaveLength(1);
-    expect(audits[0]?.operator_id).toBe(OPERATOR_ID);
-    expect(audits[0]?.before_pointer).toBe(
-      JSON.stringify({ installation: [], plan: [] }),
-    );
-    expect(audits[0]?.after_pointer).toBe("1.0.0");
+    expect(audits).toHaveLength(0);
   });
 
   it("S04-076 â€” Promote skips entitlements lacking capability", async () => {
@@ -646,7 +666,7 @@ describe("Stage 04 â€” cohort activate/promote and deprecate failures (S04-066â€
     });
   });
 
-  it("S04-079 â€” Promote ignores the request body", async () => {
+  it("S04-079 â€” Promote ignores the request body while changing the cohort", async () => {
     await enrollAndEntitleI0();
     const grantBefore = await latestGrant(installationScope(I0));
     expect(grantBefore?.capability_version).toBe("1.0.0");
@@ -655,31 +675,30 @@ describe("Stage 04 â€” cohort activate/promote and deprecate failures (S04-066â€
       "clinic.visit_summary@1.0.0",
     );
 
-    await waitForClockTick();
-    const result = await controlFetch(promotePath("1.0.0"), {
-      body: "not json{",
+    await withTwoVersionRegistry(async () => {
+      const result = await controlFetch(promotePath("2.0.0"), {
+        body: "not json{",
+      });
+      assertEmptySuccess(result);
+
+      const grantAfter = await queryOne(
+        "SELECT * FROM capability_grant WHERE grant_id = ?",
+        [String(grantBefore?.grant_id)],
+      );
+      expect(grantAfter?.grant_id).toBe(grantBefore?.grant_id);
+      expect(grantAfter?.capability_version).toBe("2.0.0");
+      expect(grantAfter?.changed_by).toBe(OPERATOR_ID);
+
+      const audits = await getAudits(
+        "cohort_promote",
+        "clinic.visit_summary@2.0.0",
+      );
+      expect(audits).toHaveLength(auditsBefore.length + 1);
+      expect(audits.at(-1)?.operator_id).toBe(OPERATOR_ID);
+      expect(JSON.parse(String(audits.at(-1)?.after_pointer))).toMatchObject({
+        capability_version: "2.0.0",
+      });
     });
-    assertEmptySuccess(result);
-
-    const grantAfter = await queryOne(
-      "SELECT * FROM capability_grant WHERE grant_id = ?",
-      [String(grantBefore?.grant_id)],
-    );
-    expect(grantAfter?.grant_id).toBe(grantBefore?.grant_id);
-    expect(grantAfter?.capability_version).toBe("1.0.0");
-    expect(grantAfter?.changed_by).toBe(OPERATOR_ID);
-    expectIsoTimestamp(grantAfter?.changed_at);
-    expect(Date.parse(String(grantAfter?.changed_at))).toBeGreaterThan(
-      Date.parse(String(grantBefore?.changed_at)),
-    );
-
-    const audits = await getAudits(
-      "cohort_promote",
-      "clinic.visit_summary@1.0.0",
-    );
-    expect(audits).toHaveLength(auditsBefore.length + 1);
-    expect(audits.at(-1)?.operator_id).toBe(OPERATOR_ID);
-    expect(audits.at(-1)?.after_pointer).toBe("1.0.0");
   });
 
   it("S04-080 â€” Deprecate rejects missing operator bearer", async () => {

@@ -33,6 +33,7 @@ export function buildEntrypointAuditStatement(
   onlyIfPreviousStatementChanged:
     | boolean
     | { sql: string; bindings: unknown[] } = false,
+  recordedAt: string = nowIso(),
 ): D1PreparedStatement {
   const where = onlyIfPreviousStatementChanged === true
     ? "WHERE changes() > 0"
@@ -48,7 +49,7 @@ export function buildEntrypointAuditStatement(
     assertionSha256,
     beforePointer,
     afterPointer,
-    nowIso(),
+    recordedAt,
   ];
   if (typeof onlyIfPreviousStatementChanged === "object") {
     values.push(...onlyIfPreviousStatementChanged.bindings as (string | null)[]);

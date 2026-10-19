@@ -467,7 +467,7 @@ describe("Stage 05 — rollback, serving, and post-accept routing failures (S05-
     expect(audits[0]?.operator_id).toBe(OPERATOR_ID);
     expect(audits[0]?.action).toBe("routing_policy_rollback");
     expect(audits[0]?.target).toBe("standard@2");
-    expect(audits[0]?.before_pointer).toBe("standard@2");
+    expect(JSON.parse(String(audits[0]?.before_pointer))).toEqual([INST_A]);
     expect(audits[0]?.after_pointer).toBe("standard@1");
 
     expect(JSON.stringify(await getR2Json(STANDARD_V2_POINTER))).toBe(
@@ -492,7 +492,7 @@ describe("Stage 05 — rollback, serving, and post-accept routing failures (S05-
     const audits = await getAudits("routing_policy_rollback", "standard@1");
     expect(audits).toHaveLength(1);
     expect(audits[0]?.operator_id).toBe(OPERATOR_ID);
-    expect(audits[0]?.before_pointer).toBe("standard@1");
+    expect(JSON.parse(String(audits[0]?.before_pointer))).toEqual([INST_A]);
     expect(audits[0]?.after_pointer).toBeNull();
   });
 

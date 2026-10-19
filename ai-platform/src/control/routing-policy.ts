@@ -184,6 +184,8 @@ export async function publishRoutingPolicyAction(
         null,
         null,
         contentPointer,
+        false,
+        recordedAt,
       ),
     ]);
   } catch (err) {

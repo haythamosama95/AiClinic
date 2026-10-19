@@ -1,6 +1,7 @@
 import { supportLookup } from "../support";
 import { createManifestRetentionClassResolver } from "../retention";
 import { isValidRequestReference, normalizeRequestReference } from "../reference";
+import { buildEntrypointAuditStatement } from "./audit";
 
 export type SupportLookupOperatorAuth = {
   resolve(request: Request): { operatorId: string } | null;
@@ -17,7 +18,8 @@ export async function handleSupportLookup(
   bindings: SupportLookupControlBindings,
   operatorAuth: SupportLookupOperatorAuth,
 ): Promise<Response> {
-  if (operatorAuth.resolve(request) === null) {
+  const operator = operatorAuth.resolve(request);
+  if (operator === null) {
     return Response.json({ error: "unauthorized" }, { status: 401 });
   }
 
@@ -38,6 +40,20 @@ export async function handleSupportLookup(
   });
   if (!result.found) {
     return Response.json({ error: "not_found" }, { status: 404 });
+  }
+
+  try {
+    await bindings.DB.batch([
+      buildEntrypointAuditStatement(
+        bindings.DB,
+        operator.operatorId,
+        "support_lookup",
+        JSON.stringify({ reference }),
+        null,
+      ),
+    ]);
+  } catch {
+    return Response.json({ error: "storage_error" }, { status: 500 });
   }
 
   return Response.json({
