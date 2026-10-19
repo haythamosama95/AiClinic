@@ -4,7 +4,7 @@
 
 import { env } from "cloudflare:test";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { CHANNEL_VERSIONS, humanRef } from "vendor-contracts";
+import { CHANNEL_VERSIONS, grantIdPaid, humanRef } from "vendor-contracts";
 import {
   createSoftwareAuthenticator,
   type SoftwareAuthenticator,
