@@ -530,12 +530,13 @@ async function completePaidGrantTransfer(): Promise<{
       grant_id: string;
       org_id: string;
       source_kind: string;
+      envelope: string;
       envelope_sha256: string;
       installation_id: string;
       route_generation: number;
       state: string;
     }>(
-      `SELECT grant_id, org_id, source_kind, envelope_sha256, installation_id, route_generation, state
+      `SELECT grant_id, org_id, source_kind, envelope, envelope_sha256, installation_id, route_generation, state
        FROM grant_claim WHERE org_id = ? AND source_kind = 'transfer'`,
       [scenario.orgId],
     ),
@@ -838,12 +839,13 @@ describe("transfer, deletion with coverage left, ledger retention", () => {
         grant_id: string;
         org_id: string;
         source_kind: string;
+        envelope: string;
         envelope_sha256: string;
         installation_id: string;
         route_generation: number;
         state: string;
       }>(
-        `SELECT grant_id, org_id, source_kind, envelope_sha256, installation_id, route_generation, state
+        `SELECT grant_id, org_id, source_kind, envelope, envelope_sha256, installation_id, route_generation, state
          FROM grant_claim WHERE org_id = ? AND source_kind = 'transfer'`,
         [scenario.orgId],
       ),

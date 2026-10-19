@@ -3159,9 +3159,7 @@ export async function transferOutRPC(
     });
 
     const packageJson = JSON.stringify(packageTerms);
-    const envelopeSha256 = await sha256Hex(
-      new TextEncoder().encode(canonicalize(packageTerms)),
-    );
+    const envelopeSha256 = await sha256Hex(canonicalize(packageTerms));
 
     const receipt = await signTransferReceiptInDo({
       signingKey,
@@ -3345,9 +3343,7 @@ export async function transferInRPC(
         hotGraceBaseUsed = pkg.hot_grace_base_used ?? 0;
       }
 
-      const envelopeSha256 = await sha256Hex(
-        new TextEncoder().encode(canonicalize(pkg)),
-      );
+      const envelopeSha256 = await sha256Hex(canonicalize(pkg));
       let hot = loadHot(storage);
       hot = { ...hot, clinic_seq: hot.clinic_seq + 1 };
       updateHot(storage, { clinic_seq: hot.clinic_seq });
@@ -3417,9 +3413,7 @@ export async function transferInRPC(
       durationScale: request.durationScale,
     });
 
-    const envelopeSha256 = await sha256Hex(
-      new TextEncoder().encode(canonicalize(request.package)),
-    );
+    const envelopeSha256 = await sha256Hex(canonicalize(request.package));
 
     const receipt = await signTransferReceiptInDo({
       signingKey,
