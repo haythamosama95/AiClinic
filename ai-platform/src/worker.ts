@@ -1744,6 +1744,9 @@ export class GatewayObject extends DurableObject {
       throw new Error("harness_drain_unavailable");
     }
 
+    await ensureCoverageDoTables(this.ctx.storage, (fn) =>
+      this.ctx.blockConcurrencyWhile(fn),
+    );
     await this.alarm();
     const pendingOutboxRows = sqlSelect<{ count: number }>(
       this.ctx.storage,

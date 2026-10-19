@@ -729,17 +729,27 @@ async function listPlatformInstallations(): Promise<
   Array<{ org_id: string; installation_id: string }>
 > {
   const byInstallation = new Map<string, string>();
-  const rows = await env.PLATFORM_DB.prepare(
-    `SELECT org_id, installation_id FROM tenant_binding
-     UNION SELECT org_id, installation_id FROM installation
-     UNION SELECT org_id, installation_id FROM grant_ledger
-     UNION SELECT org_id, installation_id FROM coverage_event`,
-  ).all<{ org_id: string; installation_id: string }>();
-  for (const row of rows.results ?? []) {
-    if (row.installation_id.length > 0 && row.org_id.length > 0) {
-      byInstallation.set(row.installation_id, row.org_id);
+  const ingest = async (sql: string): Promise<void> => {
+    try {
+      const rows = await env.PLATFORM_DB.prepare(sql).all<{
+        org_id: string;
+        installation_id: string;
+      }>();
+      for (const row of rows.results ?? []) {
+        if (row.installation_id.length > 0 && row.org_id.length > 0) {
+          byInstallation.set(row.installation_id, row.org_id);
+        }
+      }
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      if (!/no such table/i.test(message)) throw error;
     }
-  }
+  };
+
+  await ingest(`SELECT org_id, installation_id FROM tenant_binding`);
+  await ingest(`SELECT org_id, installation_id FROM installation`);
+  await ingest(`SELECT org_id, installation_id FROM grant_ledger`);
+  await ingest(`SELECT org_id, installation_id FROM coverage_event`);
 
   return [...byInstallation.entries()].map(([installation_id, org_id]) => ({
     org_id,
@@ -761,10 +771,7 @@ export async function drainPlatformDurableObjects(): Promise<void> {
   const result = await env.PLATFORM.drainDurableObjectsForHarness({
     installation_ids: installations.map((row) => row.installation_id),
   });
-  if (
-    !isRecord(result) || result.result !== "drained" ||
-    result.count !== installations.length
-  ) {
+  if (result.result !== "drained" || result.count !== installations.length) {
     throw new Error("platform durable object drain was not confirmed");
   }
 }
