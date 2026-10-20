@@ -3081,10 +3081,10 @@ export async function recoverStrandedTermRPC(
     try { storedPlan = JSON.parse(target.plan_snapshot) as Record<string, unknown>; }
     catch { return { kind: "recover_stranded_term", result: "conflict" }; }
     if (evidenceSha256 !== request.evidenceSha256 || originalOrgId !== request.orgId ||
-        originalEnvelope.grant_id !== target.grant_id || !isRecord(originalEnvelope.source) ||
-        originalEnvelope.source.kind !== "complimentary" || !isRecord(originalDuration) ||
+        originalEnvelope.grant_id !== target.grant_id || !isEnvelopeRecord(originalEnvelope.source) ||
+        originalEnvelope.source.kind !== "complimentary" || !isEnvelopeRecord(originalDuration) ||
         originalDuration.unit !== target.duration_unit || originalDuration.count !== target.duration_count ||
-        originalEnvelope.allowance_credits !== target.allowance || !isRecord(originalPlan) ||
+        originalEnvelope.allowance_credits !== target.allowance || !isEnvelopeRecord(originalPlan) ||
         originalPlan.plan_id !== storedPlan.plan_id || originalPlan.plan_version !== storedPlan.version) {
       return { kind: "recover_stranded_term", result: "conflict" };
     }
