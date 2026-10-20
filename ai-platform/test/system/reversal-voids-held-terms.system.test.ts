@@ -6,6 +6,7 @@ import { env, runDurableObjectAlarm, runInDurableObject } from "cloudflare:test"
 import {
   CHANNEL_VERSIONS,
   canonicalize,
+  coverageEventId,
   grantIdComp,
   grantIdPaid,
   operationChallenge,
@@ -498,52 +499,66 @@ describe("reversal voids, tombstones, held terms, operator voids", () => {
       reason: "restore stranded complimentary term",
       evidence_sha256: await sha256Hex(canonicalize(envelope.evidence)),
     };
-    const operation = {
-      op: "recoverStrandedTerm",
-      params: {
+    const makeRecoveryArgs = async (recoveryAction: typeof action) => {
+      const operation = {
+        op: "recoverStrandedTerm",
+        params: {
+          contract_version: CONTRACT_VERSION,
+          access_jwt: accessJwt,
+          ...recoveryAction,
+          signer_credential_id: signer.signerCredentialId,
+        },
+        actor_email: VENDOR_OPERATOR_EMAIL,
+        issued_at: recoveredAt,
+        nonce: crypto.randomUUID(),
         contract_version: CONTRACT_VERSION,
-        access_jwt: accessJwt,
-        ...action,
+      };
+      const assertion = encodeVendorAssertion(await signer.signerAuthenticator.assert({
+        operation, rpId: env.WEBAUTHN_RP_ID, origin: env.WEBAUTHN_ORIGIN, up: true, uv: true,
+      }));
+      return {
+        contract_version: CONTRACT_VERSION,
+        ...recoveryAction,
         signer_credential_id: signer.signerCredentialId,
-      },
-      actor_email: VENDOR_OPERATOR_EMAIL,
-      issued_at: recoveredAt,
-      nonce: crypto.randomUUID(),
-      contract_version: CONTRACT_VERSION,
+        operation,
+        assertion,
+      };
     };
-    const assertion = encodeVendorAssertion(await signer.signerAuthenticator.assert({
-      operation, rpId: env.WEBAUTHN_RP_ID, origin: env.WEBAUTHN_ORIGIN, up: true, uv: true,
-    }));
-    const args = {
-      contract_version: CONTRACT_VERSION,
-      ...action,
-      signer_credential_id: signer.signerCredentialId,
-      operation,
-      assertion,
-    };
-    expect((await p37VendorCall("recoverStrandedTerm", args, { accessJwt })).result).toBe("conflict");
+    const initialArgs = await makeRecoveryArgs(action);
+    expect((await p37VendorCall("recoverStrandedTerm", initialArgs, { accessJwt })).result).toBe("conflict");
     const legacyPlacement = await runInDurableObject(
       quotaDoStub(scenario.installationId),
       async (_instance, state) => {
+        sqlExec(state, "UPDATE hot SET clinic_seq = clinic_seq + 1");
         const hot = loadHot(state.storage);
-        return buildCoverageSnapshot({
-          vendorContractVersion: CONTRACT_VERSION,
-          orgId: scenario.orgId,
+        return {
           hot,
-          terms: loadTerms(state.storage),
-        });
+          snapshot: buildCoverageSnapshot({
+            vendorContractVersion: CONTRACT_VERSION,
+            orgId: scenario.orgId,
+            hot,
+            terms: loadTerms(state.storage),
+          }),
+        };
       },
     );
     await env.DB.prepare(
-      `UPDATE coverage_event SET snapshot = ?
-       WHERE installation_id = ? AND kind = 'grant_applied' AND instr(snapshot, ?) > 0`,
+      `INSERT INTO coverage_event (
+         event_id, org_id, installation_id, binding_epoch, clinic_seq, kind, snapshot, at
+       ) VALUES (?, ?, ?, ?, ?, 'grant_applied', ?, ?)`,
     ).bind(
-      // Model the retained pre-fix placement record: this grant entered the
-      // queue while its predecessor was in grace.
-      JSON.stringify(legacyPlacement),
+      coverageEventId(scenario.installationId, legacyPlacement.hot.clinic_seq),
+      scenario.orgId,
       scenario.installationId,
-      target.term_id,
+      legacyPlacement.hot.binding_epoch,
+      legacyPlacement.hot.clinic_seq,
+      // Preserve the original row and append retained legacy placement proof
+      // showing this grant queued behind a grace predecessor.
+      JSON.stringify(legacyPlacement.snapshot),
+      recoveredAt,
     ).run();
+    action.expected_clinic_seq = legacyPlacement.hot.clinic_seq;
+    const args = await makeRecoveryArgs(action);
     const first = await p37VendorCall("recoverStrandedTerm", args, { accessJwt });
     expect(first.result).toBe("ok");
     expect(first.receipt).toBeUndefined();
