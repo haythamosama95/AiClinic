@@ -39,7 +39,10 @@ import commandRecoveryFactsMigrationSql from "../../migrations/0017_command_reco
 import rebuildPublicationFenceMigrationSql from "../../migrations/0018_rebuild_publication_fence.sql?raw";
 import { appendOffer, loadOffersFixture } from "../../src/records/append";
 import { exportFacts } from "../../src/records/export";
-import { commandFactStatements } from "../../src/records/command-facts";
+import {
+  commandFactStatements,
+  hasForbiddenCommandFactSecret,
+} from "../../src/records/command-facts";
 import {
   applySql,
   billingFetch,
@@ -2321,5 +2324,48 @@ describe("P4.11 digest, watch, housekeeping, rebuild (H-XW)", () => {
       },
       createdAt: "2026-06-01T12:00:00.000Z",
     })).rejects.toThrow(/command_recovery_fact_invalid/u);
+  });
+
+  it("permits only a structurally bound transfer receipt signature in its declared response field", async () => {
+    const signer = await createPlatformReceiptSigner();
+    const receiptUnsigned = {
+      contract_version: CHANNEL_VERSIONS.vendorEntrypoint,
+      transfer_id: "tr-recovery-receipt",
+      installation_id: "install-recovery-target",
+      org_id: "a4110002-0002-4011-8011-000000000002",
+      result: "applied",
+      term_ids: ["term-recovery-1"],
+      applied_at: "2026-10-20T12:00:00.000Z",
+      ledger_seq: 4,
+      envelope_sha256: "a".repeat(64),
+    };
+    const receipt = {
+      ...receiptUnsigned,
+      kid: signer.kid,
+      signature: await signer.sign(receiptUnsigned),
+    };
+    const response = {
+      result: "applied",
+      contract_version: CHANNEL_VERSIONS.vendorEntrypoint,
+      receipt,
+    };
+    const fact = {
+      fact_kind: "platform_result",
+      phase: "transferIn",
+      provenance: "authenticated_platform_transfer_step_call",
+      result: "applied",
+      contract_version: CHANNEL_VERSIONS.vendorEntrypoint,
+      transfer_id: "tr-recovery-receipt",
+      response_json: JSON.stringify(response),
+    };
+    expect(hasForbiddenCommandFactSecret(fact)).toBe(false);
+    expect(hasForbiddenCommandFactSecret({
+      ...fact,
+      response_json: JSON.stringify({ signature: receipt.signature }),
+    })).toBe(true);
+    expect(hasForbiddenCommandFactSecret({
+      ...fact,
+      transfer_id: "tr-other",
+    })).toBe(true);
   });
 });

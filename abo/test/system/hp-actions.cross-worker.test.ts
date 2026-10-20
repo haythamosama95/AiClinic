@@ -1830,7 +1830,8 @@ describe("hp-actions cross-worker", () => {
     });
     expect(checkoutResponse.status).toBe(201);
     const checkoutBody = (await checkoutResponse.json()) as Record<string, unknown>;
-    expect(checkoutBody.result).toBe("ok");
+    expect(typeof checkoutBody.checkout_id).toBe("string");
+    expect(typeof checkoutBody.reference).toBe("string");
 
     expect(paymentId.length).toBeGreaterThan(0);
     await drainPlatformDurableObjects();

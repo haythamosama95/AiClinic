@@ -1,6 +1,7 @@
 import { canonicalize, sha256Hex } from "vendor-contracts";
 import { clockNowIso, type ClockEnv } from "../clock.js";
 import { assertAboRecoveryPublished } from "../recovery-fence.js";
+import { hasForbiddenCommandFactSecret } from "./command-facts.js";
 
 export type ExportEnv = ClockEnv & {
   DB: D1Database;
@@ -41,7 +42,7 @@ function ledgerLinePayload(row: PendingFact): string {
   if (row.row_json != null && row.row_json.length > 0) {
     line.row = JSON.parse(row.row_json);
   }
-  return canonicalize(line);
+  return new TextDecoder().decode(canonicalize(line));
 }
 
 async function validateFact(row: PendingFact): Promise<void> {
@@ -70,29 +71,11 @@ async function validateFact(row: PendingFact): Promise<void> {
     if (
       commandCanonical !== payloadJson ||
       await sha256Hex(canonicalize(commandPayload)) !== payloadHash ||
-      containsRecoverySecret(commandPayload)
+      hasForbiddenCommandFactSecret(commandPayload, String(parsed.fact_kind ?? ""))
     ) {
       throw new Error(`ledger_command_fact_invalid:${row.fact_seq}`);
     }
   }
-}
-
-function containsRecoverySecret(value: unknown): boolean {
-  if (Array.isArray(value)) return value.some(containsRecoverySecret);
-  if (typeof value === "string") {
-    const text = value.trim();
-    if (/^Bearer\s+\S+/iu.test(text) || /\beyJ[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}\b/u.test(text)) return true;
-    if ((text.startsWith("{") && text.endsWith("}")) || (text.startsWith("[") && text.endsWith("]"))) {
-      try { return containsRecoverySecret(JSON.parse(text) as unknown); } catch { return false; }
-    }
-    return false;
-  }
-  if (typeof value !== "object" || value === null) return false;
-  for (const [key, item] of Object.entries(value)) {
-    if (/^(access_jwt|jwt|client_secret|email|phone|name|contact|signed_operation_json|signed_assertion_json)$/iu.test(key)) return true;
-    if (containsRecoverySecret(item)) return true;
-  }
-  return false;
 }
 
 export async function exportFacts(env: ExportEnv): Promise<void> {

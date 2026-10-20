@@ -14,7 +14,10 @@ import {
 } from "./provider/registry.js";
 import type { InquireResult, ProviderTxn } from "./provider/port.js";
 import { insertFactLog } from "./records/append.js";
-import { commandFactStatements } from "./records/command-facts.js";
+import {
+  commandFactStatements,
+  hasForbiddenCommandFactSecret,
+} from "./records/command-facts.js";
 import {
   deleteScopedEvidenceBodies,
   eraseOrgRawEvidence,
@@ -333,25 +336,10 @@ async function validateLedgerLine(env: RebuildEnv, line: LedgerLine): Promise<vo
     ) throw new Error(`ledger_command_fact_invalid:${line.fact_seq}`);
     const payload = JSON.parse(payloadJson) as Record<string, unknown>;
     const payloadCanonical = new TextDecoder().decode(canonicalize(payload));
-    const hasSecret = (value: unknown): boolean => {
-      if (Array.isArray(value)) return value.some(hasSecret);
-      if (typeof value === "string") {
-        const text = value.trim();
-        if (/^Bearer\s+\S+/iu.test(text) || /\beyJ[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}\b/u.test(text)) return true;
-        if ((text.startsWith("{") && text.endsWith("}")) || (text.startsWith("[") && text.endsWith("]"))) {
-          try { return hasSecret(JSON.parse(text) as unknown); } catch { return false; }
-        }
-        return false;
-      }
-      if (typeof value !== "object" || value === null) return false;
-      return Object.entries(value).some(([key, item]) =>
-        /^(access_jwt|jwt|client_secret|email|phone|name|contact|signed_operation_json|signed_assertion_json)$/iu.test(key) || hasSecret(item),
-      );
-    };
     if (
       payloadCanonical !== payloadJson ||
       await sha256Hex(canonicalize(payload)) !== payloadHash ||
-      hasSecret(payload) || payload.command_id !== commandId ||
+      hasForbiddenCommandFactSecret(payload, factKind) || payload.command_id !== commandId ||
       !["command_intent", "relay_reserved", "platform_result", "local_result", "erasure_ack"].includes(factKind)
     ) throw new Error(`ledger_command_fact_invalid:${line.fact_seq}`);
     const expectedFactId = await sha256Hex(canonicalize({
