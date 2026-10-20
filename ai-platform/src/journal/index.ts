@@ -67,6 +67,8 @@ export type PostResponseInput = {
   installationId: string;
   termId: string;
   quotaWeight: number;
+  /** Authoritative charged quota weight; omitted for the normal manifest weight. */
+  chargedWeight?: number;
   totalTokens: number;
   totalCost: number;
   filteredContext: Record<string, unknown>;
@@ -423,7 +425,7 @@ async function persistPostResponseDetail(
         input.installationId,
         input.termId,
         input.requestId,
-        input.quotaWeight,
+        input.chargedWeight ?? input.quotaWeight,
         input.totalTokens,
         input.totalCost,
         input.recordedAt,

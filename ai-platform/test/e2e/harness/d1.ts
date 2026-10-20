@@ -7,6 +7,7 @@ import conversationIndexSql from "../../../migrations/20260805180000_h3_conversa
 import statusMigrationSql from "../../../migrations/20260805190000_routing_policy_status.sql?raw";
 import killSwitchMigrationSql from "../../../migrations/20260807120000_kill_switch.sql?raw";
 import fallbackAdmissionFeedMigrationSql from "../../../migrations/20261006160000_fallback_admission_feed.sql?raw";
+import rm24FallbackAdmissionIdentityMigrationSql from "../../../migrations/20261020120000_rm24_fallback_admission_identity.sql?raw";
 import entitlementUniqueSql from "../../../migrations/20260821130000_entitlement_installation_unique.sql?raw";
 import planCatalogueSql from "../../../migrations/20260911120000_plan_catalogue.sql?raw";
 import quotaWeightMigrationSql from "../../../migrations/20260911180000_usage_rollup_quota_weight.sql?raw";
@@ -56,6 +57,7 @@ export const MIGRATION_SQL: readonly string[] = [
   grantVoidMigrationSql,
   transferMigrationSql,
   fallbackAdmissionFeedMigrationSql,
+  rm24FallbackAdmissionIdentityMigrationSql,
   dropInvoicingSql,
   dropPlanEntitlementSql,
   idempotencyFingerprintSql,

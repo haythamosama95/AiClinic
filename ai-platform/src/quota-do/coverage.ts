@@ -549,6 +549,7 @@ function snapshotTermObject(
   const snapshot = JSON.parse(term.plan_snapshot) as {
     display_name?: string;
     capabilities?: unknown;
+    max_cost_class?: unknown;
   };
   const allowance = term.allowance ?? 0;
   const capabilities = Array.isArray(snapshot.capabilities)
@@ -564,6 +565,11 @@ function snapshotTermObject(
     used,
     band: allowanceBand(used, allowance, term.state),
     capabilities,
+    max_cost_class:
+      snapshot.max_cost_class === "standard" ||
+      snapshot.max_cost_class === "premium"
+        ? snapshot.max_cost_class
+        : "economy",
   };
 }
 
@@ -3348,6 +3354,7 @@ export async function voidGrantRPC(
 export type MirrorTermView = {
   ref: string;
   capabilities: string[];
+  max_cost_class: "economy" | "standard" | "premium";
 };
 
 /** `coverage_mirror.term_snapshot` may be the full coverage snapshot or legacy term-only JSON. */
@@ -3356,6 +3363,26 @@ export function mirrorTermViewFromSnapshot(
 ): MirrorTermView | null {
   try {
     const parsed = JSON.parse(termSnapshotJson) as Record<string, unknown>;
+    const planSnapshotObject = (value: unknown): Record<string, unknown> | undefined => {
+      if (value !== null && typeof value === "object" && !Array.isArray(value)) {
+        return value as Record<string, unknown>;
+      }
+      if (typeof value === "string") {
+        try {
+          const decoded = JSON.parse(value) as unknown;
+          if (
+            decoded !== null &&
+            typeof decoded === "object" &&
+            !Array.isArray(decoded)
+          ) {
+            return decoded as Record<string, unknown>;
+          }
+        } catch {
+          return undefined;
+        }
+      }
+      return undefined;
+    };
     const termRaw =
       parsed.term !== null &&
       typeof parsed.term === "object" &&
@@ -3373,10 +3400,38 @@ export function mirrorTermViewFromSnapshot(
           (entry): entry is string => typeof entry === "string",
         )
       : [];
+    const snapshotRaw = planSnapshotObject(termRaw.plan_snapshot);
+    const planSnapshot =
+      termRaw.max_cost_class !== undefined
+        ? termRaw
+        : snapshotRaw ?? (() => {
+            const terms = Array.isArray(parsed.terms) ? parsed.terms : [];
+            const matching = terms.find((entry) =>
+              entry !== null &&
+              typeof entry === "object" &&
+              !Array.isArray(entry) &&
+              ((entry as Record<string, unknown>).term_id === ref ||
+                (entry as Record<string, unknown>).ref === ref),
+            );
+            if (
+              matching !== null &&
+              typeof matching === "object" &&
+              !Array.isArray(matching)
+            ) {
+              const row = matching as Record<string, unknown>;
+              return planSnapshotObject(row.plan_snapshot);
+            }
+            return undefined;
+          })();
+    const rawCostClass = planSnapshot?.max_cost_class;
+    const maxCostClass =
+      rawCostClass === "standard" || rawCostClass === "premium"
+        ? rawCostClass
+        : "economy";
     if (!ref || capabilities.length === 0) {
       return null;
     }
-    return { ref, capabilities };
+    return { ref, capabilities, max_cost_class: maxCostClass };
   } catch {
     return null;
   }

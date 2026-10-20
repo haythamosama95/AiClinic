@@ -146,6 +146,12 @@ CREATE TABLE fallback_admission (
   weight INTEGER NOT NULL,
   admitted_at TEXT NOT NULL,
   state TEXT NOT NULL,
+  jti TEXT,
+  actor_id TEXT,
+  branch_id TEXT,
+  capability_id TEXT,
+  request_fingerprint TEXT,
+  plan_snapshot TEXT,
   PRIMARY KEY (installation_id, idempotency_key),
   FOREIGN KEY (installation_id) REFERENCES installation (installation_id)
 );

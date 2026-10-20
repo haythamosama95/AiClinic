@@ -22,7 +22,6 @@ import {
   evaluateCoveragePrecheck,
   type EntitlementContext,
 } from "../entitlement";
-import type { EntitlementSnapshot } from "../quota-do/index";
 import type { Principal, TokenVerifier, VerifyContext } from "../identity";
 import {
   createRequestRow,
@@ -147,8 +146,6 @@ export type GuardFreshSuccess = {
   routingTier?: "standard" | "degraded";
   /** Term admission fields from the DO answer — settlement and routing. */
   termAdmission?: TermAdmissionFields;
-  /** Grace-only entitlement snapshot when the DO was unavailable. */
-  entitlementSnapshot?: EntitlementSnapshot;
 };
 
 /** Idempotent replay — stages 9–10 skipped; adapter replays from priorState. */
@@ -179,6 +176,7 @@ export type TermAdmissionFields = {
   termId: string;
   reservationId: string;
   snapshot: { capabilities: string[]; max_cost_class: string };
+  accountingMode?: "fallback";
   band?: "ok" | "75" | "90" | "exhausted";
 };
 
@@ -301,7 +299,17 @@ async function releaseAdmissionReservation(
   bindings: GuardBindings,
   installationId: string,
   request: Omit<ReleaseRequest, "kind" | "installationId">,
+  accountingMode?: "fallback",
 ): Promise<void> {
+  if (accountingMode === "fallback") {
+    await bindings.DB.prepare(
+      `UPDATE fallback_admission SET state = 'released'
+       WHERE installation_id = ? AND request_id = ? AND state = 'pending'`,
+    )
+      .bind(installationId, request.requestId)
+      .run();
+    return;
+  }
   const id = bindings.DO.idFromName(installationId);
   const stub = bindings.DO.get(id);
   try {
@@ -561,10 +569,20 @@ export async function runGuard(
           snapshot: admission.snapshot,
           ...(admission.band !== undefined ? { band: admission.band } : {}),
         }
-      : undefined;
-  const entitlementSnapshot =
-    admission.outcome === "grace_admitted" ? admission.entitlement : undefined;
-
+      : admission.outcome === "grace_admitted" &&
+          admission.termId !== undefined &&
+          admission.reservationId !== undefined &&
+          admission.snapshot !== undefined
+        ? {
+            termId: admission.termId,
+            reservationId: admission.reservationId,
+            snapshot: admission.snapshot,
+            accountingMode: "fallback" as const,
+          }
+        : undefined;
+  if (admission.outcome === "grace_admitted" && termAdmission === undefined) {
+    return fail(8, "internal_error", started, logger);
+  }
   const degraded =
     admission.outcome === "grace_admitted" ||
     (admission.outcome === "admitted" && admission.degraded === true);
@@ -601,7 +619,7 @@ export async function runGuard(
       requestId,
       idempotencyKey: input.idempotencyKey,
       jti: principal.jti,
-    });
+    }, termAdmission?.accountingMode);
     return fail(9, journalled.code, started, logger);
   }
 
@@ -629,7 +647,7 @@ export async function runGuard(
       requestId,
       idempotencyKey: input.idempotencyKey,
       jti: principal.jti,
-    });
+    }, termAdmission?.accountingMode);
     return fail(10, composed.code, started, logger);
   }
 
@@ -657,7 +675,6 @@ export async function runGuard(
     killedProviderIds,
     routingTier,
     ...(termAdmission !== undefined ? { termAdmission } : {}),
-    ...(entitlementSnapshot !== undefined ? { entitlementSnapshot } : {}),
     ...(admission.outcome === "admitted" && admission.degraded !== undefined
       ? { degraded: admission.degraded }
       : degraded

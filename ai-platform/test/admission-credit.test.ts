@@ -4,6 +4,7 @@ import { beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import migrationSql from "../migrations/20260731120000_platform_schema.sql?raw";
 import graceQueueMigrationSql from "../migrations/20260821120000_grace_admission_queue.sql?raw";
 import fallbackAdmissionFeedMigrationSql from "../migrations/20261006160000_fallback_admission_feed.sql?raw";
+import rm24FallbackAdmissionIdentityMigrationSql from "../migrations/20261020120000_rm24_fallback_admission_identity.sql?raw";
 import planCatalogueMigrationSql from "../migrations/20260911120000_plan_catalogue.sql?raw";
 import planVersionPaidGrantCoverageMigrationSql from "../migrations/20261003140000_plan_version_paid_grant_coverage.sql?raw";
 import usageTermMigrationSql from "../migrations/20261006120000_usage_term.sql?raw";
@@ -67,7 +68,16 @@ type AdmissionContext = {
 
 type AdmissionSuccess =
   | { ok: true; outcome: "admitted"; requestId: string }
-  | { ok: true; outcome: "grace_admitted"; requestId: string; requestReference: string }
+  | {
+    ok: true;
+    outcome: "grace_admitted";
+    requestId: string;
+    requestReference: string;
+    termId?: string;
+    reservationId?: string;
+    snapshot?: { capabilities: string[]; max_cost_class: string };
+    accountingMode?: "fallback";
+  }
   | { ok: true; outcome: "idempotent"; priorState: IdempotencyPriorState };
 
 type AdmissionFailure = {
@@ -493,6 +503,7 @@ async function seedCoverageMirror(installationId: string): Promise<void> {
       JSON.stringify({
         ref: termRef,
         capabilities: ["clinic.visit_summary"],
+        max_cost_class: "standard",
       }),
     )
     .run();
@@ -684,6 +695,7 @@ beforeAll(async () => {
   await applySqlStatements(env.DB, usageTermMigrationSql);
   await applySqlStatements(env.DB, fallbackAdmissionFeedMigrationSql);
   await applySqlStatements(env.DB, idempotencyFingerprintMigrationSql);
+  await applySqlStatements(env.DB, rm24FallbackAdmissionIdentityMigrationSql);
 });
 
 async function pinHarnessTestClock(isoUtc: string = FIXTURE_NOW): Promise<void> {
@@ -982,6 +994,193 @@ describe("grace_idempotency_key_replay_during_do_outage", () => {
     }
     expect(await countPendingFallbackRows(installationId)).toBe(1);
     expect(await peekPendingFallback(installationId)).toHaveLength(1);
+  });
+});
+
+describe("R5-ADM1_atomic_fallback_cap", () => {
+  it("admits exactly at the cap under concurrent new keys and rejects overflow", async () => {
+    const admission = await loadAdmissionModule();
+    const installationId = freshInstallationId();
+    const { cache, reader } = await seedInstallationAndEntitlement(installationId);
+    const brokenDo = createThrowingDoNamespace(env.DO);
+    const bindings: AdmissionBindings = { DB: env.DB, DO: brokenDo };
+
+    const results = await Promise.all(
+      Array.from({ length: FALLBACK_ADMISSION_CAP + 1 }, () =>
+        admission.runAdmission(
+          defaultAdmissionInput(installationId, cache, reader),
+          bindings,
+          { now: FIXTURE_NOW_MS, nowMs: FIXTURE_NOW_MS },
+        ),
+      ),
+    );
+
+    expect(results.filter((result) => result.ok)).toHaveLength(
+      FALLBACK_ADMISSION_CAP,
+    );
+    expect(results.filter((result) => !result.ok)).toHaveLength(1);
+    expect(await countPendingFallbackRows(installationId)).toBe(
+      FALLBACK_ADMISSION_CAP,
+    );
+  });
+
+  it("returns the stored identity on a same-key retry without adding weight", async () => {
+    const admission = await loadAdmissionModule();
+    const installationId = freshInstallationId();
+    const { cache, reader } = await seedInstallationAndEntitlement(installationId);
+    const brokenDo = createThrowingDoNamespace(env.DO);
+    const idempotencyKey = uniqueIdempotencyKey();
+    const first = await admission.runAdmission(
+      defaultAdmissionInput(installationId, cache, reader, { idempotencyKey }),
+      { DB: env.DB, DO: brokenDo },
+      { now: FIXTURE_NOW_MS, nowMs: FIXTURE_NOW_MS },
+    );
+    expect(first).toMatchObject({ ok: true, outcome: "grace_admitted" });
+
+    const retry = await admission.runAdmission(
+      defaultAdmissionInput(installationId, cache, reader, {
+        idempotencyKey,
+        principal: { jti: uniqueJti() },
+      }),
+      { DB: env.DB, DO: brokenDo },
+      { now: FIXTURE_NOW_MS, nowMs: FIXTURE_NOW_MS },
+    );
+
+    expect(retry).toMatchObject({
+      ok: true,
+      outcome: "grace_admitted",
+      accountingMode: "fallback",
+    });
+    const firstRequestId =
+      first.ok && first.outcome === "grace_admitted" ? first.requestId : "";
+    const retryRequestId =
+      retry.ok && retry.outcome === "grace_admitted" ? retry.requestId : "";
+    expect(retryRequestId).toBe(firstRequestId);
+    expect(await countPendingFallbackRows(installationId)).toBe(1);
+  });
+});
+
+describe("R5-ADM3_fallback_jti_replay", () => {
+  it("rejects a second fallback key for the same JTI per installation", async () => {
+    const admission = await loadAdmissionModule();
+    const installationId = freshInstallationId();
+    const { cache, reader } = await seedInstallationAndEntitlement(installationId);
+    const brokenDo = createThrowingDoNamespace(env.DO);
+    const jti = uniqueJti();
+
+    const first = await admission.runAdmission(
+      defaultAdmissionInput(installationId, cache, reader, {
+        principal: { jti },
+      }),
+      { DB: env.DB, DO: brokenDo },
+      { now: FIXTURE_NOW_MS, nowMs: FIXTURE_NOW_MS },
+    );
+    expect(first).toMatchObject({ ok: true, outcome: "grace_admitted" });
+
+    const second = await admission.runAdmission(
+      defaultAdmissionInput(installationId, cache, reader, {
+        principal: { jti },
+      }),
+      { DB: env.DB, DO: brokenDo },
+      { now: FIXTURE_NOW_MS, nowMs: FIXTURE_NOW_MS },
+    );
+
+    expect(second).toEqual({ ok: false, code: "unauthenticated" });
+    expect(await countPendingFallbackRows(installationId)).toBe(1);
+  });
+
+  it("bounds a prior normal JTI to one additional fallback admission", async () => {
+    const admission = await loadAdmissionModule();
+    const installationId = freshInstallationId();
+    const { cache, reader } = await seedInstallationAndEntitlement(installationId);
+    const jti = uniqueJti();
+    const normal = await admission.runAdmission(
+      defaultAdmissionInput(installationId, cache, reader, {
+        principal: { jti },
+      }),
+      { DB: env.DB, DO: env.DO },
+      { now: FIXTURE_NOW_MS, nowMs: FIXTURE_NOW_MS },
+    );
+    assertAdmitted(normal);
+
+    const brokenDo = createThrowingDoNamespace(env.DO);
+    const fallback = await admission.runAdmission(
+      defaultAdmissionInput(installationId, cache, reader, {
+        principal: { jti },
+      }),
+      { DB: env.DB, DO: brokenDo },
+      { now: FIXTURE_NOW_MS, nowMs: FIXTURE_NOW_MS },
+    );
+    expect(fallback).toMatchObject({ ok: true, outcome: "grace_admitted" });
+
+    const repeatedFallback = await admission.runAdmission(
+      defaultAdmissionInput(installationId, cache, reader, {
+        principal: { jti },
+      }),
+      { DB: env.DB, DO: brokenDo },
+      { now: FIXTURE_NOW_MS, nowMs: FIXTURE_NOW_MS },
+    );
+    expect(repeatedFallback).toEqual({ ok: false, code: "unauthenticated" });
+  });
+});
+
+describe("R5-A4_fallback_term_context", () => {
+  it("returns the immutable mirrored term and cost ceiling instead of a dummy entitlement", async () => {
+    const admission = await loadAdmissionModule();
+    const installationId = freshInstallationId();
+    const { cache, reader } = await seedInstallationAndEntitlement(installationId);
+    const result = await admission.runAdmission(
+      defaultAdmissionInput(installationId, cache, reader),
+      { DB: env.DB, DO: createThrowingDoNamespace(env.DO) },
+      { now: FIXTURE_NOW_MS, nowMs: FIXTURE_NOW_MS },
+    );
+
+    expect(result).toMatchObject({
+      ok: true,
+      outcome: "grace_admitted",
+      accountingMode: "fallback",
+      termId: termIdForInstallation(installationId),
+      snapshot: {
+        capabilities: ["clinic.visit_summary"],
+        max_cost_class: "standard",
+      },
+    });
+    if (result.ok && result.outcome === "grace_admitted") {
+      expect(result.entitlement).toBeUndefined();
+    }
+  });
+
+  it("defaults missing legacy cost metadata to economy", async () => {
+    const admission = await loadAdmissionModule();
+    const installationId = freshInstallationId();
+    await seedInstallation(installationId);
+    await seedCoverageMirror(installationId);
+    await env.DB.prepare(
+      `UPDATE coverage_mirror SET term_snapshot = ? WHERE installation_id = ?`,
+    )
+      .bind(
+        JSON.stringify({
+          ref: termIdForInstallation(installationId),
+          capabilities: ["clinic.visit_summary"],
+        }),
+        installationId,
+      )
+      .run();
+    const result = await admission.runAdmission(
+      defaultAdmissionInput(
+        installationId,
+        new ConfigCache(),
+        makePlatformD1Reader(env.DB),
+      ),
+      { DB: env.DB, DO: createThrowingDoNamespace(env.DO) },
+      { now: FIXTURE_NOW_MS, nowMs: FIXTURE_NOW_MS },
+    );
+
+    expect(result).toMatchObject({
+      ok: true,
+      outcome: "grace_admitted",
+      snapshot: { max_cost_class: "economy" },
+    });
   });
 });
 

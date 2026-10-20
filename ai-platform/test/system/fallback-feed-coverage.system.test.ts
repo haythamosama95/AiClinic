@@ -362,7 +362,7 @@ beforeEach(async () => {
 });
 
 describe("P3.9 fallback admission, feed, and coverage read", () => {
-  it("E2E-P3.9-01 FM-06 DO failure admits via fallback and */5 charges once", async () => {
+  it("E2E-P3.9-01 R5-A4 fallback result is journaled and */5 skips consumed work", async () => {
     const scenario = await newScenario();
     await coverClinicAndPolicy(scenario);
     const token = await setupPromotedPolicy(scenario);
@@ -374,7 +374,7 @@ describe("P3.9 fallback admission, feed, and coverage read", () => {
 
     const rows = await listFallbackAdmissions(scenario.installationId);
     expect(rows).toHaveLength(1);
-    expect(rows[0]?.state).toBe("pending");
+    expect(rows[0]?.state).toBe("consumed");
     expect(rows[0]?.term_id).toBeTruthy();
     expect(rows[0]?.request_id).toBeTruthy();
 
@@ -382,7 +382,7 @@ describe("P3.9 fallback admission, feed, and coverage read", () => {
     const usedBefore = await readHotUsed(scenario.installationId);
     await runScheduled("*/5 * * * *");
     const usedAfterFirst = await readHotUsed(scenario.installationId);
-    expect(usedAfterFirst - usedBefore).toBe(rows[0]!.weight);
+    expect(usedAfterFirst).toBe(usedBefore);
 
     await runScheduled("*/5 * * * *");
     expect(await readHotUsed(scenario.installationId)).toBe(usedAfterFirst);
@@ -391,7 +391,12 @@ describe("P3.9 fallback admission, feed, and coverage read", () => {
       "SELECT state FROM fallback_admission WHERE installation_id = ? AND idempotency_key = ?",
       [scenario.installationId, idempotencyKey],
     );
-    expect(settled?.state).toBe("settled");
+    expect(settled?.state).toBe("consumed");
+    const usage = await queryOne<{ quota_weight: number }>(
+      "SELECT quota_weight FROM usage_event WHERE request_id = ?",
+      [rows[0]!.request_id],
+    );
+    expect(usage?.quota_weight).toBe(rows[0]!.weight);
     await flushBackgroundWork();
   });
 

@@ -84,6 +84,7 @@ import ceilingPolicyMigrationSql from "../../migrations/20261006130000_ceiling_p
 import grantVoidMigrationSql from "../../migrations/20261006140000_grant_void.sql?raw";
 import transferMigrationSql from "../../migrations/20261006150000_transfer.sql?raw";
 import fallbackAdmissionFeedMigrationSql from "../../migrations/20261006160000_fallback_admission_feed.sql?raw";
+import rm24FallbackAdmissionIdentityMigrationSql from "../../migrations/20261020120000_rm24_fallback_admission_identity.sql?raw";
 import dropInvoicingSql from "../../migrations/20261006170000_drop_invoicing.sql?raw";
 import dropPlanEntitlementSql from "../../migrations/20261006170100_drop_plan_entitlement.sql?raw";
 import idempotencyFingerprintSql from "../../migrations/20261014120000_ai_request_idempotency_fingerprint.sql?raw";
@@ -282,6 +283,7 @@ const MIGRATION_SQL = [
   grantVoidMigrationSql,
   transferMigrationSql,
   fallbackAdmissionFeedMigrationSql,
+  rm24FallbackAdmissionIdentityMigrationSql,
   dropInvoicingSql,
   dropPlanEntitlementSql,
   idempotencyFingerprintSql,

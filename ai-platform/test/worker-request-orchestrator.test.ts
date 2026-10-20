@@ -67,6 +67,7 @@ import canaryMigrationSql from "../migrations/20260803100000_routing_policy_cana
 import statusMigrationSql from "../migrations/20260805190000_routing_policy_status.sql?raw";
 import killSwitchMigrationSql from "../migrations/20260807120000_kill_switch.sql?raw";
 import fallbackAdmissionFeedMigrationSql from "../migrations/20261006160000_fallback_admission_feed.sql?raw";
+import rm24FallbackAdmissionIdentityMigrationSql from "../migrations/20261020120000_rm24_fallback_admission_identity.sql?raw";
 import planCatalogueMigrationSql from "../migrations/20260911120000_plan_catalogue.sql?raw";
 import issuerKeyTenantBindingMigrationSql from "../migrations/20261003130000_issuer_key_tenant_binding.sql?raw";
 import planVersionPaidGrantCoverageMigrationSql from "../migrations/20261003140000_plan_version_paid_grant_coverage.sql?raw";
@@ -739,6 +740,7 @@ beforeAll(async () => {
     // I2 production config readers query kill_switch; apply so live guard can warm/miss.
     await applySql(env.DB, killSwitchMigrationSql);
     await applySql(env.DB, fallbackAdmissionFeedMigrationSql);
+    await applySql(env.DB, rm24FallbackAdmissionIdentityMigrationSql);
     // G1 plan catalogue: adds entitlement.credit_budget consumed by G2 admission.
     await applySql(env.DB, planCatalogueMigrationSql);
     await applySql(env.DB, issuerKeyTenantBindingMigrationSql);
@@ -1928,6 +1930,194 @@ describe("live_grace_admission_routing_tier_matches_router", () => {
       });
     } finally {
       graceSpy.mockRestore();
+    }
+  });
+});
+
+describe("R5-A4_fallback_uses_term_context_and_journals_result", () => {
+  it("uses the stored term, records the fallback outcome, and writes one replay envelope", async () => {
+    await env.DB.prepare("DELETE FROM routing_policy").run();
+    await seedRoutingPolicy(env.DB, env.R2, tieredRoutingPolicyDocument());
+    const admissionMod = await import("../src/admission");
+    const creditMod = await import("../src/credit");
+    const creditSpy = vi.spyOn(creditMod, "creditUsage");
+    const requestId = crypto.randomUUID();
+    const idempotencyKey = uniqueIdempotencyKey();
+    const termId = termIdForInstallation(FIXTURE_INSTALLATION_ID);
+    await env.DB.prepare(
+      `INSERT INTO fallback_admission (
+         installation_id, idempotency_key, term_id, request_id, weight,
+         admitted_at, state, jti, actor_id, branch_id, capability_id,
+         request_fingerprint, plan_snapshot
+       ) VALUES (?, ?, ?, ?, 1, ?, 'pending', ?, ?, ?, ?, NULL, ?)`,
+    )
+      .bind(
+        FIXTURE_INSTALLATION_ID,
+        idempotencyKey,
+        termId,
+        requestId,
+        FIXTURE_NOW,
+        crypto.randomUUID(),
+        "actor-i1-001",
+        "branch-i1-001",
+        FIXTURE_CAPABILITY_ID,
+        JSON.stringify({
+          capabilities: [FIXTURE_CAPABILITY_ID],
+          max_cost_class: "standard",
+        }),
+      )
+      .run();
+    const admissionSpy = vi.spyOn(admissionMod, "runAdmission").mockResolvedValue({
+      ok: true,
+      outcome: "grace_admitted",
+      requestId,
+      requestReference: "AI-RM24-0001",
+      termId,
+      reservationId: requestId,
+      snapshot: {
+        capabilities: [FIXTURE_CAPABILITY_ID],
+        max_cost_class: "standard",
+      },
+      accountingMode: "fallback",
+    });
+    try {
+      const { response, events } = await fetchLivePost(await mintAat(), {
+        idempotencyKey,
+      });
+      expect(response.status).toBe(200);
+      expect(terminalEvents(events).map((event) => event.type)).toContain(
+        "completed",
+      );
+      expect(creditSpy).not.toHaveBeenCalled();
+
+      const request = await env.DB.prepare(
+        "SELECT state, payload_pointer FROM ai_request WHERE request_id = ?",
+      )
+        .bind(requestId)
+        .first<{ state: string; payload_pointer: string | null }>();
+      expect(request).toMatchObject({
+        state: "Completed",
+        payload_pointer: `request/${requestId}/envelope`,
+      });
+      expect(await env.R2.get(`request/${requestId}/envelope`)).not.toBeNull();
+
+      const usage = await env.DB.prepare(
+        `SELECT term_id, quota_weight, COUNT(*) OVER () AS row_count
+         FROM usage_event WHERE request_id = ?`,
+      )
+        .bind(requestId)
+        .first<{ term_id: string; quota_weight: number; row_count: number }>();
+      expect(usage).toMatchObject({ term_id: termId, quota_weight: 1, row_count: 1 });
+      const fallback = await env.DB.prepare(
+        "SELECT state FROM fallback_admission WHERE request_id = ?",
+      )
+        .bind(requestId)
+        .first<{ state: string }>();
+      expect(fallback?.state).toBe("consumed");
+    } finally {
+      admissionSpy.mockRestore();
+      creditSpy.mockRestore();
+      await env.DB.prepare("DELETE FROM fallback_admission WHERE request_id = ?")
+        .bind(requestId)
+        .run();
+    }
+  });
+});
+
+describe("R5-ADM2_fallback_cost_ceiling_and_R5-A4_zero_release", () => {
+  it("excludes standard targets for economy fallback and terminalizes the zero-charge row", async () => {
+    await env.DB.prepare("DELETE FROM routing_policy").run();
+    await seedRoutingPolicy(env.DB, env.R2, {
+      schema_version: 1,
+      policy_id: FIXTURE_POLICY_ID,
+      policy_version: 1,
+      defaults: { cost_class: "standard", max_parallel_attempts: 1 },
+      rules: [
+        {
+          rule_id: "standard-only",
+          match: { tiers: ["degraded"] },
+          requires: {
+            structured_output: false,
+            min_context_window: 0,
+            languages: ["en"],
+          },
+          targets: [fakePolicyTarget("fake-standard-only")],
+        },
+      ],
+      overrides: [],
+    });
+    const admissionMod = await import("../src/admission");
+    const creditMod = await import("../src/credit");
+    const creditSpy = vi.spyOn(creditMod, "creditUsage");
+    const requestId = crypto.randomUUID();
+    const idempotencyKey = uniqueIdempotencyKey();
+    const termId = termIdForInstallation(FIXTURE_INSTALLATION_ID);
+    await env.DB.prepare(
+      `INSERT INTO fallback_admission (
+         installation_id, idempotency_key, term_id, request_id, weight,
+         admitted_at, state, jti, actor_id, branch_id, capability_id,
+         request_fingerprint, plan_snapshot
+       ) VALUES (?, ?, ?, ?, 1, ?, 'pending', ?, ?, ?, ?, NULL, ?)`,
+    )
+      .bind(
+        FIXTURE_INSTALLATION_ID,
+        idempotencyKey,
+        termId,
+        requestId,
+        FIXTURE_NOW,
+        crypto.randomUUID(),
+        "actor-i1-001",
+        "branch-i1-001",
+        FIXTURE_CAPABILITY_ID,
+        JSON.stringify({
+          capabilities: [FIXTURE_CAPABILITY_ID],
+          max_cost_class: "economy",
+        }),
+      )
+      .run();
+    const admissionSpy = vi.spyOn(admissionMod, "runAdmission").mockResolvedValue({
+      ok: true,
+      outcome: "grace_admitted",
+      requestId,
+      requestReference: "AI-RM24-0002",
+      termId,
+      reservationId: requestId,
+      snapshot: {
+        capabilities: [FIXTURE_CAPABILITY_ID],
+        max_cost_class: "economy",
+      },
+      accountingMode: "fallback",
+    });
+    try {
+      const { response, events } = await fetchLivePost(await mintAat(), {
+        idempotencyKey,
+      });
+      expect(response.status).toBe(200);
+      expect(terminalEvents(events).map((event) => event.type)).toContain("failed");
+      expect(creditSpy).not.toHaveBeenCalled();
+
+      const fallback = await env.DB.prepare(
+        "SELECT state FROM fallback_admission WHERE request_id = ?",
+      )
+        .bind(requestId)
+        .first<{ state: string }>();
+      expect(fallback?.state).toBe("released");
+      const usage = await env.DB.prepare(
+        "SELECT term_id, quota_weight FROM usage_event WHERE request_id = ?",
+      )
+        .bind(requestId)
+        .first<{ term_id: string; quota_weight: number }>();
+      expect(usage).toMatchObject({ term_id: termId, quota_weight: 0 });
+      await expect(
+        creditMod.reconcileGraceUsage({ DO: env.DO, DB: env.DB }),
+      ).resolves.toMatchObject({ reconciled: 0 });
+      expect(creditSpy).not.toHaveBeenCalled();
+    } finally {
+      admissionSpy.mockRestore();
+      creditSpy.mockRestore();
+      await env.DB.prepare("DELETE FROM fallback_admission WHERE request_id = ?")
+        .bind(requestId)
+        .run();
     }
   });
 });

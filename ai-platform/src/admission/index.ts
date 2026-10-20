@@ -73,7 +73,12 @@ type AdmissionSuccess =
     outcome: "grace_admitted";
     requestId: string;
     requestReference: string;
-    entitlement: EntitlementSnapshot;
+    /** Present for D1 fallback admissions; legacy mocks may omit it. */
+    termId?: string;
+    reservationId?: string;
+    snapshot?: { capabilities: string[]; max_cost_class: string };
+    accountingMode?: "fallback";
+    entitlement?: EntitlementSnapshot;
   }
   | { ok: true; outcome: "idempotent"; priorState: IdempotencyPriorState };
 
@@ -141,6 +146,17 @@ type CoverageMirrorRow = {
   term_snapshot: string;
 };
 
+type FallbackAdmissionBindingRow = {
+  request_id: string;
+  term_id: string;
+  jti: string | null;
+  actor_id: string | null;
+  branch_id: string | null;
+  capability_id: string | null;
+  request_fingerprint: string | null;
+  plan_snapshot: string | null;
+};
+
 function mapJournalState(state: string): IdempotencyPriorState["state"] {
   switch (state) {
     case "Completed":
@@ -205,22 +221,6 @@ async function selectAiRequestById(
     .bind(installationId, requestId)
     .first<JournaledRequestRow>();
   return row ?? null;
-}
-
-function fallbackEntitlementSnapshot(
-  admittedAt: string,
-  capabilities: string[],
-): EntitlementSnapshot {
-  return {
-    plan: "standard",
-    period_bounds: { period_start: admittedAt, period_end: admittedAt },
-    request_quota: 0,
-    token_cost_budget: { token_budget: 0, cost_budget: 0 },
-    credit_budget: 0,
-    allowed_capabilities: capabilities,
-    soft_threshold: 0,
-    status: "active",
-  };
 }
 
 async function currentClockMs(ctx?: AdmissionContext): Promise<number> {
@@ -458,31 +458,64 @@ function coverageUnknown(installationId: string): AdmissionResult {
   };
 }
 
-async function pendingFallbackWeight(
-  db: D1Database,
-  installationId: string,
-): Promise<number> {
-  const row = await db
-    .prepare(
-      `SELECT COALESCE(SUM(weight), 0) AS total
-       FROM fallback_admission
-       WHERE installation_id = ? AND state = 'pending'`,
-    )
-    .bind(installationId)
-    .first<{ total: number }>();
-  return Number(row?.total ?? 0);
-}
-
 async function tryMirrorFallbackAdmission(input: {
   db: D1Database;
   principal: Principal;
   idempotencyKey: string;
   requestReference: string;
   capabilityId: string;
+  requestFingerprint?: string;
   quotaWeight: number;
   requestId: string;
+  allowNew?: boolean;
   clock?: ClockEnv;
 }): Promise<AdmissionResult | null> {
+  const existingKey = await input.db
+    .prepare(
+      `SELECT request_id, term_id, jti, actor_id, branch_id, capability_id,
+              request_fingerprint, plan_snapshot
+       FROM fallback_admission
+       WHERE installation_id = ? AND idempotency_key = ?`,
+    )
+    .bind(input.principal.installationId, input.idempotencyKey)
+    .first<FallbackAdmissionBindingRow>();
+  if (existingKey) {
+    const sameBinding =
+      existingKey.actor_id === input.principal.actorId &&
+      existingKey.branch_id === input.principal.branchId &&
+      existingKey.capability_id === input.capabilityId &&
+      existingKey.request_fingerprint === (input.requestFingerprint ?? null);
+    if (!sameBinding || existingKey.plan_snapshot === null) {
+      recordGuardRejection({
+        error_code: "idempotency_conflict",
+        installation_id: input.principal.installationId,
+      });
+      return { ok: false, code: "idempotency_conflict" };
+    }
+    let priorSnapshot: { capabilities: string[]; max_cost_class: string };
+    try {
+      priorSnapshot = JSON.parse(existingKey.plan_snapshot) as {
+        capabilities: string[];
+        max_cost_class: string;
+      };
+    } catch {
+      return coverageUnknown(input.principal.installationId);
+    }
+    return {
+      ok: true,
+      outcome: "grace_admitted",
+      requestId: existingKey.request_id,
+      requestReference: input.requestReference,
+      termId: existingKey.term_id,
+      reservationId: existingKey.request_id,
+      snapshot: priorSnapshot,
+      accountingMode: "fallback",
+    };
+  }
+  if (input.allowNew === false) {
+    return null;
+  }
+
   const mirror = await input.db
     .prepare(
       `SELECT state, suspended, hard_stop_at, term_snapshot
@@ -519,22 +552,38 @@ async function tryMirrorFallbackAdmission(input: {
     return null;
   }
 
-  const w = input.quotaWeight;
-  const cap = 5 * publishedQuotaWeightMax();
-  const pending = await pendingFallbackWeight(
-    input.db,
-    input.principal.installationId,
-  );
-  if (pending + w > cap) {
-    return null;
+  const snapshot = {
+    capabilities: termView.capabilities,
+    max_cost_class: termView.max_cost_class,
+  };
+  const existingJti = await input.db
+    .prepare(
+      `SELECT 1 AS present FROM fallback_admission
+       WHERE installation_id = ? AND jti = ? LIMIT 1`,
+    )
+    .bind(input.principal.installationId, input.principal.jti)
+    .first<{ present: number }>();
+  if (existingJti) {
+    recordGuardRejection({
+      error_code: "unauthenticated",
+      installation_id: input.principal.installationId,
+    });
+    return { ok: false, code: "unauthenticated" };
   }
 
+  const w = input.quotaWeight;
+  const cap = 5 * publishedQuotaWeightMax();
   const admittedAt = nowIso;
   const inserted = await input.db
     .prepare(
       `INSERT OR IGNORE INTO fallback_admission (
-         installation_id, idempotency_key, term_id, request_id, weight, admitted_at, state
-       ) VALUES (?, ?, ?, ?, ?, ?, 'pending')`,
+         installation_id, idempotency_key, term_id, request_id, weight, admitted_at,
+         state, jti, actor_id, branch_id, capability_id, request_fingerprint, plan_snapshot
+       ) SELECT ?, ?, ?, ?, ?, ?, 'pending', ?, ?, ?, ?, ?, ?
+       WHERE COALESCE((
+         SELECT SUM(weight) FROM fallback_admission
+         WHERE installation_id = ? AND state = 'pending'
+       ), 0) + ? <= ?`,
     )
     .bind(
       input.principal.installationId,
@@ -543,43 +592,81 @@ async function tryMirrorFallbackAdmission(input: {
       input.requestId,
       w,
       admittedAt,
+      input.principal.jti,
+      input.principal.actorId,
+      input.principal.branchId,
+      input.capabilityId,
+      input.requestFingerprint ?? null,
+      JSON.stringify(snapshot),
+      input.principal.installationId,
+      w,
+      cap,
     )
     .run();
   if ((inserted.meta.changes ?? 0) === 0) {
     const raced = await input.db
       .prepare(
-        `SELECT request_id FROM fallback_admission
+        `SELECT request_id, term_id, jti, actor_id, branch_id, capability_id,
+                request_fingerprint, plan_snapshot FROM fallback_admission
          WHERE installation_id = ? AND idempotency_key = ?`,
       )
       .bind(input.principal.installationId, input.idempotencyKey)
-      .first<{ request_id: string }>();
+      .first<FallbackAdmissionBindingRow>();
     if (raced) {
-      const entitlement = fallbackEntitlementSnapshot(
-        admittedAt,
-        termView.capabilities,
-      );
+      if (
+        raced.actor_id !== input.principal.actorId ||
+        raced.branch_id !== input.principal.branchId ||
+        raced.capability_id !== input.capabilityId ||
+        raced.request_fingerprint !== (input.requestFingerprint ?? null) ||
+        raced.plan_snapshot === null
+      ) {
+        recordGuardRejection({
+          error_code: "idempotency_conflict",
+          installation_id: input.principal.installationId,
+        });
+        return { ok: false, code: "idempotency_conflict" };
+      }
+      const priorSnapshot = JSON.parse(raced.plan_snapshot) as {
+        capabilities: string[];
+        max_cost_class: string;
+      };
       return {
         ok: true,
         outcome: "grace_admitted",
         requestId: raced.request_id,
         requestReference: input.requestReference,
-        entitlement,
+        termId: raced.term_id,
+        reservationId: raced.request_id,
+        snapshot: priorSnapshot,
+        accountingMode: "fallback",
       };
+    }
+    const racedJti = await input.db
+      .prepare(
+        `SELECT 1 AS present FROM fallback_admission
+         WHERE installation_id = ? AND jti = ? LIMIT 1`,
+      )
+      .bind(input.principal.installationId, input.principal.jti)
+      .first<{ present: number }>();
+    if (racedJti) {
+      recordGuardRejection({
+        error_code: "unauthenticated",
+        installation_id: input.principal.installationId,
+      });
+      return { ok: false, code: "unauthenticated" };
     }
     return null;
   }
-
-  const entitlement = fallbackEntitlementSnapshot(
-    admittedAt,
-    termView.capabilities,
-  );
 
   return {
     ok: true,
     outcome: "grace_admitted",
     requestId: input.requestId,
     requestReference: input.requestReference,
-    entitlement,
+    termId: termView.ref,
+    reservationId: input.requestId,
+    snapshot,
+    accountingMode: "fallback",
   };
 }
 
@@ -764,12 +851,6 @@ export async function runAdmission(
     return { ok: false, code: "internal_error" };
   }
 
-  // A D1 row is not sufficient to replay a request: the per-installation DO
-  // must authorize the JTI before its durable answer can be returned.
-  if (journaled !== null) {
-    return coverageUnknown(principal.installationId);
-  }
-
   logger.info("Quota DO unavailable — attempting mirror fallback", {
     installation_id: principal.installationId,
   });
@@ -780,8 +861,10 @@ export async function runAdmission(
     idempotencyKey,
     requestReference,
     capabilityId,
+    requestFingerprint,
     quotaWeight,
     requestId,
+    allowNew: journaled === null,
     clock: ctx?.clock,
   });
   if (fallback) {

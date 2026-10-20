@@ -124,7 +124,6 @@ import {
   type CreditIdempotencyState,
   type CreditRequest,
   type CoverageShipEnv,
-  type EntitlementSnapshot,
   type ReadCoverageRequest,
   type ReleaseRequest,
   type SealGrantRouteRequest,
@@ -566,7 +565,7 @@ type PostAcceptInternalErrorInput = {
   filteredContext: Record<string, unknown>;
   composed: CanonicalRequest;
   termId: string;
-  entitlement?: EntitlementSnapshot;
+  accountingMode?: "fallback";
   routing?: RoutingDecision;
 };
 
@@ -588,7 +587,7 @@ async function settlePostAcceptInternalError(
       composed: input.composed,
       attempts: attemptsForFailedSettlement([], routing, code),
       termId: input.termId,
-      entitlement: input.entitlement,
+      accountingMode: input.accountingMode,
       code,
       idempotencyState: "failed",
     },
@@ -717,12 +716,14 @@ function buildPostResponseInput(
   recordedAt: string,
   usage: { tokens: number; cost: number },
   termId: string,
+  chargedWeight?: number,
 ): PostResponseInput {
   return {
     requestId,
     installationId,
     termId,
     quotaWeight: Number(manifest.Economics.quotaWeight) || 1,
+    ...(chargedWeight !== undefined ? { chargedWeight } : {}),
     totalTokens: usage.tokens,
     totalCost: usage.cost,
     filteredContext,
@@ -744,6 +745,8 @@ type SettlementJournalInput = {
   recordedAt: string;
   usage: { tokens: number; cost: number };
   termId: string;
+  reservationId?: string;
+  chargedWeight?: number;
 };
 
 async function writeSettlementJournal(
@@ -762,6 +765,7 @@ async function writeSettlementJournal(
     input.recordedAt,
     input.usage,
     input.termId,
+    input.chargedWeight,
   );
   const ctx = createWorkerExecutionContext();
   writePostResponseDetail(detail, {
@@ -786,13 +790,28 @@ async function settleTerminal(
     composed: CanonicalRequest;
     attempts: AttemptInput[];
     termId: string;
-    entitlement?: EntitlementSnapshot;
+    accountingMode?: "fallback";
     skipCredit?: boolean;
   },
   logger: Logger,
 ): Promise<void> {
   const usage = input.usage ?? { tokens: 0, cost: 0 };
-  if (!input.skipCredit) {
+  const consumesQuota =
+    getTaxonomyEntry(input.code).consumesQuota === "Yes" ||
+    usage.tokens > 0 ||
+    usage.cost > 0;
+  if (input.accountingMode === "fallback") {
+    await runtimeEnv.DB.prepare(
+      `UPDATE fallback_admission SET state = ?
+       WHERE installation_id = ? AND request_id = ? AND state = 'pending'`,
+    )
+      .bind(
+        consumesQuota ? "consumed" : "released",
+        input.installationId,
+        input.requestId,
+      )
+      .run();
+  } else if (!input.skipCredit) {
     await creditUsage(
       {
         installationId: input.installationId,
@@ -805,7 +824,6 @@ async function settleTerminal(
         ...(input.idempotencyState === "failed"
           ? { terminalErrorCode: input.code }
           : {}),
-        entitlement: input.entitlement,
       },
       { DO: runtimeEnv.DO, DB: runtimeEnv.DB },
     );
@@ -824,6 +842,9 @@ async function settleTerminal(
       recordedAt,
       usage,
       termId: input.termId,
+      ...(input.accountingMode === "fallback" && !consumesQuota
+        ? { chargedWeight: 0 }
+        : {}),
     },
     logger,
   );
@@ -843,23 +864,31 @@ async function settleCompletedRequest(
     recordedAt: string;
     termId: string;
     reservationId?: string;
-    entitlement?: EntitlementSnapshot;
+    accountingMode?: "fallback";
   },
   logger: Logger,
 ): Promise<void> {
   const usage = ledgerUsageFromProvider(input.result);
-  await creditUsage(
-    {
-      installationId: input.installationId,
-      requestId: input.reservationId ?? input.requestId,
-      requestReference: input.requestReference,
-      usage,
-      partial: false,
-      credits: Number(input.manifest.Economics.quotaWeight) || 1,
-      entitlement: input.entitlement,
-    },
-    { DO: runtimeEnv.DO, DB: runtimeEnv.DB },
-  );
+  if (input.accountingMode === "fallback") {
+    await runtimeEnv.DB.prepare(
+      `UPDATE fallback_admission SET state = 'consumed'
+       WHERE installation_id = ? AND request_id = ? AND state = 'pending'`,
+    )
+      .bind(input.installationId, input.requestId)
+      .run();
+  } else {
+    await creditUsage(
+      {
+        installationId: input.installationId,
+        requestId: input.reservationId ?? input.requestId,
+        requestReference: input.requestReference,
+        usage,
+        partial: false,
+        credits: Number(input.manifest.Economics.quotaWeight) || 1,
+      },
+      { DO: runtimeEnv.DO, DB: runtimeEnv.DB },
+    );
+  }
   await writeSettlementJournal(
     runtimeEnv,
     {
@@ -873,6 +902,9 @@ async function settleCompletedRequest(
       recordedAt: input.recordedAt,
       usage,
       termId: input.termId,
+      ...(input.accountingMode === "fallback"
+        ? { chargedWeight: Number(input.manifest.Economics.quotaWeight) || 1 }
+        : {}),
       reservationId: input.reservationId,
     },
     logger,
@@ -1050,7 +1082,7 @@ function createProductionEventSource(
             filteredContext: freshGuard.filteredContext,
             composed: freshGuard.composed,
             termId: freshGuard.termAdmission?.termId ?? "",
-            entitlement: freshGuard.entitlementSnapshot,
+            accountingMode: freshGuard.termAdmission?.accountingMode,
           },
           makeLog("journal/index.ts", {
             trace_id: streamContext.traceId,
@@ -1198,6 +1230,9 @@ async function runFreshEventSource(
       if (ignoreBrokerSettlement) {
         return;
       }
+      if (guard.termAdmission?.accountingMode === "fallback") {
+        return;
+      }
       brokerCredit = creditUsage(
         {
           installationId: guard.principal.installationId,
@@ -1207,7 +1242,6 @@ async function runFreshEventSource(
           partial: input.partial,
           credits: Number(manifest.Economics.quotaWeight) || 1,
           idempotencyState: input.idempotencyState,
-          entitlement: guard.entitlementSnapshot,
         },
         { DO: runtimeEnv.DO, DB: runtimeEnv.DB },
       );
@@ -1296,7 +1330,7 @@ async function runFreshEventSource(
     attempts: attemptRecords.map(buildAttemptInput),
     termId,
     reservationId: guard.termAdmission?.reservationId,
-    entitlement: guard.entitlementSnapshot,
+    accountingMode: guard.termAdmission?.accountingMode,
   };
 
   if (!invokeResult.ok) {
