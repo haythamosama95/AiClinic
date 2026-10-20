@@ -940,7 +940,7 @@ describe("Stage 11 â€” terminal settlement completed/failed/cancelled (S11-001â€
       expect(usage[0]?.tokens).toBe(0);
       expect(costOf(usage[0], "cost")).toBe(0);
       expect(usage[0]?.term_id).toBe(e2eActiveTermId(scenario.installationId));
-      expect(usage[0]?.quota_weight).toBe(1);
+      expect(usage[0]?.quota_weight).toBe(0);
 
       const envelope = await getR2Json(String(row.payload_pointer));
       const attemptRaw = envelope.attempts as Array<{

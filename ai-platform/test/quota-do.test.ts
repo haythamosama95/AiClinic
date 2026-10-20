@@ -646,6 +646,7 @@ describe("credit_adjusts_counters_with_actual_usage", () => {
     expect(body).toEqual({
       kind: "credit",
       ok: true,
+      settlement: { disposition: "settled", chargedWeight: 0 },
       periodCounters: {
         requestsUsed: 1,
         tokensUsed: usage.tokens,
@@ -676,6 +677,7 @@ describe("credit_adjusts_counters_with_partial_usage", () => {
     expect(body).toEqual({
       kind: "credit",
       ok: true,
+      settlement: { disposition: "settled", chargedWeight: 0 },
       periodCounters: {
         requestsUsed: 1,
         tokensUsed: usage.tokens,
@@ -1120,6 +1122,7 @@ describe("parallel_admissions_exact_final_count", () => {
     expect(settled.body).toEqual({
       kind: "credit",
       ok: true,
+      settlement: { disposition: "settled", chargedWeight: 0 },
       periodCounters: {
         requestsUsed: parallelCount + 1,
         tokensUsed: tokensSum,

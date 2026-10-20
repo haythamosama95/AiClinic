@@ -1421,6 +1421,32 @@ describe("post_guard_failed_terminal_validation_failed", () => {
       const failed = terminalEvents(events).filter((e) => e.type === "failed");
       expect(failed).toHaveLength(1);
       expect(failed[0]?.data.code).toBe("validation_failed");
+      let accountingSettled = false;
+      for (let attempt = 0; attempt < 30; attempt += 1) {
+        const request = await env.DB.prepare(
+          `SELECT request_id, accounting_state FROM ai_request
+           WHERE installation_id = ? ORDER BY created_at DESC LIMIT 1`,
+        )
+          .bind(FIXTURE_INSTALLATION_ID)
+          .first<{ request_id: string; accounting_state: string | null }>();
+        const usage = request
+          ? await env.DB.prepare(
+              "SELECT COUNT(*) AS c FROM usage_event WHERE request_id = ?",
+            )
+              .bind(request.request_id)
+              .first<{ c: number }>()
+          : null;
+        if (
+          request?.accounting_state === "settled" &&
+          Number(usage?.c ?? 0) === 1 &&
+          creditSpy.mock.calls.length === 1
+        ) {
+          accountingSettled = true;
+          break;
+        }
+        await new Promise((resolve) => setTimeout(resolve, 50));
+      }
+      expect(accountingSettled).toBe(true);
       expect(creditSpy).toHaveBeenCalledTimes(1);
       expect(creditSpy.mock.calls[0]?.[0]).toMatchObject({
         partial: false,
@@ -2015,7 +2041,7 @@ describe("R5-A4_fallback_uses_term_context_and_journals_result", () => {
       )
         .bind(requestId)
         .first<{ state: string }>();
-      expect(fallback?.state).toBe("consumed");
+      expect(fallback?.state).toBe("settled");
     } finally {
       admissionSpy.mockRestore();
       creditSpy.mockRestore();
@@ -2138,7 +2164,7 @@ describe("R5-ADM1_fallback_worker_retries", () => {
         );
         if (
           currentRequest?.state === "Completed" &&
-          fallback?.state === "consumed" &&
+          fallback?.state === "settled" &&
           envelope !== null
         ) {
           settled = true;
@@ -2162,7 +2188,7 @@ describe("R5-ADM1_fallback_worker_retries", () => {
       )
         .bind(FIXTURE_INSTALLATION_ID, idempotencyKey)
         .first<{ state: string }>();
-      expect(fallback?.state).toBe("consumed");
+      expect(fallback?.state).toBe("settled");
     } finally {
       releaseInvoke();
       invokeSpy.mockRestore();

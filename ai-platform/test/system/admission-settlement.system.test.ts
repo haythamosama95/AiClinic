@@ -714,17 +714,28 @@ describe("admission settlement against terms", () => {
     const initialHotUsage = await readHotUsage(scenario.installationId);
 
     let creditCalls = 0;
+    let suppressedRequestId: string | null = null;
     let swallowedCreditBody: Record<string, unknown> | null = null;
     const restoreFetch = wrapQuotaDoFetch(
       scenario.installationId,
       async (body, forward) => {
-        if (body.kind === "credit" && creditCalls === 0) {
-          creditCalls += 1;
-          swallowedCreditBody = body;
-          return new Response(JSON.stringify({ kind: "credit", ok: true }), {
-            status: 200,
-            headers: { "Content-Type": "application/json" },
-          });
+        if (body.kind === "credit") {
+          const requestId = typeof body.requestId === "string"
+            ? body.requestId
+            : typeof body.reservation_id === "string"
+            ? body.reservation_id
+            : null;
+          if (suppressedRequestId === null && requestId !== null) {
+            suppressedRequestId = requestId;
+            swallowedCreditBody = body;
+          }
+          if (requestId === suppressedRequestId) {
+            creditCalls += 1;
+            return new Response(JSON.stringify({ kind: "credit", ok: true }), {
+              status: 200,
+              headers: { "Content-Type": "application/json" },
+            });
+          }
         }
         return forward("https://quota-do.internal/rpc", {
           method: "POST",
@@ -754,6 +765,7 @@ describe("admission settlement against terms", () => {
         await flushBackgroundWork();
       }
 
+      expect(creditCalls).toBeGreaterThan(0);
       restoreFetch();
 
       expect(swallowedCreditBody).toBeTruthy();
@@ -801,8 +813,11 @@ describe("admission settlement against terms", () => {
             body: JSON.stringify(swallowedCreditBody),
           },
         );
-        const replayBody = (await replay.json()) as { ok?: boolean };
-        expect(replayBody.ok).toBe(true);
+        expect(await replay.json()).toMatchObject({
+          kind: "credit",
+          ok: true,
+          settlement: { disposition: "already_accounted", chargedWeight: QUOTA_WEIGHT },
+        });
       }
       const hotAfterReplay = await readHotUsage(scenario.installationId);
       expect(hotAfterReplay.used).toBe(hotBeforeReplay.used);

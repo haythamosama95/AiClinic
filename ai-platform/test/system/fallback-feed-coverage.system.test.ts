@@ -396,7 +396,7 @@ describe("P3.9 fallback admission, feed, and coverage read", () => {
 
     const rows = await listFallbackAdmissions(scenario.installationId);
     expect(rows).toHaveLength(1);
-    expect(rows[0]?.state).toBe("consumed");
+    expect(rows[0]?.state).toBe("settled");
     expect(rows[0]?.term_id).toBeTruthy();
     expect(rows[0]?.request_id).toBeTruthy();
 
@@ -413,7 +413,7 @@ describe("P3.9 fallback admission, feed, and coverage read", () => {
       "SELECT state FROM fallback_admission WHERE installation_id = ? AND idempotency_key = ?",
       [scenario.installationId, idempotencyKey],
     );
-    expect(settled?.state).toBe("consumed");
+    expect(settled?.state).toBe("settled");
     const usage = await queryOne<{ quota_weight: number }>(
       "SELECT quota_weight FROM usage_event WHERE request_id = ?",
       [rows[0]!.request_id],

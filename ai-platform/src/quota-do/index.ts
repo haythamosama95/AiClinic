@@ -1129,30 +1129,18 @@ function chargeStaleReservations(
   installationId: string,
   now: number,
   nowIso: string,
+  trackingRequestId?: string,
 ): boolean {
   let changed = false;
+  const staleReservations: ReservationRow[] = [];
   const remaining: ReservationRow[] = [];
   for (const reservation of hot.reservations) {
     if (now - reservation.admitted_at > STALE_RESERVATION_MS) {
       if (reservation.term_id === hot.row.active_term_id) {
         hot.row.used += reservation.weight;
-      } else {
-        sqlExecLocal(
-          storage,
-          `UPDATE term SET used_final = COALESCE(used_final, 0) + ${reservation.weight}
-           WHERE term_id = ${sqlStringLocal(reservation.term_id)}`,
-        );
       }
       hot.row.reserved = Math.max(0, hot.row.reserved - reservation.weight);
-      insertOutbox(storage, "usage_adjustment", {
-        request_id: reservation.id,
-        installation_id: installationId,
-        term_id: reservation.term_id,
-        quota_weight: reservation.weight,
-        tokens: 0,
-        cost: 0,
-        recorded_at: nowIso,
-      });
+      staleReservations.push(reservation);
       if (reservation.idempotency_key !== undefined) {
         hot.idempotency[reservation.idempotency_key] = {
           expiresAt: now + EPHEMERAL_HORIZON_MS,
@@ -1173,6 +1161,44 @@ function chargeStaleReservations(
     remaining.push(reservation);
   }
   hot.reservations = remaining;
+  if (changed) {
+    // Clear the reservation, add its conservative charge, append the outbox
+    // fact, and retain the permanent settlement identity in one SQLite
+    // transaction. A later normal credit replay remains idempotent even after
+    // the usage_adjustment outbox row has shipped and been deleted.
+    storage.transactionSync(() => {
+      recordHotWrites(storage, trackingRequestId, () => persistParsedHot(storage, hot));
+      for (const reservation of staleReservations) {
+        if (reservation.term_id !== hot.row.active_term_id) {
+          sqlExecLocal(
+            storage,
+            `UPDATE term SET used_final = COALESCE(used_final, 0) + ${reservation.weight}
+             WHERE term_id = ${sqlStringLocal(reservation.term_id)}`,
+          );
+        }
+        insertOutbox(storage, "usage_adjustment", {
+          request_id: reservation.id,
+          installation_id: installationId,
+          term_id: reservation.term_id,
+          quota_weight: reservation.weight,
+          tokens: 0,
+          cost: 0,
+          recorded_at: nowIso,
+        });
+        sqlExecLocal(
+          storage,
+          `INSERT OR IGNORE INTO usage_settlement_receipt (
+             request_id, installation_id, term_id, weight, outcome,
+             charged_weight, recorded_at
+           ) VALUES (
+             ${sqlStringLocal(reservation.id)}, ${sqlStringLocal(installationId)},
+             ${sqlStringLocal(reservation.term_id)}, ${reservation.weight}, 'consumed',
+             ${reservation.weight}, ${sqlStringLocal(nowIso)}
+           )`,
+        );
+      }
+    });
+  }
   return changed;
 }
 
@@ -1521,15 +1547,12 @@ function admitOnHotRow(
     request.installationId,
     now,
     nowIso,
+    request.requestId,
   );
 
   // Boundary processing reloads hot state from SQL to construct its outbox
-  // snapshots. Persist stale-reservation charges before that reload so the
-  // removed reservations, settled usage, and failed idempotency bindings are
-  // not discarded by the boundary refresh.
-  if (stateChanged) {
-    recordHotWrites(storage, request.requestId, () => persistParsedHot(storage, hot));
-  }
+  // snapshots. chargeStaleReservations has already atomically persisted the
+  // hot row, outbox facts, term totals, and terminal receipts before reload.
 
   applyDueBoundaries({
     storage,
@@ -1781,7 +1804,7 @@ function settleReservationOnHot(
     if (receipt !== undefined) {
       if (
         receipt.installation_id !== request.installationId ||
-        receipt.weight !== (request.credits ?? 1) ||
+        (request.credits !== undefined && receipt.weight !== request.credits) ||
         (request.term_id !== undefined && receipt.term_id !== request.term_id) ||
         (request.outcome !== undefined && receipt.outcome !== request.outcome &&
           !(receipt.outcome === "consumed" && receipt.charged_weight > 0 &&

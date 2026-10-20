@@ -183,7 +183,7 @@ describe("cron retention interplay", () => {
       .first<{ term_snapshot: string }>();
     const termRef =
       typeof mirror?.term_snapshot === "string"
-        ? (JSON.parse(mirror.term_snapshot) as { ref?: string }).ref ?? "term-sys83"
+        ? (JSON.parse(mirror.term_snapshot) as { term?: { ref?: string } }).term?.ref ?? "term-sys83"
         : "term-sys83";
 
     const requestId = crypto.randomUUID();
@@ -259,7 +259,37 @@ describe("cron retention interplay", () => {
       .bind(requestId)
       .first<{ state: string }>();
 
-    expect(row?.state).toBe("settled");
+    expect(row?.state).toBe("pending");
+    expect(await count("usage_event", "request_id = ?", [requestId])).toBe(0);
+
+    const terminalAt = new Date().toISOString();
+    await env.DB.prepare(
+      `UPDATE ai_request SET state = 'Completed', completed_at = ?,
+         accounting_mode = 'fallback', accounting_term_id = ?,
+         accounting_request_id = ?, accounting_quota_weight = 1,
+         accounting_outcome = 'consumed', accounting_state = 'pending'
+       WHERE request_id = ?`,
+    )
+      .bind(terminalAt, termRef, requestId, requestId)
+      .run();
+    await env.DB.prepare(
+      `UPDATE fallback_admission SET state = 'consumed' WHERE request_id = ?`,
+    )
+      .bind(requestId)
+      .run();
+
+    await runScheduled("*/5 * * * *");
+
+    const settledRow = await env.DB.prepare(
+      `SELECT state FROM fallback_admission WHERE request_id = ?`,
+    )
+      .bind(requestId)
+      .first<{ state: string }>();
+    expect(settledRow?.state).toBe("settled");
+    expect(await count("usage_event", "request_id = ?", [requestId])).toBe(1);
+
+    await runScheduled("*/5 * * * *");
+    expect(await count("usage_event", "request_id = ?", [requestId])).toBe(1);
 
     const pendingBefore = await count(
       "fallback_admission",

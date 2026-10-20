@@ -35,20 +35,14 @@ CREATE TABLE ai_request (
   routing_tier TEXT,
   routing_decision TEXT,
   conversation_id TEXT,
-  turn_ordinal INTEGER, request_fingerprint TEXT,
-  accounting_mode TEXT CHECK (accounting_mode IS NULL OR accounting_mode IN ('normal', 'fallback')),
-  accounting_term_id TEXT,
-  accounting_request_id TEXT,
-  accounting_quota_weight INTEGER CHECK (accounting_quota_weight IS NULL OR accounting_quota_weight >= 0),
-  accounting_outcome TEXT CHECK (accounting_outcome IS NULL OR accounting_outcome IN ('consumed', 'released')),
-  accounting_state TEXT CHECK (accounting_state IS NULL OR accounting_state IN ('pending', 'settled')),
-  accounting_receipt_acknowledged INTEGER NOT NULL DEFAULT 0 CHECK (accounting_receipt_acknowledged IN (0, 1)),
+  turn_ordinal INTEGER, request_fingerprint TEXT, accounting_mode TEXT
+  CHECK (accounting_mode IS NULL OR accounting_mode IN ('normal', 'fallback')), accounting_term_id TEXT, accounting_request_id TEXT, accounting_quota_weight INTEGER
+  CHECK (accounting_quota_weight IS NULL OR accounting_quota_weight >= 0), accounting_outcome TEXT
+  CHECK (accounting_outcome IS NULL OR accounting_outcome IN ('consumed', 'released')), accounting_state TEXT
+  CHECK (accounting_state IS NULL OR accounting_state IN ('pending', 'settled')), accounting_receipt_acknowledged INTEGER NOT NULL DEFAULT 0
+  CHECK (accounting_receipt_acknowledged IN (0, 1)),
   FOREIGN KEY (installation_id) REFERENCES installation (installation_id)
 );
-
-CREATE INDEX ai_request_pending_accounting
-  ON ai_request (accounting_state, created_at)
-  WHERE accounting_state = 'pending';
 
 CREATE TABLE assertion_used (
   challenge_sha256 TEXT PRIMARY KEY NOT NULL,

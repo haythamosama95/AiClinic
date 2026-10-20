@@ -856,7 +856,7 @@ describe("Stage X — credit, inspect, retention joinability, GatewayObject RPC 
     );
     const termRef =
       typeof mirror?.term_snapshot === "string"
-        ? (JSON.parse(mirror.term_snapshot) as { ref?: string }).ref ?? "term-sx056"
+        ? (JSON.parse(mirror.term_snapshot) as { term?: { ref?: string } }).term?.ref ?? "term-sx056"
         : "term-sx056";
     const fallbackAdmittedAt = new Date().toISOString();
     await seedSql([
@@ -941,6 +941,22 @@ describe("Stage X — credit, inspect, retention joinability, GatewayObject RPC 
       ["grace-sx056"],
     );
     expect(fallback?.state).toBe("pending");
+    expect(await count("usage_event", "request_id = ?", ["grace-sx056"])).toBe(0);
+
+    await seedSql([
+      {
+        sql: `UPDATE ai_request SET state = 'Completed', completed_at = ?,
+                accounting_mode = 'fallback', accounting_term_id = ?,
+                accounting_request_id = 'grace-sx056', accounting_quota_weight = 1,
+                accounting_outcome = 'consumed', accounting_state = 'pending'
+              WHERE request_id = 'grace-sx056'`,
+        params: [new Date().toISOString(), termRef],
+      },
+      {
+        sql: `UPDATE fallback_admission SET state = 'consumed' WHERE request_id = 'grace-sx056'`,
+        params: [],
+      },
+    ]);
 
     await invokeCron("*/5 * * * *");
 
@@ -949,6 +965,10 @@ describe("Stage X — credit, inspect, retention joinability, GatewayObject RPC 
       ["grace-sx056"],
     );
     expect(fallback?.state).toBe("settled");
+    expect(await count("usage_event", "request_id = ?", ["grace-sx056"])).toBe(1);
+
+    await invokeCron("*/5 * * * *");
+    expect(await count("usage_event", "request_id = ?", ["grace-sx056"])).toBe(1);
 
     const doState = await inspectDo(scenario.installationId);
     // Three settlements plus one fallback weight settled on */5.

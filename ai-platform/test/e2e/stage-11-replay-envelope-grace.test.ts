@@ -878,7 +878,8 @@ describe("Stage 11 — replay, envelope, grace (S11-012…S11-021)", () => {
     );
     expect(unknownCredit.json).toMatchObject({
       kind: "credit",
-      ok: true,
+      ok: false,
+      code: "unknown_request",
       contract_version: 1,
     });
 
@@ -892,7 +893,7 @@ describe("Stage 11 — replay, envelope, grace (S11-012…S11-021)", () => {
       },
       { DO: env.DO },
     );
-    expect(wrappedUnknown).toMatchObject({ ok: true });
+    expect(wrappedUnknown).toMatchObject({ ok: false, code: "unknown_request" });
 
     expect((await getAiRequest(ref))?.state).toBe("Completed");
     expect(await getUsageEvents(requestId)).toEqual(persistedUsage);
@@ -1398,7 +1399,7 @@ describe("Stage 11 — replay, envelope, grace (S11-012…S11-021)", () => {
     );
     const termRef =
       typeof mirror?.term_snapshot === "string"
-        ? (JSON.parse(mirror.term_snapshot) as { ref?: string }).ref ??
+        ? (JSON.parse(mirror.term_snapshot) as { term?: { ref?: string } }).term?.ref ??
           e2eActiveTermId(scenario.installationId)
         : e2eActiveTermId(scenario.installationId);
     const idempotencyKey = `s11-021-${crypto.randomUUID()}`;
@@ -1445,11 +1446,37 @@ describe("Stage 11 — replay, envelope, grace (S11-012…S11-021)", () => {
 
     await invokeCron("*/5 * * * *");
 
-    const row = await queryOne<{ state: string }>(
+    let row = await queryOne<{ state: string }>(
+      `SELECT state FROM fallback_admission WHERE request_id = ?`,
+      [requestId],
+    );
+    expect(row?.state).toBe("pending");
+    expect(await count("usage_event", "request_id = ?", [requestId])).toBe(0);
+
+    await seedSql([
+      {
+        sql: `UPDATE ai_request SET state = 'Completed', completed_at = ?,
+                accounting_mode = 'fallback', accounting_term_id = ?,
+                accounting_request_id = ?, accounting_quota_weight = 1,
+                accounting_outcome = 'consumed', accounting_state = 'pending'
+              WHERE request_id = ?`,
+        params: [new Date().toISOString(), termRef, requestId, requestId],
+      },
+      {
+        sql: `UPDATE fallback_admission SET state = 'consumed' WHERE request_id = ?`,
+        params: [requestId],
+      },
+    ]);
+
+    await invokeCron("*/5 * * * *");
+    row = await queryOne<{ state: string }>(
       `SELECT state FROM fallback_admission WHERE request_id = ?`,
       [requestId],
     );
     expect(row?.state).toBe("settled");
+    expect(await count("usage_event", "request_id = ?", [requestId])).toBe(1);
+
+    await invokeCron("*/5 * * * *");
     expect(await count("usage_event", "request_id = ?", [requestId])).toBe(1);
   });
 
