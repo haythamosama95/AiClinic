@@ -5,6 +5,7 @@ import migrationSql from "../migrations/20260731120000_platform_schema.sql?raw";
 import graceQueueMigrationSql from "../migrations/20260821120000_grace_admission_queue.sql?raw";
 import fallbackAdmissionFeedMigrationSql from "../migrations/20261006160000_fallback_admission_feed.sql?raw";
 import rm24FallbackAdmissionIdentityMigrationSql from "../migrations/20261020120000_rm24_fallback_admission_identity.sql?raw";
+import rm25FallbackSettlementSql from "../migrations/20261020130000_rm25_fallback_settlement.sql?raw";
 import planCatalogueMigrationSql from "../migrations/20260911120000_plan_catalogue.sql?raw";
 import planVersionPaidGrantCoverageMigrationSql from "../migrations/20261003140000_plan_version_paid_grant_coverage.sql?raw";
 import usageTermMigrationSql from "../migrations/20261006120000_usage_term.sql?raw";
@@ -101,9 +102,11 @@ type CreditInput = {
   installationId: string;
   requestId: string;
   requestReference: string;
+  termId?: string;
   usage: { tokens: number; cost: number };
   credits?: number;
   partial: boolean;
+  outcome?: "consumed" | "released";
 };
 
 type CreditBindings = {
@@ -120,7 +123,11 @@ type PeriodCounters = {
 };
 
 type CreditResult =
-  | { ok: true; periodCounters: PeriodCounters }
+  | {
+      ok: true;
+      periodCounters: PeriodCounters;
+      settlement: { disposition: "settled" | "already_accounted"; chargedWeight: number };
+    }
   | { ok: false; code: "unknown_request" | "unavailable" | "internal_error" };
 
 type ReconcileGraceResult = {
@@ -246,13 +253,19 @@ function createSettlingDoNamespace(
         fetch: async (...args: Parameters<typeof stub.fetch>) => {
           const init = args[1];
           if (init?.body && typeof init.body === "string") {
-            const payload = JSON.parse(init.body) as { kind?: string };
+            const payload = JSON.parse(init.body) as {
+              kind?: string;
+              weight?: number;
+              outcome?: "consumed" | "released";
+            };
             if (payload.kind === "settleFallback") {
               return new Response(
                 JSON.stringify({
                   contract_version: CHANNEL_VERSIONS.platformDo,
                   kind: "settleFallback",
                   outcome: "settled",
+                  chargedWeight: payload.outcome === "released" ? 0 : payload.weight,
+                  settlementOutcome: payload.outcome ?? "consumed",
                 }),
                 { status: 200, headers: { "Content-Type": "application/json" } },
               );
@@ -289,7 +302,7 @@ async function seedAiRequestForFallback(
       "prompt/fallback@v1",
       idempotencyKey,
       "01FALLBACKTRACE00000001",
-      "Accepted",
+      "Completed",
       FIXTURE_NOW,
       FIXTURE_NOW,
     )
@@ -696,6 +709,7 @@ beforeAll(async () => {
   await applySqlStatements(env.DB, fallbackAdmissionFeedMigrationSql);
   await applySqlStatements(env.DB, idempotencyFingerprintMigrationSql);
   await applySqlStatements(env.DB, rm24FallbackAdmissionIdentityMigrationSql);
+  await applySqlStatements(env.DB, rm25FallbackSettlementSql);
 });
 
 async function pinHarnessTestClock(isoUtc: string = FIXTURE_NOW): Promise<void> {
@@ -1404,7 +1418,7 @@ describe("fallback_reconcile_drains_pending_rows", () => {
     expect(settled?.state).toBe("settled");
   });
 
-  it("keeps pending fallback rows when settleFallback is skipped", async () => {
+  it("R5-A6: closes a fallback row from an existing usage fact", async () => {
     const admission = await loadAdmissionModule();
     const credit = await loadCreditModule();
     const installationId = freshInstallationId();
@@ -1454,8 +1468,8 @@ describe("fallback_reconcile_drains_pending_rows", () => {
       .run();
 
     const reconcile = await credit.reconcileGraceUsage({ DO: env.DO, DB: env.DB });
-    expect(reconcile.reconciled).toBe(0);
-    expect(await countPendingFallbackRows(installationId)).toBe(1);
+    expect(reconcile.reconciled).toBe(1);
+    expect(await countPendingFallbackRows(installationId)).toBe(0);
   });
 
   it("R2-C3: settleFallback does not mark usage settled from a mismatched DO version", async () => {

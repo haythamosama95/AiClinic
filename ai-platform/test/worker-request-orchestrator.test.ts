@@ -68,6 +68,7 @@ import statusMigrationSql from "../migrations/20260805190000_routing_policy_stat
 import killSwitchMigrationSql from "../migrations/20260807120000_kill_switch.sql?raw";
 import fallbackAdmissionFeedMigrationSql from "../migrations/20261006160000_fallback_admission_feed.sql?raw";
 import rm24FallbackAdmissionIdentityMigrationSql from "../migrations/20261020120000_rm24_fallback_admission_identity.sql?raw";
+import rm25FallbackSettlementSql from "../migrations/20261020130000_rm25_fallback_settlement.sql?raw";
 import planCatalogueMigrationSql from "../migrations/20260911120000_plan_catalogue.sql?raw";
 import issuerKeyTenantBindingMigrationSql from "../migrations/20261003130000_issuer_key_tenant_binding.sql?raw";
 import planVersionPaidGrantCoverageMigrationSql from "../migrations/20261003140000_plan_version_paid_grant_coverage.sql?raw";
@@ -741,6 +742,7 @@ beforeAll(async () => {
     await applySql(env.DB, killSwitchMigrationSql);
     await applySql(env.DB, fallbackAdmissionFeedMigrationSql);
     await applySql(env.DB, rm24FallbackAdmissionIdentityMigrationSql);
+    await applySql(env.DB, rm25FallbackSettlementSql);
     // G1 plan catalogue: adds entitlement.credit_budget consumed by G2 admission.
     await applySql(env.DB, planCatalogueMigrationSql);
     await applySql(env.DB, issuerKeyTenantBindingMigrationSql);

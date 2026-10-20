@@ -24,7 +24,12 @@ import {
   loadConfig,
   resolveConfigCacheTtlMs,
 } from "./config-cache";
-import { creditUsage, reconcileGraceUsage } from "./credit";
+import {
+  creditUsage,
+  reconcileGraceUsage,
+  settleFallbackUsage,
+  type CreditResult,
+} from "./credit";
 import type { CanonicalRequest, CanonicalResult } from "./contracts/canonical";
 import {
   buildErrorBody,
@@ -48,6 +53,7 @@ import {
   getRequestAuthErrorBody,
   persistRoutingDecision,
   recordTerminalState,
+  recordAccountingIntent,
   writePostResponseDetail,
   type AttemptInput,
   type PostResponseInput,
@@ -115,6 +121,7 @@ import {
   refreshCoverageSnapshotRPC,
   releaseRPC,
   settleFallbackRPC,
+  acknowledgeUsageReceiptRPC,
   shipCoverageOutboxAlarm,
   scheduleOutboxAlarmIfPending,
   type AdmissionRequest,
@@ -717,6 +724,8 @@ function buildPostResponseInput(
   usage: { tokens: number; cost: number },
   termId: string,
   chargedWeight?: number,
+  deferUsage?: boolean,
+  accountingSettled?: boolean,
 ): PostResponseInput {
   return {
     requestId,
@@ -724,6 +733,8 @@ function buildPostResponseInput(
     termId,
     quotaWeight: Number(manifest.Economics.quotaWeight) || 1,
     ...(chargedWeight !== undefined ? { chargedWeight } : {}),
+    ...(deferUsage ? { deferUsage: true } : {}),
+    ...(accountingSettled ? { accountingSettled: true } : {}),
     totalTokens: usage.tokens,
     totalCost: usage.cost,
     filteredContext,
@@ -747,6 +758,8 @@ type SettlementJournalInput = {
   termId: string;
   reservationId?: string;
   chargedWeight?: number;
+  deferUsage?: boolean;
+  accountingSettled?: boolean;
 };
 
 async function writeSettlementJournal(
@@ -766,6 +779,8 @@ async function writeSettlementJournal(
     input.usage,
     input.termId,
     input.chargedWeight,
+    input.deferUsage,
+    input.accountingSettled,
   );
   const ctx = createWorkerExecutionContext();
   writePostResponseDetail(detail, {
@@ -774,6 +789,98 @@ async function writeSettlementJournal(
     ctx,
   }, logger);
   await ctx.drainWaitUntil();
+}
+
+async function settleTerminalAccounting(
+  runtimeEnv: Env,
+  input: {
+    requestId: string;
+    requestReference: string;
+    installationId: string;
+    termId: string;
+    weight: number;
+    outcome: "consumed" | "released";
+    accountingMode?: "fallback";
+    reservationId?: string;
+    usage: { tokens: number; cost: number };
+    partial: boolean;
+    idempotencyState?: CreditIdempotencyState;
+    terminalErrorCode?: TaxonomyCode;
+  },
+): Promise<{ acknowledged: boolean; chargedWeight?: number }> {
+  const recordedAt = await clockNowIso(runtimeEnv);
+  const accountingRequestId = input.reservationId ?? input.requestId;
+  await recordAccountingIntent(
+    {
+      requestId: input.requestId,
+      mode: input.accountingMode === "fallback" ? "fallback" : "normal",
+      termId: input.termId,
+      accountingRequestId,
+      quotaWeight: input.weight,
+      outcome: input.outcome,
+      now: recordedAt,
+    },
+    runtimeEnv.DB,
+  );
+
+  if (input.accountingMode === "fallback") {
+    await runtimeEnv.DB.prepare(
+      `UPDATE fallback_admission SET state = ?
+       WHERE installation_id = ? AND request_id = ?
+         AND state IN ('pending', 'consumed', 'released')`,
+    )
+      .bind(input.outcome, input.installationId, input.requestId)
+      .run();
+    const settlement = await settleFallbackUsage(
+      {
+        installationId: input.installationId,
+        requestId: input.requestId,
+        termId: input.termId,
+        weight: input.weight,
+        outcome: input.outcome,
+      },
+      {
+        DO: runtimeEnv.DO,
+        DB: runtimeEnv.DB,
+        DURATION_SCALE: runtimeEnv.DURATION_SCALE,
+      },
+    );
+    if (
+      settlement.ok &&
+      (settlement.outcome === "settled" ||
+        settlement.outcome === "already_accounted")
+    ) {
+      return { acknowledged: true, chargedWeight: settlement.chargedWeight };
+    }
+    return { acknowledged: false };
+  }
+
+  const settlement = await creditUsage(
+    {
+      installationId: input.installationId,
+      requestId: accountingRequestId,
+      requestReference: input.requestReference,
+      termId: input.termId,
+      usage: input.usage,
+      partial: input.partial,
+      credits: input.weight,
+      ...(input.idempotencyState !== undefined
+        ? { idempotencyState: input.idempotencyState }
+        : {}),
+      ...(input.terminalErrorCode !== undefined
+        ? { terminalErrorCode: input.terminalErrorCode }
+        : {}),
+      outcome: input.outcome,
+    },
+    {
+      DO: runtimeEnv.DO,
+      DB: runtimeEnv.DB,
+      DURATION_SCALE: runtimeEnv.DURATION_SCALE,
+    },
+  );
+  return settlement.ok
+    ? { acknowledged: true, chargedWeight: settlement.settlement.chargedWeight }
+    : { acknowledged: false };
 }
 
 async function settleTerminal(
@@ -792,6 +899,8 @@ async function settleTerminal(
     termId: string;
     accountingMode?: "fallback";
     skipCredit?: boolean;
+    accountingResult?: CreditResult;
+    reservationId?: string;
   },
   logger: Logger,
 ): Promise<void> {
@@ -800,34 +909,48 @@ async function settleTerminal(
     getTaxonomyEntry(input.code).consumesQuota === "Yes" ||
     usage.tokens > 0 ||
     usage.cost > 0;
-  if (input.accountingMode === "fallback") {
-    await runtimeEnv.DB.prepare(
-      `UPDATE fallback_admission SET state = ?
-       WHERE installation_id = ? AND request_id = ? AND state = 'pending'`,
-    )
-      .bind(
-        consumesQuota ? "consumed" : "released",
-        input.installationId,
-        input.requestId,
-      )
-      .run();
-  } else if (!input.skipCredit) {
-    await creditUsage(
-      {
-        installationId: input.installationId,
-        requestId: input.requestId,
-        requestReference: input.requestReference,
-        usage,
-        partial: getTaxonomyEntry(input.code).consumesQuota !== "Yes",
-        credits: Number(input.manifest.Economics.quotaWeight) || 1,
-        idempotencyState: input.idempotencyState,
-        ...(input.idempotencyState === "failed"
-          ? { terminalErrorCode: input.code }
-          : {}),
-      },
-      { DO: runtimeEnv.DO, DB: runtimeEnv.DB },
-    );
-  }
+  const weight = Number(input.manifest.Economics.quotaWeight) || 1;
+  const accountingOutcome = consumesQuota ? "consumed" : "released";
+  const settlement = input.skipCredit && input.accountingResult?.ok
+    ? {
+        acknowledged: true,
+        chargedWeight: input.accountingResult.settlement.chargedWeight,
+      }
+    : input.skipCredit
+      ? input.accountingMode === "fallback"
+        ? await settleTerminalAccounting(runtimeEnv, {
+            requestId: input.requestId,
+            requestReference: input.requestReference,
+            installationId: input.installationId,
+            termId: input.termId,
+            weight,
+            outcome: accountingOutcome,
+            accountingMode: input.accountingMode,
+            reservationId: input.reservationId,
+            usage,
+            partial: getTaxonomyEntry(input.code).consumesQuota !== "Yes",
+            idempotencyState: input.idempotencyState,
+            ...(input.idempotencyState === "failed"
+              ? { terminalErrorCode: input.code }
+              : {}),
+          })
+        : { acknowledged: false }
+      : await settleTerminalAccounting(runtimeEnv, {
+          requestId: input.requestId,
+          requestReference: input.requestReference,
+          installationId: input.installationId,
+          termId: input.termId,
+          weight,
+          outcome: accountingOutcome,
+          accountingMode: input.accountingMode,
+          reservationId: input.reservationId,
+          usage,
+          partial: getTaxonomyEntry(input.code).consumesQuota !== "Yes",
+          idempotencyState: input.idempotencyState,
+          ...(input.idempotencyState === "failed"
+            ? { terminalErrorCode: input.code }
+            : {}),
+        });
   const recordedAt = await clockNowIso(runtimeEnv);
   await writeSettlementJournal(
     runtimeEnv,
@@ -842,12 +965,21 @@ async function settleTerminal(
       recordedAt,
       usage,
       termId: input.termId,
-      ...(input.accountingMode === "fallback" && !consumesQuota
-        ? { chargedWeight: 0 }
-        : {}),
+      ...(settlement.acknowledged
+        ? { chargedWeight: settlement.chargedWeight }
+        : { deferUsage: true }),
+      ...(settlement.acknowledged ? { accountingSettled: true } : {}),
     },
     logger,
   );
+  if (settlement.acknowledged && input.accountingMode === "fallback") {
+    await runtimeEnv.DB.prepare(
+      `UPDATE fallback_admission SET state = 'settled'
+       WHERE installation_id = ? AND request_id = ? AND state IN ('consumed', 'released')`,
+    )
+      .bind(input.installationId, input.requestId)
+      .run();
+  }
 }
 
 async function settleCompletedRequest(
@@ -869,26 +1001,20 @@ async function settleCompletedRequest(
   logger: Logger,
 ): Promise<void> {
   const usage = ledgerUsageFromProvider(input.result);
-  if (input.accountingMode === "fallback") {
-    await runtimeEnv.DB.prepare(
-      `UPDATE fallback_admission SET state = 'consumed'
-       WHERE installation_id = ? AND request_id = ? AND state = 'pending'`,
-    )
-      .bind(input.installationId, input.requestId)
-      .run();
-  } else {
-    await creditUsage(
-      {
-        installationId: input.installationId,
-        requestId: input.reservationId ?? input.requestId,
-        requestReference: input.requestReference,
-        usage,
-        partial: false,
-        credits: Number(input.manifest.Economics.quotaWeight) || 1,
-      },
-      { DO: runtimeEnv.DO, DB: runtimeEnv.DB },
-    );
-  }
+  const weight = Number(input.manifest.Economics.quotaWeight) || 1;
+  const settlement = await settleTerminalAccounting(runtimeEnv, {
+    requestId: input.requestId,
+    requestReference: input.requestReference,
+    installationId: input.installationId,
+    termId: input.termId,
+    weight,
+    outcome: "consumed",
+    accountingMode: input.accountingMode,
+    reservationId: input.reservationId,
+    usage,
+    partial: false,
+    idempotencyState: "completed",
+  });
   await writeSettlementJournal(
     runtimeEnv,
     {
@@ -902,13 +1028,22 @@ async function settleCompletedRequest(
       recordedAt: input.recordedAt,
       usage,
       termId: input.termId,
-      ...(input.accountingMode === "fallback"
-        ? { chargedWeight: Number(input.manifest.Economics.quotaWeight) || 1 }
-        : {}),
+      ...(settlement.acknowledged
+        ? { chargedWeight: settlement.chargedWeight }
+        : { deferUsage: true }),
+      ...(settlement.acknowledged ? { accountingSettled: true } : {}),
       reservationId: input.reservationId,
     },
     logger,
   );
+  if (settlement.acknowledged && input.accountingMode === "fallback") {
+    await runtimeEnv.DB.prepare(
+      `UPDATE fallback_admission SET state = 'settled'
+       WHERE installation_id = ? AND request_id = ? AND state = 'consumed'`,
+    )
+      .bind(input.installationId, input.requestId)
+      .run();
+  }
 }
 
 function pushFailedTerminal(
@@ -1194,7 +1329,7 @@ async function runFreshEventSource(
 
   let brokerTerminal: BrokerTerminalState | undefined;
   let ignoreBrokerSettlement = false;
-  let brokerCredit: Promise<unknown> = Promise.resolve();
+  let brokerCredit: Promise<CreditResult | undefined> = Promise.resolve(undefined);
   const chunkSource = createChunkSourceFromInvocationEvents(
     pushable.iterable,
     () => partialUsage.getPartialUsage?.(),
@@ -1233,18 +1368,46 @@ async function runFreshEventSource(
       if (guard.termAdmission?.accountingMode === "fallback") {
         return;
       }
-      brokerCredit = creditUsage(
-        {
-          installationId: guard.principal.installationId,
-          requestId: guard.termAdmission?.reservationId ?? input.requestId,
-          requestReference: streamContext.requestReference,
-          usage: input.usage,
-          partial: input.partial,
-          credits: Number(manifest.Economics.quotaWeight) || 1,
-          idempotencyState: input.idempotencyState,
-        },
-        { DO: runtimeEnv.DO, DB: runtimeEnv.DB },
-      );
+      const termId = guard.termAdmission?.termId;
+      const reservationId = guard.termAdmission?.reservationId ?? input.requestId;
+      const weight = Number(manifest.Economics.quotaWeight) || 1;
+      const outcome = input.partial && input.usage.tokens === 0 && input.usage.cost === 0
+        ? "released"
+        : "consumed";
+      brokerCredit = (async () => {
+        if (termId !== undefined) {
+          await recordAccountingIntent(
+            {
+              requestId: guard.requestId,
+              mode: "normal",
+              termId,
+              accountingRequestId: reservationId,
+              quotaWeight: weight,
+              outcome,
+              now: await clockNowIso(runtimeEnv),
+            },
+            runtimeEnv.DB,
+          );
+        }
+        return creditUsage(
+          {
+            installationId: guard.principal.installationId,
+            requestId: reservationId,
+            requestReference: streamContext.requestReference,
+            termId,
+            usage: input.usage,
+            partial: input.partial,
+            credits: weight,
+            outcome,
+            idempotencyState: input.idempotencyState,
+          },
+          {
+            DO: runtimeEnv.DO,
+            DB: runtimeEnv.DB,
+            DURATION_SCALE: runtimeEnv.DURATION_SCALE,
+          },
+        );
+      })();
     },
     journalTerminalSink: (record) => {
       if (ignoreBrokerSettlement) {
@@ -1363,6 +1526,7 @@ async function runFreshEventSource(
           code: "cancelled",
           idempotencyState: "cancelled",
           skipCredit: true,
+          accountingResult: await brokerCredit,
         }, journalLog);
       }
       return;
@@ -1386,6 +1550,9 @@ async function runFreshEventSource(
       code: taxonomy,
       idempotencyState: "failed",
       skipCredit: brokerTerminal !== undefined,
+      ...(brokerTerminal !== undefined
+        ? { accountingResult: await brokerCredit }
+        : {}),
     }, journalLog);
     await recordTerminalState(
       guard.requestId,
@@ -1427,6 +1594,7 @@ async function runFreshEventSource(
       idempotencyState:
         brokerTerminal === "cancelled" ? "cancelled" : "failed",
       skipCredit: true,
+      accountingResult: await brokerCredit,
     }, journalLog);
     return;
   }
@@ -1657,9 +1825,17 @@ function assertCreditArgs(body: unknown): asserts body is CreditRequest {
     typeof candidate.installationId !== "string" ||
     typeof candidate.requestId !== "string" ||
     typeof candidate.requestReference !== "string" ||
+    (candidate.term_id !== undefined && typeof candidate.term_id !== "string") ||
     candidate.usage === null ||
     typeof candidate.usage !== "object" ||
     typeof candidate.partial !== "boolean"
+  ) {
+    throw new ArgValidationError("invalid_credit_args");
+  }
+  if (
+    candidate.outcome !== undefined &&
+    candidate.outcome !== "consumed" &&
+    candidate.outcome !== "released"
   ) {
     throw new ArgValidationError("invalid_credit_args");
   }
@@ -1899,12 +2075,17 @@ export class GatewayObject extends DurableObject {
         return platformDoResponse(result, contractVersion);
       }
       if (kind === "settleFallback") {
+        const runtimeEnv = this.env as Env;
         const settleBody = body as SettleFallbackRequest;
         if (
           typeof settleBody.installationId !== "string" ||
           typeof settleBody.request_id !== "string" ||
           typeof settleBody.term_id !== "string" ||
-          typeof settleBody.weight !== "number"
+          !Number.isInteger(settleBody.weight) ||
+          settleBody.weight < 1 ||
+          (settleBody.outcome !== undefined &&
+            settleBody.outcome !== "consumed" &&
+            settleBody.outcome !== "released")
         ) {
           return platformDoResponse(
             { error: "invalid_settle_fallback_args" },
@@ -1917,7 +2098,43 @@ export class GatewayObject extends DurableObject {
           (fn) => this.ctx.blockConcurrencyWhile(fn),
           settleBody,
         );
+        await scheduleOutboxAlarmIfPending(
+          this.ctx,
+          this.ctx.storage,
+          settleBody.nowIso ?? await clockNowIso(runtimeEnv),
+        );
         return platformDoResponse(result, contractVersion);
+      }
+      if (kind === "ackUsageReceipt") {
+        const ack = body as {
+          request_id?: unknown;
+          installationId?: unknown;
+          term_id?: unknown;
+          weight?: unknown;
+        };
+        if (
+          typeof ack.request_id !== "string" ||
+          typeof ack.installationId !== "string" ||
+          typeof ack.term_id !== "string" ||
+          !Number.isInteger(ack.weight) ||
+          Number(ack.weight) < 1
+        ) {
+          return platformDoResponse(
+            { error: "invalid_ack_usage_receipt_args" },
+            contractVersion,
+            { status: 400 },
+          );
+        }
+        return platformDoResponse(
+          acknowledgeUsageReceiptRPC(this.ctx.storage, {
+            kind: "ackUsageReceipt",
+            request_id: ack.request_id,
+            installationId: ack.installationId,
+            term_id: ack.term_id,
+            weight: Number(ack.weight),
+          }),
+          contractVersion,
+        );
       }
       if (kind === "credit") {
         assertCreditArgs(body);

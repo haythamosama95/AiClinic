@@ -69,6 +69,10 @@ export type PostResponseInput = {
   quotaWeight: number;
   /** Authoritative charged quota weight; omitted for the normal manifest weight. */
   chargedWeight?: number;
+  /** Keep the usage fact pending until the DO acknowledges durable settlement. */
+  deferUsage?: boolean;
+  /** Ack the intent in the same D1 batch as its usage fact. */
+  accountingSettled?: boolean;
   totalTokens: number;
   totalCost: number;
   filteredContext: Record<string, unknown>;
@@ -108,6 +112,41 @@ type WritePostResponseBindings = {
   r2: R2Bucket;
   ctx: { waitUntil(promise: Promise<unknown>): void };
 };
+
+export type AccountingIntentInput = {
+  requestId: string;
+  mode: "normal" | "fallback";
+  termId: string;
+  accountingRequestId: string;
+  quotaWeight: number;
+  outcome: "consumed" | "released";
+  now: string;
+};
+
+/** Persist the provider outcome before a remote quota-DO settlement call. */
+export async function recordAccountingIntent(
+  input: AccountingIntentInput,
+  db: D1Database,
+): Promise<void> {
+  await db
+    .prepare(
+      `UPDATE ai_request
+       SET accounting_mode = ?, accounting_term_id = ?, accounting_request_id = ?,
+           accounting_quota_weight = ?, accounting_outcome = ?, accounting_state = 'pending',
+           updated_at = ?
+       WHERE request_id = ?`,
+    )
+    .bind(
+      input.mode,
+      input.termId,
+      input.accountingRequestId,
+      input.quotaWeight,
+      input.outcome,
+      input.now,
+      input.requestId,
+    )
+    .run();
+}
 
 type GetRequestBindings = {
   db: D1Database;
@@ -412,25 +451,37 @@ async function persistPostResponseDetail(
       ),
   );
 
-  statements.push(
-    db
-      .prepare(
-        `INSERT OR IGNORE INTO usage_event (
-          usage_event_id, installation_id, term_id, request_id,
-          quota_weight, tokens, cost, recorded_at
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-      )
-      .bind(
-        generateUlid(),
-        input.installationId,
-        input.termId,
-        input.requestId,
-        input.chargedWeight ?? input.quotaWeight,
-        input.totalTokens,
-        input.totalCost,
-        input.recordedAt,
-      ),
-  );
+  if (!input.deferUsage) {
+    statements.push(
+      db
+        .prepare(
+          `INSERT OR IGNORE INTO usage_event (
+            usage_event_id, installation_id, term_id, request_id,
+            quota_weight, tokens, cost, recorded_at
+          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+        )
+        .bind(
+          generateUlid(),
+          input.installationId,
+          input.termId,
+          input.requestId,
+          input.chargedWeight ?? input.quotaWeight,
+          input.totalTokens,
+          input.totalCost,
+          input.recordedAt,
+        ),
+    );
+  }
+  if (input.accountingSettled) {
+    statements.push(
+      db
+        .prepare(
+          `UPDATE ai_request SET accounting_state = 'settled'
+           WHERE request_id = ? AND accounting_state = 'pending'`,
+        )
+        .bind(input.requestId),
+    );
+  }
 
   await db.batch(statements);
 

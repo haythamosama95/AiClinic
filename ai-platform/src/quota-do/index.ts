@@ -182,11 +182,36 @@ export interface SettleFallbackRequest {
   request_id: string;
   term_id: string;
   weight: number;
+  /** Missing on pre-RM25 senders; those rows were always consumed. */
+  outcome?: "consumed" | "released";
+  nowIso?: string;
+  orgId?: string;
+  vendorContractVersion?: number;
+  durationScale?: DurationScale;
 }
 
 export type SettleFallbackResponse =
-  | { kind: "settleFallback"; outcome: "settled" }
-  | { kind: "settleFallback"; outcome: "skipped" };
+  | {
+      kind: "settleFallback";
+      outcome: "settled" | "already_accounted";
+      chargedWeight: number;
+      settlementOutcome: "consumed" | "released";
+    }
+  | { kind: "settleFallback"; outcome: "deferred" }
+  | { kind: "settleFallback"; outcome: "conflict" };
+
+export interface AcknowledgeUsageReceiptRequest {
+  kind: "ackUsageReceipt";
+  request_id: string;
+  installationId: string;
+  term_id: string;
+  weight: number;
+}
+
+export interface AcknowledgeUsageReceiptResponse {
+  kind: "ackUsageReceipt";
+  outcome: "acknowledged" | "already_acknowledged" | "conflict";
+}
 
 export interface IdempotencyPriorState {
   requestReference: string;
@@ -275,12 +300,14 @@ export interface CreditRequest {
   installationId: string;
   requestId: string;
   reservation_id?: string;
+  term_id?: string;
   requestReference: string;
   usage: UsageActual;
   partial: boolean;
   credits: number;
   idempotencyState?: CreditIdempotencyState;
   terminalErrorCode?: TaxonomyCode;
+  outcome?: "consumed" | "released";
   entitlement?: EntitlementSnapshot;
 }
 
@@ -288,6 +315,10 @@ export interface CreditAcknowledged {
   kind: "credit";
   ok: true;
   periodCounters: PeriodCounters;
+  settlement: {
+    disposition: "settled" | "already_accounted";
+    chargedWeight: number;
+  };
 }
 
 export interface CreditUnknownRequest {
@@ -724,6 +755,11 @@ async function creditOnLegacyState(
     kind: "credit",
     ok: true,
     periodCounters: { ...state.periodCounters },
+    settlement: {
+      disposition: "settled",
+      chargedWeight:
+        request.usage.tokens > 0 || request.usage.cost > 0 ? credits : 0,
+    },
   };
 }
 
@@ -1277,6 +1313,94 @@ function activateSuccessorTerm(
   return { ...queued, state: "active", starts_at: startsAt, ends_at: endsAt };
 }
 
+/** Shared R5-A5 transition used by normal admission and fallback settlement. */
+function exhaustActiveTermAndActivateSuccessor(
+  storage: DurableObjectStorage,
+  hot: ParsedHot,
+  term: TermRow,
+  context: {
+    installationId: string;
+    orgId: string;
+    vendorContractVersion: number;
+    durationScale?: DurationScale;
+    nowIso: string;
+    trackId?: string;
+  },
+): boolean {
+  if (
+    term.state !== "active" ||
+    term.term_id !== hot.row.active_term_id ||
+    hot.row.used + reservedForTerm(hot, term.term_id) < (term.allowance ?? 0)
+  ) {
+    return false;
+  }
+
+  const usedFinal = hot.row.used;
+  markTermReservationsSettledOnly(hot, term.term_id);
+  recordEventWrites(storage, context.trackId, () =>
+    sqlExecLocal(
+      storage,
+      `UPDATE term SET state = 'exhausted', end_reason = 'exhausted', used_final = ${usedFinal}, ended_at = ${sqlStringLocal(context.nowIso)}
+       WHERE term_id = ${sqlStringLocal(term.term_id)}`,
+    ),
+  );
+  let terms = loadTerms(storage);
+  hot.row.active_term_id = null;
+  hot.row.grace_base_used = 0;
+  hot.row.clinic_seq += 1;
+  const endedSnapshot = buildCoverageSnapshot({
+    vendorContractVersion: context.vendorContractVersion,
+    orgId: context.orgId,
+    hot: hotRowForCoverageSnapshot(hot),
+    terms,
+    durationScale: context.durationScale,
+  });
+  recordEventWrites(storage, context.trackId, () =>
+    insertOutbox(storage, "coverage_event", {
+      event_id: coverageEventId(context.installationId, hot.row.clinic_seq),
+      org_id: context.orgId,
+      installation_id: context.installationId,
+      binding_epoch: hot.row.binding_epoch,
+      clinic_seq: hot.row.clinic_seq,
+      kind: "term_ended",
+      at: context.nowIso,
+      snapshot: endedSnapshot,
+    }),
+  );
+
+  const successor = activateSuccessorTerm(
+    storage,
+    hot,
+    loadTerms(storage),
+    context.nowIso,
+    context.durationScale,
+  );
+  if (successor !== undefined) {
+    terms = loadTerms(storage);
+    hot.row.clinic_seq += 1;
+    const activatedSnapshot = buildCoverageSnapshot({
+      vendorContractVersion: context.vendorContractVersion,
+      orgId: context.orgId,
+      hot: hotRowForCoverageSnapshot(hot),
+      terms,
+      durationScale: context.durationScale,
+    });
+    recordEventWrites(storage, context.trackId, () =>
+      insertOutbox(storage, "coverage_event", {
+        event_id: coverageEventId(context.installationId, hot.row.clinic_seq),
+        org_id: context.orgId,
+        installation_id: context.installationId,
+        binding_epoch: hot.row.binding_epoch,
+        clinic_seq: hot.row.clinic_seq,
+        kind: "term_activated",
+        at: context.nowIso,
+        snapshot: activatedSnapshot,
+      }),
+    );
+  }
+  return true;
+}
+
 type SqlStorage = DurableObjectStorage & {
   sql?: { exec: (query: string) => unknown };
 };
@@ -1472,6 +1596,28 @@ function admitOnHotRow(
         coverage_reason: "grace_exhausted",
       }, stateChanged);
     }
+    emitBandCrossedIfNeeded(
+      storage,
+      hot,
+      terms,
+      request,
+      billableTerm.term_id,
+      hot.row.used + termReserved,
+      allowance,
+      nowIso,
+    );
+    if (
+      exhaustActiveTermAndActivateSuccessor(storage, hot, billableTerm, {
+        installationId: request.installationId,
+        orgId: request.orgId ?? resolveOrgIdFromStorage(storage),
+        vendorContractVersion: request.vendorContractVersion ?? 1,
+        durationScale: request.durationScale,
+        nowIso,
+        trackId: request.requestId,
+      })
+    ) {
+      stateChanged = true;
+    }
     return returnUnstoredRefusal(storage, hot, request, {
       kind: "admission",
       outcome: "quota_exhausted",
@@ -1508,70 +1654,14 @@ function admitOnHotRow(
   );
 
   if (willExhaust) {
-    const usedFinal = hot.row.used;
-    markTermReservationsSettledOnly(hot, admittingTermId);
-    const trackId = request.requestId;
-    recordEventWrites(storage, trackId, () => {
-      sqlExecLocal(
-        storage,
-        `UPDATE term SET state = 'exhausted', end_reason = 'exhausted', used_final = ${usedFinal}, ended_at = ${sqlStringLocal(nowIso)}
-       WHERE term_id = ${sqlStringLocal(billableTerm.term_id)}`,
-      );
-    });
-    terms = loadTerms(storage);
-    const orgId = request.orgId ?? "";
-    const vendorVersion = request.vendorContractVersion ?? 1;
-    hot.row.clinic_seq += 1;
-    const endedSnapshot = buildCoverageSnapshot({
-      vendorContractVersion: vendorVersion,
-      orgId,
-      hot: hotRowForCoverageSnapshot(hot),
-      terms,
+    exhaustActiveTermAndActivateSuccessor(storage, hot, billableTerm, {
+      installationId: request.installationId,
+      orgId: request.orgId ?? resolveOrgIdFromStorage(storage),
+      vendorContractVersion: request.vendorContractVersion ?? 1,
       durationScale: request.durationScale,
-    });
-    recordEventWrites(storage, trackId, () => {
-      insertOutbox(storage, "coverage_event", {
-        event_id: coverageEventId(request.installationId, hot.row.clinic_seq),
-        org_id: orgId,
-        installation_id: request.installationId,
-        binding_epoch: hot.row.binding_epoch,
-        clinic_seq: hot.row.clinic_seq,
-        kind: "term_ended",
-        at: nowIso,
-        snapshot: endedSnapshot,
-      });
-    });
-
-    const successor = activateSuccessorTerm(
-      storage,
-      hot,
-      loadTerms(storage),
       nowIso,
-      request.durationScale,
-    );
-    if (successor !== undefined) {
-      terms = loadTerms(storage);
-      hot.row.clinic_seq += 1;
-      const activatedSnapshot = buildCoverageSnapshot({
-        vendorContractVersion: vendorVersion,
-        orgId,
-        hot: hotRowForCoverageSnapshot(hot),
-        terms,
-        durationScale: request.durationScale,
-      });
-      recordEventWrites(storage, trackId, () => {
-        insertOutbox(storage, "coverage_event", {
-          event_id: coverageEventId(request.installationId, hot.row.clinic_seq),
-          org_id: orgId,
-          installation_id: request.installationId,
-          binding_epoch: hot.row.binding_epoch,
-          clinic_seq: hot.row.clinic_seq,
-          kind: "term_activated",
-          at: nowIso,
-          snapshot: activatedSnapshot,
-        });
-      });
-    }
+      trackId: request.requestId,
+    });
   }
 
   if (billableTerm.state === "grace") {
@@ -1653,64 +1743,145 @@ function settleReservationOnHot(
     (reservation) => reservation.id === reservationId,
   );
   if (index < 0) {
-    recordHotWrites(storage, request.requestId, () =>
-      persistParsedHot(storage, hot),
-    );
+    const receipt = sqlSelect<{
+      installation_id: string;
+      weight: number;
+      charged_weight: number;
+    }>(
+      storage,
+      `SELECT installation_id, weight, charged_weight
+       FROM usage_settlement_receipt WHERE request_id = ${sqlStringLocal(reservationId)} LIMIT 1`,
+    )[0];
+    if (receipt !== undefined) {
+      if (
+        receipt.installation_id !== request.installationId ||
+        receipt.weight !== (request.credits ?? 1) ||
+        (request.term_id !== undefined && receipt.term_id !== request.term_id) ||
+        (request.outcome !== undefined && receipt.outcome !== request.outcome)
+      ) {
+        return { kind: "credit", ok: false, code: "unknown_request" };
+      }
+      return {
+        kind: "credit",
+        ok: true,
+        periodCounters: { ...legacyCountersFromHot(hot.row) },
+        settlement: {
+          disposition: "already_accounted",
+          chargedWeight: receipt.charged_weight,
+        },
+      };
+    }
+
+    for (const entry of sqlSelect<{ payload: string }>(
+      storage,
+      "SELECT payload FROM outbox WHERE kind = 'usage_adjustment'",
+    )) {
+      try {
+        const payload = JSON.parse(entry.payload) as {
+          request_id?: unknown;
+          installation_id?: unknown;
+          term_id?: unknown;
+          quota_weight?: unknown;
+        };
+        if (
+          payload.request_id === reservationId &&
+          payload.installation_id === request.installationId &&
+          (request.term_id === undefined || payload.term_id === request.term_id) &&
+          (request.outcome === undefined || request.outcome === "consumed") &&
+          Number.isInteger(payload.quota_weight) &&
+          Number(payload.quota_weight) > 0 &&
+          (request.credits === undefined || Number(payload.quota_weight) === request.credits)
+        ) {
+          return {
+            kind: "credit",
+            ok: true,
+            periodCounters: { ...legacyCountersFromHot(hot.row) },
+            settlement: {
+              disposition: "already_accounted",
+              chargedWeight: Number(payload.quota_weight),
+            },
+          };
+        }
+      } catch {
+        // An unrelated or malformed outbox row cannot prove this request.
+      }
+    }
     return {
       kind: "credit",
-      ok: true,
-      periodCounters: { ...legacyCountersFromHot(hot.row) },
+      ok: false,
+      code: "unknown_request",
     };
   }
 
   const reservation = hot.reservations[index]!;
-  const consumed =
-    request.usage.tokens > 0 || request.usage.cost > 0;
+  if (
+    (request.term_id !== undefined && reservation.term_id !== request.term_id) ||
+    (request.credits !== undefined && reservation.weight !== request.credits)
+  ) {
+    return { kind: "credit", ok: false, code: "unknown_request" };
+  }
+  const consumed = request.outcome !== undefined
+    ? request.outcome === "consumed"
+    : request.usage.tokens > 0 || request.usage.cost > 0;
   const onActiveTerm =
     hot.row.active_term_id !== null &&
     reservation.term_id === hot.row.active_term_id;
-  if (consumed) {
-    if (onActiveTerm) {
-      hot.row.used += reservation.weight;
-    } else {
-      recordEventWrites(storage, request.requestId, () =>
-        addEndedTermUsedFinal(storage, reservation.term_id, reservation.weight),
-      );
-    }
-  }
-  hot.row.reserved = Math.max(0, hot.row.reserved - reservation.weight);
-  hot.reservations.splice(index, 1);
-  for (const [key, entry] of Object.entries(hot.idempotency)) {
-    if (admittedRequestIdFromAnswer(entry.answer) === reservationId) {
-      delete hot.idempotency[key];
-    }
-  }
-  // JTI replay protection is scoped to the token's ephemeral horizon, not the
-  // lifetime of its admission reservation. Keep the JTI after settlement so a
-  // completed request cannot be admitted again with the same token.
-
+  const chargedWeight = consumed ? reservation.weight : 0;
   const nowIso = new Date(now).toISOString();
-  const terms = loadTerms(storage);
-  const graceTerm = terms.find(
-    (term) =>
-      term.state === "grace" && term.term_id === hot.row.active_term_id,
-  );
-  if (graceTerm !== undefined) {
-    endGraceIfExhausted(storage, hot, graceTerm, {
-      installationId: request.installationId,
-      orgId: resolveOrgIdFromStorage(storage),
-      vendorContractVersion: 1,
-      nowIso,
-    });
-  }
+  storage.transactionSync(() => {
+    if (consumed) {
+      if (onActiveTerm) {
+        hot.row.used += reservation.weight;
+      } else {
+        recordEventWrites(storage, request.requestId, () =>
+          addEndedTermUsedFinal(storage, reservation.term_id, reservation.weight),
+        );
+      }
+    }
+    hot.row.reserved = Math.max(0, hot.row.reserved - reservation.weight);
+    hot.reservations.splice(index, 1);
+    for (const [key, entry] of Object.entries(hot.idempotency)) {
+      if (admittedRequestIdFromAnswer(entry.answer) === reservationId) {
+        delete hot.idempotency[key];
+      }
+    }
+    // JTI replay protection is scoped to the token's ephemeral horizon, not the
+    // lifetime of its admission reservation. Keep the JTI after settlement.
 
-  recordHotWrites(storage, request.requestId, () =>
-    persistParsedHot(storage, hot),
-  );
+    const terms = loadTerms(storage);
+    const graceTerm = terms.find(
+      (term) =>
+        term.state === "grace" && term.term_id === hot.row.active_term_id,
+    );
+    if (graceTerm !== undefined) {
+      endGraceIfExhausted(storage, hot, graceTerm, {
+        installationId: request.installationId,
+        orgId: resolveOrgIdFromStorage(storage),
+        vendorContractVersion: 1,
+        nowIso,
+      });
+    }
+
+    recordHotWrites(storage, request.requestId, () =>
+      persistParsedHot(storage, hot),
+    );
+    sqlExecLocal(
+      storage,
+      `INSERT INTO usage_settlement_receipt (
+         request_id, installation_id, term_id, weight, outcome, charged_weight, recorded_at
+       ) VALUES (
+         ${sqlStringLocal(reservationId)}, ${sqlStringLocal(request.installationId)},
+         ${sqlStringLocal(reservation.term_id)}, ${reservation.weight},
+         ${sqlStringLocal(consumed ? "consumed" : "released")}, ${chargedWeight},
+         ${sqlStringLocal(nowIso)}
+       )`,
+    );
+  });
   return {
     kind: "credit",
     ok: true,
     periodCounters: { ...legacyCountersFromHot(hot.row) },
+    settlement: { disposition: "settled", chargedWeight },
   };
 }
 
@@ -1755,14 +1926,43 @@ export async function settleFallbackRPC(
 ): Promise<SettleFallbackResponse> {
   return blockConcurrencyWhile(async () => {
     const sqlStorage = storage as SqlStorage;
-    if (!sqlStorage.sql || !hasCoverageHotRow(storage)) {
-      await applyFallbackWeightToLegacy(storage, request.weight);
-      return { kind: "settleFallback", outcome: "settled" };
+    if (!sqlStorage.sql) {
+      return { kind: "settleFallback", outcome: "conflict" };
     }
+    const outcome = request.outcome ?? "consumed";
+    const chargedWeight = outcome === "consumed" ? request.weight : 0;
+    const nowIso = request.nowIso ?? new Date().toISOString();
+    const storedReceipt = sqlSelect<{
+      installation_id: string;
+      term_id: string;
+      weight: number;
+      outcome: "consumed" | "released";
+      charged_weight: number;
+    }>(
+      storage,
+      `SELECT installation_id, term_id, weight, outcome, charged_weight
+       FROM usage_settlement_receipt WHERE request_id = ${sqlStringLocal(request.request_id)} LIMIT 1`,
+    )[0];
+    if (storedReceipt !== undefined) {
+      if (
+        storedReceipt.installation_id !== request.installationId ||
+        storedReceipt.term_id !== request.term_id ||
+        storedReceipt.weight !== request.weight ||
+        storedReceipt.outcome !== outcome
+      ) {
+        return { kind: "settleFallback", outcome: "conflict" };
+      }
+      return {
+        kind: "settleFallback",
+        outcome: "settled",
+        chargedWeight: storedReceipt.charged_weight,
+        settlementOutcome: storedReceipt.outcome,
+      };
+    }
+
     const hotRows = sqlSelect<HotRow>(storage, "SELECT * FROM hot LIMIT 1");
-    if (hotRows.length === 0) {
-      await applyFallbackWeightToLegacy(storage, request.weight);
-      return { kind: "settleFallback", outcome: "settled" };
+    if (hotRows.length === 0 || !hasCoverageHotRow(storage)) {
+      return { kind: "settleFallback", outcome: "conflict" };
     }
     const hot = parseHotRow(hotRows[0]!);
     migrateExhaustedTermReservations(storage, hot);
@@ -1771,19 +1971,159 @@ export async function settleFallbackRPC(
     );
     if (reservationIndex >= 0) {
       const reservation = hot.reservations[reservationIndex]!;
-      hot.reservations.splice(reservationIndex, 1);
-      hot.row.reserved = Math.max(0, hot.row.reserved - reservation.weight);
+      if (
+        reservation.term_id !== request.term_id ||
+        reservation.weight !== request.weight
+      ) {
+        return { kind: "settleFallback", outcome: "conflict" };
+      }
+      return { kind: "settleFallback", outcome: "deferred" };
     }
-    if (hot.row.active_term_id === request.term_id) {
-      hot.row.used += request.weight;
-      persistParsedHot(storage, hot);
-    } else {
-      addEndedTermUsedFinal(storage, request.term_id, request.weight);
-      persistParsedHot(storage, hot);
+
+    for (const entry of Object.values(hot.idempotency)) {
+      if (admittedRequestIdFromAnswer(entry.answer) === request.request_id) {
+        return { kind: "settleFallback", outcome: "deferred" };
+      }
     }
-    await applyFallbackWeightToLegacy(storage, request.weight);
-    return { kind: "settleFallback", outcome: "settled" };
+    for (const entry of Object.values(hot.replay)) {
+      if (admittedRequestIdFromAnswer(entry.answer) === request.request_id) {
+        return { kind: "settleFallback", outcome: "deferred" };
+      }
+    }
+    const adjustments = sqlSelect<{ payload: string }>(
+      storage,
+      `SELECT payload FROM outbox WHERE kind = 'usage_adjustment'`,
+    );
+    for (const adjustment of adjustments) {
+      try {
+        const payload = JSON.parse(adjustment.payload) as {
+          request_id?: unknown;
+          installation_id?: unknown;
+          term_id?: unknown;
+          quota_weight?: unknown;
+        };
+        if (payload.request_id !== request.request_id) continue;
+        if (
+          payload.installation_id !== request.installationId ||
+          payload.term_id !== request.term_id ||
+          payload.quota_weight !== request.weight
+        ) {
+          return { kind: "settleFallback", outcome: "conflict" };
+        }
+        return { kind: "settleFallback", outcome: "deferred" };
+      } catch {
+        continue;
+      }
+    }
+
+    const term = loadTerms(storage).find((row) => row.term_id === request.term_id);
+    if (term === undefined || term.state === "queued") {
+      return { kind: "settleFallback", outcome: "conflict" };
+    }
+    const orgId = request.orgId ?? resolveOrgIdFromStorage(storage);
+    const vendorContractVersion = request.vendorContractVersion ?? 1;
+    const admissionContext: AdmissionRequest = {
+      kind: "admission",
+      jti: "",
+      installationId: request.installationId,
+      idempotencyKey: `fallback:${request.request_id}`,
+      requestReference: request.request_id,
+      requestId: request.request_id,
+      orgId,
+      vendorContractVersion,
+      durationScale: request.durationScale,
+      nowIso,
+    };
+    storage.transactionSync(() => {
+      if (chargedWeight > 0) {
+        if (hot.row.active_term_id === request.term_id) {
+          hot.row.used += chargedWeight;
+        } else {
+          addEndedTermUsedFinal(storage, request.term_id, chargedWeight);
+        }
+        if (term.state === "active" && hot.row.active_term_id === request.term_id) {
+          const currentTerms = loadTerms(storage);
+          emitBandCrossedIfNeeded(
+            storage,
+            hot,
+            currentTerms,
+            admissionContext,
+            request.term_id,
+            hot.row.used + reservedForTerm(hot, request.term_id),
+            term.allowance ?? 0,
+            nowIso,
+          );
+          exhaustActiveTermAndActivateSuccessor(storage, hot, term, {
+            installationId: request.installationId,
+            orgId,
+            vendorContractVersion,
+            durationScale: request.durationScale,
+            nowIso,
+            trackId: request.request_id,
+          });
+        } else if (term.state === "grace" && hot.row.active_term_id === request.term_id) {
+          endGraceIfExhausted(storage, hot, term, {
+            installationId: request.installationId,
+            orgId,
+            vendorContractVersion,
+            durationScale: request.durationScale,
+            nowIso,
+          });
+        }
+      }
+      persistParsedHot(storage, hot);
+      sqlExecLocal(
+        storage,
+        `INSERT INTO usage_settlement_receipt (
+           request_id, installation_id, term_id, weight, outcome, charged_weight, recorded_at
+         ) VALUES (
+           ${sqlStringLocal(request.request_id)}, ${sqlStringLocal(request.installationId)},
+           ${sqlStringLocal(request.term_id)}, ${request.weight}, ${sqlStringLocal(outcome)},
+           ${chargedWeight}, ${sqlStringLocal(nowIso)}
+         )`,
+      );
+    });
+    return {
+      kind: "settleFallback",
+      outcome: "settled",
+      chargedWeight,
+      settlementOutcome: outcome,
+    };
   });
+}
+
+/** Remove an accounting receipt only after D1 has durably stored its usage fact. */
+export function acknowledgeUsageReceiptRPC(
+  storage: DurableObjectStorage,
+  request: AcknowledgeUsageReceiptRequest,
+): AcknowledgeUsageReceiptResponse {
+  const receipt = sqlSelect<{
+    installation_id: string;
+    term_id: string;
+    weight: number;
+  }>(
+    storage,
+    `SELECT installation_id, term_id, weight FROM usage_settlement_receipt
+     WHERE request_id = ${sqlStringLocal(request.request_id)} LIMIT 1`,
+  )[0];
+  if (receipt === undefined) {
+    return { kind: "ackUsageReceipt", outcome: "already_acknowledged" };
+  }
+  if (
+    receipt.installation_id !== request.installationId ||
+    receipt.term_id !== request.term_id ||
+    receipt.weight !== request.weight
+  ) {
+    return { kind: "ackUsageReceipt", outcome: "conflict" };
+  }
+  storage.transactionSync(() =>
+    sqlExecLocal(
+      storage,
+      `DELETE FROM usage_settlement_receipt
+       WHERE request_id = ${sqlStringLocal(request.request_id)}`,
+    ),
+  );
+  return { kind: "ackUsageReceipt", outcome: "acknowledged" };
 }
 
 export async function admissionRPC(
@@ -1838,6 +2178,9 @@ export async function creditRPC(
     if (!hotResult.ok) {
       return hotResult;
     }
+    if (hotResult.settlement.disposition === "already_accounted") {
+      return hotResult;
+    }
 
     const periodCounters = await mirrorProductionCreditToLegacy(
       storage,
@@ -1848,6 +2191,7 @@ export async function creditRPC(
       kind: "credit",
       ok: true,
       periodCounters,
+      settlement: hotResult.settlement,
     };
   });
 }
@@ -2077,6 +2421,16 @@ const COVERAGE_DO_SCHEMA_STATEMENTS = [
     reason TEXT NOT NULL,
     request_sha256 TEXT NOT NULL,
     result_json TEXT NOT NULL,
+    recorded_at TEXT NOT NULL
+  )`,
+  `CREATE TABLE IF NOT EXISTS usage_settlement_receipt (
+    request_id TEXT PRIMARY KEY NOT NULL,
+    installation_id TEXT NOT NULL,
+    term_id TEXT NOT NULL,
+    weight INTEGER NOT NULL,
+    outcome TEXT NOT NULL CHECK (outcome IN ('consumed', 'released')),
+    charged_weight INTEGER NOT NULL CHECK (charged_weight >= 0),
+    acknowledged INTEGER NOT NULL DEFAULT 0 CHECK (acknowledged IN (0, 1)),
     recorded_at TEXT NOT NULL
   )`,
 ] as const;

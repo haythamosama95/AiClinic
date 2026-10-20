@@ -39,6 +39,7 @@ type AdmissionRequest = {
   idempotencyKey: string;
   entitlement: EntitlementSnapshot;
   requestReference: string;
+  term_id?: string;
 };
 
 type IdempotencyRequestState =
@@ -99,6 +100,7 @@ type CreditRequest = {
   credits: number;
   partial: boolean;
   idempotencyState?: "failed" | "cancelled" | "completed";
+  outcome?: "consumed" | "released";
   entitlement?: EntitlementSnapshot;
 };
 
@@ -114,6 +116,7 @@ type CreditAcknowledged = {
   kind: "credit";
   ok: true;
   periodCounters: PeriodCounters;
+  settlement: { disposition: "settled" | "already_accounted"; chargedWeight: number };
 };
 
 type CreditUnknownRequest = {
