@@ -902,6 +902,7 @@ describe("admission settlement against terms", () => {
       }),
     });
     expect(credit.ok).toBe(true);
+    expect(await credit.json()).toMatchObject({ kind: "credit", ok: true });
 
     const release = await quotaDoStub(scenario.installationId).fetch("https://quota-do.internal/rpc", {
       method: "POST",
@@ -916,6 +917,7 @@ describe("admission settlement against terms", () => {
       }),
     });
     expect(release.ok).toBe(true);
+    expect(await release.json()).toEqual({ kind: "release", ok: true });
 
     const after = await readDoTerms(scenario.installationId);
     expect(after.find((row) => row.term_id === predecessor?.term_id)?.used_final).toBe(1);
@@ -962,6 +964,7 @@ describe("admission settlement against terms", () => {
       }),
     });
     expect(released.ok).toBe(true);
+    expect(await released.json()).toEqual({ kind: "release", ok: true });
 
     const retried = await quotaDoStub(scenario.installationId).fetch("https://quota-do.internal/rpc", {
       method: "POST",
