@@ -843,16 +843,16 @@ export async function resumeTransferPreparation(
   if (latest === null) return "bad_request";
   if (latest.phase === "destination_ready") {
     const deletionFence = await env.DB.prepare(
-      `SELECT assertion_sha256 FROM deletion_command
+      `SELECT freeze_id FROM deletion_command
        WHERE org_id = ? AND installation_id = ? AND binding_epoch = ?
          AND phase = 'completed' AND held = 1
        ORDER BY updated_at DESC LIMIT 1`,
     ).bind(latest.org_id, latest.from_installation_id, latest.source_epoch)
-      .first<{ assertion_sha256: string }>();
+      .first<{ freeze_id: string }>();
     const frozen = await callCoverageDo(env, latest.from_installation_id, {
       kind: "set_transfer_pending",
       transferId,
-      adoptDeletionId: deletionFence?.assertion_sha256,
+      adoptDeletionId: deletionFence?.freeze_id,
       bindingEpoch: latest.source_epoch,
     });
     if (frozen?.result !== "ok") return "transient";
@@ -1426,6 +1426,7 @@ async function inspectInstallationCoverage(
 
 type DeletionCommandRow = {
   assertion_sha256: string;
+  freeze_id: string;
   org_id: string;
   installation_id: string;
   binding_epoch: number;
@@ -1435,6 +1436,7 @@ type DeletionCommandRow = {
   accepted_command: string;
   phase: "accepted" | "frozen" | "completed";
   freeze_inventory: string | null;
+  freeze_ack_at: string | null;
   retained_term_ids: string | null;
   held: number | null;
   alert_due: number;
@@ -1447,9 +1449,9 @@ export async function readDeletionCommand(
   assertionSha256: string,
 ): Promise<DeletionCommandRow | null> {
   return db.prepare(
-    `SELECT assertion_sha256, org_id, installation_id, binding_epoch, reason,
+    `SELECT assertion_sha256, freeze_id, org_id, installation_id, binding_epoch, reason,
             accepted_actor, signer_credential_id, accepted_command, phase,
-            freeze_inventory, retained_term_ids, held, alert_due, purge_state,
+            freeze_inventory, freeze_ack_at, retained_term_ids, held, alert_due, purge_state,
             completion_detail
      FROM deletion_command WHERE assertion_sha256 = ?`,
   ).bind(assertionSha256).first<DeletionCommandRow>();
@@ -1499,7 +1501,7 @@ export async function acceptDeleteInstallation(
   const auditId = generateUlid();
   if (installation.status === "deleted") {
     const completed = await env.DB.prepare(
-      `SELECT assertion_sha256, freeze_inventory, freeze_ack_at, retained_term_ids,
+      `SELECT assertion_sha256, freeze_id, freeze_inventory, freeze_ack_at, retained_term_ids,
               held, completion_detail
        FROM deletion_command
        WHERE org_id = ? AND installation_id = ? AND binding_epoch = ?
@@ -1507,7 +1509,7 @@ export async function acceptDeleteInstallation(
        ORDER BY created_at LIMIT 1`,
     ).bind(input.orgId, binding.installation_id, binding.epoch, input.reason)
       .first<Pick<DeletionCommandRow,
-        "assertion_sha256" | "freeze_inventory" | "freeze_ack_at" |
+        "assertion_sha256" | "freeze_id" | "freeze_inventory" | "freeze_ack_at" |
         "retained_term_ids" | "held" | "completion_detail">>();
     if (completed?.completion_detail === null || completed === null) {
       return { result: "bad_request" };
@@ -1516,14 +1518,14 @@ export async function acceptDeleteInstallation(
       await env.DB.batch([
         env.DB.prepare(
           `INSERT INTO deletion_command (
-             assertion_sha256, org_id, installation_id, binding_epoch, reason,
+             assertion_sha256, freeze_id, org_id, installation_id, binding_epoch, reason,
              accepted_actor, signer_credential_id, accepted_command, phase,
              freeze_inventory, freeze_ack_at, retained_term_ids, held, alert_due,
              purge_state, completion_detail, due_at, lease_until, created_at, updated_at
-           ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'completed', ?, ?, ?, ?, 0,
+           ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'completed', ?, ?, ?, ?, 0,
              'completed', ?, ?, NULL, ?, ?)`,
         ).bind(
-          input.assertionSha256, input.orgId, binding.installation_id, binding.epoch,
+          input.assertionSha256, completed.freeze_id, input.orgId, binding.installation_id, binding.epoch,
           input.reason, input.operatorId, input.signerCredentialId, input.acceptedCommand,
           completed.freeze_inventory, completed.freeze_ack_at, completed.retained_term_ids,
           completed.held, completed.completion_detail, nowIso, nowIso, nowIso,
@@ -1562,11 +1564,11 @@ export async function acceptDeleteInstallation(
     await env.DB.batch([
       env.DB.prepare(
         `INSERT INTO deletion_command (
-           assertion_sha256, org_id, installation_id, binding_epoch, reason,
+           assertion_sha256, freeze_id, org_id, installation_id, binding_epoch, reason,
            accepted_actor, signer_credential_id, accepted_command, phase,
            freeze_inventory, freeze_ack_at, retained_term_ids, held, alert_due,
            purge_state, completion_detail, due_at, lease_until, created_at, updated_at
-         ) SELECT ?, ?, ?, ?, ?, ?, ?, ?, 'accepted', NULL, NULL, NULL, NULL, 0,
+         ) SELECT ?, ?, ?, ?, ?, ?, ?, ?, ?, 'accepted', NULL, NULL, NULL, NULL, 0,
            'due', NULL, ?, NULL, ?, ?
          WHERE EXISTS (
            SELECT 1 FROM tenant_binding WHERE org_id = ? AND installation_id = ?
@@ -1580,7 +1582,7 @@ export async function acceptDeleteInstallation(
              )
            )`,
       ).bind(
-        input.assertionSha256, input.orgId, binding.installation_id, binding.epoch,
+        input.assertionSha256, input.assertionSha256, input.orgId, binding.installation_id, binding.epoch,
         input.reason, input.operatorId, input.signerCredentialId, input.acceptedCommand,
         nowIso, nowIso, nowIso,
         input.orgId, binding.installation_id, binding.epoch,
@@ -1643,7 +1645,7 @@ export async function resumeDeleteInstallation(
     const nowIso = acceptedCommand.accepted_at;
     const frozen = await callCoverageDo(env, command.installation_id, {
       kind: "set_transfer_pending",
-      transferId: command.assertion_sha256,
+      transferId: command.freeze_id,
       installationId: command.installation_id,
       orgId: command.org_id,
       bindingEpoch: command.binding_epoch,
@@ -1712,7 +1714,9 @@ export async function resumeDeleteInstallation(
   if (
     binding === null || installation === null || binding.epoch !== frozenCommand.binding_epoch ||
     installation.status !== "deleted" ||
-    (frozenCommand.held === 1 ? binding.status !== "held_for_transfer" : binding.status !== "retired")
+      (frozenCommand.held === 1
+        ? !["held_for_transfer", "retired"].includes(binding.status)
+        : binding.status !== "retired")
   ) return { result: "transient" };
 
   if (frozenCommand.alert_due === 1) {

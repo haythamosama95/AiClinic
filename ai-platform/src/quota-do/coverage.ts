@@ -4192,6 +4192,9 @@ export async function setTransferPendingRPC(
         if (!Array.isArray(reservations)) {
           return { kind: "set_transfer_pending", result: "bad_request" };
         }
+        if (emitsDeletionSnapshot) {
+          await scheduleOutboxAlarmIfPending(state, storage, request.nowIso!);
+        }
         return {
           kind: "set_transfer_pending", result: "ok",
           ...(emitsDeletionSnapshot ? {

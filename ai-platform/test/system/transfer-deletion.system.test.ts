@@ -5,7 +5,10 @@
 import { env, runDurableObjectAlarm, runInDurableObject, SELF } from "cloudflare:test";
 import { CHANNEL_VERSIONS, grantIdPaid, sha256Hex } from "vendor-contracts";
 import { beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
-import { transferPackageAccountingIsValid } from "../../src/quota-do/coverage";
+import {
+  setTransferPendingRPC,
+  transferPackageAccountingIsValid,
+} from "../../src/quota-do/coverage";
 import {
   applyAllMigrations,
   coverClinic,
@@ -1497,6 +1500,7 @@ describe("transfer, deletion with coverage left, ledger retention", () => {
           if (body.kind === "set_transfer_pending" && malformed) {
             malformed = false;
             return Response.json({
+              contract_version: CHANNEL_VERSIONS.platformDo,
               kind: "set_transfer_pending",
               result: "ok",
               terms: [],
@@ -1529,7 +1533,38 @@ describe("transfer, deletion with coverage left, ledger retention", () => {
     expect(resumed.result).toBe("ok");
   });
 
-  it("R6-PT3: a failed purge stays due and the same accepted deletion finishes it", async () => {
+  it("R7-PS1 re-arms a lost outbox alarm on transfer-pending replay", async () => {
+    const scenario = await newScenario();
+    await coverClinic(scenario);
+    const request = {
+      kind: "set_transfer_pending" as const,
+      transferId: "rm27-rearm-freeze",
+      installationId: scenario.installationId,
+      orgId: scenario.orgId,
+      bindingEpoch: 1,
+      vendorContractVersion: CHANNEL_VERSIONS.platformDo,
+      nowIso: getVendorTestClockIso() ?? new Date().toISOString(),
+    };
+    await runInDurableObject(quotaDoStub(scenario.installationId), async (_instance, state) => {
+      const invoke = () => setTransferPendingRPC(
+        state,
+        state.storage,
+        (fn) => fn(),
+        request,
+      );
+      expect((await invoke()).result).toBe("ok");
+      await state.storage.deleteAlarm();
+      expect(await state.storage.getAlarm()).toBeNull();
+      expect((await invoke()).result).toBe("ok");
+      expect(await state.storage.getAlarm()).not.toBeNull();
+    });
+    await runDurableObjectAlarm(quotaDoStub(scenario.installationId));
+    expect(await count("coverage_event", "installation_id = ? AND kind = 'transfer'", [
+      scenario.installationId,
+    ])).toBe(1);
+  });
+
+  it("R6-PT3: purge retry survives final grant void retiring the held epoch", async () => {
     const scenario = await newScenario();
     await coverClinic(scenario);
     await newClinic(scenario);
@@ -1557,6 +1592,19 @@ describe("transfer, deletion with coverage left, ledger retention", () => {
       `SELECT status FROM tenant_binding WHERE org_id = ?`, [scenario.orgId],
     )).toEqual({ status: "held_for_transfer" });
 
+    const openTerms = (await readDoTerms(scenario.installationId)).filter(
+      (term) => term.state === "active" || term.state === "grace" ||
+        term.state === "queued" || term.state === "held",
+    );
+    expect(openTerms.length).toBeGreaterThan(0);
+    for (const term of openTerms) {
+      expect((await hpVoidGrant(term.grant_id)).result).toBe("applied");
+      await runDurableObjectAlarm(quotaDoStub(scenario.installationId));
+    }
+    expect(await queryOne<{ status: string }>(
+      `SELECT status FROM tenant_binding WHERE org_id = ?`, [scenario.orgId],
+    )).toEqual({ status: "retired" });
+
     const resumed = await p38VendorCall("deleteInstallation", request.args, {
       accessJwt: request.accessJwt,
     });
@@ -1567,7 +1615,7 @@ describe("transfer, deletion with coverage left, ledger retention", () => {
     expect(await count("control_audit", "audit_id LIKE 'rm27-delete-purge:%'", [])).toBe(1);
   });
 
-  it("R6-PT3 R7-PS1 E2E-P3.8-04 A24 delete with paid time left holds the binding", async () => {
+  it("R6-PT3 R7-PS1: fresh delete replay preserves freeze for held transfer (E2E-P3.8-04)", async () => {
     const scenario = await newScenario();
     await coverClinic(scenario);
     await newClinic(scenario);
@@ -1614,6 +1662,12 @@ describe("transfer, deletion with coverage left, ledger retention", () => {
     const repeatDelete = await hpDeleteInstallation({ orgId: scenario.orgId });
     expect(repeatDelete.result).toBe("ok");
     expect(al18Emails()).toHaveLength(0);
+    expect(await queryOne<{ assertions: number; freeze_ids: number }>(
+      `SELECT COUNT(DISTINCT assertion_sha256) AS assertions,
+              COUNT(DISTINCT freeze_id) AS freeze_ids
+       FROM deletion_command WHERE org_id = ?`,
+      [scenario.orgId],
+    )).toEqual({ assertions: 2, freeze_ids: 1 });
 
     const clockIso = getVendorTestClockIso() ?? new Date().toISOString();
     await setTestClock(

@@ -425,6 +425,7 @@ CREATE TABLE transfer_preparation (
 
 CREATE TABLE deletion_command (
   assertion_sha256 TEXT PRIMARY KEY NOT NULL,
+  freeze_id TEXT NOT NULL,
   org_id TEXT NOT NULL,
   installation_id TEXT NOT NULL,
   binding_epoch INTEGER NOT NULL,

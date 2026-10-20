@@ -2324,7 +2324,7 @@ export class GatewayObject extends DurableObject {
           this.ctx,
           this.ctx.storage,
           (fn) => this.ctx.blockConcurrencyWhile(fn),
-          body as Parameters<typeof setTransferPendingRPC>[2],
+          body as Parameters<typeof setTransferPendingRPC>[3],
         );
         return platformDoResponse(result, contractVersion);
       }
