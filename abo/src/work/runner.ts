@@ -410,11 +410,28 @@ async function persistInquiryResult(
       expectedGeneration: contact.erasure_generation,
     };
     const generation = await claimRawEvidence(env, claim);
-    if (generation === null ||
-        !(await putClaimedRawEvidence(env, claim, generation, decisive.raw_body))) {
-      return null;
+    let rawRetained = false;
+    if (generation !== null) {
+      rawRetained = await putClaimedRawEvidence(
+        env,
+        claim,
+        generation,
+        decisive.raw_body,
+      );
     }
-    rawR2Key = candidateKey;
+    if (!rawRetained) {
+      const fence = await env.DB.prepare(
+        `SELECT generation FROM org_erasure_fence WHERE org_id = ?`,
+      ).bind(input.checkout.org_id).first<{ generation: number }>();
+      // A newer immutable fence deliberately blocks raw retention. Keep only
+      // the normalized outcome/hash below; ordinary claim/upload failures
+      // remain retryable and never become evidence by themselves.
+      if (fence === null || fence.generation <= contact.erasure_generation) {
+        return null;
+      }
+    } else {
+      rawR2Key = candidateKey;
+    }
   }
   const canonicalRow = {
     inquiry_id: inquiryId,

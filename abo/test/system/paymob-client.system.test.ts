@@ -93,7 +93,11 @@ describe("R3-C3: Paymob client URL composition", () => {
       clientEnv("http://localhost:8787/", fetch),
     );
 
-    expect(outcome).toEqual({ outcome: "ok", data: { token: "auth-token" } });
+    expect(outcome).toEqual({
+      outcome: "ok",
+      data: { token: "auth-token" },
+      rawBody: '{"token":"auth-token"}',
+    });
     expect(fetch).toHaveBeenCalledWith(
       "http://localhost:8787/api/auth/tokens",
       expect.any(Object),

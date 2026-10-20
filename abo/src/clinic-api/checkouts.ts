@@ -639,7 +639,7 @@ async function reserveFirstCheckout(args: {
     event_key: `${checkoutId}:1:pending:${createdAt}`,
     checkout_id: checkoutId, attempt_no: 1, state: "pending", lease_token: leaseToken,
     lease_until: leaseUntil, special_reference: `${reference}-1`, intention_id: null,
-    order_id: null, client_secret: null, expires_at: null,
+    order_id: null, expires_at: null,
     started_at: createdAt, finished_at: null, event_at: createdAt,
   };
   const hourAgo = new Date(Date.parse(createdAt) - 60 * 60 * 1000).toISOString();
@@ -729,7 +729,7 @@ async function reserveNextAttempt(args: {
     event_key: `${checkout.checkout_id}:${attemptNo}:pending:${createdAt}`,
     checkout_id: checkout.checkout_id, attempt_no: attemptNo, state: "pending",
     lease_token: leaseToken, lease_until: leaseUntil, special_reference: specialReference,
-    intention_id: null, order_id: null, client_secret: null, expires_at: null,
+    intention_id: null, order_id: null, expires_at: null,
     started_at: createdAt, finished_at: null, event_at: createdAt,
   };
   const rowJson = new TextDecoder().decode(canonicalize(canonicalAttempt));
@@ -744,7 +744,6 @@ async function reserveNextAttempt(args: {
     special_reference: previous.special_reference,
     intention_id: null,
     order_id: null,
-    client_secret: null,
     expires_at: null,
     started_at: previous.started_at,
     finished_at: createdAt,

@@ -1792,7 +1792,7 @@ describe("P4.11 digest, watch, housekeeping, rebuild (H-XW)", () => {
     ).bind(checkoutId).first<{ body_r2_key: string }>();
     expect(notification?.body_r2_key).toBeTruthy();
     const retainedBodyKey = notification!.body_r2_key;
-    expect(await env.R2.get(retainedBodyKey)).not.toBeNull();
+    expect(await env.R2.head(retainedBodyKey)).not.toBeNull();
 
     const commandId = "cmd-r9-rec1-erase-callback-body";
     const now = await currentHarnessClockIso();
@@ -1816,7 +1816,7 @@ describe("P4.11 digest, watch, housekeeping, rebuild (H-XW)", () => {
 
     await wipeAboD1();
     await reapplyAboSchema();
-    expect(await env.R2.get(retainedBodyKey)).not.toBeNull();
+    expect(await env.R2.head(retainedBodyKey)).not.toBeNull();
     const { rebuildAbo } = await import("../../src/rebuild.js");
     await rebuildAbo(env as never, { providerTransactionReferences: [] });
 

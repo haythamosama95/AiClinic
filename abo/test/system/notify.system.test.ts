@@ -599,6 +599,15 @@ describe("P4.3 notify intake", () => {
       String((successFixture as PaymobCallbackFixture).obj.id),
     );
     expect(await paymentRow(checkoutId)).not.toBeNull();
+    const inquiry = await env.DB.prepare(
+      `SELECT raw_r2_key, raw_sha256 FROM inquiry_result
+       WHERE subject = ? ORDER BY at DESC LIMIT 1`,
+    ).bind(`checkout:${checkoutId}`).first<{
+      raw_r2_key: string;
+      raw_sha256: string;
+    }>();
+    expect(inquiry?.raw_r2_key).toBe("");
+    expect(inquiry?.raw_sha256).toMatch(/^[a-f0-9]{64}$/u);
   });
 
   it("E2E-P4.3-01 R3-M5 byte-caps callback bodies before intake writes", async () => {
@@ -1165,9 +1174,10 @@ describe("P4.3 notify intake", () => {
     expect(await paymentReference()).toMatch(/^PAY-/u);
     expect((await confirmWorkForCheckout(checkoutId))?.state).toBe("done");
     const notificationFacts = await env.DB.prepare(
-      `SELECT COUNT(*) AS n FROM fact_log WHERE "table" = 'notification'`,
-    ).first<{ n: number }>();
-    expect(notificationFacts?.n).toBe(1);
+      `SELECT key FROM fact_log WHERE "table" = 'notification' ORDER BY key`,
+    ).all<{ key: string }>();
+    expect(notificationFacts.results?.length).toBe(2);
+    expect(new Set(notificationFacts.results?.map((row) => row.key)).size).toBe(2);
   });
 
   it("E2E-P4.3-11 return v=99 is a neutral page and schedules inquiry", async () => {

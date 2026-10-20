@@ -1234,6 +1234,7 @@ async function operationForBeginTransfer(input: {
   orgId: string;
   fromInstallationId: string;
   accessJwt: string;
+  actionId: string;
 }): Promise<HpOperation> {
   return {
     op: "beginTransfer",
@@ -1246,7 +1247,7 @@ async function operationForBeginTransfer(input: {
     },
     actor_email: VENDOR_OPERATOR_EMAIL,
     issued_at: await currentHarnessClockIso(),
-    nonce: crypto.randomUUID(),
+    nonce: input.actionId,
     contract_version: CONTRACT_VERSION,
   };
 }
@@ -1262,6 +1263,7 @@ async function opsBeginTransferRelay(input: {
     orgId: input.orgId,
     fromInstallationId: input.fromInstallationId,
     accessJwt: input.accessJwt,
+    actionId: input.actionId,
   });
   const assertion = await signHpOperation(
     input.hpCredential.authenticator,

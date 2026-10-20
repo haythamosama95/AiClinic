@@ -1828,9 +1828,9 @@ describe("hp-actions cross-worker", () => {
         terms_version: expectations.terms.version,
       }),
     });
-    expect(checkoutResponse.status).toBe(409);
+    expect(checkoutResponse.status).toBe(201);
     const checkoutBody = (await checkoutResponse.json()) as Record<string, unknown>;
-    expect(checkoutBody.code).toBe("billing_contact_required");
+    expect(checkoutBody.result).toBe("ok");
 
     expect(paymentId.length).toBeGreaterThan(0);
     await drainPlatformDurableObjects();

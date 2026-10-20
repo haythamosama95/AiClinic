@@ -34,6 +34,20 @@ const TXN_ID = 99001;
 async function seedCheckout(checkoutId = CHECKOUT_ID): Promise<void> {
   const now = "2026-01-15T09:00:00.000Z";
   await env.DB.prepare(
+    `INSERT INTO billing_contact (
+       org_id, version, client_request_id, name, email, phone, contact_sha256,
+       created_by_sub, contract_version, erasure_generation, erased_at, erased_by
+     ) VALUES (?, 1, ?, ?, ?, ?, ?, ?, 1, 0, NULL, NULL)`,
+  ).bind(
+    "org-rm08-runner",
+    `contact-${checkoutId}`,
+    "Runner Clinic",
+    "runner@example.test",
+    "+201000000000",
+    "sha256-billing-contact",
+    "admin-sub",
+  ).run();
+  await env.DB.prepare(
     `INSERT INTO checkout (
        checkout_id, reference, org_id, created_by_sub, billing_token_jti,
        client_request_id, offer_id, offer_version, plan_id, plan_version,

@@ -132,7 +132,7 @@ export async function exportFacts(env: ExportEnv): Promise<void> {
     throw new Error("ledger_fact_sequence_gap");
   }
   const unexported = await env.DB.prepare(
-    `SELECT fact_seq FROM fact_log fl
+    `SELECT fl.fact_seq FROM fact_log fl
      LEFT JOIN fact_export fe ON fe.fact_seq = fl.fact_seq
      WHERE fe.fact_seq IS NULL LIMIT 1`,
   ).first<{ fact_seq: number }>();
