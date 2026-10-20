@@ -49,7 +49,9 @@ export type HotRow = {
   suspended: number;
   transferred_out_to?: string | null;
   awaiting_transfer?: number;
+  awaiting_transfer_id?: string | null;
   transfer_pending?: number;
+  transfer_pending_id?: string | null;
   active_term_id: string | null;
   used: number;
   reserved: number;
@@ -1382,8 +1384,14 @@ export function updateHot(
   if (patch.awaiting_transfer !== undefined) {
     sets.push(`awaiting_transfer = ${patch.awaiting_transfer}`);
   }
+  if (patch.awaiting_transfer_id !== undefined) {
+    sets.push(`awaiting_transfer_id = ${patch.awaiting_transfer_id === null ? "NULL" : sqlString(patch.awaiting_transfer_id)}`);
+  }
   if (patch.transfer_pending !== undefined) {
     sets.push(`transfer_pending = ${patch.transfer_pending}`);
+  }
+  if (patch.transfer_pending_id !== undefined) {
+    sets.push(`transfer_pending_id = ${patch.transfer_pending_id === null ? "NULL" : sqlString(patch.transfer_pending_id)}`);
   }
   if (patch.binding_epoch !== undefined) {
     sets.push(`binding_epoch = ${patch.binding_epoch}`);
@@ -2071,6 +2079,18 @@ export async function applyGrantRPC(
       return noEffectSeal.envelope_sha256 === envelopeSha256
         ? { kind: "apply_grant", result: "rejected", code: "ceiling_claim_sealed" }
         : { kind: "apply_grant", result: "conflict" };
+    }
+
+    // Replays above remain available after a source is frozen. New value may
+    // not be applied once a transfer preparation has fenced this installation.
+    const currentHot = loadHot(storage);
+    if (
+      currentHot.binding_epoch !== request.bindingEpoch ||
+      currentHot.transfer_pending === 1 ||
+      currentHot.awaiting_transfer === 1 ||
+      currentHot.transferred_out_to !== null
+    ) {
+      return { kind: "apply_grant", result: "rejected", code: "transfer_pending" };
     }
 
     if (request.sourceKind === "complimentary") {
@@ -3745,6 +3765,7 @@ export async function shipCoverageOutboxAlarm(
 
 export interface OpenAwaitingTransferRequest {
   kind: "open_awaiting_transfer";
+  transferId: string;
   bindingEpoch: number;
 }
 
@@ -3760,10 +3781,24 @@ export async function openAwaitingTransferRPC(
 ): Promise<OpenAwaitingTransferResponse> {
   return blockConcurrencyWhile(async () => {
     ensureHotRow(storage, request.bindingEpoch);
-    sqlExec(
-      storage,
-      `UPDATE hot SET awaiting_transfer = 1, binding_epoch = ${request.bindingEpoch}`,
-    );
+    const hot = loadHot(storage);
+    if (hot.binding_epoch !== request.bindingEpoch) {
+      return { kind: "open_awaiting_transfer", result: "bad_request" };
+    }
+    if (hot.awaiting_transfer === 1) {
+      return hot.awaiting_transfer_id === request.transferId
+        ? { kind: "open_awaiting_transfer", result: "ok" }
+        : { kind: "open_awaiting_transfer", result: "bad_request" };
+    }
+    if (loadTerms(storage).length !== 0 || sqlSelect<{ count: number }>(storage,
+      "SELECT COUNT(*) AS count FROM grant",
+    )[0]?.count !== 0) {
+      return { kind: "open_awaiting_transfer", result: "bad_request" };
+    }
+    updateHot(storage, {
+      awaiting_transfer: 1,
+      awaiting_transfer_id: request.transferId,
+    });
     return { kind: "open_awaiting_transfer", result: "ok" };
   });
 }
@@ -3798,6 +3833,44 @@ function graceAllowanceForPackage(
   const graceBudget = computeGraceAllowance(term, hot.grace_base_used);
   const graceUsed = hot.used - hot.grace_base_used;
   return Math.max(0, graceBudget - graceUsed);
+}
+
+function isNonNegativeFiniteInteger(value: unknown): value is number {
+  return typeof value === "number" && Number.isSafeInteger(value) && value >= 0;
+}
+
+export function transferPackageAccountingIsValid(pkg: TransferPackageTerm): boolean {
+  if (pkg.state === "active") {
+    if (!isNonNegativeFiniteInteger(pkg.allowance)) return false;
+    // Legacy packages only carried the remaining allowance. Keep supporting
+    // that representation, but never accept malformed numeric value.
+    if (pkg.plan_allowance === undefined || pkg.plan_allowance === null) return true;
+    return isNonNegativeFiniteInteger(pkg.plan_allowance) &&
+      pkg.allowance <= pkg.plan_allowance;
+  }
+  if (pkg.state !== "grace") return true;
+  if (
+    pkg.plan_allowance === undefined || pkg.plan_allowance === null ||
+    !isNonNegativeFiniteInteger(pkg.plan_allowance) ||
+    !isNonNegativeFiniteInteger(pkg.allowance) ||
+    !isNonNegativeFiniteInteger(pkg.hot_grace_base_used) ||
+    !isNonNegativeFiniteInteger(pkg.hot_used) ||
+    pkg.hot_grace_base_used > pkg.hot_used ||
+    pkg.hot_grace_base_used > pkg.plan_allowance
+  ) return false;
+  const term = {
+    allowance: pkg.plan_allowance,
+    duration_unit: pkg.duration_unit,
+    duration_count: pkg.duration_count,
+    grace_days: pkg.grace_days,
+    grace_cap: pkg.grace_cap,
+    starts_at: pkg.starts_at,
+    ends_at: pkg.ends_at,
+    grace_ends_at: pkg.grace_ends_at,
+  } as TermRow;
+  const graceBudget = computeGraceAllowance(term, pkg.hot_grace_base_used);
+  const expectedRemaining = Math.max(0, graceBudget - (pkg.hot_used - pkg.hot_grace_base_used));
+  return expectedRemaining === pkg.allowance;
 }
 
 function buildTransferPackageTerm(
@@ -3852,7 +3925,8 @@ export interface TransferOutRequest {
 
 export interface TransferOutResponse {
   kind: "transfer_out";
-  result: "applied" | "bad_request";
+  result: "applied" | "bad_request" | "transient";
+  detail?: string;
   package?: TransferPackageTerm[];
   term_ids?: string[];
   ledger_seq?: number;
@@ -3883,7 +3957,10 @@ export async function transferOutRPC(
         return { kind: "transfer_out", result: "bad_request" };
       }
       try {
-        return JSON.parse(stored.response_json) as TransferOutResponse;
+        const replay = JSON.parse(stored.response_json) as TransferOutResponse;
+        return replay.result === "applied"
+          ? { ...replay, result: "already_applied" }
+          : replay;
       } catch {
         return { kind: "transfer_out", result: "bad_request" };
       }
@@ -3897,6 +3974,19 @@ export async function transferOutRPC(
     }
 
     const hot = loadHot(storage);
+    if (hot.binding_epoch !== request.bindingEpoch || hot.transfer_pending !== 1 ||
+        hot.transfer_pending_id !== request.transferId) {
+      return { kind: "transfer_out", result: "bad_request" };
+    }
+    let reservations: unknown[];
+    try {
+      reservations = JSON.parse(hot.reservations) as unknown[];
+    } catch {
+      return { kind: "transfer_out", result: "transient", detail: "reservation_state_unknown" };
+    }
+    if (hot.reserved > 0 || reservations.length > 0) {
+      return { kind: "transfer_out", result: "transient", detail: "reservations_pending" };
+    }
     const terms = loadTerms(storage);
     const notEnded = terms.filter(
       (term) =>
@@ -4031,6 +4121,7 @@ async function transferGrantId(transferId: string, index: number): Promise<strin
 
 export interface SetTransferPendingRequest {
   kind: "set_transfer_pending";
+  transferId?: string;
   bindingEpoch: number;
 }
 
@@ -4046,7 +4137,22 @@ export async function setTransferPendingRPC(
 ): Promise<SetTransferPendingResponse> {
   return blockConcurrencyWhile(async () => {
     ensureHotRow(storage, request.bindingEpoch);
-    updateHot(storage, { transfer_pending: 1 });
+    const hot = loadHot(storage);
+    if (hot.binding_epoch !== request.bindingEpoch || hot.transferred_out_to != null) {
+      return { kind: "set_transfer_pending", result: "bad_request" };
+    }
+    if (hot.transfer_pending === 1) {
+      if (request.transferId === undefined || hot.transfer_pending_id === request.transferId) {
+        return { kind: "set_transfer_pending", result: "ok" };
+      }
+      if (hot.transfer_pending_id !== null) {
+        return { kind: "set_transfer_pending", result: "bad_request" };
+      }
+    }
+    updateHot(storage, {
+      transfer_pending: 1,
+      transfer_pending_id: request.transferId ?? hot.transfer_pending_id ?? null,
+    });
     return { kind: "set_transfer_pending", result: "ok" };
   });
 }
@@ -4198,12 +4304,33 @@ export async function transferInRPC(
     let hotUsed = 0;
     let hotGraceBaseUsed = 0;
     let hot = loadHot(storage);
+    const initialClinicSeq = hot.clinic_seq;
     let stagedTerms = loadTerms(storage).map((row) => ({ ...row }));
+    if (stagedTerms.length !== 0 || sqlSelect<{ count: number }>(storage,
+      "SELECT COUNT(*) AS count FROM grant",
+    )[0]?.count !== 0) {
+      return { kind: "transfer_in", result: "bad_request" };
+    }
 
     for (let index = 0; index < request.package.length; index += 1) {
       const pkg = request.package[index]!;
+      if (!transferPackageAccountingIsValid(pkg)) {
+        return { kind: "transfer_in", result: "bad_request" };
+      }
       const termId = generateUlid();
       const grantId = await transferGrantId(request.transferId, index);
+      if (sqlSelect<{ count: number }>(storage,
+        `SELECT COUNT(*) AS count FROM term WHERE grant_id = ${sqlString(grantId)}`,
+      )[0]?.count !== 0) {
+        // A deterministic transfer grant with pre-existing term rows but no replay
+        // record is historical ambiguity. Leave it untouched for reconciliation.
+        return { kind: "transfer_in", result: "bad_request" };
+      }
+      if (sqlSelect<{ count: number }>(storage,
+        `SELECT COUNT(*) AS count FROM grant WHERE grant_id = ${sqlString(grantId)}`,
+      )[0]?.count !== 0) {
+        return { kind: "transfer_in", result: "bad_request" };
+      }
       const planSnapshotJson = JSON.stringify(pkg.plan_snapshot);
       const graceCap =
         pkg.grace_cap === null || pkg.grace_cap === undefined
@@ -4237,7 +4364,9 @@ export async function transferInRPC(
       createdTermIds.push(termId);
       if (pkg.state === "active") {
         activeTermId = termId;
-        hotUsed = 0;
+        hotUsed = pkg.plan_allowance !== undefined && pkg.plan_allowance !== null
+          ? pkg.plan_allowance - pkg.allowance
+          : 0;
         hotGraceBaseUsed = 0;
       } else if (pkg.state === "grace") {
         activeTermId = termId;
@@ -4246,8 +4375,7 @@ export async function transferInRPC(
       }
 
       const envelopeSha256 = await sha256Hex(canonicalize(pkg));
-      hot = { ...hot, clinic_seq: hot.clinic_seq + 1 };
-      const ledgerSeq = hot.clinic_seq;
+      const ledgerSeq = initialClinicSeq + index + 1;
 
       const receipt = await signReceipt({
         signingKey,
@@ -4265,20 +4393,25 @@ export async function transferInRPC(
 
     const hotAfter = {
       ...hot,
+      clinic_seq: initialClinicSeq,
       awaiting_transfer: 0,
       active_term_id: activeTermId,
       used: hotUsed,
       grace_base_used: hotGraceBaseUsed,
     };
+    const incrementalTerms = request.package.map((_, index) =>
+      stagedTerms.slice(0, stagedTerms.length - request.package.length + index + 1),
+    );
     const prepared = prepareCoverageEvents({
       installationId: request.installationId,
       orgId: request.orgId,
       vendorContractVersion: request.vendorContractVersion,
       at: request.nowIso,
       durationScale: request.durationScale,
-      kinds: ["transfer"],
+      kinds: [...request.package.map(() => "grant_applied"), "transfer"],
       hotAfter,
       termsAfter: stagedTerms,
+      eventTerms: [...incrementalTerms, stagedTerms],
     });
 
     const envelopeSha256 = await sha256Hex(canonicalize(request.package));
@@ -4329,7 +4462,7 @@ export async function transferInRPC(
             grant_id, kind, source_kind, envelope_sha256, envelope, evidence, receipt,
             applied_at, voided_at, void_reason
           ) VALUES (${sqlString(row.grantId)}, 'term', 'transfer', ${sqlString(row.envelopeSha256)},
-            ${sqlString(JSON.stringify(row.pkg))}, ${sqlString("{}")},
+            ${sqlString(JSON.stringify(row.pkg))}, ${sqlString(JSON.stringify({ transfer_id: request.transferId, step: "transfer_in" }))},
             ${sqlString(JSON.stringify(row.receipt))}, ${sqlString(request.nowIso)}, NULL, NULL)`,
         );
         insertOutbox(storage, "grant_ledger", {
@@ -4341,6 +4474,7 @@ export async function transferInRPC(
           source_kind: "transfer",
           operator_credential_id: "",
           envelope_sha256: row.envelopeSha256,
+          transfer_id: request.transferId,
           receipt: row.receipt,
           applied_at: request.nowIso,
         });

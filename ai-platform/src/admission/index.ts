@@ -578,7 +578,11 @@ async function tryMirrorFallbackAdmission(input: {
        WHERE COALESCE((
          SELECT SUM(weight) FROM fallback_admission
          WHERE installation_id = ? AND state = 'pending'
-       ), 0) + ? <= ?`,
+       ), 0) + ? <= ?
+       AND NOT EXISTS (
+         SELECT 1 FROM transfer_preparation
+         WHERE org_id = ? AND from_installation_id = ? AND phase <> 'completed'
+       )`,
     )
     .bind(
       input.principal.installationId,
@@ -596,6 +600,8 @@ async function tryMirrorFallbackAdmission(input: {
       input.principal.installationId,
       w,
       cap,
+      input.principal.organizationId,
+      input.principal.installationId,
     )
     .run();
   if ((inserted.meta.changes ?? 0) === 0) {

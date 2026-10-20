@@ -1050,6 +1050,48 @@ describe("Stage 09 — admission, journal, compose (S09-066…S09-085)", () => {
     expect(await count("ai_request")).toBe(0);
   });
 
+  it("R6-DM1: mirror fallback admission is fenced by an open transfer preparation", async () => {
+    const scenario = await provisionHappyPath();
+    const binding = await queryOne<{ epoch: number }>(
+      `SELECT epoch FROM tenant_binding WHERE org_id = ? AND installation_id = ?`,
+      [scenario.orgId, scenario.installationId],
+    );
+    expect(binding).toBeTruthy();
+    const now = new Date().toISOString();
+    await env.DB.prepare(
+      `INSERT INTO transfer_preparation (
+         transfer_id, org_id, from_installation_id, source_epoch,
+         to_installation_id, destination_epoch, reason, assertion_sha256,
+         accepted_actor, accepted_signer_credential_id, accepted_command,
+         phase, due_at, created_at, updated_at
+       ) VALUES (?, ?, ?, ?, ?, ?, 'operator transfer', ?, ?, ?, ?, 'accepted', ?, ?, ?)`
+    ).bind(
+      crypto.randomUUID(), scenario.orgId, scenario.installationId, binding!.epoch,
+      crypto.randomUUID(), binding!.epoch + 1, `r6-dm1-${crypto.randomUUID()}`,
+      "operator@example.test", `credential-${crypto.randomUUID()}`, "{}", now, now, now,
+    ).run();
+
+    const result = await runAdmission(
+      {
+        principal: admissionPrincipal(scenario),
+        idempotencyKey: `r6-dm1-${crypto.randomUUID()}`,
+        requestReference: `R6DM1-${crypto.randomUUID().slice(-8)}`,
+        capabilityId: CAPABILITY_ID,
+        quotaWeight: 1,
+        cache: isolateConfigCache,
+        reader: createD1ConfigReader(env.DB, env.R2),
+      },
+      { DB: env.DB, DO: throwingQuotaDo() },
+    );
+
+    expect(result.ok).toBe(false);
+    expect(await count("fallback_admission", "installation_id = ?", [scenario.installationId]))
+      .toBe(0);
+    await env.DB.prepare(
+      `DELETE FROM transfer_preparation WHERE org_id = ?`,
+    ).bind(scenario.orgId).run();
+  });
+
   it.skip(
     "S09-079 — DO HTTP 400 bad_request is internal_error not grace (Register 5 #28: in-pool env.DO frozen; wrapDurableObjectNamespace / installEnvOverrides do not reach SELF.fetch)",
   );

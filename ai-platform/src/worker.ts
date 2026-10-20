@@ -184,6 +184,7 @@ interface Env extends AlertEnv {
   RATE_LIMITER_INSTALLATION_CAPABILITY: RateLimit;
   VENDOR?: {
     dispatchAcceptedGrantCommands(): Promise<number>;
+    dispatchAcceptedTransferPreparations(): Promise<number>;
     shipDueReversalExports(): Promise<number>;
   };
 }
@@ -2972,6 +2973,14 @@ export default {
         log.info("scheduled_accepted_grant_commands", { dispatched });
       } catch (error) {
         log.error("scheduled_accepted_grant_commands_failed", {
+          error: error instanceof Error ? error.message : String(error),
+        });
+      }
+      try {
+        const prepared = await runtimeEnv.VENDOR?.dispatchAcceptedTransferPreparations() ?? 0;
+        log.info("scheduled_transfer_preparations", { prepared });
+      } catch (error) {
+        log.error("scheduled_transfer_preparations_failed", {
           error: error instanceof Error ? error.message : String(error),
         });
       }

@@ -30,6 +30,7 @@ import acceptedGrantCommandsSql from "../../../migrations/20261019130000_r4_pg3_
 import rm18CeilingClaimsSql from "../../../migrations/20261019140000_rm18_complimentary_ceiling_claims.sql?raw";
 import r6Pt1ReversalRoutesSql from "../../../migrations/20261019150000_r6_pt1_reversal_routes.sql?raw";
 import r6Pt1TransferRouteManifestSql from "../../../migrations/20261019160000_r6_pt1_transfer_route_manifest.sql?raw";
+import r6Rm26TransferPreparationSql from "../../../migrations/20261020140000_r6_rm26_transfer_preparation.sql?raw";
 import { splitSqlStatements } from "../../split-sql-statements";
 import { isolateConfigCache } from "../../../src/config-cache";
 import { clearE2eIssuerRegistry } from "./aat";
@@ -70,6 +71,7 @@ export const MIGRATION_SQL: readonly string[] = [
   rm18CeilingClaimsSql,
   r6Pt1ReversalRoutesSql,
   r6Pt1TransferRouteManifestSql,
+  r6Rm26TransferPreparationSql,
 ];
 
 const TOKEN_CONTRACT_V2_SEED = {

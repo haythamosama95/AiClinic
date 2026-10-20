@@ -97,6 +97,7 @@ import rm18CeilingClaimsSql from "../../migrations/20261019140000_rm18_complimen
 import r6Pt1ReversalRoutesSql from "../../migrations/20261019150000_r6_pt1_reversal_routes.sql?raw";
 import r6Pt1TransferRouteManifestSql from "../../migrations/20261019160000_r6_pt1_transfer_route_manifest.sql?raw";
 import strandedTermRecoverySql from "../../migrations/20261019170000_r4_d2_stranded_recovery.sql?raw";
+import r6Rm26TransferPreparationSql from "../../migrations/20261020140000_r6_rm26_transfer_preparation.sql?raw";
 import { applySqlStatements } from "../split-sql-statements";
 import {
   createCapabilityRegistry,
@@ -297,6 +298,7 @@ const MIGRATION_SQL = [
   r6Pt1ReversalRoutesSql,
   r6Pt1TransferRouteManifestSql,
   strandedTermRecoverySql,
+  r6Rm26TransferPreparationSql,
 ];
 
 const CATALOGUE_PLAN_NAME = "standard";
@@ -380,6 +382,7 @@ export async function resetPlatformState(): Promise<void> {
     env.DB.prepare("DELETE FROM grant_claim_backfill"),
     env.DB.prepare("DELETE FROM reversal_command"),
     env.DB.prepare("DELETE FROM transfer_route_quarantine"),
+    env.DB.prepare("DELETE FROM transfer_preparation"),
     env.DB.prepare("DELETE FROM transfer_route_manifest"),
     env.DB.prepare("DELETE FROM live_value_route"),
     env.DB.prepare("DROP TRIGGER IF EXISTS grant_tombstone_no_delete"),

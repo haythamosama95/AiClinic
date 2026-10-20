@@ -5,6 +5,7 @@
 import { env, runDurableObjectAlarm, runInDurableObject, SELF } from "cloudflare:test";
 import { CHANNEL_VERSIONS, grantIdPaid, sha256Hex } from "vendor-contracts";
 import { beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
+import { transferPackageAccountingIsValid } from "../../src/quota-do/coverage";
 import {
   applyAllMigrations,
   coverClinic,
@@ -186,11 +187,11 @@ async function operationForHp(input: {
   };
 }
 
-async function hpBeginTransfer(input: {
+async function buildHpBeginTransferRequest(input: {
   orgId: string;
   fromInstallationId: string;
   reason?: string;
-}): Promise<GrantResultEnvelope> {
+}): Promise<{ args: Record<string, unknown>; accessJwt: string }> {
   const signer = coverClinicSigner();
   const accessJwt = await mintVendorAccessJwt();
   const operation = await operationForHp({
@@ -211,9 +212,8 @@ async function hpBeginTransfer(input: {
       uv: true,
     }),
   );
-  return p38VendorCall(
-    "beginTransfer",
-    {
+  return {
+    args: {
       contract_version: CONTRACT_VERSION,
       org_id: input.orgId,
       from_installation_id: input.fromInstallationId,
@@ -222,8 +222,17 @@ async function hpBeginTransfer(input: {
       operation,
       assertion,
     },
-    { accessJwt },
-  );
+    accessJwt,
+  };
+}
+
+async function hpBeginTransfer(input: {
+  orgId: string;
+  fromInstallationId: string;
+  reason?: string;
+}): Promise<GrantResultEnvelope> {
+  const request = await buildHpBeginTransferRequest(input);
+  return p38VendorCall("beginTransfer", request.args, { accessJwt: request.accessJwt });
 }
 
 async function hpDeleteInstallation(input: {
@@ -607,6 +616,27 @@ beforeEach(async () => {
 });
 
 describe("transfer, deletion with coverage left, ledger retention", () => {
+  it("R6-DM1: active legacy packages require finite nonnegative integer allowance", () => {
+    const legacy = {
+      origin_grant_id: "origin",
+      position: 0,
+      state: "active",
+      plan_snapshot: {},
+      allowance: 40,
+      duration_unit: "month",
+      duration_count: 1,
+      grace_days: 0,
+      grace_cap: "proportional",
+      calendar_start: "2026-01-01T00:00:00.000Z",
+      starts_at: "2026-01-01T00:00:00.000Z",
+      ends_at: "2026-02-01T00:00:00.000Z",
+      grace_ends_at: null,
+    };
+    expect(transferPackageAccountingIsValid(legacy)).toBe(true);
+    expect(transferPackageAccountingIsValid({ ...legacy, allowance: -1 })).toBe(false);
+    expect(transferPackageAccountingIsValid({ ...legacy, allowance: 1.5 })).toBe(false);
+  });
+
   it("R2-C3: transfer out does not record a step for a mismatched DO version", async () => {
     const setup = await setupBeginTransferOnly();
     const packageBefore = await readTransferPackage(setup.transferId);
@@ -648,7 +678,244 @@ describe("transfer, deletion with coverage left, ledger retention", () => {
     ).toEqual(stepsBefore);
   });
 
-  it("R4-PG1 E2E-P3.8-01 A14 beginTransfer moves terms and ignores a client-selected old route", async () => {
+  it("R6-PT2: an authorized pre-preparation transfer replay adopts its published fence", async () => {
+    const scenario = await newScenario();
+    await coverClinic(scenario);
+    const request = await buildHpBeginTransferRequest({
+      orgId: scenario.orgId,
+      fromInstallationId: scenario.installationId,
+    });
+    const first = await p38VendorCall("beginTransfer", request.args, {
+      accessJwt: request.accessJwt,
+    });
+    expect(first.result).toBe("ok");
+    const transfer = JSON.parse(first.detail) as { transfer_id: string };
+    await env.DB.prepare(
+      `DELETE FROM transfer_preparation WHERE transfer_id = ?`,
+    ).bind(transfer.transfer_id).run();
+
+    const replay = await p38VendorCall("beginTransfer", request.args, {
+      accessJwt: request.accessJwt,
+    });
+    expect(replay.result).toBe("ok");
+    expect(JSON.parse(replay.detail).transfer_id).toBe(transfer.transfer_id);
+    expect(await queryOne<{ phase: string }>(
+      `SELECT phase FROM transfer_preparation WHERE transfer_id = ?`,
+      [transfer.transfer_id],
+    )).toEqual({ phase: "published" });
+  });
+
+  it("R6-PT2: unknown destination initialization stays unpublished and the accepted preparation resumes once", async () => {
+    const { scenario } = await setupActiveAndQueuedTerms();
+    const request = await buildHpBeginTransferRequest({
+      orgId: scenario.orgId,
+      fromInstallationId: scenario.installationId,
+    });
+    const realGet = env.DO.get.bind(env.DO);
+    let failOpen = true;
+    const getSpy = vi.spyOn(env.DO, "get").mockImplementation((id) => {
+      const stub = realGet(id);
+      return {
+        fetch: async (input: RequestInfo | URL, init?: RequestInit) => {
+          const body = typeof init?.body === "string"
+            ? JSON.parse(init.body) as Record<string, unknown>
+            : {};
+          if (body.kind === "open_awaiting_transfer" && failOpen) {
+            failOpen = false;
+            return new Response(null, { status: 503 });
+          }
+          return stub.fetch(input, init);
+        },
+      } as DurableObjectStub;
+    });
+    let first: GrantResultEnvelope;
+    let resumed: GrantResultEnvelope;
+    try {
+      first = await p38VendorCall("beginTransfer", request.args, { accessJwt: request.accessJwt });
+      const oldBinding = await queryOne<{ status: string; epoch: number }>(
+        `SELECT status, epoch FROM tenant_binding WHERE org_id = ? AND installation_id = ?`,
+        [scenario.orgId, scenario.installationId],
+      );
+      const preparations = await queryAll<{
+        transfer_id: string; to_installation_id: string; phase: string;
+      }>(
+        `SELECT transfer_id, to_installation_id, phase FROM transfer_preparation
+         WHERE org_id = ? AND phase <> 'completed'`,
+        [scenario.orgId],
+      );
+      expect(first.result).toBe("transient");
+      expect(oldBinding).toEqual({ status: "active", epoch: 1 });
+      expect(preparations).toHaveLength(1);
+      expect(preparations[0]?.phase).toBe("accepted");
+      expect(await count("transfer", "org_id = ?", [scenario.orgId])).toBe(0);
+
+      resumed = await p38VendorCall("beginTransfer", request.args, { accessJwt: request.accessJwt });
+    } finally {
+      getSpy.mockRestore();
+    }
+    expect(resumed!.result).toBe("ok");
+    const transfer = JSON.parse(resumed!.detail) as {
+      transfer_id: string; to_installation_id: string;
+    };
+    const preparation = await queryOne<{
+      phase: string; to_installation_id: string; accepted_actor: string;
+    }>(
+      `SELECT phase, to_installation_id, accepted_actor FROM transfer_preparation
+       WHERE transfer_id = ?`,
+      [transfer.transfer_id],
+    );
+    expect(preparation?.phase).toBe("published");
+    expect(preparation?.to_installation_id).toBe(transfer.to_installation_id);
+    expect(preparation?.accepted_actor).toBe(VENDOR_OPERATOR_EMAIL);
+    expect(await queryOne<{ status: string }>(
+      `SELECT status FROM tenant_binding WHERE org_id = ? AND installation_id = ?`,
+      [scenario.orgId, scenario.installationId],
+    )).toEqual({ status: "retired" });
+    expect(await queryOne<{ status: string; epoch: number }>(
+      `SELECT status, epoch FROM tenant_binding WHERE org_id = ? AND installation_id = ?`,
+      [scenario.orgId, transfer.to_installation_id],
+    )).toEqual({ status: "active", epoch: 2 });
+    const sourceHot = await runInDurableObject(
+      quotaDoStub(scenario.installationId),
+      async (_instance, state) => sqlSelect<{ transfer_pending: number; transfer_pending_id: string }>(
+        state, "SELECT transfer_pending, transfer_pending_id FROM hot LIMIT 1",
+      )[0],
+    );
+    expect(sourceHot).toEqual({ transfer_pending: 1, transfer_pending_id: transfer.transfer_id });
+    const destinationHot = await runInDurableObject(
+      quotaDoStub(transfer.to_installation_id),
+      async (_instance, state) => sqlSelect<{ awaiting_transfer: number; awaiting_transfer_id: string }>(
+        state, "SELECT awaiting_transfer, awaiting_transfer_id FROM hot LIMIT 1",
+      )[0],
+    );
+    expect(destinationHot).toEqual({ awaiting_transfer: 1, awaiting_transfer_id: transfer.transfer_id });
+  });
+
+  it("R6-PT2: scheduled recovery resumes after destination acknowledgement but unknown source-freeze acknowledgement", async () => {
+    const { scenario } = await setupActiveAndQueuedTerms();
+    const request = await buildHpBeginTransferRequest({
+      orgId: scenario.orgId,
+      fromInstallationId: scenario.installationId,
+    });
+    const realGet = env.DO.get.bind(env.DO);
+    let failFreeze = true;
+    const getSpy = vi.spyOn(env.DO, "get").mockImplementation((id) => {
+      const stub = realGet(id);
+      return {
+        fetch: async (input: RequestInfo | URL, init?: RequestInit) => {
+          const body = typeof init?.body === "string"
+            ? JSON.parse(init.body) as Record<string, unknown>
+            : {};
+          if (body.kind === "set_transfer_pending" && failFreeze) {
+            failFreeze = false;
+            return new Response(null, { status: 503 });
+          }
+          return stub.fetch(input, init);
+        },
+      } as DurableObjectStub;
+    });
+    let first: GrantResultEnvelope;
+    try {
+      first = await p38VendorCall("beginTransfer", request.args, { accessJwt: request.accessJwt });
+    } finally {
+      getSpy.mockRestore();
+    }
+    expect(first!.result).toBe("transient");
+    const pending = await queryOne<{ transfer_id: string; phase: string; to_installation_id: string }>(
+      `SELECT transfer_id, phase, to_installation_id FROM transfer_preparation WHERE org_id = ?`,
+      [scenario.orgId],
+    );
+    expect(pending?.phase).toBe("destination_ready");
+    expect(await count("transfer", "org_id = ?", [scenario.orgId])).toBe(0);
+    expect(await queryOne<{ status: string }>(
+      `SELECT status FROM tenant_binding WHERE org_id = ? AND installation_id = ?`,
+      [scenario.orgId, scenario.installationId],
+    )).toEqual({ status: "active" });
+
+    await runScheduled("*/5 * * * *");
+    expect(await queryOne<{ phase: string }>(
+      `SELECT phase FROM transfer_preparation WHERE transfer_id = ?`,
+      [pending!.transfer_id],
+    )).toEqual({ phase: "published" });
+    expect(await queryOne<{ count: number }>(
+      "SELECT COUNT(*) AS count FROM transfer WHERE transfer_id = ?",
+      [pending!.transfer_id],
+    )).toEqual({ count: 1 });
+    expect(await queryOne<{ status: string; epoch: number }>(
+      `SELECT status, epoch FROM tenant_binding WHERE org_id = ? AND installation_id = ?`,
+      [scenario.orgId, pending!.to_installation_id],
+    )).toEqual({ status: "active", epoch: 2 });
+  });
+
+  it("R6-DM1 waits for pending request accounting and fallback admission before source export", async () => {
+    const { scenario } = await setupActiveAndQueuedTerms();
+    const begun = await hpBeginTransfer({
+      orgId: scenario.orgId,
+      fromInstallationId: scenario.installationId,
+    });
+    expect(begun.result).toBe("ok");
+    const transfer = JSON.parse(begun.detail) as { transfer_id: string };
+    const terms = await readDoTerms(scenario.installationId);
+    const activeTerm = terms.find((row) => row.state === "active")!;
+    const now = getVendorTestClockIso() ?? new Date().toISOString();
+    const accountingRequestId = crypto.randomUUID();
+    await env.DB.prepare(
+      `INSERT INTO ai_request (
+         request_id, request_reference, installation_id, actor_id, branch_id,
+         capability_id, capability_version, prompt_artifact_hash, idempotency_key,
+         trace_id, state, created_at, updated_at, accounting_mode,
+         accounting_term_id, accounting_request_id, accounting_quota_weight,
+         accounting_outcome, accounting_state
+       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'Completed', ?, ?, 'fallback', ?, ?, 1,
+         'consumed', 'pending')`,
+    ).bind(
+      accountingRequestId,
+      `R6DM1-${accountingRequestId.slice(-8)}`,
+      scenario.installationId,
+      scenario.actorId,
+      scenario.branchId,
+      "r6-dm1-capability",
+      "1",
+      "prompt/r6-dm1@v1",
+      `r6-dm1-${accountingRequestId}`,
+      `trace-${accountingRequestId}`,
+      now,
+      now,
+      activeTerm.term_id,
+      accountingRequestId,
+    ).run();
+
+    const accountingPending = await transferOut(transfer.transfer_id);
+    expect(accountingPending.result).toBe("transient");
+    await env.DB.prepare(
+      "UPDATE ai_request SET accounting_state = 'settled' WHERE request_id = ?",
+    ).bind(accountingRequestId).run();
+
+    const fallbackRequestId = crypto.randomUUID();
+    const fallbackKey = `r6-dm1-${fallbackRequestId}`;
+    await env.DB.prepare(
+      `INSERT INTO fallback_admission (
+         installation_id, idempotency_key, term_id, request_id,
+         weight, admitted_at, state
+       ) VALUES (?, ?, ?, ?, 1, ?, 'pending')`,
+    ).bind(
+      scenario.installationId,
+      fallbackKey,
+      activeTerm.term_id,
+      fallbackRequestId,
+      now,
+    ).run();
+    const fallbackPending = await transferOut(transfer.transfer_id);
+    expect(fallbackPending.result).toBe("transient");
+
+    await env.DB.prepare(
+      `UPDATE fallback_admission SET state = 'settled'
+       WHERE installation_id = ? AND idempotency_key = ?`,
+    ).bind(scenario.installationId, fallbackKey).run();
+    expect((await transferOut(transfer.transfer_id)).result).toBe("applied");
+  });
+
+  it("R6-DM1 R4-PG1 E2E-P3.8-01 A14 preserves settled usage while moving terms and ignores a client-selected old route", async () => {
     const { scenario, activeGrantId, queuedGrantId } =
       await setupActiveAndQueuedTerms();
     const oldInstallationId = scenario.installationId;
@@ -658,7 +925,11 @@ describe("transfer, deletion with coverage left, ledger retention", () => {
     const queuedBefore = termsBefore.find((row) => row.grant_id === queuedGrantId);
     expect(activeBefore?.state).toBe("active");
     expect(queuedBefore?.state).toBe("queued");
+    await runInDurableObject(quotaDoStub(oldInstallationId), async (_instance, state) => {
+      state.storage.sql?.exec("UPDATE hot SET used = 40");
+    });
     const hotUsed = await readHotUsed(oldInstallationId);
+    expect(hotUsed).toBe(40);
 
     const begun = await hpBeginTransfer({
       orgId: scenario.orgId,
@@ -706,8 +977,11 @@ describe("transfer, deletion with coverage left, ledger retention", () => {
     const newQueued = newTerms.find(
       (row) => row.origin_grant_id === queuedBefore!.origin_grant_id,
     );
-    expect(newActive?.allowance).toBe((activeBefore!.allowance ?? 0) - hotUsed);
+    expect(newActive?.allowance).toBe(activeBefore?.allowance);
     expect(newQueued?.allowance).toBe(queuedBefore?.allowance);
+    expect(await readHotUsed(transferRow.to_installation_id)).toBe(hotUsed);
+    expect((newActive?.allowance ?? 0) - (await readHotUsed(transferRow.to_installation_id)))
+      .toBe((activeBefore?.allowance ?? 0) - hotUsed);
 
     const oldCoverage = await getCoverageForInstallation(
       scenario.orgId,
@@ -748,6 +1022,75 @@ describe("transfer, deletion with coverage left, ledger retention", () => {
     );
     expect(events.length).toBeGreaterThan(0);
     expect(events.every((row) => row.binding_epoch === 2)).toBe(true);
+
+    const secondBegin = await hpBeginTransfer({
+      orgId: scenario.orgId,
+      fromInstallationId: transferRow.to_installation_id,
+    });
+    expect(secondBegin.result).toBe("ok");
+    const secondTransfer = JSON.parse(secondBegin.detail) as {
+      transfer_id: string; to_installation_id: string;
+    };
+    expect((await transferOut(secondTransfer.transfer_id)).result).toBe("applied");
+    expect((await transferIn(secondTransfer.transfer_id)).result).toBe("applied");
+    await runDurableObjectAlarm(quotaDoStub(secondTransfer.to_installation_id));
+    const repeatedTerms = await readDoTerms(secondTransfer.to_installation_id);
+    const repeatedActive = repeatedTerms.find(
+      (row) => row.origin_grant_id === activeBefore!.origin_grant_id,
+    );
+    expect(repeatedActive?.allowance).toBe(newActive?.allowance);
+    expect(await readHotUsed(secondTransfer.to_installation_id)).toBe(hotUsed);
+  });
+
+  it("R6-DM1 preserves grace base usage, remaining budget, cap, and calendar dates", async () => {
+    const { scenario, activeGrantId } = await setupActiveAndQueuedTerms();
+    const sourceTerms = await readDoTerms(scenario.installationId);
+    const active = sourceTerms.find((row) => row.grant_id === activeGrantId)!;
+    await runInDurableObject(quotaDoStub(scenario.installationId), async (_instance, state) => {
+      state.storage.sql?.exec(
+        `UPDATE term SET state = 'grace', grace_ends_at = '2026-11-03T00:00:00.000Z'
+         WHERE term_id = '${active.term_id.replace(/'/g, "''")}'`,
+      );
+      state.storage.sql?.exec(
+        `UPDATE hot SET active_term_id = '${active.term_id.replace(/'/g, "''")}',
+           used = 80, grace_base_used = 50`,
+      );
+    });
+    const before = await runInDurableObject(
+      quotaDoStub(scenario.installationId),
+      async (_instance, state) => sqlSelect<{
+        allowance: number; grace_cap: string; ends_at: string; grace_ends_at: string;
+      }>(state,
+        `SELECT allowance, grace_cap, ends_at, grace_ends_at FROM term WHERE term_id = '${active.term_id.replace(/'/g, "''")}'`,
+      )[0],
+    );
+
+    const begun = await hpBeginTransfer({
+      orgId: scenario.orgId,
+      fromInstallationId: scenario.installationId,
+    });
+    expect(begun.result).toBe("ok");
+    const transfer = JSON.parse(begun.detail) as {
+      transfer_id: string; to_installation_id: string;
+    };
+    expect((await transferOut(transfer.transfer_id)).result).toBe("applied");
+    expect((await transferIn(transfer.transfer_id)).result).toBe("applied");
+    const after = await runInDurableObject(
+      quotaDoStub(transfer.to_installation_id),
+      async (_instance, state) => sqlSelect<{
+        allowance: number; grace_cap: string; ends_at: string; grace_ends_at: string;
+      }>(state,
+        `SELECT allowance, grace_cap, ends_at, grace_ends_at FROM term WHERE origin_grant_id = '${active.origin_grant_id.replace(/'/g, "''")}'`,
+      )[0],
+    );
+    const hot = await runInDurableObject(
+      quotaDoStub(transfer.to_installation_id),
+      async (_instance, state) => sqlSelect<{ used: number; grace_base_used: number }>(
+        state, "SELECT used, grace_base_used FROM hot LIMIT 1",
+      )[0],
+    );
+    expect(after).toEqual(before);
+    expect(hot).toEqual({ used: 80, grace_base_used: 50 });
   });
 
   it("R4-PG1 a pending no-effect claim seals its retired route before applying once on the live route", async () => {
@@ -814,7 +1157,7 @@ describe("transfer, deletion with coverage left, ledger retention", () => {
     )).toEqual({ installation_id: transfer.to_installation_id, route_generation: 2 });
   });
 
-  it("E2E-P3.8-02 a non-transfer grant during awaiting_transfer is transient and then queues behind the moved terms", async () => {
+  it("R6-PT2 E2E-P3.8-02 a non-transfer grant during awaiting_transfer is transient and then queues behind the moved terms", async () => {
     const setup = await setupBeginTransferOnly();
     const { scenario, transferId, newInstallationId } = setup;
 
@@ -876,7 +1219,7 @@ describe("transfer, deletion with coverage left, ledger retention", () => {
     expect(pendingTerm!.position).toBeGreaterThan(maxMovedPosition);
   });
 
-  it("E2E-P3.8-03 transfer steps retry as already_applied and transferIn before transferOut is transient", async () => {
+  it("R6-DM2 E2E-P3.8-03 transfer steps retry as already_applied without duplicate terms and transferIn before transferOut is transient", async () => {
     const { scenario, activeGrantId, queuedGrantId } =
       await setupActiveAndQueuedTerms();
     const oldInstallationId = scenario.installationId;
@@ -886,7 +1229,10 @@ describe("transfer, deletion with coverage left, ledger retention", () => {
       fromInstallationId: oldInstallationId,
     });
     expect(begun.result).toBe("ok");
-    const transferRow = JSON.parse(begun.detail) as { transfer_id: string };
+    const transferRow = JSON.parse(begun.detail) as {
+      transfer_id: string;
+      to_installation_id: string;
+    };
     const transferId = transferRow.transfer_id;
 
     const termsBefore = await readDoTerms(oldInstallationId);
@@ -908,14 +1254,29 @@ describe("transfer, deletion with coverage left, ledger retention", () => {
     expect(inResult.result, JSON.stringify(inResult)).toBe("applied");
     expect(inResult.receipt).toBeDefined();
     const inReceipt = inResult.receipt as Record<string, unknown>;
+    const termsAfterApply = await readDoTerms(transferRow.to_installation_id);
 
+    await env.DB.prepare(
+      "DELETE FROM transfer_step WHERE transfer_id = ? AND step = 'transfer_out'",
+    ).bind(transferId).run();
     const outRetry = await transferOut(transferId);
     expect(outRetry.result).toBe("already_applied");
     expect(outRetry.receipt).toEqual(outReceipt);
 
+    await env.DB.prepare(
+      "DELETE FROM transfer_step WHERE transfer_id = ? AND step = 'transfer_in'",
+    ).bind(transferId).run();
     const inRetry = await transferIn(transferId);
     expect(inRetry.result).toBe("already_applied");
     expect(inRetry.receipt).toEqual(inReceipt);
+    expect(await readDoTerms(transferRow.to_installation_id)).toEqual(termsAfterApply);
+
+    await runDurableObjectAlarm(quotaDoStub(transferRow.to_installation_id));
+    expect(await queryOne<{ count: number }>(
+      `SELECT COUNT(*) AS count FROM coverage_event
+       WHERE installation_id = ? AND kind = 'grant_applied'`,
+      [transferRow.to_installation_id],
+    )).toEqual({ count: termsAfterApply.length });
 
     expect(activeGrantId).toBeTruthy();
     expect(queuedGrantId).toBeTruthy();

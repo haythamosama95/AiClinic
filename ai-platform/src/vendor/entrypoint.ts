@@ -25,9 +25,12 @@ import {
   executeDeleteInstallation,
   executeTransferIn,
   executeTransferOut,
+  dispatchTransferPreparations,
+  readTransferByAssertionSha256,
   isTransferRouteQuarantined,
   readTransferById,
-  readTransferByAssertionSha256,
+  readTransferPreparationByAssertion,
+  resumeTransferPreparation,
   retireHeldBindingIfEmpty,
   transferRowToDetail,
   verifyTransferOutEvidence,
@@ -5334,16 +5337,85 @@ export class VendorEntrypoint extends WorkerEntrypoint<VendorEnv> {
     }
     const operation = operationRaw as Record<string, unknown>;
     const assertionSha256 = await operationAssertionSha256(operation);
-    const existingByAssertion = await readTransferByAssertionSha256(
+    const existingByAssertion = await readTransferPreparationByAssertion(
       this.env.DB,
       assertionSha256,
     );
     if (existingByAssertion !== null) {
+      if (
+        existingByAssertion.org_id !== orgId ||
+        existingByAssertion.from_installation_id !== fromInstallationId ||
+        existingByAssertion.reason !== reason ||
+        existingByAssertion.accepted_actor !== access.email ||
+        existingByAssertion.accepted_signer_credential_id !== args.signer_credential_id
+      ) return grantRejected(version, "assertion_invalid");
+      let accepted: Record<string, unknown>;
+      try {
+        accepted = JSON.parse(existingByAssertion.accepted_command) as Record<string, unknown>;
+      } catch {
+        return grantRejected(version, "coverage_unknown");
+      }
+      if (accepted.contract_version !== version) return grantRejected(version, "assertion_invalid");
+      const resumed = await resumeTransferPreparation(this.env, existingByAssertion.transfer_id);
+      if (resumed === "transient") {
+        return { contract_version: version, result: "transient", code: "", detail: "transfer_preparation_pending" };
+      }
+      if (resumed === "bad_request") return grantRejected(version, "bad_request");
       return {
         contract_version: version,
         result: "ok",
         code: "",
-        detail: transferRowToDetail(existingByAssertion),
+        detail: transferRowToDetail(resumed),
+      };
+    }
+
+    const legacyTransfer = await readTransferByAssertionSha256(this.env.DB, assertionSha256);
+    if (legacyTransfer !== null) {
+      const [audits, usedAssertions] = await Promise.all([
+        this.env.DB.prepare(
+          `SELECT actor, operator_id FROM control_audit
+           WHERE action = 'beginTransfer' AND target = ? AND assertion_sha256 = ?`,
+        ).bind(`${orgId}:${fromInstallationId}`, assertionSha256)
+          .all<{ actor: string; operator_id: string }>(),
+        this.env.DB.prepare(
+          `SELECT credential_id FROM assertion_used WHERE challenge_sha256 = ?`,
+        ).bind(assertionSha256).all<{ credential_id: string }>(),
+      ]);
+      const audit = audits.results?.length === 1 ? audits.results[0] : undefined;
+      const used = usedAssertions.results?.length === 1 ? usedAssertions.results[0] : undefined;
+      if (
+        legacyTransfer.org_id !== orgId ||
+        legacyTransfer.from_installation_id !== fromInstallationId ||
+        legacyTransfer.reason !== reason ||
+        audit === undefined || used === undefined ||
+        audit.actor !== access.email || audit.operator_id !== access.email ||
+        used.credential_id !== args.signer_credential_id
+      ) {
+        await this.env.DB.prepare(
+          `INSERT OR IGNORE INTO transfer_route_quarantine
+             (transfer_id, grant_id, reason, created_at)
+           VALUES (?, '', 'legacy_transfer_authorization_ambiguous', ?)`
+        ).bind(legacyTransfer.transfer_id, await clockNowIso(this.env)).run();
+        return grantRejected(version, "coverage_unknown");
+      }
+      const adopted = await executeBeginTransfer(this.env, {
+        orgId,
+        fromInstallationId,
+        reason,
+        assertionSha256,
+        acceptedActor: audit.actor,
+        signerCredentialId: used.credential_id,
+        contractVersion: version,
+      });
+      if (adopted === "bad_request") return grantRejected(version, "coverage_unknown");
+      if (adopted === "transient") {
+        return { contract_version: version, result: "transient", code: "", detail: "transfer_preparation_pending" };
+      }
+      return {
+        contract_version: version,
+        result: "ok",
+        code: "",
+        detail: transferRowToDetail(adopted),
       };
     }
 
@@ -5374,7 +5446,13 @@ export class VendorEntrypoint extends WorkerEntrypoint<VendorEnv> {
       fromInstallationId,
       reason,
       assertionSha256: check.assertionSha256,
+      acceptedActor: access.email,
+      signerCredentialId: check.signer.credential_id,
+      contractVersion: version,
     });
+    if (created === "transient") {
+      return { contract_version: version, result: "transient", code: "", detail: "transfer_preparation_pending" };
+    }
     if (created === "bad_request") {
       await writeEntrypointAudit(
         this.env.DB,
@@ -5385,8 +5463,6 @@ export class VendorEntrypoint extends WorkerEntrypoint<VendorEnv> {
       );
       return grantRejected(version, "bad_request");
     }
-
-    await finishHpAssertion(this.env, access.email, "beginTransfer", check);
 
     return {
       contract_version: version,
@@ -7210,6 +7286,12 @@ export class VendorEntrypoint extends WorkerEntrypoint<VendorEnv> {
        FROM grant_claim
        WHERE command_state = 'accepted' AND state = 'pending'
          AND due_at <= ? AND (lease_until IS NULL OR lease_until <= ?)
+         AND NOT EXISTS (
+           SELECT 1 FROM transfer_preparation p
+           WHERE p.org_id = grant_claim.org_id
+             AND p.from_installation_id = grant_claim.installation_id
+             AND p.phase <> 'completed'
+         )
        ORDER BY due_at, grant_id LIMIT 25`,
     ).bind(nowIso, nowIso).all<{ grant_id: string; accepted_command: string | null }>();
     let attempted = 0;
@@ -7236,6 +7318,10 @@ export class VendorEntrypoint extends WorkerEntrypoint<VendorEnv> {
       });
     }
     return attempted;
+  }
+
+  async dispatchAcceptedTransferPreparations(): Promise<number> {
+    return dispatchTransferPreparations(this.env, 25);
   }
 
   async shipDueReversalExports(): Promise<number> {

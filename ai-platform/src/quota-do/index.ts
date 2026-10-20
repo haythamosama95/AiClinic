@@ -2458,7 +2458,9 @@ const COVERAGE_DO_SCHEMA_STATEMENTS = [
     suspended INTEGER NOT NULL DEFAULT 0,
     transferred_out_to TEXT,
     awaiting_transfer INTEGER NOT NULL DEFAULT 0,
+    awaiting_transfer_id TEXT,
     transfer_pending INTEGER NOT NULL DEFAULT 0,
+    transfer_pending_id TEXT,
     active_term_id TEXT,
     used INTEGER NOT NULL DEFAULT 0,
     reserved INTEGER NOT NULL DEFAULT 0,
@@ -2572,6 +2574,16 @@ export async function ensureCoverageDoTables(
     }
     for (const statement of COVERAGE_DO_SCHEMA_STATEMENTS) {
       sqlStorage.sql.exec(statement);
+    }
+    try {
+      sqlStorage.sql.exec("ALTER TABLE hot ADD COLUMN awaiting_transfer_id TEXT");
+    } catch {
+      // Existing Durable Objects already carry this forward schema field.
+    }
+    try {
+      sqlStorage.sql.exec("ALTER TABLE hot ADD COLUMN transfer_pending_id TEXT");
+    } catch {
+      // Existing Durable Objects already carry this forward schema field.
     }
   });
 }
