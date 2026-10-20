@@ -2109,7 +2109,7 @@ describe("console relays cross-worker", () => {
     }
   });
 
-  it("E2E-P4.8-05 delete-installation holds binding then transfer runs from held binding", async () => {
+  it("R6-PT3 R7-PS1 E2E-P4.8-05 delete holds binding then transfer runs from held binding", async () => {
     const orgId = ORG_CR_05;
     await setupConsoleRelaysHarness();
     await setupActivePlatformCoverage(orgId);

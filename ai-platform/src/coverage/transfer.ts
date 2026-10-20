@@ -567,6 +567,11 @@ export async function executeBeginTransfer(
     contractVersion: number;
   },
 ): Promise<TransferRow | "bad_request" | "transient"> {
+  const deletionInProgress = await env.DB.prepare(
+    `SELECT 1 AS pending FROM deletion_command
+     WHERE org_id = ? AND phase <> 'completed' LIMIT 1`,
+  ).bind(input.orgId).first<{ pending: number }>();
+  if (deletionInProgress !== null) return "bad_request";
   const existing = await readTransferPreparationByAssertion(env.DB, input.assertionSha256);
   if (existing !== null) {
     if (
@@ -757,6 +762,9 @@ export async function executeBeginTransfer(
            )
            AND NOT EXISTS (
              SELECT 1 FROM transfer_preparation WHERE org_id = ? AND destination_epoch >= ?
+           )
+           AND NOT EXISTS (
+             SELECT 1 FROM deletion_command WHERE org_id = ? AND phase <> 'completed'
            )`,
       ).bind(
         transferId, input.orgId, input.fromInstallationId, source.epoch,
@@ -764,7 +772,7 @@ export async function executeBeginTransfer(
         input.acceptedActor, input.signerCredentialId, acceptedCommand,
         createdAt, createdAt, createdAt,
         input.orgId, input.fromInstallationId, source.epoch,
-        input.orgId, destinationEpoch, input.orgId, destinationEpoch,
+        input.orgId, destinationEpoch, input.orgId, destinationEpoch, input.orgId,
       ),
       env.DB.prepare(
         `INSERT INTO assertion_used (challenge_sha256, credential_id, used_at)
@@ -834,9 +842,17 @@ export async function resumeTransferPreparation(
   ).bind(transferId).first<TransferPreparationRow>();
   if (latest === null) return "bad_request";
   if (latest.phase === "destination_ready") {
+    const deletionFence = await env.DB.prepare(
+      `SELECT assertion_sha256 FROM deletion_command
+       WHERE org_id = ? AND installation_id = ? AND binding_epoch = ?
+         AND phase = 'completed' AND held = 1
+       ORDER BY updated_at DESC LIMIT 1`,
+    ).bind(latest.org_id, latest.from_installation_id, latest.source_epoch)
+      .first<{ assertion_sha256: string }>();
     const frozen = await callCoverageDo(env, latest.from_installation_id, {
       kind: "set_transfer_pending",
       transferId,
+      adoptDeletionId: deletionFence?.assertion_sha256,
       bindingEpoch: latest.source_epoch,
     });
     if (frozen?.result !== "ok") return "transient";
@@ -1362,52 +1378,95 @@ function termIsNotEnded(state: string | undefined): boolean {
   );
 }
 
-async function inspectInstallationTerms(
+type InspectedCoverage = {
+  terms: Array<{ term_id: string; state: string }>;
+  reservations: ReservationInventoryRow[];
+};
+
+type ReservationInventoryRow = {
+  id: string;
+  weight: number;
+  term_id: string;
+  capability: string;
+  admitted_at: number;
+};
+
+function isReservationInventoryRow(value: unknown): value is ReservationInventoryRow {
+  return isRecord(value) && typeof value.id === "string" &&
+    typeof value.weight === "number" && Number.isFinite(value.weight) &&
+    typeof value.term_id === "string" && typeof value.capability === "string" &&
+    typeof value.admitted_at === "number" && Number.isFinite(value.admitted_at);
+}
+
+async function inspectInstallationCoverage(
   env: TransferEnv,
   installationId: string,
   orgId: string,
-): Promise<Array<{ term_id?: string; state?: string }>> {
+): Promise<InspectedCoverage | null> {
   const inspected = await callCoverageDo(env, installationId, {
     kind: "inspect_coverage",
     installationId,
     orgId,
     vendorContractVersion: CHANNEL_VERSIONS.platformDo,
   });
-  if (inspected === null || !Array.isArray(inspected.terms)) {
-    return [];
+  if (
+    inspected === null || !Array.isArray(inspected.terms) ||
+    !Array.isArray(inspected.reservations) ||
+    inspected.terms.some((row) => !isRecord(row) ||
+      typeof row.term_id !== "string" || typeof row.state !== "string") ||
+    !inspected.reservations.every(isReservationInventoryRow)
+  ) {
+    return null;
   }
-  return inspected.terms as Array<{ term_id?: string; state?: string }>;
+  return {
+    terms: inspected.terms as Array<{ term_id: string; state: string }>,
+    reservations: inspected.reservations,
+  };
 }
 
-async function installationHasOpenCoverage(
-  env: TransferEnv,
-  installationId: string,
-  orgId: string,
-): Promise<boolean> {
-  const terms = await inspectInstallationTerms(env, installationId, orgId);
-  return terms.some((row) => termIsNotEnded(row.state));
+type DeletionCommandRow = {
+  assertion_sha256: string;
+  org_id: string;
+  installation_id: string;
+  binding_epoch: number;
+  reason: string;
+  accepted_actor: string;
+  signer_credential_id: string;
+  accepted_command: string;
+  phase: "accepted" | "frozen" | "completed";
+  freeze_inventory: string | null;
+  retained_term_ids: string | null;
+  held: number | null;
+  alert_due: number;
+  purge_state: "due" | "completed";
+  completion_detail: string | null;
+};
+
+export async function readDeletionCommand(
+  db: D1Database,
+  assertionSha256: string,
+): Promise<DeletionCommandRow | null> {
+  return db.prepare(
+    `SELECT assertion_sha256, org_id, installation_id, binding_epoch, reason,
+            accepted_actor, signer_credential_id, accepted_command, phase,
+            freeze_inventory, retained_term_ids, held, alert_due, purge_state,
+            completion_detail
+     FROM deletion_command WHERE assertion_sha256 = ?`,
+  ).bind(assertionSha256).first<DeletionCommandRow>();
 }
 
-async function installationOpenTermIds(
-  env: TransferEnv,
-  installationId: string,
-  orgId: string,
-): Promise<string[]> {
-  const terms = await inspectInstallationTerms(env, installationId, orgId);
-  return terms
-    .filter((row) => termIsNotEnded(row.state) && typeof row.term_id === "string")
-    .map((row) => row.term_id as string);
-}
-
-export async function executeDeleteInstallation(
+export async function acceptDeleteInstallation(
   env: TransferEnv,
   input: {
     orgId: string;
     reason: string;
     operatorId: string;
+    assertionSha256: string;
+    signerCredentialId: string;
+    acceptedCommand: string;
   },
 ): Promise<
-  | { result: "ok"; detail: string }
+  | { result: "accepted"; assertionSha256: string }
   | { result: "bad_request" }
 > {
   const pendingPreparation = await env.DB.prepare(
@@ -1436,86 +1495,279 @@ export async function executeDeleteInstallation(
     return { result: "bad_request" };
   }
 
-  if (
-    installation.status === "deleted" &&
-    (binding.status === "held_for_transfer" || binding.status === "retired")
-  ) {
-    return {
-      result: "ok",
-      detail: installationDeleteDetail(installation, binding),
-    };
-  }
-
   const nowIso = await clockNowIso(env);
-  const hasCoverage = await installationHasOpenCoverage(
-    env,
-    binding.installation_id,
-    input.orgId,
-  );
+  const auditId = generateUlid();
+  if (installation.status === "deleted") {
+    const completed = await env.DB.prepare(
+      `SELECT assertion_sha256, freeze_inventory, freeze_ack_at, retained_term_ids,
+              held, completion_detail
+       FROM deletion_command
+       WHERE org_id = ? AND installation_id = ? AND binding_epoch = ?
+         AND reason = ? AND phase = 'completed' AND purge_state = 'completed'
+       ORDER BY created_at LIMIT 1`,
+    ).bind(input.orgId, binding.installation_id, binding.epoch, input.reason)
+      .first<Pick<DeletionCommandRow,
+        "assertion_sha256" | "freeze_inventory" | "freeze_ack_at" |
+        "retained_term_ids" | "held" | "completion_detail">>();
+    if (completed?.completion_detail === null || completed === null) {
+      return { result: "bad_request" };
+    }
+    try {
+      await env.DB.batch([
+        env.DB.prepare(
+          `INSERT INTO deletion_command (
+             assertion_sha256, org_id, installation_id, binding_epoch, reason,
+             accepted_actor, signer_credential_id, accepted_command, phase,
+             freeze_inventory, freeze_ack_at, retained_term_ids, held, alert_due,
+             purge_state, completion_detail, due_at, lease_until, created_at, updated_at
+           ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'completed', ?, ?, ?, ?, 0,
+             'completed', ?, ?, NULL, ?, ?)`,
+        ).bind(
+          input.assertionSha256, input.orgId, binding.installation_id, binding.epoch,
+          input.reason, input.operatorId, input.signerCredentialId, input.acceptedCommand,
+          completed.freeze_inventory, completed.freeze_ack_at, completed.retained_term_ids,
+          completed.held, completed.completion_detail, nowIso, nowIso, nowIso,
+        ),
+        env.DB.prepare(
+          `INSERT INTO assertion_used (challenge_sha256, credential_id, used_at)
+           SELECT ?, ?, ? WHERE EXISTS (
+             SELECT 1 FROM deletion_command WHERE assertion_sha256 = ?
+           )`,
+        ).bind(input.assertionSha256, input.signerCredentialId, nowIso, input.assertionSha256),
+        env.DB.prepare(
+          `INSERT INTO control_audit (
+             audit_id, operator_id, actor, action, target, before_pointer,
+             after_pointer, assertion_sha256, recorded_at
+           ) SELECT ?, ?, ?, 'deleteInstallation', ?, NULL, NULL, ?, ?
+           WHERE EXISTS (
+             SELECT 1 FROM deletion_command WHERE assertion_sha256 = ?
+           )`,
+        ).bind(auditId, input.operatorId, input.operatorId,
+          `${input.orgId}:${binding.installation_id}`, input.assertionSha256,
+          nowIso, input.assertionSha256),
+      ]);
+    } catch {
+      // The exact accepted command is read back and checked below.
+    }
+    const repeated = await readDeletionCommand(env.DB, input.assertionSha256);
+    if (
+      repeated === null || repeated.phase !== "completed" ||
+      repeated.completion_detail !== completed.completion_detail ||
+      repeated.accepted_command !== input.acceptedCommand
+    ) return { result: "bad_request" };
+    return { result: "accepted", assertionSha256: input.assertionSha256 };
+  }
 
-  await env.DB
-    .prepare(`UPDATE installation SET status = 'deleted' WHERE installation_id = ?`)
-    .bind(binding.installation_id)
-    .run();
+  try {
+    await env.DB.batch([
+      env.DB.prepare(
+        `INSERT INTO deletion_command (
+           assertion_sha256, org_id, installation_id, binding_epoch, reason,
+           accepted_actor, signer_credential_id, accepted_command, phase,
+           freeze_inventory, freeze_ack_at, retained_term_ids, held, alert_due,
+           purge_state, completion_detail, due_at, lease_until, created_at, updated_at
+         ) SELECT ?, ?, ?, ?, ?, ?, ?, ?, 'accepted', NULL, NULL, NULL, NULL, 0,
+           'due', NULL, ?, NULL, ?, ?
+         WHERE EXISTS (
+           SELECT 1 FROM tenant_binding WHERE org_id = ? AND installation_id = ?
+             AND epoch = ? AND status IN ('active', 'held_for_transfer')
+         )
+           AND NOT EXISTS (SELECT 1 FROM deletion_command WHERE org_id = ? AND phase <> 'completed')
+           AND NOT EXISTS (SELECT 1 FROM transfer_preparation WHERE org_id = ? AND phase <> 'completed')
+           AND NOT EXISTS (
+             SELECT 1 FROM transfer t WHERE t.org_id = ? AND NOT EXISTS (
+               SELECT 1 FROM transfer_step s WHERE s.transfer_id = t.transfer_id AND s.step = 'transfer_in'
+             )
+           )`,
+      ).bind(
+        input.assertionSha256, input.orgId, binding.installation_id, binding.epoch,
+        input.reason, input.operatorId, input.signerCredentialId, input.acceptedCommand,
+        nowIso, nowIso, nowIso,
+        input.orgId, binding.installation_id, binding.epoch,
+        input.orgId, input.orgId, input.orgId,
+      ),
+      env.DB.prepare(
+        `INSERT INTO assertion_used (challenge_sha256, credential_id, used_at)
+         SELECT ?, ?, ? WHERE EXISTS (
+           SELECT 1 FROM deletion_command WHERE assertion_sha256 = ?
+         )`,
+      ).bind(input.assertionSha256, input.signerCredentialId, nowIso, input.assertionSha256),
+      env.DB.prepare(
+        `INSERT INTO control_audit (
+           audit_id, operator_id, actor, action, target, before_pointer,
+           after_pointer, assertion_sha256, recorded_at
+         ) SELECT ?, ?, ?, 'deleteInstallation', ?, NULL, NULL, ?, ?
+         WHERE EXISTS (
+           SELECT 1 FROM deletion_command WHERE assertion_sha256 = ?
+         )`,
+      ).bind(
+        auditId, input.operatorId, input.operatorId,
+        `${input.orgId}:${binding.installation_id}`, input.assertionSha256,
+        nowIso, input.assertionSha256,
+      ),
+    ]);
+  } catch {
+    // Exact retries are resolved by the assertion-digest keyed command below.
+  }
+  const accepted = await readDeletionCommand(env.DB, input.assertionSha256);
+  if (
+    accepted === null || accepted.org_id !== input.orgId ||
+    accepted.installation_id !== binding.installation_id ||
+    accepted.binding_epoch !== binding.epoch || accepted.reason !== input.reason ||
+    accepted.accepted_actor !== input.operatorId ||
+    accepted.signer_credential_id !== input.signerCredentialId ||
+    accepted.accepted_command !== input.acceptedCommand
+  ) return { result: "bad_request" };
+  return { result: "accepted", assertionSha256: input.assertionSha256 };
+}
 
-  if (hasCoverage) {
-    await env.DB
-      .prepare(
-        `UPDATE tenant_binding
-         SET status = 'held_for_transfer', retired_at = NULL, reason = NULL
-         WHERE org_id = ? AND installation_id = ?`,
-      )
-      .bind(input.orgId, binding.installation_id)
-      .run();
+export async function resumeDeleteInstallation(
+  env: TransferEnv,
+  assertionSha256: string,
+): Promise<{ result: "ok"; detail: string } | { result: "transient" | "bad_request" }> {
+  const command = await readDeletionCommand(env.DB, assertionSha256);
+  if (command === null) return { result: "bad_request" };
+  if (command.phase === "completed" && command.completion_detail !== null) {
+    return { result: "ok", detail: command.completion_detail };
+  }
 
-    await callCoverageDo(env, binding.installation_id, {
+  if (command.phase === "accepted") {
+    let acceptedCommand: Record<string, unknown>;
+    try { acceptedCommand = JSON.parse(command.accepted_command) as Record<string, unknown>; }
+    catch { return { result: "transient" }; }
+    if (
+      typeof acceptedCommand.accepted_at !== "string" ||
+      typeof acceptedCommand.snapshot_version !== "number" ||
+      !(acceptedCommand.duration_scale === null || acceptedCommand.duration_scale === "staging")
+    ) return { result: "transient" };
+    const nowIso = acceptedCommand.accepted_at;
+    const frozen = await callCoverageDo(env, command.installation_id, {
       kind: "set_transfer_pending",
-      bindingEpoch: binding.epoch,
+      transferId: command.assertion_sha256,
+      installationId: command.installation_id,
+      orgId: command.org_id,
+      bindingEpoch: command.binding_epoch,
+      vendorContractVersion: acceptedCommand.snapshot_version,
+      nowIso,
+      durationScale: acceptedCommand.duration_scale,
     });
-
-    await raiseAl18HeldBinding(env, input.orgId, binding.installation_id);
-  } else {
-    await env.DB
-      .prepare(
-        `UPDATE tenant_binding
-         SET status = 'retired', retired_at = ?, reason = ?
-         WHERE org_id = ? AND installation_id = ?`,
-      )
-      .bind(nowIso, input.reason, input.orgId, binding.installation_id)
-      .run();
+    if (
+      frozen?.result !== "ok" || !Array.isArray(frozen.terms) ||
+      !Array.isArray(frozen.reservations) ||
+      frozen.terms.some((row) => !isRecord(row) || typeof row.term_id !== "string" ||
+        typeof row.state !== "string") ||
+      !frozen.reservations.every(isReservationInventoryRow)
+    ) return { result: "transient" };
+    const openTerms = (frozen.terms as Array<{ term_id: string; state: string }>)
+      .filter((term) => termIsNotEnded(term.state));
+    const reservations = frozen.reservations as ReservationInventoryRow[];
+    const termIds = [...new Set([
+      ...openTerms.map((term) => term.term_id),
+      ...reservations.map((reservation) => reservation.term_id),
+    ])];
+    const held = termIds.length > 0 || reservations.length > 0;
+    const inventory = JSON.stringify({
+      terms: frozen.terms,
+      reservations,
+    });
+    const retiredAt = held ? null : nowIso;
+    const bindingStatus = held ? "held_for_transfer" : "retired";
+    await env.DB.batch([
+      env.DB.prepare(
+        `UPDATE installation SET status = 'deleted'
+         WHERE installation_id = ? AND EXISTS (
+           SELECT 1 FROM tenant_binding WHERE org_id = ? AND installation_id = ?
+             AND epoch = ? AND status IN ('active', 'held_for_transfer')
+         )`,
+      ).bind(command.installation_id, command.org_id, command.installation_id, command.binding_epoch),
+      env.DB.prepare(
+        `UPDATE tenant_binding SET status = ?, retired_at = ?, reason = ?
+         WHERE org_id = ? AND installation_id = ? AND epoch = ?
+           AND status IN ('active', 'held_for_transfer')`,
+      ).bind(bindingStatus, retiredAt, held ? null : command.reason,
+        command.org_id, command.installation_id, command.binding_epoch),
+      env.DB.prepare(
+        `UPDATE deletion_command
+         SET phase = 'frozen', freeze_inventory = ?, freeze_ack_at = ?,
+             retained_term_ids = ?, held = ?, alert_due = ?, due_at = ?, updated_at = ?
+         WHERE assertion_sha256 = ? AND phase = 'accepted'
+           AND EXISTS (SELECT 1 FROM tenant_binding WHERE org_id = ?
+             AND installation_id = ? AND epoch = ? AND status = ?)`,
+      ).bind(inventory, nowIso, JSON.stringify(termIds), held ? 1 : 0, held ? 1 : 0,
+        nowIso, nowIso, assertionSha256, command.org_id, command.installation_id,
+        command.binding_epoch, bindingStatus),
+    ]);
   }
 
-  const installationAfter = await readInstallationRow(
-    env.DB,
-    binding.installation_id,
-  );
-  const bindingAfter = await readBindingRow(
-    env.DB,
-    input.orgId,
-    binding.installation_id,
-  );
-  if (installationAfter === null || bindingAfter === null) {
-    return { result: "bad_request" };
+  const frozenCommand = await readDeletionCommand(env.DB, assertionSha256);
+  if (frozenCommand === null) return { result: "bad_request" };
+  if (frozenCommand.phase === "completed" && frozenCommand.completion_detail !== null) {
+    return { result: "ok", detail: frozenCommand.completion_detail };
+  }
+  if (frozenCommand.phase !== "frozen" || frozenCommand.retained_term_ids === null) {
+    return { result: "transient" };
+  }
+  const binding = await readBindingRow(env.DB, frozenCommand.org_id, frozenCommand.installation_id);
+  const installation = await readInstallationRow(env.DB, frozenCommand.installation_id);
+  if (
+    binding === null || installation === null || binding.epoch !== frozenCommand.binding_epoch ||
+    installation.status !== "deleted" ||
+    (frozenCommand.held === 1 ? binding.status !== "held_for_transfer" : binding.status !== "retired")
+  ) return { result: "transient" };
+
+  if (frozenCommand.alert_due === 1) {
+    await raiseAl18HeldBinding(env, frozenCommand.org_id, frozenCommand.installation_id);
+    await env.DB.prepare(
+      `UPDATE deletion_command SET alert_due = 0, updated_at = ?
+       WHERE assertion_sha256 = ? AND phase = 'frozen'`,
+    ).bind(await clockNowIso(env), assertionSha256).run();
   }
 
-  const detail = installationDeleteDetail(installationAfter, bindingAfter);
+  const retainedTermIds = JSON.parse(frozenCommand.retained_term_ids) as unknown;
+  if (!Array.isArray(retainedTermIds) || retainedTermIds.some((id) => typeof id !== "string")) {
+    return { result: "transient" };
+  }
+  try {
+    await purgeByInstallationId(frozenCommand.installation_id, frozenCommand.accepted_actor, {
+      db: env.DB,
+      r2: env.R2,
+      auditId: `rm27-delete-purge:${assertionSha256}`,
+      preserveUsageTermIds: retainedTermIds as string[],
+    });
+  } catch {
+    return { result: "transient" };
+  }
+  const finalInstallation = await readInstallationRow(env.DB, frozenCommand.installation_id);
+  const finalBinding = await readBindingRow(env.DB, frozenCommand.org_id, frozenCommand.installation_id);
+  if (finalInstallation === null || finalBinding === null) return { result: "transient" };
+  const detail = installationDeleteDetail(finalInstallation, finalBinding);
+  const completedAt = await clockNowIso(env);
+  await env.DB.prepare(
+    `UPDATE deletion_command SET phase = 'completed', purge_state = 'completed',
+       completion_detail = ?, due_at = ?, updated_at = ?
+     WHERE assertion_sha256 = ? AND phase = 'frozen' AND purge_state = 'due'`,
+  ).bind(detail, completedAt, completedAt, assertionSha256).run();
+  const completed = await readDeletionCommand(env.DB, assertionSha256);
+  if (completed?.phase !== "completed" || completed.completion_detail === null) {
+    return { result: "transient" };
+  }
+  return { result: "ok", detail: completed.completion_detail };
+}
 
-  const preserveUsageTermIds = await installationOpenTermIds(
-    env,
-    binding.installation_id,
-    input.orgId,
-  );
-
-  await purgeByInstallationId(binding.installation_id, input.operatorId, {
-    db: env.DB,
-    r2: env.R2,
-    preserveUsageTermIds,
-  });
-
-  return {
-    result: "ok",
-    detail,
-  };
+export async function dispatchDeletionCommands(env: TransferEnv, limit = 25): Promise<number> {
+  const nowIso = await clockNowIso(env);
+  const rows = await env.DB.prepare(
+    `SELECT assertion_sha256 FROM deletion_command
+     WHERE phase <> 'completed' AND due_at <= ?
+       AND (lease_until IS NULL OR lease_until <= ?)
+     ORDER BY due_at, created_at LIMIT ?`,
+  ).bind(nowIso, nowIso, limit).all<{ assertion_sha256: string }>();
+  let attempted = 0;
+  for (const row of rows.results ?? []) {
+    attempted += 1;
+    await resumeDeleteInstallation(env, row.assertion_sha256);
+  }
+  return attempted;
 }
 
 export async function retireHeldBindingIfEmpty(
@@ -1528,12 +1780,16 @@ export async function retireHeldBindingIfEmpty(
   if (binding === null || binding.status !== "held_for_transfer") {
     return;
   }
-  const hasCoverage = await installationHasOpenCoverage(
+  const inspected = await inspectInstallationCoverage(
     env,
     installationId,
     orgId,
   );
-  if (hasCoverage) {
+  // Unknown or malformed DO state is never proof of emptiness.
+  if (
+    inspected === null || inspected.reservations.length > 0 ||
+    inspected.terms.some((row) => termIsNotEnded(row.state))
+  ) {
     return;
   }
   const nowIso = await clockNowIso(env);

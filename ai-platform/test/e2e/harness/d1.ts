@@ -31,6 +31,7 @@ import rm18CeilingClaimsSql from "../../../migrations/20261019140000_rm18_compli
 import r6Pt1ReversalRoutesSql from "../../../migrations/20261019150000_r6_pt1_reversal_routes.sql?raw";
 import r6Pt1TransferRouteManifestSql from "../../../migrations/20261019160000_r6_pt1_transfer_route_manifest.sql?raw";
 import r6Rm26TransferPreparationSql from "../../../migrations/20261020140000_r6_rm26_transfer_preparation.sql?raw";
+import rm27DurableDeletionSql from "../../../migrations/20261020150000_rm27_durable_deletion.sql?raw";
 import { splitSqlStatements } from "../../split-sql-statements";
 import { isolateConfigCache } from "../../../src/config-cache";
 import { clearE2eIssuerRegistry } from "./aat";
@@ -72,6 +73,7 @@ export const MIGRATION_SQL: readonly string[] = [
   r6Pt1ReversalRoutesSql,
   r6Pt1TransferRouteManifestSql,
   r6Rm26TransferPreparationSql,
+  rm27DurableDeletionSql,
 ];
 
 const TOKEN_CONTRACT_V2_SEED = {
@@ -182,6 +184,7 @@ export async function resetPlatformState(): Promise<void> {
     db.prepare("DELETE FROM grant_claim_dispute"),
     db.prepare("DELETE FROM grant_claim_backfill"),
     db.prepare("DELETE FROM reversal_command"),
+    db.prepare("DELETE FROM deletion_command"),
     db.prepare("DELETE FROM transfer_route_quarantine"),
     db.prepare("DELETE FROM transfer_route_manifest"),
     db.prepare("DELETE FROM live_value_route"),

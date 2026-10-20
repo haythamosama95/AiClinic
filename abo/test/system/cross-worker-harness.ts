@@ -58,6 +58,7 @@ import strandedTermRecoverySql from "../../../ai-platform/migrations/20261019170
 import rm24FallbackAdmissionIdentitySql from "../../../ai-platform/migrations/20261020120000_rm24_fallback_admission_identity.sql?raw";
 import rm25FallbackSettlementSql from "../../../ai-platform/migrations/20261020130000_rm25_fallback_settlement.sql?raw";
 import rm26TransferPreparationSql from "../../../ai-platform/migrations/20261020140000_r6_rm26_transfer_preparation.sql?raw";
+import rm27DurableDeletionSql from "../../../ai-platform/migrations/20261020150000_rm27_durable_deletion.sql?raw";
 
 const PLATFORM_MIGRATION_SQL: string[] = [
   platformSchemaSql,
@@ -93,6 +94,7 @@ const PLATFORM_MIGRATION_SQL: string[] = [
   rm24FallbackAdmissionIdentitySql,
   rm25FallbackSettlementSql,
   rm26TransferPreparationSql,
+  rm27DurableDeletionSql,
 ];
 
 const VENDOR_CONTRACT_VERSION = CHANNEL_VERSIONS.vendorEntrypoint;
@@ -921,6 +923,7 @@ async function clearPlatformTransactionalTables(): Promise<void> {
       env.PLATFORM_DB.prepare("DELETE FROM transfer_route_quarantine"),
       env.PLATFORM_DB.prepare("DELETE FROM transfer_route_manifest"),
       env.PLATFORM_DB.prepare("DELETE FROM transfer_preparation"),
+      env.PLATFORM_DB.prepare("DELETE FROM deletion_command"),
       env.PLATFORM_DB.prepare("DELETE FROM live_value_route"),
       env.PLATFORM_DB.prepare("DELETE FROM grant_tombstone"),
       env.PLATFORM_DB.prepare(`CREATE TRIGGER grant_claim_no_delete

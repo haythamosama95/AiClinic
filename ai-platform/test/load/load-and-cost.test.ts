@@ -12,6 +12,7 @@ import idempotencyFingerprintMigrationSql from "../../migrations/20261014120000_
 import rm24FallbackAdmissionIdentityMigrationSql from "../../migrations/20261020120000_rm24_fallback_admission_identity.sql?raw";
 import rm25FallbackSettlementMigrationSql from "../../migrations/20261020130000_rm25_fallback_settlement.sql?raw";
 import rm26TransferPreparationMigrationSql from "../../migrations/20261020140000_r6_rm26_transfer_preparation.sql?raw";
+import rm27DurableDeletionMigrationSql from "../../migrations/20261020150000_rm27_durable_deletion.sql?raw";
 import { applySqlStatements } from "../split-sql-statements";
 import ciWorkflowSource from "../../../.github/workflows/ci.yml?raw";
 import packageJson from "../../package.json";
@@ -88,6 +89,7 @@ async function clearLoadTables(): Promise<void> {
     env.DB.prepare("DELETE FROM platform_counter"),
     env.DB.prepare("DELETE FROM capability_grant"),
     env.DB.prepare("DELETE FROM coverage_mirror"),
+    env.DB.prepare("DELETE FROM deletion_command"),
     env.DB.prepare("DELETE FROM installation"),
   ]);
 }
@@ -122,6 +124,7 @@ beforeAll(async () => {
   await applySqlStatements(env.DB, rm24FallbackAdmissionIdentityMigrationSql);
   await applySqlStatements(env.DB, rm25FallbackSettlementMigrationSql);
   await applySqlStatements(env.DB, rm26TransferPreparationMigrationSql);
+  await applySqlStatements(env.DB, rm27DurableDeletionMigrationSql);
   await clearLoadTables();
   const spies = createBindingSpies(env);
   const result = await runLoadHappyPath({

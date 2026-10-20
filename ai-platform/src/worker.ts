@@ -185,6 +185,7 @@ interface Env extends AlertEnv {
   VENDOR?: {
     dispatchAcceptedGrantCommands(): Promise<number>;
     dispatchAcceptedTransferPreparations(): Promise<number>;
+    dispatchDeletionCommands(): Promise<number>;
     shipDueReversalExports(): Promise<number>;
   };
 }
@@ -2320,6 +2321,7 @@ export class GatewayObject extends DurableObject {
       }
       if (kind === "set_transfer_pending") {
         const result = await setTransferPendingRPC(
+          this.ctx,
           this.ctx.storage,
           (fn) => this.ctx.blockConcurrencyWhile(fn),
           body as Parameters<typeof setTransferPendingRPC>[2],
@@ -2981,6 +2983,14 @@ export default {
         log.info("scheduled_transfer_preparations", { prepared });
       } catch (error) {
         log.error("scheduled_transfer_preparations_failed", {
+          error: error instanceof Error ? error.message : String(error),
+        });
+      }
+      try {
+        const deleted = await runtimeEnv.VENDOR?.dispatchDeletionCommands() ?? 0;
+        log.info("scheduled_deletion_commands", { deleted });
+      } catch (error) {
+        log.error("scheduled_deletion_commands_failed", {
           error: error instanceof Error ? error.message : String(error),
         });
       }

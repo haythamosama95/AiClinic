@@ -701,7 +701,19 @@ export function buildCoverageSnapshot(input: {
   let coverageState: string;
   let reason = "none";
 
-  if (active !== undefined) {
+  const hasOpenCoverage = input.terms.some((term) =>
+    term.state === "active" || term.state === "grace" ||
+    term.state === "queued" || term.state === "held"
+  );
+  if (input.hot.transfer_pending === 1 && hasOpenCoverage) {
+    coverageState = "transfer_pending";
+    reason = "transfer_pending";
+    if (active !== undefined) {
+      termObject = snapshotTermObject(active, input.hot);
+    } else if (grace !== undefined) {
+      termObject = snapshotTermObject(grace, input.hot);
+    }
+  } else if (active !== undefined) {
     coverageState = "active";
     termObject = snapshotTermObject(active, input.hot);
   } else if (grace !== undefined) {
@@ -4127,38 +4139,113 @@ async function transferGrantId(transferId: string, index: number): Promise<strin
 export interface SetTransferPendingRequest {
   kind: "set_transfer_pending";
   transferId?: string;
+  adoptDeletionId?: string;
   bindingEpoch: number;
+  installationId?: string;
+  orgId?: string;
+  vendorContractVersion?: number;
+  nowIso?: string;
+  durationScale?: DurationScale;
 }
 
 export interface SetTransferPendingResponse {
   kind: "set_transfer_pending";
   result: "ok" | "bad_request";
+  terms?: Array<{ term_id: string; state: string }>;
+  reservations?: unknown[];
 }
 
 export async function setTransferPendingRPC(
+  state: DurableObjectState,
   storage: DurableObjectStorage,
   blockConcurrencyWhile: <T>(fn: () => Promise<T>) => Promise<T>,
   request: SetTransferPendingRequest,
 ): Promise<SetTransferPendingResponse> {
   return blockConcurrencyWhile(async () => {
+    const emitsDeletionSnapshot = request.installationId !== undefined ||
+      request.orgId !== undefined || request.vendorContractVersion !== undefined ||
+      request.nowIso !== undefined;
+    if (emitsDeletionSnapshot && (
+      typeof request.installationId !== "string" || typeof request.orgId !== "string" ||
+      !Number.isInteger(request.vendorContractVersion) || typeof request.nowIso !== "string"
+    )) return { kind: "set_transfer_pending", result: "bad_request" };
     ensureHotRow(storage, request.bindingEpoch);
-    const hot = loadHot(storage);
+    let hot = loadHot(storage);
     if (hot.binding_epoch !== request.bindingEpoch || hot.transferred_out_to != null) {
       return { kind: "set_transfer_pending", result: "bad_request" };
     }
+    const transitioned = hot.transfer_pending !== 1;
     if (hot.transfer_pending === 1) {
-      if (request.transferId === undefined || hot.transfer_pending_id === request.transferId) {
-        return { kind: "set_transfer_pending", result: "ok" };
+      if (request.transferId !== undefined && hot.transfer_pending_id !== request.transferId) {
+        if (
+          hot.transfer_pending_id !== null &&
+          request.adoptDeletionId !== hot.transfer_pending_id
+        ) {
+          return { kind: "set_transfer_pending", result: "bad_request" };
+        }
       }
-      if (hot.transfer_pending_id !== null) {
-        return { kind: "set_transfer_pending", result: "bad_request" };
+      if (
+        request.transferId === undefined || hot.transfer_pending_id === request.transferId
+      ) {
+        const terms = loadTerms(storage);
+        const reservations = JSON.parse(hot.reservations) as unknown;
+        if (!Array.isArray(reservations)) {
+          return { kind: "set_transfer_pending", result: "bad_request" };
+        }
+        return {
+          kind: "set_transfer_pending", result: "ok",
+          ...(emitsDeletionSnapshot ? {
+            terms: terms.map((term) => ({ term_id: term.term_id, state: term.state })),
+            reservations,
+          } : {}),
+        };
       }
     }
-    updateHot(storage, {
-      transfer_pending: 1,
-      transfer_pending_id: request.transferId ?? hot.transfer_pending_id ?? null,
+    const reservations = JSON.parse(hot.reservations) as unknown;
+    if (!Array.isArray(reservations)) {
+      return { kind: "set_transfer_pending", result: "bad_request" };
+    }
+    let terms: TermRow[] = [];
+    storage.transactionSync(() => {
+      updateHot(storage, {
+        transfer_pending: 1,
+        transfer_pending_id: request.transferId ?? hot.transfer_pending_id ?? null,
+      });
+      hot = loadHot(storage);
+      terms = loadTerms(storage);
+      if (emitsDeletionSnapshot && transitioned) {
+        hot = { ...hot, clinic_seq: hot.clinic_seq + 1 };
+        updateHot(storage, { clinic_seq: hot.clinic_seq });
+        const snapshot = buildCoverageSnapshot({
+          vendorContractVersion: request.vendorContractVersion!,
+          orgId: request.orgId!,
+          hot,
+          terms,
+          durationScale: request.durationScale,
+        });
+        snapshot.clinic_seq = hot.clinic_seq;
+        insertOutbox(storage, "coverage_event", {
+          event_id: coverageEventId(request.installationId!, hot.clinic_seq),
+          org_id: request.orgId!,
+          installation_id: request.installationId!,
+          binding_epoch: hot.binding_epoch,
+          clinic_seq: hot.clinic_seq,
+          kind: "transfer",
+          at: request.nowIso!,
+          snapshot,
+        });
+      }
     });
-    return { kind: "set_transfer_pending", result: "ok" };
+    if (emitsDeletionSnapshot && transitioned) {
+      await scheduleOutboxAlarmIfPending(state, storage, request.nowIso!);
+    }
+    return {
+      kind: "set_transfer_pending", result: "ok",
+      ...(emitsDeletionSnapshot ? {
+        terms: terms.map((term) => ({ term_id: term.term_id, state: term.state })),
+        reservations,
+      } : {}),
+    };
   });
 }
 

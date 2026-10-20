@@ -21,16 +21,19 @@ import {
 import { decodeDoResponse } from "../quota-do/response-decoder";
 import type { DurationScale } from "../coverage/calendar";
 import {
+  acceptDeleteInstallation,
   executeBeginTransfer,
-  executeDeleteInstallation,
   executeTransferIn,
   executeTransferOut,
+  dispatchDeletionCommands as dispatchDueDeletionCommands,
   dispatchTransferPreparations,
+  readDeletionCommand,
   readTransferByAssertionSha256,
   isTransferRouteQuarantined,
   readTransferById,
   readTransferPreparationByAssertion,
   resumeTransferPreparation,
+  resumeDeleteInstallation,
   retireHeldBindingIfEmpty,
   transferRowToDetail,
   verifyTransferOutEvidence,
@@ -5637,6 +5640,30 @@ export class VendorEntrypoint extends WorkerEntrypoint<VendorEnv> {
       return grantRejected(version, "bad_request");
     }
 
+    const operation = args.operation;
+    if (validateOperation(operation).ok && isRecord(operation)) {
+      const assertionSha256 = await operationAssertionSha256(operation);
+      const prior = await readDeletionCommand(this.env.DB, assertionSha256);
+      if (prior !== null) {
+        let accepted: unknown;
+        try { accepted = JSON.parse(prior.accepted_command); } catch { accepted = null; }
+        if (
+          isRecord(accepted) && prior.org_id === orgId && prior.reason === reason &&
+          prior.accepted_actor === access.email &&
+          prior.signer_credential_id === args.signer_credential_id &&
+          accepted.contract_version === version && accepted.org_id === orgId &&
+          accepted.reason === reason && accepted.actor === access.email &&
+          operationParamsMatch("deleteInstallation", operation, args,
+            typeof args.access_jwt === "string" ? args.access_jwt : "", version)
+        ) {
+          const resumed = await resumeDeleteInstallation(this.env, assertionSha256);
+          return resumed.result === "ok"
+            ? { contract_version: version, result: "ok", code: "", detail: resumed.detail }
+            : { contract_version: version, result: "transient", code: "", detail: "deletion_pending" };
+        }
+      }
+    }
+
     const check = await runHpAssertionChecks(
       this.env,
       "deleteInstallation",
@@ -5659,30 +5686,46 @@ export class VendorEntrypoint extends WorkerEntrypoint<VendorEnv> {
       };
     }
 
-    const deleted = await executeDeleteInstallation(this.env, {
+    const nowIso = await clockNowIso(this.env);
+    const binding = await this.env.DB.prepare(
+      `SELECT installation_id, epoch FROM tenant_binding
+       WHERE org_id = ? AND status IN ('active', 'held_for_transfer')
+       ORDER BY epoch DESC LIMIT 1`,
+    ).bind(orgId).first<{ installation_id: string; epoch: number }>();
+    if (binding === null) {
+      await writeEntrypointAudit(this.env.DB, access.email, "deleteInstallation",
+        check.auditTarget, check.assertionSha256);
+      return grantRejected(version, "bad_request");
+    }
+    const acceptedCommand = JSON.stringify({
+      contract_version: version,
+      snapshot_version: CHANNEL_VERSIONS.platformDo,
+      org_id: orgId,
+      installation_id: binding.installation_id,
+      binding_epoch: binding.epoch,
+      reason,
+      actor: access.email,
+      signer_credential_id: check.signer.credential_id,
+      accepted_at: nowIso,
+      duration_scale: this.env.DURATION_SCALE === "staging" ? "staging" : null,
+    });
+    const accepted = await acceptDeleteInstallation(this.env, {
       orgId,
       reason,
       operatorId: access.email,
+      assertionSha256: check.assertionSha256,
+      signerCredentialId: check.signer.credential_id,
+      acceptedCommand,
     });
-    if (deleted.result === "bad_request") {
-      await writeEntrypointAudit(
-        this.env.DB,
-        access.email,
-        "deleteInstallation",
-        check.auditTarget,
-        check.assertionSha256,
-      );
+    if (accepted.result !== "accepted") {
+      await writeEntrypointAudit(this.env.DB, access.email, "deleteInstallation",
+        check.auditTarget, check.assertionSha256);
       return grantRejected(version, "bad_request");
     }
-
-    await finishHpAssertion(this.env, access.email, "deleteInstallation", check);
-
-    return {
-      contract_version: version,
-      result: "ok",
-      code: "",
-      detail: deleted.detail,
-    };
+    const resumed = await resumeDeleteInstallation(this.env, accepted.assertionSha256);
+    return resumed.result === "ok"
+      ? { contract_version: version, result: "ok", code: "", detail: resumed.detail }
+      : { contract_version: version, result: "transient", code: "", detail: "deletion_pending" };
   }
 
   async voidForReversal(
@@ -7292,6 +7335,12 @@ export class VendorEntrypoint extends WorkerEntrypoint<VendorEnv> {
              AND p.from_installation_id = grant_claim.installation_id
              AND p.phase <> 'completed'
          )
+         AND NOT EXISTS (
+           SELECT 1 FROM deletion_command d
+           WHERE d.org_id = grant_claim.org_id
+             AND d.installation_id = grant_claim.installation_id
+             AND d.phase <> 'completed'
+         )
        ORDER BY due_at, grant_id LIMIT 25`,
     ).bind(nowIso, nowIso).all<{ grant_id: string; accepted_command: string | null }>();
     let attempted = 0;
@@ -7322,6 +7371,10 @@ export class VendorEntrypoint extends WorkerEntrypoint<VendorEnv> {
 
   async dispatchAcceptedTransferPreparations(): Promise<number> {
     return dispatchTransferPreparations(this.env, 25);
+  }
+
+  async dispatchDeletionCommands(): Promise<number> {
+    return dispatchDueDeletionCommands(this.env, 25);
   }
 
   async shipDueReversalExports(): Promise<number> {

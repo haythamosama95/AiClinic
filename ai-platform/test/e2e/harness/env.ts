@@ -33,6 +33,7 @@ declare module "cloudflare:test" {
         detail: string;
       }>;
       dispatchAcceptedGrantCommands(): Promise<number>;
+      dispatchDeletionCommands(): Promise<number>;
       shipDueReversalExports(): Promise<number>;
     };
   }
@@ -84,6 +85,7 @@ export const PLATFORM_TABLES = [
   "feed_consumer",
   "plan_version",
   "coverage_mirror",
+  "deletion_command",
 ] as const;
 
 export const TAXONOMY_BODY_KEYS = [

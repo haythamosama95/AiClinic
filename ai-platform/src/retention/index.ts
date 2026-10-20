@@ -119,14 +119,15 @@ async function writePurgeAudit(
   operatorId: string,
   action: string,
   target: string,
+  auditId = crypto.randomUUID(),
 ): Promise<void> {
   await db
     .prepare(
-      `INSERT INTO control_audit
+      `INSERT OR IGNORE INTO control_audit
          (audit_id, operator_id, action, target, before_pointer, after_pointer, recorded_at)
        VALUES (?, ?, ?, ?, NULL, NULL, ?)`,
     )
-    .bind(crypto.randomUUID(), operatorId, action, target, new Date().toISOString())
+    .bind(auditId, operatorId, action, target, new Date().toISOString())
     .run();
 }
 
@@ -290,6 +291,8 @@ export async function purgeByInstallationId(
   bindings: {
     db: D1Database;
     r2: R2Bucket;
+    /** Stable command identity for an idempotent deletion-purge audit. */
+    auditId?: string;
     /** DO term_ids that have not ended; their usage_event rows are kept. */
     preserveUsageTermIds?: readonly string[];
   },
@@ -376,7 +379,13 @@ export async function purgeByInstallationId(
 
   await db.batch(batch);
 
-  await writePurgeAudit(db, operatorId, "purge_installation", installationId);
+  await writePurgeAudit(
+    db,
+    operatorId,
+    "purge_installation",
+    installationId,
+    bindings.auditId,
+  );
 }
 
 export type { Envelope };

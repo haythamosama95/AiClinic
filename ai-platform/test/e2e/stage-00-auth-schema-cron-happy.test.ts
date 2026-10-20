@@ -83,6 +83,7 @@ const EXPECTED_PLATFORM_TABLES = [
   "token_contract",
   "transfer",
   "transfer_preparation",
+  "deletion_command",
   "transfer_route_manifest",
   "transfer_route_quarantine",
   "transfer_step",

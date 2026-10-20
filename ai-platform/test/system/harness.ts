@@ -98,6 +98,7 @@ import r6Pt1ReversalRoutesSql from "../../migrations/20261019150000_r6_pt1_rever
 import r6Pt1TransferRouteManifestSql from "../../migrations/20261019160000_r6_pt1_transfer_route_manifest.sql?raw";
 import strandedTermRecoverySql from "../../migrations/20261019170000_r4_d2_stranded_recovery.sql?raw";
 import r6Rm26TransferPreparationSql from "../../migrations/20261020140000_r6_rm26_transfer_preparation.sql?raw";
+import rm27DurableDeletionSql from "../../migrations/20261020150000_rm27_durable_deletion.sql?raw";
 import { applySqlStatements } from "../split-sql-statements";
 import {
   createCapabilityRegistry,
@@ -184,6 +185,7 @@ export const PLATFORM_TABLES = [
   "plan_version",
   "coverage_mirror",
   "grant_ledger",
+  "deletion_command",
 ] as const;
 
 export type SseEvent = { event: string; data: Record<string, unknown> };
@@ -299,6 +301,7 @@ const MIGRATION_SQL = [
   r6Pt1TransferRouteManifestSql,
   strandedTermRecoverySql,
   r6Rm26TransferPreparationSql,
+    rm27DurableDeletionSql,
 ];
 
 const CATALOGUE_PLAN_NAME = "standard";
@@ -383,6 +386,7 @@ export async function resetPlatformState(): Promise<void> {
     env.DB.prepare("DELETE FROM reversal_command"),
     env.DB.prepare("DELETE FROM transfer_route_quarantine"),
     env.DB.prepare("DELETE FROM transfer_preparation"),
+    env.DB.prepare("DELETE FROM deletion_command"),
     env.DB.prepare("DELETE FROM transfer_route_manifest"),
     env.DB.prepare("DELETE FROM live_value_route"),
     env.DB.prepare("DROP TRIGGER IF EXISTS grant_tombstone_no_delete"),

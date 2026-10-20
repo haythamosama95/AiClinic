@@ -235,10 +235,10 @@ async function hpBeginTransfer(input: {
   return p38VendorCall("beginTransfer", request.args, { accessJwt: request.accessJwt });
 }
 
-async function hpDeleteInstallation(input: {
+async function buildHpDeleteInstallationRequest(input: {
   orgId: string;
   reason?: string;
-}): Promise<GrantResultEnvelope> {
+}): Promise<{ args: Record<string, unknown>; accessJwt: string }> {
   const signer = coverClinicSigner();
   const accessJwt = await mintVendorAccessJwt();
   const operation = await operationForHp({
@@ -258,9 +258,8 @@ async function hpDeleteInstallation(input: {
       uv: true,
     }),
   );
-  return p38VendorCall(
-    "deleteInstallation",
-    {
+  return {
+    args: {
       contract_version: CONTRACT_VERSION,
       org_id: input.orgId,
       reason: input.reason ?? "decommission",
@@ -268,8 +267,16 @@ async function hpDeleteInstallation(input: {
       operation,
       assertion,
     },
-    { accessJwt },
-  );
+    accessJwt,
+  };
+}
+
+async function hpDeleteInstallation(input: {
+  orgId: string;
+  reason?: string;
+}): Promise<GrantResultEnvelope> {
+  const request = await buildHpDeleteInstallationRequest(input);
+  return p38VendorCall("deleteInstallation", request.args, { accessJwt: request.accessJwt });
 }
 
 async function transferOut(transferId: string): Promise<GrantResultEnvelope> {
@@ -1391,7 +1398,176 @@ describe("transfer, deletion with coverage left, ledger retention", () => {
     )).toBe(false);
   });
 
-  it("E2E-P3.8-04 A24 delete with paid time left holds the binding", async () => {
+  it("R6-PT3 R7-PS1 resumes unknown deletion freeze and publishes held unavailability once", async () => {
+    const scenario = await newScenario();
+    await coverClinic(scenario);
+    await newClinic(scenario);
+    expect((await vendorSuspend(scenario)).status).toBe(200);
+    const request = await buildHpDeleteInstallationRequest({ orgId: scenario.orgId });
+    clearCapturedVendorEmails();
+
+    const realGet = env.DO.get.bind(env.DO);
+    let failFreeze = true;
+    const getSpy = vi.spyOn(env.DO, "get").mockImplementation((id) => {
+      const stub = realGet(id);
+      return {
+        fetch: async (input: RequestInfo | URL, init?: RequestInit) => {
+          const body = typeof init?.body === "string"
+            ? JSON.parse(init.body) as Record<string, unknown>
+            : {};
+          if (body.kind === "set_transfer_pending" && failFreeze) {
+            failFreeze = false;
+            return new Response(null, { status: 503 });
+          }
+          return stub.fetch(input, init);
+        },
+      } as DurableObjectStub;
+    });
+    let first: GrantResultEnvelope;
+    try {
+      first = await p38VendorCall("deleteInstallation", request.args, {
+        accessJwt: request.accessJwt,
+      });
+    } finally {
+      getSpy.mockRestore();
+    }
+    expect(first!.result).toBe("transient");
+    expect(await queryOne<{ phase: string }>(
+      `SELECT phase FROM deletion_command WHERE org_id = ?`, [scenario.orgId],
+    )).toEqual({ phase: "accepted" });
+    expect(await queryOne<{ status: string }>(
+      `SELECT status FROM tenant_binding WHERE org_id = ?`, [scenario.orgId],
+    )).toEqual({ status: "active" });
+    expect(await queryOne<{ status: string }>(
+      `SELECT status FROM installation WHERE installation_id = ?`, [scenario.installationId],
+    )).toEqual({ status: "active" });
+
+    await runScheduled("*/5 * * * *");
+    const resumed = await p38VendorCall("deleteInstallation", request.args, {
+      accessJwt: request.accessJwt,
+    });
+    expect(resumed.result).toBe("ok");
+    expect(await queryOne<{ phase: string; purge_state: string; held: number }>(
+      `SELECT phase, purge_state, held FROM deletion_command WHERE org_id = ?`, [scenario.orgId],
+    )).toEqual({ phase: "completed", purge_state: "completed", held: 1 });
+    expect(al18Emails()).toHaveLength(1);
+
+    const live = await getCoverageForInstallation(scenario.orgId, scenario.installationId);
+    const liveSnapshot = JSON.parse(live.detail).snapshot as Record<string, unknown>;
+    expect(liveSnapshot.state).toBe("transfer_pending");
+    expect(liveSnapshot.reason).toBe("transfer_pending");
+    expect(liveSnapshot.suspended).toBe(true);
+    expect(liveSnapshot.term).toBeTruthy();
+
+    await runDurableObjectAlarm(quotaDoStub(scenario.installationId));
+    const mirror = await queryOne<{ state: string; term_snapshot: string }>(
+      `SELECT state, term_snapshot FROM coverage_mirror WHERE installation_id = ?`,
+      [scenario.installationId],
+    );
+    expect(mirror?.state).toBe("transfer_pending");
+    expect((JSON.parse(mirror!.term_snapshot) as Record<string, unknown>).reason)
+      .toBe("transfer_pending");
+    expect(await count("coverage_event", "installation_id = ? AND kind = 'transfer'", [
+      scenario.installationId,
+    ])).toBe(1);
+
+    const repeat = await p38VendorCall("deleteInstallation", request.args, {
+      accessJwt: request.accessJwt,
+    });
+    expect(repeat.result).toBe("ok");
+    expect(repeat.detail).toBe(resumed.detail);
+    expect(await count("coverage_event", "installation_id = ? AND kind = 'transfer'", [
+      scenario.installationId,
+    ])).toBe(1);
+    expect(await count("control_audit", "audit_id LIKE 'rm27-delete-purge:%'", [])).toBe(1);
+  });
+
+  it("R6-PT3 keeps a malformed acknowledged reservation inventory due", async () => {
+    const scenario = await newScenario();
+    const request = await buildHpDeleteInstallationRequest({ orgId: scenario.orgId });
+    const realGet = env.DO.get.bind(env.DO);
+    let malformed = true;
+    const getSpy = vi.spyOn(env.DO, "get").mockImplementation((id) => {
+      const stub = realGet(id);
+      return {
+        fetch: async (input: RequestInfo | URL, init?: RequestInit) => {
+          const body = typeof init?.body === "string"
+            ? JSON.parse(init.body) as Record<string, unknown>
+            : {};
+          if (body.kind === "set_transfer_pending" && malformed) {
+            malformed = false;
+            return Response.json({
+              kind: "set_transfer_pending",
+              result: "ok",
+              terms: [],
+              reservations: [{ id: "incomplete" }],
+            });
+          }
+          return stub.fetch(input, init);
+        },
+      } as DurableObjectStub;
+    });
+    let first: GrantResultEnvelope;
+    try {
+      first = await p38VendorCall("deleteInstallation", request.args, {
+        accessJwt: request.accessJwt,
+      });
+    } finally {
+      getSpy.mockRestore();
+    }
+    expect(first!.result).toBe("transient");
+    expect(await queryOne<{ phase: string }>(
+      `SELECT phase FROM deletion_command WHERE org_id = ?`, [scenario.orgId],
+    )).toEqual({ phase: "accepted" });
+    expect(await queryOne<{ status: string }>(
+      `SELECT status FROM tenant_binding WHERE org_id = ?`, [scenario.orgId],
+    )).toEqual({ status: "active" });
+
+    const resumed = await p38VendorCall("deleteInstallation", request.args, {
+      accessJwt: request.accessJwt,
+    });
+    expect(resumed.result).toBe("ok");
+  });
+
+  it("R6-PT3: a failed purge stays due and the same accepted deletion finishes it", async () => {
+    const scenario = await newScenario();
+    await coverClinic(scenario);
+    await newClinic(scenario);
+    const request = await buildHpDeleteInstallationRequest({ orgId: scenario.orgId });
+    const realBatch = env.DB.batch.bind(env.DB);
+    let batchCount = 0;
+    const batchSpy = vi.spyOn(env.DB, "batch").mockImplementation((statements) => {
+      batchCount += 1;
+      if (batchCount === 3) return Promise.reject(new Error("simulated purge interruption"));
+      return realBatch(statements);
+    });
+    let first: GrantResultEnvelope;
+    try {
+      first = await p38VendorCall("deleteInstallation", request.args, {
+        accessJwt: request.accessJwt,
+      });
+    } finally {
+      batchSpy.mockRestore();
+    }
+    expect(first!.result).toBe("transient");
+    expect(await queryOne<{ phase: string; purge_state: string; held: number }>(
+      `SELECT phase, purge_state, held FROM deletion_command WHERE org_id = ?`, [scenario.orgId],
+    )).toEqual({ phase: "frozen", purge_state: "due", held: 1 });
+    expect(await queryOne<{ status: string }>(
+      `SELECT status FROM tenant_binding WHERE org_id = ?`, [scenario.orgId],
+    )).toEqual({ status: "held_for_transfer" });
+
+    const resumed = await p38VendorCall("deleteInstallation", request.args, {
+      accessJwt: request.accessJwt,
+    });
+    expect(resumed.result).toBe("ok");
+    expect(await queryOne<{ phase: string; purge_state: string }>(
+      `SELECT phase, purge_state FROM deletion_command WHERE org_id = ?`, [scenario.orgId],
+    )).toEqual({ phase: "completed", purge_state: "completed" });
+    expect(await count("control_audit", "audit_id LIKE 'rm27-delete-purge:%'", [])).toBe(1);
+  });
+
+  it("R6-PT3 R7-PS1 E2E-P3.8-04 A24 delete with paid time left holds the binding", async () => {
     const scenario = await newScenario();
     await coverClinic(scenario);
     await newClinic(scenario);
@@ -1454,7 +1630,7 @@ describe("transfer, deletion with coverage left, ledger retention", () => {
     expect(transfer.result).toBe("ok");
   });
 
-  it("E2E-P3.8-05 delete with no coverage retires the binding and the next token creates epoch 2", async () => {
+  it("R6-PT3: successful empty freeze retires the binding and the next token creates epoch 2", async () => {
     const scenario = await newScenario();
     await coverClinic(scenario);
     await expireActivePaidTerm(scenario.installationId);
@@ -1477,7 +1653,7 @@ describe("transfer, deletion with coverage left, ledger retention", () => {
     expect(binding?.epoch).toBe(2);
   });
 
-  it("E2E-P3.8-06 voiding the remaining grants of a held binding retires it", async () => {
+  it("R6-PT3 R7-PS1: voiding the remaining grants of a held binding retires it", async () => {
     const scenario = await newScenario();
     await coverClinic(scenario);
 
@@ -1611,7 +1787,7 @@ describe("transfer, deletion with coverage left, ledger retention", () => {
       .toBe("reversed");
   });
 
-  it("E2E-P3.8-08 purge of a deleted installation keeps the ledger", async () => {
+  it("R6-PT3 R7-PS1 E2E-P3.8-08 purge of a deleted installation keeps the ledger", async () => {
     const scenario = await newScenario();
     await coverClinic(scenario);
     const installationId = scenario.installationId;
@@ -1652,6 +1828,7 @@ describe("transfer, deletion with coverage left, ledger retention", () => {
 
     const deleted = await hpDeleteInstallation({ orgId });
     expect(deleted.result).toBe("ok");
+    await runDurableObjectAlarm(quotaDoStub(installationId));
 
     const installation = await queryOne<{ status: string }>(
       "SELECT status FROM installation WHERE installation_id = ?",
@@ -1669,7 +1846,11 @@ describe("transfer, deletion with coverage left, ledger retention", () => {
     ).toBe(voidBefore);
     expect(
       await count("coverage_event", "installation_id = ?", [installationId]),
-    ).toBe(eventsBefore);
+    ).toBe(eventsBefore + 1);
+    expect(await queryOne<{ state: string; clinic_seq: number }>(
+      `SELECT state, clinic_seq FROM coverage_mirror WHERE installation_id = ?`,
+      [installationId],
+    )).toMatchObject({ state: "transfer_pending" });
     expect(await countTransferForOrg(orgId)).toBe(transfersBefore);
     expect(await count("usage_event", "term_id = ?", [activeTerm!.term_id])).toBe(
       usageBefore,
