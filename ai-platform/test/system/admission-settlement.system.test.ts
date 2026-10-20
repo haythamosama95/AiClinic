@@ -81,6 +81,21 @@ async function readHotUsed(installationId: string): Promise<number> {
   return rows[0]?.used ?? 0;
 }
 
+async function readLegacyPeriodCounters(installationId: string) {
+  return runInDurableObject(quotaDoStub(installationId), async (_instance, state) => {
+    const stored = await state.storage.get<{
+      periodCounters: {
+        requestsUsed: number;
+        creditsUsed: number;
+        tokensUsed: number;
+        costUsed: number;
+        inFlight: number;
+      };
+    }>("state");
+    return stored?.periodCounters;
+  });
+}
+
 async function readActiveTermId(installationId: string): Promise<string | null> {
   const rows = await runInDurableObject(
     quotaDoStub(installationId),
@@ -1101,6 +1116,10 @@ describe("admission settlement against terms", () => {
     expect(firstDrain).toMatchObject({ outcome: "settled", chargedWeight: 1 });
     expect(concurrentDrain).toMatchObject({ outcome: "settled", chargedWeight: 1 });
     expect(await readHotUsage(scenario.installationId)).toMatchObject({ used: 1 });
+    expect(await readLegacyPeriodCounters(scenario.installationId)).toMatchObject({
+      requestsUsed: 1,
+      creditsUsed: 1,
+    });
 
     const lateAdmission = await quotaDoStub(scenario.installationId).fetch(
       "https://quota-do.internal/rpc",
@@ -1123,6 +1142,10 @@ describe("admission settlement against terms", () => {
     );
     expect(await lateAdmission.json()).toMatchObject({ outcome: "idempotent" });
     expect(await readHotUsage(scenario.installationId)).toMatchObject({ used: 1, reserved: 0 });
+    expect(await readLegacyPeriodCounters(scenario.installationId)).toMatchObject({
+      requestsUsed: 1,
+      creditsUsed: 1,
+    });
   });
 
   it("R5-A3: a lost settlement reply replays its receipt without another charge", async () => {
@@ -1136,11 +1159,12 @@ describe("admission settlement against terms", () => {
       scenario.installationId,
       async (body, forward) => {
         if (body.kind === "settleFallback" && settleCalls++ === 0) {
-          await forward("https://quota-do.internal/rpc", {
+          const committedResponse = await forward("https://quota-do.internal/rpc", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify(body),
           });
+          await committedResponse.arrayBuffer();
           throw new Error("injected lost settlement reply");
         }
         return forward("https://quota-do.internal/rpc", {
@@ -1175,6 +1199,10 @@ describe("admission settlement against terms", () => {
     }
     expect(settleCalls).toBe(2);
     expect(await readHotUsage(scenario.installationId)).toMatchObject({ used: 1 });
+    expect(await readLegacyPeriodCounters(scenario.installationId)).toMatchObject({
+      requestsUsed: 1,
+      creditsUsed: 1,
+    });
   });
 
   it("R5-J1: released fallback records zero while consumed fallback records its weight", async () => {

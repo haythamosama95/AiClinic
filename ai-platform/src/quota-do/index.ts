@@ -507,11 +507,19 @@ async function mirrorProductionCreditToLegacy(
 
 async function applyFallbackWeightToLegacy(
   storage: DurableObjectStorage,
+  requestId: string,
   weight: number,
 ): Promise<void> {
   const state = await loadState(storage);
+  if (state.creditedRequests[requestId] !== undefined) {
+    return;
+  }
   state.periodCounters.requestsUsed += weight;
   state.periodCounters.creditsUsed += weight;
+  // Keep the same durable idempotency marker used by legacy credit replay.
+  // The SQL receipt remains authoritative and lets a replay repair this KV
+  // mirror if the first settlement was interrupted between the two writes.
+  state.creditedRequests[requestId] = { expiresAt: Number.MAX_SAFE_INTEGER };
   await storage.put(STATE_KEY, state);
 }
 
@@ -2007,6 +2015,11 @@ export async function settleFallbackRPC(
       ) {
         return { kind: "settleFallback", outcome: "conflict" };
       }
+      await applyFallbackWeightToLegacy(
+        storage,
+        request.request_id,
+        storedReceipt.charged_weight,
+      );
       return {
         kind: "settleFallback",
         outcome: "settled",
@@ -2079,6 +2092,11 @@ export async function settleFallbackRPC(
                ${chargedWeight}, ${sqlStringLocal(nowIso)}
              )`,
           ),
+        );
+        await applyFallbackWeightToLegacy(
+          storage,
+          request.request_id,
+          chargedWeight,
         );
         return {
           kind: "settleFallback",
@@ -2158,6 +2176,7 @@ export async function settleFallbackRPC(
          )`,
       );
     });
+    await applyFallbackWeightToLegacy(storage, request.request_id, chargedWeight);
     return {
       kind: "settleFallback",
       outcome: "settled",
