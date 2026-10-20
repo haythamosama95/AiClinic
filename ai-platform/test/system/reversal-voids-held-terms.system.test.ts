@@ -5,6 +5,7 @@
 import { env, runDurableObjectAlarm, runInDurableObject } from "cloudflare:test";
 import {
   CHANNEL_VERSIONS,
+  canonicalize,
   grantIdComp,
   grantIdPaid,
   operationChallenge,
@@ -58,6 +59,7 @@ type P37VendorMethod =
   | VendorMethod
   | "voidForReversal"
   | "releaseHeld"
+  | "recoverStrandedTerm"
   | "voidGrant"
   | "listGrantsForVoid";
 
@@ -100,6 +102,13 @@ function sqlSelect<T extends Record<string, unknown>>(
   return [...storage.sql.exec(query)];
 }
 
+function sqlExec(state: DurableObjectState, query: string): void {
+  const storage = state.storage as DurableObjectStorage & {
+    sql?: { exec: (q: string) => unknown };
+  };
+  storage.sql?.exec(query);
+}
+
 type DoTermRow = {
   term_id: string;
   grant_id: string;
@@ -108,6 +117,9 @@ type DoTermRow = {
   end_reason: string | null;
   position: number;
   ends_at: string | null;
+  starts_at?: string | null;
+  calendar_start?: string | null;
+  ended_at?: string | null;
   grace_ends_at: string | null;
   used_final: number | null;
 };
@@ -120,7 +132,7 @@ async function readDoTerms(installationId: string): Promise<DoTermRow[]> {
   return runInDurableObject(quotaDoStub(installationId), async (_instance, state) =>
     sqlSelect<DoTermRow>(
       state,
-      `SELECT term_id, grant_id, origin_grant_id, state, end_reason, position, ends_at, grace_ends_at, used_final
+      `SELECT term_id, grant_id, origin_grant_id, state, end_reason, position, starts_at, calendar_start, ends_at, grace_ends_at, ended_at, used_final
        FROM term ORDER BY position ASC`,
     ),
   );
@@ -338,6 +350,31 @@ async function buildComplimentaryEnvelope(input: {
   };
 }
 
+async function applyComplimentaryForRecovery(
+  envelope: Record<string, unknown>,
+): Promise<GrantResultEnvelope> {
+  const signer = coverClinicSigner();
+  const accessJwt = await mintVendorAccessJwt();
+  const operation = {
+    op: "grant",
+    params: { contract_version: CONTRACT_VERSION, access_jwt: accessJwt, envelope },
+    actor_email: VENDOR_OPERATOR_EMAIL,
+    issued_at: getVendorTestClockIso() ?? new Date().toISOString(),
+    nonce: crypto.randomUUID(),
+    contract_version: CONTRACT_VERSION,
+  };
+  const assertion = encodeVendorAssertion(await signer.signerAuthenticator.assert({
+    operation, rpId: env.WEBAUTHN_RP_ID, origin: env.WEBAUTHN_ORIGIN, up: true, uv: true,
+  }));
+  return p37VendorCall("grant", {
+    contract_version: CONTRACT_VERSION,
+    envelope,
+    signer_credential_id: signer.signerCredentialId,
+    operation,
+    assertion,
+  }, { accessJwt });
+}
+
 async function operationForHp(input: {
   op: "releaseHeld" | "voidGrant";
   accessJwt: string;
@@ -414,6 +451,150 @@ beforeEach(async () => {
 });
 
 describe("reversal voids, tombstones, held terms, operator voids", () => {
+  it("R4-D2: stranded complimentary recovery activates only the oldest evidenced term and replays its immutable result", async () => {
+    const scenario = await newScenario();
+    await coverClinic(scenario);
+    const grantId = await grantIdComp(crypto.randomUUID().replace(/-/g, ""));
+    const envelope = await buildComplimentaryEnvelope({ orgId: scenario.orgId, grantId });
+    expect((await applyComplimentaryForRecovery(envelope)).result).toBe("applied");
+    await runDurableObjectAlarm(quotaDoStub(scenario.installationId));
+
+    const target = (await readDoTerms(scenario.installationId)).find((term) => term.grant_id === grantId)!;
+    expect(target.state).toBe("queued");
+    await runInDurableObject(quotaDoStub(scenario.installationId), async (_instance, state) => {
+      const hot = sqlSelect<{ used: number }>(state, "SELECT used FROM hot LIMIT 1")[0]!;
+      sqlExec(state,
+        `UPDATE term SET state = 'ended', end_reason = 'expired', ended_at = '2026-10-19T00:00:00.000Z', used_final = ${hot.used} WHERE state = 'active'`,
+      );
+      sqlExec(state, "UPDATE hot SET active_term_id = NULL, used = 0, grace_base_used = 0");
+    });
+    const hot = await runInDurableObject(quotaDoStub(scenario.installationId), async (_instance, state) =>
+      sqlSelect<{ binding_epoch: number; clinic_seq: number }>(
+        state, "SELECT binding_epoch, clinic_seq FROM hot LIMIT 1",
+      )[0]!,
+    );
+    const recoveredAt = new Date(Date.now() + 60_000).toISOString();
+    await setTestClock(recoveredAt);
+    const accessJwt = await mintVendorAccessJwt();
+    const signer = coverClinicSigner();
+    const action = {
+      action_id: crypto.randomUUID(),
+      org_id: scenario.orgId,
+      installation_id: scenario.installationId,
+      binding_epoch: hot.binding_epoch,
+      target_term_id: target.term_id,
+      source_grant_id: grantId,
+      expected_clinic_seq: hot.clinic_seq,
+      reason: "restore stranded complimentary term",
+      evidence_sha256: await sha256Hex(new TextEncoder().encode(canonicalize(envelope.evidence))),
+    };
+    const operation = {
+      op: "recoverStrandedTerm",
+      params: {
+        contract_version: CONTRACT_VERSION,
+        access_jwt: accessJwt,
+        ...action,
+        signer_credential_id: signer.signerCredentialId,
+      },
+      actor_email: VENDOR_OPERATOR_EMAIL,
+      issued_at: recoveredAt,
+      nonce: crypto.randomUUID(),
+      contract_version: CONTRACT_VERSION,
+    };
+    const assertion = encodeVendorAssertion(await signer.signerAuthenticator.assert({
+      operation, rpId: env.WEBAUTHN_RP_ID, origin: env.WEBAUTHN_ORIGIN, up: true, uv: true,
+    }));
+    const args = {
+      contract_version: CONTRACT_VERSION,
+      ...action,
+      signer_credential_id: signer.signerCredentialId,
+      operation,
+      assertion,
+    };
+    const first = await p37VendorCall("recoverStrandedTerm", args, { accessJwt });
+    expect(first.result).toBe("ok");
+    expect(first.receipt).toBeUndefined();
+    await runDurableObjectAlarm(quotaDoStub(scenario.installationId));
+    const replay = await p37VendorCall("recoverStrandedTerm", args, { accessJwt });
+    expect(replay).toEqual(first);
+    const terms = await readDoTerms(scenario.installationId);
+    expect(terms.filter((term) => term.state === "active")).toHaveLength(1);
+    expect(terms.find((term) => term.term_id === target.term_id)).toMatchObject({
+      state: "active", used_final: null,
+    });
+    expect(await queryOne<{ target_term_id: string; actor_email: string; evidence_sha256: string; reason: string }>(
+      "SELECT target_term_id, actor_email, evidence_sha256, reason FROM stranded_term_recovery WHERE action_id = ?",
+      [action.action_id],
+    )).toMatchObject({
+      target_term_id: target.term_id,
+      actor_email: VENDOR_OPERATOR_EMAIL,
+      evidence_sha256: action.evidence_sha256,
+      reason: action.reason,
+    });
+    expect(await queryAll<{ action_id: string }>(
+      "SELECT action_id FROM stranded_term_recovery WHERE action_id = ?",
+      [action.action_id],
+    )).toHaveLength(1);
+  });
+
+  it("R4-D2: a complimentary grant in live grace renews from the old end and becomes current immediately", async () => {
+    const scenario = await newScenario();
+    await coverClinic(scenario);
+    const original = (await readDoTerms(scenario.installationId)).find((term) => term.state === "active")!;
+    const oldEnd = original.ends_at!;
+    await setTestClock(oldEnd);
+    await runDurableObjectAlarm(quotaDoStub(scenario.installationId));
+    expect((await readDoTerms(scenario.installationId)).find((term) => term.grant_id === original.grant_id)?.state).toBe("grace");
+    await setTestClock(new Date(Date.parse(oldEnd) + 2 * 24 * 60 * 60 * 1000).toISOString());
+    const grantId = await grantIdComp(crypto.randomUUID().replace(/-/g, ""));
+    const envelope = await buildComplimentaryEnvelope({ orgId: scenario.orgId, grantId });
+    expect((await applyComplimentaryForRecovery(envelope)).result).toBe("applied");
+    const terms = await readDoTerms(scenario.installationId);
+    expect(terms.filter((term) => term.state === "active")).toHaveLength(1);
+    expect(terms.find((term) => term.grant_id === original.grant_id)).toMatchObject({
+      state: "ended", end_reason: "renewed", ends_at: oldEnd,
+    });
+    expect(terms.find((term) => term.grant_id === grantId)).toMatchObject({
+      state: "active", starts_at: oldEnd, calendar_start: oldEnd,
+    });
+  });
+
+  it("R6-DM4: releasing a held successor during caught-up grace renews the grace term and leaves one current term", async () => {
+    const scenario = await newScenario();
+    await coverClinic(scenario);
+    const originalGrantId = (await readDoGrants(scenario.installationId))[0]!.grant_id;
+    const heldGrantId = await grantIdPaid(crypto.randomUUID().replace(/-/g, ""));
+    expect((await paidGrant(scenario, heldGrantId)).result).toBe("applied");
+    await runDurableObjectAlarm(quotaDoStub(scenario.installationId));
+    expect((await callVoidForReversal({ grantId: originalGrantId, partial: false })).result).toBe("applied");
+    await runDurableObjectAlarm(quotaDoStub(scenario.installationId));
+    expect((await readDoTerms(scenario.installationId)).find((term) => term.grant_id === heldGrantId)?.state).toBe("held");
+
+    const graceGrantId = await grantIdPaid(crypto.randomUUID().replace(/-/g, ""));
+    expect((await paidGrant(scenario, graceGrantId)).result).toBe("applied");
+    await runDurableObjectAlarm(quotaDoStub(scenario.installationId));
+    const graceTermBefore = (await readDoTerms(scenario.installationId)).find((term) => term.grant_id === graceGrantId)!;
+    const boundaryAt = graceTermBefore.ends_at!;
+    await setTestClock(boundaryAt);
+    await runInDurableObject(quotaDoStub(scenario.installationId), async (_instance, state) => {
+      sqlExec(state, "UPDATE hot SET used = 3");
+    });
+
+    const release = await hpVoidOp({ op: "releaseHeld", grantId: heldGrantId, reason: "restore reversed successor" });
+    expect(release.result.result).toBe("applied");
+    await runDurableObjectAlarm(quotaDoStub(scenario.installationId));
+    const terms = await readDoTerms(scenario.installationId);
+    const graceTerm = terms.find((term) => term.grant_id === graceGrantId)!;
+    const releasedTerm = terms.find((term) => term.grant_id === heldGrantId)!;
+    expect(graceTerm).toMatchObject({ state: "ended", end_reason: "renewed", used_final: 3 });
+    expect(releasedTerm).toMatchObject({ state: "active", starts_at: boundaryAt, calendar_start: boundaryAt });
+    expect(terms.filter((term) => term.state === "active" || term.state === "grace")).toHaveLength(1);
+    const hot = await runInDurableObject(quotaDoStub(scenario.installationId), async (_instance, state) =>
+      sqlSelect<{ active_term_id: string | null }>(state, "SELECT active_term_id FROM hot LIMIT 1")[0]!,
+    );
+    expect(hot.active_term_id).toBe(releasedTerm.term_id);
+  });
+
   it("R6-PT1: retries a failed reversal export from its durable original payload", async () => {
     const scenario = await newScenario();
     await coverClinic(scenario);

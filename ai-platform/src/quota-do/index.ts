@@ -12,6 +12,7 @@ import {
   loadHot,
   loadTerms,
   resolveOrgIdFromStorage,
+  recoverStrandedTermRPC,
   sqlSelect,
   type HotRow,
   type TermRow,
@@ -2070,6 +2071,14 @@ const COVERAGE_DO_SCHEMA_STATEMENTS = [
     sealed_at TEXT NOT NULL,
     receipt TEXT NOT NULL
   )`,
+  `CREATE TABLE IF NOT EXISTS stranded_term_recovery (
+    action_id TEXT PRIMARY KEY NOT NULL,
+    target_term_id TEXT NOT NULL UNIQUE,
+    reason TEXT NOT NULL,
+    request_sha256 TEXT NOT NULL,
+    result_json TEXT NOT NULL,
+    recorded_at TEXT NOT NULL
+  )`,
 ] as const;
 
 /** Per-clinic coverage tables (P3.3); idempotent on every versioned fetch. */
@@ -2090,6 +2099,7 @@ export async function ensureCoverageDoTables(
 
 export {
   applyGrantRPC,
+  recoverStrandedTermRPC,
   sealCeilingClaimRPC,
   inspectCoverageRPC,
   openAwaitingTransferRPC,
@@ -2110,6 +2120,8 @@ export {
   runRebuildGrantLedger,
   runRefreshCoverageSnapshot,
   type ApplyGrantRequest,
+  type RecoverStrandedTermRequest,
+  type RecoverStrandedTermResponse,
   type ComplimentaryCeilingClaimIdentity,
   type RebuildClinicDoRequest,
   type RebuildClinicDoResponse,

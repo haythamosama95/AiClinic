@@ -52,6 +52,7 @@ export const PLATFORM_ENTITIES = [
   "ceiling_policy_command",
   "complimentary_ceiling_claim_backfill",
   "grant_void",
+  "stranded_term_recovery",
   "grant_tombstone",
   "live_value_route",
   "reversal_command",

@@ -434,6 +434,7 @@ export async function resetPlatformState(): Promise<void> {
     env.DB.prepare("DELETE FROM kill_switch"),
     env.DB.prepare("DELETE FROM coverage_event"),
     env.DB.prepare("DELETE FROM grant_void"),
+    env.DB.prepare("DELETE FROM stranded_term_recovery"),
     env.DB.prepare("DELETE FROM transfer_step"),
     env.DB.prepare("DELETE FROM transfer"),
     env.DB.prepare("DELETE FROM grant_ledger"),

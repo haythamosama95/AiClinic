@@ -954,6 +954,38 @@ describe("paid grant coverage", () => {
     expect(await readDoTerms(installationId)).toHaveLength(1);
   });
 
+  it("R4-D3 a paid grant after a missed full lapse starts its full term at request time", async () => {
+    const fixture = await bootstrapPaidGrantFixture("2026-01-15T10:00:00.000Z");
+    expect((await grantPaid({
+      envelope: fixture.envelope,
+      aboKid: fixture.aboKid,
+      aboSignature: fixture.aboSignature,
+    })).result).toBe("applied");
+    const installationId = await installationIdForOrg(fixture.orgId);
+    const first = await runInDurableObject(quotaDoStub(installationId), async (_instance, state) =>
+      sqlSelect<{ ends_at: string }>(state, `SELECT ends_at FROM term WHERE grant_id = '${fixture.grantId}'`)[0]!,
+    );
+    const requestAt = new Date(Date.parse(first.ends_at) + 8 * 24 * 60 * 60 * 1000).toISOString();
+    await setTestClock(requestAt);
+    const second = await grantPaidForOrg({ orgId: fixture.orgId, aboKid: fixture.aboKid, aboSigner: fixture.aboSigner });
+    expect(second.result).toBe("applied");
+    const rows = await runInDurableObject(quotaDoStub(installationId), async (_instance, state) =>
+      sqlSelect<{ grant_id: string; state: string; end_reason: string | null; starts_at: string | null; calendar_start: string | null; ends_at: string | null; duration_unit: string; duration_count: number }>(
+        state,
+        `SELECT grant_id, state, end_reason, starts_at, calendar_start, ends_at, duration_unit, duration_count FROM term ORDER BY position`,
+      ),
+    );
+    expect(rows[0]).toMatchObject({ state: "ended", end_reason: "expired" });
+    expect(rows[1]).toMatchObject({
+      state: "active",
+      starts_at: requestAt,
+      calendar_start: requestAt,
+      duration_unit: "month",
+      duration_count: 1,
+    });
+    expect(Date.parse(rows[1]!.ends_at!)).toBeGreaterThan(Date.parse(requestAt));
+  });
+
   it("R4-D4 exact grant replay restores an absent alarm despite a populated hot alarm cache", async () => {
     const fixture = await bootstrapPaidGrantFixture();
     const applied = await grantPaid({

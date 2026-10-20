@@ -1121,6 +1121,154 @@ export type ApplyDueBoundariesInput = {
   durationScale?: DurationScale;
 };
 
+type PlannedBoundaryEvent = {
+  kind: string;
+  at: string;
+  hot: HotRow;
+  terms: TermRow[];
+};
+
+type DueBoundaryPlan = {
+  termWrites: string[];
+  events: PlannedBoundaryEvent[];
+  hotAfter: HotRow;
+  termsAfter: TermRow[];
+};
+
+function planDueBoundaries(input: ApplyDueBoundariesInput): DueBoundaryPlan {
+  const nowMs = Date.parse(input.clockNowIso);
+  const writes: string[] = [];
+  const events: PlannedBoundaryEvent[] = [];
+  let terms = loadTerms(input.storage).map((term) => ({ ...term }));
+  let hot = { ...loadHot(input.storage) };
+
+  const emit = (kind: string, at: string): void => {
+    events.push({ kind, at, hot: { ...hot }, terms: terms.map((term) => ({ ...term })) });
+  };
+
+  while (true) {
+    const active = terms.find((term) => term.state === "active");
+    if (active?.ends_at !== null && active?.ends_at !== undefined && Date.parse(active.ends_at) <= nowMs) {
+      const boundaryAt = active.ends_at;
+      const queued = terms
+        .filter((term) => term.state === "queued")
+        .sort((left, right) => left.position - right.position)[0];
+      const usedFinal = hot.used;
+      terms = terms.map((term) => term.term_id === active.term_id
+        ? { ...term, state: queued === undefined ? "grace" : "ended",
+            end_reason: queued === undefined ? null : "expired",
+            ...(queued === undefined
+              ? { grace_ends_at: addDuration(boundaryAt, "day", term.grace_days ?? 0, input.durationScale) }
+              : { ended_at: boundaryAt, used_final: usedFinal }) }
+        : term);
+      if (queued !== undefined) {
+        writes.push(`UPDATE term SET state = 'ended', end_reason = 'expired', ended_at = ${sqlString(boundaryAt)}, used_final = ${usedFinal} WHERE term_id = ${sqlString(active.term_id)}`);
+        hot = { ...hot, active_term_id: null, grace_base_used: 0 };
+        emit("term_ended", input.clockNowIso);
+        const durationUnit = (queued.duration_unit ?? "month") as "month" | "day";
+        const durationCount = queued.duration_count ?? 1;
+        const endsAt = addDuration(boundaryAt, durationUnit, durationCount, input.durationScale);
+        writes.push(`UPDATE term SET state = 'active', starts_at = ${sqlString(boundaryAt)}, calendar_start = ${sqlString(boundaryAt)}, ends_at = ${sqlString(endsAt)} WHERE term_id = ${sqlString(queued.term_id)}`);
+        terms = terms.map((term) => term.term_id === queued.term_id
+          ? { ...term, state: "active", starts_at: boundaryAt, calendar_start: boundaryAt, ends_at: endsAt }
+          : term);
+        hot = { ...hot, active_term_id: queued.term_id, used: 0, grace_base_used: 0 };
+        emit("term_activated", input.clockNowIso);
+      } else {
+        const graceEndsAt = addDuration(boundaryAt, "day", active.grace_days ?? 0, input.durationScale);
+        writes.push(`UPDATE term SET state = 'grace', grace_ends_at = ${sqlString(graceEndsAt)} WHERE term_id = ${sqlString(active.term_id)}`);
+        hot = { ...hot, grace_base_used: hot.used };
+        emit("grace_started", input.clockNowIso);
+        terms = terms.map((term) => term.term_id === active.term_id
+          ? { ...term, state: "grace", grace_ends_at: graceEndsAt }
+          : term);
+      }
+      continue;
+    }
+
+    const grace = terms.find((term) => term.state === "grace");
+    if (grace?.grace_ends_at !== null && grace?.grace_ends_at !== undefined && Date.parse(grace.grace_ends_at) <= nowMs) {
+      const usedFinal = hot.used;
+      writes.push(`UPDATE term SET state = 'ended', end_reason = 'expired', ended_at = ${sqlString(grace.grace_ends_at)}, used_final = ${usedFinal} WHERE term_id = ${sqlString(grace.term_id)}`);
+      terms = terms.map((term) => term.term_id === grace.term_id
+        ? { ...term, state: "ended", end_reason: "expired", ended_at: grace.grace_ends_at, used_final: usedFinal }
+        : term);
+      hot = { ...hot, active_term_id: null, grace_base_used: 0 };
+      emit("term_ended", input.clockNowIso);
+      continue;
+    }
+    break;
+  }
+
+  return { termWrites: writes, events, hotAfter: hot, termsAfter: terms };
+}
+
+function commitDueBoundaryPlan(
+  storage: DurableObjectStorage,
+  input: ApplyDueBoundariesInput,
+  plan: DueBoundaryPlan,
+): void {
+  if (plan.events.length === 0) return;
+  const currentHot = loadHot(storage);
+  let seq = currentHot.clinic_seq;
+  const payloads = plan.events.map((event) => {
+    seq += 1;
+    const hot = { ...event.hot, clinic_seq: seq };
+    const snapshot = buildCoverageSnapshot({
+      vendorContractVersion: input.vendorContractVersion,
+      orgId: input.orgId,
+      hot,
+      terms: event.terms,
+      durationScale: input.durationScale,
+    });
+    snapshot.clinic_seq = seq;
+    return { ...event, hot, payload: {
+      event_id: coverageEventId(input.installationId, seq),
+      org_id: input.orgId,
+      installation_id: input.installationId,
+      binding_epoch: hot.binding_epoch,
+      clinic_seq: seq,
+      kind: event.kind,
+      at: event.at,
+      snapshot,
+    } };
+  });
+  storage.transactionSync(() => {
+    for (const statement of plan.termWrites) sqlExec(storage, statement);
+    updateHot(storage, { ...plan.hotAfter, clinic_seq: seq });
+    for (const event of payloads) insertOutbox(storage, "coverage_event", event.payload);
+  });
+}
+
+function buildBoundaryEventPayloads(
+  input: ApplyDueBoundariesInput,
+  plan: DueBoundaryPlan,
+  startingSeq: number,
+): Record<string, unknown>[] {
+  return plan.events.map((event, index) => {
+    const clinicSeq = startingSeq + index + 1;
+    const eventHot = { ...event.hot, clinic_seq: clinicSeq };
+    const snapshot = buildCoverageSnapshot({
+      vendorContractVersion: input.vendorContractVersion,
+      orgId: input.orgId,
+      hot: eventHot,
+      terms: event.terms,
+      durationScale: input.durationScale,
+    });
+    snapshot.clinic_seq = clinicSeq;
+    return {
+      event_id: coverageEventId(input.installationId, clinicSeq),
+      org_id: input.orgId,
+      installation_id: input.installationId,
+      binding_epoch: eventHot.binding_epoch,
+      clinic_seq: clinicSeq,
+      kind: event.kind,
+      at: event.at,
+      snapshot,
+    };
+  });
+}
+
 function emitBoundaryCoverageEvent(
   storage: DurableObjectStorage,
   input: ApplyDueBoundariesInput & { kind: string; at: string },
@@ -1151,112 +1299,9 @@ function emitBoundaryCoverageEvent(
 }
 
 export function applyDueBoundaries(input: ApplyDueBoundariesInput): boolean {
-  const nowMs = Date.parse(input.clockNowIso);
-  let changed = false;
-
-  while (true) {
-    const terms = loadTerms(input.storage);
-    const active = terms.find((term) => term.state === "active");
-    if (
-      active !== undefined &&
-      active.ends_at !== null &&
-      Date.parse(active.ends_at) <= nowMs
-    ) {
-      changed = true;
-      const boundaryAt = active.ends_at;
-      const hot = loadHot(input.storage);
-      const usedFinal = hot.used;
-      const queued = terms
-        .filter((term) => term.state === "queued")
-        .sort((left, right) => left.position - right.position)[0];
-
-      if (queued !== undefined) {
-        sqlExec(
-          input.storage,
-          `UPDATE term SET state = 'ended', end_reason = 'expired', ended_at = ${sqlString(boundaryAt)}, used_final = ${usedFinal}
-           WHERE term_id = ${sqlString(active.term_id)}`,
-        );
-        emitBoundaryCoverageEvent(input.storage, {
-          ...input,
-          kind: "term_ended",
-          at: input.clockNowIso,
-        });
-
-        const durationUnit = (queued.duration_unit ?? "month") as "month" | "day";
-        const durationCount = queued.duration_count ?? 1;
-        const endsAt = addDuration(
-          boundaryAt,
-          durationUnit,
-          durationCount,
-          input.durationScale,
-        );
-        sqlExec(
-          input.storage,
-          `UPDATE term SET state = 'active', starts_at = ${sqlString(boundaryAt)}, calendar_start = ${sqlString(boundaryAt)}, ends_at = ${sqlString(endsAt)}
-           WHERE term_id = ${sqlString(queued.term_id)}`,
-        );
-        updateHot(input.storage, {
-          active_term_id: queued.term_id,
-          used: 0,
-        });
-        emitBoundaryCoverageEvent(input.storage, {
-          ...input,
-          kind: "term_activated",
-          at: input.clockNowIso,
-        });
-      } else {
-        const graceDays = active.grace_days ?? 0;
-        const graceEndsAt = addDuration(
-          boundaryAt,
-          "day",
-          graceDays,
-          input.durationScale,
-        );
-        sqlExec(
-          input.storage,
-          `UPDATE term SET state = 'grace', grace_ends_at = ${sqlString(graceEndsAt)}
-           WHERE term_id = ${sqlString(active.term_id)}`,
-        );
-        updateHot(input.storage, { grace_base_used: hot.used });
-        emitBoundaryCoverageEvent(input.storage, {
-          ...input,
-          kind: "grace_started",
-          at: input.clockNowIso,
-        });
-      }
-      continue;
-    }
-
-    const grace = terms.find((term) => term.state === "grace");
-    if (
-      grace !== undefined &&
-      grace.grace_ends_at !== null &&
-      Date.parse(grace.grace_ends_at) <= nowMs
-    ) {
-      changed = true;
-      const hot = loadHot(input.storage);
-      const usedFinal = hot.used;
-      sqlExec(
-        input.storage,
-        `UPDATE term SET state = 'ended', end_reason = 'expired', ended_at = ${sqlString(input.clockNowIso)}, used_final = ${usedFinal}
-         WHERE term_id = ${sqlString(grace.term_id)}`,
-      );
-      updateHot(input.storage, {
-        active_term_id: null,
-        grace_base_used: 0,
-      });
-      emitBoundaryCoverageEvent(input.storage, {
-        ...input,
-        kind: "term_ended",
-        at: input.clockNowIso,
-      });
-      continue;
-    }
-
-    break;
-  }
-
-  return changed;
+  const plan = planDueBoundaries(input);
+  commitDueBoundaryPlan(input.storage, input, plan);
+  return plan.events.length > 0;
 }
 
 function countDoPaidGrantsLast24Hours(
@@ -1482,13 +1527,37 @@ async function finalizeGrantApply(input: {
   emitAl12: boolean;
   observePaidVelocity?: boolean;
   clinicVelocityAlert?: boolean;
+  boundaryPlan?: DueBoundaryPlan;
   logger: Logger;
 }): Promise<ApplyGrantResponse> {
   const { storage, request, signingKey, grantId, envelopeSha256 } = input;
   const currentHot = loadHot(storage);
-  const firstSeq = currentHot.clinic_seq + 1;
-  const ledgerSeq = currentHot.clinic_seq + input.eventKinds.length;
+  const boundaryEvents = input.boundaryPlan?.events ?? [];
+  const firstSeq = currentHot.clinic_seq + boundaryEvents.length + 1;
+  const ledgerSeq = currentHot.clinic_seq + boundaryEvents.length + input.eventKinds.length;
   const finalHot = { ...input.hotAfter, clinic_seq: ledgerSeq };
+  const boundaryPayloads = boundaryEvents.map((event, index) => {
+    const clinicSeq = currentHot.clinic_seq + index + 1;
+    const eventHot = { ...event.hot, clinic_seq: clinicSeq };
+    const snapshot = buildCoverageSnapshot({
+      vendorContractVersion: request.vendorContractVersion,
+      orgId: request.orgId,
+      hot: eventHot,
+      terms: event.terms,
+      durationScale: request.durationScale,
+    });
+    snapshot.clinic_seq = clinicSeq;
+    return {
+      event_id: coverageEventId(request.installationId, clinicSeq),
+      org_id: request.orgId,
+      installation_id: request.installationId,
+      binding_epoch: eventHot.binding_epoch,
+      clinic_seq: clinicSeq,
+      kind: event.kind,
+      at: event.at,
+      snapshot,
+    };
+  });
   const eventPayloads = input.eventKinds.map((kind, index) => {
     const clinicSeq = firstSeq + index;
     const snapshot = buildCoverageSnapshot({
@@ -1535,6 +1604,7 @@ async function finalizeGrantApply(input: {
     applied_at: request.nowIso,
   };
   const outboxRows: Array<{ kind: string; payload: unknown }> = [
+    ...boundaryPayloads.map((payload) => ({ kind: "coverage_event", payload })),
     ...eventPayloads.map((payload) => ({ kind: "coverage_event", payload })),
     { kind: "grant_ledger", payload: ledgerRow },
     { kind: "alert", payload: {
@@ -1602,7 +1672,7 @@ async function finalizeGrantApply(input: {
       )[0]?.count ?? 0;
       if (existingTerms !== 0) throw new Error("grant_term_reconciliation_required");
     }
-    for (const statement of input.termWrites) sqlExec(storage, statement);
+    for (const statement of [...(input.boundaryPlan?.termWrites ?? []), ...input.termWrites]) sqlExec(storage, statement);
     updateHot(storage, finalHot);
     sqlExec(
       storage,
@@ -1658,6 +1728,7 @@ async function applyComplimentaryTermGrant(
   grantId: string,
   envelopeSha256: string,
   logger: Logger,
+  boundaryPlan: DueBoundaryPlan,
 ): Promise<ApplyGrantResponse> {
   const durationUnit = request.durationUnit;
   const durationCount = request.durationCount;
@@ -1690,7 +1761,9 @@ async function applyComplimentaryTermGrant(
     return { kind: "apply_grant", result: "exceeds_ceiling" };
   }
 
-  const terms = loadTerms(storage);
+  const terms = boundaryPlan.termsAfter;
+  const baseHot = boundaryPlan.hotAfter;
+  const graceTerm = terms.find((term) => term.state === "grace");
   const hasActiveGraceOrQueued = terms.some(
     (term) =>
       term.state === "active" ||
@@ -1704,16 +1777,21 @@ async function applyComplimentaryTermGrant(
   const graceDays = request.graceDays ?? 0;
   const graceCap = "proportional";
 
-  let newTermState: "active" | "queued" = hasActiveGraceOrQueued
-    ? "queued"
-    : "active";
+  let newTermState: "active" | "queued" = graceTerm !== undefined
+    ? "active"
+    : hasActiveGraceOrQueued ? "queued" : "active";
   let calendarStart: string | null = request.nowIso;
   let startsAt: string | null = request.nowIso;
   let endsAt: string | null = null;
 
+  if (graceTerm !== undefined) {
+    calendarStart = graceTerm.ends_at ?? request.nowIso;
+    startsAt = calendarStart;
+  }
+
   if (newTermState === "active") {
     endsAt = addDuration(
-      request.nowIso,
+      calendarStart!,
       durationUnit,
       durationCount as number,
       request.durationScale,
@@ -1731,12 +1809,15 @@ async function applyComplimentaryTermGrant(
         ${sqlString(calendarStart!)}, ${sqlString(startsAt!)},
         ${sqlString(endsAt!)}, NULL, NULL
       )`;
+    const termsAfter = terms.map((term) => term.term_id === graceTerm?.term_id
+      ? { ...term, state: "ended", end_reason: "renewed", ended_at: request.nowIso, used_final: baseHot.used }
+      : term);
     return finalizeGrantApply({
       state, storage, request, signingKey, grantId, envelopeSha256,
       termIds: [termId], grantKind: "term", grantSourceKind: "complimentary",
       termWrites: [insertTerm],
-      hotAfter: { ...loadHot(storage), active_term_id: termId, used: 0 },
-      termsAfter: [...terms, {
+      hotAfter: { ...baseHot, active_term_id: termId, used: 0, grace_base_used: graceTerm !== undefined ? 0 : baseHot.grace_base_used },
+      termsAfter: [...termsAfter, {
         term_id: termId, grant_id: grantId, origin_grant_id: grantId, position,
         state: "active", end_reason: null, plan_snapshot: planSnapshotJson,
         allowance: request.allowanceCredits, used_final: null, duration_unit: durationUnit,
@@ -1744,8 +1825,9 @@ async function applyComplimentaryTermGrant(
         calendar_start: calendarStart, starts_at: startsAt, ends_at: endsAt,
         grace_ends_at: null, ended_at: null,
       }],
-      eventKinds: ["term_activated", "grant_applied"],
+      eventKinds: [...(graceTerm !== undefined ? ["term_ended"] : []), "term_activated", "grant_applied"],
       attentionAl11: true, emitAl12: request.skipCeilingCheck === true, logger,
+      boundaryPlan,
     });
   } else {
     const insertTerm = `INSERT INTO term (
@@ -1763,7 +1845,7 @@ async function applyComplimentaryTermGrant(
       state, storage, request, signingKey, grantId, envelopeSha256,
       termIds: [termId], grantKind: "term", grantSourceKind: "complimentary",
       termWrites: [insertTerm],
-      hotAfter: loadHot(storage),
+      hotAfter: baseHot,
       termsAfter: [...terms, {
         term_id: termId, grant_id: grantId, origin_grant_id: grantId, position,
         state: "queued", end_reason: null, plan_snapshot: planSnapshotJson,
@@ -1773,6 +1855,7 @@ async function applyComplimentaryTermGrant(
       }],
       eventKinds: ["grant_applied"],
       attentionAl11: true, emitAl12: request.skipCeilingCheck === true, logger,
+      boundaryPlan,
     });
   }
 }
@@ -1785,8 +1868,9 @@ async function applyTermAdjustmentGrant(
   grantId: string,
   envelopeSha256: string,
   logger: Logger,
+  boundaryPlan: DueBoundaryPlan,
 ): Promise<ApplyGrantResponse> {
-  const terms = loadTerms(storage);
+  const terms = boundaryPlan.termsAfter;
   const activeTerm = terms.find((term) => term.state === "active");
   if (activeTerm === undefined || activeTerm.ends_at === null) {
     return { kind: "apply_grant", result: "bad_request" };
@@ -1873,7 +1957,7 @@ async function applyTermAdjustmentGrant(
     grantKind: "term_adjustment",
     grantSourceKind: "complimentary",
     termWrites: [updateTerm],
-    hotAfter: loadHot(storage),
+    hotAfter: boundaryPlan.hotAfter,
     termsAfter: terms.map((term) => term.term_id === activeTerm.term_id
       ? { ...term, allowance, ends_at: endsAt,
           ...(isEnvelopeRecord(adjustmentPlan)
@@ -1883,6 +1967,7 @@ async function applyTermAdjustmentGrant(
     eventKinds: ["grant_applied"],
     attentionAl11: true,
     emitAl12: request.skipCeilingCheck === true,
+    boundaryPlan,
     logger,
   });
 }
@@ -2059,6 +2144,15 @@ export async function applyGrantRPC(
     const envelopeKind = request.envelopeKind ?? "term";
     const sourceKind = request.sourceKind ?? "paid";
 
+    const boundaryPlan = planDueBoundaries({
+      storage,
+      clockNowIso: request.nowIso,
+      installationId: request.installationId,
+      orgId: request.orgId,
+      vendorContractVersion: request.vendorContractVersion,
+      durationScale: request.durationScale,
+    });
+
     if (envelopeKind === "term_adjustment") {
       return applyTermAdjustmentGrant(
         state,
@@ -2068,6 +2162,7 @@ export async function applyGrantRPC(
         grantId,
         envelopeSha256,
         logger,
+        boundaryPlan,
       );
     }
 
@@ -2080,17 +2175,18 @@ export async function applyGrantRPC(
         grantId,
         envelopeSha256,
         logger,
+        boundaryPlan,
       );
     }
 
-    const terms = loadTerms(storage);
+    const terms = boundaryPlan.termsAfter;
     const graceTerm = terms.find((term) => term.state === "grace");
     const activeTerm = terms.find((term) => term.state === "active");
     const hasQueued = terms.some((term) => term.state === "queued");
 
     const paidDurationUnit = request.durationUnit ?? "month";
     const paidDurationCount = request.durationCount ?? 1;
-    const hot = loadHot(storage);
+    const hot = boundaryPlan.hotAfter;
 
     const termId = crypto.randomUUID();
     const position = nextTermPosition(terms);
@@ -2188,7 +2284,7 @@ export async function applyGrantRPC(
       termIds: [termId], grantKind: "term", grantSourceKind: paidSourceKind,
       termWrites, hotAfter, termsAfter: finalTerms, eventKinds,
       attentionAl11: false, emitAl12: false, observePaidVelocity: true,
-      clinicVelocityAlert, logger,
+      clinicVelocityAlert, logger, boundaryPlan,
     });
   });
 }
@@ -2727,7 +2823,15 @@ export async function releaseHeldRPC(
       return { kind: "release_held", result: "bad_request" };
     }
 
-    const terms = loadTerms(storage);
+    const boundaryPlan = planDueBoundaries({
+      storage,
+      clockNowIso: request.nowIso,
+      installationId: request.installationId,
+      orgId: request.orgId,
+      vendorContractVersion: request.vendorContractVersion,
+      durationScale: request.durationScale,
+    });
+    const terms = boundaryPlan.termsAfter;
     const held = terms.find(
       (term) => term.state === "held" && term.grant_id === request.grantId,
     );
@@ -2736,11 +2840,21 @@ export async function releaseHeldRPC(
     }
 
     const position = nextTermPosition(terms);
+    const graceTerm = terms.find((term) => term.state === "grace");
     const hasActive = terms.some((term) => term.state === "active");
+    const hasQueued = terms.some((term) => term.state === "queued");
 
     const termAfter = { ...held };
     const termWrites: string[] = [];
-    if (!hasActive) {
+    if (graceTerm !== undefined) {
+      const anchor = graceTerm.ends_at ?? request.nowIso;
+      const endsAt = held.duration_unit !== null && held.duration_count !== null
+        ? addDuration(anchor, held.duration_unit as "month" | "day", held.duration_count, request.durationScale)
+        : addDuration(anchor, "month", 1, request.durationScale);
+      Object.assign(termAfter, { state: "active", starts_at: anchor, calendar_start: anchor, ends_at: endsAt });
+      termWrites.push(`UPDATE term SET state = 'ended', end_reason = 'renewed', ended_at = ${sqlString(request.nowIso)}, used_final = ${boundaryPlan.hotAfter.used} WHERE term_id = ${sqlString(graceTerm.term_id)}`);
+      termWrites.push(`UPDATE term SET state = 'active', starts_at = ${sqlString(anchor)}, calendar_start = ${sqlString(anchor)}, ends_at = ${sqlString(endsAt)} WHERE term_id = ${sqlString(held.term_id)}`);
+    } else if (!hasActive && !hasQueued) {
       const endsAt =
         held.duration_unit !== null && held.duration_count !== null
           ? addDuration(
@@ -2756,18 +2870,24 @@ export async function releaseHeldRPC(
       Object.assign(termAfter, { state: "queued", position });
       termWrites.push(`UPDATE term SET state = 'queued', position = ${position} WHERE term_id = ${sqlString(held.term_id)}`);
     }
-    const hotBefore = loadHot(storage);
-    const hotAfter = !hasActive
-      ? { ...hotBefore, active_term_id: held.term_id, used: 0 }
+    const hotBefore = boundaryPlan.hotAfter;
+    const activates = graceTerm !== undefined || (!hasActive && !hasQueued);
+    const hotAfter = activates
+      ? { ...hotBefore, active_term_id: held.term_id, used: 0, grace_base_used: 0 }
       : hotBefore;
-    const termsAfter = terms.map((row) => row.term_id === held.term_id ? termAfter : { ...row });
-    const eventKinds = hasActive ? ["term_released"] : ["term_released", "term_activated"];
+    const termsAfter = terms.map((row) => row.term_id === held.term_id ? termAfter : row.term_id === graceTerm?.term_id
+      ? { ...row, state: "ended", end_reason: "renewed", ended_at: request.nowIso, used_final: hotBefore.used }
+      : { ...row });
+    const eventKinds = graceTerm !== undefined
+      ? ["term_ended", "term_released", "term_activated"]
+      : activates ? ["term_released", "term_activated"] : ["term_released"];
     const prepared = prepareCoverageEvents({
       installationId: request.installationId, orgId: request.orgId,
       vendorContractVersion: request.vendorContractVersion, at: request.nowIso,
-      durationScale: request.durationScale, kinds: eventKinds, hotAfter, termsAfter,
+      durationScale: request.durationScale, kinds: eventKinds,
+      hotAfter: { ...hotAfter, clinic_seq: loadHot(storage).clinic_seq + boundaryPlan.events.length }, termsAfter,
     });
-    const releasedSeq = prepared.rows[0]!.clinic_seq as number;
+    const releasedSeq = prepared.rows.find((row) => row.kind === "term_released")!.clinic_seq as number;
 
     const receipt = await signReceipt({
       signingKey,
@@ -2783,6 +2903,11 @@ export async function releaseHeldRPC(
 
     const replayEntry = { operation: "release_held", arguments_sha256: argumentsSha256, receipt };
     await prearmGrantWakeup(state);
+    const boundaryRows = buildBoundaryEventPayloads({
+      storage, clockNowIso: request.nowIso, installationId: request.installationId,
+      orgId: request.orgId, vendorContractVersion: request.vendorContractVersion,
+      durationScale: request.durationScale,
+    }, boundaryPlan, loadHot(storage).clinic_seq);
     const transactionResult = storage.transactionSync(() => {
       const current = readHpReplayEntry(storage, replayKey);
       if (current !== null) {
@@ -2790,9 +2915,9 @@ export async function releaseHeldRPC(
           ? { result: "already_applied" as const, receipt: current.receipt }
           : { result: "bad_request" as const };
       }
-      for (const statement of termWrites) sqlExec(storage, statement);
+      for (const statement of [...boundaryPlan.termWrites, ...termWrites]) sqlExec(storage, statement);
       updateHot(storage, prepared.finalHot);
-      commitPreparedEvents(storage, prepared.rows);
+      commitPreparedEvents(storage, [...boundaryRows, ...prepared.rows]);
       writeHpReplayEntry(storage, replayKey, replayEntry);
       return { result: "applied" as const, receipt };
     });
@@ -2804,6 +2929,250 @@ export async function releaseHeldRPC(
     });
 
     return { kind: "release_held", ...transactionResult };
+  });
+}
+
+export type RecoverStrandedTermRequest = {
+  kind: "recover_stranded_term";
+  actionId: string;
+  orgId: string;
+  installationId: string;
+  bindingEpoch: number;
+  targetTermId: string;
+  sourceGrantId: string;
+  expectedClinicSeq: number;
+  reason: string;
+  evidenceSha256: string;
+  actorEmail: string;
+  credentialId: string;
+  assertionSha256: string;
+  nowIso: string;
+  vendorContractVersion: number;
+  durationScale?: DurationScale;
+  replayOnly?: boolean;
+};
+
+export type RecoverStrandedTermResponse = {
+  kind: "recover_stranded_term";
+  result: "ok" | "already_applied" | "conflict" | "bad_request" | "not_found";
+  detail?: Record<string, unknown>;
+};
+
+/**
+ * Repairs only the R4-D2 orphan shape. Eligibility comes from the retained
+ * term/grant/evidence rows in the tenant DO; client-supplied evidence hashes
+ * are never treated as evidence by themselves.
+ */
+export async function recoverStrandedTermRPC(
+  state: DurableObjectState,
+  storage: DurableObjectStorage,
+  blockConcurrencyWhile: <T>(fn: () => Promise<T>) => Promise<T>,
+  request: RecoverStrandedTermRequest,
+  logger: Logger = noopLogger,
+): Promise<RecoverStrandedTermResponse> {
+  return blockConcurrencyWhile(async () => {
+    const required = [request.actionId, request.orgId, request.installationId,
+      request.targetTermId, request.sourceGrantId, request.reason,
+      request.evidenceSha256, request.actorEmail, request.credentialId,
+      request.assertionSha256, request.nowIso];
+    if (required.some((value) => typeof value !== "string" || value.length === 0) ||
+        !Number.isInteger(request.bindingEpoch) || request.bindingEpoch < 0 ||
+        !Number.isInteger(request.expectedClinicSeq) || request.expectedClinicSeq < 0 ||
+        !/^[0-9a-f]{64}$/u.test(request.evidenceSha256) ||
+        !/^[0-9a-f]{64}$/u.test(request.assertionSha256) ||
+        Number.isNaN(Date.parse(request.nowIso))) {
+      return { kind: "recover_stranded_term", result: "bad_request" };
+    }
+
+    ensureHotRow(storage, request.bindingEpoch);
+    const requestIdentity = {
+      action_id: request.actionId,
+      org_id: request.orgId,
+      installation_id: request.installationId,
+      binding_epoch: request.bindingEpoch,
+      target_term_id: request.targetTermId,
+      source_grant_id: request.sourceGrantId,
+      expected_clinic_seq: request.expectedClinicSeq,
+      reason: request.reason,
+      evidence_sha256: request.evidenceSha256,
+      actor_email: request.actorEmail,
+      credential_id: request.credentialId,
+      assertion_sha256: request.assertionSha256,
+      vendor_contract_version: request.vendorContractVersion,
+    };
+    const requestSha256 = await sha256Hex(canonicalize(requestIdentity));
+    const existing = sqlSelect<{ request_sha256: string; result_json: string }>(
+      storage,
+      `SELECT request_sha256, result_json FROM stranded_term_recovery WHERE action_id = ${sqlString(request.actionId)} LIMIT 1`,
+    )[0];
+    if (existing !== undefined) {
+      return existing.request_sha256 === requestSha256
+        ? (JSON.parse(existing.result_json) as RecoverStrandedTermResponse)
+        : { kind: "recover_stranded_term", result: "conflict" };
+    }
+    if (request.replayOnly === true) return { kind: "recover_stranded_term", result: "not_found" };
+    const recoveredTarget = sqlSelect<{ action_id: string }>(
+      storage,
+      `SELECT action_id FROM stranded_term_recovery WHERE target_term_id = ${sqlString(request.targetTermId)} LIMIT 1`,
+    )[0];
+    if (recoveredTarget !== undefined) return { kind: "recover_stranded_term", result: "conflict" };
+
+    const hot = loadHot(storage);
+    const terms = loadTerms(storage);
+    if (hot.binding_epoch !== request.bindingEpoch || hot.clinic_seq !== request.expectedClinicSeq ||
+        hot.active_term_id !== null || hot.awaiting_transfer === 1 || hot.transfer_pending === 1 ||
+        hot.transferred_out_to !== null) {
+      return { kind: "recover_stranded_term", result: "conflict" };
+    }
+    const active = terms.find((term) => term.state === "active");
+    const grace = terms.find((term) => term.state === "grace");
+    const queued = terms.filter((term) => term.state === "queued")
+      .sort((left, right) => left.position - right.position);
+    const uniqueOldest = queued.length > 0 &&
+      (queued.length === 1 || queued[0]!.position < queued[1]!.position);
+    const target = terms.find((term) => term.term_id === request.targetTermId);
+    if (active !== undefined || !uniqueOldest || target === undefined ||
+        target.state !== "queued" || target.term_id !== queued[0]!.term_id ||
+        target.grant_id !== request.sourceGrantId || target.allowance === null || target.allowance <= 0 ||
+        target.starts_at !== null || target.calendar_start !== null || target.ends_at !== null ||
+        target.ended_at !== null || target.used_final !== null && target.used_final !== 0 ||
+        !["month", "day"].includes(target.duration_unit ?? "") ||
+        target.duration_count === null || target.duration_count <= 0) {
+      return { kind: "recover_stranded_term", result: "conflict" };
+    }
+    const grant = sqlSelect<{ source_kind: string; kind: string; evidence: string; envelope: string; receipt: string | null; voided_at: string | null }>(
+      storage,
+      `SELECT source_kind, kind, evidence, envelope, receipt, voided_at FROM grant WHERE grant_id = ${sqlString(request.sourceGrantId)} LIMIT 1`,
+    )[0];
+    if (grant === undefined || grant.source_kind !== "complimentary" || grant.kind !== "term" ||
+        grant.receipt === null || grant.voided_at !== null) {
+      return { kind: "recover_stranded_term", result: "conflict" };
+    }
+    let evidenceSha256: string;
+    let originalOrgId: string;
+    let originalEnvelope: Record<string, unknown>;
+    try {
+      const evidence = JSON.parse(grant.evidence) as unknown;
+      const envelope = JSON.parse(grant.envelope) as Record<string, unknown>;
+      if (typeof envelope !== "object" || envelope === null || Array.isArray(envelope)) {
+        return { kind: "recover_stranded_term", result: "conflict" };
+      }
+      originalEnvelope = envelope;
+      evidenceSha256 = await sha256Hex(canonicalize(evidence));
+      originalOrgId = typeof envelope.org_id === "string" ? envelope.org_id : "";
+    } catch {
+      return { kind: "recover_stranded_term", result: "conflict" };
+    }
+    const originalDuration = originalEnvelope.duration;
+    const originalPlan = originalEnvelope.plan;
+    let storedPlan: Record<string, unknown>;
+    try { storedPlan = JSON.parse(target.plan_snapshot) as Record<string, unknown>; }
+    catch { return { kind: "recover_stranded_term", result: "conflict" }; }
+    if (evidenceSha256 !== request.evidenceSha256 || originalOrgId !== request.orgId ||
+        originalEnvelope.grant_id !== target.grant_id || !isRecord(originalEnvelope.source) ||
+        originalEnvelope.source.kind !== "complimentary" || !isRecord(originalDuration) ||
+        originalDuration.unit !== target.duration_unit || originalDuration.count !== target.duration_count ||
+        originalEnvelope.allowance_credits !== target.allowance || !isRecord(originalPlan) ||
+        originalPlan.plan_id !== storedPlan.plan_id || originalPlan.plan_version !== storedPlan.version) {
+      return { kind: "recover_stranded_term", result: "conflict" };
+    }
+    let reservations: unknown;
+    try { reservations = JSON.parse(hot.reservations); } catch { reservations = null; }
+    if (!Array.isArray(reservations) || reservations.some((entry) =>
+      entry !== null && typeof entry === "object" &&
+      (entry as Record<string, unknown>).term_id === target.term_id)) {
+      return { kind: "recover_stranded_term", result: "conflict" };
+    }
+
+    const recoveryAt = request.nowIso;
+    const oldUsed = hot.used;
+    let termsBeforeActivation = terms.map((term) => ({ ...term }));
+    let eventHot = { ...hot };
+    const eventPayloads: Record<string, unknown>[] = [];
+    let seq = hot.clinic_seq;
+    const appendEvent = (kind: string, snapshotTerms: TermRow[], snapshotHot: HotRow): void => {
+      seq += 1;
+      const eventHotAfter = { ...snapshotHot, clinic_seq: seq };
+      const snapshot = buildCoverageSnapshot({
+        vendorContractVersion: request.vendorContractVersion,
+        orgId: request.orgId,
+        hot: eventHotAfter,
+        terms: snapshotTerms,
+        durationScale: request.durationScale,
+      });
+      snapshot.clinic_seq = seq;
+      eventPayloads.push({
+        event_id: coverageEventId(request.installationId, seq),
+        org_id: request.orgId,
+        installation_id: request.installationId,
+        binding_epoch: request.bindingEpoch,
+        clinic_seq: seq,
+        kind,
+        at: recoveryAt,
+        snapshot,
+      });
+    };
+    if (grace !== undefined) {
+      termsBeforeActivation = termsBeforeActivation.map((term) => term.term_id === grace.term_id
+        ? { ...term, state: "ended", end_reason: "renewed", ended_at: recoveryAt, used_final: oldUsed }
+        : term);
+      eventHot = { ...eventHot, active_term_id: null, grace_base_used: 0 };
+      appendEvent("term_ended", termsBeforeActivation, eventHot);
+    }
+    const endsAt = addDuration(
+      recoveryAt,
+      target.duration_unit as "month" | "day",
+      target.duration_count,
+      request.durationScale,
+    );
+    const activatedTerms = termsBeforeActivation.map((term) => term.term_id === target.term_id
+      ? { ...term, state: "active", starts_at: recoveryAt, calendar_start: recoveryAt, ends_at: endsAt }
+      : term);
+    const finalHot = { ...eventHot, active_term_id: target.term_id, used: 0, grace_base_used: 0 };
+    appendEvent("term_activated", activatedTerms, finalHot);
+    const result: RecoverStrandedTermResponse = {
+      kind: "recover_stranded_term",
+      result: "ok",
+      detail: { action_id: request.actionId, term_id: target.term_id, grant_id: target.grant_id, recovered_at: recoveryAt, clinic_seq: seq },
+    };
+    const recoveryFact = {
+      action_id: request.actionId,
+      org_id: request.orgId,
+      installation_id: request.installationId,
+      binding_epoch: request.bindingEpoch,
+      target_term_id: target.term_id,
+      source_grant_id: request.sourceGrantId,
+      expected_clinic_seq: request.expectedClinicSeq,
+          reason: request.reason,
+      request_sha256: requestSha256,
+      evidence_sha256: request.evidenceSha256,
+      actor_email: request.actorEmail,
+      credential_id: request.credentialId,
+      assertion_sha256: request.assertionSha256,
+      recovered_at: recoveryAt,
+      result_json: canonicalize(result),
+    };
+    await prearmGrantWakeup(state);
+    const transactionResult = storage.transactionSync(() => {
+      const currentHot = loadHot(storage);
+      if (currentHot.binding_epoch !== request.bindingEpoch || currentHot.clinic_seq !== request.expectedClinicSeq) {
+        return { kind: "recover_stranded_term" as const, result: "conflict" as const };
+      }
+      if (grace !== undefined) {
+        sqlExec(storage, `UPDATE term SET state = 'ended', end_reason = 'renewed', ended_at = ${sqlString(recoveryAt)}, used_final = ${oldUsed} WHERE term_id = ${sqlString(grace.term_id)}`);
+      }
+      sqlExec(storage, `UPDATE term SET state = 'active', starts_at = ${sqlString(recoveryAt)}, calendar_start = ${sqlString(recoveryAt)}, ends_at = ${sqlString(endsAt)} WHERE term_id = ${sqlString(target.term_id)} AND state = 'queued'`);
+      updateHot(storage, { ...finalHot, clinic_seq: seq });
+      insertOutbox(storage, "stranded_term_recovery", recoveryFact);
+      for (const event of eventPayloads) insertOutbox(storage, "coverage_event", event);
+      sqlExec(storage, `INSERT INTO stranded_term_recovery (action_id, target_term_id, reason, request_sha256, result_json, recorded_at) VALUES (${sqlString(request.actionId)}, ${sqlString(target.term_id)}, ${sqlString(request.reason)}, ${sqlString(requestSha256)}, ${sqlString(canonicalize(result))}, ${sqlString(recoveryAt)})`);
+      return result;
+    });
+    if (transactionResult.result === "ok") {
+      await scheduleCoverageAlarm(state, storage, recoveryAt);
+      logger.info("Stranded complimentary term recovered", { installation_id: request.installationId, action_id: request.actionId, term_id: target.term_id });
+    }
+    return transactionResult;
   });
 }
 
@@ -3185,6 +3554,30 @@ async function shipCoverageOutboxInLock(
           });
           await env.R2.put(voidKey, `${voidLine}\n`);
         }
+      } else if (row.kind === "stranded_term_recovery") {
+        await env.DB.prepare(
+          `INSERT OR IGNORE INTO stranded_term_recovery (
+            action_id, org_id, installation_id, binding_epoch, target_term_id,
+            source_grant_id, expected_clinic_seq, reason, request_sha256, evidence_sha256,
+            actor_email, credential_id, assertion_sha256, recovered_at, result_json
+          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        ).bind(
+          payload.action_id,
+          payload.org_id,
+          payload.installation_id,
+          payload.binding_epoch,
+          payload.target_term_id,
+          payload.source_grant_id,
+          payload.expected_clinic_seq,
+          payload.reason,
+          payload.request_sha256,
+          payload.evidence_sha256,
+          payload.actor_email,
+          payload.credential_id,
+          payload.assertion_sha256,
+          payload.recovered_at,
+          payload.result_json,
+        ).run();
       } else if (row.kind === "usage_adjustment") {
         const usageEventId = crypto.randomUUID();
         await env.DB.prepare(

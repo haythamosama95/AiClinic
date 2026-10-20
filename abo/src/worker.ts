@@ -86,6 +86,9 @@ export interface Env {
     releaseHeld(
       args: Record<string, unknown>,
     ): Promise<Record<string, unknown>>;
+    recoverStrandedTerm(
+      args: Record<string, unknown>,
+    ): Promise<Record<string, unknown>>;
     voidGrant(
       args: Record<string, unknown>,
     ): Promise<Record<string, unknown>>;

@@ -87,6 +87,9 @@ export interface OpsEnv extends ClockEnv, ProviderRegistryEnv {
     releaseHeld(
       args: Record<string, unknown>,
     ): Promise<Record<string, unknown>>;
+    recoverStrandedTerm(
+      args: Record<string, unknown>,
+    ): Promise<Record<string, unknown>>;
     voidGrant(
       args: Record<string, unknown>,
     ): Promise<Record<string, unknown>>;
@@ -3678,6 +3681,91 @@ async function handlePostListGrantsForVoid(
   return platformResponseJson(platformResult, contractVersion);
 }
 
+async function handlePostStrandedCoverageRecovery(
+  env: OpsEnv,
+  access: VerifiedAccess,
+  request: Request,
+  contractVersion: number,
+): Promise<Response> {
+  const body = await parseHpRequestBody(request);
+  if (body === null) return clinicErrorResponse("assertion_invalid", 400, contractVersion);
+  const actionId = body.action_id;
+  const orgId = body.org_id;
+  const installationId = body.installation_id;
+  const bindingEpoch = body.binding_epoch;
+  const targetTermId = body.target_term_id;
+  const sourceGrantId = body.source_grant_id;
+  const expectedClinicSeq = body.expected_clinic_seq;
+  const reason = body.reason;
+  const evidenceSha256 = body.evidence_sha256;
+  const signerCredentialId = body.signer_credential_id;
+  if (typeof actionId !== "string" || actionId.length === 0 ||
+    typeof orgId !== "string" || orgId.length === 0 ||
+    typeof installationId !== "string" || installationId.length === 0 ||
+    typeof targetTermId !== "string" || targetTermId.length === 0 ||
+    typeof sourceGrantId !== "string" || sourceGrantId.length === 0 ||
+    typeof reason !== "string" || reason.length === 0 ||
+    typeof evidenceSha256 !== "string" || evidenceSha256.length === 0 ||
+    typeof signerCredentialId !== "string" || signerCredentialId.length === 0 ||
+    typeof bindingEpoch !== "number" || !Number.isInteger(bindingEpoch) || bindingEpoch < 0 ||
+    typeof expectedClinicSeq !== "number" || !Number.isInteger(expectedClinicSeq) || expectedClinicSeq < 0) {
+    return clinicErrorResponse("assertion_invalid", 400, contractVersion);
+  }
+  const operation = body.operation;
+  const args = {
+    org_id: orgId,
+    installation_id: installationId,
+    binding_epoch: bindingEpoch,
+    target_term_id: targetTermId,
+    source_grant_id: sourceGrantId,
+    expected_clinic_seq: expectedClinicSeq,
+    reason,
+    evidence_sha256: evidenceSha256,
+    signer_credential_id: signerCredentialId,
+  };
+  const reservation = await reserveRelayInvocation(env, {
+    commandId: actionId as string,
+    method: "recoverStrandedTerm",
+    actorEmail: access.email,
+    target: targetTermId as string,
+    contractVersion,
+    args: { ...args, action_id: actionId },
+    operation,
+  });
+  if (reservation.result === "conflict") return clinicErrorResponse("conflict", 409, contractVersion);
+  const replay = await completedRelayResponse(env, actionId as string, contractVersion);
+  if (replay !== null) return replay;
+
+  const platformResult = await env.PLATFORM.recoverStrandedTerm({
+    contract_version: CHANNEL_VERSIONS.vendorEntrypoint,
+    access_jwt: access.jwt,
+    action_id: actionId,
+    ...args,
+    operation,
+    assertion: body.assertion,
+    signer_credential_id: body.signer_credential_id,
+  });
+  const result = String(platformResult.result ?? "");
+  if (result === "transient") {
+    await setAcceptedCommandStage(env, reservation.challengeSha256, "accepted");
+    return platformResponseJson(platformResult, contractVersion);
+  }
+  const paramsSha256 = await sha256Hex(canonicalize({ action_id: actionId, ...args }));
+  const assertionSha256 = isRecord(operation) ? await sha256Hex(canonicalize(operation)) : null;
+  await insertRelayOperatorAction(env, {
+    action_id: actionId as string,
+    actor_email: access.email,
+    access_jti: access.jti,
+    action: "recoverStrandedTerm",
+    subject: targetTermId as string,
+    params_sha256: paramsSha256,
+    assertion_sha256: assertionSha256,
+    result,
+  });
+  await setAcceptedCommandStage(env, reservation.challengeSha256, "complete", JSON.stringify(platformResult));
+  return platformResponseJson(platformResult, contractVersion);
+}
+
 async function handlePostGrantHpRelay(
   env: OpsEnv,
   grantId: string,
@@ -4475,6 +4563,10 @@ export async function handleOps(
 
   if (request.method === "POST" && path === "/ops/grants/list-for-void") {
     return handlePostListGrantsForVoid(env, access, request, contractVersion);
+  }
+
+  if (request.method === "POST" && path === "/ops/coverage/recover-stranded") {
+    return handlePostStrandedCoverageRecovery(env, access, request, contractVersion);
   }
 
   const voidGrantMatch = /^\/ops\/grants\/([^/]+)\/void$/u.exec(path);

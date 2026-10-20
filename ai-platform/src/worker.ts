@@ -102,6 +102,7 @@ import {
   openAwaitingTransferRPC,
   readCoverageRPC,
   releaseHeldRPC,
+  recoverStrandedTermRPC,
   sealCeilingClaimRPC,
   sealGrantRouteRPC,
   setTransferPendingRPC,
@@ -2021,6 +2022,16 @@ export class GatewayObject extends DurableObject {
           this.ctx.storage,
           (fn) => this.ctx.blockConcurrencyWhile(fn),
           body as Parameters<typeof releaseHeldRPC>[3],
+          quotaLog,
+        );
+        return platformDoResponse(result, contractVersion);
+      }
+      if (kind === "recover_stranded_term") {
+        const result = await recoverStrandedTermRPC(
+          this.ctx,
+          this.ctx.storage,
+          (fn) => this.ctx.blockConcurrencyWhile(fn),
+          body as Parameters<typeof recoverStrandedTermRPC>[3],
           quotaLog,
         );
         return platformDoResponse(result, contractVersion);

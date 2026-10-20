@@ -112,6 +112,7 @@ const METHOD_CLASS = {
   feedConsumerHealth: "M",
   voidForReversal: "M",
   releaseHeld: "HP",
+  recoverStrandedTerm: "HP",
   voidGrant: "HP",
   listGrantsForVoid: "M",
   beginTransfer: "HP",
@@ -1939,6 +1940,17 @@ function operationParamsMatch(
   } else if (method === "releaseHeld" || method === "voidGrant") {
     expected.grant_id = rpcArgs.grant_id;
     expected.reason = rpcArgs.reason;
+  } else if (method === "recoverStrandedTerm") {
+    expected.action_id = rpcArgs.action_id;
+    expected.org_id = rpcArgs.org_id;
+    expected.installation_id = rpcArgs.installation_id;
+    expected.binding_epoch = rpcArgs.binding_epoch;
+    expected.target_term_id = rpcArgs.target_term_id;
+    expected.source_grant_id = rpcArgs.source_grant_id;
+    expected.expected_clinic_seq = rpcArgs.expected_clinic_seq;
+    expected.reason = rpcArgs.reason;
+    expected.evidence_sha256 = rpcArgs.evidence_sha256;
+    expected.signer_credential_id = rpcArgs.signer_credential_id;
   } else if (method === "beginTransfer") {
     expected.org_id = rpcArgs.org_id;
     expected.from_installation_id = rpcArgs.from_installation_id;
@@ -1983,6 +1995,9 @@ function hpAuditTarget(
   }
   if (method === "releaseHeld" || method === "voidGrant") {
     return typeof rpcArgs.grant_id === "string" ? rpcArgs.grant_id : "";
+  }
+  if (method === "recoverStrandedTerm") {
+    return typeof rpcArgs.target_term_id === "string" ? rpcArgs.target_term_id : "";
   }
   if (method === "beginTransfer") {
     const fromId =
@@ -6039,6 +6054,170 @@ export class VendorEntrypoint extends WorkerEntrypoint<VendorEnv> {
 
     await finishHpAssertion(this.env, access.email, "releaseHeld", check);
     return mapHpVoidDoResponse(version, doResponse);
+  }
+
+  async recoverStrandedTerm(args: Record<string, unknown>): Promise<GrantResultEnvelope> {
+    const requested = parseRequestedVersion(args);
+    const negotiated = negotiate(VENDOR_CHANNEL, requested);
+    if (!negotiated.ok) return grantRejected(VENDOR_CHANNEL, negotiated.code);
+    const version = negotiated.version;
+    const access = await verifyHpAccess(this.env, args.access_jwt);
+    if (!access.ok) return grantRejected(version, "unauthenticated");
+    const actionId = args.action_id;
+    const orgId = args.org_id;
+    const installationId = args.installation_id;
+    const targetTermId = args.target_term_id;
+    const sourceGrantId = args.source_grant_id;
+    const expectedClinicSeq = args.expected_clinic_seq;
+    const expectedBindingEpoch = args.binding_epoch;
+    const reason = args.reason;
+    const evidenceSha256 = args.evidence_sha256;
+    const credentialId = args.signer_credential_id;
+    if (typeof actionId !== "string" || actionId.length === 0 ||
+      typeof orgId !== "string" || orgId.length === 0 ||
+      typeof installationId !== "string" || installationId.length === 0 ||
+      typeof targetTermId !== "string" || targetTermId.length === 0 ||
+      typeof sourceGrantId !== "string" || sourceGrantId.length === 0 ||
+      typeof reason !== "string" || reason.length === 0 ||
+      typeof evidenceSha256 !== "string" || !HEX64_RE.test(evidenceSha256) ||
+      typeof credentialId !== "string" || credentialId.length === 0 ||
+      typeof expectedClinicSeq !== "number" || !Number.isInteger(expectedClinicSeq) || expectedClinicSeq < 0 ||
+      typeof expectedBindingEpoch !== "number" || !Number.isInteger(expectedBindingEpoch) || expectedBindingEpoch < 0) {
+      return grantRejected(version, "bad_request");
+    }
+    const originalGrant = await this.env.DB.prepare(
+      "SELECT org_id, installation_id, kind, source_kind FROM grant_ledger WHERE grant_id = ?",
+    ).bind(sourceGrantId).first<{ org_id: string; installation_id: string; kind: string; source_kind: string }>();
+    if (originalGrant === null || originalGrant.org_id !== orgId ||
+        originalGrant.kind !== "term" || originalGrant.source_kind !== "complimentary" ||
+        originalGrant.installation_id !== installationId) {
+      return grantRejected(version, "coverage_unknown");
+    }
+    const operationRaw = args.operation;
+    if (!validateOperation(operationRaw).ok) return grantRejected(version, "assertion_invalid");
+    const assertionSha256 = await operationAssertionSha256(operationRaw as Record<string, unknown>);
+    const nowIso = await clockNowIso(this.env);
+    const doRequest = {
+      kind: "recover_stranded_term",
+      actionId,
+      orgId,
+      installationId,
+      bindingEpoch: expectedBindingEpoch,
+      targetTermId,
+      sourceGrantId,
+      expectedClinicSeq,
+      reason,
+      evidenceSha256,
+      actorEmail: access.email,
+      credentialId,
+      assertionSha256,
+      nowIso,
+      vendorContractVersion: version,
+      durationScale: durationScaleFromEnv(this.env),
+      replayOnly: true,
+    };
+    const requestSha256 = await sha256Hex(canonicalize({
+      action_id: actionId,
+      org_id: orgId,
+      installation_id: installationId,
+      binding_epoch: expectedBindingEpoch,
+      target_term_id: targetTermId,
+      source_grant_id: sourceGrantId,
+      expected_clinic_seq: expectedClinicSeq,
+      reason,
+      evidence_sha256: evidenceSha256,
+      actor_email: access.email,
+      credential_id: credentialId,
+      assertion_sha256: assertionSha256,
+      vendor_contract_version: version,
+    }));
+    const persistRecoveryFact = async (detail: Record<string, unknown>): Promise<void> => {
+      await this.env.DB.prepare(
+        `INSERT OR IGNORE INTO stranded_term_recovery (
+          action_id, org_id, installation_id, binding_epoch, target_term_id,
+          source_grant_id, expected_clinic_seq, reason, request_sha256, evidence_sha256,
+          actor_email, credential_id, assertion_sha256, recovered_at, result_json
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      ).bind(
+        actionId, orgId, installationId, expectedBindingEpoch, targetTermId,
+        sourceGrantId, expectedClinicSeq, reason, requestSha256, evidenceSha256,
+        access.email, credentialId, assertionSha256, detail.recovered_at,
+        canonicalize({ kind: "recover_stranded_term", result: "ok", detail }),
+      ).run();
+    };
+    const durableReplay = await this.env.DB.prepare(
+      "SELECT request_sha256, result_json FROM stranded_term_recovery WHERE action_id = ?",
+    ).bind(actionId).first<{ request_sha256: string; result_json: string }>();
+    if (durableReplay !== null) {
+      if (durableReplay.request_sha256 !== requestSha256) {
+        return { contract_version: version, result: "conflict", code: "recovery_conflict", detail: "" };
+      }
+      const stored = JSON.parse(durableReplay.result_json) as Record<string, unknown>;
+      const detail = stored.detail;
+      if (!isRecord(detail)) return grantTransient(version, "recovery_audit_invalid");
+      return { contract_version: version, result: "ok", code: "", detail: canonicalize(detail) };
+    }
+    // Completed action identity is permanent in the pinned DO. Read it before
+    // one-use assertion validation so a lost HTTP reply can replay exactly.
+    const replay = await callCoverageDo(this.env, installationId, doRequest);
+    if (replay?.result === "ok" && isRecord(replay.detail)) {
+      await persistRecoveryFact(replay.detail);
+      return { contract_version: version, result: "ok", code: "", detail: canonicalize(replay.detail) };
+    }
+    if (replay?.result === "conflict") return { contract_version: version, result: "conflict", code: "recovery_conflict", detail: "" };
+    const authoritativeVoid = await this.env.DB.prepare(
+      "SELECT COUNT(*) AS count FROM grant_void WHERE grant_id = ?",
+    ).bind(sourceGrantId).first<{ count: number }>();
+    if ((authoritativeVoid?.count ?? 0) > 0) {
+      return { contract_version: version, result: "conflict", code: "recovery_history_conflict", detail: "" };
+    }
+    const binding = await readActiveTenantBinding(this.env.DB, orgId);
+    if (binding === null || binding.installation_id !== installationId || binding.epoch !== expectedBindingEpoch) {
+      return grantRejected(version, "coverage_unknown");
+    }
+    const activationHistory = await this.env.DB.prepare(
+      `SELECT snapshot FROM coverage_event
+       WHERE installation_id = ? AND kind = 'term_activated' AND instr(snapshot, ?) > 0`,
+    ).bind(installationId, targetTermId).all<{ snapshot: string }>();
+    const wasActivated = (activationHistory.results ?? []).some((row) => {
+      try {
+        const snapshot = JSON.parse(row.snapshot) as Record<string, unknown>;
+        const terms = Array.isArray(snapshot.terms) ? snapshot.terms : [];
+        if (terms.some((entry) => isRecord(entry) && entry.term_id === targetTermId && entry.state === "active")) return true;
+        return isRecord(snapshot.term) && snapshot.term.ref === targetTermId;
+      } catch {
+        return true;
+      }
+    });
+    const priorUsage = await this.env.DB.prepare(
+      "SELECT COUNT(*) AS count FROM usage_event WHERE installation_id = ? AND term_id = ?",
+    ).bind(installationId, targetTermId).first<{ count: number }>();
+    if (wasActivated || (priorUsage?.count ?? 0) > 0) {
+      return { contract_version: version, result: "conflict", code: "recovery_history_conflict", detail: "" };
+    }
+
+    const check = await runHpAssertionChecks(
+      this.env, "recoverStrandedTerm", args, access.email, version,
+    );
+    if (!check.ok) {
+      const rejectedEnvelope = await rejectHpAssertion(
+        this.env, access.email, "recoverStrandedTerm", check,
+      );
+      return { contract_version: version, result: "rejected", code: rejectedEnvelope.code, detail: rejectedEnvelope.detail };
+    }
+    const doResponse = await callCoverageDo(this.env, installationId, {
+      ...doRequest,
+      assertionSha256: check.assertionSha256,
+      actorEmail: access.email,
+      credentialId: check.signer.credential_id,
+      replayOnly: false,
+    });
+    if (doResponse === null) return grantTransient(version, "coverage_unknown");
+    if (doResponse.result === "conflict") return { contract_version: version, result: "conflict", code: "recovery_conflict", detail: "" };
+    if (doResponse.result !== "ok" || !isRecord(doResponse.detail)) return grantRejected(version, "coverage_unknown");
+    await persistRecoveryFact(doResponse.detail);
+    await finishHpAssertion(this.env, access.email, "recoverStrandedTerm", check);
+    return { contract_version: version, result: "ok", code: "", detail: canonicalize(doResponse.detail) };
   }
 
   async voidGrant(args: Record<string, unknown>): Promise<GrantResultEnvelope> {
