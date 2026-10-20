@@ -2024,6 +2024,180 @@ describe("R5-A4_fallback_uses_term_context_and_journals_result", () => {
   });
 });
 
+describe("R5-ADM1_fallback_worker_retries", () => {
+  it("replays an in-flight and completed fallback request with fresh token JTIs", async () => {
+    await env.DB.prepare("DELETE FROM routing_policy").run();
+    await seedRoutingPolicy(env.DB, env.R2, tieredRoutingPolicyDocument());
+    await env.DB.prepare(
+      "UPDATE coverage_mirror SET term_snapshot = ? WHERE installation_id = ?",
+    )
+      .bind(
+        JSON.stringify({
+          ref: termIdForInstallation(FIXTURE_INSTALLATION_ID),
+          capabilities: [FIXTURE_CAPABILITY_ID],
+          max_cost_class: "standard",
+        }),
+        FIXTURE_INSTALLATION_ID,
+      )
+      .run();
+
+    const admissionMod = await import("../src/admission");
+    const originalAdmission = admissionMod.runAdmission;
+    const unavailableDo = {
+      idFromName: env.DO.idFromName.bind(env.DO),
+      get: () => ({ fetch: async () => { throw new Error("Quota DO unavailable"); } }),
+    } as unknown as DurableObjectNamespace;
+    const admissionSpy = vi
+      .spyOn(admissionMod, "runAdmission")
+      .mockImplementation((input, bindings, ctx) =>
+        originalAdmission(input, { ...bindings, DO: unavailableDo }, ctx),
+      );
+
+    const fakeMod = await import("../src/provider/fake");
+    const originalInvoke = fakeMod.FakeAdapter.prototype.invoke;
+    let markInvoked!: () => void;
+    let releaseInvoke!: () => void;
+    const invoked = new Promise<void>((resolve) => { markInvoked = resolve; });
+    const providerGate = new Promise<void>((resolve) => { releaseInvoke = resolve; });
+    const invokeSpy = vi
+      .spyOn(fakeMod.FakeAdapter.prototype, "invoke")
+      .mockImplementation(async function (this: unknown, ...args) {
+        markInvoked();
+        await providerGate;
+        return originalInvoke.apply(this, args as never);
+      });
+
+    try {
+      const idempotencyKey = uniqueIdempotencyKey();
+      const firstResponse = await SELF.fetch(
+        buildPostRequest({ token: await mintAat(), idempotencyKey }),
+      );
+      expect(firstResponse.status).toBe(200);
+      const firstReader = firstResponse.body!.getReader();
+      const decoder = new TextDecoder();
+      let firstStream = "";
+      while (!firstStream.includes("event: accepted")) {
+        const next = await firstReader.read();
+        if (next.done) break;
+        firstStream += decoder.decode(next.value, { stream: true });
+      }
+      expect(firstStream).toContain("event: accepted");
+      await invoked;
+
+      const inFlight = await fetchLivePost(await mintAat(), { idempotencyKey });
+      expect(inFlight.response.status).toBe(200);
+      expect(inFlight.events.map((event) => event.type)).toContain("accepted");
+      expect(terminalEvents(inFlight.events)).toHaveLength(0);
+      expect(invokeSpy).toHaveBeenCalledTimes(1);
+      expect(await countAiRequests()).toBe(1);
+
+      releaseInvoke();
+      for (;;) {
+        const next = await firstReader.read();
+        if (next.done) break;
+        firstStream += decoder.decode(next.value, { stream: true });
+      }
+      firstStream += decoder.decode();
+      expect(firstStream).toContain("event: completed");
+
+      const completedRetry = await fetchLivePost(await mintAat(), {
+        idempotencyKey,
+      });
+      expect(completedRetry.response.status).toBe(200);
+      expect(terminalEvents(completedRetry.events).map((event) => event.type)).toEqual([
+        "completed",
+      ]);
+      expect(invokeSpy).toHaveBeenCalledTimes(1);
+      expect(await countAiRequests()).toBe(1);
+      const fallback = await env.DB.prepare(
+        "SELECT state FROM fallback_admission WHERE installation_id = ? AND idempotency_key = ?",
+      )
+        .bind(FIXTURE_INSTALLATION_ID, idempotencyKey)
+        .first<{ state: string }>();
+      expect(fallback?.state).toBe("consumed");
+    } finally {
+      releaseInvoke();
+      invokeSpy.mockRestore();
+      admissionSpy.mockRestore();
+    }
+  });
+
+  it("retries successfully after Stage 9 failure without reusing a released fallback row", async () => {
+    await env.DB.prepare("DELETE FROM routing_policy").run();
+    await seedRoutingPolicy(env.DB, env.R2, tieredRoutingPolicyDocument());
+    await env.DB.prepare(
+      "UPDATE coverage_mirror SET term_snapshot = ? WHERE installation_id = ?",
+    )
+      .bind(
+        JSON.stringify({
+          ref: termIdForInstallation(FIXTURE_INSTALLATION_ID),
+          capabilities: [FIXTURE_CAPABILITY_ID],
+          max_cost_class: "standard",
+        }),
+        FIXTURE_INSTALLATION_ID,
+      )
+      .run();
+
+    const admissionMod = await import("../src/admission");
+    const originalAdmission = admissionMod.runAdmission;
+    let unavailable = true;
+    const switchableDo = {
+      idFromName: env.DO.idFromName.bind(env.DO),
+      get: (id: DurableObjectId) => {
+        if (unavailable) {
+          return { fetch: async () => { throw new Error("Quota DO unavailable"); } };
+        }
+        return env.DO.get(id);
+      },
+    } as unknown as DurableObjectNamespace;
+    const admissionSpy = vi
+      .spyOn(admissionMod, "runAdmission")
+      .mockImplementation((input, bindings, ctx) =>
+        originalAdmission(input, { ...bindings, DO: switchableDo }, ctx),
+      );
+    const idempotencyKey = uniqueIdempotencyKey();
+    const triggerName = `rm24_stage9_${crypto.randomUUID().replaceAll("-", "")}`;
+    try {
+      await env.DB.prepare(
+        `CREATE TRIGGER ${triggerName} BEFORE INSERT ON ai_request
+         WHEN NEW.idempotency_key = '${idempotencyKey}'
+         BEGIN SELECT RAISE(ABORT, 'RM24 Stage 9 failure'); END`,
+      ).run();
+      const failed = await SELF.fetch(
+        buildPostRequest({ token: await mintAat(), idempotencyKey }),
+      );
+      expect(failed.status).toBeGreaterThanOrEqual(500);
+      await failed.text();
+      await flushBackgroundWork();
+      const released = await env.DB.prepare(
+        "SELECT state FROM fallback_admission WHERE installation_id = ? AND idempotency_key = ?",
+      )
+        .bind(FIXTURE_INSTALLATION_ID, idempotencyKey)
+        .first<{ state: string }>();
+      expect(released?.state).toBe("released");
+      expect(await countAiRequests()).toBe(0);
+
+      await env.DB.prepare(`DROP TRIGGER ${triggerName}`).run();
+      unavailable = false;
+      const retry = await fetchLivePost(await mintAat(), { idempotencyKey });
+      expect(retry.response.status).toBe(200);
+      expect(terminalEvents(retry.events).map((event) => event.type)).toContain(
+        "completed",
+      );
+      expect(await countAiRequests()).toBe(1);
+      const stillReleased = await env.DB.prepare(
+        "SELECT state FROM fallback_admission WHERE installation_id = ? AND idempotency_key = ?",
+      )
+        .bind(FIXTURE_INSTALLATION_ID, idempotencyKey)
+        .first<{ state: string }>();
+      expect(stillReleased?.state).toBe("released");
+    } finally {
+      await env.DB.prepare(`DROP TRIGGER IF EXISTS ${triggerName}`).run();
+      admissionSpy.mockRestore();
+    }
+  });
+});
+
 describe("R5-ADM2_fallback_cost_ceiling_and_R5-A4_zero_release", () => {
   it("excludes standard targets for economy fallback and terminalizes the zero-charge row", async () => {
     await env.DB.prepare("DELETE FROM routing_policy").run();

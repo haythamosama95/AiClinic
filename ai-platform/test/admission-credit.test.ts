@@ -1024,7 +1024,7 @@ describe("R5-ADM1_atomic_fallback_cap", () => {
     );
   });
 
-  it("returns the stored identity on a same-key retry without adding weight", async () => {
+  it("denies a same-key retry before a journal row exists without releasing the winner", async () => {
     const admission = await loadAdmissionModule();
     const installationId = freshInstallationId();
     const { cache, reader } = await seedInstallationAndEntitlement(installationId);
@@ -1046,16 +1046,90 @@ describe("R5-ADM1_atomic_fallback_cap", () => {
       { now: FIXTURE_NOW_MS, nowMs: FIXTURE_NOW_MS },
     );
 
+    expect(retry).toEqual({ ok: false, code: "coverage_unknown" });
+    expect(await countPendingFallbackRows(installationId)).toBe(1);
+  });
+
+  it("returns idempotent for a matching journaled same-key fallback retry", async () => {
+    const admission = await loadAdmissionModule();
+    const installationId = freshInstallationId();
+    const { cache, reader } = await seedInstallationAndEntitlement(installationId);
+    const brokenDo = createThrowingDoNamespace(env.DO);
+    const idempotencyKey = uniqueIdempotencyKey();
+    const requestFingerprint = "rm24-same-key-fingerprint";
+    const first = await admission.runAdmission(
+      defaultAdmissionInput(installationId, cache, reader, {
+        idempotencyKey,
+        requestFingerprint,
+      }),
+      { DB: env.DB, DO: brokenDo },
+      { now: FIXTURE_NOW_MS, nowMs: FIXTURE_NOW_MS },
+    );
+    if (!first.ok || first.outcome !== "grace_admitted") {
+      throw new Error("expected fallback admission");
+    }
+
+    await env.DB.prepare(
+      `INSERT INTO ai_request (
+         request_id, request_reference, installation_id, actor_id, branch_id,
+         capability_id, capability_version, prompt_artifact_hash, idempotency_key,
+         trace_id, state, created_at, updated_at, request_fingerprint
+       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'Completed', ?, ?, ?)`,
+    )
+      .bind(
+        first.requestId,
+        first.requestReference,
+        installationId,
+        "actor-adm-001",
+        "branch-adm-001",
+        "clinic.visit_summary",
+        "1.0.0",
+        "prompt/fallback@v1",
+        idempotencyKey,
+        "01FALLBACKTRACE00000002",
+        FIXTURE_NOW,
+        FIXTURE_NOW,
+        requestFingerprint,
+      )
+      .run();
+
+    const retry = await admission.runAdmission(
+      defaultAdmissionInput(installationId, cache, reader, {
+        idempotencyKey,
+        requestFingerprint,
+        principal: { jti: uniqueJti() },
+      }),
+      { DB: env.DB, DO: brokenDo },
+      { now: FIXTURE_NOW_MS, nowMs: FIXTURE_NOW_MS },
+    );
     expect(retry).toMatchObject({
       ok: true,
-      outcome: "grace_admitted",
-      accountingMode: "fallback",
+      outcome: "idempotent",
+      priorState: { state: "completed", requestId: first.requestId },
     });
-    const firstRequestId =
-      first.ok && first.outcome === "grace_admitted" ? first.requestId : "";
-    const retryRequestId =
-      retry.ok && retry.outcome === "grace_admitted" ? retry.requestId : "";
-    expect(retryRequestId).toBe(firstRequestId);
+    expect(await countPendingFallbackRows(installationId)).toBe(1);
+  });
+
+  it("does not release a concurrent same-key winner before its journal insert", async () => {
+    const admission = await loadAdmissionModule();
+    const installationId = freshInstallationId();
+    const { cache, reader } = await seedInstallationAndEntitlement(installationId);
+    const brokenDo = createThrowingDoNamespace(env.DO);
+    const idempotencyKey = uniqueIdempotencyKey();
+    const results = await Promise.all(
+      [uniqueJti(), uniqueJti()].map((jti) =>
+        admission.runAdmission(
+          defaultAdmissionInput(installationId, cache, reader, {
+            idempotencyKey,
+            principal: { jti },
+          }),
+          { DB: env.DB, DO: brokenDo },
+          { now: FIXTURE_NOW_MS, nowMs: FIXTURE_NOW_MS },
+        ),
+      ),
+    );
+    expect(results.filter((result) => result.ok)).toHaveLength(1);
+    expect(results.filter((result) => !result.ok)).toHaveLength(1);
     expect(await countPendingFallbackRows(installationId)).toBe(1);
   });
 });
@@ -1086,6 +1160,35 @@ describe("R5-ADM3_fallback_jti_replay", () => {
     );
 
     expect(second).toEqual({ ok: false, code: "unauthenticated" });
+    expect(await countPendingFallbackRows(installationId)).toBe(1);
+  });
+
+  it("rejects reuse of the original JTI even with the same idempotency key", async () => {
+    const admission = await loadAdmissionModule();
+    const installationId = freshInstallationId();
+    const { cache, reader } = await seedInstallationAndEntitlement(installationId);
+    const brokenDo = createThrowingDoNamespace(env.DO);
+    const idempotencyKey = uniqueIdempotencyKey();
+    const jti = uniqueJti();
+    const first = await admission.runAdmission(
+      defaultAdmissionInput(installationId, cache, reader, {
+        idempotencyKey,
+        principal: { jti },
+      }),
+      { DB: env.DB, DO: brokenDo },
+      { now: FIXTURE_NOW_MS, nowMs: FIXTURE_NOW_MS },
+    );
+    expect(first).toMatchObject({ ok: true, outcome: "grace_admitted" });
+
+    const retry = await admission.runAdmission(
+      defaultAdmissionInput(installationId, cache, reader, {
+        idempotencyKey,
+        principal: { jti },
+      }),
+      { DB: env.DB, DO: brokenDo },
+      { now: FIXTURE_NOW_MS, nowMs: FIXTURE_NOW_MS },
+    );
+    expect(retry).toEqual({ ok: false, code: "unauthenticated" });
     expect(await countPendingFallbackRows(installationId)).toBe(1);
   });
 

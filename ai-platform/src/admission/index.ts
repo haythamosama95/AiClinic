@@ -149,6 +149,7 @@ type CoverageMirrorRow = {
 type FallbackAdmissionBindingRow = {
   request_id: string;
   term_id: string;
+  state: string;
   jti: string | null;
   actor_id: string | null;
   branch_id: string | null;
@@ -468,11 +469,28 @@ async function tryMirrorFallbackAdmission(input: {
   quotaWeight: number;
   requestId: string;
   allowNew?: boolean;
+  journaled: JournaledRequestRow | null;
+  journaledBindingMatches: boolean;
   clock?: ClockEnv;
 }): Promise<AdmissionResult | null> {
+  const existingJti = await input.db
+    .prepare(
+      `SELECT 1 AS present FROM fallback_admission
+       WHERE installation_id = ? AND jti = ? LIMIT 1`,
+    )
+    .bind(input.principal.installationId, input.principal.jti)
+    .first<{ present: number }>();
+  if (existingJti) {
+    recordGuardRejection({
+      error_code: "unauthenticated",
+      installation_id: input.principal.installationId,
+    });
+    return { ok: false, code: "unauthenticated" };
+  }
+
   const existingKey = await input.db
     .prepare(
-      `SELECT request_id, term_id, jti, actor_id, branch_id, capability_id,
+      `SELECT request_id, term_id, state, jti, actor_id, branch_id, capability_id,
               request_fingerprint, plan_snapshot
        FROM fallback_admission
        WHERE installation_id = ? AND idempotency_key = ?`,
@@ -492,25 +510,17 @@ async function tryMirrorFallbackAdmission(input: {
       });
       return { ok: false, code: "idempotency_conflict" };
     }
-    let priorSnapshot: { capabilities: string[]; max_cost_class: string };
-    try {
-      priorSnapshot = JSON.parse(existingKey.plan_snapshot) as {
-        capabilities: string[];
-        max_cost_class: string;
-      };
-    } catch {
-      return coverageUnknown(input.principal.installationId);
+    if (
+      input.journaled &&
+      input.journaledBindingMatches &&
+      input.journaled.request_id === existingKey.request_id &&
+      ["pending", "consumed", "released", "settled"].includes(existingKey.state)
+    ) {
+      return idempotentFromJournal(input.journaled);
     }
-    return {
-      ok: true,
-      outcome: "grace_admitted",
-      requestId: existingKey.request_id,
-      requestReference: input.requestReference,
-      termId: existingKey.term_id,
-      reservationId: existingKey.request_id,
-      snapshot: priorSnapshot,
-      accountingMode: "fallback",
-    };
+    // Do not replay a fallback reservation before its journal row exists. A
+    // same-key concurrent loser must not enter Stage 9 and release the winner.
+    return null;
   }
   if (input.allowNew === false) {
     return null;
@@ -556,21 +566,6 @@ async function tryMirrorFallbackAdmission(input: {
     capabilities: termView.capabilities,
     max_cost_class: termView.max_cost_class,
   };
-  const existingJti = await input.db
-    .prepare(
-      `SELECT 1 AS present FROM fallback_admission
-       WHERE installation_id = ? AND jti = ? LIMIT 1`,
-    )
-    .bind(input.principal.installationId, input.principal.jti)
-    .first<{ present: number }>();
-  if (existingJti) {
-    recordGuardRejection({
-      error_code: "unauthenticated",
-      installation_id: input.principal.installationId,
-    });
-    return { ok: false, code: "unauthenticated" };
-  }
-
   const w = input.quotaWeight;
   const cap = 5 * publishedQuotaWeightMax();
   const admittedAt = nowIso;
@@ -606,13 +601,27 @@ async function tryMirrorFallbackAdmission(input: {
   if ((inserted.meta.changes ?? 0) === 0) {
     const raced = await input.db
       .prepare(
-        `SELECT request_id, term_id, jti, actor_id, branch_id, capability_id,
+        `SELECT request_id, term_id, state, jti, actor_id, branch_id, capability_id,
                 request_fingerprint, plan_snapshot FROM fallback_admission
          WHERE installation_id = ? AND idempotency_key = ?`,
       )
       .bind(input.principal.installationId, input.idempotencyKey)
       .first<FallbackAdmissionBindingRow>();
     if (raced) {
+      const racedJti = await input.db
+        .prepare(
+          `SELECT 1 AS present FROM fallback_admission
+           WHERE installation_id = ? AND jti = ? LIMIT 1`,
+        )
+        .bind(input.principal.installationId, input.principal.jti)
+        .first<{ present: number }>();
+      if (racedJti) {
+        recordGuardRejection({
+          error_code: "unauthenticated",
+          installation_id: input.principal.installationId,
+        });
+        return { ok: false, code: "unauthenticated" };
+      }
       if (
         raced.actor_id !== input.principal.actorId ||
         raced.branch_id !== input.principal.branchId ||
@@ -626,20 +635,17 @@ async function tryMirrorFallbackAdmission(input: {
         });
         return { ok: false, code: "idempotency_conflict" };
       }
-      const priorSnapshot = JSON.parse(raced.plan_snapshot) as {
-        capabilities: string[];
-        max_cost_class: string;
-      };
-      return {
-        ok: true,
-        outcome: "grace_admitted",
-        requestId: raced.request_id,
-        requestReference: input.requestReference,
-        termId: raced.term_id,
-        reservationId: raced.request_id,
-        snapshot: priorSnapshot,
-        accountingMode: "fallback",
-      };
+      if (
+        input.journaled &&
+        input.journaledBindingMatches &&
+        input.journaled.request_id === raced.request_id &&
+        ["pending", "consumed", "released", "settled"].includes(raced.state)
+      ) {
+        return idempotentFromJournal(input.journaled);
+      }
+      // The winning same-key admission may not have reached Stage 9 yet.
+      // Refuse this contender instead of replaying its reservation.
+      return null;
     }
     const racedJti = await input.db
       .prepare(
@@ -865,6 +871,8 @@ export async function runAdmission(
     quotaWeight,
     requestId,
     allowNew: journaled === null,
+    journaled,
+    journaledBindingMatches,
     clock: ctx?.clock,
   });
   if (fallback) {
