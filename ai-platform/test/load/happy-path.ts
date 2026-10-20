@@ -84,6 +84,7 @@ import {
   setCapabilityRegistry,
 } from "../../src/capability";
 import type { Principal } from "../../src/identity";
+import type { LogData, Logger } from "../../src/logger";
 import { load, type Manifest } from "../../src/manifest";
 import { composeRequest, promptScaffoldByteLength } from "../../src/prompt/composer";
 import { resolvePromptVersion } from "../../src/prompt/registry";
@@ -134,6 +135,82 @@ export type LoadHappyPathBindings = {
   do: DoSpy;
   realDo: DurableObjectNamespace;
 };
+
+function createDiagnosticLogger(events: Array<Record<string, unknown>>): Logger {
+  const logger: Logger = {
+    error(message, data) {
+      events.push({ level: "error", message, ...(data ?? {}) });
+    },
+    info(message, data) {
+      events.push({ level: "info", message, ...(data ?? {}) });
+    },
+    debug(message, data) {
+      events.push({ level: "debug", message, ...(data ?? {}) });
+    },
+    child(data: LogData) {
+      const child = createDiagnosticLogger(events);
+      return {
+        error: (message, extra) => child.error(message, { ...data, ...(extra ?? {}) }),
+        info: (message, extra) => child.info(message, { ...data, ...(extra ?? {}) }),
+        debug: (message, extra) => child.debug(message, { ...data, ...(extra ?? {}) }),
+        child: (nested) => child.child({ ...data, ...nested }),
+      };
+    },
+  };
+  return logger;
+}
+
+async function loadFailureDiagnostic(
+  bindings: LoadHappyPathBindings,
+  requestReference: string,
+  cause: unknown,
+  events: Array<Record<string, unknown>>,
+): Promise<Error> {
+  const [mirrorResult, fallbackResult] = await Promise.allSettled([
+    bindings.db
+      .prepare(
+        `SELECT state, suspended, hard_stop_at, term_snapshot
+         FROM coverage_mirror WHERE installation_id = ?`,
+      )
+      .bind(FIXTURE_INSTALLATION_ID)
+      .first<Record<string, unknown>>(),
+    bindings.db
+      .prepare(
+        `SELECT COALESCE(SUM(weight), 0) AS pending_weight, COUNT(*) AS pending_rows
+         FROM fallback_admission
+         WHERE installation_id = ? AND state = 'pending'`,
+      )
+      .bind(FIXTURE_INSTALLATION_ID)
+      .first<Record<string, unknown>>(),
+  ]);
+  const snapshotValue = (
+    result: PromiseSettledResult<Record<string, unknown> | null>,
+  ): Record<string, unknown> | null => {
+    if (result.status === "fulfilled") return result.value;
+    return {
+      diagnosticError:
+        result.reason instanceof Error
+          ? `${result.reason.name}: ${result.reason.message}`
+          : String(result.reason),
+    };
+  };
+  const doTimings = bindings.do.fetchTimings().filter(
+    (timing) => timing.requestId === requestReference,
+  );
+  const error = cause instanceof Error
+    ? `${cause.name}: ${cause.message}`
+    : String(cause);
+  return new Error(`Load request failed: ${JSON.stringify({
+    requestReference,
+    error,
+    admissionEvents: events,
+    doTimings,
+    readOnlyAdmissionSnapshot: {
+      mirror: snapshotValue(mirrorResult),
+      fallback: snapshotValue(fallbackResult),
+    },
+  })}`);
+}
 
 function createRequestCounters(): RequestCounters {
   return { jti: 0, idempotency: 0, reference: 0 };
@@ -586,69 +663,86 @@ export async function runLoadHappyPath(
     async (item) => {
       return bindings.do.withRequest(item.requestReference, () =>
         bindings.r2.withRequest(item.requestReference, async () => {
-          const guard = await runGuard(
-            {
-              bodyText: item.bodyText,
-              principal: item.principal,
-              capabilityId: FIXTURE_CAPABILITY_ID,
-              capabilityVersion: FIXTURE_CAPABILITY_VERSION,
-              entitlement: {
+          const events: Array<Record<string, unknown>> = [];
+          const logger = createDiagnosticLogger(events);
+          try {
+            const guard = await runGuard(
+              {
+                bodyText: item.bodyText,
+                principal: item.principal,
                 capabilityId: FIXTURE_CAPABILITY_ID,
                 capabilityVersion: FIXTURE_CAPABILITY_VERSION,
-                minimumPlanTier: "standard",
-                providerId: FIXTURE_PROVIDER_ID,
+                entitlement: {
+                  capabilityId: FIXTURE_CAPABILITY_ID,
+                  capabilityVersion: FIXTURE_CAPABILITY_VERSION,
+                  minimumPlanTier: "standard",
+                  providerId: FIXTURE_PROVIDER_ID,
+                },
+                suppliedContext,
+                userIntent: FIXTURE_USER_INTENT,
+                idempotencyKey: item.idempotencyKey,
+                requestReference: item.requestReference,
+                traceId: FIXTURE_TRACE_ID,
+                cache,
+                reader,
+                verifyContext: {
+                  alertEnv: { DB: bindings.db, TEST_CLOCK: "1" },
+                },
+                // GuardInput.now is JWT NumericDate seconds. Keep the fixture
+                // millisecond clock for nowMs derivation and the harness clock.
+                now: FIXTURE_NOW_MS / 1_000,
+                composeRequest,
+                promptScaffoldByteLength,
+                resolvePromptVersion,
+                logger,
               },
-              suppliedContext,
-              userIntent: FIXTURE_USER_INTENT,
-              idempotencyKey: item.idempotencyKey,
-              requestReference: item.requestReference,
-              traceId: FIXTURE_TRACE_ID,
-              cache,
-              reader,
-              now: FIXTURE_NOW_MS,
-              composeRequest,
-              promptScaffoldByteLength,
-              resolvePromptVersion,
-            },
-            {
-              DB: bindings.db,
-              DO: bindings.do,
-              rateLimit,
-            },
-          );
+              {
+                DB: bindings.db,
+                DO: bindings.do,
+                rateLimit,
+              },
+            );
 
-          if (!guard.ok) {
-            throw new Error(
-              `Guard failed at stage ${guard.stage}: ${guard.code} (${item.requestReference})`,
+            if (!guard.ok) {
+              throw new Error(
+                `Guard failed at stage ${guard.stage}: ${guard.code} (${item.requestReference})`,
+              );
+            }
+
+            const settled = await settleHappyPath(
+              {
+                requestId: guard.requestId,
+                requestReference: item.requestReference,
+                installationId,
+                composed: guard.composed,
+                filteredContext: guard.filteredContext,
+                termId: termIdForInstallation(installationId),
+                quotaWeight: 1,
+                recordedAt: FIXTURE_NOW,
+              },
+              {
+                DB: bindings.db,
+                R2: bindings.r2,
+                DO: bindings.do,
+                ctx: createFakeCtx(),
+              },
+            );
+
+            if (!settled.ok) {
+              throw new Error(
+                `Settle failed: ${settled.code} (${item.requestReference})`,
+              );
+            }
+
+            return { guardLatencyMs: guard.guardLatencyMs };
+          } catch (error) {
+            throw await loadFailureDiagnostic(
+              bindings,
+              item.requestReference,
+              error,
+              events,
             );
           }
-
-          const settled = await settleHappyPath(
-            {
-              requestId: guard.requestId,
-              requestReference: item.requestReference,
-              installationId,
-              composed: guard.composed,
-              filteredContext: guard.filteredContext,
-              termId: termIdForInstallation(installationId),
-              quotaWeight: 1,
-              recordedAt: FIXTURE_NOW,
-            },
-            {
-              DB: bindings.db,
-              R2: bindings.r2,
-              DO: bindings.do,
-              ctx: createFakeCtx(),
-            },
-          );
-
-          if (!settled.ok) {
-            throw new Error(
-              `Settle failed: ${settled.code} (${item.requestReference})`,
-            );
-          }
-
-          return { guardLatencyMs: guard.guardLatencyMs };
         }),
       );
     },

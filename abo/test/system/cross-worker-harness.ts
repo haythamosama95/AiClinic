@@ -96,6 +96,8 @@ const COVER_DEFAULT_MAX_COST_CLASS = 2;
 const COVER_DEFAULT_CONCURRENCY = 4;
 const COVER_DEFAULT_ALLOWANCE = 10_000;
 const VENDOR_OPERATOR_EMAIL = "operator@vendor.test";
+// Increment when PLATFORM_MIGRATION_SQL or its bootstrap seeds change.
+const PLATFORM_MIGRATION_HARNESS_VERSION = 1;
 
 declare module "cloudflare:test" {
   interface ProvidedEnv {
@@ -134,7 +136,6 @@ type PlatformBootstrap = {
   aboKid: string;
 };
 
-let platformMigrationsApplied = false;
 let platformBootstrap: PlatformBootstrap | null = null;
 let vendorAccessTeam: Awaited<ReturnType<typeof createAccessTeam>> | null =
   null;
@@ -273,7 +274,19 @@ async function applySqlOnDb(db: D1Database, sql: string): Promise<void> {
 }
 
 export async function applyPlatformMigrations(): Promise<void> {
-  if (platformMigrationsApplied) {
+  await env.PLATFORM_DB.prepare(
+    `CREATE TABLE IF NOT EXISTS harness_platform_migration_state (
+       id INTEGER PRIMARY KEY CHECK (id = 1),
+       version INTEGER NOT NULL
+     )`,
+  ).run();
+  const migrationState = await env.PLATFORM_DB.prepare(
+    `SELECT version FROM harness_platform_migration_state WHERE id = 1`,
+  ).first<{ version: number }>();
+  if (
+    migrationState !== null &&
+    migrationState.version >= PLATFORM_MIGRATION_HARNESS_VERSION
+  ) {
     return;
   }
   for (const sql of PLATFORM_MIGRATION_SQL) {
@@ -284,7 +297,12 @@ export async function applyPlatformMigrations(): Promise<void> {
      VALUES ('1', '2026-08-03T00:00:00.000Z', NULL, 'seed')`,
   ).run();
   await ensurePlatformHarnessClockTable();
-  platformMigrationsApplied = true;
+  await env.PLATFORM_DB.prepare(
+    `INSERT OR REPLACE INTO harness_platform_migration_state (id, version)
+     VALUES (1, ?)`,
+  )
+    .bind(PLATFORM_MIGRATION_HARNESS_VERSION)
+    .run();
 }
 
 async function ensurePlatformHarnessClockTable(): Promise<void> {
@@ -958,7 +976,6 @@ export async function resetCrossWorkerHarness(): Promise<void> {
   await clearPlatformTransactionalTables();
   platformBootstrap = null;
   vendorAccessTeam = null;
-  platformMigrationsApplied = false;
   paymobMockReady = false;
   await scriptPaymobStub("ok");
 }

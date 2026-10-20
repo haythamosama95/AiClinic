@@ -33,6 +33,10 @@ export type R2Spy = R2Bucket & {
 export type DoFetchTiming = {
   installationId: string | null;
   requestId: string | null;
+  rpcKind: string | null;
+  status: number | null;
+  error: string | null;
+  responseResult: unknown;
   durationMs: number;
 };
 
@@ -316,6 +320,17 @@ function peekRequestTagFromInit(init?: RequestInit): string | null {
   }
 }
 
+function peekRpcKindFromInit(init?: RequestInit): string | null {
+  const body = init?.body;
+  if (typeof body !== "string") return null;
+  try {
+    const parsed = JSON.parse(body) as { kind?: unknown };
+    return typeof parsed.kind === "string" ? parsed.kind : null;
+  } catch {
+    return null;
+  }
+}
+
 function installationFromId(id: DurableObjectId): string | null {
   return typeof id.name === "string" && id.name.length > 0 ? id.name : null;
 }
@@ -346,6 +361,7 @@ export function createDoSpy(realDo: DurableObjectNamespace): DoSpy {
     ): Promise<Response> => {
       const requestId =
         scope.activeRequestId() ?? peekRequestTagFromInit(init) ?? null;
+      const rpcKind = peekRpcKindFromInit(init);
 
       fetches += 1;
       if (requestId !== null) {
@@ -356,12 +372,30 @@ export function createDoSpy(realDo: DurableObjectNamespace): DoSpy {
       }
 
       const started = performance.now();
+      let status: number | null = null;
+      let error: string | null = null;
+      let responseResult: unknown = null;
       try {
-        return await stub.fetch(input, init);
+        const response = await stub.fetch(input, init);
+        status = response.status;
+        try {
+          const payload = await response.clone().json() as { result?: unknown };
+          responseResult = payload.result ?? null;
+        } catch {
+          responseResult = null;
+        }
+        return response;
+      } catch (cause) {
+        error = cause instanceof Error ? `${cause.name}: ${cause.message}` : String(cause);
+        throw cause;
       } finally {
         timings.push({
           installationId,
           requestId,
+          rpcKind,
+          status,
+          error,
+          responseResult,
           durationMs: performance.now() - started,
         });
       }

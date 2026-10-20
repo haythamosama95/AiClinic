@@ -4,7 +4,7 @@
  */
 
 import { env } from "cloudflare:test";
-import { beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import {
   CHANNEL_VERSIONS,
   grantIdComp,
@@ -45,6 +45,7 @@ import {
   mintVendorAccessJwt,
   platformCall,
   resetCrossWorkerHarness,
+  settlePlatformDurableObjectAlarms,
   scriptPaymobStub,
   setClock,
   setupActivePlatformCoverage,
@@ -1599,6 +1600,10 @@ beforeEach(async () => {
   await scriptPaymobInquiry("bound_success");
   await setClock("2026-06-01T12:00:00.000Z");
   clinicIssuer = null;
+});
+
+afterEach(async () => {
+  await settlePlatformDurableObjectAlarms();
 });
 
 describe("console relays cross-worker", () => {

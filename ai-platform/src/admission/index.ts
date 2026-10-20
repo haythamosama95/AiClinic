@@ -230,18 +230,27 @@ async function currentClockMs(ctx?: AdmissionContext): Promise<number> {
   return ctx?.nowMs ?? Date.now();
 }
 
-async function yieldForTestClock(_ctx?: AdmissionContext): Promise<void> {
+async function yieldForTestClock(signal: AbortSignal): Promise<void> {
+  if (signal.aborted) return;
   await new Promise<void>((resolve) => {
-    setTimeout(resolve, 0);
+    let timer: ReturnType<typeof setTimeout>;
+    const finish = (): void => {
+      clearTimeout(timer);
+      signal.removeEventListener("abort", finish);
+      resolve();
+    };
+    timer = setTimeout(finish, 0);
+    signal.addEventListener("abort", finish, { once: true });
+    if (signal.aborted) finish();
   });
 }
 
 async function waitUntilAdmissionDeadline(
-  deadlineMs: number,
-  ctx?: AdmissionContext,
+  deadlineMonotonicMs: number,
+  signal: AbortSignal,
 ): Promise<void> {
-  while ((await currentClockMs(ctx)) < deadlineMs) {
-    await yieldForTestClock(ctx);
+  while (!signal.aborted && performance.now() < deadlineMonotonicMs) {
+    await yieldForTestClock(signal);
   }
 }
 
@@ -578,33 +587,37 @@ async function raceAdmissionDo(
   bindings: AdmissionBindings,
   installationId: string,
   rpcBody: Record<string, unknown>,
-  deadlineMs: number,
-  ctx?: AdmissionContext,
+  deadlineMonotonicMs: number,
 ): Promise<AdmissionDoTransportResult> {
   const doPromise = callAdmissionDo(bindings, installationId, rpcBody);
+  const deadlinePoller = new AbortController();
 
-  for (;;) {
-    const nowMs = await currentClockMs(ctx);
-    if (nowMs >= deadlineMs) {
-      const atDeadline = await Promise.race([
-        doPromise.then((result) => ({ kind: "do" as const, result })),
-        Promise.resolve({ kind: "past_deadline" as const }),
-      ]);
-      if (atDeadline.kind === "do") {
-        return atDeadline.result;
+  try {
+    for (;;) {
+      if (performance.now() >= deadlineMonotonicMs) {
+        const atDeadline = await Promise.race([
+          doPromise.then((result) => ({ kind: "do" as const, result })),
+          Promise.resolve({ kind: "past_deadline" as const }),
+        ]);
+        if (atDeadline.kind === "do") {
+          return atDeadline.result;
+        }
+        return { ok: false, reason: "unavailable" };
       }
-      return { ok: false, reason: "unavailable" };
-    }
 
-    const raced = await Promise.race([
-      doPromise.then((result) => ({ kind: "do" as const, result })),
-      waitUntilAdmissionDeadline(deadlineMs, ctx).then(() => ({
-        kind: "tick" as const,
-      })),
-    ]);
-    if (raced.kind === "do") {
-      return raced.result;
+      const raced = await Promise.race([
+        doPromise.then((result) => ({ kind: "do" as const, result })),
+        waitUntilAdmissionDeadline(deadlineMonotonicMs, deadlinePoller.signal).then(() => ({
+          kind: "tick" as const,
+        })),
+      ]);
+      if (raced.kind === "do") {
+        return raced.result;
+      }
     }
+  } finally {
+    // Always stop deadline polling once either the DO request or deadline wins.
+    deadlinePoller.abort();
   }
 }
 
@@ -616,6 +629,7 @@ export async function runAdmission(
   const logger = input.logger ?? noopLogger;
   const now = ctx?.now ?? Math.floor(Date.now() / 1000);
   const startMs = await currentClockMs(ctx);
+  const deadlineMonotonicMs = performance.now() + ADMISSION_DEADLINE_MS;
   const {
     principal,
     idempotencyKey,
@@ -692,13 +706,11 @@ export async function runAdmission(
     ...(orgId !== undefined ? { orgId } : {}),
   };
 
-  const deadlineMs = startMs + ADMISSION_DEADLINE_MS;
   const transport = await raceAdmissionDo(
     bindings,
     principal.installationId,
     rpcBody,
-    deadlineMs,
-    ctx,
+    deadlineMonotonicMs,
   );
 
   if (transport.ok) {
