@@ -5455,65 +5455,96 @@ export async function runRebuildClinicDo(
 export async function runRebuildGrantLedger(
   env: { DB: D1Database; R2: R2Bucket },
 ): Promise<{ grant_ledger: number; grant_void: number }> {
-  let grantLedger = 0;
-  let grantVoid = 0;
+  const recovered: Array<{ key: string; row: Record<string, unknown>; isVoid: boolean }> = [];
+  const seenGrantIds = new Set<string>();
   let cursor: string | undefined;
   do {
     const listed = await env.R2.list({ prefix: "grant-ledger/", cursor });
     for (const object of listed.objects) {
       const key = object.key;
+      const match = /^grant-ledger\/([a-f0-9]{64})(\.void)?\.ndjson$/u.exec(key);
+      if (match === null) {
+        throw new Error(`grant_ledger_object_key_invalid:${key}`);
+      }
       const stored = await env.R2.get(key);
       if (stored === null) {
-        continue;
+        throw new Error(`grant_ledger_object_missing:${key}`);
       }
       const text = await stored.text();
-      const line = text.trim().split("\n")[0] ?? "";
-      if (line.length === 0) {
-        continue;
+      const lines = text.trimEnd().split("\n");
+      if (lines.length !== 1 || lines[0]!.length === 0) {
+        throw new Error(`grant_ledger_payload_lines_invalid:${key}`);
       }
-      const parsed = JSON.parse(line) as Record<string, unknown>;
-      if (key.endsWith(".void.ndjson")) {
-        await env.DB.prepare(
-          `INSERT OR IGNORE INTO grant_void (grant_id, reason, source, evidence_sha256, at)
-           VALUES (?, ?, ?, ?, ?)`,
-        )
-          .bind(
-            parsed.grant_id,
-            parsed.reason,
-            parsed.source,
-            parsed.evidence_sha256,
-            parsed.at,
-          )
-          .run();
-        grantVoid += 1;
+      const parsed = JSON.parse(lines[0]!) as Record<string, unknown>;
+      const grantId = match[1]!;
+      const isVoid = match[2] !== undefined;
+      if (parsed.grant_id !== grantId || seenGrantIds.has(`${grantId}:${isVoid}`)) {
+        throw new Error(`grant_ledger_identity_conflict:${key}`);
+      }
+      seenGrantIds.add(`${grantId}:${isVoid}`);
+      const expectedFields = isVoid
+        ? ["grant_id", "reason", "source", "evidence_sha256", "at"]
+        : ["grant_id", "origin_grant_id", "org_id", "installation_id", "kind",
+          "source_kind", "operator_credential_id", "operator_email", "envelope_sha256",
+          "applied_at", "receipt"];
+      const fields = Object.keys(parsed).sort();
+      if (JSON.stringify(fields) !== JSON.stringify([...expectedFields].sort())) {
+        throw new Error(`grant_ledger_schema_conflict:${key}`);
+      }
+      for (const field of expectedFields) {
+        if (field !== "operator_email" && parsed[field] === null || parsed[field] === undefined) {
+          throw new Error(`grant_ledger_field_missing:${key}:${field}`);
+        }
+      }
+      if (isVoid) {
+        if (
+          typeof parsed.reason !== "string" || typeof parsed.source !== "string" ||
+          typeof parsed.evidence_sha256 !== "string" ||
+          !/^[a-f0-9]{64}$/u.test(parsed.evidence_sha256 as string) ||
+          typeof parsed.at !== "string" || !Number.isFinite(Date.parse(parsed.at as string))
+        ) {
+          throw new Error(`grant_ledger_void_invalid:${key}`);
+        }
       } else {
-        await env.DB.prepare(
-          `INSERT OR IGNORE INTO grant_ledger (
-            grant_id, origin_grant_id, org_id, installation_id, kind, source_kind,
-            operator_credential_id, operator_email, envelope_sha256, receipt, applied_at
-          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-        )
-          .bind(
-            parsed.grant_id,
-            parsed.origin_grant_id,
-            parsed.org_id,
-            parsed.installation_id,
-            parsed.kind,
-            parsed.source_kind,
-            parsed.operator_credential_id,
-            parsed.operator_email ?? null,
-            parsed.envelope_sha256,
-            JSON.stringify(parsed.receipt),
-            parsed.applied_at,
-          )
-          .run();
-        grantLedger += 1;
+        const receipt = parsed.receipt;
+        if (
+          typeof parsed.origin_grant_id !== "string" ||
+          !/^[a-f0-9]{64}$/u.test(parsed.origin_grant_id) ||
+          typeof parsed.org_id !== "string" || typeof parsed.installation_id !== "string" ||
+          typeof parsed.kind !== "string" || typeof parsed.source_kind !== "string" ||
+          typeof parsed.operator_credential_id !== "string" ||
+          (parsed.operator_email !== null && typeof parsed.operator_email !== "string") ||
+          typeof parsed.envelope_sha256 !== "string" ||
+          !/^[a-f0-9]{64}$/u.test(parsed.envelope_sha256) ||
+          typeof parsed.applied_at !== "string" || !Number.isFinite(Date.parse(parsed.applied_at)) ||
+          receipt === null || typeof receipt !== "object" || Array.isArray(receipt)
+        ) {
+          throw new Error(`grant_ledger_row_invalid:${key}`);
+        }
+        const signed = receipt as Record<string, unknown>;
+        if (
+          signed.grant_id !== grantId || signed.org_id !== parsed.org_id ||
+          signed.installation_id !== parsed.installation_id ||
+          signed.envelope_sha256 !== parsed.envelope_sha256 ||
+          signed.applied_at !== parsed.applied_at || typeof signed.kid !== "string" ||
+          typeof signed.signature !== "string"
+        ) {
+          throw new Error(`grant_ledger_receipt_identity_conflict:${key}`);
+        }
       }
+      recovered.push({ key, row: parsed, isVoid });
     }
     cursor = listed.truncated ? listed.cursor : undefined;
   } while (cursor !== undefined);
 
-  return { grant_ledger: grantLedger, grant_void: grantVoid };
+  if (recovered.length > 0) {
+    // RM18 deferred the signed recovery capsule to RM29. The existing receipt
+    // does not authenticate operator/source/route lineage, and the active key
+    // alone cannot corroborate compromised historical signing keys. No row is
+    // inserted until the capsule decoder and historical trust registry exist.
+    throw new Error("grant_ledger_recovery_capsule_required:RM29");
+  }
+  return { grant_ledger: 0, grant_void: 0 };
 }
 
 export type RefreshCoverageSnapshotRequest = {

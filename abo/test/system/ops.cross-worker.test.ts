@@ -1198,7 +1198,7 @@ describe("ops cross-worker", () => {
     expect(await tableCount("operator_action")).toBe(actionsBeforeLegacyRetry);
   });
 
-  it("E2E-P4.6-05 cancel open checkout then later payment is paid_late", async () => {
+  it("R9-FACT1 cancellation fact is exported with the accepted cancel event", async () => {
     const { expectations, offerVersions } = await setupOpsHarness();
     const orgId = ORG_OPS_05;
     await setClock("2026-06-01T12:00:00.000Z");
@@ -1228,6 +1228,12 @@ describe("ops cross-worker", () => {
     expectContractVersion(cancel, cancelBody);
     const actionId = String(cancelBody.action_id);
     expect(await checkoutStatusState(checkoutId)).toBe("cancelled");
+    const cancellationFact = await env.DB.prepare(
+      `SELECT row_sha256, row_json FROM fact_log
+       WHERE "table" = 'checkout_event' AND key LIKE ?`,
+    ).bind(`${checkoutId}:cancelled:%`).first<{ row_sha256: string; row_json: string }>();
+    expect(cancellationFact?.row_json).toContain('"kind":"cancelled"');
+    expect(cancellationFact?.row_sha256).toMatch(/^[a-f0-9]{64}$/u);
 
     const actionRow = await operatorActionRow(actionId);
     expect(actionRow).not.toBeNull();

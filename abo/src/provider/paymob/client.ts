@@ -37,7 +37,7 @@ export type CreatePaymobIntentionResult =
   | { ok: false };
 
 export type PaymobInquiryHttpOutcome<T> =
-  | { outcome: "ok"; data: T }
+  | { outcome: "ok"; data: T; rawBody: string }
   | { outcome: "timeout" }
   | { outcome: "rate_limit" }
   | { outcome: "unauthorized" }
@@ -207,9 +207,12 @@ async function parseJsonBody<T>(
   parse: (data: unknown) => T | null,
 ): Promise<PaymobInquiryHttpOutcome<T>> {
   try {
-    const data: unknown = await response.json();
+    const rawBody = await response.text();
+    const data: unknown = JSON.parse(rawBody);
     const parsed = parse(data);
-    return parsed === null ? { outcome: "error" } : { outcome: "ok", data: parsed };
+    return parsed === null
+      ? { outcome: "error" }
+      : { outcome: "ok", data: parsed, rawBody };
   } catch {
     return { outcome: "error" };
   }

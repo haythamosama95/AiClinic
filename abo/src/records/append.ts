@@ -98,14 +98,15 @@ async function appendOfferRow(env: AppendEnv, row: OfferRow): Promise<void> {
     contract_version: row.contract_version,
   };
   const createdAt = await clockNowIso(env);
+  const rowJson = new TextDecoder().decode(canonicalize(canonicalRow));
   const rowSha256 = await sha256Hex(canonicalize(canonicalRow));
   await env.DB.batch([
     env.DB.prepare(
       `INSERT INTO offer (offer_id, code, contract_version) VALUES (?, ?, ?)`,
     ).bind(row.offer_id, row.code, row.contract_version),
     env.DB.prepare(
-      `INSERT INTO fact_log ("table", key, row_sha256, created_at) VALUES (?, ?, ?, ?)`,
-    ).bind("offer", row.offer_id, rowSha256, createdAt),
+      `INSERT INTO fact_log ("table", key, row_sha256, row_json, created_at) VALUES (?, ?, ?, ?, ?)`,
+    ).bind("offer", row.offer_id, rowSha256, rowJson, createdAt),
   ]);
 }
 
@@ -133,6 +134,7 @@ async function appendTermsVersion(
     contract_version: row.contract_version,
   };
   const createdAt = await clockNowIso(env);
+  const rowJson = new TextDecoder().decode(canonicalize(canonicalRow));
   const rowSha256 = await sha256Hex(canonicalize(canonicalRow));
   await env.DB.batch([
     env.DB.prepare(
@@ -148,11 +150,12 @@ async function appendTermsVersion(
       row.contract_version,
     ),
     env.DB.prepare(
-      `INSERT INTO fact_log ("table", key, row_sha256, created_at) VALUES (?, ?, ?, ?)`,
+      `INSERT INTO fact_log ("table", key, row_sha256, row_json, created_at) VALUES (?, ?, ?, ?, ?)`,
     ).bind(
       "terms_version",
       `${row.terms_version}:${row.locale}`,
       rowSha256,
+      rowJson,
       createdAt,
     ),
   ]);
@@ -182,6 +185,7 @@ async function appendOfferVersion(
     contract_version: row.contract_version,
   };
   const createdAt = await clockNowIso(env);
+  const rowJson = new TextDecoder().decode(canonicalize(canonicalRow));
   const rowSha256 = await sha256Hex(canonicalize(canonicalRow));
   await env.DB.batch([
     env.DB.prepare(
@@ -209,11 +213,12 @@ async function appendOfferVersion(
       row.contract_version,
     ),
     env.DB.prepare(
-      `INSERT INTO fact_log ("table", key, row_sha256, created_at) VALUES (?, ?, ?, ?)`,
+      `INSERT INTO fact_log ("table", key, row_sha256, row_json, created_at) VALUES (?, ?, ?, ?, ?)`,
     ).bind(
       "offer_version",
       `${row.offer_id}:${row.version}`,
       rowSha256,
+      rowJson,
       createdAt,
     ),
   ]);
@@ -232,6 +237,7 @@ async function appendOfferEvent(
     contract_version: row.contract_version,
   };
   const createdAt = await clockNowIso(env);
+  const rowJson = new TextDecoder().decode(canonicalize(canonicalRow));
   const rowSha256 = await sha256Hex(canonicalize(canonicalRow));
   await env.DB.batch([
     env.DB.prepare(
@@ -247,11 +253,12 @@ async function appendOfferEvent(
       row.contract_version,
     ),
     env.DB.prepare(
-      `INSERT INTO fact_log ("table", key, row_sha256, created_at) VALUES (?, ?, ?, ?)`,
+      `INSERT INTO fact_log ("table", key, row_sha256, row_json, created_at) VALUES (?, ?, ?, ?, ?)`,
     ).bind(
       "offer_event",
       `${row.offer_id}:${row.kind}:${row.version}:${row.at}`,
       rowSha256,
+      rowJson,
       createdAt,
     ),
   ]);

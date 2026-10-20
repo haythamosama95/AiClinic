@@ -20,12 +20,32 @@ When Time Travel is not available (damage older than 30 days, or restore is unsu
 4. **Compare with the platform** (`listGrants`). A paid grant with no payment is re-derived from provider inquiry. A payment with no grant receives a grant row; its `grant_id` is deterministic, so the platform answers `already_applied`.
 5. **Confirm reconciliation** is clean (no open findings).
 
+### Explicit historical stops
+
+- A ledger prefix containing a legacy `paymob_intention` summary or a
+  `paymob_intention_attempt_event` row with `client_secret` is refused. Keep
+  the original checkout disputed; do not import that secret or create a
+  replacement provider order. Use a retained D1 restore or obtain exact
+  provider-owner evidence for an operator adjudication before proceeding.
+- Legacy accepted transfer, erasure, release, or chargeback rows without an
+  immutable `command_recovery_fact` are disputed; do not backfill intent from
+  `accepted_operator_command` or `operator_action` hashes. Use retained original
+  evidence for an operator adjudication before value-affecting recovery.
+- Rebuild restores erasure fences and scoped cleanup from immutable accepted
+  erasure facts. Transfer facts retain the authenticated response mapping and
+  progress, but intentionally omit the JWT-bearing signed operation preimage;
+  a rebuilt transfer is therefore disputed as
+  `blocked_missing_original_authorization` and has no runnable transfer work.
+  A maintainer must use the original authorization evidence to adjudicate that
+  existing action. A new authorization alone does not repair the old action;
+  never replay `beginTransfer`, mint replacement IDs, or infer transfer effects.
+
 ### Operator script
 
 Run from the `abo/` directory:
 
 ```bash
-npx tsx scripts/rebuild-abo.ts <provider-transaction-reference> ...
+npm run rebuild -- <provider-transaction-reference> ...
 ```
 
 Before running the script, export the gap-window transactions from the provider dashboard. Copy each **provider transaction reference** from that **dashboard export** and pass it as a script argument. The script calls `rebuildAbo`, which replays `ledger/`, re-inquires the gap, compares grants, and ends with `runReconciliation`.

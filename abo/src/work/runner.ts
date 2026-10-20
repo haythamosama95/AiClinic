@@ -40,7 +40,7 @@ type WorkRow = {
   opened_at: string;
 };
 
-type CheckoutRow = {
+export type CheckoutRow = {
   checkout_id: string;
   org_id: string;
   offer_id: string;
@@ -349,28 +349,106 @@ async function insertFencedFactLog(
   ).bind(table, key, rowSha256, rowJson, createdAt, workId, leaseToken);
 }
 
-async function shouldWriteInquiryResult(
+async function persistInquiryResult(
   env: WorkRunnerEnv,
-  subject: string,
-  normalizedState: string,
-  cumulativeReversedMinor: number,
-): Promise<boolean> {
-  const latest = await env.DB.prepare(
-    `SELECT normalized_state, cumulative_reversed_minor
-     FROM inquiry_result
-     WHERE subject = ?
-     ORDER BY at DESC
-     LIMIT 1`,
-  )
-    .bind(subject)
-    .first<{ normalized_state: string; cumulative_reversed_minor: number }>();
-  if (latest === null) {
-    return true;
+  input: {
+    work: WorkRow;
+    leaseToken: string;
+    checkout: CheckoutRow;
+    subject: string;
+    normalizedState: string;
+    cumulativeReversedMinor: number;
+    at: string;
+    evidence: InquireResult["evidence"];
+  },
+): Promise<{
+  inquiryId: string;
+  evidenceSha256: string;
+  statements: D1PreparedStatement[];
+} | null> {
+  // Legacy empty-hash/fake-ID rows are not evidence. A current authenticated
+  // answer is required before any payment can reference an inquiry identity.
+  const decisive = input.evidence?.filter((entry) => entry.role === "transaction").at(-1);
+  if (decisive === undefined || decisive.raw_body.length === 0 ||
+      await sha256Hex(new TextEncoder().encode(decisive.raw_body)) !== decisive.sha256) {
+    return null;
   }
-  return (
-    latest.normalized_state !== normalizedState ||
-    latest.cumulative_reversed_minor !== cumulativeReversedMinor
-  );
+  const previous = await env.DB.prepare(
+    `SELECT inquiry_id, raw_r2_key, raw_sha256
+     FROM inquiry_result
+     WHERE subject = ? AND normalized_state = ? AND cumulative_reversed_minor = ?
+     ORDER BY at DESC LIMIT 1`,
+  ).bind(input.subject, input.normalizedState, input.cumulativeReversedMinor)
+    .first<{ inquiry_id: string; raw_r2_key: string; raw_sha256: string }>();
+  if (previous !== null && previous.raw_sha256 === decisive.sha256 &&
+      /^[a-f0-9]{64}$/u.test(previous.raw_sha256)) {
+    return {
+      inquiryId: previous.inquiry_id,
+      evidenceSha256: previous.raw_sha256,
+      statements: [],
+    };
+  }
+  const inquiryId = await newId(env);
+  const candidateKey = `evidence/inquiry/${inquiryId}`;
+  const contact = await env.DB.prepare(
+    `SELECT erasure_generation, erased_at FROM billing_contact
+     WHERE org_id = ? AND version = ?`,
+  ).bind(input.checkout.org_id, input.checkout.billing_contact_version)
+    .first<{ erasure_generation: number; erased_at: string | null }>();
+  if (contact === null) {
+    return null;
+  }
+  let rawR2Key = "";
+  if (contact.erased_at === null) {
+    const claim = {
+      evidenceId: inquiryId,
+      orgId: input.checkout.org_id,
+      checkoutId: input.checkout.checkout_id,
+      kind: "inquiry" as const,
+      r2Key: candidateKey,
+      sha256: decisive.sha256,
+      expectedGeneration: contact.erasure_generation,
+    };
+    const generation = await claimRawEvidence(env, claim);
+    if (generation === null ||
+        !(await putClaimedRawEvidence(env, claim, generation, decisive.raw_body))) {
+      return null;
+    }
+    rawR2Key = candidateKey;
+  }
+  const canonicalRow = {
+    inquiry_id: inquiryId,
+    subject: input.subject,
+    normalized_state: input.normalizedState,
+    cumulative_reversed_minor: input.cumulativeReversedMinor,
+    raw_r2_key: rawR2Key,
+    raw_sha256: decisive.sha256,
+    at: input.at,
+    adapter_version: PAYMOB_ADAPTER_VERSION,
+  };
+  const statements = [
+    env.DB.prepare(
+      `INSERT INTO inquiry_result (
+         inquiry_id, subject, normalized_state, cumulative_reversed_minor,
+         raw_r2_key, raw_sha256, at, adapter_version
+       ) SELECT ?, ?, ?, ?, ?, ?, ?, ?
+       WHERE EXISTS (SELECT 1 FROM work WHERE work_id = ? AND state = 'open' AND lease_token = ?)`,
+    ).bind(
+      inquiryId, input.subject, input.normalizedState, input.cumulativeReversedMinor,
+      rawR2Key, decisive.sha256, input.at, PAYMOB_ADAPTER_VERSION,
+      input.work.work_id, input.leaseToken,
+    ),
+    await insertFencedFactLog(
+      env,
+      "inquiry_result",
+      inquiryId,
+      canonicalRow,
+      input.at,
+      input.work.work_id,
+      input.leaseToken,
+    ),
+  ];
+  return { inquiryId, evidenceSha256: decisive.sha256, statements };
 }
 
 async function classificationForPayment(
@@ -392,6 +470,69 @@ async function classificationForPayment(
     .bind(checkout.org_id, checkout.opened_with_coverage_through)
     .first();
   return prior === null ? "normal" : "likely_duplicate";
+}
+
+export type PaymentConfirmationDecision = {
+  disposition: "grant" | "withheld_mismatch";
+  mismatchDetail: string | null;
+};
+
+/** Shared financial rule used by live confirmation and rebuild ingestion. */
+export function decidePaymentConfirmation(
+  checkout: CheckoutRow,
+  txn: ProviderTxn,
+): PaymentConfirmationDecision {
+  if (txn.kind !== "payment_succeeded" || txn.checkout_id !== checkout.checkout_id) {
+    throw new Error("payment_confirmation_identity_conflict");
+  }
+  if (
+    Number.isSafeInteger(txn.amount_minor) && txn.amount_minor === checkout.charged_price_minor &&
+    txn.currency === checkout.currency
+  ) {
+    return { disposition: "grant", mismatchDetail: null };
+  }
+  return {
+    disposition: "withheld_mismatch",
+    mismatchDetail: JSON.stringify({
+      expected_amount_minor: checkout.charged_price_minor,
+      expected_currency: checkout.currency,
+      actual_amount_minor: txn.amount_minor,
+      actual_currency: txn.currency,
+    }),
+  };
+}
+
+async function originalOrderMatches(
+  env: WorkRunnerEnv,
+  checkoutId: string,
+  txn: ProviderTxn,
+): Promise<boolean> {
+  if (txn.checkout_id !== checkoutId || typeof txn.provider_order_id !== "string") {
+    return false;
+  }
+  const row = await env.DB.prepare(
+    `SELECT 1 FROM paymob_intention_attempt
+     WHERE checkout_id = ? AND order_id = ? AND state = 'created' LIMIT 1`,
+  ).bind(checkoutId, txn.provider_order_id).first();
+  return row !== null;
+}
+
+function mismatchAlertStatement(
+  env: WorkRunnerEnv,
+  checkoutId: string,
+): D1PreparedStatement {
+  return env.DB.prepare(
+    `INSERT INTO alert (
+       alert_key, code, active, unsent, last_sent_at, next_send_at, detail_id
+     ) VALUES (?, 'AL-05', 1, 1, NULL, NULL, ?)
+     ON CONFLICT(alert_key) DO UPDATE SET
+       active = 1,
+       unsent = CASE
+         WHEN alert.active = 0 OR alert.unsent = 1 OR alert.last_sent_at IS NULL THEN 1
+         ELSE alert.unsent
+       END,
+       code = 'AL-05', detail_id = excluded.detail_id`,
+  ).bind(`AL-05:mismatch:${checkoutId}`, checkoutId);
 }
 
 function paymobStateSeenInsert(
@@ -464,6 +605,12 @@ export async function recordPaidConfirmation(
     paymobTxnId?: string | null;
   },
 ): Promise<boolean> {
+  if (!(await originalOrderMatches(env, input.checkout.checkout_id, input.confirmedTxn))) {
+    throw new Error("payment_confirmation_original_order_unbound");
+  }
+  if (decidePaymentConfirmation(input.checkout, input.confirmedTxn).disposition !== "grant") {
+    throw new Error("payment_confirmation_withheld_mismatch");
+  }
   const paymentId = input.confirmedTxn.payment_id;
   const existing = await env.DB.prepare(
     `SELECT checkout_id, provider_id, amount_minor, currency, disposition
@@ -679,12 +826,17 @@ export async function recordRebuiltPaidConfirmation(
   input: {
     checkout: CheckoutRow;
     confirmedTxn: ProviderTxn;
-    inquiryId: string;
-    evidenceSha256: string;
+    inquiry: InquireResult;
     nowIso: string;
     paymobTxnId?: string | null;
   },
 ): Promise<boolean> {
+  if (!(await originalOrderMatches(env, input.checkout.checkout_id, input.confirmedTxn))) {
+    return false;
+  }
+  if (await paymentExists(env, input.confirmedTxn.payment_id)) {
+    return false;
+  }
   const workId = await newId(env);
   const leaseToken = crypto.randomUUID();
   const dedupeKey = `rebuild-confirm:${input.confirmedTxn.payment_id}:${workId}`;
@@ -709,12 +861,149 @@ export async function recordRebuiltPaidConfirmation(
        ) VALUES (?, 'confirm', ?, ?, 'open', 0, NULL, ?, ?, NULL, ?)`,
     ).bind(workId, input.checkout.checkout_id, dedupeKey, input.nowIso, leaseToken, input.nowIso),
   ];
+  const cumulativeReversed = input.confirmedTxn.reversal?.cumulative_reversed_minor ?? 0;
+  const inquiryEvidence = await persistInquiryResult(env, {
+    work,
+    leaseToken,
+    checkout: input.checkout,
+    subject: `checkout:${input.checkout.checkout_id}`,
+    normalizedState: input.confirmedTxn.kind,
+    cumulativeReversedMinor: cumulativeReversed,
+    at: input.nowIso,
+    evidence: input.inquiry.evidence,
+  });
+  if (inquiryEvidence === null) {
+    return false;
+  }
+  leadingStatements.push(...inquiryEvidence.statements);
+  const decision = decidePaymentConfirmation(input.checkout, input.confirmedTxn);
+  if (decision.disposition === "withheld_mismatch") {
+    const paymentId = input.confirmedTxn.payment_id;
+    const reference = humanRef("PAY", paymentId);
+    const classification = await classificationForPayment(env, input.checkout);
+    const paymentCanonical = {
+      payment_id: paymentId,
+      reference,
+      org_id: input.checkout.org_id,
+      checkout_id: input.checkout.checkout_id,
+      provider_id: PAYMOB_PROVIDER_ID,
+      amount_minor: input.confirmedTxn.amount_minor,
+      currency: input.confirmedTxn.currency,
+      paid_at: input.confirmedTxn.occurred_at,
+      confirmed_at: input.nowIso,
+      confirmation_inquiry_id: inquiryEvidence.inquiryId,
+      offer_id: input.checkout.offer_id,
+      offer_version: input.checkout.offer_version,
+      billing_contact_version: input.checkout.billing_contact_version,
+      classification,
+      disposition: "withheld_mismatch",
+      mismatch_detail: decision.mismatchDetail,
+      evidence_sha256: inquiryEvidence.evidenceSha256,
+    };
+    const paymentFactStatement = await insertFencedFactLog(
+      env, "payment", paymentId, paymentCanonical, input.nowIso, workId, leaseToken,
+    );
+    const result = await env.DB.batch([
+      ...leadingStatements,
+      env.DB.prepare(
+        `INSERT INTO payment (
+           payment_id, reference, org_id, checkout_id, provider_id, amount_minor,
+           currency, paid_at, confirmed_at, confirmation_inquiry_id, offer_id,
+           offer_version, billing_contact_version, classification, disposition,
+           mismatch_detail, evidence_sha256
+         ) SELECT ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
+         WHERE EXISTS (SELECT 1 FROM work WHERE work_id = ? AND state = 'open' AND lease_token = ?)`,
+      ).bind(
+        paymentId, reference, input.checkout.org_id, input.checkout.checkout_id,
+        PAYMOB_PROVIDER_ID, input.confirmedTxn.amount_minor, input.confirmedTxn.currency,
+        input.confirmedTxn.occurred_at, input.nowIso, inquiryEvidence.inquiryId,
+        input.checkout.offer_id, input.checkout.offer_version,
+        input.checkout.billing_contact_version, classification, "withheld_mismatch",
+        decision.mismatchDetail, inquiryEvidence.evidenceSha256, workId, leaseToken,
+      ),
+      paymentFactStatement,
+      mismatchAlertStatement(env, input.checkout.checkout_id),
+      env.DB.prepare(
+        `UPDATE work SET state = 'done', lease_until = NULL, lease_token = NULL
+         WHERE work_id = ? AND state = 'open' AND lease_token = ?`,
+      ).bind(workId, leaseToken),
+    ]);
+    if ((result.at(-1)?.meta.changes ?? 0) === 0) {
+      throw new Error("lease_lost");
+    }
+    return true;
+  }
   return recordPaidConfirmation(env, {
     ...input,
+    inquiryId: inquiryEvidence.inquiryId,
+    evidenceSha256: inquiryEvidence.evidenceSha256,
     work,
     leaseToken,
     leadingStatements,
   });
+}
+
+/** Persist an authenticated recovery inquiry even when it does not prove payment. */
+export async function recordRebuiltInquiryEvidence(
+  env: WorkRunnerEnv,
+  input: {
+    checkout: CheckoutRow;
+    txn: ProviderTxn;
+    inquiry: InquireResult;
+    nowIso: string;
+  },
+): Promise<{ inquiryId: string; evidenceSha256: string } | null> {
+  const evidenceHash = input.inquiry.evidence
+    ?.filter((entry) => entry.role === "transaction").at(-1)?.sha256;
+  if (evidenceHash === undefined || !/^[a-f0-9]{64}$/u.test(evidenceHash)) return null;
+  const workId = await newId(env);
+  const leaseToken = crypto.randomUUID();
+  const dedupeKey = `rebuild-inquiry:${input.checkout.checkout_id}:${input.txn.kind}:${input.txn.dedupe_key}:${evidenceHash}`;
+  const work: WorkRow = {
+    work_id: workId,
+    kind: "confirm",
+    subject_id: input.checkout.checkout_id,
+    dedupe_key: dedupeKey,
+    state: "open",
+    attempts: 0,
+    next_attempt_at: input.nowIso,
+    lease_until: input.nowIso,
+    lease_token: leaseToken,
+    last_error: null,
+    opened_at: input.nowIso,
+  };
+  const stored = await persistInquiryResult(env, {
+    work,
+    leaseToken,
+    checkout: input.checkout,
+    subject: `checkout:${input.checkout.checkout_id}`,
+    normalizedState: input.txn.kind,
+    cumulativeReversedMinor: input.txn.reversal?.cumulative_reversed_minor ?? 0,
+    at: input.nowIso,
+    evidence: input.inquiry.evidence,
+  });
+  if (stored === null) return null;
+  if (stored.statements.length === 0) {
+    return { inquiryId: stored.inquiryId, evidenceSha256: stored.evidenceSha256 };
+  }
+  await env.DB.batch([
+    env.DB.prepare(
+      `INSERT INTO work (
+         work_id, kind, subject_id, dedupe_key, state, attempts,
+         next_attempt_at, lease_until, lease_token, last_error, opened_at
+       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    ).bind(
+      work.work_id, work.kind, work.subject_id, work.dedupe_key, work.state,
+      work.attempts, work.next_attempt_at, work.lease_until, work.lease_token,
+      work.last_error, work.opened_at,
+    ),
+    ...stored.statements,
+    env.DB.prepare(
+      `UPDATE work SET state = 'done', lease_until = NULL, lease_token = NULL
+       WHERE work_id = ? AND state = 'open' AND lease_token = ?`,
+    ).bind(workId, leaseToken),
+  ]);
+  return { inquiryId: stored.inquiryId, evidenceSha256: stored.evidenceSha256 };
 }
 
 async function confirmSuccessBatch(
@@ -836,68 +1125,32 @@ async function confirmSuccessBatch(
   const normalizedState = effectiveKind;
   const subject = `checkout:${checkout.checkout_id}`;
   const nowIso = await clockNowIso(env);
-  const inquiryId = await newId(env);
-  const inquiryJson = JSON.stringify(confirmedTxn);
-  const inquirySha = await sha256Hex(new TextEncoder().encode(inquiryJson));
-
-  const statements: D1PreparedStatement[] = [
-    paymobStateSeenInsert(env, stateSeenKey, nowIso, work.work_id, leaseToken),
-  ];
-
-  const shouldWriteInquiry = await shouldWriteInquiryResult(
-    env,
+  const inquiryEvidence = await persistInquiryResult(env, {
+    work,
+    leaseToken,
+    checkout,
     subject,
     normalizedState,
-    cumulativeReversed,
-  );
-  let inquiryKey = "";
-  if (shouldWriteInquiry) {
-    const contact = await env.DB.prepare(
-      `SELECT erasure_generation, erased_at FROM billing_contact
-       WHERE org_id = ? AND version = ?`,
-    )
-      .bind(checkout.org_id, checkout.billing_contact_version)
-      .first<{ erasure_generation: number; erased_at: string | null }>();
-    if (contact !== null && contact.erased_at === null) {
-      const candidateKey = `evidence/inquiry/${inquiryId}`;
-      const claim = {
-        evidenceId: inquiryId,
-        orgId: checkout.org_id,
-        checkoutId: checkout.checkout_id,
-        kind: "inquiry" as const,
-        r2Key: candidateKey,
-        sha256: inquirySha,
-        expectedGeneration: contact.erasure_generation,
-      };
-      const generation = await claimRawEvidence(env, claim);
-      if (generation !== null &&
-          await putClaimedRawEvidence(env, claim, generation, inquiryJson)) {
-        inquiryKey = candidateKey;
-      }
-    }
-  }
-  if (shouldWriteInquiry) {
-    statements.push(
-      env.DB.prepare(
-        `INSERT INTO inquiry_result (
-           inquiry_id, subject, normalized_state, cumulative_reversed_minor,
-           raw_r2_key, raw_sha256, at, adapter_version
-         ) SELECT ?, ?, ?, ?, ?, ?, ?, ?
-         WHERE EXISTS (SELECT 1 FROM work WHERE work_id = ? AND state = 'open' AND lease_token = ?)`,
-      ).bind(
-        inquiryId,
-        subject,
-        normalizedState,
-        cumulativeReversed,
-        inquiryKey,
-        inquirySha,
-        nowIso,
-        PAYMOB_ADAPTER_VERSION,
-        work.work_id,
-        leaseToken,
-      ),
+    cumulativeReversedMinor: cumulativeReversed,
+    at: nowIso,
+    evidence: inquiry.evidence,
+  });
+  if (inquiryEvidence === null) {
+    await releaseLeaseRetry(
+      env,
+      work.work_id,
+      leaseToken,
+      work.attempts + 1,
+      "inquiry_evidence_unavailable",
     );
+    return;
   }
+  const inquiryId = inquiryEvidence.inquiryId;
+  const inquirySha = inquiryEvidence.evidenceSha256;
+  const statements: D1PreparedStatement[] = [
+    paymobStateSeenInsert(env, stateSeenKey, nowIso, work.work_id, leaseToken),
+    ...inquiryEvidence.statements,
+  ];
 
   if (effectiveKind === "reversal") {
     const paymentId = confirmedTxn.payment_id;
@@ -1000,18 +1253,21 @@ async function confirmSuccessBatch(
     return;
   }
 
-  if (
-    confirmedTxn.amount_minor !== checkout.charged_price_minor ||
-    confirmedTxn.currency !== checkout.currency
-  ) {
+  if (!(await originalOrderMatches(env, checkout.checkout_id, confirmedTxn))) {
+    await raiseAlert(
+      env,
+      "AL-05",
+      `AL-05:unbound:${checkout.checkout_id}`,
+      checkout.checkout_id,
+    );
+    await markWorkDone(env, work.work_id, leaseToken);
+    return;
+  }
+  const paymentDecision = decidePaymentConfirmation(checkout, confirmedTxn);
+  if (paymentDecision.disposition === "withheld_mismatch") {
     const paymentId = confirmedTxn.payment_id;
     const reference = humanRef("PAY", paymentId);
-    const mismatchDetail = JSON.stringify({
-      expected_amount_minor: checkout.charged_price_minor,
-      expected_currency: checkout.currency,
-      actual_amount_minor: confirmedTxn.amount_minor,
-      actual_currency: confirmedTxn.currency,
-    });
+    const mismatchDetail = paymentDecision.mismatchDetail;
     const classification = await classificationForPayment(env, checkout);
     const paymentCanonical = {
       payment_id: paymentId,
@@ -1064,13 +1320,8 @@ async function confirmSuccessBatch(
       ),
       await insertFencedFactLog(env, "payment", paymentId, paymentCanonical, nowIso, work.work_id, leaseToken),
     );
-    await raiseAlert(
-      env,
-      "AL-05",
-      `AL-05:mismatch:${checkout.checkout_id}`,
-      checkout.checkout_id,
-    );
     statements.push(
+      mismatchAlertStatement(env, checkout.checkout_id),
       env.DB.prepare(
         `UPDATE work SET state = 'done', lease_until = NULL, lease_token = NULL, last_error = NULL
          WHERE work_id = ? AND state = 'open' AND lease_token = ?`,

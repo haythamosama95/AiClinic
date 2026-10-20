@@ -204,8 +204,11 @@ async function markAttemptAbandoned(
     finished_at: finishedAt,
     event_at: finishedAt,
   };
-  const rowJson = new TextDecoder().decode(canonicalize(canonicalRow));
-  const rowHash = await sha256Hex(canonicalize(canonicalRow));
+  const recoveryRow = Object.fromEntries(
+    Object.entries(canonicalRow).filter(([field]) => field !== "client_secret"),
+  );
+  const rowJson = new TextDecoder().decode(canonicalize(recoveryRow));
+  const rowHash = await sha256Hex(canonicalize(recoveryRow));
   await env.DB.batch([
     env.DB.prepare(
       `UPDATE paymob_intention_attempt
@@ -275,18 +278,11 @@ async function storeIntentionAttempt(
   canonicalRow.started_at = attemptStartedAt;
   canonicalRow.finished_at = createdAt;
   canonicalRow.event_at = createdAt;
-  const attemptRowJson = new TextDecoder().decode(canonicalize(canonicalRow));
-  const attemptRowHash = await sha256Hex(canonicalize(canonicalRow));
-  const summaryRow = {
-    checkout_id: checkoutId,
-    intention_id: intention.id,
-    order_id: canonicalRow.order_id,
-    client_secret: intention.client_secret,
-    special_reference: specialReference,
-    expires_at: expiresAt,
-  };
-  const summaryRowJson = new TextDecoder().decode(canonicalize(summaryRow));
-  const summaryRowHash = await sha256Hex(canonicalize(summaryRow));
+  const recoveryRow = Object.fromEntries(
+    Object.entries(canonicalRow).filter(([field]) => field !== "client_secret"),
+  );
+  const attemptRowJson = new TextDecoder().decode(canonicalize(recoveryRow));
+  const attemptRowHash = await sha256Hex(canonicalize(recoveryRow));
   const results = await env.DB.batch([
     env.DB.prepare(
       `UPDATE paymob_intention_attempt
@@ -359,29 +355,6 @@ async function storeIntentionAttempt(
            WHERE "table" = 'paymob_intention_attempt_event' AND key = ?)`,
     ).bind(canonicalRow.event_key, attemptRowHash, attemptRowJson, createdAt,
       canonicalRow.event_key, canonicalRow.event_key),
-    env.DB.prepare(
-      `INSERT INTO fact_log ("table", key, row_sha256, row_json, created_at)
-       SELECT ?, ?, ?, ?, ?
-       WHERE EXISTS (
-         SELECT 1 FROM paymob_intention_attempt
-         WHERE checkout_id = ? AND attempt_no = ? AND state = 'created'
-           AND finished_at = ? AND special_reference = ?
-       )
-         AND NOT EXISTS (SELECT 1 FROM fact_log
-           WHERE "table" = 'paymob_intention' AND key = ? AND row_sha256 = ?)`,
-    ).bind(
-      "paymob_intention",
-      checkoutId,
-      summaryRowHash,
-      summaryRowJson,
-      createdAt,
-      checkoutId,
-      attemptNo,
-      createdAt,
-      specialReference,
-      checkoutId,
-      summaryRowHash,
-    ),
   ]);
   if (results[0]?.meta.changes !== 1) {
     throw new Error("Paymob intention attempt lease expired before persistence");
@@ -943,6 +916,11 @@ async function inquireImpl(
   }
 
   const hintedTxn = txnResult.data;
+  const evidence: NonNullable<InquireResult["evidence"]> = [{
+    role: "transaction",
+    raw_body: txnResult.rawBody,
+    sha256: await sha256Hex(new TextEncoder().encode(txnResult.rawBody)),
+  }];
   const transactionOrderId = String(hintedTxn.order.id);
   const intention = await env.DB.prepare(
     `SELECT order_id FROM paymob_intention_attempt
@@ -969,7 +947,7 @@ async function inquireImpl(
       hintedTxn,
       checkoutId,
     );
-    return { bound: true, transactions: [pendingTxn] };
+    return { bound: true, transactions: [pendingTxn], evidence };
   }
   if (hintedParentId !== null) {
     const parentResult = await getPaymobAcceptanceTransaction(
@@ -992,14 +970,24 @@ async function inquireImpl(
       return { bound: false, transactions: [] };
     }
     if (parentResult.data.pending) {
+      evidence.push({
+        role: "transaction",
+        raw_body: parentResult.rawBody,
+        sha256: await sha256Hex(new TextEncoder().encode(parentResult.rawBody)),
+      });
       const pendingTxn = await providerTxnFromAcceptanceAsync(
         env,
         parentResult.data,
         checkoutId,
       );
-      return { bound: true, transactions: [pendingTxn] };
+      return { bound: true, transactions: [pendingTxn], evidence };
     }
     authoritativeTxn = parentResult.data;
+    evidence.push({
+      role: "transaction",
+      raw_body: parentResult.rawBody,
+      sha256: await sha256Hex(new TextEncoder().encode(parentResult.rawBody)),
+    });
   }
 
   const orderInquiry = await postPaymobOrderTransactionInquiry(
@@ -1020,6 +1008,11 @@ async function inquireImpl(
   if (String(orderInquiry.data.id) !== transactionOrderId) {
     return { bound: false, transactions: [] };
   }
+  evidence.push({
+    role: "order",
+    raw_body: orderInquiry.rawBody,
+    sha256: await sha256Hex(new TextEncoder().encode(orderInquiry.rawBody)),
+  });
 
   const txn = await providerTxnFromAcceptanceAsync(
     env,
@@ -1031,7 +1024,7 @@ async function inquireImpl(
     // still due; it cannot fall back to the child's amount or parent flag.
     return INQUIRY_RETRY;
   }
-  return { bound: true, transactions: [txn] };
+  return { bound: true, transactions: [txn], evidence };
 }
 
 export function paymobParentTxnId(

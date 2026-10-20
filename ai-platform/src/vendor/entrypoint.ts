@@ -7132,8 +7132,16 @@ export class VendorEntrypoint extends WorkerEntrypoint<VendorEnv> {
     args: Record<string, unknown>,
   ): Promise<VendorResultEnvelope> {
     return this.invokeClassH(args, async (version) => {
-      const counts = await runRebuildGrantLedger(this.env);
-      return ok(version, JSON.stringify(counts));
+      try {
+        const counts = await runRebuildGrantLedger(this.env);
+        return ok(version, JSON.stringify(counts));
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        if (message.startsWith("grant_ledger_recovery_capsule_required:")) {
+          return rejected(version, "recovery_evidence_required", message);
+        }
+        throw error;
+      }
     });
   }
 

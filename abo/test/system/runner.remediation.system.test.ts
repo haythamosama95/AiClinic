@@ -14,7 +14,12 @@ import {
   setD1BatchThrows,
   tableCount,
 } from "./harness";
-import { runDueConfirmWork } from "../../src/work/runner";
+import {
+  decidePaymentConfirmation,
+  runDueConfirmWork,
+  type CheckoutRow,
+} from "../../src/work/runner";
+import type { ProviderTxn } from "../../src/provider/port";
 
 type Callback = {
   type: string;
@@ -171,6 +176,39 @@ beforeEach(async () => {
 });
 
 describe("RM08 confirm runner — R3-C5", () => {
+  it("R9-REC3 live and rebuild confirmations share exact amount and currency withholding", () => {
+    const checkout: CheckoutRow = {
+      checkout_id: CHECKOUT_ID,
+      org_id: "org-rm08-runner",
+      offer_id: "01JHARNESSOFFERPUBLISH001",
+      offer_version: 1,
+      charged_price_minor: AMOUNT_MINOR,
+      currency: CURRENCY,
+      billing_contact_version: 1,
+      opened_with_coverage_through: null,
+      contract_version: 1,
+    };
+    const txn: ProviderTxn = {
+      kind: "payment_succeeded",
+      checkout_id: CHECKOUT_ID,
+      payment_id: "pay-r9-rec3",
+      amount_minor: AMOUNT_MINOR,
+      currency: CURRENCY,
+      occurred_at: "2026-01-15T09:05:00.000Z",
+      dedupe_key: "pay-r9-rec3",
+      provider_order_id: "order-01JRM08RUNNER000000000001",
+    };
+
+    expect(decidePaymentConfirmation(checkout, txn)).toEqual({
+      disposition: "grant",
+      mismatchDetail: null,
+    });
+    expect(decidePaymentConfirmation(checkout, { ...txn, amount_minor: AMOUNT_MINOR + 1 }))
+      .toMatchObject({ disposition: "withheld_mismatch" });
+    expect(decidePaymentConfirmation(checkout, { ...txn, currency: "USD" }))
+      .toMatchObject({ disposition: "withheld_mismatch" });
+  });
+
   it("R3-C5 recovers a legacy success marker that has no payment", async () => {
     await seedNotification("notify-legacy-seen", CHECKOUT_ID, "done");
     await env.DB.prepare(

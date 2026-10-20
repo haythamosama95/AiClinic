@@ -688,7 +688,7 @@ describe("P4.3 notify intake", () => {
     expect(await tableCount("notify_rate")).toBe(rateRowsBeforeOversize);
   });
 
-  it("E2E-P4.3-04 decline then success is one payment", async () => {
+  it("R9-FACT1 authenticated callback confirmation retains its inquiry fact", async () => {
     const checkoutId = "01JNOTIFYCHECKOUT000002";
     await seedOpenCheckout(checkoutId);
 
@@ -705,6 +705,16 @@ describe("P4.3 notify intake", () => {
     expect(success.status).toBe(200);
     expect(await tableCount("payment")).toBe(1);
     expect(await paymentReference()).toMatch(/^PAY-/u);
+    const payment = await env.DB.prepare(
+      `SELECT confirmation_inquiry_id FROM payment WHERE checkout_id = ?`,
+    ).bind(checkoutId).first<{ confirmation_inquiry_id: string }>();
+    const inquiryFact = await env.DB.prepare(
+      `SELECT row_sha256, row_json FROM fact_log
+       WHERE "table" = 'inquiry_result' AND key = ?`,
+    ).bind(payment!.confirmation_inquiry_id)
+      .first<{ row_sha256: string; row_json: string }>();
+    expect(inquiryFact?.row_json).toContain(payment!.confirmation_inquiry_id);
+    expect(inquiryFact?.row_sha256).toMatch(/^[a-f0-9]{64}$/u);
   });
 
   it("E2E-P4.3-02 same body is duplicate and the 61st request is 429", async () => {

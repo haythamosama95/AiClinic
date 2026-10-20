@@ -160,6 +160,14 @@ export default {
           }),
         );
       }
+      if (inquiryScript === "currency_mismatch") {
+        return jsonResponse(
+          transactionPayload(DEFAULT_ORDER_ID, {
+            id: txnId,
+            currency: "USD",
+          }),
+        );
+      }
       if (inquiryScript === "reversed") {
         return jsonResponse(
           transactionPayload(DEFAULT_ORDER_ID, {

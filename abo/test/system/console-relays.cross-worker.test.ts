@@ -6,6 +6,7 @@
 import { env } from "cloudflare:test";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import {
+  canonicalize,
   CHANNEL_VERSIONS,
   grantIdComp,
   grantIdPaid,
@@ -1465,16 +1466,23 @@ async function opsBeginTransferRelay(input: {
   hpCredential: ActiveHpCredential;
   reason?: string;
   actionId?: string;
-}): Promise<{ response: Response; actionId: string }> {
+  operation?: HpOperation;
+  assertion?: Record<string, string>;
+}): Promise<{
+  response: Response;
+  actionId: string;
+  operation: HpOperation;
+  assertion: Record<string, string>;
+}> {
   const actionId = input.actionId ?? crypto.randomUUID();
   const reason = input.reason ?? "clinic relocation";
-  const operation = await operationForBeginTransfer({
+  const operation = input.operation ?? await operationForBeginTransfer({
     orgId: input.orgId,
     fromInstallationId: input.fromInstallationId,
     accessJwt: input.accessJwt,
     reason,
   });
-  const assertion = await signHpOperation(
+  const assertion = input.assertion ?? await signHpOperation(
     input.hpCredential.authenticator,
     operation,
   );
@@ -1490,7 +1498,7 @@ async function opsBeginTransferRelay(input: {
       signer_credential_id: input.hpCredential.credentialId,
     }),
   });
-  return { response, actionId };
+  return { response, actionId, operation, assertion };
 }
 
 async function opsDeleteInstallationRelay(input: {
@@ -1577,19 +1585,6 @@ async function opsClinicPage(
   return opsFetch(`/ops/clinics/${orgId}`, {
     headers: await opsHeaders(accessJwt),
   });
-}
-
-async function runTransferSagaUntilDone(transferId: string): Promise<void> {
-  for (let attempt = 0; attempt < 12; attempt += 1) {
-    const row = await transferStepWorkRow(transferId);
-    if (row?.state === "done") {
-      return;
-    }
-    await runScheduled("* * * * *");
-    await drainPlatformDurableObjects();
-  }
-  const final = await transferStepWorkRow(transferId);
-  expect(final?.state).toBe("done");
 }
 
 beforeEach(async () => {
@@ -2012,7 +2007,7 @@ describe("console relays cross-worker", () => {
     expect(operatorRow!.result).toBe("rejected");
   });
 
-  it("R6-O1/R8-CONSOLE3: E2E-P4.8-04 begin-transfer binds IDs and recovers its runner", async () => {
+  it("R9-REC2/R6-O1/R8-CONSOLE3: begin-transfer binds IDs and continues only in its verified invocation", async () => {
     const orgId = ORG_CR_04;
     await setupConsoleRelaysHarness();
     await setupActivePlatformCoverage(orgId);
@@ -2044,12 +2039,73 @@ describe("console relays cross-worker", () => {
     const transferId = transferDetail.transfer_id;
     expect(transferId).toBeTruthy();
 
+    const intentFact = await env.DB.prepare(
+      `SELECT payload_json FROM command_recovery_fact
+       WHERE command_id = ? AND fact_kind = 'relay_reserved'`,
+    ).bind(begun.actionId).first<{ payload_json: string }>();
+    expect(intentFact).not.toBeNull();
+    expect(intentFact!.payload_json).not.toContain(hp.accessJwt);
+    expect(intentFact!.payload_json).not.toContain("access_jwt");
+    expect(intentFact!.payload_json).not.toContain("signed_operation_json");
+    expect(intentFact!.payload_json).not.toContain("signed_assertion_json");
+    const reservationRow = await env.DB.prepare(
+      `SELECT operation_json, assertion_json FROM accepted_operator_command WHERE command_id = ?`,
+    ).bind(begun.actionId).first<{ operation_json: string; assertion_json: string | null }>();
+    expect(reservationRow).toEqual({ operation_json: "", assertion_json: null });
+    const intentPayload = JSON.parse(intentFact!.payload_json) as {
+      operation_sha256: string;
+      assertion_sha256: string;
+      signer_credential_id: string;
+      safe_args: { org_id: string; from_installation_id: string; reason_sha256: string };
+    };
+    expect(intentPayload.operation_sha256).toMatch(/^[a-f0-9]{64}$/u);
+    expect(intentPayload.assertion_sha256).toMatch(/^[a-f0-9]{64}$/u);
+    expect(intentPayload.signer_credential_id).toBe(hp.credentialId);
+    expect(intentPayload.safe_args).toMatchObject({ org_id: orgId, from_installation_id: fromInstallationId });
+
+    const resultFact = await env.DB.prepare(
+      `SELECT payload_json FROM command_recovery_fact
+       WHERE command_id = ? AND fact_kind = 'platform_result'
+       ORDER BY created_at DESC LIMIT 1`,
+    ).bind(begun.actionId).first<{ payload_json: string }>();
+    const resultPayload = JSON.parse(resultFact!.payload_json) as {
+      result: string;
+      transfer_id: string;
+      transfer_mapping: {
+        transfer_id: string;
+        org_id: string;
+        from_installation_id: string;
+        to_installation_id: string;
+        assertion_sha256: string;
+        created_at: string;
+      };
+      response_sha256: string;
+      response_json: string;
+    };
+    expect(resultPayload.result).toBe("ok");
+    expect(resultPayload.transfer_id).toBe(transferId);
+    expect(resultPayload.transfer_mapping).toMatchObject({
+      transfer_id: transferId,
+      org_id: orgId,
+      from_installation_id: fromInstallationId,
+    });
+    expect(resultPayload.transfer_mapping.to_installation_id).toBeTruthy();
+    expect(resultPayload.transfer_mapping.assertion_sha256)
+      .toBe(await sha256Hex(canonicalize(begun.operation)));
+    expect(resultPayload.transfer_mapping.created_at).toBeTruthy();
+    expect(resultPayload.response_sha256).toMatch(/^[a-f0-9]{64}$/u);
+    expect(resultPayload.response_json).toBeTruthy();
+    expect(await sha256Hex(canonicalize(JSON.parse(resultPayload.response_json))))
+      .toBe(resultPayload.response_sha256);
+
     const resumedBegin = await opsBeginTransferRelay({
       orgId,
       fromInstallationId: fromInstallationId!,
       accessJwt: hp.accessJwt,
       hpCredential: hp,
       actionId: begun.actionId,
+      operation: begun.operation,
+      assertion: begun.assertion,
     });
     expect(resumedBegin.response.status).toBe(200);
     const resumedBody = (await resumedBegin.response.json()) as Record<string, unknown>;
@@ -2057,6 +2113,10 @@ describe("console relays cross-worker", () => {
     expect(
       (JSON.parse(String(resumedBody.detail)) as { transfer_id: string }).transfer_id,
     ).toBe(transferId);
+    const beginTransferCalls = await env.PLATFORM_DB.prepare(
+      `SELECT COUNT(*) AS n FROM transfer WHERE transfer_id = ?`,
+    ).bind(transferId).first<{ n: number }>();
+    expect(beginTransferCalls?.n).toBe(1);
 
     const changed = await opsBeginTransferRelay({
       orgId,
@@ -2074,21 +2134,26 @@ describe("console relays cross-worker", () => {
       .first<{ n: number }>();
     expect(transferCount?.n).toBe(1);
 
-    const workRow = await transferStepWorkRow(transferId);
-    expect(workRow).not.toBeNull();
-    expect(workRow!.state).toBe("open");
-    expect(workRow!.dedupe_key).toBe(`transfer_step:${transferId}`);
-
-    await runScheduled("* * * * *");
-    await drainPlatformDurableObjects();
-    const afterFirst = await transferStepWorkRow(transferId);
-    expect(afterFirst).not.toBeNull();
-    expect(afterFirst!.last_error).toBe("awaiting_transfer_out");
-    expect(afterFirst!.state).toBe("open");
-
-    await runTransferSagaUntilDone(transferId);
-    const doneRow = await transferStepWorkRow(transferId);
-    expect(doneRow!.state).toBe("done");
+    expect(await transferStepWorkRow(transferId)).toBeNull();
+    const progressFacts = await env.DB.prepare(
+      `SELECT payload_json FROM command_recovery_fact
+       WHERE command_id = ? AND fact_kind = 'platform_result'
+         AND json_extract(payload_json, '$.phase') IN ('transferOut', 'transferIn')
+       ORDER BY created_at, fact_id`,
+    ).bind(begun.actionId).all<{ payload_json: string }>();
+    const progress = (progressFacts.results ?? []).map((row) =>
+      JSON.parse(row.payload_json) as Record<string, unknown>,
+    );
+    expect(progress.map((fact) => fact.phase).sort()).toEqual(["transferIn", "transferOut"]);
+    for (const fact of progress) {
+      expect(fact.transfer_id).toBe(transferId);
+      expect(fact.provenance).toBe("authenticated_platform_transfer_step_call");
+      expect(fact.response_sha256).toMatch(/^[a-f0-9]{64}$/u);
+      expect(typeof fact.response_json).toBe("string");
+      expect(await sha256Hex(canonicalize(JSON.parse(String(fact.response_json)))))
+        .toBe(fact.response_sha256);
+      expect(typeof fact.at).toBe("string");
+    }
 
     const clinicPage = await opsClinicPage(orgId, hp.accessJwt);
     expect(clinicPage.status).toBe(200);
@@ -2148,13 +2213,7 @@ describe("console relays cross-worker", () => {
     const transferId = transferDetail.transfer_id;
     expect(transferId).toBeTruthy();
 
-    const workRow = await transferStepWorkRow(transferId);
-    expect(workRow).not.toBeNull();
-    expect(workRow!.state).toBe("open");
-
-    await runTransferSagaUntilDone(transferId);
-    const doneRow = await transferStepWorkRow(transferId);
-    expect(doneRow!.state).toBe("done");
+    expect(await transferStepWorkRow(transferId)).toBeNull();
 
     const clinicPage = await opsClinicPage(orgId, hp.accessJwt);
     expect(clinicPage.status).toBe(200);

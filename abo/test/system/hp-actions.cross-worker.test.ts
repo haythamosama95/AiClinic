@@ -1409,7 +1409,7 @@ describe("hp-actions cross-worker", () => {
     expect(await platformPlanVersionSnapshot()).toBe(platformTermsBefore);
   });
 
-  it("R6-O1: E2E-P4.7-04 accepted release replays idempotently; fully reversed release is refused", async () => {
+  it("R9-REC2/R6-O1: accepted release retains command/result facts and replays idempotently", async () => {
     const expectations = await setupHpHarness();
     const orgId = ORG_HP_03;
     const offer = { offerId: expectations.offer_id, version: expectations.version };
@@ -1444,6 +1444,24 @@ describe("hp-actions cross-worker", () => {
     expect(await paymentReleaseCount(withheld.paymentId)).toBe(1);
     expect(await grantWorkCountForPayment(withheld.paymentId)).toBe(1);
     const releaseBody = (await release.json()) as { action_id: string };
+    const recoveryFacts = await env.DB.prepare(
+      `SELECT fact_kind, payload_json FROM command_recovery_fact
+       WHERE command_id = ? ORDER BY created_at, fact_id`,
+    ).bind(releaseBody.action_id).all<{ fact_kind: string; payload_json: string }>();
+    const recoveryKinds = (recoveryFacts.results ?? []).map((fact) => fact.fact_kind);
+    expect(recoveryKinds).toContain("command_intent");
+    expect(recoveryKinds).toContain("local_result");
+    expect(recoveryKinds).toContain("platform_result");
+    const acceptedIntent = JSON.parse(
+      recoveryFacts.results!.find((fact) => fact.fact_kind === "command_intent")!.payload_json,
+    ) as Record<string, unknown>;
+    expect(acceptedIntent).toMatchObject({
+      command_id: releaseBody.action_id,
+      method: "release_payment",
+      command_kind: "local_hp",
+      subject_id: withheld.paymentId,
+      signer_credential_id: hp.credentialId,
+    });
     const replay = await opsHpFetch(
       `/ops/payments/${withheld.paymentId}/release`,
       {
@@ -1458,6 +1476,13 @@ describe("hp-actions cross-worker", () => {
     );
     expect(await paymentReleaseCount(withheld.paymentId)).toBe(1);
     expect(await grantWorkCountForPayment(withheld.paymentId)).toBe(1);
+    const immutableFact = await env.DB.prepare(
+      `SELECT fact_id FROM command_recovery_fact
+       WHERE command_id = ? AND fact_kind = 'command_intent'`,
+    ).bind(releaseBody.action_id).first<{ fact_id: string }>();
+    await expect(env.DB.prepare(
+      `UPDATE command_recovery_fact SET payload_sha256 = ? WHERE fact_id = ?`,
+    ).bind("0".repeat(64), immutableFact!.fact_id).run()).rejects.toThrow(/append_only/u);
     await runDueGrantWorkUntilApplied(withheld.paymentId, orgId);
 
     const nextMinute = new Date(
@@ -1644,7 +1669,7 @@ describe("hp-actions cross-worker", () => {
     await settlePlatformDurableObjectAlarms();
   });
 
-  it("R6-O1/R6-O2: E2E-P4.7-06 erasure blanks contact versions and blocks checkout", async () => {
+  it("R9-REC2/R6-O1/R6-O2: erasure retains immutable scoped intent and replays one fence", async () => {
     const expectations = await setupHpHarness();
     const orgId = ORG_HP_05;
     const offer = { offerId: expectations.offer_id, version: expectations.version };
@@ -1697,6 +1722,34 @@ describe("hp-actions cross-worker", () => {
     expect(erase.status).toBe(200);
     const eraseBody = (await erase.json()) as { action_id: string };
 
+    const eraseFact = await env.DB.prepare(
+      `SELECT fact_kind, payload_json FROM command_recovery_fact
+       WHERE command_id = ? AND fact_kind = 'command_intent'`,
+    ).bind(eraseBody.action_id).first<{ fact_kind: string; payload_json: string }>();
+    expect(eraseFact?.fact_kind).toBe("command_intent");
+    expect(eraseFact?.payload_json).not.toContain("access_jwt");
+    expect(eraseFact?.payload_json).not.toContain("erase-v1@clinic.test");
+    const erasePayload = JSON.parse(eraseFact!.payload_json) as {
+      operation_sha256: string;
+      args_sha256: string;
+      assertion_sha256: string;
+      signer_credential_id: string;
+      signer_public_key_cose: string;
+      erasure_generation: number;
+      scope_contact_versions: number[];
+    };
+    expect(erasePayload.operation_sha256).toMatch(/^[a-f0-9]{64}$/u);
+    expect(erasePayload.args_sha256).toMatch(/^[a-f0-9]{64}$/u);
+    expect(erasePayload.assertion_sha256).toMatch(/^[a-f0-9]{64}$/u);
+    expect(erasePayload.signer_credential_id).toBe(hp.credentialId);
+    expect(erasePayload.signer_public_key_cose.length).toBeGreaterThan(0);
+    expect(erasePayload.erasure_generation).toBe(1);
+    expect(erasePayload.scope_contact_versions).toEqual(contactsBefore.map((row) => row.version));
+    const fenceAfterAcceptance = await env.DB.prepare(
+      `SELECT generation FROM org_erasure_fence WHERE org_id = ?`,
+    ).bind(orgId).first<{ generation: number }>();
+    expect(fenceAfterAcceptance?.generation).toBe(1);
+
     const contactsAfter = await billingContactRows(orgId);
     expect(contactsAfter.length).toBe(contactsBefore.length);
     for (const row of contactsAfter) {
@@ -1722,6 +1775,10 @@ describe("hp-actions cross-worker", () => {
     expect(erasedEvidence.results?.every((row) =>
       row.state === "deleted" && row.cleanup_state === "done",
     )).toBe(true);
+    await putBillingContactVersion(orgId, "req-hp-erase-v3", "erase-v3@clinic.test");
+    const contactsWithNewVersion = await billingContactRows(orgId);
+    expect(contactsWithNewVersion.length).toBe(contactsBefore.length + 1);
+    expect(contactsWithNewVersion.at(-1)?.name).not.toBe("");
     const eraseReplay = await opsHpFetch(`/ops/orgs/${orgId}/erase-contact`, {
       accessJwt: hp.accessJwt,
       operation: eraseOperation,
@@ -1731,6 +1788,12 @@ describe("hp-actions cross-worker", () => {
     expect(((await eraseReplay.json()) as { action_id: string }).action_id).toBe(
       eraseBody.action_id,
     );
+    const fenceAfterReplay = await env.DB.prepare(
+      `SELECT generation FROM org_erasure_fence WHERE org_id = ?`,
+    ).bind(orgId).first<{ generation: number }>();
+    expect(fenceAfterReplay?.generation).toBe(1);
+    const contactsAfterReplay = await billingContactRows(orgId);
+    expect(contactsAfterReplay.at(-1)?.name).not.toBe("");
     const lateCallback = await postPaymobProcessedCallback(
       successFixture as PaymobCallbackFixture,
       {

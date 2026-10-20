@@ -15,7 +15,7 @@ const aboRoot = path.resolve(scriptDir, "..");
 
 function printUsage(): void {
   process.stdout.write(
-    "Usage: npx tsx scripts/rebuild-abo.ts [--env <name>] <provider-transaction-reference> ...\n\n" +
+    "Usage: npm run rebuild -- [--env <name>] <provider-transaction-reference> ...\n\n" +
       "  Pass provider transaction references copied from the provider dashboard export.\n" +
       "  Run from the abo/ directory after emptying D1 per REBUILD.md.\n",
   );

@@ -24,6 +24,7 @@ import { refreshCoverageView } from "./coverage/view.js";
 import { markExportLagIfDue, sendDueAlerts } from "./alert/index.js";
 import { checkR2BucketLock } from "./alert/lock.js";
 import { clockNowIso } from "./clock.js";
+import { isAboRecoveryActive } from "./recovery-fence.js";
 import { runDailyDigest } from "./digest/run.js";
 import { runHousekeeping } from "./housekeeping/run.js";
 import { runHourlyWatch } from "./watch/hourly.js";
@@ -328,6 +329,9 @@ export default {
     env: Env,
     ctx: ExecutionContext,
   ): Promise<Response> {
+    if (await isAboRecoveryActive(env)) {
+      return new Response("abo_recovery_in_progress", { status: 503 });
+    }
     await maybeRefreshSigningKeyCheck(env);
 
     const url = new URL(request.url);
@@ -382,6 +386,7 @@ export default {
     controller: ScheduledController,
     env: Env,
   ): Promise<void> {
+    if (await isAboRecoveryActive(env)) return;
     const cron = controller.cron;
     await stampScheduledJobRun(env, cron);
     if (cron === "0 */6 * * *") {

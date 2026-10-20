@@ -19,6 +19,9 @@ import acceptedCommandsErasureFenceMigrationSql from "../../migrations/0012_acce
 import notificationProviderTxnIdMigrationSql from "../../migrations/0013_notification_provider_txn_id.sql?raw";
 import grantOutcomeEventsMigrationSql from "../../migrations/0014_grant_outcome_events.sql?raw";
 import reversalRequestMigrationSql from "../../migrations/0015_reversal_request.sql?raw";
+import rebuildCheckpointMigrationSql from "../../migrations/0016_rebuild_checkpoint.sql?raw";
+import commandRecoveryFactsMigrationSql from "../../migrations/0017_command_recovery_facts.sql?raw";
+import rebuildPublicationFenceMigrationSql from "../../migrations/0018_rebuild_publication_fence.sql?raw";
 
 const ABO_LEGACY_MIGRATION_SQL: string[] = [
   recordsMigrationSql,
@@ -39,6 +42,9 @@ const ABO_MIGRATION_SQL: string[] = [
   notificationProviderTxnIdMigrationSql,
   grantOutcomeEventsMigrationSql,
   reversalRequestMigrationSql,
+  rebuildCheckpointMigrationSql,
+  commandRecoveryFactsMigrationSql,
+  rebuildPublicationFenceMigrationSql,
 ];
 
 function base64UrlEncode(bytes: Uint8Array): string {
@@ -468,6 +474,7 @@ export type PaymobInquiryScript =
   | "bound_success"
   | "unbound"
   | "amount_mismatch"
+  | "currency_mismatch"
   | "reversed"
   | "pending"
   | "timeout"

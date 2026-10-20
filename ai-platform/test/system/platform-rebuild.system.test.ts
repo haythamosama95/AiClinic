@@ -457,40 +457,6 @@ async function truncateGrantLedgerForInstallation(
   ).run();
 }
 
-function ledgerRowsEqual(
-  left: GrantLedgerRow[],
-  right: GrantLedgerRow[],
-): void {
-  expect(right).toHaveLength(left.length);
-  for (let index = 0; index < left.length; index += 1) {
-    const a = left[index]!;
-    const b = right[index]!;
-    expect(b.grant_id).toBe(a.grant_id);
-    expect(b.origin_grant_id).toBe(a.origin_grant_id);
-    expect(b.org_id).toBe(a.org_id);
-    expect(b.installation_id).toBe(a.installation_id);
-    expect(b.kind).toBe(a.kind);
-    expect(b.source_kind).toBe(a.source_kind);
-    expect(b.operator_credential_id).toBe(a.operator_credential_id);
-    expect(b.envelope_sha256).toBe(a.envelope_sha256);
-    expect(JSON.parse(b.receipt)).toEqual(JSON.parse(a.receipt));
-    expect(b.applied_at).toBe(a.applied_at);
-  }
-}
-
-function voidRowsEqual(left: GrantVoidRow[], right: GrantVoidRow[]): void {
-  expect(right).toHaveLength(left.length);
-  for (let index = 0; index < left.length; index += 1) {
-    const a = left[index]!;
-    const b = right[index]!;
-    expect(b.grant_id).toBe(a.grant_id);
-    expect(b.reason).toBe(a.reason);
-    expect(b.source).toBe(a.source);
-    expect(b.evidence_sha256).toBe(a.evidence_sha256);
-    expect(b.at).toBe(a.at);
-  }
-}
-
 beforeAll(async () => {
   await applyAllMigrations(env.DB);
   registerVisitSummaryCapability();
@@ -640,7 +606,7 @@ describe("platform rebuild procedures", () => {
     });
   });
 
-  it("E2E-P3.11-03 grant_ledger truncated rebuilds from R2 identical", async () => {
+  it("R9-REC1 platform ledger replay blocks legacy rows without the RM29 recovery capsule", async () => {
     const scenario = await newScenario();
     await coverClinic(scenario);
     await newClinic(scenario);
@@ -671,20 +637,13 @@ describe("platform rebuild procedures", () => {
       { contract_version: CONTRACT_VERSION },
       { accessJwt },
     );
-    expect(rebuilt.result).toBe("ok");
-    expect(rebuilt.code).toBe("");
-    expect(rebuilt.receipt).toBeUndefined();
+    expect(rebuilt.result).toBe("rejected");
+    expect(rebuilt.code).toBe("recovery_evidence_required");
+    expect(rebuilt.detail).toContain("RM29");
 
-    const detail = JSON.parse(rebuilt.detail) as {
-      grant_ledger: number;
-      grant_void: number;
-    };
-    expect(detail.grant_ledger).toBe(copy.ledger.length);
-    expect(detail.grant_void).toBe(copy.voids.length);
-
-    const reloaded = await copyGrantLedgerForInstallation(scenario.installationId);
-    ledgerRowsEqual(copy.ledger, reloaded.ledger);
-    voidRowsEqual(copy.voids, reloaded.voids);
+    const stillEmpty = await copyGrantLedgerForInstallation(scenario.installationId);
+    expect(stillEmpty.ledger).toEqual([]);
+    expect(stillEmpty.voids).toEqual([]);
   });
 
   it("E2E-P3.11-04 snapshot refresh writes one coverage_event and updates the mirror", async () => {

@@ -187,11 +187,27 @@ async function recordUnparseableNotification(
   const bodySha256 = await sha256Hex(rawBytes);
   const bodyR2Key = `evidence/notification/${notificationId}`;
   await env.R2.put(bodyR2Key, rawBody);
-  await env.DB.prepare(
+  const row = {
+    notification_id: notificationId,
+    provider_id: PAYMOB_PROVIDER_ID,
+    channel: "processed",
+    hmac_valid: 0,
+    body_r2_key: bodyR2Key,
+    provider_txn_id: null,
+    body_sha256: bodySha256,
+    dedupe_key: bodySha256,
+    checkout_id: null,
+    disposition: "unparseable",
+    adapter_version: PAYMOB_ADAPTER_VERSION,
+  };
+  const rowJson = new TextDecoder().decode(canonicalize(row));
+  const rowSha256 = await sha256Hex(canonicalize(row));
+  await env.DB.batch([
+    env.DB.prepare(
     `INSERT INTO notification (
-       notification_id, provider_id, channel, hmac_valid, body_r2_key,
+       notification_id, provider_id, channel, hmac_valid, body_r2_key, provider_txn_id,
        body_sha256, dedupe_key, checkout_id, disposition, adapter_version
-     ) VALUES (?, ?, 'processed', 0, ?, ?, ?, NULL, 'unparseable', ?)`
+     ) VALUES (?, ?, 'processed', 0, ?, NULL, ?, ?, NULL, 'unparseable', ?)`
   )
     .bind(
       notificationId,
@@ -200,8 +216,12 @@ async function recordUnparseableNotification(
       bodySha256,
       bodySha256,
       PAYMOB_ADAPTER_VERSION,
-    )
-    .run();
+    ),
+    env.DB.prepare(
+      `INSERT INTO fact_log ("table", key, row_sha256, row_json, created_at)
+       VALUES ('notification', ?, ?, ?, ?)`,
+    ).bind(notificationId, rowSha256, rowJson, nowIso),
+  ]);
   await raiseAlert(env, "AL-23", AL23_PARSE_ALERT_KEY, notificationId);
 }
 
@@ -485,7 +505,24 @@ async function insertDuplicateNotification(
     channel: "processed" | "response";
   },
 ): Promise<void> {
-  await env.DB.prepare(
+  const row = {
+    notification_id: params.notificationId,
+    provider_id: PAYMOB_PROVIDER_ID,
+    channel: params.channel,
+    hmac_valid: 1,
+    body_r2_key: params.bodyR2Key,
+    provider_txn_id: params.providerTxnId ?? null,
+    body_sha256: params.bodySha256,
+    dedupe_key: params.bodySha256,
+    checkout_id: params.checkoutId,
+    disposition: "duplicate",
+    adapter_version: PAYMOB_ADAPTER_VERSION,
+  };
+  const rowJson = new TextDecoder().decode(canonicalize(row));
+  const rowSha256 = await sha256Hex(canonicalize(row));
+  const nowIso = await clockNowIso(env);
+  await env.DB.batch([
+    env.DB.prepare(
     `INSERT INTO notification (
        notification_id, provider_id, channel, hmac_valid, body_r2_key, provider_txn_id,
        body_sha256, dedupe_key, checkout_id, disposition, adapter_version
@@ -501,8 +538,12 @@ async function insertDuplicateNotification(
       params.bodySha256,
       params.checkoutId,
       PAYMOB_ADAPTER_VERSION,
-    )
-    .run();
+    ),
+    env.DB.prepare(
+      `INSERT INTO fact_log ("table", key, row_sha256, row_json, created_at)
+       VALUES ('notification', ?, ?, ?, ?)`,
+    ).bind(params.notificationId, rowSha256, rowJson, nowIso),
+  ]);
 }
 
 async function insertUnmatchedNotification(
@@ -514,11 +555,28 @@ async function insertUnmatchedNotification(
     channel: "processed" | "response";
   },
 ): Promise<void> {
-  await env.DB.prepare(
+  const row = {
+    notification_id: params.notificationId,
+    provider_id: PAYMOB_PROVIDER_ID,
+    channel: params.channel,
+    hmac_valid: 1,
+    body_r2_key: params.bodyR2Key,
+    provider_txn_id: null,
+    body_sha256: params.bodySha256,
+    dedupe_key: params.bodySha256,
+    checkout_id: null,
+    disposition: "unmatched",
+    adapter_version: PAYMOB_ADAPTER_VERSION,
+  };
+  const rowJson = new TextDecoder().decode(canonicalize(row));
+  const rowSha256 = await sha256Hex(canonicalize(row));
+  const nowIso = await clockNowIso(env);
+  await env.DB.batch([
+    env.DB.prepare(
     `INSERT INTO notification (
-       notification_id, provider_id, channel, hmac_valid, body_r2_key,
+       notification_id, provider_id, channel, hmac_valid, body_r2_key, provider_txn_id,
        body_sha256, dedupe_key, checkout_id, disposition, adapter_version
-     ) VALUES (?, ?, ?, 1, ?, ?, ?, NULL, 'unmatched', ?)`,
+     ) VALUES (?, ?, ?, 1, ?, NULL, ?, ?, NULL, 'unmatched', ?)`,
   )
     .bind(
       params.notificationId,
@@ -528,8 +586,12 @@ async function insertUnmatchedNotification(
       params.bodySha256,
       params.bodySha256,
       PAYMOB_ADAPTER_VERSION,
-    )
-    .run();
+    ),
+    env.DB.prepare(
+      `INSERT INTO fact_log ("table", key, row_sha256, row_json, created_at)
+       VALUES ('notification', ?, ?, ?, ?)`,
+    ).bind(params.notificationId, rowSha256, rowJson, nowIso),
+  ]);
 }
 
 async function recordUnmatchedNotificationAndAlert(
@@ -663,6 +725,21 @@ export async function handlePostNotifyPaymob(
     try {
       const nowIso = await clockNowIso(env);
       const workId = await newId(env);
+      const notificationRow = {
+        notification_id: notificationId,
+        provider_id: PAYMOB_PROVIDER_ID,
+        channel: "processed",
+        hmac_valid: 1,
+        body_r2_key: bodyR2Key,
+        provider_txn_id: event.provider_txn_id ?? null,
+        body_sha256: bodySha256,
+        dedupe_key: bodySha256,
+        checkout_id: checkoutId,
+        disposition: "enqueued",
+        adapter_version: PAYMOB_ADAPTER_VERSION,
+      };
+      const notificationJson = new TextDecoder().decode(canonicalize(notificationRow));
+      const notificationSha = await sha256Hex(canonicalize(notificationRow));
       await env.DB.batch([
         env.DB.prepare(
           `INSERT INTO notification (
@@ -678,6 +755,19 @@ export async function handlePostNotifyPaymob(
           bodySha256,
           checkoutId,
           PAYMOB_ADAPTER_VERSION,
+        ),
+        env.DB.prepare(
+          `INSERT INTO fact_log ("table", key, row_sha256, row_json, created_at)
+           SELECT 'notification', ?, ?, ?, ?
+           WHERE EXISTS (
+             SELECT 1 FROM notification WHERE notification_id = ? AND disposition = 'enqueued'
+           )`,
+        ).bind(
+          notificationId,
+          notificationSha,
+          notificationJson,
+          nowIso,
+          notificationId,
         ),
         env.DB.prepare(
           `INSERT INTO work (

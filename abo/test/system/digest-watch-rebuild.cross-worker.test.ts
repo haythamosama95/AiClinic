@@ -7,6 +7,7 @@ import rebuildRunbookMd from "../../REBUILD.md?raw";
 import { env } from "cloudflare:test";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import {
+  canonicalize,
   CHANNEL_VERSIONS,
   grantIdComp,
   grantIdPaid,
@@ -15,6 +16,7 @@ import {
 } from "vendor-contracts";
 import {
   createSoftwareAuthenticator,
+  createPlatformReceiptSigner,
   type SoftwareAuthenticator,
 } from "vendor-contracts/testkit";
 import offersFixture from "../../fixtures/offers.json";
@@ -32,8 +34,12 @@ import grantOutcomeEventsMigrationSql from "../../migrations/0014_grant_outcome_
 import reconciliationMigrationSql from "../../migrations/0008_reconciliation.sql?raw";
 import workLeaseTokenMigrationSql from "../../migrations/0010_work_lease_token.sql?raw";
 import checkoutCreationAttemptsMigrationSql from "../../migrations/0011_checkout_creation_attempts.sql?raw";
-import { loadOffersFixture } from "../../src/records/append";
+import rebuildCheckpointMigrationSql from "../../migrations/0016_rebuild_checkpoint.sql?raw";
+import commandRecoveryFactsMigrationSql from "../../migrations/0017_command_recovery_facts.sql?raw";
+import rebuildPublicationFenceMigrationSql from "../../migrations/0018_rebuild_publication_fence.sql?raw";
+import { appendOffer, loadOffersFixture } from "../../src/records/append";
 import { exportFacts } from "../../src/records/export";
+import { commandFactStatements } from "../../src/records/command-facts";
 import {
   applySql,
   billingFetch,
@@ -49,6 +55,7 @@ import {
   runScheduled,
   scriptPaymobInquiry,
   sendEmailBinding,
+  setD1BatchThrows,
   setSendEmailThrows,
 } from "./harness";
 import {
@@ -339,6 +346,9 @@ async function ensureMigrations(): Promise<void> {
     acceptedCommandsErasureFenceMigrationSql,
     notificationProviderTxnIdMigrationSql,
     grantOutcomeEventsMigrationSql,
+    rebuildCheckpointMigrationSql,
+    commandRecoveryFactsMigrationSql,
+    rebuildPublicationFenceMigrationSql,
   ]) {
     try {
       await applySql(sql);
@@ -1393,7 +1403,7 @@ describe("P4.11 digest, watch, housekeeping, rebuild (H-XW)", () => {
     ).toHaveLength(0);
   });
 
-  it("E2E-P4.11-06 FM-19: wipe the ABO D1 → replay ledger/ → facts and status restored; gap re-inquired; a payment with no grant gets one → already_applied; reconciliation clean", async () => {
+  it("R9-REC2/R9-REC3 restores due grant work once against its original provider order", async () => {
     const expectations = await setupRebuildHarness();
     const paid = await paidCheckoutWithGrant(
       ORG_REBUILD,
@@ -1420,6 +1430,20 @@ describe("P4.11 digest, watch, housekeeping, rebuild (H-XW)", () => {
       .first<{ payment_id: string }>();
     const ledgerListed = await env.R2.list({ prefix: "ledger/" });
     expect(ledgerListed.objects.length).toBeGreaterThan(0);
+    const providerLedger = await Promise.all(
+      ledgerListed.objects.map(async (object) => {
+        const body = await env.R2.get(object.key);
+        return JSON.parse(await body!.text()) as {
+          table: string;
+          row?: Record<string, unknown>;
+        };
+      }),
+    );
+    expect(providerLedger.some((line) => line.table === "paymob_intention")).toBe(false);
+    expect(providerLedger
+      .filter((line) => line.table === "paymob_intention_attempt_event")
+      .every((line) => !Object.hasOwn(line.row ?? {}, "client_secret")))
+      .toBe(true);
 
     const gapOrderBefore = await env.DB.prepare(
       `SELECT order_id FROM paymob_intention WHERE checkout_id = ?`,
@@ -1430,6 +1454,7 @@ describe("P4.11 digest, watch, housekeeping, rebuild (H-XW)", () => {
 
     await wipeAboD1();
     await reapplyAboSchema();
+    expect(await tableCount("billing_contact")).toBe(0);
 
     await env.PAYMOB_STUB.fetch("http://paymob.stub/__script", {
       method: "POST",
@@ -1468,6 +1493,14 @@ describe("P4.11 digest, watch, housekeeping, rebuild (H-XW)", () => {
     expect(
       await rowExists("payment", "payment_id", paid.paymentId),
     ).toBe(true);
+    expect(await tableCount("billing_contact")).toBe(0);
+    const restoredPaymentLineage = await env.DB.prepare(
+      `SELECT confirmation_inquiry_id FROM payment WHERE payment_id = ?`,
+    ).bind(paid.paymentId).first<{ confirmation_inquiry_id: string }>();
+    expect(restoredPaymentLineage?.confirmation_inquiry_id).toBeTruthy();
+    expect(await rowExists(
+      "inquiry_result", "inquiry_id", restoredPaymentLineage!.confirmation_inquiry_id,
+    )).toBe(true);
 
     const gapOrderAfter = await env.DB.prepare(
       `SELECT order_id FROM paymob_intention WHERE checkout_id = ?`,
@@ -1500,5 +1533,793 @@ describe("P4.11 digest, watch, housekeeping, rebuild (H-XW)", () => {
     const runbook = readRebuildRunbook();
     expect(runbook).toContain("provider transaction references");
     expect(runbook.toLowerCase()).toContain("dashboard export");
+  });
+
+  it("R9-REC2 missing original provider correlation is disputed without creating a replacement order", async () => {
+    const expectations = await setupRebuildHarness();
+    await putBillingContact(ORG_REBUILD);
+    await ensureGrantTenantBinding(ORG_REBUILD);
+    const { checkoutId } = await postCheckout(
+      ORG_REBUILD,
+      expectations,
+      "req-r9-rec2-missing-correlation",
+    );
+    await exportLedgerFacts();
+
+    await wipeAboD1();
+    await reapplyAboSchema();
+    const { rebuildAbo } = await import("../../src/rebuild.js");
+    await rebuildAbo(env as never, { providerTransactionReferences: [] });
+
+    const status = await env.DB.prepare(
+      `SELECT state FROM checkout_status WHERE checkout_id = ?`,
+    ).bind(checkoutId).first<{ state: string }>();
+    expect(status?.state).toBe("disputed");
+    expect(await rowExists("paymob_intention", "checkout_id", checkoutId)).toBe(false);
+    const finding = await env.DB.prepare(
+      `SELECT kind FROM finding WHERE subject = ? AND kind = 'rebuild_missing_provider_correlation'`,
+    ).bind(checkoutId).first<{ kind: string }>();
+    expect(finding?.kind).toBe("rebuild_missing_provider_correlation");
+  });
+
+  it("R9-REC3 recovery with an amount mismatch is withheld without grant work", async () => {
+    const expectations = await setupRebuildHarness();
+    await gapCheckoutWithIntentionOnly(
+      ORG_REBUILD,
+      expectations,
+      "req-r9-rec3-recovered-mismatch",
+    );
+    await exportLedgerFacts();
+    await wipeAboD1();
+    await reapplyAboSchema();
+    await env.PAYMOB_STUB.fetch("http://paymob.stub/__script", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ intention_order_id: "9002" }),
+    });
+    await scriptPaymobInquiry("amount_mismatch");
+
+    const { rebuildAbo } = await import("../../src/rebuild.js");
+    await rebuildAbo(env as never, { providerTransactionReferences: [] });
+
+    const payment = await env.DB.prepare(
+      `SELECT payment_id, disposition FROM payment LIMIT 1`,
+    ).first<{ payment_id: string; disposition: string }>();
+    expect(payment?.disposition).toBe("withheld_mismatch");
+    expect(await tableCount("grant_request")).toBe(0);
+    const grantWork = await env.DB.prepare(
+      `SELECT COUNT(*) AS n FROM work WHERE kind = 'grant'`,
+    ).first<{ n: number }>();
+    expect(grantWork?.n).toBe(0);
+    expect(await tableCount("inquiry_result")).toBe(1);
+    const alert = await env.DB.prepare(
+      `SELECT active FROM alert WHERE code = 'AL-05' LIMIT 1`,
+    ).first<{ active: number }>();
+    expect(alert?.active).toBe(1);
+  });
+
+  it("R9-REC3 recovery with a currency mismatch is withheld without grant work", async () => {
+    const expectations = await setupRebuildHarness();
+    await gapCheckoutWithIntentionOnly(
+      ORG_REBUILD,
+      expectations,
+      "req-r9-rec3-recovered-currency-mismatch",
+    );
+    await exportLedgerFacts();
+    await wipeAboD1();
+    await reapplyAboSchema();
+    await env.PAYMOB_STUB.fetch("http://paymob.stub/__script", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ intention_order_id: "9002" }),
+    });
+    await scriptPaymobInquiry("currency_mismatch");
+
+    const { rebuildAbo } = await import("../../src/rebuild.js");
+    await rebuildAbo(env as never, { providerTransactionReferences: [] });
+
+    const payment = await env.DB.prepare(
+      `SELECT disposition FROM payment LIMIT 1`,
+    ).first<{ disposition: string }>();
+    expect(payment?.disposition).toBe("withheld_mismatch");
+    expect(await tableCount("grant_request")).toBe(0);
+    const grantWork = await env.DB.prepare(
+      `SELECT COUNT(*) AS n FROM work WHERE kind = 'grant'`,
+    ).first<{ n: number }>();
+    expect(grantWork?.n).toBe(0);
+    const alert = await env.DB.prepare(
+      `SELECT active FROM alert WHERE code = 'AL-05' LIMIT 1`,
+    ).first<{ active: number }>();
+    expect(alert?.active).toBe(1);
+  });
+
+  it("R9-REC2 rejected and transient platform audit facts do not complete accepted local work", async () => {
+    await setupRebuildHarness();
+    const commandId = "cmd-r9-local-platform-audit-recovery";
+    const now = await currentHarnessClockIso();
+    const later = new Date(Date.parse(now) + 1_000).toISOString();
+    const operation = { op: "release_payment", actor_email: VENDOR_OPERATOR_EMAIL };
+    const operationJson = new TextDecoder().decode(canonicalize(operation));
+    const assertionJson = "{}";
+    const argsJson = new TextDecoder().decode(canonicalize({ payment_id: "pay-r9-audit" }));
+    const intent = {
+      payload_version: 1,
+      command_id: commandId,
+      command_kind: "local_hp",
+      method: "release_payment",
+      subject_id: "pay-r9-audit",
+      actor_email: VENDOR_OPERATOR_EMAIL,
+      operation_json: operationJson,
+      args_json: argsJson,
+      operation_sha256: await sha256Hex(canonicalize(operation)),
+      assertion_json: assertionJson,
+      assertion_sha256: await sha256Hex(canonicalize({})),
+      contract_version: CONTRACT_VERSION,
+      accepted_at: now,
+      signer_credential_id: "credential-r9-audit",
+      erasure_generation: null,
+      scope_max_contact_version: null,
+    };
+    await env.DB.batch([
+      ...await commandFactStatements(env, {
+        commandId,
+        kind: "command_intent",
+        payload: intent,
+        createdAt: now,
+      }),
+      ...await commandFactStatements(env, {
+        commandId,
+        kind: "local_result",
+        payload: {
+          payload_version: 1,
+          command_id: commandId,
+          method: "release_payment",
+          result: "ok",
+          at: now,
+        },
+        createdAt: now,
+      }),
+      ...await commandFactStatements(env, {
+        commandId,
+        kind: "platform_result",
+        payload: {
+          payload_version: 1,
+          command_id: commandId,
+          phase: "platform_operator_action",
+          result: "ok",
+          at: now,
+        },
+        createdAt: now,
+      }),
+      ...await commandFactStatements(env, {
+        commandId,
+        kind: "platform_result",
+        payload: {
+          payload_version: 1,
+          command_id: commandId,
+          phase: "platform_operator_action",
+          result: "transient",
+          at: later,
+        },
+        createdAt: later,
+      }),
+    ]);
+    await exportLedgerFacts();
+
+    await wipeAboD1();
+    await reapplyAboSchema();
+    const { rebuildAbo } = await import("../../src/rebuild.js");
+    await rebuildAbo(env as never, { providerTransactionReferences: [] });
+
+    const recovered = await env.DB.prepare(
+      `SELECT stage FROM accepted_operator_command WHERE command_id = ?`,
+    ).bind(commandId).first<{ stage: string }>();
+    expect(recovered?.stage).toBe("local_applied");
+  });
+
+  it("R9-REC1 restores a cancelled checkout event without changing its terminal status", async () => {
+    const expectations = await setupRebuildHarness();
+    await putBillingContact(ORG_REBUILD);
+    const { checkoutId } = await postCheckout(
+      ORG_REBUILD,
+      expectations,
+      "req-r9-rec1-cancelled-checkout",
+    );
+    const at = new Date(Date.parse(await currentHarnessClockIso()) + 10_000).toISOString();
+    const event = {
+      checkout_id: checkoutId,
+      kind: "cancelled",
+      source: "operator",
+      ref: "action-r9-rec1-cancelled",
+      actor: VENDOR_OPERATOR_EMAIL,
+      at,
+      contract_version: CONTRACT_VERSION,
+    };
+    const eventJson = new TextDecoder().decode(canonicalize(event));
+    await env.DB.batch([
+      env.DB.prepare(
+        `INSERT INTO checkout_event (
+           checkout_id, kind, source, ref, actor, at, contract_version
+         ) VALUES (?, ?, ?, ?, ?, ?, ?)`,
+      ).bind(
+        event.checkout_id, event.kind, event.source, event.ref, event.actor,
+        event.at, event.contract_version,
+      ),
+      env.DB.prepare(
+        `INSERT INTO fact_log ("table", key, row_sha256, row_json, created_at)
+         VALUES ('checkout_event', ?, ?, ?, ?)`,
+      ).bind(
+        `${checkoutId}:cancelled:${at}`, await sha256Hex(canonicalize(event)),
+        eventJson, at,
+      ),
+      env.DB.prepare(
+        `UPDATE checkout_status SET state = 'cancelled', last_event_at = ? WHERE checkout_id = ?`,
+      ).bind(at, checkoutId),
+    ]);
+    await exportLedgerFacts();
+
+    await wipeAboD1();
+    await reapplyAboSchema();
+    const { rebuildAbo } = await import("../../src/rebuild.js");
+    await rebuildAbo(env as never, { providerTransactionReferences: [] });
+
+    const status = await env.DB.prepare(
+      `SELECT state FROM checkout_status WHERE checkout_id = ?`,
+    ).bind(checkoutId).first<{ state: string }>();
+    expect(status?.state).toBe("cancelled");
+    const restoredEvent = await env.DB.prepare(
+      `SELECT kind FROM checkout_event WHERE checkout_id = ? AND kind = 'cancelled'`,
+    ).bind(checkoutId).first<{ kind: string }>();
+    expect(restoredEvent?.kind).toBe("cancelled");
+  });
+
+  it("R9-REC1 reapplies accepted erasure fences before deleting any recovered callback body", async () => {
+    const expectations = await setupRebuildHarness();
+    await putBillingContact(ORG_REBUILD);
+    const { checkoutId } = await postCheckout(
+      ORG_REBUILD,
+      expectations,
+      "req-r9-rec1-erased-callback-body",
+    );
+    const amountMinor = await syncPaymobForCheckout(checkoutId);
+    const callback = await postPaymobProcessedCallback(
+      successFixture as PaymobCallbackFixture,
+      { txnId: PAID_PAYMOB_TXN_ID, amountMinor },
+    );
+    expect(callback.status).toBe(200);
+    const notification = await env.DB.prepare(
+      `SELECT body_r2_key FROM notification WHERE checkout_id = ? LIMIT 1`,
+    ).bind(checkoutId).first<{ body_r2_key: string }>();
+    expect(notification?.body_r2_key).toBeTruthy();
+    const retainedBodyKey = notification!.body_r2_key;
+    expect(await env.R2.get(retainedBodyKey)).not.toBeNull();
+
+    const commandId = "cmd-r9-rec1-erase-callback-body";
+    const now = await currentHarnessClockIso();
+    const cutoff = new Date(Date.parse(now) + 60_000).toISOString();
+    await env.DB.batch(await commandFactStatements(env, {
+      commandId,
+      kind: "command_intent",
+      payload: {
+        payload_version: 1,
+        command_id: commandId,
+        method: "erase_contact",
+        subject_id: ORG_REBUILD,
+        actor_email: VENDOR_OPERATOR_EMAIL,
+        erasure_generation: 7,
+        scope_contact_versions: [1],
+        acceptance_cutoff: cutoff,
+      },
+      createdAt: now,
+    }));
+    await exportLedgerFacts();
+
+    await wipeAboD1();
+    await reapplyAboSchema();
+    expect(await env.R2.get(retainedBodyKey)).not.toBeNull();
+    const { rebuildAbo } = await import("../../src/rebuild.js");
+    await rebuildAbo(env as never, { providerTransactionReferences: [] });
+
+    expect(await env.R2.get(retainedBodyKey)).toBeNull();
+    expect(await tableCount("billing_contact")).toBe(0);
+    const fence = await env.DB.prepare(
+      `SELECT generation FROM org_erasure_fence WHERE org_id = ?`,
+    ).bind(ORG_REBUILD).first<{ generation: number }>();
+    expect(fence?.generation).toBe(7);
+  });
+
+  it("R9-REC2 disputes transfer recovery without original signed authorization bytes", async () => {
+    await setupRebuildHarness();
+    const commandId = "cmd-r9-transfer-recovery";
+    const transferId = "tr-r9-transfer-recovery";
+    const orgId = ORG_REBUILD;
+    const fromInstallationId = "install-r9-source";
+    const toInstallationId = "install-r9-target";
+    const now = await currentHarnessClockIso();
+    const reserved = {
+      payload_version: 1,
+      command_id: commandId,
+      method: "beginTransfer",
+      command_kind: "relay",
+      subject_id: orgId,
+      actor_email: VENDOR_OPERATOR_EMAIL,
+      contract_version: CONTRACT_VERSION,
+      safe_args: {
+        org_id: orgId,
+        from_installation_id: fromInstallationId,
+        reason_sha256: "a".repeat(64),
+      },
+      args_sha256: "b".repeat(64),
+      operation_sha256: "c".repeat(64),
+      assertion_sha256: "d".repeat(64),
+      signer_credential_id: "credential-r9-transfer",
+      signer_public_key_cose: "trusted-test-public-material",
+      signer_alg: "ES256",
+      accepted_at: now,
+      authority_action_id: commandId,
+      authority_access_jti: "jti-r9-transfer",
+      reservation_state: "abo_relay_reserved",
+    };
+    const mapping = {
+      transfer_id: transferId,
+      org_id: orgId,
+      from_installation_id: fromInstallationId,
+      to_installation_id: toInstallationId,
+      assertion_sha256: "e".repeat(64),
+      package: null,
+      created_at: now,
+    };
+    const beginResponse = {
+      result: "ok",
+      code: "",
+      contract_version: CONTRACT_VERSION,
+      detail: JSON.stringify(mapping),
+    };
+    const platformResult = {
+      payload_version: 1,
+      command_id: commandId,
+      method: "beginTransfer",
+      phase: "beginTransfer",
+      subject_id: orgId,
+      result: "ok",
+      code: "",
+      contract_version: CONTRACT_VERSION,
+      response_json: new TextDecoder().decode(canonicalize(beginResponse)),
+      response_sha256: await sha256Hex(canonicalize(beginResponse)),
+      transfer_id: transferId,
+      transfer_mapping: mapping,
+      provenance: "authenticated_platform_beginTransfer_call",
+      at: now,
+    };
+    await env.DB.batch([
+      ...await commandFactStatements(env, {
+        commandId,
+        kind: "relay_reserved",
+        payload: reserved,
+        createdAt: now,
+      }),
+      ...await commandFactStatements(env, {
+        commandId,
+        kind: "platform_result",
+        payload: platformResult,
+        createdAt: now,
+      }),
+    ]);
+
+    const terminalSigner = await createPlatformReceiptSigner();
+    const terminalPublicKey = new Uint8Array(
+      await crypto.subtle.exportKey("raw", terminalSigner.publicKey),
+    );
+    const terminalPublicKeys = JSON.stringify([{
+      kid: terminalSigner.kid,
+      public_key: base64UrlEncode(terminalPublicKey),
+    }]);
+    const terminalCommandId = "cmd-r9-transfer-terminal";
+    const terminalTransferId = "tr-r9-transfer-terminal";
+    const terminalOperationHash = "1".repeat(64);
+    const terminalFromInstallationId = "install-r9-terminal-source";
+    const terminalToInstallationId = "install-r9-terminal-target";
+    const terminalReservation = {
+      ...reserved,
+      command_id: terminalCommandId,
+      authority_action_id: terminalCommandId,
+      operation_sha256: terminalOperationHash,
+      assertion_sha256: "2".repeat(64),
+      safe_args: {
+        ...reserved.safe_args,
+        from_installation_id: terminalFromInstallationId,
+      },
+      signer_credential_id: "credential-r9-terminal",
+    };
+    const terminalMapping = {
+      ...mapping,
+      transfer_id: terminalTransferId,
+      from_installation_id: terminalFromInstallationId,
+      to_installation_id: terminalToInstallationId,
+      assertion_sha256: terminalOperationHash,
+    };
+    const terminalBeginResponse = {
+      result: "ok",
+      code: "",
+      contract_version: CONTRACT_VERSION,
+      detail: JSON.stringify(terminalMapping),
+    };
+    const terminalBegin = {
+      ...platformResult,
+      command_id: terminalCommandId,
+      operation_sha256: terminalOperationHash,
+      transfer_id: terminalTransferId,
+      transfer_mapping: terminalMapping,
+      response_json: new TextDecoder().decode(canonicalize(terminalBeginResponse)),
+      response_sha256: await sha256Hex(canonicalize(terminalBeginResponse)),
+    };
+    const signedTransferReceipt = {
+      contract_version: CONTRACT_VERSION,
+      transfer_id: terminalTransferId,
+      installation_id: terminalToInstallationId,
+      org_id: orgId,
+      result: "applied",
+      term_ids: ["term-r9-terminal"],
+      applied_at: now,
+      ledger_seq: 8,
+      envelope_sha256: "3".repeat(64),
+      kid: terminalSigner.kid,
+    };
+    const terminalReceipt = {
+      ...signedTransferReceipt,
+      signature: await terminalSigner.sign(signedTransferReceipt),
+    };
+    const terminalResponse = {
+      result: "applied",
+      code: "",
+      contract_version: CONTRACT_VERSION,
+      receipt: terminalReceipt,
+    };
+    await env.DB.batch([
+      ...await commandFactStatements(env, {
+        commandId: terminalCommandId,
+        kind: "relay_reserved",
+        payload: terminalReservation,
+        createdAt: now,
+      }),
+      ...await commandFactStatements(env, {
+        commandId: terminalCommandId,
+        kind: "platform_result",
+        payload: terminalBegin,
+        createdAt: now,
+      }),
+      ...await commandFactStatements(env, {
+        commandId: terminalCommandId,
+        kind: "platform_result",
+        payload: {
+          payload_version: 1,
+          command_id: terminalCommandId,
+          method: "beginTransfer",
+          phase: "transferIn",
+          subject_id: terminalTransferId,
+          transfer_id: terminalTransferId,
+          result: "applied",
+          code: "",
+          contract_version: CONTRACT_VERSION,
+          response_json: new TextDecoder().decode(canonicalize(terminalResponse)),
+          response_sha256: await sha256Hex(canonicalize(terminalResponse)),
+          provenance: "authenticated_platform_transfer_step_call",
+          at: now,
+        },
+        createdAt: now,
+      }),
+    ]);
+    await exportLedgerFacts();
+
+    await wipeAboD1();
+    await reapplyAboSchema();
+    const { rebuildAbo } = await import("../../src/rebuild.js");
+    const recoveryEnv = { ...env, PLATFORM_PUBLIC_KEYS: terminalPublicKeys };
+    await rebuildAbo(recoveryEnv as never, { providerTransactionReferences: [] });
+
+    const command = await env.DB.prepare(
+      `SELECT method, operation_json, stage FROM accepted_operator_command WHERE command_id = ?`,
+    ).bind(commandId).first<{ method: string; operation_json: string; stage: string }>();
+    expect(command).toMatchObject({
+      method: "beginTransfer",
+      operation_json: "",
+      stage: "awaiting_operator_auth",
+    });
+    const terminalCommand = await env.DB.prepare(
+      `SELECT stage FROM accepted_operator_command WHERE command_id = ?`,
+    ).bind(terminalCommandId).first<{ stage: string }>();
+    expect(terminalCommand?.stage).toBe("complete");
+    const recoveredWork = await env.DB.prepare(
+      `SELECT work_id, subject_id, dedupe_key, state, last_error
+       FROM work WHERE kind = 'accepted_command' AND subject_id = ?`,
+    ).bind(commandId).all<{
+      work_id: string;
+      subject_id: string;
+      dedupe_key: string;
+      state: string;
+      last_error: string;
+    }>();
+    expect(recoveredWork.results).toHaveLength(1);
+    expect(recoveredWork.results?.[0]).toMatchObject({
+      subject_id: commandId,
+      dedupe_key: `accepted_command:${commandId}`,
+      state: "awaiting_operator_auth",
+      last_error: "blocked_missing_original_authorization",
+    });
+    const noRunnableTransferWork = await env.DB.prepare(
+      `SELECT COUNT(*) AS count FROM work WHERE kind = 'transfer_step' AND subject_id = ?`,
+    ).bind(transferId).first<{ count: number }>();
+    expect(noRunnableTransferWork?.count).toBe(0);
+    const disputed = await env.DB.prepare(
+      `SELECT detail FROM finding WHERE kind = 'accepted_transfer_disputed' AND subject = ?`,
+    ).bind(commandId).first<{ detail: string }>();
+    expect(disputed?.detail).toContain("blocked_missing_original_authorization");
+    expect(disputed?.detail).toContain(transferId);
+    const blockedFact = await env.DB.prepare(
+      `SELECT payload_json FROM command_recovery_fact
+       WHERE command_id = ? AND fact_kind = 'local_result'
+         AND json_extract(payload_json, '$.result') = 'blocked_missing_original_authorization'`,
+    ).bind(commandId).first<{ payload_json: string }>();
+    expect(JSON.parse(blockedFact!.payload_json)).toMatchObject({
+      command_id: commandId,
+      method: "beginTransfer",
+      transfer_id: transferId,
+      result: "blocked_missing_original_authorization",
+    });
+    await rebuildAbo(recoveryEnv as never, { providerTransactionReferences: [] });
+    const afterSecondRebuild = await env.DB.prepare(
+      `SELECT COUNT(*) AS count FROM work WHERE kind = 'accepted_command' AND dedupe_key = ?`,
+    ).bind(`accepted_command:${commandId}`).first<{ count: number }>();
+    expect(afterSecondRebuild?.count).toBe(1);
+  });
+
+  it("R9-REC1 tampered ledger hash stops before any replay mutation", async () => {
+    const expectations = await setupRebuildHarness();
+    await paidCheckoutWithGrant(
+      ORG_REBUILD,
+      expectations,
+      PAID_PAYMOB_TXN_ID,
+      "req-r9-rec1-tamper",
+    );
+    await exportLedgerFacts();
+    const listed = await env.R2.list({ prefix: "ledger/" });
+    expect(listed.objects.length).toBeGreaterThan(0);
+    const firstKey = listed.objects[0]!.key;
+    const stored = await env.R2.get(firstKey);
+    expect(stored).not.toBeNull();
+    const line = JSON.parse(await stored!.text()) as Record<string, unknown>;
+    expect(line.payload_version).toBe(2);
+    expect(line.fact_created_at).toBeTruthy();
+    line.row_sha256 = "a".repeat(64);
+    await env.R2.put(firstKey, JSON.stringify(line));
+
+    await wipeAboD1();
+    await reapplyAboSchema();
+    const { rebuildAbo } = await import("../../src/rebuild.js");
+    await expect(rebuildAbo(env as never, { providerTransactionReferences: [] }))
+      .rejects.toThrow(/ledger_hash_mismatch/u);
+    const rows = await env.DB.prepare(`SELECT COUNT(*) AS count FROM fact_log`)
+      .first<{ count: number }>();
+    expect(rows?.count).toBe(0);
+  });
+
+  it("R9-REC1 interrupted ledger replay resumes with original fact sequences", async () => {
+    const expectations = await setupRebuildHarness();
+    await paidCheckoutWithGrant(
+      ORG_REBUILD,
+      expectations,
+      PAID_PAYMOB_TXN_ID,
+      "req-r9-rec1-resume",
+    );
+    await exportLedgerFacts();
+    const listed = await env.R2.list({ prefix: "ledger/" });
+    const originalLines = await Promise.all(listed.objects.map(async (object) => {
+      const body = await env.R2.get(object.key);
+      return JSON.parse(await body!.text()) as {
+        fact_seq: number;
+        table: string;
+        key: string;
+        row_sha256: string;
+      };
+    }));
+    const originalObjects = new Map(await Promise.all(listed.objects.map(async (object) => {
+      const body = await env.R2.get(object.key);
+      return [object.key, await body!.text()] as const;
+    })));
+
+    await wipeAboD1();
+    await reapplyAboSchema();
+    const { rebuildAbo } = await import("../../src/rebuild.js");
+    setD1BatchThrows(true, 3);
+    try {
+      await expect(rebuildAbo(env as never, { providerTransactionReferences: [] }))
+        .rejects.toThrow(/D1 batch failure injected/u);
+    } finally {
+      setD1BatchThrows(false);
+    }
+    const interrupted = await env.DB.prepare(
+      `SELECT last_fact_seq FROM rebuild_checkpoint WHERE id = 1`,
+    ).first<{ last_fact_seq: number }>();
+    expect(interrupted?.last_fact_seq).toBe(3);
+    await expect(exportFacts(env)).rejects.toThrow(/abo_recovery_in_progress/u);
+    expect((await billingFetch("/v1/offers")).status).toBe(503);
+    const scheduledBeforeFence = await env.DB.prepare(
+      `SELECT last_run_at FROM scheduled_job_run WHERE job = '* * * * *'`,
+    ).first<{ last_run_at: string }>();
+    await runScheduled("* * * * *");
+    const scheduledAfterFence = await env.DB.prepare(
+      `SELECT last_run_at FROM scheduled_job_run WHERE job = '* * * * *'`,
+    ).first<{ last_run_at: string }>();
+    expect(scheduledAfterFence).toEqual(scheduledBeforeFence);
+
+    await setClock(new Date(Date.parse(BASE_CLOCK) + 6 * 60_000).toISOString());
+    await rebuildAbo(env as never, { providerTransactionReferences: [] });
+    const replayed = await env.DB.prepare(
+      `SELECT fact_seq, "table", key, row_sha256 FROM fact_log ORDER BY fact_seq`,
+    ).all<{
+      fact_seq: number;
+      table: string;
+      key: string;
+      row_sha256: string;
+    }>();
+    expect(replayed.results).toEqual(originalLines.sort((a, b) => a.fact_seq - b.fact_seq));
+
+    await appendOffer(env, {
+      offer_id: "offer-r9-rec1-after-rebuild",
+      code: "RM28-NEXT",
+      contract_version: CONTRACT_VERSION,
+    });
+    const maxSeq = await env.DB.prepare(`SELECT MAX(fact_seq) AS n FROM fact_log`)
+      .first<{ n: number }>();
+    expect(maxSeq?.n).toBe(originalLines.length + 1);
+    await exportFacts(env);
+    for (const [key, expectedBody] of originalObjects) {
+      const retained = await env.R2.get(key);
+      expect(await retained?.text()).toBe(expectedBody);
+    }
+    const nextObject = await env.R2.get(`ledger/${originalLines.length + 1}.ndjson`);
+    expect(nextObject).not.toBeNull();
+    expect(JSON.parse(await nextObject!.text())).toMatchObject({
+      fact_seq: originalLines.length + 1,
+      table: "offer",
+      key: "offer-r9-rec1-after-rebuild",
+    });
+  });
+
+  it("R9-REC1 manifest high-water rejects a missing ledger prefix even when no ledger object is listed", async () => {
+    const expectations = await setupRebuildHarness();
+    await paidCheckoutWithGrant(
+      ORG_REBUILD,
+      expectations,
+      PAID_PAYMOB_TXN_ID,
+      "req-r9-rec1-missing-ledger-prefix",
+    );
+    await exportLedgerFacts();
+    const listed = await env.R2.list({ prefix: "ledger/" });
+    expect(listed.objects.length).toBeGreaterThan(0);
+    for (const object of listed.objects) await env.R2.delete(object.key);
+
+    await wipeAboD1();
+    await reapplyAboSchema();
+    const { rebuildAbo } = await import("../../src/rebuild.js");
+    await expect(rebuildAbo(env as never, { providerTransactionReferences: [] }))
+      .rejects.toThrow(/ledger_manifest_prefix_incomplete/u);
+    const rows = await env.DB.prepare(`SELECT COUNT(*) AS count FROM fact_log`)
+      .first<{ count: number }>();
+    expect(rows?.count).toBe(0);
+  });
+
+  it("R9-REC1 a missing sequence in the middle of the ledger stops before replay", async () => {
+    const expectations = await setupRebuildHarness();
+    await paidCheckoutWithGrant(
+      ORG_REBUILD,
+      expectations,
+      PAID_PAYMOB_TXN_ID,
+      "req-r9-rec1-missing-sequence",
+    );
+    await exportLedgerFacts();
+    const listed = await env.R2.list({ prefix: "ledger/" });
+    expect(listed.objects.length).toBeGreaterThan(2);
+    await env.R2.delete("ledger/2.ndjson");
+
+    await wipeAboD1();
+    await reapplyAboSchema();
+    const { rebuildAbo } = await import("../../src/rebuild.js");
+    await expect(rebuildAbo(env as never, { providerTransactionReferences: [] }))
+      .rejects.toThrow(/ledger_manifest_prefix_incomplete/u);
+    const checkpoint = await env.DB.prepare(
+      `SELECT last_fact_seq FROM rebuild_checkpoint WHERE id = 1`,
+    ).first();
+    const facts = await env.DB.prepare(`SELECT COUNT(*) AS n FROM fact_log`)
+      .first<{ n: number }>();
+    expect(checkpoint).toBeNull();
+    expect(facts?.n).toBe(0);
+  });
+
+  it("R9-REC1 conflicting D1 business rows stop replay without overwriting the row", async () => {
+    const expectations = await setupRebuildHarness();
+    await paidCheckoutWithGrant(
+      ORG_REBUILD,
+      expectations,
+      PAID_PAYMOB_TXN_ID,
+      "req-r9-rec1-d1-conflict",
+    );
+    await exportLedgerFacts();
+    const first = await env.R2.get("ledger/1.ndjson");
+    expect(first).not.toBeNull();
+    const line = JSON.parse(await first!.text()) as {
+      fact_seq: number;
+      table: string;
+      row: Record<string, unknown>;
+    };
+
+    await wipeAboD1();
+    await reapplyAboSchema();
+    const altered = { ...line.row };
+    const tableColumns = await env.DB.prepare(`PRAGMA table_info(${line.table})`)
+      .all<{ name: string; pk: number }>();
+    const field = tableColumns.results?.find((column) =>
+      column.pk === 0 && typeof altered[column.name] === "string",
+    )?.name;
+    expect(field).toBeTruthy();
+    altered[field!] = `${String(altered[field])}-conflict`;
+    const columns = Object.keys(altered);
+    await env.DB.prepare(
+      `INSERT INTO ${line.table} (${columns.join(", ")}) VALUES (${columns.map(() => "?").join(", ")})`,
+    ).bind(...columns.map((column) => altered[column])).run();
+
+    const { rebuildAbo } = await import("../../src/rebuild.js");
+    await expect(rebuildAbo(env as never, { providerTransactionReferences: [] }))
+      .rejects.toThrow(/ledger_business_row_conflict/u);
+    const retained = await env.DB.prepare(
+      `SELECT * FROM ${line.table} LIMIT 1`,
+    ).first<Record<string, unknown>>();
+    expect(retained).not.toBeNull();
+    expect(retained).toEqual(expect.objectContaining(altered));
+  });
+
+  it("R9-REC1 conflicting immutable ledger objects are rejected without overwrite", async () => {
+    const expectations = await setupRebuildHarness();
+    await paidCheckoutWithGrant(
+      ORG_REBUILD,
+      expectations,
+      PAID_PAYMOB_TXN_ID,
+      "req-r9-rec1-immutable-export",
+    );
+    await exportLedgerFacts();
+    const listed = await env.R2.list({ prefix: "ledger/" });
+    const key = listed.objects[0]!.key;
+    const body = await env.R2.get(key);
+    expect(body).not.toBeNull();
+    const conflict = `${await body!.text()}\n`;
+    await env.R2.put(key, conflict);
+
+    await expect(exportFacts(env)).rejects.toThrow(/ledger_object_conflict/u);
+    const retained = await env.R2.get(key);
+    expect(await retained?.text()).toBe(conflict);
+  });
+
+  it("rejects JWT and signed authorization fields nested in serialized recovery payloads", async () => {
+    const jwt = "eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiJvcGVyYXRvciJ9.signature";
+    await expect(commandFactStatements(env, {
+      commandId: "cmd-r9-secret-nested",
+      kind: "relay_reserved",
+      payload: {
+        payload_version: 1,
+        command_id: "cmd-r9-secret-nested",
+        response_json: JSON.stringify({ nested: { access_jwt: jwt } }),
+      },
+      createdAt: "2026-06-01T12:00:00.000Z",
+    })).rejects.toThrow(/command_recovery_fact_invalid/u);
+    await expect(commandFactStatements(env, {
+      commandId: "cmd-r9-signed-nested",
+      kind: "relay_reserved",
+      payload: {
+        payload_version: 1,
+        command_id: "cmd-r9-signed-nested",
+        signed_operation_json: "{}",
+      },
+      createdAt: "2026-06-01T12:00:00.000Z",
+    })).rejects.toThrow(/command_recovery_fact_invalid/u);
   });
 });

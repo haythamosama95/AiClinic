@@ -165,19 +165,35 @@ export async function deleteQuarantinedRawEvidence(
 export async function eraseOrgRawEvidence(
   env: RawEvidenceEnv,
   orgId: string,
+  acceptedGeneration?: number,
 ): Promise<void> {
   const now = await clockNowIso(env);
-  await env.DB.batch([
-    env.DB.prepare(
+  if (acceptedGeneration === undefined) {
+    await env.DB.prepare(
       `INSERT INTO org_erasure_fence (org_id, generation, updated_at)
        VALUES (?, 1, ?)
        ON CONFLICT(org_id) DO UPDATE SET
          generation = org_erasure_fence.generation + 1, updated_at = excluded.updated_at`,
-    ).bind(orgId, now),
-    env.DB.prepare(
+    ).bind(orgId, now).run();
+  } else {
+    const fence = await env.DB.prepare(
+      `SELECT generation FROM org_erasure_fence WHERE org_id = ?`,
+    ).bind(orgId).first<{ generation: number }>();
+    if (fence === null || fence.generation < acceptedGeneration) {
+      throw new Error("erasure_fence_not_restored");
+    }
+  }
+  const scope = acceptedGeneration === undefined
+    ? env.DB.prepare(
       `UPDATE raw_evidence_registry SET state = 'delete_pending', updated_at = ?
        WHERE org_id = ? AND state IN ('claimed', 'retained')`,
-    ).bind(now, orgId),
+    ).bind(now, orgId)
+    : env.DB.prepare(
+      `UPDATE raw_evidence_registry SET state = 'delete_pending', updated_at = ?
+       WHERE org_id = ? AND generation < ? AND state IN ('claimed', 'retained')`,
+    ).bind(now, orgId, acceptedGeneration);
+  await env.DB.batch([
+    scope,
     env.DB.prepare(
       `INSERT INTO raw_evidence_cleanup_outbox (
          r2_key, evidence_id, reason, state, attempts, next_attempt_at,
@@ -190,22 +206,27 @@ export async function eraseOrgRawEvidence(
          updated_at = excluded.updated_at`,
     ).bind(now, now, now, orgId),
   ]);
-  await drainRawEvidenceDeletes(env, 100, orgId);
+  await drainRawEvidenceDeletes(env, 100, orgId, acceptedGeneration);
 }
 
 export async function drainRawEvidenceDeletes(
   env: RawEvidenceEnv,
   limit: number,
   orgId?: string,
+  beforeGeneration?: number,
 ): Promise<void> {
   const rows = await env.DB.prepare(
     `SELECT o.r2_key, o.evidence_id, o.attempts
      FROM raw_evidence_cleanup_outbox o
      LEFT JOIN raw_evidence_registry r ON r.evidence_id = o.evidence_id
      WHERE o.state = 'open' AND o.next_attempt_at <= ? AND (? IS NULL OR r.org_id = ?)
+       AND (? IS NULL OR r.generation < ?)
      ORDER BY o.created_at, o.r2_key LIMIT ?`,
   )
-    .bind(await clockNowIso(env), orgId ?? null, orgId ?? null, limit)
+    .bind(
+      await clockNowIso(env), orgId ?? null, orgId ?? null,
+      beforeGeneration ?? null, beforeGeneration ?? null, limit,
+    )
     .all<{ r2_key: string; evidence_id: string; attempts: number }>();
   for (const row of rows.results ?? []) {
     try {
@@ -233,4 +254,43 @@ export async function drainRawEvidenceDeletes(
         .run();
     }
   }
+}
+
+export async function deleteScopedEvidenceBodies(
+  env: RawEvidenceEnv,
+  input: { orgId: string; contactVersions: number[]; cutoff: string },
+): Promise<void> {
+  if (input.contactVersions.length === 0) return;
+  const placeholders = input.contactVersions.map(() => "?").join(", ");
+  const keys = new Set<string>();
+  const notifications = await env.DB.prepare(
+    `SELECT n.body_r2_key
+     FROM notification n
+     JOIN fact_log f ON f."table" = 'notification' AND f.key = n.notification_id
+     WHERE n.body_r2_key != '' AND f.created_at <= ? AND (
+       n.checkout_id IN (
+         SELECT checkout_id FROM checkout
+         WHERE org_id = ? AND billing_contact_version IN (${placeholders})
+       ) OR n.body_sha256 IN (
+         SELECT p.evidence_sha256 FROM payment p
+         WHERE p.org_id = ? AND p.billing_contact_version IN (${placeholders})
+           AND p.evidence_sha256 != ''
+       )
+     )`,
+  ).bind(input.cutoff, input.orgId, ...input.contactVersions, input.orgId, ...input.contactVersions)
+    .all<{ body_r2_key: string }>();
+  for (const row of notifications.results ?? []) keys.add(row.body_r2_key);
+  const inquiries = await env.DB.prepare(
+    `SELECT ir.raw_r2_key
+     FROM inquiry_result ir
+     JOIN fact_log f ON f."table" = 'inquiry_result' AND f.key = ir.inquiry_id
+     WHERE ir.raw_r2_key != '' AND f.created_at <= ?
+       AND ir.subject IN (
+         SELECT 'checkout:' || checkout_id FROM checkout
+         WHERE org_id = ? AND billing_contact_version IN (${placeholders})
+       )`,
+  ).bind(input.cutoff, input.orgId, ...input.contactVersions)
+    .all<{ raw_r2_key: string }>();
+  for (const row of inquiries.results ?? []) keys.add(row.raw_r2_key);
+  for (const key of keys) await env.R2.delete(key);
 }

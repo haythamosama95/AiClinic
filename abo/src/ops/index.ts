@@ -22,7 +22,13 @@ import {
 } from "../clinic-api/version.js";
 import { clockNowIso, clockNowMs, type ClockEnv } from "../clock.js";
 import { insertFactLog } from "../records/append.js";
+import {
+  commandFactStatements,
+  readCommandFact,
+  safeResultPayload,
+} from "../records/command-facts.js";
 import { validateGrantReceipt } from "../work/grant-receipt.js";
+import { verifyTransferReceipt } from "../work/transfer-receipt.js";
 import {
   PAYMOB_PROVIDER_ID,
   providerForId,
@@ -40,7 +46,10 @@ import {
   type ReversalEnv,
 } from "../work/reversal.js";
 import { signedHpParamsBound } from "./browser/ceremony.js";
-import { eraseOrgRawEvidence } from "../evidence/raw.js";
+import {
+  deleteScopedEvidenceBodies,
+  eraseOrgRawEvidence,
+} from "../evidence/raw.js";
 const ASSERTION_MAX_AGE_MS = 5 * 60 * 1000;
 
 export interface OpsEnv extends ClockEnv, ProviderRegistryEnv {
@@ -218,7 +227,11 @@ type VerifiedHpContext = {
   operation: HpOperation;
   challengeSha256: string;
   credentialId: string;
+  credentialPublicKeyCose: string;
+  credentialAlg: string;
+  assertion: unknown;
   actionId: string;
+  erasureGeneration?: number;
   resumed?: boolean;
   leaseToken?: string;
 };
@@ -493,7 +506,12 @@ async function verifyMatchingCredential(
   operation: HpOperation,
   assertionRaw: unknown,
   credentials: HpCredential[],
-): Promise<{ ok: true; credentialId: string } | { ok: false }> {
+): Promise<{
+  ok: true;
+  credentialId: string;
+  publicKeyCose: string;
+  alg: string;
+} | { ok: false }> {
   const assertion = decodeAssertion(assertionRaw);
   if (assertion === null) {
     return { ok: false };
@@ -526,7 +544,12 @@ async function verifyMatchingCredential(
       publicKey: parsed.publicKey,
     });
     if (verified.ok) {
-      return { ok: true, credentialId: credential.credential_id };
+      return {
+        ok: true,
+        credentialId: credential.credential_id,
+        publicKeyCose: credential.public_key_cose,
+        alg: credential.alg,
+      };
     }
   }
   return { ok: false };
@@ -703,29 +726,51 @@ async function reserveRelayCommand(
     args: Record<string, unknown>;
     operation: HpOperation;
     assertion?: unknown;
+    recoveryIntent?: Record<string, unknown>;
   },
 ): Promise<"accepted" | "replay" | "conflict"> {
-  const operationJson = new TextDecoder().decode(canonicalize(input.operation));
-  const argsJson = new TextDecoder().decode(canonicalize(input.args));
+  // Signed authorization is used only from this live request. Recovery facts
+  // retain its hashes and safe arguments, never its JWT-bearing preimage.
+  const operationJson = input.recoveryIntent === undefined
+    ? new TextDecoder().decode(canonicalize(input.operation))
+    : "";
+  const assertionJson = input.recoveryIntent !== undefined || input.assertion === undefined
+    ? null
+    : new TextDecoder().decode(canonicalize(input.assertion));
+  const argsJson = new TextDecoder().decode(canonicalize(
+    input.recoveryIntent === undefined ? input.args : input.recoveryIntent.safe_args,
+  ));
   const challengeSha256 = await sha256Hex(canonicalize(input.operation));
   const existing = await env.DB.prepare(
-    `SELECT method, args_json, operation_json, actor_email, target, contract_version, command_kind
+    `SELECT challenge_sha256, method, args_json,
+            actor_email, target, contract_version, command_kind
      FROM accepted_operator_command WHERE command_id = ?`,
   )
     .bind(input.commandId)
     .first<{
       method: string;
+      challenge_sha256: string;
       args_json: string;
-      operation_json: string;
       actor_email: string;
       target: string;
       contract_version: number;
       command_kind: string;
     }>();
   if (existing !== null) {
-    return existing.method === input.method &&
+    const immutable = input.recoveryIntent === undefined
+      ? null
+      : await readCommandFact(env, input.commandId, "relay_reserved");
+    const exactRecoveryIntent = input.recoveryIntent === undefined || (
+      immutable !== null &&
+      immutable.payload.operation_sha256 === input.recoveryIntent.operation_sha256 &&
+      immutable.payload.assertion_sha256 === input.recoveryIntent.assertion_sha256 &&
+      immutable.payload.signer_credential_id === input.recoveryIntent.signer_credential_id &&
+      new TextDecoder().decode(canonicalize(immutable.payload.safe_args)) ===
+        new TextDecoder().decode(canonicalize(input.recoveryIntent.safe_args))
+    );
+    return exactRecoveryIntent && existing.method === input.method &&
         existing.args_json === argsJson &&
-        (existing.command_kind === "relay" || existing.operation_json === operationJson) &&
+        existing.challenge_sha256 === challengeSha256 &&
         existing.actor_email === input.actorEmail &&
         existing.target === input.target &&
         existing.contract_version === input.contractVersion
@@ -734,7 +779,7 @@ async function reserveRelayCommand(
   }
   const now = await clockNowIso(env);
   try {
-    await env.DB.prepare(
+    const insert = env.DB.prepare(
       `INSERT INTO accepted_operator_command (
          challenge_sha256, command_id, method, args_json, operation_json, assertion_json,
          actor_email, target, contract_version, action_id, command_kind,
@@ -747,7 +792,7 @@ async function reserveRelayCommand(
         input.method,
         argsJson,
         operationJson,
-        input.assertion === undefined ? null : JSON.stringify(input.assertion),
+        assertionJson,
         input.actorEmail,
         input.target,
         input.contractVersion,
@@ -755,27 +800,49 @@ async function reserveRelayCommand(
         now,
         now,
         now,
-      )
-      .run();
+      );
+    const statements: D1PreparedStatement[] = [insert];
+    if (input.recoveryIntent !== undefined) {
+      statements.push(...await commandFactStatements(env, {
+        commandId: input.commandId,
+        kind: "relay_reserved",
+        payload: input.recoveryIntent,
+        createdAt: now,
+      }));
+    }
+    await env.DB.batch(statements);
     return "accepted";
   } catch {
     const byId = await env.DB.prepare(
-      `SELECT method, args_json, operation_json, actor_email, target, contract_version, command_kind
+      `SELECT challenge_sha256, method, args_json,
+              actor_email, target, contract_version, command_kind
        FROM accepted_operator_command WHERE command_id = ?`,
     )
       .bind(input.commandId)
       .first<{
         method: string;
+        challenge_sha256: string;
         args_json: string;
-        operation_json: string;
         actor_email: string;
         target: string;
         contract_version: number;
         command_kind: string;
       }>();
     if (byId !== null) {
-      return byId.method === input.method && byId.args_json === argsJson &&
-          (byId.command_kind === "relay" || byId.operation_json === operationJson) && byId.actor_email === input.actorEmail &&
+      const immutable = input.recoveryIntent === undefined
+        ? null
+        : await readCommandFact(env, input.commandId, "relay_reserved");
+      const exactRecoveryIntent = input.recoveryIntent === undefined || (
+        immutable !== null &&
+        immutable.payload.operation_sha256 === input.recoveryIntent.operation_sha256 &&
+        immutable.payload.assertion_sha256 === input.recoveryIntent.assertion_sha256 &&
+        immutable.payload.signer_credential_id === input.recoveryIntent.signer_credential_id &&
+        new TextDecoder().decode(canonicalize(immutable.payload.safe_args)) ===
+          new TextDecoder().decode(canonicalize(input.recoveryIntent.safe_args))
+      );
+      return exactRecoveryIntent && byId.method === input.method && byId.args_json === argsJson &&
+          byId.challenge_sha256 === challengeSha256 &&
+          byId.actor_email === input.actorEmail &&
           byId.target === input.target && byId.contract_version === input.contractVersion
         ? "replay"
         : "conflict";
@@ -820,13 +887,70 @@ async function recordPlatformOperatorAction(
   subject: string,
   actionId: string,
 ): Promise<void> {
-  await env.PLATFORM.recordOperatorAction({
+  const platformResult = await env.PLATFORM.recordOperatorAction({
     contract_version: CHANNEL_VERSIONS.vendorEntrypoint,
     access_jwt: accessJwt,
     action,
     subject,
     action_id: actionId,
   });
+  if (await readCommandFact(env, actionId, "command_intent") !== null) {
+    const resultPayload = safeResultPayload(platformResult);
+    const responseJson = new TextDecoder().decode(canonicalize(resultPayload));
+    const responseSha256 = await sha256Hex(canonicalize(resultPayload));
+    const at = await clockNowIso(env);
+    await env.DB.batch(await commandFactStatements(env, {
+      commandId: actionId,
+      kind: "platform_result",
+      payload: {
+        payload_version: 1,
+        command_id: actionId,
+        phase: "platform_operator_action",
+        action,
+        subject_id: subject,
+        result: String(platformResult.result ?? ""),
+        code: String(platformResult.code ?? ""),
+        contract_version: Number(platformResult.contract_version ?? CHANNEL_VERSIONS.vendorEntrypoint),
+        response_json: responseJson,
+        response_sha256: responseSha256,
+        at,
+      },
+      createdAt: at,
+    }));
+  }
+}
+
+async function appendCommandResultFact(
+  env: OpsEnv,
+  input: {
+    commandId: string;
+    kind: "local_result" | "erasure_ack";
+    method: string;
+    subjectId: string;
+    result: string;
+    code?: string;
+    details?: Record<string, unknown>;
+    at?: string;
+  },
+): Promise<void> {
+  if (await readCommandFact(env, input.commandId, "command_intent") === null) return;
+  const at = input.at ?? await clockNowIso(env);
+  await env.DB.batch(await commandFactStatements(env, {
+    commandId: input.commandId,
+    kind: input.kind,
+    payload: {
+      payload_version: 1,
+      command_id: input.commandId,
+      method: input.method,
+      subject_id: input.subjectId,
+      result: input.result,
+      code: input.code ?? "",
+      contract_version: CHANNEL_VERSIONS.vendorEntrypoint,
+      details: input.details ?? {},
+      at,
+    },
+    createdAt: at,
+  }));
 }
 
 async function refuseHpAction(
@@ -965,12 +1089,40 @@ async function verifyHpRequest(
         contractVersion,
       );
     }
+    const immutable = await readCommandFact(env, accepted.action_id, "command_intent");
+    if (
+      immutable === null ||
+      immutable.payload.method !== operation.op ||
+      immutable.payload.actor_email !== access.email ||
+      immutable.payload.operation_sha256 !== challengeSha256 ||
+      immutable.payload.operation_json !== new TextDecoder().decode(canonicalize(operation)) ||
+      immutable.payload.assertion_json !== new TextDecoder().decode(canonicalize(body.assertion)) ||
+      immutable.payload.assertion_sha256 !== await sha256Hex(canonicalize(body.assertion)) ||
+      typeof immutable.payload.signer_credential_id !== "string" ||
+      typeof immutable.payload.signer_public_key_cose !== "string" ||
+      typeof immutable.payload.signer_alg !== "string"
+    ) {
+      return refuseHpAction(
+        env,
+        access,
+        expectedOp,
+        subject,
+        operation.params,
+        "recovery_evidence_required",
+        contractVersion,
+      );
+    }
+    const erasureGeneration = immutable.payload.erasure_generation;
     return {
       access,
       operation,
       challengeSha256,
-      credentialId: "accepted",
+      credentialId: String(immutable.payload.signer_credential_id ?? ""),
+      credentialPublicKeyCose: String(immutable.payload.signer_public_key_cose ?? ""),
+      credentialAlg: String(immutable.payload.signer_alg ?? ""),
+      assertion: body.assertion,
       actionId: accepted.action_id,
+      ...(typeof erasureGeneration === "number" ? { erasureGeneration } : {}),
       resumed: true,
     };
   }
@@ -1030,6 +1182,9 @@ async function verifyHpRequest(
     operation,
     challengeSha256,
     credentialId: matched.credentialId,
+    credentialPublicKeyCose: matched.publicKeyCose,
+    credentialAlg: matched.alg,
+    assertion: body.assertion,
     actionId: crypto.randomUUID(),
   };
 }
@@ -1075,13 +1230,63 @@ async function commitAcceptedHp(
   };
   const operationJson = new TextDecoder().decode(canonicalize(hp.operation));
   const argsJson = new TextDecoder().decode(canonicalize(hp.operation.params));
-  await env.DB.batch([
+  const acceptancePayload: Record<string, unknown> = {
+    payload_version: 1,
+    command_id: hp.actionId,
+    method: hp.operation.op,
+    command_kind: "local_hp",
+    subject_id: subject,
+    actor_email: hp.access.email,
+    contract_version: hp.operation.contract_version,
+    operation_json: operationJson,
+    operation_sha256: hp.challengeSha256,
+    args_json: argsJson,
+    args_sha256: paramsSha256,
+    assertion_json: new TextDecoder().decode(canonicalize(hp.assertion)),
+    assertion_sha256: await sha256Hex(canonicalize(hp.assertion)),
+    signer_credential_id: hp.credentialId,
+    signer_public_key_cose: hp.credentialPublicKeyCose,
+    signer_alg: hp.credentialAlg,
+    accepted_at: createdAt,
+    authority_action_id: hp.actionId,
+    authority_access_jti: hp.access.jti,
+  };
+  let erasureGeneration: number | null = null;
+  let scopeVersions: number[] = [];
+  let scopeMaxVersion: number | null = null;
+  if (hp.operation.op === "erase_contact") {
+    const fence = await env.DB.prepare(
+      `SELECT generation FROM org_erasure_fence WHERE org_id = ?`,
+    ).bind(subject).first<{ generation: number }>();
+    const expectedGeneration = fence?.generation ?? 0;
+    erasureGeneration = expectedGeneration + 1;
+    const versions = await env.DB.prepare(
+      `SELECT version FROM billing_contact WHERE org_id = ? ORDER BY version ASC`,
+    ).bind(subject).all<{ version: number }>();
+    scopeVersions = (versions.results ?? []).map((row) => row.version);
+    if (scopeVersions.length === 0) throw new Error("erase_contact_scope_empty");
+    scopeMaxVersion = Math.max(...scopeVersions);
+    acceptancePayload.erasure_generation = erasureGeneration;
+    acceptancePayload.scope_contact_versions = scopeVersions;
+    acceptancePayload.scope_max_contact_version = scopeMaxVersion;
+    acceptancePayload.acceptance_cutoff = createdAt;
+    hp.erasureGeneration = erasureGeneration;
+  }
+  const statements: D1PreparedStatement[] = [
+    ...(erasureGeneration === null ? [] : [env.DB.prepare(
+      `INSERT INTO org_erasure_fence (org_id, generation, updated_at)
+       VALUES (?, ?, ?)
+       ON CONFLICT(org_id) DO UPDATE SET generation = excluded.generation,
+         updated_at = excluded.updated_at
+       WHERE org_erasure_fence.generation = ?`,
+    ).bind(subject, erasureGeneration, createdAt, erasureGeneration - 1)]),
     env.DB.prepare(
       `INSERT INTO accepted_operator_command (
          challenge_sha256, command_id, method, args_json, operation_json,
          actor_email, target, contract_version, action_id, command_kind,
-         stage, due_at, lease_until, result_json, created_at, updated_at
-       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'local_hp', 'accepted', ?, NULL, NULL, ?, ?)`
+         stage, due_at, lease_until, result_json, created_at, updated_at,
+         recovery_generation, recovery_scope_max_version, recovery_guard
+       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'local_hp', 'accepted', ?, NULL, NULL, ?, ?, ?, ?, ?)`
     ).bind(
       hp.challengeSha256,
       hp.actionId,
@@ -1095,6 +1300,9 @@ async function commitAcceptedHp(
       createdAt,
       createdAt,
       createdAt,
+      erasureGeneration,
+      scopeMaxVersion,
+      erasureGeneration === null ? 0 : 1,
     ),
     env.DB.prepare(
       `INSERT INTO assertion_used (challenge_sha256) VALUES (?)`,
@@ -1114,7 +1322,14 @@ async function commitAcceptedHp(
       hp.challengeSha256,
     ),
     await insertFactLog(env, "operator_action", hp.actionId, canonicalRow, createdAt),
-  ]);
+  ];
+  statements.push(...await commandFactStatements(env, {
+    commandId: hp.actionId,
+    kind: "command_intent",
+    payload: acceptancePayload,
+    createdAt,
+  }));
+  await env.DB.batch(statements);
   hp.leaseToken = await leaseAcceptedCommand(env, hp.challengeSha256);
 }
 
@@ -1544,6 +1759,14 @@ async function handleHpReleasePayment(
     await setAcceptedCommandStage(env, hp.challengeSha256, "conflict", null, hp.leaseToken);
     return clinicErrorResponse("payment_fully_reversed", 409, contractVersion);
   }
+  await appendCommandResultFact(env, {
+    commandId: hp.actionId,
+    kind: "local_result",
+    method: hp.operation.op,
+    subjectId: paymentId,
+    result: "applied",
+    at: nowIso,
+  });
   await recordPlatformOperatorAction(
     env,
     hp.access.jwt,
@@ -1743,6 +1966,16 @@ async function handleHpManualChargeback(
     await processReverseWork(env as ReversalEnv, reverseWork.work_id);
   }
 
+  await appendCommandResultFact(env, {
+    commandId: hp.actionId,
+    kind: "local_result",
+    method: hp.operation.op,
+    subjectId: paymentId,
+    result: "applied",
+    details: { reversal_id: reversalId },
+    at: nowIso,
+  });
+
   await recordPlatformOperatorAction(
     env,
     hp.access.jwt,
@@ -1757,46 +1990,6 @@ async function handleHpManualChargeback(
     200,
     contractVersion,
   );
-}
-
-async function deleteTenantEvidenceBodies(
-  env: OpsEnv,
-  orgId: string,
-): Promise<void> {
-  const keys = new Set<string>();
-  const notifications = await env.DB.prepare(
-    `SELECT n.body_r2_key
-     FROM notification n
-     WHERE n.body_r2_key != ''
-       AND (
-         n.checkout_id IN (SELECT checkout_id FROM checkout WHERE org_id = ?)
-         OR n.body_sha256 IN (
-           SELECT evidence_sha256 FROM payment
-           WHERE org_id = ? AND evidence_sha256 != ''
-         )
-       )`,
-  )
-    .bind(orgId, orgId)
-    .all<{ body_r2_key: string }>();
-  for (const row of notifications.results ?? []) {
-    keys.add(row.body_r2_key);
-  }
-  const inquiryRows = await env.DB.prepare(
-    `SELECT ir.raw_r2_key
-     FROM inquiry_result ir
-     WHERE ir.raw_r2_key != ''
-       AND ir.subject IN (
-         SELECT 'checkout:' || checkout_id FROM checkout WHERE org_id = ?
-       )`,
-  )
-    .bind(orgId)
-    .all<{ raw_r2_key: string }>();
-  for (const row of inquiryRows.results ?? []) {
-    keys.add(row.raw_r2_key);
-  }
-  for (const key of keys) {
-    await env.R2.delete(key);
-  }
 }
 
 async function handleHpEraseContact(
@@ -1824,18 +2017,54 @@ async function handleHpEraseContact(
 
   await commitAcceptedHp(env, hp, orgId);
   const nowIso = await clockNowIso(env);
+  if (hp.erasureGeneration === undefined) {
+    return clinicErrorResponse("recovery_evidence_required", 409, contractVersion);
+  }
+  const intent = await readCommandFact(env, hp.actionId, "command_intent");
+  const scopeVersions = intent?.payload.scope_contact_versions;
+  if (!Array.isArray(scopeVersions) || scopeVersions.some((v) =>
+    typeof v !== "number" || !Number.isSafeInteger(v) || v < 1,
+  )) {
+    return clinicErrorResponse("recovery_evidence_required", 409, contractVersion);
+  }
+  const placeholders = scopeVersions.map(() => "?").join(", ");
   await env.DB.prepare(
     `UPDATE billing_contact
-     SET name = '', email = '', phone = '', erased_at = ?, erased_by = ?
-     WHERE org_id = ? AND EXISTS (
+     SET name = '', email = '', phone = '', erased_at = ?, erased_by = ?,
+         erasure_generation = ?
+     WHERE org_id = ? AND version IN (${placeholders}) AND EXISTS (
        SELECT 1 FROM accepted_operator_command c
        WHERE c.challenge_sha256 = ? AND c.lease_token = ?
      )`,
   )
-    .bind(nowIso, hp.access.email, orgId, hp.challengeSha256, hp.leaseToken)
+    .bind(
+      String(intent.payload.acceptance_cutoff ?? nowIso),
+      hp.access.email,
+      hp.erasureGeneration,
+      orgId,
+      ...scopeVersions,
+      hp.challengeSha256,
+      hp.leaseToken,
+    )
     .run();
-  await eraseOrgRawEvidence(env, orgId);
-  await deleteTenantEvidenceBodies(env, orgId);
+  await eraseOrgRawEvidence(env, orgId, hp.erasureGeneration);
+  await deleteScopedEvidenceBodies(env, {
+    orgId,
+    contactVersions: scopeVersions,
+    cutoff: String(intent.payload.acceptance_cutoff ?? nowIso),
+  });
+  await appendCommandResultFact(env, {
+    commandId: hp.actionId,
+    kind: "local_result",
+    method: hp.operation.op,
+    subjectId: orgId,
+    result: "applied",
+    details: {
+      erasure_generation: hp.erasureGeneration,
+      scope_contact_versions: scopeVersions,
+    },
+    at: nowIso,
+  });
   await setAcceptedCommandStage(env, hp.challengeSha256, "local_applied", null, hp.leaseToken);
 
   await recordPlatformOperatorAction(
@@ -2568,25 +2797,40 @@ async function handlePostCancel(
   const actionId = crypto.randomUUID();
   const nowIso = await clockNowIso(env);
 
-  await env.DB.prepare(
-    `UPDATE checkout_status SET state = 'cancelled', last_event_at = ? WHERE checkout_id = ?`,
-  )
-    .bind(nowIso, checkoutId)
-    .run();
-
-  await env.DB.prepare(
-    `INSERT INTO checkout_event (
-       checkout_id, kind, source, ref, actor, at, contract_version
-     ) VALUES (?, 'cancelled', 'operator', ?, ?, ?, ?)`,
-  )
-    .bind(
-      checkoutId,
-      actionId,
-      access.email,
+  const cancellationEvent = {
+    checkout_id: checkoutId,
+    kind: "cancelled",
+    source: "operator",
+    ref: actionId,
+    actor: access.email,
+    at: nowIso,
+    contract_version: CHANNEL_VERSIONS.vendorEntrypoint,
+  };
+  const cancellationEventJson = new TextDecoder().decode(canonicalize(cancellationEvent));
+  const cancellationEventHash = await sha256Hex(canonicalize(cancellationEvent));
+  const cancellation = await env.DB.batch([
+    env.DB.prepare(
+      `UPDATE checkout_status SET state = 'cancelled', last_event_at = ?
+       WHERE checkout_id = ? AND state = 'open'`,
+    ).bind(nowIso, checkoutId),
+    env.DB.prepare(
+      `INSERT INTO checkout_event (
+         checkout_id, kind, source, ref, actor, at, contract_version
+       ) SELECT ?, 'cancelled', 'operator', ?, ?, ?, ? WHERE changes() = 1`,
+    ).bind(checkoutId, actionId, access.email, nowIso, CHANNEL_VERSIONS.vendorEntrypoint),
+    env.DB.prepare(
+      `INSERT INTO fact_log ("table", key, row_sha256, row_json, created_at)
+       SELECT 'checkout_event', ?, ?, ?, ? WHERE changes() = 1`,
+    ).bind(
+      `${checkoutId}:cancelled:${nowIso}`,
+      cancellationEventHash,
+      cancellationEventJson,
       nowIso,
-      CHANNEL_VERSIONS.vendorEntrypoint,
-    )
-    .run();
+    ),
+  ]);
+  if ((cancellation[0]?.meta.changes ?? 0) === 0) {
+    return clinicErrorResponse("conflict", 409, contractVersion);
+  }
 
   const action = "Cancel an open checkout";
   const paramsSha256 = await sha256Hex(
@@ -2717,7 +2961,6 @@ async function handlePostSubmitTransactionId(
   );
 }
 
-const TRANSFER_LEASE_MS = 60_000;
 const TRANSFER_BATCH_LIMIT = 50;
 
 type TransferWorkRow = {
@@ -3906,6 +4149,110 @@ async function handlePostDeleteInstallation(
   return platformResponseJson(platformResult, contractVersion);
 }
 
+async function recordTransferRecoveryStop(
+  env: OpsEnv,
+  commandId: string,
+  orgId: string,
+  reason: "blocked_missing_original_authorization" | "blocked_missing_transfer_correlation",
+): Promise<void> {
+  const at = await clockNowIso(env);
+  await env.DB.batch(await commandFactStatements(env, {
+    commandId,
+    kind: "local_result",
+    payload: {
+      payload_version: 1,
+      command_id: commandId,
+      method: "beginTransfer",
+      subject_id: orgId,
+      result: reason,
+      code: "recovery_evidence_required",
+      contract_version: CHANNEL_VERSIONS.vendorEntrypoint,
+      at,
+    },
+    createdAt: at,
+  }));
+  const findingId = await sha256Hex(canonicalize({
+    kind: "accepted_transfer_disputed",
+    subject: commandId,
+  }));
+  const finding = {
+    finding_id: findingId,
+    kind: "accepted_transfer_disputed",
+    subject: commandId,
+    detail: reason,
+    detected_at: at,
+  };
+  const rowJson = new TextDecoder().decode(canonicalize(finding));
+  await env.DB.batch([
+    env.DB.prepare(
+      `INSERT INTO finding (finding_id, kind, subject, detail, detected_at)
+       VALUES (?, ?, ?, ?, ?) ON CONFLICT(finding_id) DO NOTHING`,
+    ).bind(findingId, finding.kind, finding.subject, finding.detail, at),
+    env.DB.prepare(
+      `INSERT INTO fact_log ("table", key, row_sha256, row_json, created_at)
+       SELECT 'finding', ?, ?, ?, ?
+       WHERE NOT EXISTS (SELECT 1 FROM fact_log WHERE "table" = 'finding' AND key = ?)`,
+    ).bind(findingId, await sha256Hex(canonicalize(finding)), rowJson, at, findingId),
+    env.DB.prepare(
+      `UPDATE accepted_operator_command SET stage = 'awaiting_operator_auth', updated_at = ?
+       WHERE command_id = ? AND command_kind = 'relay'`,
+    ).bind(at, commandId),
+    env.DB.prepare(
+      `INSERT INTO work (
+         work_id, kind, subject_id, dedupe_key, state, attempts,
+         next_attempt_at, lease_until, last_error, opened_at
+       ) VALUES (?, 'accepted_command', ?, ?, 'awaiting_operator_auth', 0, NULL, NULL, ?, ?)
+       ON CONFLICT(dedupe_key) DO UPDATE SET
+         state = 'awaiting_operator_auth', lease_until = NULL,
+         last_error = excluded.last_error`,
+    ).bind(crypto.randomUUID(), commandId, `accepted_command:${commandId}`, reason, at),
+  ]);
+}
+
+function containsSensitiveRecoveryField(value: unknown): boolean {
+  if (Array.isArray(value)) return value.some(containsSensitiveRecoveryField);
+  if (typeof value !== "object" || value === null) return false;
+  return Object.entries(value).some(([key, item]) =>
+    /^(access_jwt|jwt|client_secret|email|phone|name|contact)$/iu.test(key) ||
+    containsSensitiveRecoveryField(item),
+  );
+}
+
+function safeTransferMapping(
+  detail: unknown,
+  orgId: string,
+  fromInstallationId: string,
+): Record<string, unknown> | null {
+  let decoded = detail;
+  if (typeof decoded === "string") {
+    try {
+      decoded = JSON.parse(decoded) as unknown;
+    } catch {
+      return null;
+    }
+  }
+  if (!isRecord(decoded)) return null;
+  const mapping = {
+    transfer_id: decoded.transfer_id,
+    org_id: decoded.org_id,
+    from_installation_id: decoded.from_installation_id,
+    to_installation_id: decoded.to_installation_id,
+    assertion_sha256: decoded.assertion_sha256,
+    package: decoded.package ?? null,
+    created_at: decoded.created_at,
+  };
+  if (
+    typeof mapping.transfer_id !== "string" || mapping.transfer_id.length === 0 ||
+    mapping.org_id !== orgId || mapping.from_installation_id !== fromInstallationId ||
+    typeof mapping.to_installation_id !== "string" || mapping.to_installation_id.length === 0 ||
+    typeof mapping.assertion_sha256 !== "string" || !/^[a-f0-9]{64}$/u.test(mapping.assertion_sha256) ||
+    typeof mapping.created_at !== "string" || !Number.isSafeInteger(Date.parse(mapping.created_at)) ||
+    containsSensitiveRecoveryField(mapping)
+  ) return null;
+  if (new TextEncoder().encode(new TextDecoder().decode(canonicalize(mapping))).length > 30_000) return null;
+  return mapping;
+}
+
 async function handlePostBeginTransfer(
   env: OpsEnv,
   orgId: string,
@@ -3936,82 +4283,160 @@ async function handlePostBeginTransfer(
   if (
     operation.op !== "beginTransfer" ||
     operation.actor_email !== access.email ||
-    operation.contract_version !== contractVersion
+    operation.contract_version !== contractVersion ||
+    operation.nonce !== actionId ||
+    operation.params.org_id !== orgId ||
+    operation.params.from_installation_id !== fromInstallationId ||
+    operation.params.reason !== reason ||
+    operation.params.access_jwt !== access.jwt
   ) {
     return clinicErrorResponse("assertion_invalid", 400, contractVersion);
   }
+  if (
+    typeof body.signer_credential_id !== "string" ||
+    reason.length === 0 || reason.length > 256
+  ) return clinicErrorResponse("assertion_invalid", 400, contractVersion);
+  const matched = await verifyMatchingCredential(
+    env,
+    operation,
+    body.assertion,
+    await listActiveHpCredentials(env),
+  );
+  if (!matched.ok || matched.credentialId !== body.signer_credential_id) {
+    return clinicErrorResponse("credential_not_active", 400, contractVersion);
+  }
+  const operationSha256 = await sha256Hex(canonicalize(operation));
+  const assertionSha256 = await sha256Hex(canonicalize(body.assertion));
+  const reasonSha256 = await sha256Hex(canonicalize(reason));
+  const argsSha256 = await sha256Hex(canonicalize({
+    org_id: orgId,
+    from_installation_id: fromInstallationId,
+    reason,
+  }));
+  const safeArgs = {
+    org_id: orgId,
+    from_installation_id: fromInstallationId,
+    reason_sha256: reasonSha256,
+  };
+  const recoveryIntent = {
+    payload_version: 1,
+    command_id: actionId,
+    method: "beginTransfer",
+    command_kind: "relay",
+    subject_id: orgId,
+    actor_email: access.email,
+    contract_version: contractVersion,
+    safe_args: safeArgs,
+    args_sha256: argsSha256,
+    operation_sha256: operationSha256,
+    assertion_sha256: assertionSha256,
+    signer_credential_id: matched.credentialId,
+    signer_public_key_cose: matched.publicKeyCose,
+    signer_alg: matched.alg,
+    accepted_at: await clockNowIso(env),
+    authority_action_id: actionId,
+    authority_access_jti: access.jti,
+    reservation_state: "abo_relay_reserved",
+  };
   const reservation = await reserveRelayCommand(env, {
     commandId: actionId,
     method: "beginTransfer",
     actorEmail: access.email,
     target: orgId,
     contractVersion,
-    args: { org_id: orgId, from_installation_id: fromInstallationId, reason },
+    args: safeArgs,
     operation,
     assertion: body.assertion,
+    recoveryIntent,
   });
   if (reservation === "conflict") {
     return clinicErrorResponse("conflict", 409, contractVersion);
   }
   const storedCommand = await env.DB.prepare(
-    `SELECT operation_json, assertion_json, stage, result_json
+    `SELECT stage, result_json
      FROM accepted_operator_command WHERE command_id = ?`,
   )
     .bind(actionId)
     .first<{
-      operation_json: string;
-      assertion_json: string | null;
       stage: string;
       result_json: string | null;
     }>();
-  const acceptedOperation = storedCommand === null
-    ? operation
-    : (JSON.parse(storedCommand.operation_json) as HpOperation);
-  const acceptedAssertion = storedCommand?.assertion_json == null
-    ? body.assertion
-    : (JSON.parse(storedCommand.assertion_json) as unknown);
-  if (storedCommand?.stage === "complete" && storedCommand.result_json !== null) {
+  if (reservation === "replay" && storedCommand?.stage === "complete" && storedCommand.result_json !== null) {
     return platformResponseJson(
       JSON.parse(storedCommand.result_json) as Record<string, unknown>,
       contractVersion,
     );
   }
+  if (reservation === "replay") {
+    await recordTransferRecoveryStop(env, actionId, orgId, "blocked_missing_original_authorization");
+    return clinicErrorResponse("recovery_evidence_required", 409, contractVersion);
+  }
 
-  const platformResult = await env.PLATFORM.beginTransfer({
+  let platformResult: Record<string, unknown>;
+  try {
+    platformResult = await env.PLATFORM.beginTransfer({
     contract_version: CHANNEL_VERSIONS.vendorEntrypoint,
     access_jwt: access.jwt,
     org_id: orgId,
     from_installation_id: fromInstallationId,
     reason,
-    operation: acceptedOperation,
-    assertion: acceptedAssertion,
+    operation,
+    assertion: body.assertion,
     signer_credential_id: body.signer_credential_id,
-  });
-  await setAcceptedCommandStage(
-    env,
-    await sha256Hex(canonicalize(acceptedOperation)),
-    "platform_succeeded",
-    JSON.stringify(platformResult),
-  );
-  const result = String(platformResult.result ?? "");
-  const paramsSha256 = await sha256Hex(
-    canonicalize({
-      org_id: orgId,
-      from_installation_id: fromInstallationId,
-      reason,
-    }),
-  );
-  const assertionSha256 =
-    isRecord(acceptedOperation)
-      ? await sha256Hex(canonicalize(acceptedOperation))
-      : null;
-  let transferId: string | null = null;
-  if (result === "ok" && typeof platformResult.detail === "string") {
-    const detail = JSON.parse(platformResult.detail) as Record<string, unknown>;
-    transferId = typeof detail.transfer_id === "string" && detail.transfer_id.length > 0
-      ? detail.transfer_id
-      : null;
+    });
+  } catch {
+    const at = await clockNowIso(env);
+    const unknownResponse = {
+      result: "unknown",
+      code: "call_outcome_unknown",
+      contract_version: CHANNEL_VERSIONS.vendorEntrypoint,
+      detail: null,
+    };
+    const responseJson = new TextDecoder().decode(canonicalize(unknownResponse));
+    await env.DB.batch(await commandFactStatements(env, {
+      commandId: actionId,
+      kind: "platform_result",
+      payload: {
+        payload_version: 1,
+        command_id: actionId,
+        method: "beginTransfer",
+        phase: "beginTransfer",
+        subject_id: orgId,
+        result: "unknown",
+        code: "call_outcome_unknown",
+        contract_version: CHANNEL_VERSIONS.vendorEntrypoint,
+        response_json: responseJson,
+        response_sha256: await sha256Hex(canonicalize(unknownResponse)),
+        transfer_id: null,
+        transfer_mapping: null,
+        provenance: "authenticated_platform_beginTransfer_call",
+        at,
+      },
+      createdAt: at,
+    }));
+    await recordTransferRecoveryStop(env, actionId, orgId, "blocked_missing_original_authorization");
+    return clinicErrorResponse("recovery_evidence_required", 409, contractVersion);
   }
+  const result = typeof platformResult.result === "string" ? platformResult.result : "";
+  const code = typeof platformResult.code === "string" ? platformResult.code : "";
+  const responseContractVersion = typeof platformResult.contract_version === "number"
+    ? platformResult.contract_version
+    : contractVersion;
+  const transferMapping = result === "ok"
+    ? safeTransferMapping(platformResult.detail, orgId, fromInstallationId)
+    : null;
+  const safeResponse = {
+    result,
+    code,
+    contract_version: responseContractVersion,
+    detail: transferMapping === null ? null : JSON.stringify(transferMapping),
+  };
+  const responseJson = new TextDecoder().decode(canonicalize(safeResponse));
+  const responseSha256 = await sha256Hex(canonicalize(safeResponse));
+  const paramsSha256 = argsSha256;
+  const transferId = transferMapping === null
+    ? null
+    : String(transferMapping.transfer_id);
   const nowIso = await clockNowIso(env);
   const canonicalAction = {
     action_id: actionId,
@@ -4020,7 +4445,7 @@ async function handlePostBeginTransfer(
     action: "beginTransfer",
     subject: orgId,
     params_sha256: paramsSha256,
-    assertion_sha256: assertionSha256,
+    assertion_sha256: operationSha256,
     result,
   };
   const statements: D1PreparedStatement[] = [
@@ -4029,7 +4454,7 @@ async function handlePostBeginTransfer(
          action_id, actor_email, access_jti, action, subject,
          params_sha256, assertion_sha256, result
        ) VALUES (?, ?, ?, 'beginTransfer', ?, ?, ?, ?)`,
-    ).bind(actionId, access.email, access.jti, orgId, paramsSha256, assertionSha256, result),
+    ).bind(actionId, access.email, access.jti, orgId, paramsSha256, operationSha256, result),
     env.DB.prepare(
       `INSERT INTO fact_log ("table", key, row_sha256, row_json, created_at)
        SELECT 'operator_action', ?, ?, ?, ?
@@ -4044,75 +4469,164 @@ async function handlePostBeginTransfer(
       actionId,
     ),
   ];
-  if (transferId !== null) {
-    statements.push(
-      env.DB.prepare(
-        `INSERT INTO work (
-           work_id, kind, subject_id, dedupe_key, state, attempts,
-           next_attempt_at, lease_until, last_error, opened_at
-         ) VALUES (?, 'transfer_step', ?, ?, 'open', 0, NULL, NULL, NULL, ?)
-         ON CONFLICT(dedupe_key) DO NOTHING`,
-      ).bind(crypto.randomUUID(), transferId, `transfer_step:${transferId}`, nowIso),
-    );
-  }
+  statements.push(...await commandFactStatements(env, {
+    commandId: actionId,
+    kind: "platform_result",
+    payload: {
+      payload_version: 1,
+      command_id: actionId,
+      method: "beginTransfer",
+      phase: "beginTransfer",
+      subject_id: orgId,
+      result,
+      code,
+      contract_version: responseContractVersion,
+      response_json: responseJson,
+      response_sha256: responseSha256,
+      transfer_id: transferId,
+      transfer_mapping: transferMapping,
+      provenance: "authenticated_platform_beginTransfer_call",
+      at: nowIso,
+    },
+    createdAt: nowIso,
+  }));
   statements.push(
     env.DB.prepare(
       `UPDATE accepted_operator_command
-       SET stage = 'complete', result_json = ?, updated_at = ?
+       SET stage = ?, result_json = ?, updated_at = ?
        WHERE challenge_sha256 = ?`,
     ).bind(
-      JSON.stringify(platformResult),
+      result === "rejected" ? "complete" : "awaiting_operator_auth",
+      JSON.stringify(safeResponse),
       nowIso,
-      await sha256Hex(canonicalize(acceptedOperation)),
+      operationSha256,
     ),
   );
   await env.DB.batch(statements);
 
+  if (result === "transient") {
+    await recordTransferRecoveryStop(env, actionId, orgId, "blocked_missing_original_authorization");
+  } else if (result === "ok" && transferMapping === null) {
+    await recordTransferRecoveryStop(env, actionId, orgId, "blocked_missing_transfer_correlation");
+  } else if (result === "ok" && transferMapping !== null && transferId !== null) {
+    let continued = false;
+    try {
+      continued = await continueTransferInline(env, actionId, transferId, transferMapping);
+    } catch {
+      await recordTransferRecoveryStop(env, actionId, orgId, "blocked_missing_original_authorization");
+    }
+    if (!continued) {
+      return clinicErrorResponse("recovery_evidence_required", 409, contractVersion);
+    }
+  } else if (result !== "rejected") {
+    await recordTransferRecoveryStop(env, actionId, orgId, "blocked_missing_original_authorization");
+  }
+
   return platformResponseJson(platformResult, contractVersion);
 }
 
-async function takeTransferWork(
+async function appendTransferProgressFact(
   env: OpsEnv,
-  workId: string,
-): Promise<TransferWorkRow | null> {
-  const nowMs = await clockNowMs(env);
-  const nowIso = new Date(nowMs).toISOString();
-  const leaseUntil = new Date(nowMs + TRANSFER_LEASE_MS).toISOString();
-
-  const leased = await env.DB.prepare(
-    `UPDATE work
-     SET lease_until = ?
-     WHERE work_id = ?
-       AND kind = 'transfer_step'
-       AND state = 'open'
-       AND (lease_until IS NULL OR lease_until <= ?)
-       AND (next_attempt_at IS NULL OR next_attempt_at <= ?)`,
-  )
-    .bind(leaseUntil, workId, nowIso, nowIso)
-    .run();
-  if ((leased.meta.changes ?? 0) === 0) {
-    return null;
+  transferId: string,
+  commandId: string,
+  phase: "transferOut" | "transferIn",
+  result: Record<string, unknown>,
+): Promise<boolean> {
+  const safeResponse = safeResultPayload(result);
+  if (
+    containsSensitiveRecoveryField(safeResponse) ||
+    new TextEncoder().encode(new TextDecoder().decode(canonicalize(safeResponse))).length > 30_000
+  ) return false;
+  const outcome = typeof result.result === "string" ? result.result : "";
+  if (outcome === "applied" || outcome === "already_applied") {
+    const [reservation, acknowledgement] = await Promise.all([
+      readCommandFact(env, commandId, "relay_reserved"),
+      readCommandFact(env, commandId, "platform_result", {
+        phase: "beginTransfer",
+      }),
+    ]);
+    const mapping = acknowledgement?.payload.transfer_mapping;
+    if (
+      reservation === null || acknowledgement === null || !isRecord(mapping) ||
+      typeof mapping.org_id !== "string" || typeof mapping.to_installation_id !== "string" ||
+      typeof mapping.from_installation_id !== "string" ||
+      typeof safeResponse.receipt !== "object" || safeResponse.receipt === null ||
+      !await verifyTransferReceipt({
+        platformPublicKeys: env.PLATFORM_PUBLIC_KEYS,
+        receipt: safeResponse.receipt,
+        transferId,
+        orgId: mapping.org_id,
+        installationId: phase === "transferOut"
+          ? mapping.from_installation_id
+          : mapping.to_installation_id,
+        contractVersion: typeof result.contract_version === "number"
+          ? result.contract_version
+          : Number(reservation.payload.contract_version),
+      })
+    ) return false;
   }
-
-  return env.DB.prepare(
-    `SELECT work_id, kind, subject_id, state, attempts, next_attempt_at,
-            lease_until, last_error
-     FROM work WHERE work_id = ? AND lease_until = ?`,
-  )
-    .bind(workId, leaseUntil)
-    .first<TransferWorkRow>();
+  const at = await clockNowIso(env);
+  const responseJson = new TextDecoder().decode(canonicalize(safeResponse));
+  const resultText = outcome;
+  const code = typeof result.code === "string" ? result.code : "";
+  await env.DB.batch(await commandFactStatements(env, {
+    commandId,
+    kind: "platform_result",
+    payload: {
+      payload_version: 1,
+      command_id: commandId,
+      method: "beginTransfer",
+      phase,
+      subject_id: transferId,
+      transfer_id: transferId,
+      result: resultText,
+      code,
+      contract_version: typeof result.contract_version === "number"
+        ? result.contract_version
+        : CHANNEL_VERSIONS.vendorEntrypoint,
+      response_json: responseJson,
+      response_sha256: await sha256Hex(canonicalize(safeResponse)),
+      provenance: "authenticated_platform_transfer_step_call",
+      at,
+    },
+    createdAt: at,
+  }));
+  return true;
 }
 
-async function clearTransferLease(
+async function disputeTransferWork(
   env: OpsEnv,
-  workId: string,
-  leaseUntil: string,
+  work: TransferWorkRow,
 ): Promise<void> {
+  const at = await clockNowIso(env);
   await env.DB.prepare(
-    `UPDATE work SET lease_until = NULL WHERE work_id = ? AND lease_until = ?`,
-  )
-    .bind(workId, leaseUntil)
-    .run();
+    `UPDATE work SET state = 'awaiting_operator_auth', lease_until = NULL,
+       last_error = 'blocked_missing_original_authorization'
+     WHERE work_id = ?`,
+  ).bind(work.work_id).run();
+  const findingId = await sha256Hex(canonicalize({
+    kind: "transfer_recovery_disputed",
+    subject: work.subject_id,
+  }));
+  const finding = {
+    finding_id: findingId,
+    kind: "transfer_recovery_disputed",
+    subject: work.subject_id,
+    detail: "blocked_missing_original_authorization",
+    detected_at: at,
+  };
+  const rowJson = new TextDecoder().decode(canonicalize(finding));
+  await env.DB.batch([
+    env.DB.prepare(
+      `INSERT INTO finding (finding_id, kind, subject, detail, detected_at)
+       VALUES (?, ?, ?, ?, ?) ON CONFLICT(finding_id) DO NOTHING`,
+    ).bind(findingId, finding.kind, finding.subject, finding.detail, at),
+    env.DB.prepare(
+      `INSERT INTO fact_log ("table", key, row_sha256, row_json, created_at)
+       SELECT 'finding', ?, ?, ?, ?
+       WHERE NOT EXISTS (SELECT 1 FROM fact_log WHERE "table" = 'finding' AND key = ?)`,
+    ).bind(findingId, await sha256Hex(canonicalize(finding)), rowJson, at, findingId),
+  ]);
 }
 
 async function writeTransferGrantRequests(
@@ -4168,31 +4682,115 @@ async function writeTransferGrantRequests(
   }
 }
 
-async function finishTransferStep(
+async function continueTransferInline(
   env: OpsEnv,
-  work: TransferWorkRow,
-  leaseUntil: string,
-): Promise<void> {
-  await env.DB.prepare(
-    `UPDATE work SET state = 'done', lease_until = NULL, last_error = NULL
-     WHERE work_id = ? AND lease_until = ?`,
-  )
-    .bind(work.work_id, leaseUntil)
-    .run();
-}
-
-async function reopenTransferStep(
-  env: OpsEnv,
-  work: TransferWorkRow,
-  leaseUntil: string,
-  lastError: string,
-): Promise<void> {
-  await env.DB.prepare(
-    `UPDATE work SET lease_until = NULL, last_error = ?
-     WHERE work_id = ? AND lease_until = ?`,
-  )
-    .bind(lastError, work.work_id, leaseUntil)
-    .run();
+  commandId: string,
+  transferId: string,
+  mapping: Record<string, unknown>,
+): Promise<boolean> {
+  // This continuation is called only from the same verified beginTransfer
+  // request. No durable transfer-step row can authorize a later invocation.
+  const block = async (reason: "blocked_missing_original_authorization" | "blocked_missing_transfer_correlation") => {
+    await recordTransferRecoveryStop(env, commandId, String(mapping.org_id ?? ""), reason);
+  };
+  const recordUnknown = async (phase: "transferOut" | "transferIn") => {
+    const at = await clockNowIso(env);
+    const response = {
+      result: "unknown",
+      code: "call_outcome_unknown",
+      contract_version: CHANNEL_VERSIONS.vendorEntrypoint,
+      detail: null,
+    };
+    const responseJson = new TextDecoder().decode(canonicalize(response));
+    await env.DB.batch(await commandFactStatements(env, {
+      commandId,
+      kind: "platform_result",
+      payload: {
+        payload_version: 1,
+        command_id: commandId,
+        method: "beginTransfer",
+        phase,
+        subject_id: transferId,
+        transfer_id: transferId,
+        result: "unknown",
+        code: "call_outcome_unknown",
+        contract_version: CHANNEL_VERSIONS.vendorEntrypoint,
+        response_json: responseJson,
+        response_sha256: await sha256Hex(canonicalize(response)),
+        provenance: "authenticated_platform_transfer_step_call",
+        at,
+      },
+      createdAt: at,
+    }));
+  };
+  let outResult: Record<string, unknown>;
+  try {
+    outResult = await env.PLATFORM.transferOut({
+      contract_version: CHANNEL_VERSIONS.vendorEntrypoint,
+      transfer_id: transferId,
+    });
+  } catch {
+    await recordUnknown("transferOut");
+    await block("blocked_missing_original_authorization");
+    return false;
+  }
+  if (!await appendTransferProgressFact(env, transferId, commandId, "transferOut", outResult)) {
+    await block("blocked_missing_transfer_correlation");
+    return false;
+  }
+  const outResultCode = String(outResult.result ?? "");
+  if (outResultCode === "rejected") {
+    const at = await clockNowIso(env);
+    await env.DB.prepare(
+      `UPDATE accepted_operator_command SET stage = 'complete', result_json = ?,
+         updated_at = ? WHERE command_id = ? AND method = 'beginTransfer'`,
+    ).bind(JSON.stringify(safeResultPayload(outResult)), at, commandId).run();
+    return true;
+  }
+  if (outResultCode !== "applied" && outResultCode !== "already_applied") {
+    await block("blocked_missing_original_authorization");
+    return false;
+  }
+  const orgId = transferOrgIdFromReceipt(outResult.receipt);
+  if (orgId !== null) {
+    await writeTransferGrantRequests(env, transferId, orgId, transferOutPackageDetail(outResult.detail));
+  }
+  let inResult: Record<string, unknown>;
+  try {
+    inResult = await env.PLATFORM.transferIn({
+      contract_version: CHANNEL_VERSIONS.vendorEntrypoint,
+      transfer_id: transferId,
+    });
+  } catch {
+    await recordUnknown("transferIn");
+    await block("blocked_missing_original_authorization");
+    return false;
+  }
+  if (!await appendTransferProgressFact(env, transferId, commandId, "transferIn", inResult)) {
+    await block("blocked_missing_transfer_correlation");
+    return false;
+  }
+  const inResultCode = String(inResult.result ?? "");
+  if (inResultCode === "rejected") {
+    const at = await clockNowIso(env);
+    await env.DB.prepare(
+      `UPDATE accepted_operator_command SET stage = 'complete', result_json = ?,
+         lease_until = NULL, lease_token = NULL, updated_at = ?
+       WHERE command_id = ? AND method = 'beginTransfer'`,
+    ).bind(JSON.stringify(safeResultPayload(inResult)), at, commandId).run();
+    return true;
+  }
+  if (inResultCode === "applied" || inResultCode === "already_applied") {
+    const at = await clockNowIso(env);
+    await env.DB.prepare(
+      `UPDATE accepted_operator_command SET stage = 'complete',
+         lease_until = NULL, lease_token = NULL, updated_at = ?
+       WHERE command_id = ? AND method = 'beginTransfer'`,
+    ).bind(at, commandId).run();
+    return true;
+  }
+  await block("blocked_missing_original_authorization");
+  return false;
 }
 
 function transferOutPackageDetail(detail: unknown): unknown {
@@ -4214,87 +4812,14 @@ function transferOrgIdFromReceipt(receipt: unknown): string | null {
   return typeof orgId === "string" && orgId.length > 0 ? orgId : null;
 }
 
-async function processTransferStepWork(
-  env: OpsEnv,
-  work: TransferWorkRow,
-): Promise<void> {
-  const leaseUntil = work.lease_until;
-  if (leaseUntil === null) {
-    return;
-  }
-
-  const transferId = work.subject_id;
-  const contractArgs = {
-    contract_version: CHANNEL_VERSIONS.vendorEntrypoint,
-    transfer_id: transferId,
-  };
-
-  if (work.last_error === null) {
-    const inResult = await env.PLATFORM.transferIn(contractArgs);
-    const inOutcome = String(inResult.result ?? "");
-    if (
-      inOutcome === "transient" &&
-      inResult.detail === "awaiting_transfer_out"
-    ) {
-      await reopenTransferStep(env, work, leaseUntil, "awaiting_transfer_out");
-      return;
-    }
-    if (inOutcome === "applied" || inOutcome === "already_applied") {
-      await finishTransferStep(env, work, leaseUntil);
-      return;
-    }
-    await reopenTransferStep(
-      env,
-      work,
-      leaseUntil,
-      inOutcome.length > 0 ? inOutcome : "transient",
-    );
-    return;
-  }
-
-  const outResult = await env.PLATFORM.transferOut(contractArgs);
-  const outOutcome = String(outResult.result ?? "");
-  if (outOutcome !== "applied" && outOutcome !== "already_applied") {
-    await reopenTransferStep(
-      env,
-      work,
-      leaseUntil,
-      outOutcome.length > 0 ? outOutcome : "transient",
-    );
-    return;
-  }
-
-  const orgId = transferOrgIdFromReceipt(outResult.receipt);
-  if (orgId !== null) {
-    const packageDetail = transferOutPackageDetail(outResult.detail);
-    await writeTransferGrantRequests(env, transferId, orgId, packageDetail);
-  }
-
-  const inResult = await env.PLATFORM.transferIn(contractArgs);
-  const inOutcome = String(inResult.result ?? "");
-  if (inOutcome === "applied" || inOutcome === "already_applied") {
-    await finishTransferStep(env, work, leaseUntil);
-    return;
-  }
-  await reopenTransferStep(
-    env,
-    work,
-    leaseUntil,
-    inOutcome === "transient"
-      ? "awaiting_transfer_in"
-      : inOutcome.length > 0
-        ? inOutcome
-        : "awaiting_transfer_in",
-  );
-}
-
 export async function runDueTransferSteps(
   env: OpsEnv,
   limit = TRANSFER_BATCH_LIMIT,
 ): Promise<number> {
   const nowIso = await clockNowIso(env);
   const due = await env.DB.prepare(
-    `SELECT work_id FROM work
+    `SELECT work_id, kind, subject_id, state, attempts, next_attempt_at,
+            lease_until, last_error FROM work
      WHERE kind = 'transfer_step'
        AND state = 'open'
        AND (next_attempt_at IS NULL OR next_attempt_at <= ?)
@@ -4302,23 +4827,12 @@ export async function runDueTransferSteps(
      LIMIT ?`,
   )
     .bind(nowIso, limit)
-    .all<{ work_id: string }>();
+    .all<TransferWorkRow>();
 
   let processed = 0;
   for (const row of due.results ?? []) {
-    const work = await takeTransferWork(env, row.work_id);
-    if (work === null) {
-      continue;
-    }
-    try {
-      await processTransferStepWork(env, work);
-      processed += 1;
-    } catch {
-      const leaseUntil = work.lease_until;
-      if (leaseUntil !== null) {
-        await clearTransferLease(env, work.work_id, leaseUntil);
-      }
-    }
+    await disputeTransferWork(env, row);
+    processed += 1;
   }
   return processed;
 }
