@@ -172,7 +172,44 @@ def run_unit(_: str) -> int:
 
 def run_unit_shard(subcampaign: str) -> int:
     shard = int(subcampaign[-1])
-    return _run(subcampaign, ["npx", "vitest", "run", f"--shard={shard}/2"])
+    first_migration_half = (
+        r"T-A5-11|T-A5-12|T-A5-13|"
+        r"entity_presence_(?:installation|issuer_key|tenant_binding|capability_grant|"
+        r"routing_policy|ai_request|ai_attempt|usage_event|usage_rollup|"
+        r"platform_counter|control_audit|fallback_admission|feed_consumer|"
+        r"grant_ledger|service_key|plan_version|coverage_event|coverage_mirror)|"
+        r"T-A5-15 request_reference|T-A5-15b"
+    )
+    migration_patterns = {
+        1: first_migration_half,
+        2: rf"^(?!.*(?:{first_migration_half})).*$",
+    }
+    return _run_steps(
+        subcampaign,
+        [
+            (
+                "unit",
+                [
+                    "npx",
+                    "vitest",
+                    "run",
+                    "--config",
+                    "vitest.unit-shard.config.ts",
+                    f"--shard={shard}/2",
+                ],
+            ),
+            (
+                "migrations",
+                [
+                    "npx",
+                    "vitest",
+                    "run",
+                    "test/migrations.test.ts",
+                    f"--testNamePattern={migration_patterns[shard]}",
+                ],
+            ),
+        ],
+    )
 
 
 def run_workers(_: str) -> int:
