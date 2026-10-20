@@ -632,6 +632,7 @@ describe("admission settlement against terms", () => {
     await coverClinic(scenario);
     await newClinic(scenario);
     const token = await mintAat(scenario);
+    const initialHotUsage = await readHotUsage(scenario.installationId);
 
     let creditCalls = 0;
     let swallowedCreditBody: Record<string, unknown> | null = null;
@@ -697,22 +698,21 @@ describe("admission settlement against terms", () => {
       const requestId = String(request?.request_id);
       const usage = await getUsageEvents(requestId);
       expect(usage).toHaveLength(1);
-      const usageAdjustments = await runInDurableObject(
-        quotaDoStub(scenario.installationId),
-        async (_instance, state) =>
-          sqlSelect<{ payload: string }>(
-            state,
-            "SELECT payload FROM outbox WHERE kind = 'usage_adjustment'",
-          ),
-      );
-      expect(
-        usageAdjustments.filter((row) => {
-          const payload = JSON.parse(row.payload) as { request_id?: string };
-          return payload.request_id === requestId;
-        }),
-      ).toHaveLength(1);
+      const secondRef = String(second.events[0]?.data.request_reference);
+      const secondRequest = await getAiRequest(secondRef);
+      const secondRequestId = String(secondRequest?.request_id);
+      expect(await getUsageEvents(secondRequestId)).toHaveLength(1);
 
       const hotBeforeReplay = await readHotUsage(scenario.installationId);
+      expect(hotBeforeReplay.used).toBe(
+        initialHotUsage.used + 2 * QUOTA_WEIGHT,
+      );
+      expect(hotBeforeReplay.reserved).toBe(0);
+      expect(
+        (await readHotReservations(scenario.installationId)).some(
+          (reservation) => reservation.id === requestId,
+        ),
+      ).toBe(false);
       if (swallowedCreditBody) {
         const replay = await quotaDoStub(scenario.installationId).fetch(
           "https://quota-do.internal/rpc",
