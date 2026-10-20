@@ -1657,6 +1657,7 @@ export type CoverClinicOptions = {
   capabilities?: string[];
   concurrency_limit?: number;
   max_allowance_per_month?: number;
+  max_cost_class?: string;
   runAlarm?: boolean;
 };
 
@@ -1678,6 +1679,7 @@ async function operationForCoverPublishPlan(input: {
   capabilities: string[];
   concurrencyLimit: number;
   maxAllowance: number;
+  maxCostClass: string | number;
   version: number;
 }): Promise<Record<string, unknown>> {
   return {
@@ -1689,7 +1691,7 @@ async function operationForCoverPublishPlan(input: {
       version: input.version,
       display_name: COVER_PLAN_DISPLAY,
       capabilities: input.capabilities,
-      max_cost_class: COVER_DEFAULT_MAX_COST_CLASS,
+      max_cost_class: input.maxCostClass,
       concurrency_limit: input.concurrencyLimit,
       max_allowance_per_month: input.maxAllowance,
     },
@@ -1833,6 +1835,7 @@ export async function coverClinic(
     opts.concurrency_limit ?? COVER_DEFAULT_CONCURRENCY;
   const maxAllowance =
     opts.max_allowance_per_month ?? COVER_DEFAULT_ALLOWANCE;
+  const maxCostClass = opts.max_cost_class ?? COVER_DEFAULT_MAX_COST_CLASS;
   const planVersion = nextCoverPlanVersion++;
 
   const accessJwt = await mintVendorAccessJwt();
@@ -1841,6 +1844,7 @@ export async function coverClinic(
     capabilities,
     concurrencyLimit,
     maxAllowance,
+    maxCostClass,
     version: planVersion,
   });
   const publishAssertion = encodeVendorAssertion(
@@ -1860,7 +1864,7 @@ export async function coverClinic(
       version: planVersion,
       display_name: COVER_PLAN_DISPLAY,
       capabilities,
-      max_cost_class: COVER_DEFAULT_MAX_COST_CLASS,
+      max_cost_class: maxCostClass,
       concurrency_limit: concurrencyLimit,
       max_allowance_per_month: maxAllowance,
       signer_credential_id: boot.signerCredentialId,

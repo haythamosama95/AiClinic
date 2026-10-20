@@ -19,6 +19,7 @@ import {
   coverClinicAboKid,
   count,
   fakePolicyDocument,
+  fakePolicyTarget,
   flushBackgroundWork,
   parseSseEvents,
   GATEWAY_ORIGIN,
@@ -188,8 +189,15 @@ async function insertPendingFallbackRows(
   }
 }
 
-async function setupPromotedPolicy(scenario: Scenario): Promise<string> {
-  const document = fakePolicyDocument(POLICY_ID, POLICY_VERSION);
+async function setupPromotedPolicy(
+  scenario: Scenario,
+  opts: { costClass?: string } = {},
+): Promise<string> {
+  const document = fakePolicyDocument(POLICY_ID, POLICY_VERSION, {
+    ...(opts.costClass === undefined
+      ? {}
+      : { targets: [fakePolicyTarget("fake-v1", { costClass: opts.costClass })] }),
+  });
   const published = await publishPolicy(POLICY_ID, POLICY_VERSION, document);
   expect(published.status).toBe(200);
   const promoted = await promote(POLICY_ID, POLICY_VERSION);
@@ -204,6 +212,7 @@ async function postRequest(
 ): Promise<{
   status: number;
   body: Record<string, unknown> | null;
+  terminalEventTypes: string[];
 }> {
   const response = await SELF.fetch(
     new Request(`${GATEWAY_ORIGIN}/v1/requests`, {
@@ -220,15 +229,26 @@ async function postRequest(
   );
   const contentType = response.headers.get("content-type") ?? "";
   if (contentType.includes("text/event-stream")) {
-    await parseSseEvents(response);
+    const events = await parseSseEvents(response);
     await flushBackgroundWork();
-    return { status: response.status, body: null };
+    return {
+      status: response.status,
+      body: null,
+      terminalEventTypes: events
+        .filter((event) =>
+          ["completed", "failed", "cancelled", "context_requested"].includes(
+            event.type,
+          ),
+        )
+        .map((event) => event.type),
+    };
   }
   const text = await response.text();
   await flushBackgroundWork();
   return {
     status: response.status,
     body: text.length > 0 ? (JSON.parse(text) as Record<string, unknown>) : null,
+    terminalEventTypes: [],
   };
 }
 
@@ -364,13 +384,15 @@ beforeEach(async () => {
 describe("P3.9 fallback admission, feed, and coverage read", () => {
   it("E2E-P3.9-01 R5-A4 fallback result is journaled and */5 skips consumed work", async () => {
     const scenario = await newScenario();
-    await coverClinicAndPolicy(scenario);
-    const token = await setupPromotedPolicy(scenario);
+    await coverClinic(scenario, { max_cost_class: "standard" });
+    await newClinic(scenario);
+    const token = await setupPromotedPolicy(scenario, { costClass: "standard" });
 
     await setAdmissionFault("throw");
     const idempotencyKey = crypto.randomUUID();
     const admitted = await postRequest(scenario, token, idempotencyKey);
     expect(admitted.body?.code).not.toBe("coverage_unknown");
+    expect(admitted.terminalEventTypes).toContain("completed");
 
     const rows = await listFallbackAdmissions(scenario.installationId);
     expect(rows).toHaveLength(1);

@@ -1999,7 +1999,7 @@ describe("R5-A4_fallback_uses_term_context_and_journals_result", () => {
         state: "Completed",
         payload_pointer: `request/${requestId}/envelope`,
       });
-      expect(await env.R2.get(`request/${requestId}/envelope`)).not.toBeNull();
+      expect(await env.R2.head(`request/${requestId}/envelope`)).not.toBeNull();
 
       const usage = await env.DB.prepare(
         `SELECT term_id, quota_weight, COUNT(*) OVER () AS row_count

@@ -949,7 +949,7 @@ describe("grace_durable_cap_across_isolate_maps", () => {
 });
 
 describe("grace_idempotency_key_replay_during_do_outage", () => {
-  it("returns the same graceRequestId and keeps a single pending D1 row", async () => {
+  it("returns the original request for a journaled same-key fallback replay", async () => {
     const admission = await loadAdmissionModule();
     const installationId = freshInstallationId();
     const { cache, reader } = await seedInstallationAndEntitlement(installationId);
@@ -971,6 +971,12 @@ describe("grace_idempotency_key_replay_during_do_outage", () => {
     }
     expect(first.outcome).toBe("grace_admitted");
     const firstRequestId = first.requestId;
+    await journalAdmittedRequest({
+      installationId,
+      requestId: first.requestId,
+      requestReference: first.requestReference,
+      idempotencyKey,
+    });
 
     const second = await admission.runAdmission(
       defaultAdmissionInput(installationId, cache, reader, {
@@ -982,18 +988,16 @@ describe("grace_idempotency_key_replay_during_do_outage", () => {
       { now: FIXTURE_NOW_MS, nowMs: FIXTURE_NOW_MS },
     );
 
-    expect(second.ok).toBe(true);
-    if (!second.ok) {
-      return;
-    }
-    if (second.outcome === "grace_admitted") {
-      expect(second.requestId).toBe(firstRequestId);
-    } else {
-      expect(second.outcome).toBe("idempotent");
-      expect(second.priorState.requestId).toBe(firstRequestId);
-    }
+    expect(second).toMatchObject({
+      ok: true,
+      outcome: "idempotent",
+      requestId: firstRequestId,
+    });
     expect(await countPendingFallbackRows(installationId)).toBe(1);
     expect(await peekPendingFallback(installationId)).toHaveLength(1);
+    expect((await peekPendingFallback(installationId))[0]?.requestId).toBe(
+      firstRequestId,
+    );
   });
 });
 
@@ -1046,7 +1050,11 @@ describe("R5-ADM1_atomic_fallback_cap", () => {
       { now: FIXTURE_NOW_MS, nowMs: FIXTURE_NOW_MS },
     );
 
-    expect(retry).toEqual({ ok: false, code: "coverage_unknown" });
+    expect(retry).toEqual({
+      ok: false,
+      code: "coverage_unknown",
+      retryAfter: 60,
+    });
     expect(await countPendingFallbackRows(installationId)).toBe(1);
   });
 
