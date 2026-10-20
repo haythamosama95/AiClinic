@@ -41,6 +41,10 @@ export function sqlString(value: string): string {
   return `'${value.replace(/'/g, "''")}'`;
 }
 
+function canonicalJsonText(value: unknown): string {
+  return new TextDecoder().decode(canonicalize(value));
+}
+
 export type HotRow = {
   suspended: number;
   transferred_out_to?: string | null;
@@ -1299,6 +1303,7 @@ function emitBoundaryCoverageEvent(
 }
 
 export function applyDueBoundaries(input: ApplyDueBoundariesInput): boolean {
+  if (loadTerms(input.storage).length === 0) return false;
   const plan = planDueBoundaries(input);
   commitDueBoundaryPlan(input.storage, input, plan);
   return plan.events.length > 0;
@@ -1812,10 +1817,13 @@ async function applyComplimentaryTermGrant(
     const termsAfter = terms.map((term) => term.term_id === graceTerm?.term_id
       ? { ...term, state: "ended", end_reason: "renewed", ended_at: request.nowIso, used_final: baseHot.used }
       : term);
+    const graceTermWrite = graceTerm === undefined ? [] : [
+      `UPDATE term SET state = 'ended', end_reason = 'renewed', ended_at = ${sqlString(request.nowIso)}, used_final = ${baseHot.used} WHERE term_id = ${sqlString(graceTerm.term_id)}`,
+    ];
     return finalizeGrantApply({
       state, storage, request, signingKey, grantId, envelopeSha256,
       termIds: [termId], grantKind: "term", grantSourceKind: "complimentary",
-      termWrites: [insertTerm],
+      termWrites: [...graceTermWrite, insertTerm],
       hotAfter: { ...baseHot, active_term_id: termId, used: 0, grace_base_used: graceTerm !== undefined ? 0 : baseHot.grace_base_used },
       termsAfter: [...termsAfter, {
         term_id: termId, grant_id: grantId, origin_grant_id: grantId, position,
@@ -3020,12 +3028,16 @@ export async function recoverStrandedTermRPC(
     const hot = loadHot(storage);
     const terms = loadTerms(storage);
     if (hot.binding_epoch !== request.bindingEpoch || hot.clinic_seq !== request.expectedClinicSeq ||
-        hot.active_term_id !== null || hot.awaiting_transfer === 1 || hot.transfer_pending === 1 ||
+        hot.awaiting_transfer === 1 || hot.transfer_pending === 1 ||
         hot.transferred_out_to !== null) {
       return { kind: "recover_stranded_term", result: "conflict" };
     }
     const active = terms.find((term) => term.state === "active");
     const grace = terms.find((term) => term.state === "grace");
+    if (active !== undefined ||
+        (grace === undefined ? hot.active_term_id !== null : hot.active_term_id !== grace.term_id)) {
+      return { kind: "recover_stranded_term", result: "conflict" };
+    }
     const queued = terms.filter((term) => term.state === "queued")
       .sort((left, right) => left.position - right.position);
     const uniqueOldest = queued.length > 0 &&
@@ -3076,11 +3088,22 @@ export async function recoverStrandedTermRPC(
         originalPlan.plan_id !== storedPlan.plan_id || originalPlan.plan_version !== storedPlan.version) {
       return { kind: "recover_stranded_term", result: "conflict" };
     }
+    const predecessors = terms.filter((term) => term.position < target.position);
+    if (predecessors.some((term) =>
+      !["ended", "exhausted", "grace"].includes(term.state) ||
+      (term.state !== "grace" && term.used_final === null) ||
+      ((term.state === "ended" || term.state === "exhausted") && term.ended_at === null))) {
+      return { kind: "recover_stranded_term", result: "conflict" };
+    }
     let reservations: unknown;
     try { reservations = JSON.parse(hot.reservations); } catch { reservations = null; }
-    if (!Array.isArray(reservations) || reservations.some((entry) =>
-      entry !== null && typeof entry === "object" &&
-      (entry as Record<string, unknown>).term_id === target.term_id)) {
+    if (!Array.isArray(reservations) || reservations.length > 0 ||
+        !Number.isSafeInteger(hot.used) || hot.used < 0 ||
+        !Number.isSafeInteger(hot.reserved) || hot.reserved !== 0 ||
+        !Number.isSafeInteger(hot.grace_base_used) || hot.grace_base_used < 0 ||
+        (grace === undefined && (hot.used !== 0 || hot.grace_base_used !== 0)) ||
+        (grace !== undefined && (grace.used_final !== null || grace.ended_at !== null ||
+          grace.grace_ends_at === null || hot.used < hot.grace_base_used))) {
       return { kind: "recover_stranded_term", result: "conflict" };
     }
 
@@ -3150,7 +3173,7 @@ export async function recoverStrandedTermRPC(
       credential_id: request.credentialId,
       assertion_sha256: request.assertionSha256,
       recovered_at: recoveryAt,
-      result_json: canonicalize(result),
+      result_json: canonicalJsonText(result),
     };
     await prearmGrantWakeup(state);
     const transactionResult = storage.transactionSync(() => {
@@ -3165,7 +3188,7 @@ export async function recoverStrandedTermRPC(
       updateHot(storage, { ...finalHot, clinic_seq: seq });
       insertOutbox(storage, "stranded_term_recovery", recoveryFact);
       for (const event of eventPayloads) insertOutbox(storage, "coverage_event", event);
-      sqlExec(storage, `INSERT INTO stranded_term_recovery (action_id, target_term_id, reason, request_sha256, result_json, recorded_at) VALUES (${sqlString(request.actionId)}, ${sqlString(target.term_id)}, ${sqlString(request.reason)}, ${sqlString(requestSha256)}, ${sqlString(canonicalize(result))}, ${sqlString(recoveryAt)})`);
+      sqlExec(storage, `INSERT INTO stranded_term_recovery (action_id, target_term_id, reason, request_sha256, result_json, recorded_at) VALUES (${sqlString(request.actionId)}, ${sqlString(target.term_id)}, ${sqlString(request.reason)}, ${sqlString(requestSha256)}, ${sqlString(canonicalJsonText(result))}, ${sqlString(recoveryAt)})`);
       return result;
     });
     if (transactionResult.result === "ok") {

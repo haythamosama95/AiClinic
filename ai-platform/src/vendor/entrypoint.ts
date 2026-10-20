@@ -6142,7 +6142,7 @@ export class VendorEntrypoint extends WorkerEntrypoint<VendorEnv> {
         actionId, orgId, installationId, expectedBindingEpoch, targetTermId,
         sourceGrantId, expectedClinicSeq, reason, requestSha256, evidenceSha256,
         access.email, credentialId, assertionSha256, detail.recovered_at,
-        canonicalize({ kind: "recover_stranded_term", result: "ok", detail }),
+        canonicalJsonText({ kind: "recover_stranded_term", result: "ok", detail }),
       ).run();
     };
     const durableReplay = await this.env.DB.prepare(
@@ -6155,14 +6155,14 @@ export class VendorEntrypoint extends WorkerEntrypoint<VendorEnv> {
       const stored = JSON.parse(durableReplay.result_json) as Record<string, unknown>;
       const detail = stored.detail;
       if (!isRecord(detail)) return grantTransient(version, "recovery_audit_invalid");
-      return { contract_version: version, result: "ok", code: "", detail: canonicalize(detail) };
+      return { contract_version: version, result: "ok", code: "", detail: canonicalJsonText(detail) };
     }
     // Completed action identity is permanent in the pinned DO. Read it before
     // one-use assertion validation so a lost HTTP reply can replay exactly.
     const replay = await callCoverageDo(this.env, installationId, doRequest);
     if (replay?.result === "ok" && isRecord(replay.detail)) {
       await persistRecoveryFact(replay.detail);
-      return { contract_version: version, result: "ok", code: "", detail: canonicalize(replay.detail) };
+      return { contract_version: version, result: "ok", code: "", detail: canonicalJsonText(replay.detail) };
     }
     if (replay?.result === "conflict") return { contract_version: version, result: "conflict", code: "recovery_conflict", detail: "" };
     const authoritativeVoid = await this.env.DB.prepare(
@@ -6175,24 +6175,82 @@ export class VendorEntrypoint extends WorkerEntrypoint<VendorEnv> {
     if (binding === null || binding.installation_id !== installationId || binding.epoch !== expectedBindingEpoch) {
       return grantRejected(version, "coverage_unknown");
     }
-    const activationHistory = await this.env.DB.prepare(
-      `SELECT snapshot FROM coverage_event
-       WHERE installation_id = ? AND kind = 'term_activated' AND instr(snapshot, ?) > 0`,
-    ).bind(installationId, targetTermId).all<{ snapshot: string }>();
-    const wasActivated = (activationHistory.results ?? []).some((row) => {
+    const historyRows = await this.env.DB.prepare(
+      "SELECT clinic_seq, kind, snapshot FROM coverage_event WHERE installation_id = ? AND instr(snapshot, ?) > 0 ORDER BY clinic_seq ASC",
+    ).bind(installationId, targetTermId).all<{
+      clinic_seq: number;
+      kind: string;
+      snapshot: string;
+    }>();
+    const history: Array<{
+      clinicSeq: number;
+      kind: string;
+      snapshot: Record<string, unknown>;
+      terms: Record<string, unknown>[];
+    }> = [];
+    let wasActivated = false;
+    let historyInvalid = false;
+    for (const row of historyRows.results ?? []) {
       try {
         const snapshot = JSON.parse(row.snapshot) as Record<string, unknown>;
-        const terms = Array.isArray(snapshot.terms) ? snapshot.terms : [];
-        if (terms.some((entry) => isRecord(entry) && entry.term_id === targetTermId && entry.state === "active")) return true;
-        return isRecord(snapshot.term) && snapshot.term.ref === targetTermId;
+        const terms = Array.isArray(snapshot.terms)
+          ? snapshot.terms.filter(isRecord)
+          : [];
+        const target = terms.find((term) => term.term_id === targetTermId);
+        if (target?.state === "active") wasActivated = true;
+        history.push({ clinicSeq: row.clinic_seq, kind: row.kind, snapshot, terms });
       } catch {
-        return true;
+        historyInvalid = true;
       }
+    }
+    const placementProofs = history.flatMap((event) => {
+      if (event.kind !== "grant_applied") return [];
+      const target = event.terms.find((term) =>
+        term.term_id === targetTermId && term.grant_id === sourceGrantId &&
+        term.state === "queued" && term.held !== true &&
+        typeof term.position === "number",
+      );
+      if (target === undefined) return [];
+      const predecessors = event.terms.filter((term) =>
+        typeof term.position === "number" &&
+        term.position < (target.position as number) &&
+        (term.state === "active" || term.state === "grace"),
+      );
+      if (predecessors.length === 0) return [];
+      const snapshotTerm = isRecord(event.snapshot.term) ? event.snapshot.term : null;
+      return [{
+        clinicSeq: event.clinicSeq,
+        predecessorIds: predecessors.map((term) => term.term_id).filter(
+          (termId): termId is string => typeof termId === "string",
+        ),
+        gracePredecessor: event.snapshot.state === "grace" &&
+          snapshotTerm !== null &&
+          predecessors.some((term) => term.state === "grace" &&
+            snapshotTerm.ref === term.term_id),
+      }];
     });
+    const orphanBoundaryProven = placementProofs.some((placement) =>
+      history.some((event) => {
+        if (event.clinicSeq <= placement.clinicSeq || event.kind !== "term_ended" ||
+            event.snapshot.state === "active" || event.snapshot.state === "grace") {
+          return false;
+        }
+        const target = event.terms.find((term) =>
+          term.term_id === targetTermId && term.state === "queued" && term.held !== true,
+        );
+        return target !== undefined && placement.predecessorIds.every((predecessorId) =>
+          event.terms.some((term) => term.term_id === predecessorId &&
+            (term.state === "ended" || term.state === "exhausted")),
+        );
+      }),
+    );
+    const gracePlacementProven = placementProofs.some((placement) => placement.gracePredecessor);
     const priorUsage = await this.env.DB.prepare(
       "SELECT COUNT(*) AS count FROM usage_event WHERE installation_id = ? AND term_id = ?",
     ).bind(installationId, targetTermId).first<{ count: number }>();
-    if (wasActivated || (priorUsage?.count ?? 0) > 0) {
+    if (historyInvalid || wasActivated ||
+        (!orphanBoundaryProven && !gracePlacementProven) ||
+        (priorUsage?.count ?? 0) > 0) {
       return { contract_version: version, result: "conflict", code: "recovery_history_conflict", detail: "" };
     }
 
@@ -6217,7 +6275,7 @@ export class VendorEntrypoint extends WorkerEntrypoint<VendorEnv> {
     if (doResponse.result !== "ok" || !isRecord(doResponse.detail)) return grantRejected(version, "coverage_unknown");
     await persistRecoveryFact(doResponse.detail);
     await finishHpAssertion(this.env, access.email, "recoverStrandedTerm", check);
-    return { contract_version: version, result: "ok", code: "", detail: canonicalize(doResponse.detail) };
+    return { contract_version: version, result: "ok", code: "", detail: canonicalJsonText(doResponse.detail) };
   }
 
   async voidGrant(args: Record<string, unknown>): Promise<GrantResultEnvelope> {

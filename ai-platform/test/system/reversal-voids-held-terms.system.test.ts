@@ -11,6 +11,11 @@ import {
   operationChallenge,
   sha256Hex,
 } from "vendor-contracts";
+import {
+  buildCoverageSnapshot,
+  loadHot,
+  loadTerms,
+} from "../../src/quota-do/coverage";
 import { beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   applyAllMigrations,
@@ -462,18 +467,23 @@ describe("reversal voids, tombstones, held terms, operator voids", () => {
     const target = (await readDoTerms(scenario.installationId)).find((term) => term.grant_id === grantId)!;
     expect(target.state).toBe("queued");
     await runInDurableObject(quotaDoStub(scenario.installationId), async (_instance, state) => {
-      const hot = sqlSelect<{ used: number }>(state, "SELECT used FROM hot LIMIT 1")[0]!;
+      const predecessor = sqlSelect<{ term_id: string; ends_at: string }>(
+        state, "SELECT term_id, ends_at FROM term WHERE state = 'active' LIMIT 1",
+      )[0]!;
+      const graceEndsAt = new Date(Date.parse(predecessor.ends_at) + 7 * 60 * 1000).toISOString();
       sqlExec(state,
-        `UPDATE term SET state = 'ended', end_reason = 'expired', ended_at = '2026-10-19T00:00:00.000Z', used_final = ${hot.used} WHERE state = 'active'`,
+        `UPDATE term SET state = 'grace', end_reason = NULL, ended_at = NULL, used_final = NULL, grace_ends_at = '${graceEndsAt}' WHERE term_id = '${predecessor.term_id}'`,
       );
-      sqlExec(state, "UPDATE hot SET active_term_id = NULL, used = 0, grace_base_used = 0");
     });
     const hot = await runInDurableObject(quotaDoStub(scenario.installationId), async (_instance, state) =>
       sqlSelect<{ binding_epoch: number; clinic_seq: number }>(
         state, "SELECT binding_epoch, clinic_seq FROM hot LIMIT 1",
       )[0]!,
     );
-    const recoveredAt = new Date(Date.now() + 60_000).toISOString();
+    const predecessorEndsAt = (await readDoTerms(scenario.installationId)).find((term) =>
+      term.state === "grace",
+    )!.ends_at!;
+    const recoveredAt = new Date(Date.parse(predecessorEndsAt) + 2 * 60 * 1000).toISOString();
     await setTestClock(recoveredAt);
     const accessJwt = await mintVendorAccessJwt();
     const signer = coverClinicSigner();
@@ -486,7 +496,7 @@ describe("reversal voids, tombstones, held terms, operator voids", () => {
       source_grant_id: grantId,
       expected_clinic_seq: hot.clinic_seq,
       reason: "restore stranded complimentary term",
-      evidence_sha256: await sha256Hex(new TextEncoder().encode(canonicalize(envelope.evidence))),
+      evidence_sha256: await sha256Hex(canonicalize(envelope.evidence)),
     };
     const operation = {
       op: "recoverStrandedTerm",
@@ -511,6 +521,29 @@ describe("reversal voids, tombstones, held terms, operator voids", () => {
       operation,
       assertion,
     };
+    expect((await p37VendorCall("recoverStrandedTerm", args, { accessJwt })).result).toBe("conflict");
+    const legacyPlacement = await runInDurableObject(
+      quotaDoStub(scenario.installationId),
+      async (_instance, state) => {
+        const hot = loadHot(state);
+        return buildCoverageSnapshot({
+          vendorContractVersion: CONTRACT_VERSION,
+          orgId: scenario.orgId,
+          hot,
+          terms: loadTerms(state),
+        });
+      },
+    );
+    await env.DB.prepare(
+      `UPDATE coverage_event SET snapshot = ?
+       WHERE installation_id = ? AND kind = 'grant_applied' AND instr(snapshot, ?) > 0`,
+    ).bind(
+      // Model the retained pre-fix placement record: this grant entered the
+      // queue while its predecessor was in grace.
+      JSON.stringify(legacyPlacement),
+      scenario.installationId,
+      target.term_id,
+    ).run();
     const first = await p37VendorCall("recoverStrandedTerm", args, { accessJwt });
     expect(first.result).toBe("ok");
     expect(first.receipt).toBeUndefined();
@@ -545,7 +578,8 @@ describe("reversal voids, tombstones, held terms, operator voids", () => {
     await setTestClock(oldEnd);
     await runDurableObjectAlarm(quotaDoStub(scenario.installationId));
     expect((await readDoTerms(scenario.installationId)).find((term) => term.grant_id === original.grant_id)?.state).toBe("grace");
-    await setTestClock(new Date(Date.parse(oldEnd) + 2 * 24 * 60 * 60 * 1000).toISOString());
+    // The staging duration scale gives this term a seven-minute grace window.
+    await setTestClock(new Date(Date.parse(oldEnd) + 2 * 60 * 1000).toISOString());
     const grantId = await grantIdComp(crypto.randomUUID().replace(/-/g, ""));
     const envelope = await buildComplimentaryEnvelope({ orgId: scenario.orgId, grantId });
     expect((await applyComplimentaryForRecovery(envelope)).result).toBe("applied");
