@@ -3858,17 +3858,23 @@ export function transferPackageAccountingIsValid(pkg: TransferPackageTerm): bool
     pkg.hot_grace_base_used > pkg.hot_used ||
     pkg.hot_grace_base_used > pkg.plan_allowance
   ) return false;
-  const term = {
-    allowance: pkg.plan_allowance,
-    duration_unit: pkg.duration_unit,
-    duration_count: pkg.duration_count,
-    grace_days: pkg.grace_days,
-    grace_cap: pkg.grace_cap,
-    starts_at: pkg.starts_at,
-    ends_at: pkg.ends_at,
-    grace_ends_at: pkg.grace_ends_at,
-  } as TermRow;
-  const graceBudget = computeGraceAllowance(term, pkg.hot_grace_base_used);
+  let graceBudget: number;
+  try {
+    const term = {
+      allowance: pkg.plan_allowance,
+      duration_unit: pkg.duration_unit,
+      duration_count: pkg.duration_count,
+      grace_days: pkg.grace_days,
+      grace_cap: pkg.grace_cap,
+      calendar_start: pkg.calendar_start,
+      starts_at: pkg.starts_at,
+      ends_at: pkg.ends_at,
+      grace_ends_at: pkg.grace_ends_at,
+    } as TermRow;
+    graceBudget = computeGraceAllowance(term, pkg.hot_grace_base_used);
+  } catch {
+    return false;
+  }
   const expectedRemaining = Math.max(0, graceBudget - (pkg.hot_used - pkg.hot_grace_base_used));
   return expectedRemaining === pkg.allowance;
 }

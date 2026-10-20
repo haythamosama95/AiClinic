@@ -55,6 +55,7 @@ import rm18CeilingClaimsSql from "../../../ai-platform/migrations/20261019140000
 import r6Pt1ReversalRoutesSql from "../../../ai-platform/migrations/20261019150000_r6_pt1_reversal_routes.sql?raw";
 import r6Pt1TransferRouteManifestSql from "../../../ai-platform/migrations/20261019160000_r6_pt1_transfer_route_manifest.sql?raw";
 import strandedTermRecoverySql from "../../../ai-platform/migrations/20261019170000_r4_d2_stranded_recovery.sql?raw";
+import rm26TransferPreparationSql from "../../../ai-platform/migrations/20261020140000_r6_rm26_transfer_preparation.sql?raw";
 
 const PLATFORM_MIGRATION_SQL: string[] = [
   platformSchemaSql,
@@ -87,6 +88,7 @@ const PLATFORM_MIGRATION_SQL: string[] = [
   r6Pt1ReversalRoutesSql,
   r6Pt1TransferRouteManifestSql,
   strandedTermRecoverySql,
+  rm26TransferPreparationSql,
 ];
 
 const VENDOR_CONTRACT_VERSION = CHANNEL_VERSIONS.vendorEntrypoint;
@@ -99,7 +101,7 @@ const COVER_DEFAULT_CONCURRENCY = 4;
 const COVER_DEFAULT_ALLOWANCE = 10_000;
 const VENDOR_OPERATOR_EMAIL = "operator@vendor.test";
 // Increment when PLATFORM_MIGRATION_SQL or its bootstrap seeds change.
-const PLATFORM_MIGRATION_HARNESS_VERSION = 2;
+const PLATFORM_MIGRATION_HARNESS_VERSION = 3;
 
 declare module "cloudflare:test" {
   interface ProvidedEnv {
@@ -914,6 +916,7 @@ async function clearPlatformTransactionalTables(): Promise<void> {
       env.PLATFORM_DB.prepare("DELETE FROM reversal_command"),
       env.PLATFORM_DB.prepare("DELETE FROM transfer_route_quarantine"),
       env.PLATFORM_DB.prepare("DELETE FROM transfer_route_manifest"),
+      env.PLATFORM_DB.prepare("DELETE FROM transfer_preparation"),
       env.PLATFORM_DB.prepare("DELETE FROM live_value_route"),
       env.PLATFORM_DB.prepare("DELETE FROM grant_tombstone"),
       env.PLATFORM_DB.prepare(`CREATE TRIGGER grant_claim_no_delete

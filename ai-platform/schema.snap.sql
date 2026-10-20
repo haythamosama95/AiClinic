@@ -390,6 +390,17 @@ CREATE TABLE token_contract (
   changed_by TEXT NOT NULL
 );
 
+CREATE TABLE transfer (
+  transfer_id TEXT PRIMARY KEY NOT NULL,
+  org_id TEXT NOT NULL,
+  from_installation_id TEXT NOT NULL,
+  to_installation_id TEXT NOT NULL,
+  reason TEXT NOT NULL,
+  assertion_sha256 TEXT NOT NULL,
+  package TEXT,
+  created_at TEXT NOT NULL
+);
+
 CREATE TABLE transfer_preparation (
   transfer_id TEXT PRIMARY KEY NOT NULL,
   org_id TEXT NOT NULL,
@@ -410,27 +421,6 @@ CREATE TABLE transfer_preparation (
   lease_until TEXT,
   created_at TEXT NOT NULL,
   updated_at TEXT NOT NULL
-);
-
-CREATE UNIQUE INDEX transfer_preparation_open_source_epoch
-  ON transfer_preparation (org_id, from_installation_id, source_epoch)
-  WHERE phase <> 'completed';
-
-CREATE UNIQUE INDEX transfer_preparation_reserved_epoch
-  ON transfer_preparation (org_id, destination_epoch);
-
-CREATE INDEX transfer_preparation_due
-  ON transfer_preparation (phase, due_at, lease_until);
-
-CREATE TABLE transfer (
-  transfer_id TEXT PRIMARY KEY NOT NULL,
-  org_id TEXT NOT NULL,
-  from_installation_id TEXT NOT NULL,
-  to_installation_id TEXT NOT NULL,
-  reason TEXT NOT NULL,
-  assertion_sha256 TEXT NOT NULL,
-  package TEXT,
-  created_at TEXT NOT NULL
 );
 
 CREATE TABLE transfer_route_manifest (

@@ -635,6 +635,15 @@ describe("transfer, deletion with coverage left, ledger retention", () => {
     expect(transferPackageAccountingIsValid(legacy)).toBe(true);
     expect(transferPackageAccountingIsValid({ ...legacy, allowance: -1 })).toBe(false);
     expect(transferPackageAccountingIsValid({ ...legacy, allowance: 1.5 })).toBe(false);
+    expect(transferPackageAccountingIsValid({
+      ...legacy,
+      state: "grace",
+      plan_allowance: 40,
+      hot_grace_base_used: 0,
+      hot_used: 0,
+      calendar_start: null,
+      grace_ends_at: "2026-02-06T00:00:00.000Z",
+    })).toBe(false);
   });
 
   it("R2-C3: transfer out does not record a step for a mismatched DO version", async () => {
