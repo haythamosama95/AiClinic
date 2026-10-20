@@ -1430,6 +1430,30 @@ function admitOnHotRow(
   }
 
   let hot = parseHotRow(hotRows[0]!);
+  if (request.requestId !== undefined) {
+    const accountingReceipt = sqlSelect<{
+      installation_id: string;
+      outcome: "consumed" | "released";
+    }>(
+      storage,
+      `SELECT installation_id, outcome FROM usage_settlement_receipt
+       WHERE request_id = ${sqlStringLocal(request.requestId)} LIMIT 1`,
+    )[0];
+    if (accountingReceipt !== undefined) {
+      if (accountingReceipt.installation_id !== request.installationId) {
+        return { kind: "admission", outcome: "idempotency_conflict" };
+      }
+      return {
+        kind: "admission",
+        outcome: "idempotent",
+        priorState: {
+          requestReference: request.requestReference,
+          state: accountingReceipt.outcome === "consumed" ? "completed" : "failed",
+          requestId: request.requestId,
+        },
+      };
+    }
+  }
   const exhaustedReservationUpgrade = migrateExhaustedTermReservations(storage, hot);
   if (hot.legacyRefusalsRemoved || exhaustedReservationUpgrade) {
     recordHotWrites(storage, request.requestId, () => persistParsedHot(storage, hot));
@@ -1745,11 +1769,13 @@ function settleReservationOnHot(
   if (index < 0) {
     const receipt = sqlSelect<{
       installation_id: string;
+      term_id: string;
       weight: number;
+      outcome: "consumed" | "released";
       charged_weight: number;
     }>(
       storage,
-      `SELECT installation_id, weight, charged_weight
+      `SELECT installation_id, term_id, weight, outcome, charged_weight
        FROM usage_settlement_receipt WHERE request_id = ${sqlStringLocal(reservationId)} LIMIT 1`,
     )[0];
     if (receipt !== undefined) {
@@ -1757,7 +1783,9 @@ function settleReservationOnHot(
         receipt.installation_id !== request.installationId ||
         receipt.weight !== (request.credits ?? 1) ||
         (request.term_id !== undefined && receipt.term_id !== request.term_id) ||
-        (request.outcome !== undefined && receipt.outcome !== request.outcome)
+        (request.outcome !== undefined && receipt.outcome !== request.outcome &&
+          !(receipt.outcome === "consumed" && receipt.charged_weight > 0 &&
+            request.outcome === "released"))
       ) {
         return { kind: "credit", ok: false, code: "unknown_request" };
       }
@@ -1944,11 +1972,15 @@ export async function settleFallbackRPC(
        FROM usage_settlement_receipt WHERE request_id = ${sqlStringLocal(request.request_id)} LIMIT 1`,
     )[0];
     if (storedReceipt !== undefined) {
+      const staleChargeWins =
+        storedReceipt.outcome === "consumed" &&
+        storedReceipt.charged_weight > 0 &&
+        outcome === "released";
       if (
         storedReceipt.installation_id !== request.installationId ||
         storedReceipt.term_id !== request.term_id ||
         storedReceipt.weight !== request.weight ||
-        storedReceipt.outcome !== outcome
+        (storedReceipt.outcome !== outcome && !staleChargeWins)
       ) {
         return { kind: "settleFallback", outcome: "conflict" };
       }
@@ -2010,7 +2042,27 @@ export async function settleFallbackRPC(
         ) {
           return { kind: "settleFallback", outcome: "conflict" };
         }
-        return { kind: "settleFallback", outcome: "deferred" };
+        const chargedWeight = Number(payload.quota_weight);
+        storage.transactionSync(() =>
+          sqlExecLocal(
+            storage,
+            `INSERT INTO usage_settlement_receipt (
+               request_id, installation_id, term_id, weight, outcome,
+               charged_weight, recorded_at
+             ) VALUES (
+               ${sqlStringLocal(request.request_id)},
+               ${sqlStringLocal(request.installationId)},
+               ${sqlStringLocal(request.term_id)}, ${request.weight}, 'consumed',
+               ${chargedWeight}, ${sqlStringLocal(nowIso)}
+             )`,
+          ),
+        );
+        return {
+          kind: "settleFallback",
+          outcome: "settled",
+          chargedWeight,
+          settlementOutcome: "consumed",
+        };
       } catch {
         continue;
       }
@@ -2101,9 +2153,10 @@ export function acknowledgeUsageReceiptRPC(
     installation_id: string;
     term_id: string;
     weight: number;
+    acknowledged: number;
   }>(
     storage,
-    `SELECT installation_id, term_id, weight FROM usage_settlement_receipt
+    `SELECT installation_id, term_id, weight, acknowledged FROM usage_settlement_receipt
      WHERE request_id = ${sqlStringLocal(request.request_id)} LIMIT 1`,
   )[0];
   if (receipt === undefined) {
@@ -2116,13 +2169,9 @@ export function acknowledgeUsageReceiptRPC(
   ) {
     return { kind: "ackUsageReceipt", outcome: "conflict" };
   }
-  storage.transactionSync(() =>
-    sqlExecLocal(
-      storage,
-      `DELETE FROM usage_settlement_receipt
-       WHERE request_id = ${sqlStringLocal(request.request_id)}`,
-    ),
-  );
+  // Receipts are permanent dedupe tombstones. Acknowledgement is read-only:
+  // mutating the receipt would add a second hot write and risk reopening the
+  // settlement identity to a stale drain.
   return { kind: "ackUsageReceipt", outcome: "acknowledged" };
 }
 

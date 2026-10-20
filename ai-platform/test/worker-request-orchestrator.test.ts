@@ -2323,7 +2323,7 @@ describe("R5-ADM2_fallback_cost_ceiling_and_R5-A4_zero_release", () => {
       )
         .bind(requestId)
         .first<{ state: string }>();
-      expect(fallback?.state).toBe("released");
+      expect(fallback?.state).toBe("settled");
       const usage = await env.DB.prepare(
         "SELECT term_id, quota_weight FROM usage_event WHERE request_id = ?",
       )

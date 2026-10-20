@@ -73,6 +73,8 @@ export type PostResponseInput = {
   deferUsage?: boolean;
   /** Ack the intent in the same D1 batch as its usage fact. */
   accountingSettled?: boolean;
+  /** Terminalize fallback admission in the batch that durably inserts usage. */
+  settleFallbackAdmission?: boolean;
   totalTokens: number;
   totalCost: number;
   filteredContext: Record<string, unknown>;
@@ -472,14 +474,26 @@ async function persistPostResponseDetail(
         ),
     );
   }
-  if (input.accountingSettled) {
+  if (input.accountingSettled && !input.deferUsage) {
     statements.push(
       db
         .prepare(
-          `UPDATE ai_request SET accounting_state = 'settled'
+          `UPDATE ai_request SET accounting_state = 'settled',
+               accounting_receipt_acknowledged = 1
            WHERE request_id = ? AND accounting_state = 'pending'`,
         )
         .bind(input.requestId),
+    );
+  }
+  if (input.settleFallbackAdmission && !input.deferUsage) {
+    statements.push(
+      db
+        .prepare(
+          `UPDATE fallback_admission SET state = 'settled'
+           WHERE installation_id = ? AND request_id = ?
+             AND state IN ('pending', 'consumed', 'released', 'settled')`,
+        )
+        .bind(input.installationId, input.requestId),
     );
   }
 

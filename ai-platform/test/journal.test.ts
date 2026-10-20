@@ -849,7 +849,7 @@ describe("T-C3-11 exactly_one_usage_event", () => {
     expect(db.usageEventInsertCount()).toBe(1);
   });
 
-  it("RM25 J1: defers usage until acknowledged settlement and marks intent settled in its batch", async () => {
+  it("RM25 J1: keeps deferred intent pending until durable usage is inserted", async () => {
     const input = await seedRequestRow();
     await recordTerminalState(input.requestId, "Completed", undefined, FIXTURE_NOW, env.DB);
     await env.DB.prepare(
@@ -872,7 +872,31 @@ describe("T-C3-11 exactly_one_usage_event", () => {
       `SELECT accounting_state FROM ai_request WHERE request_id = ?`,
     ).bind(input.requestId).first<{ accounting_state: string }>();
     expect(usage?.count).toBe(0);
-    expect(request?.accounting_state).toBe("settled");
+    expect(request?.accounting_state).toBe("pending");
+
+    const acknowledgedInput = buildPostResponseInput(
+      input.requestId,
+      [],
+      { accountingSettled: true },
+    );
+    const acknowledgedCtx = createFakeCtx();
+    writePostResponseDetail(acknowledgedInput, { db: env.DB, r2: env.R2, ctx: acknowledgedCtx });
+    await acknowledgedCtx.drainWaitUntil();
+    const durableUsage = await env.DB.prepare(
+      `SELECT COUNT(*) AS count FROM usage_event WHERE request_id = ?`,
+    ).bind(input.requestId).first<{ count: number }>();
+    const settledRequest = await env.DB.prepare(
+      `SELECT accounting_state, accounting_receipt_acknowledged
+       FROM ai_request WHERE request_id = ?`,
+    ).bind(input.requestId).first<{
+      accounting_state: string;
+      accounting_receipt_acknowledged: number;
+    }>();
+    expect(durableUsage?.count).toBe(1);
+    expect(settledRequest).toEqual({
+      accounting_state: "settled",
+      accounting_receipt_acknowledged: 1,
+    });
   });
 });
 

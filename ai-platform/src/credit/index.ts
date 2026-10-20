@@ -77,6 +77,7 @@ type FallbackAdmissionRow = {
   weight: number;
   admitted_at: string;
   state: "pending" | "consumed" | "released" | "settled";
+  accounting_outcome: "consumed" | "released" | null;
   accounting_state: "pending" | "settled" | null;
   accounting_receipt_acknowledged: number | null;
   request_state: string | null;
@@ -287,6 +288,7 @@ export async function settleFallbackUsage(
     weight: input.weight,
     admitted_at: "",
     state: input.outcome,
+    accounting_outcome: input.outcome,
     accounting_state: "pending",
     accounting_receipt_acknowledged: 0,
     request_state: "Completed",
@@ -370,7 +372,7 @@ export async function reconcileGraceUsage(
   const pending = await bindings.DB
     .prepare(
       `SELECT f.installation_id, f.idempotency_key, f.term_id, f.request_id,
-              f.weight, f.admitted_at, f.state,
+              f.weight, f.admitted_at, f.state, r.accounting_outcome,
               r.accounting_state, r.accounting_receipt_acknowledged,
               r.state AS request_state
        FROM fallback_admission f
@@ -462,119 +464,65 @@ export async function reconcileGraceUsage(
         usage?.cost ?? 0, recordedAt,
       ),
       bindings.DB.prepare(
-        `UPDATE ai_request SET accounting_state = 'settled'
+        `UPDATE ai_request SET accounting_state = 'settled',
+             accounting_receipt_acknowledged = 1
          WHERE request_id = ? AND accounting_state = 'pending'`,
       ).bind(intent.request_id),
     ]);
     reconciled += 1;
-    const acknowledged = await acknowledgeUsageReceipt(
-      {
-        installationId: intent.installation_id,
-        requestId: intent.accounting_request_id,
-        termId: intent.accounting_term_id,
-        weight: intent.accounting_quota_weight,
-      },
-      bindings,
-    );
-    if (acknowledged) {
-      await bindings.DB.prepare(
-        `UPDATE ai_request SET accounting_receipt_acknowledged = 1
-         WHERE request_id = ? AND accounting_state = 'settled'`,
-      ).bind(intent.request_id).run();
-    }
-  }
-
-  const settledIntents = await bindings.DB
-    .prepare(
-      `SELECT request_id, installation_id, accounting_term_id,
-              accounting_request_id, accounting_quota_weight
-       FROM ai_request
-       WHERE accounting_state = 'settled' AND accounting_receipt_acknowledged = 0
-         AND accounting_mode = 'normal'`,
-    )
-    .all<Pick<PendingAccountingRow, "request_id" | "installation_id" | "accounting_term_id" | "accounting_request_id" | "accounting_quota_weight">>();
-  for (const intent of settledIntents.results ?? []) {
-    const acknowledged = await acknowledgeUsageReceipt(
-      {
-        installationId: intent.installation_id,
-        requestId: intent.accounting_request_id,
-        termId: intent.accounting_term_id,
-        weight: intent.accounting_quota_weight,
-      },
-      bindings,
-    );
-    if (acknowledged) {
-      await bindings.DB.prepare(
-        `UPDATE ai_request SET accounting_receipt_acknowledged = 1
-         WHERE request_id = ? AND accounting_state = 'settled'`,
-      ).bind(intent.request_id).run();
-    }
   }
 
   for (const row of rows) {
-    if (row.state === "settled") {
-      if (row.accounting_receipt_acknowledged !== 1) {
-        const acknowledged = await acknowledgeUsageReceipt(
-          {
-            installationId: row.installation_id,
-            requestId: row.request_id,
-            termId: row.term_id,
-            weight: row.weight,
-          },
-          bindings,
-        );
-        if (acknowledged) {
-          await bindings.DB.prepare(
-            `UPDATE ai_request SET accounting_receipt_acknowledged = 1
-             WHERE request_id = ? AND accounting_state = 'settled'`,
-          )
-            .bind(row.request_id)
-            .run();
-        }
-      }
-      continue;
-    }
     const usageExists = await bindings.DB
       .prepare(
-        `SELECT 1 AS ok FROM usage_event WHERE request_id = ? LIMIT 1`,
+        `SELECT installation_id, term_id, quota_weight
+         FROM usage_event WHERE request_id = ? LIMIT 1`,
       )
       .bind(row.request_id)
-      .first<{ ok: number }>();
-    if (usageExists?.ok === 1) {
+      .first<{ installation_id: string; term_id: string; quota_weight: number }>();
+    const hasExactUsage = usageExists !== null &&
+      usageExists.installation_id === row.installation_id &&
+      usageExists.term_id === row.term_id &&
+      (usageExists.quota_weight === row.weight ||
+        (row.accounting_outcome === "released" && usageExists.quota_weight === 0));
+    if (usageExists !== null && !hasExactUsage) {
+      logger.error("fallback_reconcile_usage_identity_conflict", {
+        request_id: row.request_id,
+      });
+      continue;
+    }
+    if (hasExactUsage) {
       // A6: old pending rows may already have a durable fact (for example a
-      // stale normal reservation shipped by the DO outbox). Close the mirror
-      // row without asking the DO to charge it again.
-      if (row.state === "pending") {
-        await bindings.DB.batch([
-          bindings.DB.prepare(
+      // stale normal reservation shipped by the DO outbox). Any eligible
+      // fallback state closes from this exact fact without settlement RPC.
+      if (
+        row.state !== "settled" ||
+        row.accounting_state !== "settled" ||
+        row.accounting_receipt_acknowledged !== 1
+      ) {
+        const statements: Array<ReturnType<typeof bindings.DB.prepare>> = [];
+        if (row.state !== "settled") {
+          statements.push(bindings.DB.prepare(
             `UPDATE fallback_admission SET state = 'settled'
-             WHERE installation_id = ? AND idempotency_key = ? AND state = 'pending'`,
-          ).bind(row.installation_id, row.idempotency_key),
-          bindings.DB.prepare(
-            `UPDATE ai_request SET accounting_state = 'settled'
-             WHERE request_id = ? AND accounting_state = 'pending'`,
-          ).bind(row.request_id),
-        ]);
-        reconciled += 1;
-        const acknowledged = await acknowledgeUsageReceipt(
-          {
-            installationId: row.installation_id,
-            requestId: row.request_id,
-            termId: row.term_id,
-            weight: row.weight,
-          },
-          bindings,
-        );
-        if (acknowledged) {
-          await bindings.DB.prepare(
+             WHERE installation_id = ? AND idempotency_key = ?`,
+          ).bind(row.installation_id, row.idempotency_key));
+        }
+        if (row.accounting_state !== "settled") {
+          statements.push(bindings.DB.prepare(
+            `UPDATE ai_request SET accounting_state = 'settled',
+                 accounting_receipt_acknowledged = 1
+             WHERE request_id = ?`,
+          ).bind(row.request_id));
+        } else if (row.accounting_receipt_acknowledged !== 1) {
+          statements.push(bindings.DB.prepare(
             `UPDATE ai_request SET accounting_receipt_acknowledged = 1
              WHERE request_id = ? AND accounting_state = 'settled'`,
-          )
-            .bind(row.request_id)
-            .run();
+          ).bind(row.request_id));
         }
-        continue;
+        await bindings.DB.batch(statements);
+        reconciled += 1;
       }
+      continue;
     }
 
     // Do not guess the provider outcome while the request is still running.
@@ -587,13 +535,17 @@ export async function reconcileGraceUsage(
       continue;
     }
 
-    const settled = await invokeSettleFallback(row, bindings);
+    const settlementRow = row.state === "settled"
+      ? { ...row, state: row.accounting_outcome ?? "consumed" }
+      : row;
+    const settled = await invokeSettleFallback(settlementRow, bindings);
     if (
       settled === null ||
       settled.outcome === "deferred" ||
       settled.outcome === "conflict" ||
       !Number.isInteger(settled.chargedWeight) ||
-      settled.settlementOutcome !== (row.state === "released" ? "released" : "consumed")
+      (settled.settlementOutcome !== (row.state === "released" ? "released" : "consumed") &&
+        !(settled.settlementOutcome === "consumed" && settled.chargedWeight === row.weight))
     ) {
       continue;
     }
@@ -617,28 +569,12 @@ export async function reconcileGraceUsage(
          WHERE installation_id = ? AND idempotency_key = ?`,
       ).bind(row.installation_id, row.idempotency_key),
       bindings.DB.prepare(
-        `UPDATE ai_request SET accounting_state = 'settled'
+        `UPDATE ai_request SET accounting_state = 'settled',
+             accounting_receipt_acknowledged = 1
          WHERE request_id = ? AND (accounting_state = 'pending' OR accounting_state IS NULL)`,
       ).bind(row.request_id),
     ]);
     reconciled += 1;
-    const acknowledged = await acknowledgeUsageReceipt(
-      {
-        installationId: row.installation_id,
-        requestId: row.request_id,
-        termId: row.term_id,
-        weight: row.weight,
-      },
-      bindings,
-    );
-    if (acknowledged) {
-      await bindings.DB.prepare(
-        `UPDATE ai_request SET accounting_receipt_acknowledged = 1
-         WHERE request_id = ? AND accounting_state = 'settled'`,
-      )
-        .bind(row.request_id)
-        .run();
-    }
   }
 
   logger.info("fallback_reconcile_batch_end", {

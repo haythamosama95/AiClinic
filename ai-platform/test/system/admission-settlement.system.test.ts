@@ -36,6 +36,7 @@ import {
 } from "./harness";
 import { getPerRequestWriteCounts } from "../../src/quota-do/index";
 import { addDuration } from "../../src/coverage/calendar";
+import { reconcileGraceUsage } from "../../src/credit/index";
 
 const QUOTA_WEIGHT = 1;
 const W_MAX = QUOTA_WEIGHT;
@@ -94,6 +95,7 @@ async function readActiveTermId(installationId: string): Promise<string | null> 
 
 type DoTermRow = {
   term_id: string;
+  position: number;
   state: string;
   starts_at: string | null;
   ends_at: string | null;
@@ -105,9 +107,86 @@ async function readDoTerms(installationId: string): Promise<DoTermRow[]> {
   return runInDurableObject(quotaDoStub(installationId), async (_instance, state) =>
     sqlSelect<DoTermRow>(
       state,
-      "SELECT term_id, state, starts_at, ends_at, allowance, used_final FROM term",
+      "SELECT term_id, position, state, starts_at, ends_at, allowance, used_final FROM term",
     ),
   );
+}
+
+async function settleFallbackDirect(
+  installationId: string,
+  requestId: string,
+  termId: string,
+  outcome: "consumed" | "released" = "consumed",
+): Promise<Record<string, unknown>> {
+  const response = await quotaDoStub(installationId).fetch(
+    "https://quota-do.internal/rpc",
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        contract_version: CHANNEL_VERSIONS.platformDo,
+        kind: "settleFallback",
+        installationId,
+        request_id: requestId,
+        term_id: termId,
+        weight: 1,
+        outcome,
+        nowIso: new Date(await harnessNowMs()).toISOString(),
+      }),
+    },
+  );
+  return await response.json() as Record<string, unknown>;
+}
+
+async function seedTerminalFallback(
+  scenario: Scenario,
+  requestId: string,
+  termId: string,
+  outcome: "consumed" | "released" = "consumed",
+): Promise<void> {
+  const now = new Date(await harnessNowMs()).toISOString();
+  const idempotencyKey = `rm25-${requestId}`;
+  await env.DB.prepare(
+    `INSERT INTO ai_request (
+       request_id, request_reference, installation_id, actor_id, branch_id,
+       capability_id, capability_version, prompt_artifact_hash, idempotency_key,
+       trace_id, state, created_at, updated_at, completed_at, terminal_error_code,
+       payload_pointer, conversation_id, turn_ordinal, accounting_mode,
+       accounting_term_id, accounting_request_id, accounting_quota_weight,
+       accounting_outcome, accounting_state
+     ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'Completed', ?, ?, ?, NULL,
+       NULL, NULL, NULL, 'fallback', ?, ?, 1, ?, 'pending')`,
+  ).bind(
+    requestId,
+    `RM25-${requestId.slice(-8)}`,
+    scenario.installationId,
+    scenario.actorId,
+    scenario.branchId,
+    CAPABILITY_ID,
+    CAPABILITY_VERSION,
+    "prompt/rm25@v1",
+    idempotencyKey,
+    `trace-${requestId}`,
+    now,
+    now,
+    now,
+    termId,
+    requestId,
+    outcome,
+  ).run();
+  await env.DB.prepare(
+    `INSERT INTO fallback_admission (
+       installation_id, idempotency_key, term_id, request_id,
+       weight, admitted_at, state
+     ) VALUES (?, ?, ?, ?, 1, ?, ?)`,
+  ).bind(
+    scenario.installationId,
+    idempotencyKey,
+    termId,
+    requestId,
+    now,
+    outcome,
+  ).run();
 }
 
 async function readHotUsage(
@@ -991,5 +1070,425 @@ describe("admission settlement against terms", () => {
       }),
     });
     expect(await retried.json()).toMatchObject({ outcome: "admitted" });
+  });
+
+  it("R5-A3: concurrent drains and late normal admission reuse one settlement identity", async () => {
+    const scenario = await newScenario();
+    await coverClinic(scenario, { max_allowance_per_month: 10 });
+    const termId = await readActiveTermId(scenario.installationId);
+    expect(termId).toBeTruthy();
+    const requestId = crypto.randomUUID();
+
+    const [firstDrain, concurrentDrain] = await Promise.all([
+      settleFallbackDirect(scenario.installationId, requestId, termId!),
+      settleFallbackDirect(scenario.installationId, requestId, termId!),
+    ]);
+    expect(firstDrain).toMatchObject({ outcome: "settled", chargedWeight: 1 });
+    expect(concurrentDrain).toMatchObject({ outcome: "settled", chargedWeight: 1 });
+    expect(await readHotUsage(scenario.installationId)).toMatchObject({ used: 1 });
+
+    const lateAdmission = await quotaDoStub(scenario.installationId).fetch(
+      "https://quota-do.internal/rpc",
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          contract_version: CHANNEL_VERSIONS.platformDo,
+          kind: "admission",
+          installationId: scenario.installationId,
+          requestId,
+          requestReference: "RM25-LATE-ADMISSION",
+          idempotencyKey: crypto.randomUUID(),
+          jti: crypto.randomUUID(),
+          capabilityId: CAPABILITY_ID,
+          quotaWeight: 1,
+          orgId: scenario.orgId,
+        }),
+      },
+    );
+    expect(await lateAdmission.json()).toMatchObject({ outcome: "idempotent" });
+    expect(await readHotUsage(scenario.installationId)).toMatchObject({ used: 1, reserved: 0 });
+  });
+
+  it("R5-A3: a lost settlement reply replays its receipt without another charge", async () => {
+    const scenario = await newScenario();
+    await coverClinic(scenario, { max_allowance_per_month: 10 });
+    const termId = await readActiveTermId(scenario.installationId);
+    expect(termId).toBeTruthy();
+    const requestId = crypto.randomUUID();
+    let settleCalls = 0;
+    const restoreFetch = wrapQuotaDoFetch(
+      scenario.installationId,
+      async (body, forward) => {
+        if (body.kind === "settleFallback" && settleCalls++ === 0) {
+          await forward("https://quota-do.internal/rpc", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(body),
+          });
+          throw new Error("injected lost settlement reply");
+        }
+        return forward("https://quota-do.internal/rpc", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(body),
+        });
+      },
+    );
+    try {
+      const { settleFallbackUsage } = await import("../../src/credit/index");
+      expect(await settleFallbackUsage({
+        installationId: scenario.installationId,
+        requestId,
+        termId: termId!,
+        weight: 1,
+        outcome: "consumed",
+      }, { DO: env.DO, DB: env.DB })).toMatchObject({ ok: false });
+      expect(await settleFallbackUsage({
+        installationId: scenario.installationId,
+        requestId,
+        termId: termId!,
+        weight: 1,
+        outcome: "consumed",
+      }, { DO: env.DO, DB: env.DB })).toMatchObject({
+        ok: true,
+        outcome: "settled",
+        chargedWeight: 1,
+      });
+    } finally {
+      restoreFetch();
+    }
+    expect(settleCalls).toBe(2);
+    expect(await readHotUsage(scenario.installationId)).toMatchObject({ used: 1 });
+  });
+
+  it("R5-J1: released fallback records zero while consumed fallback records its weight", async () => {
+    const scenario = await newScenario();
+    await coverClinic(scenario, { max_allowance_per_month: 10 });
+    const termId = await readActiveTermId(scenario.installationId);
+    expect(termId).toBeTruthy();
+    const releasedId = crypto.randomUUID();
+    const released = await settleFallbackDirect(
+      scenario.installationId,
+      releasedId,
+      termId!,
+      "released",
+    );
+    expect(released).toMatchObject({
+      outcome: "settled",
+      chargedWeight: 0,
+      settlementOutcome: "released",
+    });
+    expect(await readHotUsage(scenario.installationId)).toMatchObject({ used: 0 });
+
+    const consumedId = crypto.randomUUID();
+    const consumed = await settleFallbackDirect(
+      scenario.installationId,
+      consumedId,
+      termId!,
+      "consumed",
+    );
+    expect(consumed).toMatchObject({
+      outcome: "settled",
+      chargedWeight: 1,
+      settlementOutcome: "consumed",
+    });
+    expect(await readHotUsage(scenario.installationId)).toMatchObject({ used: 1 });
+  });
+
+  it("R5-A3: fallback defers a matching live normal reservation and reuses its receipt", async () => {
+    const scenario = await newScenario();
+    await coverClinic(scenario, { max_allowance_per_month: 10 });
+    const termId = await readActiveTermId(scenario.installationId);
+    expect(termId).toBeTruthy();
+    const [reservation] = await seedOpenReservations(scenario, 1);
+    expect(reservation).toBeTruthy();
+
+    const deferred = await settleFallbackDirect(
+      scenario.installationId,
+      reservation!.requestId,
+      termId!,
+    );
+    expect(deferred).toMatchObject({ outcome: "deferred" });
+    expect(await readHotUsage(scenario.installationId)).toMatchObject({ used: 0, reserved: 1 });
+
+    const normalCredit = await quotaDoStub(scenario.installationId).fetch(
+      "https://quota-do.internal/rpc",
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          contract_version: CHANNEL_VERSIONS.platformDo,
+          kind: "credit",
+          installationId: scenario.installationId,
+          requestId: reservation!.requestId,
+          reservation_id: reservation!.requestId,
+          term_id: termId,
+          requestReference: "RM25-NORMAL-CREDIT",
+          usage: { tokens: 1, cost: 0 },
+          partial: false,
+          credits: 1,
+          outcome: "consumed",
+        }),
+      },
+    );
+    expect(await normalCredit.json()).toMatchObject({
+      kind: "credit",
+      ok: true,
+      settlement: { chargedWeight: 1 },
+    });
+    const fallbackReplay = await settleFallbackDirect(
+      scenario.installationId,
+      reservation!.requestId,
+      termId!,
+    );
+    expect(fallbackReplay).toMatchObject({ outcome: "settled", chargedWeight: 1 });
+    expect(await readHotUsage(scenario.installationId)).toMatchObject({ used: 1, reserved: 0 });
+  });
+
+  it("R5-J1: stale usage_adjustment wins over a later released fallback outcome", async () => {
+    const scenario = await newScenario();
+    await coverClinic(scenario, { max_allowance_per_month: 10 });
+    const termId = await readActiveTermId(scenario.installationId);
+    expect(termId).toBeTruthy();
+    const [stale] = await seedOpenReservations(scenario, 1);
+    expect(stale).toBeTruthy();
+
+    const lateAdmission = await quotaDoStub(scenario.installationId).fetch(
+      "https://quota-do.internal/rpc",
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          contract_version: CHANNEL_VERSIONS.platformDo,
+          kind: "admission",
+          now: await harnessNowMs() + 16 * 60_000,
+          installationId: scenario.installationId,
+          requestId: crypto.randomUUID(),
+          requestReference: "RM25-STALE-SWEEPER",
+          idempotencyKey: crypto.randomUUID(),
+          jti: crypto.randomUUID(),
+          capabilityId: CAPABILITY_ID,
+          quotaWeight: 1,
+          orgId: scenario.orgId,
+        }),
+      },
+    );
+    expect((await lateAdmission.json() as { outcome: string }).outcome).toBe("admitted");
+    const staleRelease = await settleFallbackDirect(
+      scenario.installationId,
+      stale!.requestId,
+      termId!,
+      "released",
+    );
+    expect(staleRelease).toMatchObject({
+      outcome: "settled",
+      chargedWeight: 1,
+      settlementOutcome: "consumed",
+    });
+    const normalReleasedReplay = await quotaDoStub(scenario.installationId).fetch(
+      "https://quota-do.internal/rpc",
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          contract_version: CHANNEL_VERSIONS.platformDo,
+          kind: "credit",
+          installationId: scenario.installationId,
+          requestId: stale!.requestId,
+          reservation_id: stale!.requestId,
+          term_id: termId,
+          requestReference: "RM25-STALE-NORMAL-REPLAY",
+          usage: { tokens: 0, cost: 0 },
+          partial: true,
+          credits: 1,
+          outcome: "released",
+        }),
+      },
+    );
+    expect(await normalReleasedReplay.json()).toMatchObject({
+      kind: "credit",
+      ok: true,
+      settlement: { disposition: "already_accounted", chargedWeight: 1 },
+    });
+    expect(await readHotUsage(scenario.installationId)).toMatchObject({ used: 1 });
+  });
+
+  it("R5-A3: failed D1 batch replays the receipt without charging twice", async () => {
+    const scenario = await newScenario();
+    await coverClinic(scenario, { max_allowance_per_month: 10 });
+    const termId = await readActiveTermId(scenario.installationId);
+    expect(termId).toBeTruthy();
+    const requestId = crypto.randomUUID();
+    await seedTerminalFallback(scenario, requestId, termId!);
+    await env.DB.prepare(
+      `CREATE TRIGGER rm25_fail_usage BEFORE INSERT ON usage_event
+       WHEN NEW.request_id = '${requestId}'
+       BEGIN SELECT RAISE(ABORT, 'rm25 injected D1 usage failure'); END`,
+    ).run();
+
+    await expect(
+      reconcileGraceUsage({ DO: env.DO, DB: env.DB }),
+    ).rejects.toThrow();
+    expect(await readHotUsage(scenario.installationId)).toMatchObject({ used: 1 });
+    await env.DB.prepare("DROP TRIGGER rm25_fail_usage").run();
+
+    const retried = await reconcileGraceUsage({ DO: env.DO, DB: env.DB });
+    expect(retried.reconciled).toBe(1);
+    expect(await count("usage_event", "request_id = ?", [requestId])).toBe(1);
+    expect(await readHotUsage(scenario.installationId)).toMatchObject({ used: 1 });
+    const staleReleased = await settleFallbackDirect(
+      scenario.installationId,
+      requestId,
+      termId!,
+      "released",
+    );
+    expect(staleReleased).toMatchObject({
+      outcome: "settled",
+      chargedWeight: 1,
+      settlementOutcome: "consumed",
+    });
+  });
+
+  it("R5-J1: a DO outage leaves durable fallback intent pending for replay", async () => {
+    const scenario = await newScenario();
+    await coverClinic(scenario, { max_allowance_per_month: 10 });
+    const termId = await readActiveTermId(scenario.installationId);
+    expect(termId).toBeTruthy();
+    const requestId = crypto.randomUUID();
+    await seedTerminalFallback(scenario, requestId, termId!);
+    const restoreFetch = wrapQuotaDoFetch(
+      scenario.installationId,
+      async (body) => {
+        if (body.kind === "settleFallback") {
+          throw new Error("injected quota DO outage");
+        }
+        throw new Error(`unexpected quota DO request: ${String(body.kind)}`);
+      },
+    );
+    try {
+      const result = await reconcileGraceUsage({ DO: env.DO, DB: env.DB });
+      expect(result.reconciled).toBe(0);
+    } finally {
+      restoreFetch();
+    }
+    const fallback = await env.DB.prepare(
+      "SELECT state FROM fallback_admission WHERE request_id = ?",
+    ).bind(requestId).first<{ state: string }>();
+    const intent = await env.DB.prepare(
+      "SELECT accounting_state FROM ai_request WHERE request_id = ?",
+    ).bind(requestId).first<{ accounting_state: string }>();
+    expect(fallback?.state).toBe("consumed");
+    expect(intent?.accounting_state).toBe("pending");
+    expect(await count("usage_event", "request_id = ?", [requestId])).toBe(0);
+  });
+
+  it("R5-A6: any fallback terminal state closes from an exact existing usage fact", async () => {
+    const scenario = await newScenario();
+    await coverClinic(scenario, { max_allowance_per_month: 10 });
+    const termId = await readActiveTermId(scenario.installationId);
+    expect(termId).toBeTruthy();
+    const requestId = crypto.randomUUID();
+    await seedTerminalFallback(scenario, requestId, termId!, "released");
+    const now = new Date(await harnessNowMs()).toISOString();
+    await env.DB.prepare(
+      `INSERT INTO usage_event (
+         usage_event_id, installation_id, term_id, request_id,
+         quota_weight, tokens, cost, recorded_at
+       ) VALUES (?, ?, ?, ?, 0, 0, 0, ?)`,
+    ).bind(crypto.randomUUID(), scenario.installationId, termId, requestId, now).run();
+    let settleCalls = 0;
+    const restoreFetch = wrapQuotaDoFetch(
+      scenario.installationId,
+      async (body, forward) => {
+        if (body.kind === "settleFallback") settleCalls += 1;
+        return forward("https://quota-do.internal/rpc", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(body),
+        });
+      },
+    );
+    try {
+      const reconciled = await reconcileGraceUsage({ DO: env.DO, DB: env.DB });
+      expect(reconciled.reconciled).toBe(1);
+    } finally {
+      restoreFetch();
+    }
+    const fallback = await env.DB.prepare(
+      "SELECT state FROM fallback_admission WHERE request_id = ?",
+    ).bind(requestId).first<{ state: string }>();
+    const intent = await env.DB.prepare(
+      "SELECT accounting_state FROM ai_request WHERE request_id = ?",
+    ).bind(requestId).first<{ accounting_state: string }>();
+    expect(settleCalls).toBe(0);
+    expect(fallback?.state).toBe("settled");
+    expect(intent?.accounting_state).toBe("settled");
+    expect(await readHotUsage(scenario.installationId)).toMatchObject({ used: 0 });
+  });
+
+  it("R5-A5: fallback exhaustion activates the queued successor once across receipt replay", async () => {
+    const scenario = await newScenario();
+    await coverClinic(scenario, { max_allowance_per_month: 2 });
+    await coverClinic(scenario, { max_allowance_per_month: 2 });
+    await coverClinic(scenario, { max_allowance_per_month: 2 });
+    await newClinic(scenario);
+    const beforeTerms = await readDoTerms(scenario.installationId);
+    const activeBeforeFallback = beforeTerms.find((term) => term.state === "active");
+    expect(activeBeforeFallback).toBeTruthy();
+    const oldestUnheldSuccessor = beforeTerms
+      .filter((term) => term.state === "queued")
+      .sort((left, right) => left.position - right.position)[0];
+    expect(oldestUnheldSuccessor).toBeTruthy();
+    const priorUsage = await settleFallbackDirect(
+      scenario.installationId,
+      crypto.randomUUID(),
+      activeBeforeFallback!.term_id,
+    );
+    expect(priorUsage).toMatchObject({ outcome: "settled", chargedWeight: 1 });
+    const exhaustedId = activeBeforeFallback!.term_id;
+    const requestId = crypto.randomUUID();
+    const settled = await settleFallbackDirect(
+      scenario.installationId,
+      requestId,
+      exhaustedId,
+    );
+    expect(settled).toMatchObject({ outcome: "settled", chargedWeight: 1 });
+
+    const afterTerms = await readDoTerms(scenario.installationId);
+    const predecessor = afterTerms.find((term) => term.term_id === exhaustedId);
+    const successor = afterTerms
+      .filter((term) => term.state === "active")
+      .sort((left, right) => (left.starts_at ?? "").localeCompare(right.starts_at ?? ""))[0];
+    expect(predecessor?.state).toBe("exhausted");
+    expect(predecessor?.used_final).toBe(1);
+    expect(successor).toBeTruthy();
+    expect(successor?.term_id).not.toBe(exhaustedId);
+    expect(successor?.term_id).toBe(oldestUnheldSuccessor?.term_id);
+    const eventCountBeforeReplay = await runInDurableObject(
+      quotaDoStub(scenario.installationId),
+      async (_instance, state) => sqlSelect<{ count: number }>(
+        state,
+        `SELECT COUNT(*) AS count FROM outbox
+         WHERE kind = 'coverage_event' AND payload LIKE '%term_ended%'`,
+      ),
+    );
+    const replay = await settleFallbackDirect(
+      scenario.installationId,
+      requestId,
+      exhaustedId,
+    );
+    expect(replay).toMatchObject({ outcome: "settled", chargedWeight: 1 });
+    const eventCountAfterReplay = await runInDurableObject(
+      quotaDoStub(scenario.installationId),
+      async (_instance, state) => sqlSelect<{ count: number }>(
+        state,
+        `SELECT COUNT(*) AS count FROM outbox
+         WHERE kind = 'coverage_event' AND payload LIKE '%term_ended%'`,
+      ),
+    );
+    expect(eventCountAfterReplay[0]?.count).toBe(eventCountBeforeReplay[0]?.count);
+    expect((await readDoTerms(scenario.installationId)).find((term) => term.term_id === exhaustedId)?.state).toBe("exhausted");
+    expect(beforeTerms.some((term) => term.term_id === exhaustedId)).toBe(true);
   });
 });

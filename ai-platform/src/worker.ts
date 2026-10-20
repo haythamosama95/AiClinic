@@ -726,6 +726,7 @@ function buildPostResponseInput(
   chargedWeight?: number,
   deferUsage?: boolean,
   accountingSettled?: boolean,
+  settleFallbackAdmission?: boolean,
 ): PostResponseInput {
   return {
     requestId,
@@ -735,6 +736,7 @@ function buildPostResponseInput(
     ...(chargedWeight !== undefined ? { chargedWeight } : {}),
     ...(deferUsage ? { deferUsage: true } : {}),
     ...(accountingSettled ? { accountingSettled: true } : {}),
+    ...(settleFallbackAdmission ? { settleFallbackAdmission: true } : {}),
     totalTokens: usage.tokens,
     totalCost: usage.cost,
     filteredContext,
@@ -760,6 +762,7 @@ type SettlementJournalInput = {
   chargedWeight?: number;
   deferUsage?: boolean;
   accountingSettled?: boolean;
+  settleFallbackAdmission?: boolean;
 };
 
 async function writeSettlementJournal(
@@ -781,6 +784,7 @@ async function writeSettlementJournal(
     input.chargedWeight,
     input.deferUsage,
     input.accountingSettled,
+    input.settleFallbackAdmission,
   );
   const ctx = createWorkerExecutionContext();
   writePostResponseDetail(detail, {
@@ -969,17 +973,12 @@ async function settleTerminal(
         ? { chargedWeight: settlement.chargedWeight }
         : { deferUsage: true }),
       ...(settlement.acknowledged ? { accountingSettled: true } : {}),
+      ...(input.accountingMode === "fallback" && settlement.acknowledged
+        ? { settleFallbackAdmission: true }
+        : {}),
     },
     logger,
   );
-  if (settlement.acknowledged && input.accountingMode === "fallback") {
-    await runtimeEnv.DB.prepare(
-      `UPDATE fallback_admission SET state = 'settled'
-       WHERE installation_id = ? AND request_id = ? AND state IN ('consumed', 'released')`,
-    )
-      .bind(input.installationId, input.requestId)
-      .run();
-  }
 }
 
 async function settleCompletedRequest(
@@ -1032,18 +1031,13 @@ async function settleCompletedRequest(
         ? { chargedWeight: settlement.chargedWeight }
         : { deferUsage: true }),
       ...(settlement.acknowledged ? { accountingSettled: true } : {}),
+      ...(input.accountingMode === "fallback" && settlement.acknowledged
+        ? { settleFallbackAdmission: true }
+        : {}),
       reservationId: input.reservationId,
     },
     logger,
   );
-  if (settlement.acknowledged && input.accountingMode === "fallback") {
-    await runtimeEnv.DB.prepare(
-      `UPDATE fallback_admission SET state = 'settled'
-       WHERE installation_id = ? AND request_id = ? AND state = 'consumed'`,
-    )
-      .bind(input.installationId, input.requestId)
-      .run();
-  }
 }
 
 function pushFailedTerminal(
