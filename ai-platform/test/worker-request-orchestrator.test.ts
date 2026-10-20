@@ -2084,12 +2084,25 @@ describe("R5-ADM1_fallback_worker_retries", () => {
       expect(firstStream).toContain("event: accepted");
       await invoked;
 
-      const inFlight = await fetchLivePost(await mintAat(), { idempotencyKey });
-      expect(inFlight.response.status).toBe(200);
-      expect(inFlight.events.map((event) => event.type)).toContain("accepted");
-      expect(terminalEvents(inFlight.events)).toHaveLength(0);
+      const inFlightResponse = await SELF.fetch(
+        buildPostRequest({ token: await mintAat(), idempotencyKey }),
+      );
+      expect(inFlightResponse.status).toBe(200);
+      const inFlightReader = inFlightResponse.body!.getReader();
+      let inFlightStream = "";
+      const inFlightDecoder = new TextDecoder();
+      while (!inFlightStream.includes("event: accepted")) {
+        const next = await inFlightReader.read();
+        if (next.done) break;
+        inFlightStream += inFlightDecoder.decode(next.value, { stream: true });
+      }
+      expect(inFlightStream).toContain("event: accepted");
+      expect(inFlightStream).not.toMatch(
+        /event: (completed|failed|cancelled|context_requested)/,
+      );
       expect(invokeSpy).toHaveBeenCalledTimes(1);
       expect(await countAiRequests()).toBe(1);
+      await inFlightReader.cancel();
 
       releaseInvoke();
       for (;;) {
@@ -2099,6 +2112,39 @@ describe("R5-ADM1_fallback_worker_retries", () => {
       }
       firstStream += decoder.decode();
       expect(firstStream).toContain("event: completed");
+
+      const request = await env.DB.prepare(
+        "SELECT request_id FROM ai_request WHERE installation_id = ? AND idempotency_key = ?",
+      )
+        .bind(FIXTURE_INSTALLATION_ID, idempotencyKey)
+        .first<{ request_id: string }>();
+      expect(request).toBeTruthy();
+      let settled = false;
+      for (let attempt = 0; attempt < 30; attempt += 1) {
+        const currentRequest = await env.DB.prepare(
+          "SELECT state FROM ai_request WHERE request_id = ?",
+        )
+          .bind(request!.request_id)
+          .first<{ state: string }>();
+        const fallback = await env.DB.prepare(
+          "SELECT state FROM fallback_admission WHERE installation_id = ? AND idempotency_key = ?",
+        )
+          .bind(FIXTURE_INSTALLATION_ID, idempotencyKey)
+          .first<{ state: string }>();
+        const envelope = await env.R2.head(
+          `request/${request!.request_id}/envelope`,
+        );
+        if (
+          currentRequest?.state === "Completed" &&
+          fallback?.state === "consumed" &&
+          envelope !== null
+        ) {
+          settled = true;
+          break;
+        }
+        await new Promise((resolve) => setTimeout(resolve, 50));
+      }
+      expect(settled).toBe(true);
 
       const completedRetry = await fetchLivePost(await mintAat(), {
         idempotencyKey,

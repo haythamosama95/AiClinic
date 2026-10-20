@@ -237,10 +237,10 @@ async function postRequest(
       terminalEventTypes: events
         .filter((event) =>
           ["completed", "failed", "cancelled", "context_requested"].includes(
-            event.type,
+            event.event,
           ),
         )
-        .map((event) => event.type),
+        .map((event) => event.event),
     };
   }
   const text = await response.text();

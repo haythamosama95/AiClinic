@@ -956,11 +956,13 @@ describe("grace_idempotency_key_replay_during_do_outage", () => {
     const brokenDo = createThrowingDoNamespace(env.DO);
     const idempotencyKey = uniqueIdempotencyKey();
     const requestReference = uniqueRequestReference();
+    const requestFingerprint = "rm24-journaled-fallback-replay";
 
     const first = await admission.runAdmission(
       defaultAdmissionInput(installationId, cache, reader, {
         idempotencyKey,
         requestReference,
+        requestFingerprint,
       }),
       { DB: env.DB, DO: brokenDo },
       { now: FIXTURE_NOW_MS, nowMs: FIXTURE_NOW_MS },
@@ -976,12 +978,14 @@ describe("grace_idempotency_key_replay_during_do_outage", () => {
       requestId: first.requestId,
       requestReference: first.requestReference,
       idempotencyKey,
+      requestFingerprint,
     });
 
     const second = await admission.runAdmission(
       defaultAdmissionInput(installationId, cache, reader, {
         idempotencyKey,
         requestReference: uniqueRequestReference(),
+        requestFingerprint,
         principal: { jti: uniqueJti() },
       }),
       { DB: env.DB, DO: brokenDo },
@@ -991,7 +995,7 @@ describe("grace_idempotency_key_replay_during_do_outage", () => {
     expect(second).toMatchObject({
       ok: true,
       outcome: "idempotent",
-      requestId: firstRequestId,
+      priorState: { requestId: firstRequestId },
     });
     expect(await countPendingFallbackRows(installationId)).toBe(1);
     expect(await peekPendingFallback(installationId)).toHaveLength(1);
