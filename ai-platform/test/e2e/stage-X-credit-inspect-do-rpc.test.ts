@@ -46,6 +46,7 @@ import { resetCoverClinicBootstrap } from "./harness/cover";
 import { POLICY_ID, POLICY_VERSION } from "./harness/env";
 // HARNESS-GAP: recordGuardRejection is not on the frozen barrel (SX-056).
 import { flushRejectionCounters, recordGuardRejection } from "../../src/rate-limit";
+import { mirrorTermViewFromSnapshot } from "../../src/quota-do/coverage";
 // HARNESS-GAP: runRollupAndReconciliation is not on the frozen barrel; SX-053
 // asserts the production report (scheduled cron cannot return it).
 import { runRollupAndReconciliation } from "../../src/rollup";
@@ -854,10 +855,11 @@ describe("Stage X — credit, inspect, retention joinability, GatewayObject RPC 
       `SELECT term_snapshot FROM coverage_mirror WHERE installation_id = ?`,
       [scenario.installationId],
     );
-    const termRef =
-      typeof mirror?.term_snapshot === "string"
-        ? (JSON.parse(mirror.term_snapshot) as { term?: { ref?: string } }).term?.ref ?? "term-sx056"
-        : "term-sx056";
+    const termView = mirror?.term_snapshot
+      ? mirrorTermViewFromSnapshot(mirror.term_snapshot)
+      : null;
+    expect(termView?.ref).toBeTruthy();
+    const termRef = termView!.ref;
     const fallbackAdmittedAt = new Date().toISOString();
     await seedSql([
       {

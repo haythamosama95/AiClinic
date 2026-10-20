@@ -396,9 +396,33 @@ describe("P3.9 fallback admission, feed, and coverage read", () => {
 
     const rows = await listFallbackAdmissions(scenario.installationId);
     expect(rows).toHaveLength(1);
-    expect(rows[0]?.state).toBe("settled");
     expect(rows[0]?.term_id).toBeTruthy();
     expect(rows[0]?.request_id).toBeTruthy();
+
+    await expect
+      .poll(
+        async () => {
+          const fallback = await queryOne<{ state: string }>(
+            "SELECT state FROM fallback_admission WHERE installation_id = ? AND idempotency_key = ?",
+            [scenario.installationId, idempotencyKey],
+          );
+          const request = await queryOne<{ accounting_state: string | null }>(
+            "SELECT accounting_state FROM ai_request WHERE request_id = ?",
+            [rows[0]!.request_id],
+          );
+          const usage = await queryOne<{ count: number }>(
+            "SELECT COUNT(*) AS count FROM usage_event WHERE request_id = ?",
+            [rows[0]!.request_id],
+          );
+          return {
+            state: fallback?.state,
+            accountingState: request?.accounting_state,
+            usageCount: Number(usage?.count ?? 0),
+          };
+        },
+        { interval: 50, timeout: 5_000 },
+      )
+      .toEqual({ state: "settled", accountingState: "settled", usageCount: 1 });
 
     await clearAdmissionFault();
     const usedBefore = await readHotUsed(scenario.installationId);
