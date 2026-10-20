@@ -36,6 +36,7 @@ export default defineWorkersConfig({
     ],
     fileParallelism: false,
     testTimeout: 120_000,
+    hookTimeout: 120_000,
     setupFiles: ["./test/setup-isolate-config-cache.ts"],
     // Retry once to absorb residual @cloudflare/vitest-pool-workers isolated
     // storage flakiness: the pool snapshots/rolls back D1/R2/DO storage around

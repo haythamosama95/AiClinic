@@ -459,14 +459,28 @@ async function seedGrant(db: D1Database, installationId: string): Promise<void> 
 }
 
 function createFakeCtx(): FakeExecutionContext {
-  const pending: Promise<unknown>[] = [];
+  const pending: Promise<
+    | { status: "fulfilled"; value: unknown }
+    | { status: "rejected"; reason: unknown }
+  >[] = [];
   return {
     waitUntil(promise: Promise<unknown>) {
-      pending.push(promise);
+      // Attach both handlers now so a rejection cannot become unhandled while
+      // the caller is still finishing the rest of the request.
+      pending.push(
+        promise.then(
+          (value) => ({ status: "fulfilled", value }),
+          (reason: unknown) => ({ status: "rejected", reason }),
+        ),
+      );
     },
     async drainWaitUntil() {
-      await Promise.all(pending);
-      pending.length = 0;
+      const collected = pending.splice(0);
+      const results = await Promise.all(collected);
+      const rejection = results.find((result) => result.status === "rejected");
+      if (rejection?.status === "rejected") {
+        throw rejection.reason;
+      }
     },
   };
 }
@@ -483,9 +497,11 @@ async function runBoundedPool<T>(
   let nextIndex = 0;
   let inFlight = 0;
   let observedConcurrency = 0;
+  let hasFailure = false;
+  let firstFailure: unknown;
 
   async function runWorker(): Promise<void> {
-    while (true) {
+    while (!hasFailure) {
       const index = nextIndex;
       nextIndex += 1;
       if (index >= workItems.length) {
@@ -496,6 +512,12 @@ async function runBoundedPool<T>(
       try {
         const result = await worker(workItems[index]!);
         guardLatenciesMs[index] = result.guardLatencyMs;
+      } catch (error) {
+        if (!hasFailure) {
+          hasFailure = true;
+          firstFailure = error;
+        }
+        throw error;
       } finally {
         inFlight -= 1;
       }
@@ -503,7 +525,10 @@ async function runBoundedPool<T>(
   }
 
   const workers = Math.min(poolSize, workItems.length);
-  await Promise.all(Array.from({ length: workers }, () => runWorker()));
+  await Promise.allSettled(Array.from({ length: workers }, () => runWorker()));
+  if (hasFailure) {
+    throw firstFailure;
+  }
   return { guardLatenciesMs, observedConcurrency };
 }
 

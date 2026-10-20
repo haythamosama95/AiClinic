@@ -555,6 +555,19 @@ describe("identity token rejection cases", () => {
       },
     },
     {
+      name: "identity_accepts_expired_at_skew_boundary",
+      mutate: async (_token, keypair) =>
+        mintToken(keypair, {
+          iat: NOW - 300,
+          exp: NOW - CLOCK_SKEW_SECONDS,
+        }),
+      expectOk: true,
+      expectedClaims: {
+        iat: NOW - 300,
+        exp: NOW - CLOCK_SKEW_SECONDS,
+      },
+    },
+    {
       name: "identity_accepts_expired_inside_skew",
       mutate: async (_token, keypair) =>
         mintToken(keypair, {

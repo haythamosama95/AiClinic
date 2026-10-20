@@ -339,12 +339,12 @@ describe("Stage 09 — adapter parse and identity (S09-001…S09-022)", () => {
     assertUnauthenticated(await postInvoke(scenario, { token: expired }));
     await assertNoRequestWrites();
 
-    // Wait for valid_from, then recapture now so exp = now-60 stays inside
-    // the 60s skew window after mintAat's wait (lifetime 240s ≤ 600).
+    // Ensure the issuer registry, then leave 30s of margin inside the 60s
+    // skew window for token signing and request dispatch (lifetime 270s ≤ 600).
     await ensureInstallationKeyActive(scenario.installationId);
     const boundaryNow = nowSeconds();
     const withinSkew = await mintAat(scenario, {
-      claims: { iat: boundaryNow - 300, exp: boundaryNow - 60 },
+      claims: { iat: boundaryNow - 300, exp: boundaryNow - 30 },
     });
     const admitted = await postInvoke(scenario, { token: withinSkew });
     assertNotRejectedAsUnauthenticated(admitted);
