@@ -55,6 +55,8 @@ import rm18CeilingClaimsSql from "../../../ai-platform/migrations/20261019140000
 import r6Pt1ReversalRoutesSql from "../../../ai-platform/migrations/20261019150000_r6_pt1_reversal_routes.sql?raw";
 import r6Pt1TransferRouteManifestSql from "../../../ai-platform/migrations/20261019160000_r6_pt1_transfer_route_manifest.sql?raw";
 import strandedTermRecoverySql from "../../../ai-platform/migrations/20261019170000_r4_d2_stranded_recovery.sql?raw";
+import rm24FallbackAdmissionIdentitySql from "../../../ai-platform/migrations/20261020120000_rm24_fallback_admission_identity.sql?raw";
+import rm25FallbackSettlementSql from "../../../ai-platform/migrations/20261020130000_rm25_fallback_settlement.sql?raw";
 import rm26TransferPreparationSql from "../../../ai-platform/migrations/20261020140000_r6_rm26_transfer_preparation.sql?raw";
 
 const PLATFORM_MIGRATION_SQL: string[] = [
@@ -88,6 +90,8 @@ const PLATFORM_MIGRATION_SQL: string[] = [
   r6Pt1ReversalRoutesSql,
   r6Pt1TransferRouteManifestSql,
   strandedTermRecoverySql,
+  rm24FallbackAdmissionIdentitySql,
+  rm25FallbackSettlementSql,
   rm26TransferPreparationSql,
 ];
 
@@ -101,7 +105,7 @@ const COVER_DEFAULT_CONCURRENCY = 4;
 const COVER_DEFAULT_ALLOWANCE = 10_000;
 const VENDOR_OPERATOR_EMAIL = "operator@vendor.test";
 // Increment when PLATFORM_MIGRATION_SQL or its bootstrap seeds change.
-const PLATFORM_MIGRATION_HARNESS_VERSION = 3;
+const PLATFORM_MIGRATION_HARNESS_VERSION = 4;
 
 declare module "cloudflare:test" {
   interface ProvidedEnv {

@@ -2087,7 +2087,6 @@ export async function applyGrantRPC(
     if (
       currentHot.binding_epoch !== request.bindingEpoch ||
       currentHot.transfer_pending === 1 ||
-      currentHot.awaiting_transfer === 1 ||
       currentHot.transferred_out_to !== null
     ) {
       return { kind: "apply_grant", result: "rejected", code: "transfer_pending" };
@@ -4180,7 +4179,7 @@ export interface TransferInRequest {
 
 export interface TransferInResponse {
   kind: "transfer_in";
-  result: "applied" | "bad_request";
+  result: "applied" | "already_applied" | "bad_request";
   term_ids?: string[];
   ledger_seq?: number;
   receipt?: Record<string, unknown>;
@@ -4210,7 +4209,10 @@ export async function transferInRPC(
         return { kind: "transfer_in", result: "bad_request" };
       }
       try {
-        return JSON.parse(stored.response_json) as TransferInResponse;
+        const replay = JSON.parse(stored.response_json) as TransferInResponse;
+        return replay.result === "applied"
+          ? { ...replay, result: "already_applied" }
+          : replay;
       } catch {
         return { kind: "transfer_in", result: "bad_request" };
       }
