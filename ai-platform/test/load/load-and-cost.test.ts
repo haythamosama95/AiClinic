@@ -9,6 +9,9 @@ import planVersionPaidGrantCoverageMigrationSql from "../../migrations/202610031
 import usageTermMigrationSql from "../../migrations/20261006120000_usage_term.sql?raw";
 import fallbackAdmissionFeedMigrationSql from "../../migrations/20261006160000_fallback_admission_feed.sql?raw";
 import idempotencyFingerprintMigrationSql from "../../migrations/20261014120000_ai_request_idempotency_fingerprint.sql?raw";
+import rm24FallbackAdmissionIdentityMigrationSql from "../../migrations/20261020120000_rm24_fallback_admission_identity.sql?raw";
+import rm25FallbackSettlementMigrationSql from "../../migrations/20261020130000_rm25_fallback_settlement.sql?raw";
+import rm26TransferPreparationMigrationSql from "../../migrations/20261020140000_r6_rm26_transfer_preparation.sql?raw";
 import { applySqlStatements } from "../split-sql-statements";
 import ciWorkflowSource from "../../../.github/workflows/ci.yml?raw";
 import packageJson from "../../package.json";
@@ -116,6 +119,9 @@ beforeAll(async () => {
   await applySqlStatements(env.DB, usageTermMigrationSql);
   await applySqlStatements(env.DB, fallbackAdmissionFeedMigrationSql);
   await applySqlStatements(env.DB, idempotencyFingerprintMigrationSql);
+  await applySqlStatements(env.DB, rm24FallbackAdmissionIdentityMigrationSql);
+  await applySqlStatements(env.DB, rm25FallbackSettlementMigrationSql);
+  await applySqlStatements(env.DB, rm26TransferPreparationMigrationSql);
   await clearLoadTables();
   const spies = createBindingSpies(env);
   const result = await runLoadHappyPath({
