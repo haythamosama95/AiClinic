@@ -769,20 +769,6 @@ async function reapplyAboSchema(): Promise<void> {
   await ensureDigestWatchMigration();
 }
 
-async function openFindingCount(): Promise<number> {
-  try {
-    const row = await env.DB.prepare(
-      `SELECT COUNT(*) AS n
-       FROM finding f
-       LEFT JOIN finding_resolution fr ON f.finding_id = fr.finding_id
-       WHERE fr.finding_id IS NULL`,
-    ).first<{ n: number }>();
-    return row?.n ?? 0;
-  } catch {
-    return 0;
-  }
-}
-
 function readRebuildRunbook(): string {
   return rebuildRunbookMd;
 }
@@ -1453,7 +1439,23 @@ describe("P4.11 digest, watch, housekeeping, rebuild (H-XW)", () => {
 
     const { rebuildAbo } = await import("../../src/rebuild.js");
     await scriptPaymobInquiry("bound_success");
-    await rebuildAbo(env as never, {
+    const platform = env.PLATFORM;
+    const rebuildPlatform = {
+      grant: async (args: Record<string, unknown>) => {
+        const result = await platform.grant(args);
+        if (result.result === "applied" || result.result === "already_applied") {
+          await syncPlatformGrantLedger(ORG_REBUILD);
+          await drainPlatformDurableObjects();
+          await exportFacts(env);
+        }
+        return result;
+      },
+      listGrants: (args: Record<string, unknown>) => platform.listGrants(args),
+      readCoverageEvents: (args: Record<string, unknown>) =>
+        platform.readCoverageEvents(args),
+      getCoverage: (args: Record<string, unknown>) => platform.getCoverage(args),
+    };
+    await rebuildAbo({ ...env, PLATFORM: rebuildPlatform } as never, {
       providerTransactionReferences: [String(GAP_PAYMOB_TXN_ID)],
     });
 
@@ -1484,7 +1486,16 @@ describe("P4.11 digest, watch, housekeeping, rebuild (H-XW)", () => {
       .first<{ result: string }>();
     expect(grantOutcome?.result).toBe("already_applied");
     expect(paidPaymentBefore?.payment_id).toBe(paid.paymentId);
-    expect(await openFindingCount()).toBe(0);
+    const openFindings = await env.DB.prepare(
+      `SELECT f.finding_id, f.kind, f.subject, f.detail
+       FROM finding f
+       LEFT JOIN finding_resolution fr ON f.finding_id = fr.finding_id
+       WHERE fr.finding_id IS NULL`,
+    ).all<{ finding_id: string; kind: string; subject: string; detail: string }>();
+    expect(
+      openFindings.results ?? [],
+      `FM-19 rebuild left unresolved findings for payment ${gapPaymentId}`,
+    ).toEqual([]);
 
     const runbook = readRebuildRunbook();
     expect(runbook).toContain("provider transaction references");

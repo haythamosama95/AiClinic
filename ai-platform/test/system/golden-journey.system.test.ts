@@ -391,9 +391,7 @@ describe("golden journey", () => {
       }),
     });
     const ref = String(invoked.events[0]?.data.request_reference);
-    await flushBackgroundWork();
-
-    const request = await getAiRequest(ref);
+    const request = await waitForSettledRequest(ref);
     const envelopeKey = String(request?.payload_pointer);
     expect(await r2Exists(envelopeKey)).toBe(true);
     expect(await r2Exists(`${envelopeKey}.json`)).toBe(false);

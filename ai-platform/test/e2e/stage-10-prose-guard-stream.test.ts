@@ -539,11 +539,13 @@ async function waitForPayloadObject(
 }
 
 async function assertCompletedSettlement(ref: string): Promise<Record<string, unknown>> {
+  await waitForPayloadObject(ref);
   const row = await requireAiRequest(ref);
   expect(row.state).toBe("Completed");
   expect(row.completed_at).toBeTruthy();
   expect(row.terminal_error_code).toBeNull();
-  const usage = await getUsageEvents(String(row.request_id));
+  const requestId = String(row.request_id);
+  const usage = await waitForUsageEvents(requestId);
   expect(usage).toHaveLength(1);
   expect(usage[0]?.tokens).toBe(30);
   expect(costOf(usage[0], "cost")).toBeCloseTo(0.005, 5);

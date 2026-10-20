@@ -753,15 +753,22 @@ async function awaitPlatformGrantInList(
   env: RebuildEnv,
   grantId: string,
 ): Promise<void> {
+  let listingWasAvailable = false;
   for (let attempt = 0; attempt < 40; attempt += 1) {
     const grants = await parsePlatformGrants(env);
-    if (
-      grants?.some((grant) => String(grant.grant_id ?? "") === grantId) === true
-    ) {
-      return;
+    if (grants !== null) {
+      listingWasAvailable = true;
+      if (grants.some((grant) => String(grant.grant_id ?? "") === grantId)) {
+        return;
+      }
     }
     await new Promise((resolve) => setTimeout(resolve, 250));
   }
+
+  const reason = listingWasAvailable
+    ? "grant was missing from the available platform grant listing"
+    : "platform grant listing remained unavailable";
+  throw new Error(`Timed out waiting for platform grant ${grantId}: ${reason}`);
 }
 
 async function awaitGapGrantsInList(
