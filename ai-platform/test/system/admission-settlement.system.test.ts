@@ -4,6 +4,7 @@
 
 import { env, runDurableObjectAlarm, runInDurableObject } from "cloudflare:test";
 import { beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
+import { CHANNEL_VERSIONS } from "vendor-contracts";
 import {
   applyAllMigrations,
   CAPABILITY_ID,
@@ -272,7 +273,6 @@ async function seedOpenReservations(
   scenario: Scenario,
   count: number,
 ): Promise<Array<{ requestId: string; jti: string; idempotencyKey: string }>> {
-  const { CHANNEL_VERSIONS } = await import("vendor-contracts");
   const stub = quotaDoStub(scenario.installationId);
   const nowMs = await harnessNowMs();
   const seeded: Array<{ requestId: string; jti: string; idempotencyKey: string }> = [];
@@ -697,6 +697,20 @@ describe("admission settlement against terms", () => {
       const requestId = String(request?.request_id);
       const usage = await getUsageEvents(requestId);
       expect(usage).toHaveLength(1);
+      const usageAdjustments = await runInDurableObject(
+        quotaDoStub(scenario.installationId),
+        async (_instance, state) =>
+          sqlSelect<{ payload: string }>(
+            state,
+            "SELECT payload FROM outbox WHERE kind = 'usage_adjustment'",
+          ),
+      );
+      expect(
+        usageAdjustments.filter((row) => {
+          const payload = JSON.parse(row.payload) as { request_id?: string };
+          return payload.request_id === requestId;
+        }),
+      ).toHaveLength(1);
 
       const hotBeforeReplay = await readHotUsage(scenario.installationId);
       if (swallowedCreditBody) {

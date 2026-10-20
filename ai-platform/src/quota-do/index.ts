@@ -933,6 +933,10 @@ function persistParsedHot(storage: DurableObjectStorage, hot: ParsedHot): void {
   });
 }
 
+function hotRowForCoverageSnapshot(hot: ParsedHot): HotRow {
+  return { ...hot.row, reservations: JSON.stringify(hot.reservations) };
+}
+
 function sweepStoredAnswers(
   hot: ParsedHot,
   now: number,
@@ -1170,7 +1174,7 @@ function endGraceIfExhausted(
   const endedSnapshot = buildCoverageSnapshot({
     vendorContractVersion: context.vendorContractVersion,
     orgId: context.orgId,
-    hot: hot.row,
+    hot: hotRowForCoverageSnapshot(hot),
     terms,
     durationScale: context.durationScale,
   });
@@ -1222,7 +1226,7 @@ function emitBandCrossedIfNeeded(
     const snapshot = buildCoverageSnapshot({
       vendorContractVersion: vendorVersion,
       orgId,
-      hot: hot.row,
+      hot: hotRowForCoverageSnapshot(hot),
       terms,
       durationScale: request.durationScale,
     });
@@ -1370,6 +1374,14 @@ function admitOnHotRow(
     nowIso,
   );
 
+  // Boundary processing reloads hot state from SQL to construct its outbox
+  // snapshots. Persist stale-reservation charges before that reload so the
+  // removed reservations, settled usage, and failed idempotency bindings are
+  // not discarded by the boundary refresh.
+  if (stateChanged) {
+    recordHotWrites(storage, request.requestId, () => persistParsedHot(storage, hot));
+  }
+
   applyDueBoundaries({
     storage,
     clockNowIso: nowIso,
@@ -1512,7 +1524,7 @@ function admitOnHotRow(
     const endedSnapshot = buildCoverageSnapshot({
       vendorContractVersion: vendorVersion,
       orgId,
-      hot: hot.row,
+      hot: hotRowForCoverageSnapshot(hot),
       terms,
       durationScale: request.durationScale,
     });
@@ -1542,7 +1554,7 @@ function admitOnHotRow(
       const activatedSnapshot = buildCoverageSnapshot({
         vendorContractVersion: vendorVersion,
         orgId,
-        hot: hot.row,
+        hot: hotRowForCoverageSnapshot(hot),
         terms,
         durationScale: request.durationScale,
       });
