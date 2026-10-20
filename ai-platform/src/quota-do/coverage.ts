@@ -4140,6 +4140,7 @@ export interface SetTransferPendingRequest {
   kind: "set_transfer_pending";
   transferId?: string;
   adoptDeletionId?: string;
+  emitDeletionSnapshot?: boolean;
   bindingEpoch: number;
   installationId?: string;
   orgId?: string;
@@ -4162,9 +4163,7 @@ export async function setTransferPendingRPC(
   request: SetTransferPendingRequest,
 ): Promise<SetTransferPendingResponse> {
   return blockConcurrencyWhile(async () => {
-    const emitsDeletionSnapshot = request.installationId !== undefined ||
-      request.orgId !== undefined || request.vendorContractVersion !== undefined ||
-      request.nowIso !== undefined;
+    const emitsDeletionSnapshot = request.emitDeletionSnapshot === true;
     if (emitsDeletionSnapshot && (
       typeof request.installationId !== "string" || typeof request.orgId !== "string" ||
       !Number.isInteger(request.vendorContractVersion) || typeof request.nowIso !== "string"

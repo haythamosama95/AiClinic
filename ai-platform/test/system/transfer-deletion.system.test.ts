@@ -37,6 +37,7 @@ import {
   setupVendorHarness,
   signCoverAbo,
   vendorCall,
+  vendorSuspend,
   VENDOR_OPERATOR_EMAIL,
   clearCapturedVendorEmails,
   count,
@@ -1487,6 +1488,7 @@ describe("transfer, deletion with coverage left, ledger retention", () => {
 
   it("R6-PT3 keeps a malformed acknowledged reservation inventory due", async () => {
     const scenario = await newScenario();
+    await coverClinic(scenario);
     const request = await buildHpDeleteInstallationRequest({ orgId: scenario.orgId });
     const realGet = env.DO.get.bind(env.DO);
     let malformed = true;
@@ -1539,6 +1541,7 @@ describe("transfer, deletion with coverage left, ledger retention", () => {
     const request = {
       kind: "set_transfer_pending" as const,
       transferId: "rm27-rearm-freeze",
+      emitDeletionSnapshot: true,
       installationId: scenario.installationId,
       orgId: scenario.orgId,
       bindingEpoch: 1,

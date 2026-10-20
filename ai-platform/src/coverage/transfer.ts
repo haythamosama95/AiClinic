@@ -91,6 +91,10 @@ function durationScaleFromEnv(env: TransferEnv): "staging" | undefined {
   return env.DURATION_SCALE === "staging" ? "staging" : undefined;
 }
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
 async function callCoverageDo(
   env: TransferEnv,
   installationId: string,
@@ -1649,6 +1653,7 @@ export async function resumeDeleteInstallation(
       installationId: command.installation_id,
       orgId: command.org_id,
       bindingEpoch: command.binding_epoch,
+      emitDeletionSnapshot: true,
       vendorContractVersion: acceptedCommand.snapshot_version,
       nowIso,
       durationScale: acceptedCommand.duration_scale,
