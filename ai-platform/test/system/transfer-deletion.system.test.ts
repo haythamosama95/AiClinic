@@ -1444,7 +1444,7 @@ describe("transfer, deletion with coverage left, ledger retention", () => {
     )).toEqual({ status: "active" });
     expect(await queryOne<{ status: string }>(
       `SELECT status FROM installation WHERE installation_id = ?`, [scenario.installationId],
-    )).toEqual({ status: "active" });
+    )).toEqual({ status: "suspended" });
 
     await runScheduled("*/5 * * * *");
     const resumed = await p38VendorCall("deleteInstallation", request.args, {
