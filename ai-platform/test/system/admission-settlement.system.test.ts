@@ -8,6 +8,7 @@ import { CHANNEL_VERSIONS } from "vendor-contracts";
 import {
   applyAllMigrations,
   CAPABILITY_ID,
+  CAPABILITY_VERSION,
   count,
   fakePolicyDocument,
   flushBackgroundWork,
@@ -1504,7 +1505,7 @@ describe("admission settlement against terms", () => {
       .filter((term) => term.state === "active")
       .sort((left, right) => (left.starts_at ?? "").localeCompare(right.starts_at ?? ""))[0];
     expect(predecessor?.state).toBe("exhausted");
-    expect(predecessor?.used_final).toBe(1);
+    expect(predecessor?.used_final).toBe(2);
     expect(successor).toBeTruthy();
     expect(successor?.term_id).not.toBe(exhaustedId);
     expect(successor?.term_id).toBe(oldestUnheldSuccessor?.term_id);

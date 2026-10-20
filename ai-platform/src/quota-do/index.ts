@@ -482,6 +482,40 @@ async function shouldUseLegacyCredit(
   if (usesLegacyEntitlementCredit(request) || !hasCoverageHotRow(storage)) {
     return true;
   }
+
+  // Fallback settlement mirrors its durable SQL receipt into legacy KV so
+  // inspect callers can continue reading the old counters. That mirror is
+  // not evidence that the request belongs to the legacy admission path: the
+  // SQL reservation/receipt remains authoritative for settlement and replay.
+  const reservationId = request.reservation_id ?? request.requestId;
+  const hot = sqlSelect<HotRow>(storage, "SELECT * FROM hot LIMIT 1")[0];
+  if (hot !== undefined) {
+    const parsed = parseHotRow(hot);
+    if (parsed.reservations.some((reservation) => reservation.id === reservationId)) {
+      return false;
+    }
+  }
+  if (
+    sqlSelect<{ request_id: string }>(
+      storage,
+      `SELECT request_id FROM usage_settlement_receipt
+       WHERE request_id = ${sqlStringLocal(reservationId)} LIMIT 1`,
+    ).length > 0
+  ) {
+    return false;
+  }
+  for (const entry of sqlSelect<{ payload: string }>(
+    storage,
+    "SELECT payload FROM outbox WHERE kind = 'usage_adjustment'",
+  )) {
+    try {
+      const payload = JSON.parse(entry.payload) as { request_id?: unknown };
+      if (payload.request_id === reservationId) return false;
+    } catch {
+      // Malformed outbox rows cannot establish SQL ownership.
+    }
+  }
+
   const state = await loadState(storage);
   return (
     state.admittedRequests[request.requestId] !== undefined ||
