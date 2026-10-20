@@ -54,6 +54,7 @@ import acceptedGrantCommandsSql from "../../../ai-platform/migrations/2026101913
 import rm18CeilingClaimsSql from "../../../ai-platform/migrations/20261019140000_rm18_complimentary_ceiling_claims.sql?raw";
 import r6Pt1ReversalRoutesSql from "../../../ai-platform/migrations/20261019150000_r6_pt1_reversal_routes.sql?raw";
 import r6Pt1TransferRouteManifestSql from "../../../ai-platform/migrations/20261019160000_r6_pt1_transfer_route_manifest.sql?raw";
+import strandedTermRecoverySql from "../../../ai-platform/migrations/20261019170000_r4_d2_stranded_recovery.sql?raw";
 
 const PLATFORM_MIGRATION_SQL: string[] = [
   platformSchemaSql,
@@ -85,6 +86,7 @@ const PLATFORM_MIGRATION_SQL: string[] = [
   rm18CeilingClaimsSql,
   r6Pt1ReversalRoutesSql,
   r6Pt1TransferRouteManifestSql,
+  strandedTermRecoverySql,
 ];
 
 const VENDOR_CONTRACT_VERSION = CHANNEL_VERSIONS.vendorEntrypoint;
@@ -97,7 +99,7 @@ const COVER_DEFAULT_CONCURRENCY = 4;
 const COVER_DEFAULT_ALLOWANCE = 10_000;
 const VENDOR_OPERATOR_EMAIL = "operator@vendor.test";
 // Increment when PLATFORM_MIGRATION_SQL or its bootstrap seeds change.
-const PLATFORM_MIGRATION_HARNESS_VERSION = 1;
+const PLATFORM_MIGRATION_HARNESS_VERSION = 2;
 
 declare module "cloudflare:test" {
   interface ProvidedEnv {

@@ -94,6 +94,7 @@ import acceptedGrantCommandsSql from "../../migrations/20261019130000_r4_pg3_acc
 import rm18CeilingClaimsSql from "../../migrations/20261019140000_rm18_complimentary_ceiling_claims.sql?raw";
 import r6Pt1ReversalRoutesSql from "../../migrations/20261019150000_r6_pt1_reversal_routes.sql?raw";
 import r6Pt1TransferRouteManifestSql from "../../migrations/20261019160000_r6_pt1_transfer_route_manifest.sql?raw";
+import strandedTermRecoverySql from "../../migrations/20261019170000_r4_d2_stranded_recovery.sql?raw";
 import { applySqlStatements } from "../split-sql-statements";
 import {
   createCapabilityRegistry,
@@ -291,6 +292,7 @@ const MIGRATION_SQL = [
   rm18CeilingClaimsSql,
   r6Pt1ReversalRoutesSql,
   r6Pt1TransferRouteManifestSql,
+  strandedTermRecoverySql,
 ];
 
 const CATALOGUE_PLAN_NAME = "standard";
