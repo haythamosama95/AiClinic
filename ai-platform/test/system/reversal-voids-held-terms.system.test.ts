@@ -525,12 +525,12 @@ describe("reversal voids, tombstones, held terms, operator voids", () => {
     const legacyPlacement = await runInDurableObject(
       quotaDoStub(scenario.installationId),
       async (_instance, state) => {
-        const hot = loadHot(state);
+        const hot = loadHot(state.storage);
         return buildCoverageSnapshot({
           vendorContractVersion: CONTRACT_VERSION,
           orgId: scenario.orgId,
           hot,
-          terms: loadTerms(state),
+          terms: loadTerms(state.storage),
         });
       },
     );
