@@ -541,8 +541,7 @@ function snapshotTermObject(
   term: TermRow,
   hot: HotRow,
 ): Record<string, unknown> {
-  const used =
-    term.term_id === hot.active_term_id ? hot.used : (term.used_final ?? 0);
+  const used = snapshotTermUsage(term, hot);
   const snapshot = JSON.parse(term.plan_snapshot) as {
     display_name?: string;
     capabilities?: unknown;
@@ -562,6 +561,25 @@ function snapshotTermObject(
     band: allowanceBand(used, allowance, term.state),
     capabilities,
   };
+}
+
+function snapshotTermUsage(term: TermRow, hot: HotRow): number {
+  let reservations: Array<{ term_id?: string; weight?: number }> = [];
+  try {
+    reservations = JSON.parse(hot.reservations || "[]") as Array<{
+      term_id?: string;
+      weight?: number;
+    }>;
+  } catch {
+    reservations = [];
+  }
+  const reserved = reservations.reduce(
+    (total, reservation) =>
+      total + (reservation.term_id === term.term_id ? Number(reservation.weight ?? 0) : 0),
+    0,
+  );
+  const settled = term.term_id === hot.active_term_id ? hot.used : (term.used_final ?? 0);
+  return settled + reserved;
 }
 
 function lastEndedTermForSnapshot(terms: TermRow[]): TermRow | undefined {
@@ -614,8 +632,7 @@ function buildSnapshotTermsArray(
     end_reason: term.end_reason,
     plan_snapshot: term.plan_snapshot,
     allowance: term.allowance,
-    used:
-      term.term_id === hot.active_term_id ? hot.used : (term.used_final ?? 0),
+    used: snapshotTermUsage(term, hot),
     used_final: term.used_final,
     duration_unit: term.duration_unit,
     duration_count: term.duration_count,
@@ -2835,13 +2852,21 @@ export async function voidGrantRPC(
     }
 
     const wasActive = term.state === "active";
+    const hotBefore = loadHot(storage);
+    const settledUsedFinal =
+      hotBefore.active_term_id === term.term_id ? hotBefore.used : (term.used_final ?? 0);
     const termsAfter = terms.map((row) => ({ ...row }));
     const endingTerm = termsAfter.find((row) => row.term_id === term.term_id)!;
-    Object.assign(endingTerm, { state: "ended", end_reason: "voided", ended_at: request.nowIso, grace_ends_at: null });
-    const termWrites = [`UPDATE term SET state = 'ended', end_reason = 'voided', ended_at = ${sqlString(request.nowIso)}, grace_ends_at = NULL WHERE term_id = ${sqlString(term.term_id)}`];
+    Object.assign(endingTerm, {
+      state: "ended",
+      end_reason: "voided",
+      ended_at: request.nowIso,
+      grace_ends_at: null,
+      used_final: settledUsedFinal,
+    });
+    const termWrites = [`UPDATE term SET state = 'ended', end_reason = 'voided', ended_at = ${sqlString(request.nowIso)}, grace_ends_at = NULL, used_final = ${settledUsedFinal} WHERE term_id = ${sqlString(term.term_id)}`];
     const eventKinds = ["term_ended"];
     const eventTerms: TermRow[][] = [termsAfter.map((row) => ({ ...row }))];
-    const hotBefore = loadHot(storage);
     let hotAfter = {
       ...hotBefore,
       active_term_id: hotBefore.active_term_id === term.term_id ? null : hotBefore.active_term_id,
@@ -4345,12 +4370,13 @@ function applyGrantVoidRowToDo(
   }
 
   if (term.state === "active" || term.state === "grace") {
+    const hot = loadHot(storage);
+    const usedFinal = hot.active_term_id === term.term_id ? hot.used : (term.used_final ?? 0);
     sqlExec(
       storage,
-      `UPDATE term SET state = 'ended', end_reason = 'reversed', ended_at = ${sqlString(row.at)}, grace_ends_at = NULL
+      `UPDATE term SET state = 'ended', end_reason = 'reversed', ended_at = ${sqlString(row.at)}, grace_ends_at = NULL, used_final = ${usedFinal}
        WHERE term_id = ${sqlString(term.term_id)}`,
     );
-    const hot = loadHot(storage);
     if (hot.active_term_id === term.term_id) {
       updateHot(storage, { active_term_id: null });
     }

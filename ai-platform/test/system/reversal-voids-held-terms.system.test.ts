@@ -109,6 +109,7 @@ type DoTermRow = {
   position: number;
   ends_at: string | null;
   grace_ends_at: string | null;
+  used_final: number | null;
 };
 
 type DoGrantRow = {
@@ -119,7 +120,7 @@ async function readDoTerms(installationId: string): Promise<DoTermRow[]> {
   return runInDurableObject(quotaDoStub(installationId), async (_instance, state) =>
     sqlSelect<DoTermRow>(
       state,
-      `SELECT term_id, grant_id, origin_grant_id, state, end_reason, position, ends_at, grace_ends_at
+      `SELECT term_id, grant_id, origin_grant_id, state, end_reason, position, ends_at, grace_ends_at, used_final
        FROM term ORDER BY position ASC`,
     ),
   );
@@ -696,7 +697,7 @@ describe("reversal voids, tombstones, held terms, operator voids", () => {
     expect(positions[positions.length - 1]?.grant_id).toBe(secondHeldGrantId);
   });
 
-  it("R6-DM3: voidGrant retries return the original receipt and activate the successor", async () => {
+  it("R5-A2 / R6-DM3: voidGrant retries return the original receipt and activate the successor", async () => {
     const scenario = await newScenario();
     await coverClinic(scenario);
 
@@ -781,6 +782,7 @@ describe("reversal voids, tombstones, held terms, operator voids", () => {
     const successor = terms.find((row) => row.grant_id === successorGrantId);
     expect(compTerm?.state).toBe("ended");
     expect(compTerm?.end_reason).toBe("voided");
+    expect(compTerm?.used_final).toBe(0);
     expect(successor?.state).toBe("active");
 
     const grantVoid = await queryOne<{ source: string; evidence_sha256: string }>(

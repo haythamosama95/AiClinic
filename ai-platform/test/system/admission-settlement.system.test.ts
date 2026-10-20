@@ -33,6 +33,7 @@ import {
   waitForSettledRequest,
   type Scenario,
 } from "./harness";
+import { getPerRequestWriteCounts } from "../../src/quota-do/index";
 import { addDuration } from "../../src/coverage/calendar";
 
 const QUOTA_WEIGHT = 1;
@@ -270,11 +271,15 @@ function wrapQuotaDoFetch(
 async function seedOpenReservations(
   scenario: Scenario,
   count: number,
-): Promise<void> {
+): Promise<Array<{ requestId: string; jti: string; idempotencyKey: string }>> {
   const { CHANNEL_VERSIONS } = await import("vendor-contracts");
   const stub = quotaDoStub(scenario.installationId);
   const nowMs = await harnessNowMs();
+  const seeded: Array<{ requestId: string; jti: string; idempotencyKey: string }> = [];
   for (let index = 0; index < count; index += 1) {
+    const requestId = crypto.randomUUID();
+    const jti = crypto.randomUUID();
+    const idempotencyKey = crypto.randomUUID();
     const response = await stub.fetch("https://quota-do.internal/rpc", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -282,9 +287,10 @@ async function seedOpenReservations(
         contract_version: CHANNEL_VERSIONS.platformDo,
         kind: "admission",
         now: nowMs,
-        jti: crypto.randomUUID(),
+        jti,
+        requestId,
         installationId: scenario.installationId,
-        idempotencyKey: crypto.randomUUID(),
+        idempotencyKey,
         requestReference: `CONC-SEED-${index}`,
         capabilityId: CAPABILITY_ID,
         quotaWeight: QUOTA_WEIGHT,
@@ -294,7 +300,9 @@ async function seedOpenReservations(
     expect(response.ok).toBe(true);
     const body = (await response.json()) as { outcome?: string };
     expect(body.outcome).toBe("admitted");
+    seeded.push({ requestId, jti, idempotencyKey });
   }
+  return seeded;
 }
 
 async function setupPromotedPolicy(scenario: Scenario): Promise<string> {
@@ -814,5 +822,149 @@ describe("admission settlement against terms", () => {
     } finally {
       restoreFetch();
     }
+  });
+
+  it("R5-A1: successor allowance ignores predecessor reservations while concurrency stays global", async () => {
+    const scenario = await newScenario();
+    await coverClinic(scenario, { max_allowance_per_month: 2 });
+    await coverClinic(scenario, { max_allowance_per_month: 2 });
+    await newClinic(scenario);
+
+    const predecessorReservations = await seedOpenReservations(scenario, 2);
+    const terms = await readDoTerms(scenario.installationId);
+    const predecessor = terms.find((row) => row.state === "exhausted");
+    const successor = terms.find((row) => row.state === "active");
+    expect(predecessor).toBeTruthy();
+    expect(successor).toBeTruthy();
+
+    const successorReservations = await seedOpenReservations(scenario, 2);
+    expect(successorReservations).toHaveLength(2);
+    const stored = await runInDurableObject(
+      quotaDoStub(scenario.installationId),
+      async (_instance, state) => sqlSelect<{ reservations: string }>(state, "SELECT reservations FROM hot LIMIT 1"),
+    );
+    const reservations = JSON.parse(stored[0]?.reservations ?? "[]") as Array<{ term_id: string }>;
+    expect(reservations.filter((row) => row.term_id === predecessor?.term_id)).toHaveLength(2);
+    expect(reservations.filter((row) => row.term_id === successor?.term_id)).toHaveLength(2);
+    expect(predecessorReservations).toHaveLength(2);
+    expect((await readHotUsage(scenario.installationId)).reserved).toBe(4);
+    const activationRows = await runInDurableObject(
+      quotaDoStub(scenario.installationId),
+      async (_instance, state) =>
+        sqlSelect<{ payload: string }>(state, "SELECT payload FROM outbox WHERE kind = 'coverage_event' ORDER BY seq DESC"),
+    );
+    const activation = activationRows
+      .map((row) => JSON.parse(row.payload) as { kind?: string; snapshot?: { terms?: Array<{ term_id?: string; used?: number }> } })
+      .find((row) => row.kind === "term_activated");
+    expect(activation?.snapshot?.terms?.find((row) => row.term_id === predecessor?.term_id)?.used).toBe(2);
+    expect(activation?.snapshot?.terms?.find((row) => row.term_id === successor?.term_id)?.used).toBe(0);
+  });
+
+  it("R5-A2: late consumption updates only its original term and release stays counter-neutral", async () => {
+    const scenario = await newScenario();
+    await coverClinic(scenario, { max_allowance_per_month: 2 });
+    await coverClinic(scenario, { max_allowance_per_month: 2 });
+    await newClinic(scenario);
+
+    const reservations = await seedOpenReservations(scenario, 2);
+    const terms = await readDoTerms(scenario.installationId);
+    const predecessor = terms.find((row) => row.state === "exhausted");
+    const successor = terms.find((row) => row.state === "active");
+    expect(predecessor?.used_final).toBe(0);
+
+    const credit = await quotaDoStub(scenario.installationId).fetch("https://quota-do.internal/rpc", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        contract_version: CHANNEL_VERSIONS.platformDo,
+        kind: "credit",
+        installationId: scenario.installationId,
+        requestId: reservations[0]!.requestId,
+        reservation_id: reservations[0]!.requestId,
+        requestReference: "R5-A2-LATE-CONSUME",
+        usage: { tokens: 1, cost: 0 },
+        credits: 1,
+        partial: false,
+      }),
+    });
+    expect(credit.ok).toBe(true);
+
+    const release = await quotaDoStub(scenario.installationId).fetch("https://quota-do.internal/rpc", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        contract_version: CHANNEL_VERSIONS.platformDo,
+        kind: "release",
+        installationId: scenario.installationId,
+        requestId: reservations[1]!.requestId,
+        idempotencyKey: reservations[1]!.idempotencyKey,
+        jti: reservations[1]!.jti,
+      }),
+    });
+    expect(release.ok).toBe(true);
+
+    const after = await readDoTerms(scenario.installationId);
+    expect(after.find((row) => row.term_id === predecessor?.term_id)?.used_final).toBe(1);
+    expect(after.find((row) => row.term_id === successor?.term_id)?.used_final).toBeNull();
+    expect(await readHotUsage(scenario.installationId)).toEqual({ used: 0, reserved: 0 });
+  });
+
+  it("R5-A7: same-key retry reevaluates after capacity frees and refusal writes nothing", async () => {
+    const scenario = await newScenario();
+    await coverClinic(scenario, { max_allowance_per_month: 100, concurrency_limit: 1 });
+    await newClinic(scenario);
+    const [held] = await seedOpenReservations(scenario, 1);
+    const deniedRequestId = crypto.randomUUID();
+    const retryKey = crypto.randomUUID();
+    const denied = await quotaDoStub(scenario.installationId).fetch("https://quota-do.internal/rpc", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        contract_version: CHANNEL_VERSIONS.platformDo,
+        kind: "admission",
+        requestId: deniedRequestId,
+        installationId: scenario.installationId,
+        jti: crypto.randomUUID(),
+        idempotencyKey: retryKey,
+        requestReference: "R5-A7-REFUSAL",
+        capabilityId: CAPABILITY_ID,
+        quotaWeight: QUOTA_WEIGHT,
+        orgId: scenario.orgId,
+      }),
+    });
+    expect(await denied.json()).toMatchObject({ outcome: "concurrency_exhausted" });
+    expect(getPerRequestWriteCounts(deniedRequestId)).toBeUndefined();
+
+    const released = await quotaDoStub(scenario.installationId).fetch("https://quota-do.internal/rpc", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        contract_version: CHANNEL_VERSIONS.platformDo,
+        kind: "release",
+        installationId: scenario.installationId,
+        requestId: held!.requestId,
+        idempotencyKey: held!.idempotencyKey,
+        jti: held!.jti,
+      }),
+    });
+    expect(released.ok).toBe(true);
+
+    const retried = await quotaDoStub(scenario.installationId).fetch("https://quota-do.internal/rpc", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        contract_version: CHANNEL_VERSIONS.platformDo,
+        kind: "admission",
+        requestId: crypto.randomUUID(),
+        installationId: scenario.installationId,
+        jti: crypto.randomUUID(),
+        idempotencyKey: retryKey,
+        requestReference: "R5-A7-RETRY",
+        capabilityId: CAPABILITY_ID,
+        quotaWeight: QUOTA_WEIGHT,
+        orgId: scenario.orgId,
+      }),
+    });
+    expect(await retried.json()).toMatchObject({ outcome: "admitted" });
   });
 });

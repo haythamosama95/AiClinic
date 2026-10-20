@@ -794,6 +794,8 @@ type ReservationRow = {
   admitted_at: number;
   idempotency_key?: string;
   request_reference?: string;
+  /** Legacy exhausted-term overcount has been removed from used_final. */
+  used_final_adjusted?: boolean;
 };
 
 type AdmissionIdempotencyBinding = NonNullable<
@@ -821,18 +823,75 @@ type ParsedHot = {
   idempotency: Record<string, StoredAnswerEntry>;
   /** Per-term band flags (`term_id` → `{ "75"?, "90"? }`). */
   band_emitted: Record<string, TermBandEmitted>;
+  legacyRefusalsRemoved: boolean;
 };
 
+function isNeverAdmittedRefusal(answer: AdmissionResponse | undefined): boolean {
+  if (answer?.kind !== "admission") return false;
+  return [
+    "coverage_lapsed",
+    "quota_exhausted",
+    "suspended",
+    "forbidden_capability",
+    "concurrency_exhausted",
+  ].includes(answer.outcome);
+}
+
+function reservedForTerm(hot: ParsedHot, termId: string): number {
+  return hot.reservations.reduce(
+    (total, reservation) => total + (reservation.term_id === termId ? reservation.weight : 0),
+    0,
+  );
+}
+
+function markTermReservationsSettledOnly(hot: ParsedHot, termId: string): void {
+  for (const reservation of hot.reservations) {
+    if (reservation.term_id === termId) reservation.used_final_adjusted = true;
+  }
+}
+
+function migrateExhaustedTermReservations(
+  storage: DurableObjectStorage,
+  hot: ParsedHot,
+): boolean {
+  const exhausted = new Set(
+    loadTerms(storage)
+      .filter((term) => term.state === "exhausted" || term.end_reason === "grace_exhausted")
+      .map((term) => term.term_id),
+  );
+  let changed = false;
+  for (const reservation of hot.reservations) {
+    if (!exhausted.has(reservation.term_id) || reservation.used_final_adjusted) continue;
+    sqlExecLocal(
+      storage,
+      `UPDATE term SET used_final = MAX(0, COALESCE(used_final, 0) - ${reservation.weight})
+       WHERE term_id = ${sqlStringLocal(reservation.term_id)}`,
+    );
+    reservation.used_final_adjusted = true;
+    changed = true;
+  }
+  return changed;
+}
+
 function parseHotRow(row: HotRow): ParsedHot {
+  const replay = JSON.parse(row.replay || "{}") as Record<string, StoredReplayEntry>;
+  const idempotency = JSON.parse(row.idempotency || "{}") as Record<string, StoredAnswerEntry>;
+  for (const [key, entry] of Object.entries(replay)) {
+    if (isNeverAdmittedRefusal(entry.answer)) delete replay[key];
+  }
+  for (const [key, entry] of Object.entries(idempotency)) {
+    if (isNeverAdmittedRefusal(entry.answer)) delete idempotency[key];
+  }
+  const legacyRefusalsRemoved =
+    JSON.stringify(replay) !== (row.replay || "{}") ||
+    JSON.stringify(idempotency) !== (row.idempotency || "{}");
   return {
     row,
     reservations: JSON.parse(row.reservations || "[]") as ReservationRow[],
-    replay: JSON.parse(row.replay || "{}") as Record<string, StoredReplayEntry>,
-    idempotency: JSON.parse(row.idempotency || "{}") as Record<
-      string,
-      StoredAnswerEntry
-    >,
+    replay,
+    idempotency,
     band_emitted: parseBandEmitted(row.band_emitted || "{}"),
+    legacyRefusalsRemoved,
   };
 }
 
@@ -922,31 +981,27 @@ function storeAnswer(
   };
 }
 
-function returnStoredAdmission(
+function returnUnstoredRefusal(
   storage: DurableObjectStorage,
   hot: ParsedHot,
   request: AdmissionRequest,
   answer: AdmissionResponse,
-  now: number,
+  stateChanged: boolean,
 ): AdmissionResponse {
-  storeAnswer(hot, request, answer, now);
-  recordHotWrites(storage, request.requestId, () =>
-    persistParsedHot(storage, hot),
-  );
+  if (stateChanged) {
+    recordHotWrites(storage, request.requestId, () => persistParsedHot(storage, hot));
+  }
   return answer;
 }
 
-function adjustEndedTermUsedFinal(
+function addEndedTermUsedFinal(
   storage: DurableObjectStorage,
   termId: string,
-  delta: number,
+  weight: number,
 ): void {
   sqlExecLocal(
     storage,
-    `UPDATE term SET used_final = CASE
-       WHEN COALESCE(used_final, 0) + (${delta}) < 0 THEN 0
-       ELSE COALESCE(used_final, 0) + (${delta})
-     END
+    `UPDATE term SET used_final = COALESCE(used_final, 0) + ${weight}
      WHERE term_id = ${sqlStringLocal(termId)}`,
   );
 }
@@ -1040,6 +1095,12 @@ function chargeStaleReservations(
     if (now - reservation.admitted_at > STALE_RESERVATION_MS) {
       if (reservation.term_id === hot.row.active_term_id) {
         hot.row.used += reservation.weight;
+      } else {
+        sqlExecLocal(
+          storage,
+          `UPDATE term SET used_final = COALESCE(used_final, 0) + ${reservation.weight}
+           WHERE term_id = ${sqlStringLocal(reservation.term_id)}`,
+        );
       }
       hot.row.reserved = Math.max(0, hot.row.reserved - reservation.weight);
       insertOutbox(storage, "usage_adjustment", {
@@ -1087,7 +1148,7 @@ function endGraceIfExhausted(
   },
 ): boolean {
   const graceUsed =
-    hot.row.used + hot.row.reserved - hot.row.grace_base_used;
+    hot.row.used + reservedForTerm(hot, graceTerm.term_id) - hot.row.grace_base_used;
   const graceAllowance = computeGraceAllowance(
     graceTerm,
     hot.row.grace_base_used,
@@ -1095,7 +1156,8 @@ function endGraceIfExhausted(
   if (graceUsed < graceAllowance) {
     return false;
   }
-  const usedFinal = hot.row.used + hot.row.reserved;
+  const usedFinal = hot.row.used;
+  markTermReservationsSettledOnly(hot, graceTerm.term_id);
   sqlExecLocal(
     storage,
     `UPDATE term SET state = 'ended', end_reason = 'grace_exhausted', used_final = ${usedFinal}, ended_at = ${sqlStringLocal(context.nowIso)}
@@ -1239,6 +1301,11 @@ function admitOnHotRow(
   }
 
   let hot = parseHotRow(hotRows[0]!);
+  const exhaustedReservationUpgrade = migrateExhaustedTermReservations(storage, hot);
+  if (hot.legacyRefusalsRemoved || exhaustedReservationUpgrade) {
+    recordHotWrites(storage, request.requestId, () => persistParsedHot(storage, hot));
+    hot.legacyRefusalsRemoved = false;
+  }
   sweepStoredAnswers(hot, now);
 
   if (hot.replay[request.jti]) {
@@ -1302,19 +1369,6 @@ function admitOnHotRow(
     now,
     nowIso,
   );
-  if (stateChanged) {
-    recordHotWrites(storage, request.requestId, () =>
-      persistParsedHot(storage, hot),
-    );
-  }
-
-  const persistIfChanged = (): void => {
-    if (stateChanged) {
-      recordHotWrites(storage, request.requestId, () =>
-        persistParsedHot(storage, hot),
-      );
-    }
-  };
 
   applyDueBoundaries({
     storage,
@@ -1334,63 +1388,59 @@ function admitOnHotRow(
   const quotaWeight = resolveQuotaWeight(request);
 
   if (hot.row.transfer_pending !== 0) {
-    persistIfChanged();
-    return returnStoredAdmission(storage, hot, request, {
+    return returnUnstoredRefusal(storage, hot, request, {
       kind: "admission",
       outcome: "coverage_lapsed",
       coverage_reason: "transfer_pending",
-    }, now);
+    }, stateChanged);
   }
 
   if (hot.row.suspended !== 0) {
-    persistIfChanged();
-    return returnStoredAdmission(storage, hot, request, {
+    return returnUnstoredRefusal(storage, hot, request, {
       kind: "admission",
       outcome: "suspended",
-    }, now);
+    }, stateChanged);
   }
 
   const billableTerm = activeOrGraceTerm(terms);
   if (billableTerm === undefined) {
     const last = lastEndedTerm(terms);
-    persistIfChanged();
     if (last?.state === "exhausted" || last?.end_reason === "exhausted") {
-      return returnStoredAdmission(storage, hot, request, {
+      return returnUnstoredRefusal(storage, hot, request, {
         kind: "admission",
         outcome: "quota_exhausted",
         period_end: last.ends_at,
-      }, now);
+      }, stateChanged);
     }
-    return returnStoredAdmission(storage, hot, request, {
+    return returnUnstoredRefusal(storage, hot, request, {
       kind: "admission",
       outcome: "coverage_lapsed",
       coverage_reason: coverageLapseReason(terms),
-    }, now);
+    }, stateChanged);
   }
 
   const plan = planSnapshotForTerm(billableTerm);
   if (!plan.capabilities.includes(capabilityId)) {
-    persistIfChanged();
-    return returnStoredAdmission(storage, hot, request, {
+    return returnUnstoredRefusal(storage, hot, request, {
       kind: "admission",
       outcome: "forbidden_capability",
-    }, now);
+    }, stateChanged);
   }
 
   if (hot.reservations.length >= plan.concurrency_limit) {
-    persistIfChanged();
-    return returnStoredAdmission(storage, hot, request, {
+    return returnUnstoredRefusal(storage, hot, request, {
       kind: "admission",
       outcome: "concurrency_exhausted",
-    }, now);
+    }, stateChanged);
   }
 
   const allowance = billableTerm.allowance ?? 0;
+  const termReserved = reservedForTerm(hot, billableTerm.term_id);
   const creditsRemaining =
     billableTerm.state === "grace"
       ? computeGraceAllowance(billableTerm, hot.row.grace_base_used) -
-        (hot.row.used + hot.row.reserved - hot.row.grace_base_used)
-      : allowance - hot.row.used - hot.row.reserved;
+        (hot.row.used + termReserved - hot.row.grace_base_used)
+      : allowance - hot.row.used - termReserved;
   if (creditsRemaining < 1) {
     if (billableTerm.state === "grace") {
       const graceEnded = endGraceIfExhausted(storage, hot, billableTerm, {
@@ -1403,19 +1453,17 @@ function admitOnHotRow(
       if (graceEnded) {
         stateChanged = true;
       }
-      persistIfChanged();
-      return returnStoredAdmission(storage, hot, request, {
+      return returnUnstoredRefusal(storage, hot, request, {
         kind: "admission",
         outcome: "coverage_lapsed",
         coverage_reason: "grace_exhausted",
-      }, now);
+      }, stateChanged);
     }
-    persistIfChanged();
-    return returnStoredAdmission(storage, hot, request, {
+    return returnUnstoredRefusal(storage, hot, request, {
       kind: "admission",
       outcome: "quota_exhausted",
       period_end: billableTerm.ends_at,
-    }, now);
+    }, stateChanged);
   }
 
   const reservationId = request.requestId ?? crypto.randomUUID();
@@ -1431,7 +1479,7 @@ function admitOnHotRow(
   hot.row.reserved += quotaWeight;
 
   const admittingTermId = billableTerm.term_id;
-  const usageTotal = hot.row.used + hot.row.reserved;
+  const usageTotal = hot.row.used + reservedForTerm(hot, admittingTermId);
   const willExhaust =
     billableTerm.state === "active" && usageTotal >= allowance;
 
@@ -1447,7 +1495,8 @@ function admitOnHotRow(
   );
 
   if (willExhaust) {
-    const usedFinal = hot.row.used + hot.row.reserved;
+    const usedFinal = hot.row.used;
+    markTermReservationsSettledOnly(hot, admittingTermId);
     const trackId = request.requestId;
     recordEventWrites(storage, trackId, () => {
       sqlExecLocal(
@@ -1583,6 +1632,7 @@ function settleReservationOnHot(
   }
 
   let hot = parseHotRow(hotRows[0]!);
+  migrateExhaustedTermReservations(storage, hot);
   sweepStoredAnswers(hot, now);
 
   const reservationId = request.reservation_id ?? request.requestId;
@@ -1609,11 +1659,11 @@ function settleReservationOnHot(
   if (consumed) {
     if (onActiveTerm) {
       hot.row.used += reservation.weight;
+    } else {
+      recordEventWrites(storage, request.requestId, () =>
+        addEndedTermUsedFinal(storage, reservation.term_id, reservation.weight),
+      );
     }
-  } else if (!onActiveTerm) {
-    recordEventWrites(storage, request.requestId, () =>
-      adjustEndedTermUsedFinal(storage, reservation.term_id, -reservation.weight),
-    );
   }
   hot.row.reserved = Math.max(0, hot.row.reserved - reservation.weight);
   hot.reservations.splice(index, 1);
@@ -1702,6 +1752,7 @@ export async function settleFallbackRPC(
       return { kind: "settleFallback", outcome: "settled" };
     }
     const hot = parseHotRow(hotRows[0]!);
+    migrateExhaustedTermReservations(storage, hot);
     const reservationIndex = hot.reservations.findIndex(
       (reservation) => reservation.id === request.request_id,
     );
@@ -1714,7 +1765,7 @@ export async function settleFallbackRPC(
       hot.row.used += request.weight;
       persistParsedHot(storage, hot);
     } else {
-      adjustEndedTermUsedFinal(storage, request.term_id, request.weight);
+      addEndedTermUsedFinal(storage, request.term_id, request.weight);
       persistParsedHot(storage, hot);
     }
     await applyFallbackWeightToLegacy(storage, request.weight);
@@ -1804,6 +1855,7 @@ function releaseOnHotRow(
   }
 
   let hot = parseHotRow(hotRows[0]!);
+  migrateExhaustedTermReservations(storage, hot);
   sweepStoredAnswers(hot, now);
 
   const index = hot.reservations.findIndex(
