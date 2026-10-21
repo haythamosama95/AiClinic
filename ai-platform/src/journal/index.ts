@@ -69,6 +69,7 @@ export type PostResponseInput = {
   quotaWeight: number;
   /** Authoritative charged quota weight; omitted for the normal manifest weight. */
   chargedWeight?: number;
+  accountingSequence?: number;
   /** Keep the usage fact pending until the DO acknowledges durable settlement. */
   deferUsage?: boolean;
   /** Ack the intent in the same D1 batch as its usage fact. */
@@ -458,15 +459,17 @@ async function persistPostResponseDetail(
       db
         .prepare(
           `INSERT OR IGNORE INTO usage_event (
-            usage_event_id, installation_id, term_id, request_id,
-            quota_weight, tokens, cost, recorded_at
-          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+            usage_event_id, installation_id, term_id, request_id, origin_request_id,
+            accounting_seq, quota_weight, tokens, cost, recorded_at
+          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         )
         .bind(
           generateUlid(),
           input.installationId,
           input.termId,
           input.requestId,
+          input.requestId,
+          input.accountingSequence ?? null,
           input.chargedWeight ?? input.quotaWeight,
           input.totalTokens,
           input.totalCost,
@@ -498,6 +501,22 @@ async function persistPostResponseDetail(
   }
 
   await db.batch(statements);
+
+  if (!input.deferUsage && input.accountingSequence !== undefined) {
+    const update = await db.prepare(
+      `UPDATE usage_event SET request_id = COALESCE(request_id, ?),
+         tokens = ?, cost = ?, recorded_at = ?
+       WHERE installation_id = ? AND accounting_seq = ? AND origin_request_id = ?
+         AND term_id = ? AND quota_weight = ?`,
+    ).bind(
+      input.requestId, input.totalTokens, input.totalCost, input.recordedAt,
+      input.installationId, input.accountingSequence, input.requestId,
+      input.termId, input.chargedWeight ?? input.quotaWeight,
+    ).run();
+    if ((update.meta.changes ?? 0) !== 1) {
+      throw new Error("usage_accounting_identity_conflict");
+    }
+  }
 
   const key = envelopeKey(input.requestId);
   await r2.put(key, buildEnvelope(input));

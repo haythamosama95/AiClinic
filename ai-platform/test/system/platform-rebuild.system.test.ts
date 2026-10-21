@@ -703,9 +703,18 @@ describe("platform rebuild procedures", () => {
     ).toEqual(mirrorBefore);
   });
 
-  it("E2E-P3.11-01 FM-20 wiped DO rebuilds terms positions holds and usage and the compare is clean", async () => {
+  it("R9-PUS1 FM-20: distinct accounting sequences rebuild usage once and compare clean", async () => {
     const scenario = await newScenario();
     await setupFm20Clinic(scenario);
+
+    const usage = await queryAll<{ accounting_seq: number; origin_request_id: string }>(
+      `SELECT accounting_seq, origin_request_id FROM usage_event
+       WHERE installation_id = ? ORDER BY accounting_seq`,
+      [scenario.installationId],
+    );
+    expect(usage).toHaveLength(2);
+    expect(new Set(usage.map((row) => row.accounting_seq)).size).toBe(2);
+    expect(new Set(usage.map((row) => row.origin_request_id)).size).toBe(2);
 
     const before = await recordDoTermSnapshots(scenario.installationId);
 
@@ -733,6 +742,77 @@ describe("platform rebuild procedures", () => {
       [`do-rebuild:${scenario.installationId}`],
     );
     expect(alert).toBeNull();
+  });
+
+  it("R9-PUS1: delayed journal rows after an accounting-watermarked snapshot do not double-charge", async () => {
+    const scenario = await newScenario();
+    await setupPromotedPolicy(scenario);
+    await completeChargedRequest(scenario);
+    await completeChargedRequest(scenario);
+
+    const usage = await queryAll<{ usage_event_id: string; origin_request_id: string; accounting_seq: number; term_id: string; quota_weight: number; tokens: number; cost: number; recorded_at: string }>(
+      `SELECT usage_event_id, origin_request_id, accounting_seq, term_id, quota_weight, tokens, cost, recorded_at FROM usage_event
+       WHERE installation_id = ? ORDER BY accounting_seq`,
+      [scenario.installationId],
+    );
+    expect(usage).toHaveLength(2);
+    expect(new Set(usage.map((row) => row.accounting_seq)).size).toBe(2);
+    expect(usage[0]!.recorded_at).toBe(usage[1]!.recorded_at);
+    await env.DB.prepare("DELETE FROM usage_event WHERE installation_id = ?")
+      .bind(scenario.installationId).run();
+
+    const accessJwt = await mintVendorAccessJwt();
+    const snapshotResult = await p311VendorCall(
+      "refreshCoverageSnapshot",
+      { contract_version: CONTRACT_VERSION, installation_id: scenario.installationId },
+      { accessJwt },
+    );
+    expect(snapshotResult.result).toBe("ok");
+    const detail = JSON.parse(snapshotResult.detail) as { event_id: string };
+    const event = await queryOne<{ snapshot: string; at: string }>(
+      "SELECT snapshot, at FROM coverage_event WHERE event_id = ?",
+      [detail.event_id],
+    );
+    expect(JSON.parse(event!.snapshot).accounting_seq).toBe(usage[1]!.accounting_seq);
+
+    const before = await recordDoTermSnapshots(scenario.installationId);
+    const delayedAt = new Date(Date.parse(event!.at) + 1000).toISOString();
+    for (const row of usage) {
+      await env.DB.prepare(
+        `INSERT INTO usage_event (
+          usage_event_id, installation_id, term_id, origin_request_id, accounting_seq,
+          quota_weight, tokens, cost, recorded_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      ).bind(
+        row.usage_event_id, scenario.installationId, row.term_id, row.origin_request_id,
+        row.accounting_seq, row.quota_weight, row.tokens, row.cost, delayedAt,
+      ).run();
+    }
+    await wipeClinicDo(scenario.installationId);
+
+    const rebuilt = await callRebuildClinicDo(scenario.installationId);
+    expect(rebuilt.result).toBe("ok");
+    expect(await recordDoTermSnapshots(scenario.installationId)).toEqual(before);
+  });
+
+  it("R9-PUS1: a missing post-snapshot accounting sequence blocks rebuild", async () => {
+    const scenario = await newScenario();
+    await setupPromotedPolicy(scenario);
+    await completeChargedRequest(scenario);
+    await completeChargedRequest(scenario);
+    const rows = await queryAll<{ usage_event_id: string; accounting_seq: number }>(
+      `SELECT usage_event_id, accounting_seq FROM usage_event
+       WHERE installation_id = ? ORDER BY accounting_seq`,
+      [scenario.installationId],
+    );
+    expect(rows.map((row) => row.accounting_seq)).toEqual([1, 2]);
+    await env.DB.prepare("DELETE FROM usage_event WHERE usage_event_id = ?")
+      .bind(rows[0]!.usage_event_id).run();
+    await wipeClinicDo(scenario.installationId);
+
+    const rebuilt = await callRebuildClinicDo(scenario.installationId);
+    expect(rebuilt.result).toBe("blocked");
+    expect(rebuilt.detail).toContain("usage_accounting_sequence_gap");
   });
 
   it("R9-PDO1: rebuild refuses a nonempty DO and preserves an unshipped grant", async () => {

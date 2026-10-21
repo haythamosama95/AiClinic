@@ -30,6 +30,7 @@ export const PLATFORM_ENTITIES = [
   "ai_request",
   "ai_attempt",
   "usage_event",
+  "usage_term_retention",
   "usage_rollup",
   "platform_counter",
   "control_audit",
@@ -283,6 +284,21 @@ describe("T-A5-15 request_reference_index_exists_and_unique", () => {
     expect(stored).toHaveLength(1);
     expect(stored[0]?.request_reference).toBe(sample);
     assertRequestReferenceFormat(stored[0]!.request_reference);
+  });
+});
+
+describe("R9-PUS1/R9-PRET1 usage identity schema", () => {
+  it("keeps usage accounting and term retention identities durable", async () => {
+    await applyMigrations();
+    const usageColumns = await query<{ name: string }>("PRAGMA table_info(usage_event)");
+    expect(usageColumns.map((column) => column.name)).toContain("origin_request_id");
+    expect(usageColumns.map((column) => column.name)).toContain("accounting_seq");
+    const indexes = await query<{ name: string; sql: string }>(
+      `SELECT name, sql FROM sqlite_master WHERE type = 'index' AND tbl_name = 'usage_event'`,
+    );
+    expect(indexes.map((index) => index.name)).toContain("idx_usage_event_accounting_seq");
+    expect(indexes.map((index) => index.name)).toContain("idx_usage_event_origin_request");
+    expect((await tableNames()).has("usage_term_retention")).toBe(true);
   });
 });
 

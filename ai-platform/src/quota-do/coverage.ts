@@ -63,6 +63,7 @@ export type HotRow = {
   band_emitted: string;
   binding_epoch: number;
   clinic_seq: number;
+  accounting_seq: number;
   next_alarm_at: string | null;
 };
 
@@ -619,6 +620,7 @@ function lapsedSnapshotReason(terms: TermRow[]): string {
 function coverageSnapshotHotFields(hot: HotRow): Record<string, unknown> {
   const fields: Record<string, unknown> = {
     grace_base_used: hot.grace_base_used,
+    accounting_seq: hot.accounting_seq ?? 0,
     awaiting_transfer: hot.awaiting_transfer ?? 0,
     transfer_pending: hot.transfer_pending ?? 0,
   };
@@ -1411,6 +1413,9 @@ export function updateHot(
   }
   if (patch.clinic_seq !== undefined) {
     sets.push(`clinic_seq = ${patch.clinic_seq}`);
+  }
+  if (patch.accounting_seq !== undefined) {
+    sets.push(`accounting_seq = ${patch.accounting_seq}`);
   }
   if (patch.next_alarm_at !== undefined) {
     sets.push(
@@ -3955,23 +3960,46 @@ async function shipCoverageOutboxInLock(
           payload.result_json,
         ).run();
       } else if (row.kind === "usage_adjustment") {
-        const usageEventId = crypto.randomUUID();
+        const accountingSequence = Number.isSafeInteger(payload.accounting_seq)
+          ? Number(payload.accounting_seq)
+          : null;
+        const originRequestId = String(payload.request_id);
+        const usageEventId = accountingSequence === null
+          ? crypto.randomUUID()
+          : `${payload.installation_id}:${accountingSequence}`;
         await env.DB.prepare(
           `INSERT OR IGNORE INTO usage_event (
-            usage_event_id, installation_id, term_id, request_id, quota_weight, tokens, cost, recorded_at
-          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+            usage_event_id, installation_id, term_id, request_id, origin_request_id,
+            accounting_seq, quota_weight, tokens, cost, recorded_at
+          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         )
           .bind(
             usageEventId,
             payload.installation_id,
             payload.term_id,
             payload.request_id,
+            payload.request_id,
+            payload.accounting_seq ?? null,
             payload.quota_weight,
             payload.tokens,
             payload.cost,
             payload.recorded_at,
           )
           .run();
+        const stored = accountingSequence === null
+          ? await env.DB.prepare(
+              `SELECT installation_id, term_id, origin_request_id, accounting_seq, quota_weight
+               FROM usage_event WHERE usage_event_id = ?`,
+            ).bind(usageEventId).first<{ installation_id: string; term_id: string; origin_request_id: string | null; accounting_seq: number | null; quota_weight: number }>()
+          : await env.DB.prepare(
+              `SELECT installation_id, term_id, origin_request_id, accounting_seq, quota_weight
+               FROM usage_event WHERE installation_id = ? AND accounting_seq = ?`,
+            ).bind(payload.installation_id, accountingSequence).first<{ installation_id: string; term_id: string; origin_request_id: string | null; accounting_seq: number | null; quota_weight: number }>();
+        if (stored === null || stored.installation_id !== payload.installation_id ||
+            stored.term_id !== payload.term_id || stored.origin_request_id !== originRequestId ||
+            stored.accounting_seq !== accountingSequence || stored.quota_weight !== payload.quota_weight) {
+          throw new Error("usage_accounting_identity_conflict");
+        }
       } else if (row.kind === "alert") {
         shippedAlerts.push({
           alert_key: String(payload.alert_key),
@@ -5012,6 +5040,10 @@ function syncDoTermsAndHotFromCoverageSnapshot(
     snapshot.transferred_out_to.length > 0
       ? snapshot.transferred_out_to
       : null;
+  const accountingSeq =
+    typeof snapshot.accounting_seq === "number" && Number.isSafeInteger(snapshot.accounting_seq)
+      ? snapshot.accounting_seq
+      : 0;
   updateHot(storage, {
     active_term_id: activeTermId,
     used: hotUsed,
@@ -5019,6 +5051,7 @@ function syncDoTermsAndHotFromCoverageSnapshot(
     awaiting_transfer: awaitingTransfer,
     transfer_pending: transferPending,
     transferred_out_to: transferredOutTo,
+    accounting_seq: accountingSeq,
   });
   for (const entry of termEntries) {
     insertOrUpdateTermFromSnapshotEntry(storage, entry);
@@ -5055,20 +5088,24 @@ function hydrateDoFromCoverageSnapshot(
     typeof snapshot.binding_epoch === "number"
       ? snapshot.binding_epoch
       : bindingEpoch;
+  const accountingSeq =
+    typeof snapshot.accounting_seq === "number" && Number.isSafeInteger(snapshot.accounting_seq)
+      ? snapshot.accounting_seq
+      : 0;
 
   sqlExec(
     storage,
     `INSERT INTO hot (
       suspended, transferred_out_to, awaiting_transfer, transfer_pending,
       active_term_id, used, reserved, grace_base_used, reservations, replay,
-      idempotency, band_emitted, binding_epoch, clinic_seq, next_alarm_at
+      idempotency, band_emitted, binding_epoch, clinic_seq, next_alarm_at, accounting_seq
     ) VALUES (
       ${suspended},
       ${transferredOutTo === null ? "NULL" : sqlString(transferredOutTo)},
       ${awaitingTransfer}, ${transferPending},
       ${activeTermId === null ? "NULL" : sqlString(activeTermId)},
       ${hotUsed}, 0, ${graceBaseUsed}, '[]', '{}', '{}', '{}',
-      ${snapshotBindingEpoch}, ${clinicSeq}, NULL
+      ${snapshotBindingEpoch}, ${clinicSeq}, NULL, ${accountingSeq}
     )`,
   );
 
@@ -5099,72 +5136,20 @@ function applyUsageToDoTerm(
   );
 }
 
-function snapshotUsedByTermId(
-  snapshot: Record<string, unknown>,
-): Map<string, number> {
-  const usedByTerm = new Map<string, number>();
-  const termsRaw = snapshot.terms;
-  if (Array.isArray(termsRaw)) {
-    for (const entry of termsRaw) {
-      if (entry === null || typeof entry !== "object") {
-        continue;
-      }
-      const term = entry as Record<string, unknown>;
-      const termId = typeof term.term_id === "string" ? term.term_id : "";
-      if (termId.length === 0 || typeof term.used !== "number") {
-        continue;
-      }
-      usedByTerm.set(termId, term.used);
-    }
-  }
-  const termObject = snapshot.term;
-  if (
-    termObject !== null &&
-    typeof termObject === "object" &&
-    !Array.isArray(termObject)
-  ) {
-    const active = termObject as Record<string, unknown>;
-    const ref = typeof active.ref === "string" ? active.ref : "";
-    if (ref.length > 0 && typeof active.used === "number") {
-      usedByTerm.set(ref, active.used);
-    }
-  }
-  return usedByTerm;
-}
-
 function reapplyUsageEventsAfterSnapshot(
   storage: DurableObjectStorage,
   termIds: string[],
-  anchorSnapshot: Record<string, unknown>,
-  snapshotAt: string,
-  rows: Array<{ request_id: string; term_id: string; quota_weight: number; recorded_at: string }>,
+  accountingWatermark: number,
+  rows: Array<{ usage_event_id: string; origin_request_id: string; accounting_seq: number; term_id: string; quota_weight: number }>,
 ): void {
   if (termIds.length === 0) {
     return;
   }
-  const snapshotUsedRemaining = snapshotUsedByTermId(anchorSnapshot);
-  const appliedRequestIds = new Set<string>();
-  for (const row of rows.filter((entry) => termIds.includes(entry.term_id))) {
-    if (appliedRequestIds.has(row.request_id)) {
-      continue;
-    }
-    appliedRequestIds.add(row.request_id);
-
-    let quotaWeight = row.quota_weight;
-    if (row.recorded_at === snapshotAt) {
-      const covered = snapshotUsedRemaining.get(row.term_id) ?? 0;
-      if (covered >= quotaWeight) {
-        snapshotUsedRemaining.set(row.term_id, covered - quotaWeight);
-        continue;
-      }
-      snapshotUsedRemaining.set(row.term_id, 0);
-      quotaWeight -= covered;
-    }
-
-    if (quotaWeight <= 0) {
-      continue;
-    }
-    applyUsageToDoTerm(storage, row.term_id, quotaWeight);
+  const appliedSequences = new Set<number>();
+  for (const row of rows.filter((entry) => termIds.includes(entry.term_id) && entry.accounting_seq > accountingWatermark)) {
+    if (appliedSequences.has(row.accounting_seq)) continue;
+    appliedSequences.add(row.accounting_seq);
+    if (row.quota_weight > 0) applyUsageToDoTerm(storage, row.term_id, row.quota_weight);
   }
 }
 
@@ -6087,13 +6072,62 @@ export async function rebuildClinicDoRPC(
          WHERE installation_id = ? AND clinic_seq > ? ORDER BY clinic_seq ASC`,
       ).bind(request.installationId, anchor.clinic_seq).all<{ kind: string; snapshot: string; clinic_seq: number; at: string }>(),
       request.db.prepare(
-        `SELECT request_id, term_id, quota_weight, recorded_at FROM usage_event
-         WHERE installation_id = ? AND recorded_at >= ? ORDER BY recorded_at ASC, request_id ASC`,
-      ).bind(request.installationId, anchor.at).all<{ request_id: string; term_id: string; quota_weight: number; recorded_at: string }>(),
+        `SELECT usage_event_id, origin_request_id, accounting_seq, term_id, quota_weight
+         FROM usage_event WHERE installation_id = ? ORDER BY accounting_seq ASC, usage_event_id ASC`,
+      ).bind(request.installationId).all<{ usage_event_id: string; origin_request_id: string | null; accounting_seq: number | null; term_id: string; quota_weight: number }>(),
     ]);
     const beforeRows = beforeResult.results ?? [];
     const afterRows = afterResult.results ?? [];
     const allLedgerRows = [...beforeRows, ...afterRows];
+    const coverageRows = coverageResult.results ?? [];
+    let accountingWatermark = anchorSnapshot.accounting_seq;
+    const recoveredTermIds = new Set<string>();
+    const addSnapshotTermIds = (snapshot: Record<string, unknown>): void => {
+      if (!Array.isArray(snapshot.terms)) return;
+      for (const item of snapshot.terms) {
+        if (item !== null && typeof item === "object" && !Array.isArray(item)) {
+          const termId = (item as Record<string, unknown>).term_id;
+          if (typeof termId === "string" && termId.length > 0) recoveredTermIds.add(termId);
+        }
+      }
+    };
+    addSnapshotTermIds(anchorSnapshot);
+    const usageRows = usageResult.results ?? [];
+    const blockUnknownUsage = (): { kind: "rebuild_clinic_do"; result: "blocked"; blocked_reason: string } => {
+      persistBlockedRecoveryMarker();
+      return { kind: "rebuild_clinic_do", result: "blocked", blocked_reason: "usage_accounting_identity_unknown" };
+    };
+    if (!Number.isSafeInteger(accountingWatermark) || Number(accountingWatermark) < 0 ||
+        usageRows.some((row) => row.accounting_seq === null || !Number.isSafeInteger(row.accounting_seq) ||
+          row.accounting_seq < 1 || typeof row.origin_request_id !== "string" || row.origin_request_id.length === 0)) {
+      return blockUnknownUsage();
+    }
+    for (const event of coverageRows) {
+      let eventSnapshot: Record<string, unknown>;
+      try {
+        eventSnapshot = JSON.parse(event.snapshot) as Record<string, unknown>;
+      } catch {
+        persistBlockedRecoveryMarker();
+        return { kind: "rebuild_clinic_do", result: "blocked", blocked_reason: "usage_accounting_snapshot_invalid" };
+      }
+      if (!Number.isSafeInteger(eventSnapshot.accounting_seq) ||
+          Number(eventSnapshot.accounting_seq) < Number(accountingWatermark)) {
+        return blockUnknownUsage();
+      }
+      addSnapshotTermIds(eventSnapshot);
+      accountingWatermark = Number(eventSnapshot.accounting_seq);
+    }
+    const laterUsageRows = usageRows.filter((row) => row.accounting_seq! > Number(accountingWatermark));
+    if (laterUsageRows.some((row) => !recoveredTermIds.has(row.term_id))) {
+      persistBlockedRecoveryMarker();
+      return { kind: "rebuild_clinic_do", result: "blocked", blocked_reason: "usage_accounting_term_identity_conflict" };
+    }
+    for (let index = 0; index < laterUsageRows.length; index += 1) {
+      if (laterUsageRows[index]!.accounting_seq !== Number(accountingWatermark) + index + 1) {
+        persistBlockedRecoveryMarker();
+        return { kind: "rebuild_clinic_do", result: "blocked", blocked_reason: "usage_accounting_sequence_gap" };
+      }
+    }
     const capsules = new Map<string, Record<string, unknown>>();
     try {
       for (const row of allLedgerRows) {
@@ -6185,7 +6219,6 @@ export async function rebuildClinicDoRPC(
         blocked_reason: detail,
       };
     }
-    const coverageRows = coverageResult.results ?? [];
     const grantSnapshots = new Map<string, Record<string, unknown>>();
     for (const event of coverageRows) {
       if (event.kind !== "grant_applied") continue;
@@ -6219,9 +6252,8 @@ export async function rebuildClinicDoRPC(
       reapplyUsageEventsAfterSnapshot(
         storage,
         loadTerms(storage).map((term) => term.term_id),
-        anchorSnapshot,
-        anchor.at,
-        usageResult.results ?? [],
+        Number(accountingWatermark),
+        usageRows as Array<{ usage_event_id: string; origin_request_id: string; accounting_seq: number; term_id: string; quota_weight: number }>,
       );
       sqlExec(storage,
         `UPDATE recovery_state SET status = 'building', updated_at = ${sqlString(new Date().toISOString())}

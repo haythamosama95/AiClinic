@@ -813,7 +813,7 @@ async function settleTerminalAccounting(
     idempotencyState?: CreditIdempotencyState;
     terminalErrorCode?: TaxonomyCode;
   },
-): Promise<{ acknowledged: boolean; chargedWeight?: number }> {
+): Promise<{ acknowledged: boolean; chargedWeight?: number; accountingSequence?: number | null }> {
   const recordedAt = await clockNowIso(runtimeEnv);
   const accountingRequestId = input.reservationId ?? input.requestId;
   await recordAccountingIntent(
@@ -856,7 +856,11 @@ async function settleTerminalAccounting(
       (settlement.outcome === "settled" ||
         settlement.outcome === "already_accounted")
     ) {
-      return { acknowledged: true, chargedWeight: settlement.chargedWeight };
+      return {
+        acknowledged: true,
+        chargedWeight: settlement.chargedWeight,
+        accountingSequence: settlement.accountingSequence,
+      };
     }
     return { acknowledged: false };
   }
@@ -885,7 +889,11 @@ async function settleTerminalAccounting(
     },
   );
   return settlement.ok
-    ? { acknowledged: true, chargedWeight: settlement.settlement.chargedWeight }
+    ? {
+        acknowledged: true,
+        chargedWeight: settlement.settlement.chargedWeight,
+        accountingSequence: settlement.settlement.accountingSequence,
+      }
     : { acknowledged: false };
 }
 
@@ -974,6 +982,9 @@ async function settleTerminal(
       ...(settlement.acknowledged
         ? { chargedWeight: settlement.chargedWeight }
         : { deferUsage: true }),
+      ...(settlement.acknowledged && settlement.accountingSequence !== null && settlement.accountingSequence !== undefined
+        ? { accountingSequence: settlement.accountingSequence }
+        : {}),
       ...(settlement.acknowledged ? { accountingSettled: true } : {}),
       ...(input.accountingMode === "fallback" && settlement.acknowledged
         ? { settleFallbackAdmission: true }
@@ -1032,6 +1043,9 @@ async function settleCompletedRequest(
       ...(settlement.acknowledged
         ? { chargedWeight: settlement.chargedWeight }
         : { deferUsage: true }),
+      ...(settlement.acknowledged && settlement.accountingSequence !== null && settlement.accountingSequence !== undefined
+        ? { accountingSequence: settlement.accountingSequence }
+        : {}),
       ...(settlement.acknowledged ? { accountingSettled: true } : {}),
       ...(input.accountingMode === "fallback" && settlement.acknowledged
         ? { settleFallbackAdmission: true }

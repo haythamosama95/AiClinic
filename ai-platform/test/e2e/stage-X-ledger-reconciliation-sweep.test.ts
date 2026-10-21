@@ -499,7 +499,7 @@ async function rebuildSx046EndState(): Promise<{
 }
 
 describe("Stage X — ledger purge, rollup reconciliation, DO sweep (SX-033…SX-048)", () => {
-  it("SX-033 — Ledger horizon deletes usage_event older than 2555d [SEED]", async () => {
+  it("R9-PRET1 SX-033 — ledger age alone cannot purge usage without ended-term evidence [SEED]", async () => {
     const scenario = await enrollOnly();
     const now = new Date();
     await seedUsageEvent({
@@ -527,12 +527,12 @@ describe("Stage X — ledger purge, rollup reconciliation, DO sweep (SX-033…SX
       now,
     });
 
-    expect(result.ledgerDeleted).toBe(1);
+    expect(result.ledgerDeleted).toBe(0);
     expect(
       await queryOne("SELECT usage_event_id FROM usage_event WHERE usage_event_id = ?", [
         "ue-sx033-a",
       ]),
-    ).toBeNull();
+    ).not.toBeNull();
     expect(
       await queryOne("SELECT usage_event_id FROM usage_event WHERE usage_event_id = ?", [
         "ue-sx033-b",

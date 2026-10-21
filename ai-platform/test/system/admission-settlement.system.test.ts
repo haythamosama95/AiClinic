@@ -984,7 +984,7 @@ describe("admission settlement against terms", () => {
     expect(activation?.snapshot?.terms?.find((row) => row.term_id === successor?.term_id)?.used).toBe(0);
   });
 
-  it("R5-A2: late consumption updates only its original term and release stays counter-neutral", async () => {
+  it("R9-PUS1 R5-A2: late settlement keeps original term identity and sequence", async () => {
     const scenario = await newScenario();
     await coverClinic(scenario, { max_allowance_per_month: 2 });
     await coverClinic(scenario, { max_allowance_per_month: 2 });
@@ -1012,7 +1012,11 @@ describe("admission settlement against terms", () => {
       }),
     });
     expect(credit.ok).toBe(true);
-    expect(await credit.json()).toMatchObject({ kind: "credit", ok: true });
+    expect(await credit.json()).toMatchObject({
+      kind: "credit",
+      ok: true,
+      settlement: { accountingSequence: 1 },
+    });
 
     const release = await quotaDoStub(scenario.installationId).fetch("https://quota-do.internal/rpc", {
       method: "POST",
