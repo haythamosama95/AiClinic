@@ -532,10 +532,29 @@ async function setupPromotedRoutingPolicy(): Promise<void> {
     .run();
 }
 
+async function clearRebuildLedgerArtifacts(): Promise<void> {
+  for (const prefix of ["ledger/", "ledger-manifest/"]) {
+    const keys: string[] = [];
+    let cursor: string | undefined;
+    let truncated = true;
+    while (truncated) {
+      const listed = await env.R2.list({ prefix, cursor });
+      keys.push(...listed.objects.map((object) => object.key));
+      truncated = listed.truncated;
+      cursor = listed.truncated ? listed.cursor : undefined;
+    }
+
+    for (let offset = 0; offset < keys.length; offset += 1000) {
+      await env.R2.delete(keys.slice(offset, offset + 1000));
+    }
+  }
+}
+
 async function setupRebuildHarness(): Promise<OffersFixtureExpectations> {
   // Catalogue and fact rows are append-only, so the ordinary per-case reset
-  // cannot isolate the shared offers fixture. Recreate suite-local D1 before
-  // loading it so every rebuild case seeds the same fixture exactly once.
+  // cannot isolate the shared offers fixture. Clear its ledger objects and
+  // recreate suite-local D1 before loading it so each case seeds it once.
+  await clearRebuildLedgerArtifacts();
   await wipeAboD1();
   await reapplyAboSchema();
   const expectations = await seedOffersCatalogueFixture();
