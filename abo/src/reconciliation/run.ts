@@ -11,6 +11,7 @@ import {
   type AlertEnv,
 } from "../alert/index.js";
 import { clockNowIso, clockNowMs, type ClockEnv } from "../clock.js";
+import { feedEventAccepted } from "../coverage/view.js";
 import { insertFactLog } from "../records/append.js";
 import type { JobOutcome } from "../scheduler/jobs.js";
 import {
@@ -683,6 +684,11 @@ async function clinicsWithRecentCoverageEvents(
       has_more?: boolean;
     };
     for (const event of page.events ?? []) {
+      // Only events the coverage view would apply can be cleared by a refresh, so an event the
+      // view rejects must not raise feed_divergence (same acceptance as refreshCoverageView).
+      if (!feedEventAccepted(event)) {
+        continue;
+      }
       const at = event.at;
       const orgId = event.org_id;
       if (typeof at !== "string" || typeof orgId !== "string") {

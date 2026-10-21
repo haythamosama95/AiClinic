@@ -93,7 +93,7 @@ async function loadStoredPair(
   return row ?? null;
 }
 
-function feedEventAccepted(event: Record<string, unknown>): boolean {
+export function feedEventAccepted(event: Record<string, unknown>): boolean {
   if (validateFeedEvent(event).ok === true) {
     return true;
   }

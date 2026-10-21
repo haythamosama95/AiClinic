@@ -1643,11 +1643,17 @@ describe("reconciliation cross-worker", () => {
       setD1BatchThrows(false);
     }
     expect(await findingCount("grant_without_payment")).toBe(0);
+    // Scoped to the grant_without_payment finding: RM32 (R9-AO3) also raises a feed_divergence
+    // finding for ORG_RC_02, and that finding is not part of this batch's atomicity check.
     const partial = await env.DB.prepare(
       `SELECT
          (SELECT COUNT(*) FROM finding_identity WHERE kind = 'grant_without_payment') AS identities,
-         (SELECT COUNT(*) FROM alert WHERE code = 'AL-10') AS alerts,
-         (SELECT COUNT(*) FROM fact_log WHERE "table" = 'finding') AS facts`,
+         (SELECT COUNT(*) FROM alert a
+            JOIN finding f ON a.alert_key = 'AL-10:' || f.finding_id
+           WHERE a.code = 'AL-10' AND f.kind = 'grant_without_payment') AS alerts,
+         (SELECT COUNT(*) FROM fact_log fl
+            JOIN finding f ON fl.key = f.finding_id
+           WHERE fl."table" = 'finding' AND f.kind = 'grant_without_payment') AS facts`,
     ).first<{ identities: number; alerts: number; facts: number }>();
     expect(partial).toEqual({ identities: 0, alerts: 0, facts: 0 });
 
@@ -1658,7 +1664,9 @@ describe("reconciliation cross-worker", () => {
     await runScheduled("* * * * *");
     expect(await findingCount("grant_without_payment")).toBe(1);
     const alert = await env.DB.prepare(
-      `SELECT COUNT(*) AS count FROM alert WHERE code = 'AL-10'`,
+      `SELECT COUNT(*) AS count FROM alert a
+         JOIN finding f ON a.alert_key = 'AL-10:' || f.finding_id
+        WHERE a.code = 'AL-10' AND f.kind = 'grant_without_payment'`,
     ).first<{ count: number }>();
     expect(alert?.count).toBe(1);
   });

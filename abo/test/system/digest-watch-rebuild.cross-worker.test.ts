@@ -871,7 +871,16 @@ async function wipeAboD1(): Promise<void> {
   }
   // RM09's attempt projections reference checkout, so drop them first rather
   // than relying on sqlite_master enumeration order.
-  for (const tableName of ["rebuild_inquiry_attempt", "paymob_intention_attempt_event", "paymob_intention_attempt"]) {
+  // 0024/0025 child tables reference `reversal` and payout lines; drop them
+  // before the generic loop so the parent `reversal` table can be dropped.
+  for (const tableName of [
+    "payout_reversal_link",
+    "reversal_provider_identity",
+    "payout_line_reversal",
+    "rebuild_inquiry_attempt",
+    "paymob_intention_attempt_event",
+    "paymob_intention_attempt",
+  ]) {
     if ((objects.results ?? []).some((row) => row.type === "table" && row.name === tableName)) {
       await env.DB.prepare(`DROP TABLE IF EXISTS ${tableName}`).run();
     }
