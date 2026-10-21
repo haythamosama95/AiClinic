@@ -3838,7 +3838,7 @@ async function shipCoverageOutboxInLock(
     for (const row of rows) {
       const payload = JSON.parse(row.payload) as Record<string, unknown>;
       if (row.kind === "coverage_event") {
-        stagedStatements.push(env.DB.prepare(
+        await env.DB.prepare(
           `INSERT OR IGNORE INTO coverage_event (
             event_id, org_id, installation_id, binding_epoch, clinic_seq, kind, snapshot, at
           ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,

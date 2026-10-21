@@ -318,7 +318,10 @@ async function callReleaseHeld(grantId: string): Promise<P311ResultEnvelope> {
   );
 }
 
-async function completeTransferForRebuild(scenario: Scenario): Promise<{
+async function completeTransferForRebuild(
+  scenario: Scenario,
+  options: { shipDestinationOutbox?: boolean } = {},
+): Promise<{
   transferId: string;
   destinationInstallationId: string;
 }> {
@@ -374,7 +377,9 @@ async function completeTransferForRebuild(scenario: Scenario): Promise<{
     contract_version: CONTRACT_VERSION,
     transfer_id: transferId,
   })).result).toBe("applied");
-  await runDurableObjectAlarm(quotaDoStub(destinationInstallationId));
+  if (options.shipDestinationOutbox !== false) {
+    await runDurableObjectAlarm(quotaDoStub(destinationInstallationId));
+  }
   return { transferId, destinationInstallationId };
 }
 
@@ -855,6 +860,83 @@ describe("platform rebuild procedures", () => {
     );
     expect(preserved?.request_sha256).toMatch(/^[a-f0-9]{64}$/u);
     expect(JSON.parse(preserved!.response_json).receipt).toEqual(JSON.parse(step!.receipt));
+  });
+
+  it("R9-PDO1 RM29-F3: transfer grant recovery capsule ships from the outbox and is acknowledged", async () => {
+    const scenario = await newScenario();
+    await coverClinic(scenario);
+    await newClinic(scenario);
+    const { transferId, destinationInstallationId } = await completeTransferForRebuild(
+      scenario,
+      { shipDestinationOutbox: false },
+    );
+    const pending = await runInDurableObject(
+      quotaDoStub(destinationInstallationId),
+      async (_instance, state) => sqlSelect<{ seq: number; kind: string; payload: string }>(
+        state,
+        "SELECT seq, kind, payload FROM outbox WHERE kind = 'grant_ledger' ORDER BY seq ASC",
+      ),
+    );
+    const grantOutbox = pending.filter((row) => {
+      const payload = JSON.parse(row.payload) as { source_kind?: string };
+      return payload.source_kind === "transfer";
+    });
+    expect(grantOutbox).toHaveLength(1);
+    const outboxSeq = grantOutbox[0]!.seq;
+    const grantId = (JSON.parse(grantOutbox[0]!.payload) as { grant_id: string }).grant_id;
+    const capsuleKey = `grant-ledger/${grantId}.recovery-v1.ndjson`;
+    expect(await env.R2.get(capsuleKey)).toBeNull();
+
+    await shipCoverageOutbox(destinationInstallationId);
+
+    const acknowledged = await runInDurableObject(
+      quotaDoStub(destinationInstallationId),
+      async (_instance, state) => sqlSelect<{ seq: number }>(
+        state,
+        `SELECT seq FROM outbox WHERE seq = ${outboxSeq}`,
+      ),
+    );
+    expect(acknowledged).toEqual([]);
+    const ledger = await queryOne<{
+      grant_id: string;
+      org_id: string;
+      installation_id: string;
+      source_kind: string;
+      envelope_sha256: string;
+      receipt: string;
+    }>(
+      `SELECT grant_id, org_id, installation_id, source_kind, envelope_sha256, receipt
+       FROM grant_ledger WHERE grant_id = ?`,
+      [grantId],
+    );
+    expect(ledger).toBeTruthy();
+    const capsuleObject = await env.R2.get(capsuleKey);
+    expect(capsuleObject).not.toBeNull();
+    const capsule = JSON.parse(await capsuleObject!.text()) as {
+      version: number;
+      grant_id: string;
+      org_id: string;
+      installation_id: string;
+      source_kind: string;
+      envelope_sha256: string;
+      receipt: unknown;
+      transfer_evidence: { transfer_id: string; step: string; receipt_text: string };
+    };
+    expect(capsule).toMatchObject({
+      version: 1,
+      grant_id: ledger!.grant_id,
+      org_id: ledger!.org_id,
+      installation_id: ledger!.installation_id,
+      source_kind: "transfer",
+      envelope_sha256: ledger!.envelope_sha256,
+      receipt: JSON.parse(ledger!.receipt),
+      transfer_evidence: { transfer_id: transferId, step: "transfer_in" },
+    });
+    const transferStep = await queryOne<{ receipt: string }>(
+      "SELECT receipt FROM transfer_step WHERE transfer_id = ? AND step = 'transfer_in'",
+      [transferId],
+    );
+    expect(capsule.transfer_evidence.receipt_text).toBe(transferStep?.receipt);
   });
 
   it("R9-PDO1: transfer replay request-hash and signed-receipt tampering fence rebuild", async () => {
