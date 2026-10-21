@@ -31,6 +31,7 @@ import notificationProviderTxnIdMigrationSql from "../../migrations/0013_notific
 import reconciliationMigrationSql from "../../migrations/0008_reconciliation.sql?raw";
 import { loadOffersFixture } from "../../src/records/append";
 import { runReconciliation } from "../../src/reconciliation/run";
+import { verifyTransferReceipt } from "../../src/work/transfer-receipt";
 import {
   applySql,
   billingFetch,
@@ -1283,29 +1284,6 @@ async function opsBeginTransferRelay(input: {
   });
 }
 
-async function transferStepWorkRow(
-  transferId: string,
-): Promise<{ state: string } | null> {
-  return env.DB.prepare(
-    `SELECT state FROM work WHERE kind = 'transfer_step' AND subject_id = ?`,
-  )
-    .bind(transferId)
-    .first<{ state: string }>();
-}
-
-async function runTransferSagaUntilDone(transferId: string): Promise<void> {
-  for (let attempt = 0; attempt < 12; attempt += 1) {
-    const row = await transferStepWorkRow(transferId);
-    if (row?.state === "done") {
-      return;
-    }
-    await runScheduled("* * * * *");
-    await drainPlatformDurableObjects();
-  }
-  const final = await transferStepWorkRow(transferId);
-  expect(final?.state).toBe("done");
-}
-
 async function seedUnauthorizedTransferGrantOnPlatform(
   orgId: string,
 ): Promise<string> {
@@ -1452,8 +1430,68 @@ describe("reconciliation cross-worker", () => {
     expect(beginBody.result).toBe("ok");
     const transferDetail = JSON.parse(String(beginBody.detail)) as {
       transfer_id: string;
+      org_id: string;
+      from_installation_id: string;
+      to_installation_id: string;
     };
-    await runTransferSagaUntilDone(transferDetail.transfer_id);
+    const command = await env.DB.prepare(
+      `SELECT stage FROM accepted_operator_command WHERE command_id = ?`,
+    ).bind(transferActionId).first<{ stage: string }>();
+    expect(command?.stage).toBe("complete");
+    const transferRow = await env.PLATFORM_DB.prepare(
+      `SELECT org_id, from_installation_id, to_installation_id, package
+       FROM transfer WHERE transfer_id = ?`,
+    ).bind(transferDetail.transfer_id).first<{
+      org_id: string;
+      from_installation_id: string;
+      to_installation_id: string;
+      package: string | null;
+    }>();
+    expect(transferRow).toMatchObject({
+      org_id: orgId,
+      from_installation_id: fromInstallationId,
+      to_installation_id: transferDetail.to_installation_id,
+    });
+    expect(transferRow?.package).not.toBeNull();
+    const transferProgressRows = await env.DB.prepare(
+      `SELECT payload_json FROM command_recovery_fact
+       WHERE command_id = ? AND fact_kind = 'platform_result'
+         AND json_extract(payload_json, '$.phase') IN ('transferOut', 'transferIn')
+       ORDER BY created_at, fact_id`,
+    ).bind(transferActionId).all<{ payload_json: string }>();
+    const transferProgress = (transferProgressRows.results ?? []).map((row) =>
+      JSON.parse(row.payload_json) as Record<string, unknown>,
+    );
+    expect(transferProgress.map((fact) => fact.phase).sort()).toEqual([
+      "transferIn",
+      "transferOut",
+    ]);
+    for (const fact of transferProgress) {
+      const phase = fact.phase;
+      expect(fact).toMatchObject({
+        command_id: transferActionId,
+        transfer_id: transferDetail.transfer_id,
+        provenance: "authenticated_platform_transfer_step_call",
+        result: expect.stringMatching(/^(applied|already_applied)$/u),
+      });
+      expect(typeof fact.response_json).toBe("string");
+      const response = JSON.parse(String(fact.response_json)) as Record<string, unknown>;
+      const receipt = response.receipt;
+      expect(await verifyTransferReceipt({
+        platformPublicKeys: env.PLATFORM_PUBLIC_KEYS,
+        receipt,
+        transferId: transferDetail.transfer_id,
+        orgId: transferRow!.org_id,
+        installationId: phase === "transferOut"
+          ? transferRow!.from_installation_id
+          : transferRow!.to_installation_id,
+        contractVersion: CONTRACT_VERSION,
+      })).toBe(true);
+    }
+    const durableTransferWork = await env.DB.prepare(
+      `SELECT COUNT(*) AS n FROM work WHERE kind = 'transfer_step' AND subject_id = ?`,
+    ).bind(transferDetail.transfer_id).first<{ n: number }>();
+    expect(durableTransferWork?.n).toBe(0);
     await syncPlatformGrantLedger(orgId);
     await drainPlatformDurableObjects();
     await seedCoverageViewFromPlatform(orgId);

@@ -97,6 +97,9 @@ const DAILY_JOB_STAMP = "2026-06-14T06:00:00.000Z";
 const HOURLY_JOB_STAMP = "2026-06-15T05:00:00.000Z";
 const MINUTE_JOB_STAMP = "2026-06-15T05:59:00.000Z";
 
+let wipedHarnessClockIso: string | null = null;
+let wipedHarnessIssuerPins: Array<{ kid: string; public_key: string }> = [];
+
 const DIGEST_WATCH_SCHEMA_SQL = `
 CREATE TABLE IF NOT EXISTS scheduled_job_run (
   job TEXT PRIMARY KEY,
@@ -754,6 +757,14 @@ async function exportLedgerFacts(platformPublicKeys?: string): Promise<void> {
 }
 
 async function wipeAboD1(): Promise<void> {
+  const harnessClock = await env.DB.prepare(
+    `SELECT now_iso FROM harness_test_clock WHERE id = 'default'`,
+  ).first<{ now_iso: string }>();
+  wipedHarnessClockIso = harnessClock?.now_iso ?? null;
+  const issuerPins = await env.DB.prepare(
+    `SELECT kid, public_key FROM harness_issuer_pin`,
+  ).all<{ kid: string; public_key: string }>();
+  wipedHarnessIssuerPins = issuerPins.results ?? [];
   const objects = await env.DB.prepare(
     `SELECT name, type FROM sqlite_master
      WHERE type IN ('table', 'trigger', 'view', 'index')
@@ -793,6 +804,28 @@ async function reapplyAboSchema(): Promise<void> {
   await applySql(recordsMigrationSql);
   await ensureMigrations();
   await ensureDigestWatchMigration();
+  await env.DB.prepare(
+    `CREATE TABLE IF NOT EXISTS harness_test_clock (
+       id TEXT PRIMARY KEY,
+       now_iso TEXT NOT NULL
+     )`,
+  ).run();
+  await env.DB.prepare(
+    `CREATE TABLE IF NOT EXISTS harness_issuer_pin (
+       kid TEXT PRIMARY KEY,
+       public_key TEXT NOT NULL
+     )`,
+  ).run();
+  await env.DB.prepare(
+    `INSERT OR REPLACE INTO harness_test_clock (id, now_iso) VALUES ('default', ?)`,
+  ).bind(wipedHarnessClockIso ?? new Date().toISOString()).run();
+  for (const pin of wipedHarnessIssuerPins) {
+    await env.DB.prepare(
+      `INSERT OR REPLACE INTO harness_issuer_pin (kid, public_key) VALUES (?, ?)`,
+    ).bind(pin.kid, pin.public_key).run();
+  }
+  wipedHarnessClockIso = null;
+  wipedHarnessIssuerPins = [];
 }
 
 function readRebuildRunbook(): string {
@@ -1995,7 +2028,7 @@ describe("P4.11 digest, watch, housekeeping, rebuild (H-XW)", () => {
     expect(recovered?.stage).toBe("local_applied");
   });
 
-  it("R9-REC1 restores a cancelled checkout event without changing its terminal status", async () => {
+  it("R9-REC1 preserves cancellation then records a matched late success once", async () => {
     const expectations = await setupRebuildHarness();
     await putBillingContact(ORG_REBUILD);
     const { checkoutId } = await postCheckout(
@@ -2059,9 +2092,10 @@ describe("P4.11 digest, watch, housekeeping, rebuild (H-XW)", () => {
       client_secret: null,
     });
 
+    const amountMinor = await syncPaymobForCheckout(checkoutId);
     const lateSuccess = await postPaymobProcessedCallback(
       successFixture as PaymobCallbackFixture,
-      { txnId: 96777, amountMinor: await chargedPriceMinorForCheckout(checkoutId) },
+      { txnId: 96777, amountMinor },
     );
     expect(lateSuccess.status).toBe(200);
     await runScheduled("* * * * *");
@@ -2069,7 +2103,30 @@ describe("P4.11 digest, watch, housekeeping, rebuild (H-XW)", () => {
       `SELECT state FROM checkout_status WHERE checkout_id = ?`,
     ).bind(checkoutId).first<{ state: string }>();
     expect(lateStatus?.state).toBe("paid_late");
-    expect(await tableCount("grant_request")).toBe(0);
+    const latePayment = await env.DB.prepare(
+      `SELECT payment_id, classification, disposition FROM payment WHERE checkout_id = ?`,
+    ).bind(checkoutId).first<{
+      payment_id: string;
+      classification: string;
+      disposition: string;
+    }>();
+    expect(latePayment).toMatchObject({
+      classification: "late",
+      disposition: "grant",
+    });
+    const paidGrantId = await grantIdPaid(latePayment!.payment_id);
+    expect(await rowExists("grant_request", "grant_id", paidGrantId)).toBe(true);
+    const lateGrantWork = await env.DB.prepare(
+      `SELECT COUNT(*) AS n FROM work WHERE kind = 'grant' AND subject_id = ?`,
+    ).bind(latePayment!.payment_id).first<{ n: number }>();
+    expect(lateGrantWork?.n).toBe(1);
+    const lateAlert = await env.DB.prepare(
+      `SELECT active FROM alert WHERE code = 'AL-08' AND subject = ?`,
+    ).bind(checkoutId).first<{ active: number }>();
+    expect(lateAlert?.active).toBe(1);
+    await runScheduled("* * * * *");
+    expect(await tableCount("grant_request")).toBe(1);
+    expect(await paymentIdForCheckout(checkoutId)).toBe(latePayment!.payment_id);
   });
 
   it("R9-REC1 reapplies accepted erasure fences before deleting any recovered callback body", async () => {
@@ -2287,7 +2344,7 @@ describe("P4.11 digest, watch, housekeeping, rebuild (H-XW)", () => {
         payload: terminalBegin,
         createdAt: now,
       }),
-      ...await commandFactStatements(env, {
+      ...await commandFactStatements({ ...env, PLATFORM_PUBLIC_KEYS: terminalPublicKeys }, {
         commandId: terminalCommandId,
         kind: "platform_result",
         payload: {

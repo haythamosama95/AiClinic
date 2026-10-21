@@ -851,7 +851,12 @@ export async function recordRebuiltPaidConfirmation(
   if (!(await originalOrderMatches(env, input.checkout.checkout_id, input.confirmedTxn))) {
     return false;
   }
-  if (await paymentExists(env, input.confirmedTxn.payment_id)) {
+  const existingPayment = await env.DB.prepare(
+    `SELECT 1 FROM payment WHERE payment_id = ?`,
+  )
+    .bind(input.confirmedTxn.payment_id)
+    .first();
+  if (existingPayment !== null) {
     return false;
   }
   const workId = await newId(env);
