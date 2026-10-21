@@ -2068,6 +2068,7 @@ describe("console relays cross-worker", () => {
     const resultFact = await env.DB.prepare(
       `SELECT payload_json FROM command_recovery_fact
        WHERE command_id = ? AND fact_kind = 'platform_result'
+         AND json_extract(payload_json, '$.phase') = 'beginTransfer'
        ORDER BY created_at DESC LIMIT 1`,
     ).bind(begun.actionId).first<{ payload_json: string }>();
     const resultPayload = JSON.parse(resultFact!.payload_json) as {

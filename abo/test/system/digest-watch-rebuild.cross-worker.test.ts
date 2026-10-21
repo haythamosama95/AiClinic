@@ -1880,10 +1880,9 @@ describe("P4.11 digest, watch, housekeeping, rebuild (H-XW)", () => {
 
     // The authenticated transaction endpoint returns an unrelated order. It
     // cannot create reversal evidence or work for the restored payment.
+    await setClock(new Date(Date.parse(await currentHarnessClockIso()) + 60_000).toISOString());
     await scriptPaymobInquiry("unbound", await chargedPriceMinorForCheckout(paid.checkoutId),
       await chargedPriceMinorForCheckout(paid.checkoutId));
-    const currentMinute = Date.parse(await currentHarnessClockIso());
-    await setClock(new Date(currentMinute + 60_000).toISOString());
     await rebuildAbo(env as never, {
       providerTransactionReferences: [String(PAID_PAYMOB_TXN_ID)],
     });
@@ -1895,8 +1894,8 @@ describe("P4.11 digest, watch, housekeeping, rebuild (H-XW)", () => {
     // A new inquiry slot and the exact original order/transaction binding
     // permit only the existing reversal evidence path to record the reversal.
     const amount = await chargedPriceMinorForCheckout(paid.checkoutId);
-    await scriptPaymobInquiry("reversed", amount, amount);
     await setClock(new Date(Date.parse(await currentHarnessClockIso()) + 60_000).toISOString());
+    await scriptPaymobInquiry("reversed", amount, amount);
     await rebuildAbo(env as never, {
       providerTransactionReferences: [String(PAID_PAYMOB_TXN_ID)],
     });
@@ -2092,6 +2091,7 @@ describe("P4.11 digest, watch, housekeeping, rebuild (H-XW)", () => {
       client_secret: null,
     });
 
+    await setClock(new Date(Date.parse(at) + 60_000).toISOString());
     const amountMinor = await syncPaymobForCheckout(checkoutId);
     const lateSuccess = await postPaymobProcessedCallback(
       successFixture as PaymobCallbackFixture,
@@ -2221,7 +2221,7 @@ describe("P4.11 digest, watch, housekeeping, rebuild (H-XW)", () => {
       org_id: orgId,
       from_installation_id: fromInstallationId,
       to_installation_id: toInstallationId,
-      assertion_sha256: "e".repeat(64),
+      assertion_sha256: reserved.operation_sha256,
       package: null,
       created_at: now,
     };
@@ -2518,7 +2518,11 @@ describe("P4.11 digest, watch, housekeeping, rebuild (H-XW)", () => {
       key: string;
       row_sha256: string;
     }>();
-    expect(replayed.results).toEqual(originalLines.sort((a, b) => a.fact_seq - b.fact_seq));
+    expect(replayed.results).toEqual(
+      originalLines
+        .map(({ fact_seq, table, key, row_sha256 }) => ({ fact_seq, table, key, row_sha256 }))
+        .sort((a, b) => a.fact_seq - b.fact_seq),
+    );
 
     await appendOffer(env, {
       offer_id: "offer-r9-rec1-after-rebuild",

@@ -360,6 +360,7 @@ async function persistInquiryResult(
     cumulativeReversedMinor: number;
     at: string;
     evidence: InquireResult["evidence"];
+    allowMissingContactForRebuild?: boolean;
   },
 ): Promise<{
   inquiryId: string;
@@ -395,11 +396,11 @@ async function persistInquiryResult(
      WHERE org_id = ? AND version = ?`,
   ).bind(input.checkout.org_id, input.checkout.billing_contact_version)
     .first<{ erasure_generation: number; erased_at: string | null }>();
-  if (contact === null) {
+  if (contact === null && input.allowMissingContactForRebuild !== true) {
     return null;
   }
   let rawR2Key = "";
-  if (contact.erased_at === null) {
+  if (contact !== null && contact.erased_at === null) {
     const claim = {
       evidenceId: inquiryId,
       orgId: input.checkout.org_id,
@@ -846,6 +847,7 @@ export async function recordRebuiltPaidConfirmation(
     inquiry: InquireResult;
     nowIso: string;
     paymobTxnId?: string | null;
+    allowMissingContactForRebuild?: boolean;
   },
 ): Promise<boolean> {
   if (!(await originalOrderMatches(env, input.checkout.checkout_id, input.confirmedTxn))) {
@@ -893,6 +895,7 @@ export async function recordRebuiltPaidConfirmation(
     cumulativeReversedMinor: cumulativeReversed,
     at: input.nowIso,
     evidence: input.inquiry.evidence,
+    allowMissingContactForRebuild: input.allowMissingContactForRebuild,
   });
   if (inquiryEvidence === null) {
     return false;
@@ -973,6 +976,7 @@ export async function recordRebuiltInquiryEvidence(
     txn: ProviderTxn;
     inquiry: InquireResult;
     nowIso: string;
+    allowMissingContactForRebuild?: boolean;
   },
 ): Promise<{ inquiryId: string; evidenceSha256: string } | null> {
   const evidenceHash = input.inquiry.evidence
@@ -1003,6 +1007,7 @@ export async function recordRebuiltInquiryEvidence(
     cumulativeReversedMinor: input.txn.reversal?.cumulative_reversed_minor ?? 0,
     at: input.nowIso,
     evidence: input.inquiry.evidence,
+    allowMissingContactForRebuild: input.allowMissingContactForRebuild,
   });
   if (stored === null) return null;
   if (stored.statements.length === 0) {

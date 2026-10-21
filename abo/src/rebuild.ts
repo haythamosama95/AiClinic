@@ -827,8 +827,13 @@ async function maybeRecordSucceededPayment(
     inquiry,
     nowIso,
     paymobTxnId,
+    allowMissingContactForRebuild: true,
   });
-  return recorded;
+  if (!recorded) return false;
+  const payment = await env.DB.prepare(
+    `SELECT disposition FROM payment WHERE payment_id = ?`,
+  ).bind(confirmedTxn.payment_id).first<{ disposition: string }>();
+  return payment?.disposition === "grant";
 }
 
 async function processAuthoritativeInquiry(
@@ -854,6 +859,7 @@ async function processAuthoritativeInquiry(
       txn,
       inquiry,
       nowIso,
+      allowMissingContactForRebuild: true,
     });
     if (evidence === null) continue;
     if (txn.kind === "reversal") {
