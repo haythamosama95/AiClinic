@@ -533,6 +533,11 @@ async function setupPromotedRoutingPolicy(): Promise<void> {
 }
 
 async function setupRebuildHarness(): Promise<OffersFixtureExpectations> {
+  // Catalogue and fact rows are append-only, so the ordinary per-case reset
+  // cannot isolate the shared offers fixture. Recreate suite-local D1 before
+  // loading it so every rebuild case seeds the same fixture exactly once.
+  await wipeAboD1();
+  await reapplyAboSchema();
   const expectations = await seedOffersCatalogueFixture();
   expect(expectations).not.toBeNull();
   await registerAboGrantKeyOnPlatform();
