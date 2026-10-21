@@ -85,6 +85,35 @@ async function validateFact(row: PendingFact, platformPublicKeys?: string): Prom
 
 export async function exportFacts(env: ExportEnv): Promise<void> {
   await assertAboRecoveryPublished(env);
+  // Older builds persisted the exact request body but omitted its fact-log
+  // membership. Backfill only from that stored row; never rebuild its body.
+  const oldRequests = await env.DB.prepare(
+    `SELECT rr.reversal_id, rr.grant_id, rr.reason, rr.evidence_sha256, rr.partial,
+            rr.contract_version, rr.canonical_body, rr.body_sha256, rr.created_at
+     FROM reversal_request rr
+     WHERE NOT EXISTS (SELECT 1 FROM fact_log fl
+       WHERE fl."table" = 'reversal_request' AND fl.key = rr.reversal_id)`,
+  ).all<{
+    reversal_id: string; grant_id: string; reason: string; evidence_sha256: string;
+    partial: number; contract_version: number; canonical_body: string; body_sha256: string;
+    created_at: string;
+  }>();
+  for (const row of oldRequests.results ?? []) {
+    const canonicalRow = {
+      reversal_id: row.reversal_id, grant_id: row.grant_id, reason: row.reason,
+      evidence_sha256: row.evidence_sha256, partial: row.partial,
+      contract_version: row.contract_version, canonical_body: row.canonical_body,
+      body_sha256: row.body_sha256, created_at: row.created_at,
+    };
+    const rowJson = new TextDecoder().decode(canonicalize(canonicalRow));
+    const rowHash = await sha256Hex(canonicalize(canonicalRow));
+    await env.DB.prepare(
+      `INSERT INTO fact_log ("table", key, row_sha256, row_json, created_at)
+       SELECT 'reversal_request', ?, ?, ?, ?
+       WHERE NOT EXISTS (SELECT 1 FROM fact_log
+         WHERE "table" = 'reversal_request' AND key = ?)`,
+    ).bind(row.reversal_id, rowHash, rowJson, row.created_at, row.reversal_id).run();
+  }
   const pending = await listPendingFacts(env.DB);
   for (const row of pending) {
     await validateFact(row, env.PLATFORM_PUBLIC_KEYS);

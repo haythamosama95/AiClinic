@@ -39,7 +39,9 @@ import rebuildCheckpointMigrationSql from "../../migrations/0016_rebuild_checkpo
 import commandRecoveryFactsMigrationSql from "../../migrations/0017_command_recovery_facts.sql?raw";
 import rebuildPublicationFenceMigrationSql from "../../migrations/0018_rebuild_publication_fence.sql?raw";
 import secretlessCreatedAttemptsMigrationSql from "../../migrations/0019_secretless_created_attempts.sql?raw";
+import recoveryProvenanceAndInquiriesMigrationSql from "../../migrations/0020_recovery_provenance_and_inquiries.sql?raw";
 import { appendOffer, loadOffersFixture } from "../../src/records/append";
+import { resolveHistoricalCheckoutTimestamp } from "../../src/rebuild";
 import { exportFacts } from "../../src/records/export";
 import {
   commandFactStatements,
@@ -368,6 +370,7 @@ async function ensureMigrations(): Promise<void> {
     commandRecoveryFactsMigrationSql,
     rebuildPublicationFenceMigrationSql,
     secretlessCreatedAttemptsMigrationSql,
+    recoveryProvenanceAndInquiriesMigrationSql,
   ]) {
     try {
       await applySql(sql);
@@ -851,7 +854,7 @@ async function wipeAboD1(): Promise<void> {
   }
   // RM09's attempt projections reference checkout, so drop them first rather
   // than relying on sqlite_master enumeration order.
-  for (const tableName of ["paymob_intention_attempt_event", "paymob_intention_attempt"]) {
+  for (const tableName of ["rebuild_inquiry_attempt", "paymob_intention_attempt_event", "paymob_intention_attempt"]) {
     if ((objects.results ?? []).some((row) => row.type === "table" && row.name === tableName)) {
       await env.DB.prepare(`DROP TABLE IF EXISTS ${tableName}`).run();
     }
@@ -1346,6 +1349,89 @@ function installDigestRetrySendBinding(): void {
 }
 
 describe("P4.11 digest, watch, housekeeping, rebuild (H-XW)", () => {
+  it("R9-REC1 rejects missing and expiry-inferred checkout timestamps during recovery", () => {
+    expect(() => resolveHistoricalCheckoutTimestamp({
+      checkoutId: "checkout-r9-missing-time",
+      createdAt: null,
+      provenance: "legacy_unknown",
+      factCreatedAt: "",
+    })).toThrow("checkout_timestamp_unrecoverable:checkout-r9-missing-time");
+    expect(() => resolveHistoricalCheckoutTimestamp({
+      checkoutId: "checkout-r9-expiry-time",
+      createdAt: "2026-06-01T11:30:00.000Z",
+      provenance: "expiry_inferred",
+      factCreatedAt: "2026-06-01T12:00:00.000Z",
+    })).toThrow("checkout_timestamp_inferred_from_expiry:checkout-r9-expiry-time");
+    expect(resolveHistoricalCheckoutTimestamp({
+      checkoutId: "checkout-r9-recorded-time",
+      createdAt: "2026-06-01T12:00:00.000Z",
+      provenance: "recorded",
+      factCreatedAt: "2026-06-01T12:00:00.000Z",
+    })).toEqual({
+      createdAt: "2026-06-01T12:00:00.000Z",
+      provenance: "recorded",
+    });
+  });
+
+  it("R9-REC1 rejects unknown command recovery payload versions before replay", async () => {
+    await setupRebuildHarness();
+    const commandId = "cmd-r9-unknown-payload-version";
+    await env.DB.batch(await commandFactStatements(env, {
+      commandId,
+      kind: "command_intent",
+      payload: {
+        payload_version: 1,
+        command_id: commandId,
+        method: "erase_contact",
+        subject_id: ORG_REBUILD,
+        actor_email: VENDOR_OPERATOR_EMAIL,
+        erasure_generation: 1,
+        scope_contact_versions: [],
+        acceptance_cutoff: "2026-06-15T06:00:00.000Z",
+      },
+      createdAt: "2026-06-15T06:00:00.000Z",
+    }));
+    await exportLedgerFacts();
+    const objects = await env.R2.list({ prefix: "ledger/" });
+    let payloadKey: string | undefined;
+    for (const object of objects.objects) {
+      const stored = await env.R2.get(object.key);
+      if (stored === null) continue;
+      const line = JSON.parse(await stored.text()) as Record<string, unknown>;
+      const row = line.row as Record<string, unknown> | undefined;
+      if (row?.command_id !== commandId) continue;
+      const payload = JSON.parse(String(row.payload_json)) as Record<string, unknown>;
+      payload.payload_version = 99;
+      const payloadJson = new TextDecoder().decode(canonicalize(payload));
+      const payloadSha = await sha256Hex(canonicalize(payload));
+      const factId = await sha256Hex(canonicalize({
+        command_id: commandId,
+        fact_kind: row.fact_kind,
+        payload_sha256: payloadSha,
+      }));
+      const changedRow = {
+        ...row,
+        fact_id: factId,
+        payload_json: payloadJson,
+        payload_sha256: payloadSha,
+      };
+      line.key = factId;
+      line.row = changedRow;
+      line.row_sha256 = await sha256Hex(canonicalize(changedRow));
+      payloadKey = object.key;
+      await env.R2.put(object.key, new TextDecoder().decode(canonicalize(line)));
+      break;
+    }
+    expect(payloadKey).toBeDefined();
+
+    await wipeAboD1();
+    await reapplyAboSchema();
+    const { rebuildAbo } = await import("../../src/rebuild.js");
+    await expect(rebuildAbo(env as never, { providerTransactionReferences: [] }))
+      .rejects.toThrow(/ledger_command_fact_invalid/u);
+    expect(await tableCount("fact_log")).toBe(0);
+  });
+
   beforeEach(async () => {
     clinicIssuer = null;
     await resetCrossWorkerHarness();
@@ -1617,6 +1703,22 @@ describe("P4.11 digest, watch, housekeeping, rebuild (H-XW)", () => {
     expect(await rowExists(
       "inquiry_result", "inquiry_id", restoredPaymentLineage!.confirmation_inquiry_id,
     )).toBe(true);
+    const retainedExistingPaymentInquiry = await env.DB.prepare(
+      `SELECT outcome, decision, payment_id, inquiry_id, evidence_sha256
+       FROM rebuild_inquiry_attempt
+       WHERE checkout_id = ? AND payment_id = ? AND outcome = 'already_recorded'
+       ORDER BY observed_at DESC LIMIT 1`,
+    ).bind(paid.checkoutId, paid.paymentId).first<{
+      outcome: string; decision: string; payment_id: string;
+      inquiry_id: string; evidence_sha256: string;
+    }>();
+    expect(retainedExistingPaymentInquiry).toMatchObject({
+      outcome: "already_recorded",
+      decision: "existing_payment_grant_reconfirmed",
+      payment_id: paid.paymentId,
+      inquiry_id: restoredPaymentLineage?.confirmation_inquiry_id,
+    });
+    expect(retainedExistingPaymentInquiry?.evidence_sha256).toMatch(/^[a-f0-9]{64}$/u);
 
     const gapOrderAfter = await env.DB.prepare(
       `SELECT order_id FROM paymob_intention_attempt WHERE checkout_id = ? AND state = 'created'`,
@@ -1719,6 +1821,67 @@ describe("P4.11 digest, watch, housekeeping, rebuild (H-XW)", () => {
       `SELECT kind FROM finding WHERE subject = ? AND kind = 'rebuild_missing_provider_correlation'`,
     ).bind(checkoutId).first<{ kind: string }>();
     expect(finding?.kind).toBe("rebuild_missing_provider_correlation");
+  });
+
+  it("R9-REC2 persists deferred and unavailable inquiry outcomes without invented evidence", async () => {
+    const expectations = await setupRebuildHarness();
+    const checkoutId = await gapCheckoutWithIntentionOnly(
+      ORG_REBUILD,
+      expectations,
+      "req-r9-rec2-deferred-inquiry",
+    );
+    await exportLedgerFacts();
+    await wipeAboD1();
+    await reapplyAboSchema();
+    const { rebuildAbo } = await import("../../src/rebuild.js");
+    const testClock = await env.DB.prepare(
+      `SELECT now_iso FROM harness_test_clock WHERE id = 'default'`,
+    ).first<{ now_iso: string }>();
+    const minuteKey = new Date(Date.parse(testClock!.now_iso)).toISOString().slice(0, 16);
+    await env.DB.prepare(
+      `INSERT INTO inquiry_spend (minute_key, spent) VALUES (?, 2)
+       ON CONFLICT(minute_key) DO UPDATE SET spent = 2`,
+    ).bind(minuteKey).run();
+    await rebuildAbo(env as never, {
+      providerTransactionReferences: [String(GAP_PAYMOB_TXN_ID)],
+    });
+
+    const deferred = await env.DB.prepare(
+      `SELECT attempt_id, outcome, decision, provider_txn_ref, inquiry_id, evidence_sha256
+       FROM rebuild_inquiry_attempt
+       WHERE checkout_id = ? AND outcome = 'deferred' LIMIT 1`,
+    ).bind(checkoutId).first<Record<string, unknown>>();
+    expect(deferred).toMatchObject({
+      outcome: "deferred",
+      decision: "shared_inquiry_budget_unavailable",
+      provider_txn_ref: String(GAP_PAYMOB_TXN_ID),
+      inquiry_id: null,
+      evidence_sha256: null,
+    });
+    await env.DB.prepare(
+      `UPDATE inquiry_spend SET spent = 0 WHERE minute_key = ?`,
+    ).bind(minuteKey).run();
+    await scriptPaymobInquiry("rate_limit");
+    await rebuildAbo(env as never, {
+      providerTransactionReferences: [String(GAP_PAYMOB_TXN_ID)],
+    });
+    const unavailableResult = await env.DB.prepare(
+      `SELECT attempt_id, outcome, decision, provider_txn_ref, inquiry_id, evidence_sha256
+       FROM rebuild_inquiry_attempt
+       WHERE checkout_id = ? AND outcome = 'unavailable' LIMIT 1`,
+    ).bind(checkoutId).first<Record<string, unknown>>();
+    expect(unavailableResult).toMatchObject({
+      outcome: "unavailable",
+      decision: "provider_inquiry_result_unavailable",
+      provider_txn_ref: String(GAP_PAYMOB_TXN_ID),
+      inquiry_id: null,
+      evidence_sha256: null,
+    });
+    expect(await env.DB.prepare(
+      `SELECT COUNT(*) AS n FROM fact_log
+       WHERE "table" = 'rebuild_inquiry_attempt' AND key IN (?, ?)`,
+    ).bind(deferred?.attempt_id ?? "", unavailableResult?.attempt_id ?? "")
+      .first<{ n: number }>()).toMatchObject({ n: 2 });
   });
 
   it("R9-REC1 restores secretless created attempts without redirect, provider retry, or replacement", async () => {
@@ -1923,7 +2086,7 @@ describe("P4.11 digest, watch, housekeeping, rebuild (H-XW)", () => {
     expect(await tableCount("grant_request")).toBe(0);
   });
 
-  it("R9-REC2 secretless recovered order permits reversal only with bound inquiry provenance", async () => {
+  it("R9-REC2 interrupted reversal resumes its exact request after export and rebuild", async () => {
     const expectations = await setupRebuildHarness();
     const paid = await paidCheckoutWithGrant(
       ORG_REBUILD,
@@ -1980,7 +2143,12 @@ describe("P4.11 digest, watch, housekeeping, rebuild (H-XW)", () => {
     const amount = await chargedPriceMinorForCheckout(paid.checkoutId);
     await setClock(new Date(Date.parse(await currentHarnessClockIso()) + 60_000).toISOString());
     await scriptPaymobInquiry("reversed", amount, amount);
-    await rebuildAbo(env as never, {
+    const platform = env.PLATFORM;
+    const interruptedPlatform = {
+      ...platform,
+      voidForReversal: async () => { throw new Error("simulated_interruption"); },
+    };
+    await rebuildAbo({ ...env, PLATFORM: interruptedPlatform } as never, {
       providerTransactionReferences: [String(PAID_PAYMOB_TXN_ID)],
     });
     const reversal = await env.DB.prepare(
@@ -2007,7 +2175,44 @@ describe("P4.11 digest, watch, housekeeping, rebuild (H-XW)", () => {
     const reversalOutcome = await env.DB.prepare(
       `SELECT result FROM reversal_outcome WHERE reversal_id = ?`,
     ).bind(reversal!.reversal_id).first<{ result: string }>();
-    expect(reversalOutcome?.result).toMatch(/^(applied|already_applied)$/u);
+    expect(reversalOutcome).toBeNull();
+    const requestBeforeRebuild = await env.DB.prepare(
+      `SELECT reversal_id, grant_id, reason, evidence_sha256, partial,
+              contract_version, canonical_body, body_sha256, created_at
+       FROM reversal_request WHERE reversal_id = ?`,
+    ).bind(reversal!.reversal_id).first<Record<string, unknown>>();
+    expect(requestBeforeRebuild?.canonical_body).toBeTruthy();
+    expect(await env.DB.prepare(
+      `SELECT COUNT(*) AS n FROM fact_log
+       WHERE "table" = 'reversal_request' AND key = ?`,
+    ).bind(reversal!.reversal_id).first<{ n: number }>()).toMatchObject({ n: 1 });
+
+    await exportLedgerFacts();
+    await wipeAboD1();
+    await reapplyAboSchema();
+    await scriptPaymobInquiry("rate_limit");
+    let resumedVoidBody: Record<string, unknown> | null = null;
+    const resumedPlatform = {
+      ...platform,
+      voidForReversal: async (args: Record<string, unknown>) => {
+        resumedVoidBody = args;
+        return platform.voidForReversal(args);
+      },
+    };
+    await rebuildAbo({ ...env, PLATFORM: resumedPlatform } as never, {
+      providerTransactionReferences: [String(PAID_PAYMOB_TXN_ID)],
+    });
+    const requestAfterRebuild = await env.DB.prepare(
+      `SELECT reversal_id, grant_id, reason, evidence_sha256, partial,
+              contract_version, canonical_body, body_sha256, created_at
+       FROM reversal_request WHERE reversal_id = ?`,
+    ).bind(reversal!.reversal_id).first<Record<string, unknown>>();
+    expect(requestAfterRebuild).toEqual(requestBeforeRebuild);
+    expect(resumedVoidBody).toMatchObject(JSON.parse(String(requestBeforeRebuild!.canonical_body)));
+    const resumedOutcome = await env.DB.prepare(
+      `SELECT result FROM reversal_outcome WHERE reversal_id = ?`,
+    ).bind(reversal!.reversal_id).first<{ result: string }>();
+    expect(resumedOutcome?.result).toMatch(/^(applied|already_applied)$/u);
     const retainedPaymentDisposition = await env.DB.prepare(
       `SELECT disposition FROM payment WHERE payment_id = ?`,
     ).bind(paid.paymentId).first<{ disposition: string }>();

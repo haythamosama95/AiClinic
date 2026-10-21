@@ -23,6 +23,7 @@ import rebuildCheckpointMigrationSql from "../../migrations/0016_rebuild_checkpo
 import commandRecoveryFactsMigrationSql from "../../migrations/0017_command_recovery_facts.sql?raw";
 import rebuildPublicationFenceMigrationSql from "../../migrations/0018_rebuild_publication_fence.sql?raw";
 import secretlessCreatedAttemptsMigrationSql from "../../migrations/0019_secretless_created_attempts.sql?raw";
+import recoveryProvenanceAndInquiriesMigrationSql from "../../migrations/0020_recovery_provenance_and_inquiries.sql?raw";
 
 const ABO_LEGACY_MIGRATION_SQL: string[] = [
   recordsMigrationSql,
@@ -47,6 +48,7 @@ const ABO_MIGRATION_SQL: string[] = [
   commandRecoveryFactsMigrationSql,
   rebuildPublicationFenceMigrationSql,
   secretlessCreatedAttemptsMigrationSql,
+  recoveryProvenanceAndInquiriesMigrationSql,
 ];
 
 function base64UrlEncode(bytes: Uint8Array): string {

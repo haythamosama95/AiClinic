@@ -121,6 +121,8 @@ export type InquireResult = {
   }>;
   /** The shared per-minute inquiry reservation was unavailable; retry the work later. */
   deferred?: boolean;
+  /** Provider inquiry was attempted but its result could not be obtained. */
+  unavailable?: boolean;
   /** No transaction identity is known and automatic order enumeration is not enabled. */
   discovery_unavailable?: boolean;
 };

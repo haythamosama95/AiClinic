@@ -820,7 +820,7 @@ async function authToken(env: PaymobAdapterEnv): Promise<string | null> {
   return cachedPaymobAuthToken;
 }
 
-const INQUIRY_RETRY: InquireResult = { bound: true, transactions: [] };
+const INQUIRY_RETRY: InquireResult = { bound: true, transactions: [], unavailable: true };
 
 async function reserveInquiryAttempt(env: PaymobAdapterEnv): Promise<boolean> {
   const nowMs = await clockNowMs(env);

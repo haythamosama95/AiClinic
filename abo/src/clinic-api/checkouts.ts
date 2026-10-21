@@ -586,7 +586,7 @@ function checkoutInsertBindings(args: {
       ? coverage.projected_start ?? coverage.opened_with_coverage_through
       : null,
     PAYMOB_PROVIDER_ID, "payer", expiresAt, contractVersion,
-    createdAt,
+    createdAt, "recorded",
   ];
 }
 
@@ -629,7 +629,7 @@ async function reserveFirstCheckout(args: {
       : null,
     provider_id: PAYMOB_PROVIDER_ID,
     initiator: "payer", expires_at: expiresAt, contract_version: contractVersion,
-    created_at: createdAt,
+    created_at: createdAt, created_at_provenance: "recorded",
   };
   const openedEvent = {
     checkout_id: checkoutId, kind: "opened", source: "system", ref: reference,
@@ -651,9 +651,10 @@ async function reserveFirstCheckout(args: {
        list_price_minor, charged_price_minor, adjustment_id, currency,
        terms_version, billing_contact_version, billing_contact_sha256,
        opened_with_coverage_through, coverage_source, coverage_starts, projected_start,
-       provider_id, initiator, expires_at, contract_version, created_at
+       provider_id, initiator, expires_at, contract_version, created_at,
+       created_at_provenance
      ) SELECT ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
-              ?, ?, ?, ?, ?, ?, ?, ?, ?
+              ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
        WHERE (SELECT MAX(terms_version) FROM terms_version) = ?
          AND (SELECT COUNT(*) FROM checkout
               WHERE org_id = ? AND created_at > ?) < ?

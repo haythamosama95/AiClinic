@@ -458,6 +458,47 @@ export type ReversalRequestDraft = ReversalRequestRow & {
   created_at: string;
 };
 
+export async function reversalRequestFactStatement(
+  env: ReversalEnv,
+  request: ReversalRequestDraft,
+  acceptedCommand?: { challengeSha256: string; leaseToken: string },
+): Promise<D1PreparedStatement> {
+  const row = {
+    reversal_id: request.reversal_id,
+    grant_id: request.grant_id,
+    reason: request.reason,
+    evidence_sha256: request.evidence_sha256,
+    partial: request.partial,
+    contract_version: request.contract_version,
+    canonical_body: request.canonical_body,
+    body_sha256: request.body_sha256,
+    created_at: request.created_at,
+  };
+  const rowJson = new TextDecoder().decode(canonicalize(row));
+  const rowSha256 = await sha256Hex(canonicalize(row));
+  const acceptedGate = acceptedCommand === undefined
+    ? ""
+    : `AND EXISTS (SELECT 1 FROM accepted_operator_command c
+         WHERE c.challenge_sha256 = ? AND c.lease_token = ?)`;
+  const binds = [
+    request.reversal_id, rowSha256, rowJson, request.created_at,
+    request.reversal_id, request.canonical_body, request.body_sha256,
+    request.reversal_id,
+    ...(acceptedCommand === undefined
+      ? []
+      : [acceptedCommand.challengeSha256, acceptedCommand.leaseToken]),
+  ];
+  return env.DB.prepare(
+    `INSERT INTO fact_log ("table", key, row_sha256, row_json, created_at)
+     SELECT 'reversal_request', ?, ?, ?, ?
+     WHERE EXISTS (SELECT 1 FROM reversal_request rr
+       WHERE rr.reversal_id = ? AND rr.canonical_body = ? AND rr.body_sha256 = ?)
+       AND NOT EXISTS (SELECT 1 FROM fact_log
+         WHERE "table" = 'reversal_request' AND key = ?)
+       ${acceptedGate}`,
+  ).bind(...binds);
+}
+
 export async function buildReversalRequestDraft(
   input: {
     reversal_id: string;
@@ -499,11 +540,11 @@ async function reversalRequestForDispatch(
 ): Promise<ReversalRequestRow | null> {
   let row = await env.DB.prepare(
     `SELECT reversal_id, grant_id, reason, evidence_sha256, partial,
-            contract_version, canonical_body, body_sha256
+            contract_version, canonical_body, body_sha256, created_at
      FROM reversal_request WHERE reversal_id = ?`,
   )
     .bind(reversal.reversal_id)
-    .first<ReversalRequestRow>();
+    .first<ReversalRequestDraft>();
 
   if (row === null && allowCreate) {
     const grantId = await grantIdPaid(reversal.payment_id);
@@ -513,33 +554,35 @@ async function reversalRequestForDispatch(
       reason: reversal.effect,
       evidence_sha256: reversal.evidence_sha256,
     }, env);
-    await env.DB.prepare(
-      `INSERT OR IGNORE INTO reversal_request (
-         reversal_id, grant_id, reason, evidence_sha256, partial,
-         contract_version, canonical_body, body_sha256, created_at
-       ) VALUES (?, ?, ?, ?, 0, ?, ?, ?, ?)`,
-    )
-      .bind(
-        draft.reversal_id,
-        draft.grant_id,
-        draft.reason,
-        draft.evidence_sha256,
-        draft.contract_version,
-        draft.canonical_body,
-        draft.body_sha256,
-        draft.created_at,
-      )
-      .run();
+    await env.DB.batch([
+      env.DB.prepare(
+        `INSERT OR IGNORE INTO reversal_request (
+           reversal_id, grant_id, reason, evidence_sha256, partial,
+           contract_version, canonical_body, body_sha256, created_at
+         ) VALUES (?, ?, ?, ?, 0, ?, ?, ?, ?)`,
+      ).bind(
+          draft.reversal_id,
+          draft.grant_id,
+          draft.reason,
+          draft.evidence_sha256,
+          draft.contract_version,
+          draft.canonical_body,
+          draft.body_sha256,
+          draft.created_at,
+      ),
+      await reversalRequestFactStatement(env, draft),
+    ]);
     row = await env.DB.prepare(
       `SELECT reversal_id, grant_id, reason, evidence_sha256, partial,
-              contract_version, canonical_body, body_sha256
+              contract_version, canonical_body, body_sha256, created_at
        FROM reversal_request WHERE reversal_id = ?`,
     )
       .bind(reversal.reversal_id)
-      .first<ReversalRequestRow>();
+      .first<ReversalRequestDraft>();
   }
 
   if (row === null) return null;
+  await env.DB.batch([await reversalRequestFactStatement(env, row)]);
   try {
     const bytes = new TextEncoder().encode(row.canonical_body);
     const parsed = JSON.parse(row.canonical_body) as Record<string, unknown>;

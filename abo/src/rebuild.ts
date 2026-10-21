@@ -9,6 +9,7 @@ import { refreshCoverageView } from "./coverage/view.js";
 import { clockNowIso, clockNowMs, type ClockEnv } from "./clock.js";
 import {
   PAYMOB_PROVIDER_ID,
+  PAYMOB_ADAPTER_VERSION,
   providerForId,
   type ProviderRegistryEnv,
 } from "./provider/registry.js";
@@ -48,6 +49,8 @@ type LedgerLine = {
   row_sha256: string;
   fact_created_at: string;
   row: Record<string, unknown>;
+  recovery_created_at?: string;
+  recovery_created_at_provenance?: string;
 };
 
 type LedgerColumn = {
@@ -61,12 +64,48 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
+export function resolveHistoricalCheckoutTimestamp(input: {
+  checkoutId: string;
+  createdAt: unknown;
+  provenance: unknown;
+  factCreatedAt: string;
+  openedEventAt?: string;
+}): { createdAt: string; provenance: "recorded" | "fact_log" | "opened_event" } {
+  const factTimeValid = Number.isFinite(Date.parse(input.factCreatedAt));
+  if (input.provenance === "recorded" || input.provenance === "fact_log" ||
+      input.provenance === "opened_event") {
+    if (typeof input.createdAt !== "string" || !Number.isFinite(Date.parse(input.createdAt))) {
+      throw new Error(`checkout_timestamp_unrecoverable:${input.checkoutId}`);
+    }
+    return { createdAt: input.createdAt, provenance: input.provenance };
+  }
+  if (input.provenance === "expiry_inferred") {
+    throw new Error(`checkout_timestamp_inferred_from_expiry:${input.checkoutId}`);
+  }
+  if (!factTimeValid) {
+    throw new Error(`checkout_timestamp_unrecoverable:${input.checkoutId}`);
+  }
+  if (input.createdAt === null || input.createdAt === undefined) {
+    return { createdAt: input.factCreatedAt, provenance: "fact_log" };
+  }
+  if (input.createdAt === input.factCreatedAt) {
+    return { createdAt: input.factCreatedAt, provenance: "fact_log" };
+  }
+  if (typeof input.openedEventAt === "string" &&
+      input.createdAt === input.openedEventAt &&
+      Number.isFinite(Date.parse(input.openedEventAt))) {
+    return { createdAt: input.openedEventAt, provenance: "opened_event" };
+  }
+  throw new Error(`checkout_timestamp_provenance_unverified:${input.checkoutId}`);
+}
+
 const LEDGER_TABLES = new Set([
   "offer", "terms_version", "offer_version", "offer_event",
   "checkout", "checkout_event", "notification", "inquiry_result", "payment",
   "payment_release", "grant_request", "grant_outcome", "grant_outcome_event", "reversal",
   "operator_action", "command_recovery_fact", "finding", "finding_resolution", "payout_import",
-  "payout_line", "paymob_intention_attempt_event",
+  "payout_line", "paymob_intention_attempt_event", "rebuild_inquiry_attempt",
+  "reversal_request",
 ]);
 
 const LEDGER_COLUMN_FIELDS: Record<string, readonly string[]> = {
@@ -74,7 +113,7 @@ const LEDGER_COLUMN_FIELDS: Record<string, readonly string[]> = {
   terms_version: ["terms_version", "locale", "text_r2_key", "text_sha256", "published_by", "contract_version"],
   offer_version: ["offer_id", "version", "plan_id", "plan_version", "term_unit", "term_count", "price_minor", "currency", "allowance_credits", "grace_days", "grace_cap_rule", "copy", "terms_version", "published_by", "assertion_sha256", "contract_version"],
   offer_event: ["offer_id", "kind", "version", "actor", "at", "contract_version"],
-  checkout: ["checkout_id", "reference", "org_id", "created_by_sub", "billing_token_jti", "client_request_id", "offer_id", "offer_version", "plan_id", "plan_version", "term_unit", "term_count", "allowance_credits", "grace_days", "grace_cap_rule", "list_price_minor", "charged_price_minor", "adjustment_id", "currency", "terms_version", "billing_contact_version", "billing_contact_sha256", "opened_with_coverage_through", "coverage_source", "provider_id", "initiator", "expires_at", "contract_version", "created_at", "coverage_starts", "projected_start"],
+  checkout: ["checkout_id", "reference", "org_id", "created_by_sub", "billing_token_jti", "client_request_id", "offer_id", "offer_version", "plan_id", "plan_version", "term_unit", "term_count", "allowance_credits", "grace_days", "grace_cap_rule", "list_price_minor", "charged_price_minor", "adjustment_id", "currency", "terms_version", "billing_contact_version", "billing_contact_sha256", "opened_with_coverage_through", "coverage_source", "provider_id", "initiator", "expires_at", "contract_version", "created_at", "created_at_provenance", "coverage_starts", "projected_start"],
   checkout_event: ["checkout_id", "kind", "source", "ref", "actor", "at", "contract_version"],
   notification: ["notification_id", "provider_id", "channel", "hmac_valid", "body_r2_key", "body_sha256", "dedupe_key", "checkout_id", "disposition", "adapter_version", "provider_txn_id"],
   inquiry_result: ["inquiry_id", "subject", "normalized_state", "cumulative_reversed_minor", "raw_r2_key", "raw_sha256", "at", "adapter_version"],
@@ -84,6 +123,8 @@ const LEDGER_COLUMN_FIELDS: Record<string, readonly string[]> = {
   grant_outcome: ["grant_id", "result", "abo_kid", "abo_signature", "receipt", "term_ids", "at"],
   grant_outcome_event: ["outcome_seq", "attempt_id", "grant_id", "result", "code", "terminal", "abo_kid", "abo_signature", "receipt", "term_ids", "at"],
   reversal: ["reversal_id", "payment_id", "reference", "amount_minor", "kind", "is_full", "source", "cumulative_reversed_minor", "detected_via", "recorded_by", "evidence_sha256", "effect", "dedupe_key"],
+  reversal_request: ["reversal_id", "grant_id", "reason", "evidence_sha256", "partial", "contract_version", "canonical_body", "body_sha256", "created_at"],
+  rebuild_inquiry_attempt: ["attempt_id", "checkout_id", "payment_id", "provider_txn_ref", "outcome", "decision", "inquiry_id", "evidence_sha256", "observed_at", "adapter_version"],
   operator_action: ["action_id", "actor_email", "access_jti", "action", "subject", "params_sha256", "assertion_sha256", "result"],
   command_recovery_fact: ["fact_id", "command_id", "fact_kind", "payload_json", "payload_sha256", "created_at"],
   finding: ["finding_id", "kind", "subject", "detail", "detected_at"],
@@ -108,6 +149,8 @@ const LEDGER_KEY_FIELDS: Record<string, readonly string[]> = {
   grant_outcome: ["grant_id"],
   grant_outcome_event: ["attempt_id"],
   reversal: ["reversal_id"],
+  reversal_request: ["reversal_id"],
+  rebuild_inquiry_attempt: ["attempt_id"],
   operator_action: ["action_id"],
   command_recovery_fact: ["fact_id"],
   finding: ["finding_id"],
@@ -248,6 +291,25 @@ async function listLedgerLines(env: RebuildEnv, recoveryToken: string): Promise<
       throw new Error(`ledger_sequence_gap:${index + 1}`);
     }
   }
+  const openedAtByCheckout = new Map<string, string>();
+  for (const line of lines) {
+    if (line.table === "checkout_event" && line.row.kind === "opened" &&
+        typeof line.row.checkout_id === "string" && typeof line.row.at === "string") {
+      openedAtByCheckout.set(line.row.checkout_id, line.row.at);
+    }
+  }
+  for (const line of lines) {
+    if (line.table !== "checkout") continue;
+    const resolved = resolveHistoricalCheckoutTimestamp({
+      checkoutId: String(line.row.checkout_id),
+      createdAt: line.row.created_at,
+      provenance: line.row.created_at_provenance,
+      factCreatedAt: line.fact_created_at,
+      openedEventAt: openedAtByCheckout.get(String(line.row.checkout_id)),
+    });
+    line.recovery_created_at = resolved.createdAt;
+    line.recovery_created_at_provenance = resolved.provenance;
+  }
   return lines;
 }
 
@@ -323,6 +385,11 @@ async function validateLedgerLine(env: RebuildEnv, line: LedgerLine): Promise<vo
       throw new Error(`ledger_contract_version_unknown:${line.fact_seq}`);
     }
   }
+  if (line.table === "checkout" && Object.hasOwn(line.row, "created_at_provenance") &&
+      !["recorded", "fact_log", "opened_event", "legacy_unknown", "expiry_inferred"]
+        .includes(String(line.row.created_at_provenance))) {
+    throw new Error(`ledger_checkout_timestamp_provenance_unknown:${line.fact_seq}`);
+  }
   if (line.table === "command_recovery_fact") {
     const payloadJson = line.row.payload_json;
     const payloadHash = line.row.payload_sha256;
@@ -340,6 +407,7 @@ async function validateLedgerLine(env: RebuildEnv, line: LedgerLine): Promise<vo
       payloadCanonical !== payloadJson ||
       await sha256Hex(canonicalize(payload)) !== payloadHash ||
       await hasForbiddenCommandFactSecret(payload, factKind, env.PLATFORM_PUBLIC_KEYS) ||
+      payload.payload_version !== 1 ||
       payload.command_id !== commandId ||
       !["command_intent", "relay_reserved", "platform_result", "local_result", "erasure_ack"].includes(factKind)
     ) throw new Error(`ledger_command_fact_invalid:${line.fact_seq}`);
@@ -447,7 +515,14 @@ async function replayLedger(
           ));
         }
       } else {
-        statements.push(ledgerInsertStatement(env, line.table, row));
+        const replayRow = line.table === "checkout"
+          ? {
+              ...row,
+              created_at: line.recovery_created_at,
+              created_at_provenance: line.recovery_created_at_provenance,
+            }
+          : row;
+        statements.push(ledgerInsertStatement(env, line.table, replayRow));
       }
     }
     if (existingFact === null) {
@@ -536,7 +611,14 @@ async function appendLegacyAttemptEvent(
 async function ensureLegacyAttemptEvents(env: RebuildEnv): Promise<void> {
   const intentions = await env.DB.prepare(
     `SELECT pi.checkout_id, pi.intention_id, pi.order_id, pi.client_secret,
-            pi.special_reference, pi.expires_at, c.created_at
+            pi.special_reference, pi.expires_at, c.created_at,
+            c.created_at_provenance,
+            (SELECT fl.created_at FROM fact_log fl
+             WHERE fl."table" = 'checkout' AND fl.key = c.checkout_id
+             ORDER BY fl.fact_seq LIMIT 1) AS fact_created_at,
+            (SELECT ce.at FROM checkout_event ce
+             WHERE ce.checkout_id = c.checkout_id AND ce.kind = 'opened'
+             ORDER BY ce.at LIMIT 1) AS opened_event_at
      FROM paymob_intention pi
      INNER JOIN checkout c ON c.checkout_id = pi.checkout_id`,
   ).all<{
@@ -547,7 +629,21 @@ async function ensureLegacyAttemptEvents(env: RebuildEnv): Promise<void> {
     special_reference: string;
     expires_at: string;
     created_at: string | null;
+    created_at_provenance: string;
+    fact_created_at: string | null;
+    opened_event_at: string | null;
   }>();
+  const resolvedIntentionTimes = new Map<string, string>();
+  for (const intention of intentions.results ?? []) {
+    const resolved = resolveHistoricalCheckoutTimestamp({
+      checkoutId: intention.checkout_id,
+      createdAt: intention.created_at,
+      provenance: intention.created_at_provenance,
+      factCreatedAt: intention.fact_created_at ?? "",
+      openedEventAt: intention.opened_event_at ?? undefined,
+    });
+    resolvedIntentionTimes.set(intention.checkout_id, resolved.createdAt);
+  }
   for (const intention of intentions.results ?? []) {
     const eventKey = `${intention.checkout_id}:1:created:legacy`;
     const prior = await env.DB.prepare(
@@ -559,7 +655,7 @@ async function ensureLegacyAttemptEvents(env: RebuildEnv): Promise<void> {
     if (prior !== null && prior.event_key !== eventKey) {
       continue;
     }
-    const eventAt = intention.created_at ?? intention.expires_at;
+    const eventAt = resolvedIntentionTimes.get(intention.checkout_id)!;
     await appendLegacyAttemptEvent(env, {
       event_key: eventKey,
       checkout_id: intention.checkout_id,
@@ -572,18 +668,25 @@ async function ensureLegacyAttemptEvents(env: RebuildEnv): Promise<void> {
       order_id: intention.order_id,
       client_secret: null,
       expires_at: intention.expires_at,
-      started_at: intention.created_at,
-      finished_at: intention.created_at,
+      started_at: eventAt,
+      finished_at: eventAt,
       event_at: eventAt,
     });
   }
 
   const failedCheckouts = await env.DB.prepare(
     `SELECT c.checkout_id, c.reference, c.expires_at, c.created_at,
+            c.created_at_provenance,
+            (SELECT fl.created_at FROM fact_log fl
+             WHERE fl."table" = 'checkout' AND fl.key = c.checkout_id
+             ORDER BY fl.fact_seq LIMIT 1) AS fact_created_at,
+            (SELECT ce.at FROM checkout_event ce
+             WHERE ce.checkout_id = c.checkout_id AND ce.kind = 'opened'
+             ORDER BY ce.at LIMIT 1) AS opened_event_at,
             COALESCE(cs.last_event_at, (
               SELECT MAX(oe.at) FROM checkout_event oe
               WHERE oe.checkout_id = c.checkout_id AND oe.kind = 'open_failed'
-            ), c.created_at, c.expires_at) AS failed_at
+            )) AS failed_at
      FROM checkout c
      INNER JOIN checkout_status cs ON cs.checkout_id = c.checkout_id
      LEFT JOIN paymob_intention pi ON pi.checkout_id = c.checkout_id
@@ -593,9 +696,23 @@ async function ensureLegacyAttemptEvents(env: RebuildEnv): Promise<void> {
     reference: string;
     expires_at: string;
     created_at: string | null;
-    failed_at: string;
+    created_at_provenance: string;
+    fact_created_at: string | null;
+    opened_event_at: string | null;
+    failed_at: string | null;
   }>();
   for (const checkout of failedCheckouts.results ?? []) {
+    const failedAt = checkout.failed_at;
+    if (failedAt === null || !Number.isFinite(Date.parse(failedAt))) {
+      throw new Error(`legacy_failed_checkout_timestamp_unrecoverable:${checkout.checkout_id}`);
+    }
+    const createdAt = resolveHistoricalCheckoutTimestamp({
+      checkoutId: checkout.checkout_id,
+      createdAt: checkout.created_at,
+      provenance: checkout.created_at_provenance,
+      factCreatedAt: checkout.fact_created_at ?? "",
+      openedEventAt: checkout.opened_event_at ?? undefined,
+    }).createdAt;
     const eventKey = `${checkout.checkout_id}:1:abandoned_unconfirmed:legacy`;
     const prior = await env.DB.prepare(
       `SELECT event_key FROM paymob_intention_attempt_event
@@ -618,9 +735,9 @@ async function ensureLegacyAttemptEvents(env: RebuildEnv): Promise<void> {
       order_id: null,
       client_secret: null,
       expires_at: null,
-      started_at: checkout.created_at,
-      finished_at: checkout.failed_at,
-      event_at: checkout.failed_at,
+      started_at: createdAt,
+      finished_at: failedAt,
+      event_at: failedAt,
     });
   }
 }
@@ -836,30 +953,197 @@ async function maybeRecordSucceededPayment(
   return payment?.disposition === "grant";
 }
 
+async function recordRebuildInquiryAttempt(
+  env: RebuildEnv,
+  input: {
+    checkoutId: string;
+    paymentId?: string;
+    providerTxnRef?: string;
+    outcome: "confirmed" | "already_recorded" | "deferred" | "unavailable" | "discovery_unavailable" | "unbound";
+    decision: string;
+    inquiryId?: string;
+    evidenceSha256?: string;
+    observedAt: string;
+  },
+): Promise<void> {
+  const canonicalCore = {
+    checkout_id: input.checkoutId,
+    payment_id: input.paymentId ?? null,
+    provider_txn_ref: input.providerTxnRef ?? null,
+    outcome: input.outcome,
+    decision: input.decision,
+    inquiry_id: input.inquiryId ?? null,
+    evidence_sha256: input.evidenceSha256 ?? null,
+    adapter_version: PAYMOB_ADAPTER_VERSION,
+  };
+  const attemptId = await sha256Hex(canonicalize(canonicalCore));
+  const row = {
+    attempt_id: attemptId,
+    ...canonicalCore,
+    observed_at: input.observedAt,
+  };
+  const factRowJson = new TextDecoder().decode(canonicalize(row));
+  const factRowSha256 = await sha256Hex(canonicalize(row));
+  const statements = [
+    env.DB.prepare(
+      `INSERT INTO rebuild_inquiry_attempt (
+         attempt_id, checkout_id, payment_id, provider_txn_ref, outcome,
+         decision, inquiry_id, evidence_sha256, observed_at, adapter_version
+       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+       ON CONFLICT(attempt_id) DO NOTHING`,
+    ).bind(
+      row.attempt_id, row.checkout_id, row.payment_id, row.provider_txn_ref,
+      row.outcome, row.decision, row.inquiry_id, row.evidence_sha256,
+      row.observed_at, row.adapter_version,
+    ),
+  ];
+  statements.push(env.DB.prepare(
+    `INSERT INTO fact_log ("table", key, row_sha256, row_json, created_at)
+     SELECT 'rebuild_inquiry_attempt', ?, ?, ?, ?
+     WHERE NOT EXISTS (SELECT 1 FROM fact_log
+       WHERE "table" = 'rebuild_inquiry_attempt' AND key = ?)`,
+  ).bind(attemptId, factRowSha256, factRowJson, input.observedAt, attemptId));
+  await env.DB.batch(statements);
+}
+
 async function processAuthoritativeInquiry(
   env: RebuildEnv,
   checkoutId: string,
   inquiry: InquireResult,
   paymobTxnId?: string,
 ): Promise<string[]> {
-  if (!inquiry.bound || inquiry.deferred) return [];
   const checkout = await loadCheckout(env, checkoutId);
   if (checkout === null) return [];
+  const nowIso = await clockNowIso(env);
+  if (inquiry.deferred) {
+    await recordRebuildInquiryAttempt(env, {
+      checkoutId,
+      ...(paymobTxnId === undefined ? {} : { providerTxnRef: paymobTxnId }),
+      outcome: "deferred",
+      decision: "shared_inquiry_budget_unavailable",
+      observedAt: nowIso,
+    });
+    return [];
+  }
+  if (inquiry.unavailable) {
+    await recordRebuildInquiryAttempt(env, {
+      checkoutId,
+      ...(paymobTxnId === undefined ? {} : { providerTxnRef: paymobTxnId }),
+      outcome: "unavailable",
+      decision: "provider_inquiry_result_unavailable",
+      observedAt: nowIso,
+    });
+    return [];
+  }
+  if (inquiry.discovery_unavailable) {
+    await recordRebuildInquiryAttempt(env, {
+      checkoutId,
+      ...(paymobTxnId === undefined ? {} : { providerTxnRef: paymobTxnId }),
+      outcome: "discovery_unavailable",
+      decision: "original_provider_transaction_reference_required",
+      observedAt: nowIso,
+    });
+    return [];
+  }
+  if (!inquiry.bound) {
+    await recordRebuildInquiryAttempt(env, {
+      checkoutId,
+      ...(paymobTxnId === undefined ? {} : { providerTxnRef: paymobTxnId }),
+      outcome: "unbound",
+      decision: "provider_inquiry_not_bound_to_original_order",
+      observedAt: nowIso,
+    });
+    return [];
+  }
+  if (inquiry.transactions.length === 0) {
+    await recordRebuildInquiryAttempt(env, {
+      checkoutId,
+      ...(paymobTxnId === undefined ? {} : { providerTxnRef: paymobTxnId }),
+      outcome: "unbound",
+      decision: "bound_response_without_transactions",
+      observedAt: nowIso,
+    });
+    return [];
+  }
   const recordedPayments: string[] = [];
   for (const txn of inquiry.transactions) {
-    if (txn.kind === "payment_succeeded") {
-      if (await maybeRecordSucceededPayment(env, checkoutId, txn, inquiry, paymobTxnId)) {
-        recordedPayments.push(txn.payment_id);
-      }
-      continue;
-    }
-    const nowIso = await clockNowIso(env);
+    const providerTxnRef = paymobTxnId ?? txn.provider_txn_id;
     const evidence = await recordRebuiltInquiryEvidence(env, {
       checkout,
       txn,
       inquiry,
       nowIso,
       allowMissingContactForRecoveredAttempt: true,
+    });
+    if (txn.kind === "payment_succeeded") {
+      const existing = await env.DB.prepare(
+        `SELECT checkout_id, provider_id, amount_minor, currency, disposition
+         FROM payment WHERE payment_id = ?`,
+      ).bind(txn.payment_id).first<{
+        checkout_id: string; provider_id: string; amount_minor: number;
+        currency: string; disposition: string;
+      }>();
+      if (existing !== null) {
+        const matches = existing.checkout_id === checkoutId &&
+          existing.provider_id === PAYMOB_PROVIDER_ID &&
+          existing.amount_minor === txn.amount_minor && existing.currency === txn.currency;
+        await recordRebuildInquiryAttempt(env, {
+          checkoutId,
+          paymentId: txn.payment_id,
+          ...(providerTxnRef === undefined ? {} : { providerTxnRef }),
+          outcome: matches ? "already_recorded" : "unbound",
+          decision: matches ? `existing_payment_${existing.disposition}_reconfirmed`
+            : "existing_payment_identity_conflict",
+          ...(evidence === null ? {} : {
+            inquiryId: evidence.inquiryId,
+            evidenceSha256: evidence.evidenceSha256,
+          }),
+          observedAt: nowIso,
+        });
+        continue;
+      }
+      const newlyRecorded = await maybeRecordSucceededPayment(
+        env, checkoutId, txn, inquiry, paymobTxnId,
+      );
+      const payment = await env.DB.prepare(
+        `SELECT confirmation_inquiry_id, evidence_sha256, disposition
+         FROM payment WHERE payment_id = ?`,
+      ).bind(txn.payment_id).first<{
+        confirmation_inquiry_id: string; evidence_sha256: string; disposition: string;
+      }>();
+      await recordRebuildInquiryAttempt(env, {
+        checkoutId,
+        paymentId: txn.payment_id,
+        ...(providerTxnRef === undefined ? {} : { providerTxnRef }),
+        outcome: newlyRecorded ? "confirmed" : "unbound",
+        decision: payment === null ? "no_payment_write_after_authenticated_inquiry"
+          : `payment_${payment.disposition}`,
+        ...(payment === null ? (evidence === null ? {} : {
+          inquiryId: evidence.inquiryId,
+          evidenceSha256: evidence.evidenceSha256,
+        }) : {
+          inquiryId: payment.confirmation_inquiry_id,
+          evidenceSha256: payment.evidence_sha256,
+        }),
+        observedAt: nowIso,
+      });
+      if (newlyRecorded) {
+        recordedPayments.push(txn.payment_id);
+      }
+      continue;
+    }
+    await recordRebuildInquiryAttempt(env, {
+      checkoutId,
+      paymentId: txn.payment_id,
+      ...(providerTxnRef === undefined ? {} : { providerTxnRef }),
+      outcome: evidence === null ? "unbound" : "confirmed",
+      decision: evidence === null ? "authenticated_evidence_not_retained"
+        : `authenticated_${txn.kind}_evidence_retained`,
+      ...(evidence === null ? {} : {
+        inquiryId: evidence.inquiryId,
+        evidenceSha256: evidence.evidenceSha256,
+      }),
+      observedAt: nowIso,
     });
     if (evidence === null) continue;
     if (txn.kind === "reversal") {
@@ -1608,9 +1892,6 @@ async function inquireGapPayments(
         checkout_id: candidate.checkout_id,
         paymob_txn_id: reference,
       });
-      if (!inquiry.bound || inquiry.deferred) {
-        continue;
-      }
       gapFilledPaymentIds.push(...await processAuthoritativeInquiry(
         env,
         candidate.checkout_id,

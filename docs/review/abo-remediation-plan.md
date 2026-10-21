@@ -772,7 +772,7 @@ Agents update only their own row (rule 2.11). Status values: `not started`, `in 
 | RM25 | complete | `d1a88aecbe1f939707fc49349c161913d04aae89` | [39443264574](https://github.com/haythamosama95/AiClinic/actions/runs/39443264574) | 2026-10-20 | R5-A3/A6/A5/J1 passed complete CI; all 11 named RM25 worker acceptance tests passed, including settlement replay, exact-fact reconciliation, successor activation, and durable accounting intent. See docs/review/abo-remediation/RM25.md |
 | RM26 | complete | `1375073e7fba09fee4508b06a8b4a598d6d00164` | [39478842156](https://github.com/haythamosama95/AiClinic/actions/runs/39478842156) | 2026-10-20 | R6-DM1/DM2/PT2 passed complete CI: accounting and fallback admission freeze, exact replay/lost-step recovery, durable preparation fencing and recovery, and migration parity across worker/load/ABO harnesses. Three CI rounds resolved schema/fixture omissions, grace calendar validation, grant gating and replay normalization; see docs/review/abo-remediation/RM26.md |
 | RM27 | complete | `6caed6358db6c11a01a97918705590692d6bcad9` | [39485814838](https://github.com/haythamosama95/AiClinic/actions/runs/39485814838) | 2026-10-20 | R6-PT3/R7-PS1 passed all 17 complete-CI jobs; durable deletion/purge recovery, held unavailable projection, canonical freeze replay and feed shipment covered. Artifact-backed failures in runs 39482544544 and 39484345059 were corrected before the green run; E2E-P8.3-01/02 passed. See docs/review/abo-remediation/RM27.md |
-| RM28 | not started | — | — | — | — |
+| RM28 | in progress | — | — | — | Dependency gate passed; implementation in progress. |
 | RM29 | not started | — | — | — | — |
 | RM30 | not started | — | — | — | — |
 | RM31 | not started | — | — | — | — |

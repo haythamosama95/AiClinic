@@ -41,6 +41,7 @@ import {
   determineReversalEffect,
   buildReversalRequestDraft,
   processReverseWork,
+  reversalRequestFactStatement,
   reversalDedupeKey,
   reversalIdFromDedupeKey,
   type ReversalEnv,
@@ -1911,6 +1912,10 @@ async function handleHpManualChargeback(
       hp.challengeSha256,
       hp.leaseToken,
     ),
+    await reversalRequestFactStatement(env as ReversalEnv, requestDraft, {
+      challengeSha256: hp.challengeSha256,
+      leaseToken: hp.leaseToken,
+    }),
     env.DB.prepare(
       `INSERT INTO fact_log ("table", key, row_sha256, row_json, created_at)
        SELECT 'reversal', ?, ?, ?, ?
