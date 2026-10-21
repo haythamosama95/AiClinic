@@ -1207,6 +1207,59 @@ describe("platform rebuild procedures", () => {
     )).toBeNull();
   });
 
+  it("R9-PDO1 RM29-F2: fresh complimentary recovery accepts source_reconciled=0 and JSON-text ceiling receipts", async () => {
+    const { scenario, grantId, capsuleText } = await setupComplimentaryRecoveryCapsule();
+    const capsule = JSON.parse(capsuleText) as Record<string, unknown>;
+    const ceiling = capsule.ceiling_claim as Record<string, unknown>;
+    expect(ceiling.source_reconciled).toBe(0);
+    expect(typeof ceiling.receipt).toBe("string");
+    expect(JSON.parse(ceiling.receipt as string)).toEqual(capsule.receipt);
+    await truncateGrantLedgerForInstallation(scenario.installationId);
+    await env.DB.prepare("DROP TRIGGER IF EXISTS complimentary_ceiling_claim_no_delete_guard").run();
+    await env.DB.prepare(
+      "DELETE FROM complimentary_ceiling_claim WHERE grant_id = ?",
+    ).bind(grantId).run();
+    await env.DB.prepare(`CREATE TRIGGER complimentary_ceiling_claim_no_delete_guard
+      BEFORE DELETE ON complimentary_ceiling_claim
+      BEGIN
+        SELECT RAISE(ABORT, 'complimentary_ceiling_claim is append-only');
+      END`).run();
+
+    const accessJwt = await mintVendorAccessJwt();
+    const rebuilt = await p311VendorCall(
+      "rebuildGrantLedger", { contract_version: CONTRACT_VERSION }, { accessJwt },
+    );
+    expect(rebuilt.result).toBe("ok");
+    const restored = await queryOne<{ source_reconciled: number; receipt: string }>(
+      `SELECT source_reconciled, receipt FROM complimentary_ceiling_claim WHERE grant_id = ?`,
+      [grantId],
+    );
+    expect(restored?.source_reconciled).toBe(0);
+    expect(JSON.parse(restored!.receipt)).toEqual(capsule.receipt);
+  });
+
+  it("R9-PDO1 RM29-F2: malformed or non-object ceiling receipts are rejected", async () => {
+    for (const invalidReceipt of ["{", "[]"]) {
+      const { scenario, capsuleKey, capsuleText } = await setupComplimentaryRecoveryCapsule();
+      const capsule = JSON.parse(capsuleText) as Record<string, unknown>;
+      (capsule.ceiling_claim as Record<string, unknown>).receipt = invalidReceipt;
+      await env.R2.put(capsuleKey, `${JSON.stringify(capsule)}\n`);
+      await truncateGrantLedgerForInstallation(scenario.installationId);
+
+      const accessJwt = await mintVendorAccessJwt();
+      const rejected = await p311VendorCall(
+        "rebuildGrantLedger", { contract_version: CONTRACT_VERSION }, { accessJwt },
+      );
+      expect(rejected.result).toBe("rejected");
+      expect(rejected.code).toBe("recovery_evidence_required");
+      expect(rejected.detail).toContain("grant_recovery_ceiling_claim_conflict");
+      expect(await queryOne(
+        `SELECT grant_id FROM grant_ledger WHERE installation_id = ?`,
+        [scenario.installationId],
+      )).toBeNull();
+    }
+  });
+
   it("R9-PDO1 RM29-F4: later ledger collision leaves earlier recovery rows uninstalled", async () => {
     const scenario = await newScenario();
     await coverClinic(scenario);

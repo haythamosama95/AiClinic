@@ -5277,6 +5277,18 @@ function isRecoveryRecord(value: unknown): value is Record<string, unknown> {
   return value !== null && typeof value === "object" && !Array.isArray(value);
 }
 
+function recoveryReceiptRecord(value: unknown): Record<string, unknown> | null {
+  let parsed = value;
+  if (typeof value === "string") {
+    try {
+      parsed = JSON.parse(value) as unknown;
+    } catch {
+      return null;
+    }
+  }
+  return isRecoveryRecord(parsed) ? parsed : null;
+}
+
 function recoveryNullableString(value: unknown): boolean {
   return value === null || typeof value === "string";
 }
@@ -5412,6 +5424,9 @@ async function verifyClaimRecoveryMetadata(
       ? duration.count as number
       : null;
   const overrideAuthorized = capsule.override_assertion_sha256 === null ? 0 : 1;
+  const ceilingReceipt = isRecoveryRecord(ceiling)
+    ? recoveryReceiptRecord(ceiling.receipt)
+    : null;
   if (
     ceiling.grant_id !== grantId || ceiling.org_id !== capsule.org_id ||
     ceiling.envelope_sha256 !== capsule.envelope_sha256 ||
@@ -5420,8 +5435,10 @@ async function verifyClaimRecoveryMetadata(
     ceiling.day_contribution !== expectedDays ||
     ceiling.allowance_contribution !== envelope.allowance_credits ||
     (ceiling.apply_per_grant_caps !== 0 && ceiling.apply_per_grant_caps !== 1) ||
-    ceiling.source_reconciled !== 1 || ceiling.override_authorized !== overrideAuthorized ||
-    ceiling.status !== "applied" || !canonicalValuesEqual(ceiling.receipt, receipt) ||
+    (ceiling.source_reconciled !== 0 && ceiling.source_reconciled !== 1) ||
+    ceiling.override_authorized !== overrideAuthorized ||
+    ceiling.status !== "applied" || ceilingReceipt === null ||
+    !canonicalValuesEqual(ceilingReceipt, receipt) ||
     ceiling.applied_at !== receipt.applied_at || typeof ceiling.created_at !== "string" ||
     !Number.isFinite(Date.parse(ceiling.created_at))
   ) {
@@ -6638,11 +6655,16 @@ export async function runRebuildGrantLedger(
       ).bind(row.grant_id).first<Record<string, unknown>>();
       const comparableCeiling = existingCeiling === null ? null : {
         ...existingCeiling,
-        receipt: typeof existingCeiling.receipt === "string"
-          ? JSON.parse(existingCeiling.receipt)
-          : existingCeiling.receipt,
+        receipt: recoveryReceiptRecord(existingCeiling.receipt),
       };
-      if (comparableCeiling !== null && !canonicalValuesEqual(comparableCeiling, ceiling)) {
+      const importedCeiling = {
+        ...ceiling,
+        receipt: recoveryReceiptRecord(ceiling.receipt),
+      };
+      if (comparableCeiling !== null && (
+        comparableCeiling.receipt === null || importedCeiling.receipt === null ||
+        !canonicalValuesEqual(comparableCeiling, importedCeiling)
+      )) {
         throw new Error(`grant_ceiling_recovery_conflict:${item.key}`);
       }
       if (existingCeiling === null) {
@@ -6658,7 +6680,7 @@ export async function runRebuildGrantLedger(
           ceiling.plan_version, ceiling.allowance_denominator, ceiling.day_contribution,
           ceiling.allowance_contribution, ceiling.apply_per_grant_caps,
           ceiling.source_reconciled, ceiling.override_authorized, ceiling.status,
-          ceiling.receipt, ceiling.applied_at, ceiling.created_at,
+          canonicalJsonText(importedCeiling.receipt), ceiling.applied_at, ceiling.created_at,
         ));
       }
     }
