@@ -2293,10 +2293,10 @@ async function handleGetClinic(
           INNER JOIN payment p ON p.payment_id = r.payment_id
           WHERE p.org_id = ?
         )
-        OR f.detail LIKE ?
+        OR instr(f.detail, ?) > 0
      ORDER BY f.detected_at ASC`,
   )
-    .bind(orgId, orgId, `%${orgId}%`)
+    .bind(orgId, orgId, orgId)
     .all<Record<string, unknown>>();
   const findings = findingRows.results ?? [];
 
@@ -2305,14 +2305,14 @@ async function handleGetClinic(
      FROM alert a
      WHERE a.active = 1
        AND (
-         a.alert_key LIKE '%' || ? || '%'
+         instr(a.alert_key, ?) > 0
          OR EXISTS (
            SELECT 1 FROM checkout c
-           WHERE c.org_id = ? AND a.alert_key LIKE '%' || c.checkout_id || '%'
+           WHERE c.org_id = ? AND instr(a.alert_key, c.checkout_id) > 0
          )
          OR EXISTS (
            SELECT 1 FROM payment p
-           WHERE p.org_id = ? AND a.alert_key LIKE '%' || p.payment_id || '%'
+           WHERE p.org_id = ? AND instr(a.alert_key, p.payment_id) > 0
          )
        )
      ORDER BY a.alert_key ASC`,

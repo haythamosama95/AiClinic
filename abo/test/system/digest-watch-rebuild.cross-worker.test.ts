@@ -1787,19 +1787,26 @@ describe("P4.11 digest, watch, housekeeping, rebuild (H-XW)", () => {
     expect(done.next_attempt_at).toBeNull();
   });
 
-  it("R9-CRON1 a missed daily period is caught up by the minute cron once", async () => {
+  it("R9-CRON1 a never-attempted daily period is not started by the minute cron", async () => {
     await seedDigestScenario();
     clearCapturedEmails();
 
-    // No 06:00 run happened for today's period. The first minute cron after the gap catches it up.
+    // Side 1: the 06:00 tick for this period never ran, so the period was never attempted.
+    // Minute ticks after the gap must not start it.
     await setClock(addMinutes(BASE_CLOCK, 60));
     await runScheduled("* * * * *");
-    expect(digestEmails()).toHaveLength(1);
-    expect((await scheduledJobRow("digest")).last_succeeded_period).not.toBeNull();
-
-    clearCapturedEmails();
     await runScheduled("* * * * *");
     expect(digestEmails()).toHaveLength(0);
+    const untouched = await scheduledJobRow("digest");
+    expect(untouched.last_succeeded_period).toBeNull();
+    expect(untouched.next_attempt_at).toBeNull();
+
+    // Side 2: the next scheduled 06:00 tick runs its own period.
+    clearCapturedEmails();
+    await setClock(addHours(BASE_CLOCK, 24));
+    await runScheduled("0 6 * * *");
+    expect(digestEmails()).toHaveLength(1);
+    expect((await scheduledJobRow("digest")).last_succeeded_period).not.toBeNull();
   });
 
   it("R9-CRON1 scheduled_job_failed alert is raised once per job and deduplicated", async () => {

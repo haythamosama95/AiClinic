@@ -3,9 +3,10 @@ import { prepareAlertDeactivation, prepareRaiseAlert } from "../alert/index.js";
 
 // R9-CRON1: every logical scheduled job records its own start, success, error and
 // retry state. A job's due period is stamped as succeeded only after its work completed.
-// A failed, deferred or abandoned period stays pending. The minute cron claims any due
-// period that has not succeeded, so both retries and never-attempted periods (catch-up)
-// are picked up there. The lease and the period key keep each period to one completion.
+// A failed, deferred or abandoned period stays pending with next_attempt_at set. The minute
+// cron retries only such pending attempts (retryOnly). It never starts a period that has
+// never been attempted; each scheduled cron tick runs its own period at its scheduled time.
+// The lease and the period key keep each period to one completion.
 
 const MINUTE_MS = 60 * 1000;
 const HOUR_MS = 60 * MINUTE_MS;
@@ -160,9 +161,17 @@ async function finishLeased(
 // out after the claim never reaches finishLeased, so the abandoned lease becomes eligible
 // again once it expires, even without a retry mark. finishLeased overwrites next_attempt_at
 // on every outcome, and success clears it.
+export type ClaimOptions = {
+  // Minute cron: only retry a prior attempt that did not succeed (failed, deferred, or
+  // abandoned lease, which all carry next_attempt_at). A never-attempted period is not
+  // claimed. Scheduled cron ticks leave this unset and run their own period.
+  retryOnly?: boolean;
+};
+
 export async function runDueScheduledJob<E extends SchedulerEnv>(
   env: E,
   definition: ScheduledJobDefinition<E>,
+  options?: ClaimOptions,
 ): Promise<"skipped" | JobOutcome> {
   const nowMs = await clockNowMs(env);
   const nowIso = new Date(nowMs).toISOString();
@@ -171,15 +180,16 @@ export async function runDueScheduledJob<E extends SchedulerEnv>(
   const leaseToken = crypto.randomUUID();
 
   await ensureJobRow(env, definition.job);
-  // Catch-up (decision b): any period that has not succeeded is due, whether it failed,
-  // was deferred, was abandoned, or was never attempted.
+  // Retry-only claims (minute cron) require next_attempt_at IS NOT NULL: a prior attempt
+  // exists and did not succeed. The `? = 0` term is 1 for scheduled ticks, which skip it.
   const claim = await env.DB.prepare(
     `UPDATE scheduled_job_state
      SET lease_token = ?, lease_until = ?, next_attempt_at = ?, last_started_at = ?
      WHERE job = ?
        AND (lease_until IS NULL OR lease_until <= ?)
        AND (last_succeeded_period IS NULL OR last_succeeded_period <> ?)
-       AND (next_attempt_at IS NULL OR next_attempt_at <= ?)`,
+       AND (next_attempt_at IS NULL OR next_attempt_at <= ?)
+       AND (? = 0 OR next_attempt_at IS NOT NULL)`,
   )
     .bind(
       leaseToken,
@@ -190,6 +200,7 @@ export async function runDueScheduledJob<E extends SchedulerEnv>(
       nowIso,
       period,
       nowIso,
+      options?.retryOnly === true ? 1 : 0,
     )
     .run();
   if (changesOf(claim) !== 1) {
@@ -227,10 +238,11 @@ export async function runDueScheduledJob<E extends SchedulerEnv>(
 export async function runDueScheduledJobs<E extends SchedulerEnv>(
   env: E,
   definitions: ReadonlyArray<ScheduledJobDefinition<E>>,
+  options?: ClaimOptions,
 ): Promise<void> {
   for (const definition of definitions) {
     try {
-      await runDueScheduledJob(env, definition);
+      await runDueScheduledJob(env, definition, options);
     } catch (error) {
       // Claim-time database errors affect only this job; later jobs still run.
       logJobFailure(definition.job, "claim", boundedErrorCode(error));

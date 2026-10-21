@@ -31,6 +31,7 @@ import {
   recordUngatedOutcome,
   runDueScheduledJobs,
   type Cadence,
+  type ClaimOptions,
   type ScheduledJobDefinition,
 } from "./scheduler/jobs.js";
 import { runHourlyWatch } from "./watch/hourly.js";
@@ -155,9 +156,9 @@ const SIGNING_KEY_GATE_ROW_ID = 1;
 const MINUTE_PROCESSING_JOB = "minute_processing";
 
 // R9-CRON1: due daily, hourly and six-hourly jobs. Each cron runs its own cadence. The minute
-// cron claims any period that has not succeeded, so failed, deferred, abandoned and never
-// attempted periods (catch-up) run once. The digest success heartbeat is pinged only after
-// the digest is acknowledged as sent.
+// cron retries only attempts that failed, were deferred, or were abandoned. It never starts a
+// never-attempted period. The digest success heartbeat is pinged only after the digest is
+// acknowledged as sent.
 const SCHEDULED_JOBS: ReadonlyArray<ScheduledJobDefinition<Env>> = [
   {
     job: "reversal_population_six_hour",
@@ -214,10 +215,12 @@ const SCHEDULED_JOBS: ReadonlyArray<ScheduledJobDefinition<Env>> = [
 async function runCronJobs(
   env: Env,
   cadences: ReadonlyArray<Cadence>,
+  options?: ClaimOptions,
 ): Promise<void> {
   await runDueScheduledJobs(
     env,
     SCHEDULED_JOBS.filter((definition) => cadences.includes(definition.cadence)),
+    options,
   );
 }
 
@@ -520,10 +523,10 @@ export default {
     await maybeRefreshSigningKeyCheck(env);
     if (cron === "* * * * *") {
       await runMinuteProcessing(env);
-      // Minute cron claims every due period that has not succeeded: failed, deferred,
-      // abandoned and never-attempted periods alike (catch-up). The period lease keeps each
-      // period to one completion.
-      await runCronJobs(env, ["six_hour", "hourly", "daily"]);
+      // Minute cron retries only attempts that did not succeed (retryOnly). A never-attempted
+      // period is left to its own scheduled tick. The period lease keeps each period to one
+      // completion.
+      await runCronJobs(env, ["six_hour", "hourly", "daily"], { retryOnly: true });
       // F7(ii): the minute stream pings unconditionally, after the minute work. It is a cron
       // liveness signal only. The digest success stream is pinged separately from the digest.
       await pingHeartbeat(env, "minute");

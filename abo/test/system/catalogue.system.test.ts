@@ -648,16 +648,26 @@ describe("catalogue", () => {
     expect(emailsWithAl16()[0]!.text).toContain("AL-16");
     expect(emailsWithAl16()[0]!.text).toContain(String(factSeq));
 
+    // R9-AO5: the first minute tick exported the backlog, so the lag alert is cleared even
+    // though it was sent. No daily repeat follows once the backlog is gone.
+    const exportLagRow = (): Promise<{ active: number; unsent: number } | null> =>
+      env.DB.prepare(
+        `SELECT active, unsent FROM alert WHERE alert_key = 'AL-16:export-lag'`,
+      ).first<{ active: number; unsent: number }>();
     const afterFirst = emailsWithAl16().length;
     await setClock(addHours(addHours(factCreatedAt, 2), 24));
     await runScheduled("* * * * *");
-    expect(emailsWithAl16().length).toBe(afterFirst + 1);
+    expect(emailsWithAl16().length).toBe(afterFirst);
+    expect(await exportLagRow()).toMatchObject({ active: 0, unsent: 0 });
 
     clearCapturedEmails();
     const retryCreatedAt = "2026-07-01T08:00:00.000Z";
     await setClock(retryCreatedAt);
     await appendMinimalOffer();
     const retryFactSeq = await latestFactSeq();
+    // Keep this backlog unexported: a conflicting ledger object makes the export step refuse
+    // the fact, so the lag alert stays active across the failed send and the daily repeats.
+    await env.R2.put(`ledger/${retryFactSeq}.ndjson`, "conflicting-ledger-object");
     await setClock(addHours(retryCreatedAt, 2));
     setSendEmailThrows(true);
     await runScheduled("* * * * *");
@@ -679,17 +689,29 @@ describe("catalogue", () => {
     setLockRulesBody({ success: true, result: { rules: [] } });
     await setClock(addHours(retryCreatedAt, 26));
     await runScheduled("0 6 * * *");
-    expect(emailsWithAl16()).toHaveLength(1);
-    expect(emailsWithAl16()[0]!.text).toContain("AL-16");
-    expect(emailsWithAl16()[0]!.text).toContain("r2-lock");
+    // The unexported backlog keeps its lag alert active, so its daily repeat is due alongside
+    // the newly raised r2-lock alert.
+    expect(emailsWithAl16()).toHaveLength(2);
+    expect(emailsWithAl16().some((message) => message.text === `AL-16 ${retryFactSeq}`)).toBe(true);
+    expect(emailsWithAl16().some((message) => message.text.includes("r2-lock"))).toBe(true);
 
     // R9-AO5: an unknown lock read clears nothing. The still-active alert repeats once due.
     clearCapturedEmails();
     setLockRulesBody({ success: false, result: { rules: [] } });
     await setClock(addHours(retryCreatedAt, 50));
     await runScheduled("0 6 * * *");
-    expect(emailsWithAl16()).toHaveLength(1);
-    expect(emailsWithAl16()[0]!.text).toContain("r2-lock");
+    expect(emailsWithAl16()).toHaveLength(2);
+    expect(emailsWithAl16().some((message) => message.text === `AL-16 ${retryFactSeq}`)).toBe(true);
+    expect(emailsWithAl16().some((message) => message.text.includes("r2-lock"))).toBe(true);
+
+    // Repair the backlog: the export succeeds and the next minute tick clears the lag alert.
+    await env.R2.delete(`ledger/${retryFactSeq}.ndjson`);
+    await setClock(addHours(retryCreatedAt, 75));
+    await runScheduled("* * * * *");
+    expect(await exportLagRow()).toMatchObject({ active: 0, unsent: 0 });
+    clearCapturedEmails();
+    await runScheduled("* * * * *");
+    expect(emailsWithAl16().some((message) => message.text === `AL-16 ${retryFactSeq}`)).toBe(false);
   });
 
   it("E2E-P4.1-10 R9-CRON1 minute cron pings the abo_minute stream URL", async () => {
