@@ -1069,7 +1069,7 @@ export function configureTestAlarmDeliveryDelay(runtimeEnv: {
     : 0;
 }
 
-function physicalAlarmAt(targetMs: number): number {
+export function physicalAlarmAt(targetMs: number): number {
   const earliestMs = Math.max(targetMs, Date.now() + 5_000);
   if (testAlarmDeliveryDelayMs === 0) return earliestMs;
   return Math.max(earliestMs, Date.now() + testAlarmDeliveryDelayMs);

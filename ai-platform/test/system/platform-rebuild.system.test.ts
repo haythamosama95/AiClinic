@@ -937,7 +937,15 @@ describe("platform rebuild procedures", () => {
       { request_id: releasedId, accounting_seq: 1 },
       { request_id: consumedId, accounting_seq: 2 },
     ]);
+    diag("R9-PUS1 zero-weight: before final receipts assertion");
+    expect(receipts).toEqual([
+      { request_id: releasedId, accounting_seq: 1 },
+      { request_id: consumedId, accounting_seq: 2 },
+    ]);
+    diag("R9-PUS1 zero-weight: after final receipts assertion");
+    diag("R9-PUS1 zero-weight: before drainAndCancelDoAlarm");
     await drainAndCancelDoAlarm(scenario.installationId);
+    diag("R9-PUS1 zero-weight: after drainAndCancelDoAlarm");
     diag("END R9-PUS1: replayed zero-weight release advances t");
   });
 
