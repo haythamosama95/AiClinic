@@ -99,6 +99,7 @@ import r6Pt1TransferRouteManifestSql from "../../migrations/20261019160000_r6_pt
 import strandedTermRecoverySql from "../../migrations/20261019170000_r4_d2_stranded_recovery.sql?raw";
 import r6Rm26TransferPreparationSql from "../../migrations/20261020140000_r6_rm26_transfer_preparation.sql?raw";
 import rm27DurableDeletionSql from "../../migrations/20261020150000_rm27_durable_deletion.sql?raw";
+import rm30UsageAccountingMigrationSql from "../../migrations/20261021120000_rm30_usage_accounting_identity.sql?raw";
 import { applySqlStatements } from "../split-sql-statements";
 import {
   createCapabilityRegistry,
@@ -301,7 +302,8 @@ const MIGRATION_SQL = [
   r6Pt1TransferRouteManifestSql,
   strandedTermRecoverySql,
   r6Rm26TransferPreparationSql,
-    rm27DurableDeletionSql,
+  rm27DurableDeletionSql,
+  rm30UsageAccountingMigrationSql,
 ];
 
 const CATALOGUE_PLAN_NAME = "standard";
@@ -439,6 +441,7 @@ export async function resetPlatformState(): Promise<void> {
     env.DB.prepare("DELETE FROM harness_admission_fault"),
     env.DB.prepare("DELETE FROM platform_counter"),
     env.DB.prepare("DELETE FROM usage_rollup"),
+    env.DB.prepare("DELETE FROM usage_term_retention"),
     env.DB.prepare("DELETE FROM usage_event"),
     env.DB.prepare("DELETE FROM ai_attempt"),
     env.DB.prepare("DELETE FROM ai_request"),

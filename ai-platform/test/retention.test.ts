@@ -9,6 +9,7 @@ import retentionIndexesSql from "../migrations/20260805120000_f3_retention_index
 import issuerKeyTenantBindingMigrationSql from "../migrations/20261003130000_issuer_key_tenant_binding.sql?raw";
 import planVersionPaidGrantCoverageMigrationSql from "../migrations/20261003140000_plan_version_paid_grant_coverage.sql?raw";
 import usageTermMigrationSql from "../migrations/20261006120000_usage_term.sql?raw";
+import rm25FallbackSettlementSql from "../migrations/20261020130000_rm25_fallback_settlement.sql?raw";
 import rm30UsageAccountingMigrationSql from "../migrations/20261021120000_rm30_usage_accounting_identity.sql?raw";
 import { applySqlStatements } from "./split-sql-statements";
 import {
@@ -121,6 +122,7 @@ beforeAll(async () => {
   await applyPlatformSchema(env.DB, issuerKeyTenantBindingMigrationSql);
   await applyPlatformSchema(env.DB, planVersionPaidGrantCoverageMigrationSql);
   await applyPlatformSchema(env.DB, usageTermMigrationSql);
+  await applyPlatformSchema(env.DB, rm25FallbackSettlementSql);
   await applyPlatformSchema(env.DB, rm30UsageAccountingMigrationSql);
 });
 

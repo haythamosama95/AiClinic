@@ -729,6 +729,7 @@ function buildPostResponseInput(
   deferUsage?: boolean,
   accountingSettled?: boolean,
   settleFallbackAdmission?: boolean,
+  accountingSequence?: number,
 ): PostResponseInput {
   return {
     requestId,
@@ -739,6 +740,7 @@ function buildPostResponseInput(
     ...(deferUsage ? { deferUsage: true } : {}),
     ...(accountingSettled ? { accountingSettled: true } : {}),
     ...(settleFallbackAdmission ? { settleFallbackAdmission: true } : {}),
+    ...(accountingSequence !== undefined ? { accountingSequence } : {}),
     totalTokens: usage.tokens,
     totalCost: usage.cost,
     filteredContext,
@@ -765,6 +767,7 @@ type SettlementJournalInput = {
   deferUsage?: boolean;
   accountingSettled?: boolean;
   settleFallbackAdmission?: boolean;
+  accountingSequence?: number;
 };
 
 async function writeSettlementJournal(
@@ -787,6 +790,7 @@ async function writeSettlementJournal(
     input.deferUsage,
     input.accountingSettled,
     input.settleFallbackAdmission,
+    input.accountingSequence,
   );
   const ctx = createWorkerExecutionContext();
   writePostResponseDetail(detail, {
@@ -929,6 +933,7 @@ async function settleTerminal(
     ? {
         acknowledged: true,
         chargedWeight: input.accountingResult.settlement.chargedWeight,
+        accountingSequence: input.accountingResult.settlement.accountingSequence,
       }
     : input.skipCredit
       ? input.accountingMode === "fallback"

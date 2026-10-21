@@ -385,13 +385,14 @@ async function seedAttemptAndUsage(opts: {
     },
     {
       sql: `INSERT INTO usage_event (
-              usage_event_id, installation_id, term_id, request_id, quota_weight,
+              usage_event_id, installation_id, term_id, request_id, origin_request_id, quota_weight,
               tokens, cost, recorded_at
-            ) VALUES (?, ?, ?, ?, 1, ?, ?, ?)`,
+            ) VALUES (?, ?, ?, ?, ?, 1, ?, ?, ?)`,
       params: [
         usageEventId,
         opts.installationId,
         `term-${opts.installationId.slice(0, 8)}`,
+        opts.requestId,
         opts.requestId,
         tokens,
         cost,

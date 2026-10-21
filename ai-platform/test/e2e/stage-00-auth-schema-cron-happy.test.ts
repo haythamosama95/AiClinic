@@ -88,6 +88,7 @@ const EXPECTED_PLATFORM_TABLES = [
   "transfer_route_quarantine",
   "transfer_step",
   "usage_event",
+  "usage_term_retention",
   "usage_rollup",
 ] as const;
 

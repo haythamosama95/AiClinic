@@ -4,6 +4,7 @@ import migrationSql from "../migrations/20260731120000_platform_schema.sql?raw";
 import operatorAuditMigrationSql from "../migrations/20261003120000_operator_credential_and_platform_alert.sql?raw";
 import graceQueueMigrationSql from "../migrations/20260821120000_grace_admission_queue.sql?raw";
 import fallbackAdmissionFeedMigrationSql from "../migrations/20261006160000_fallback_admission_feed.sql?raw";
+import rm25FallbackSettlementSql from "../migrations/20261020130000_rm25_fallback_settlement.sql?raw";
 import { assertControlAudit } from "./helpers/control-audit-assert";
 import { purgeByInstallationId } from "../src/retention";
 
@@ -201,6 +202,7 @@ beforeAll(async () => {
   await applySql(env.DB, operatorAuditMigrationSql);
   await applySql(env.DB, graceQueueMigrationSql);
   await applySql(env.DB, fallbackAdmissionFeedMigrationSql);
+  await applySql(env.DB, rm25FallbackSettlementSql);
 });
 
 beforeEach(async () => {

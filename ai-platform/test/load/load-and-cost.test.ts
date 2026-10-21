@@ -13,6 +13,7 @@ import rm24FallbackAdmissionIdentityMigrationSql from "../../migrations/20261020
 import rm25FallbackSettlementMigrationSql from "../../migrations/20261020130000_rm25_fallback_settlement.sql?raw";
 import rm26TransferPreparationMigrationSql from "../../migrations/20261020140000_r6_rm26_transfer_preparation.sql?raw";
 import rm27DurableDeletionMigrationSql from "../../migrations/20261020150000_rm27_durable_deletion.sql?raw";
+import rm30UsageAccountingMigrationSql from "../../migrations/20261021120000_rm30_usage_accounting_identity.sql?raw";
 import { applySqlStatements } from "../split-sql-statements";
 import ciWorkflowSource from "../../../.github/workflows/ci.yml?raw";
 import packageJson from "../../package.json";
@@ -125,6 +126,7 @@ beforeAll(async () => {
   await applySqlStatements(env.DB, rm25FallbackSettlementMigrationSql);
   await applySqlStatements(env.DB, rm26TransferPreparationMigrationSql);
   await applySqlStatements(env.DB, rm27DurableDeletionMigrationSql);
+  await applySqlStatements(env.DB, rm30UsageAccountingMigrationSql);
   await clearLoadTables();
   const spies = createBindingSpies(env);
   const result = await runLoadHappyPath({

@@ -488,8 +488,7 @@ CREATE TABLE "usage_event" (
   quota_weight INTEGER NOT NULL,
   tokens INTEGER NOT NULL,
   cost REAL NOT NULL,
-  recorded_at TEXT NOT NULL,
-  origin_request_id TEXT, accounting_seq INTEGER,
+  recorded_at TEXT NOT NULL, origin_request_id TEXT, accounting_seq INTEGER,
   FOREIGN KEY (installation_id) REFERENCES installation (installation_id),
   FOREIGN KEY (request_id) REFERENCES ai_request (request_id) ON DELETE SET NULL
 );
