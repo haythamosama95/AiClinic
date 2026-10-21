@@ -6,6 +6,7 @@ import { hasForbiddenCommandFactSecret } from "./command-facts.js";
 export type ExportEnv = ClockEnv & {
   DB: D1Database;
   R2: R2Bucket;
+  PLATFORM_PUBLIC_KEYS?: string;
 };
 
 type PendingFact = {
@@ -45,7 +46,7 @@ function ledgerLinePayload(row: PendingFact): string {
   return new TextDecoder().decode(canonicalize(line));
 }
 
-async function validateFact(row: PendingFact): Promise<void> {
+async function validateFact(row: PendingFact, platformPublicKeys?: string): Promise<void> {
   if (row.row_json == null || row.row_json.length === 0) {
     throw new Error(`ledger_fact_missing_canonical_row:${row.fact_seq}`);
   }
@@ -71,7 +72,11 @@ async function validateFact(row: PendingFact): Promise<void> {
     if (
       commandCanonical !== payloadJson ||
       await sha256Hex(canonicalize(commandPayload)) !== payloadHash ||
-      hasForbiddenCommandFactSecret(commandPayload, String(parsed.fact_kind ?? ""))
+      await hasForbiddenCommandFactSecret(
+        commandPayload,
+        String(parsed.fact_kind ?? ""),
+        platformPublicKeys,
+      )
     ) {
       throw new Error(`ledger_command_fact_invalid:${row.fact_seq}`);
     }
@@ -82,7 +87,7 @@ export async function exportFacts(env: ExportEnv): Promise<void> {
   await assertAboRecoveryPublished(env);
   const pending = await listPendingFacts(env.DB);
   for (const row of pending) {
-    await validateFact(row);
+    await validateFact(row, env.PLATFORM_PUBLIC_KEYS);
     const payload = ledgerLinePayload(row);
     const objectKey = `ledger/${row.fact_seq}.ndjson`;
     const prior = await env.R2.get(objectKey);
@@ -129,7 +134,7 @@ export async function exportFacts(env: ExportEnv): Promise<void> {
      ORDER BY fl.fact_seq ASC`,
   ).all<PendingFact>();
   for (const row of exported.results ?? []) {
-    await validateFact(row);
+    await validateFact(row, env.PLATFORM_PUBLIC_KEYS);
     const key = `ledger/${row.fact_seq}.ndjson`;
     const existing = await env.R2.get(key);
     const expected = ledgerLinePayload(row);

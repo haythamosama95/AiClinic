@@ -1,4 +1,5 @@
 import { canonicalize, sha256Hex } from "vendor-contracts";
+import { verifyTransferReceipt } from "../work/transfer-receipt.js";
 
 const MAX_FACT_JSON_BYTES = 32_000;
 const encoder = new TextEncoder();
@@ -11,7 +12,7 @@ export type CommandFactKind =
   | "local_result"
   | "erasure_ack";
 
-export type CommandFactEnv = { DB: D1Database };
+export type CommandFactEnv = { DB: D1Database; PLATFORM_PUBLIC_KEYS?: string };
 
 export type StoredCommandFact = {
   fact_id: string;
@@ -35,7 +36,10 @@ function decodeBase64UrlJson(segment: string): unknown | null {
   }
 }
 
-function isStructurallyValidTransferReceipt(root: Record<string, unknown>): boolean {
+async function hasVerifiedTransferReceipt(
+  root: Record<string, unknown>,
+  platformPublicKeys?: string,
+): Promise<boolean> {
   if (
     root.fact_kind !== "platform_result" ||
     (root.phase !== "transferOut" && root.phase !== "transferIn") ||
@@ -68,7 +72,7 @@ function isStructurallyValidTransferReceipt(root: Record<string, unknown>): bool
     const payload = decodeBase64UrlJson(payloadSegment);
     const withoutSignature = { ...signed };
     delete withoutSignature.signature;
-    return typeof header === "object" && header !== null && !Array.isArray(header) &&
+    const structurallyValid = typeof header === "object" && header !== null && !Array.isArray(header) &&
       (header as Record<string, unknown>).alg === "EdDSA" &&
       (header as Record<string, unknown>).kid === signed.kid &&
       new TextDecoder().decode(canonicalize(header)) ===
@@ -76,27 +80,45 @@ function isStructurallyValidTransferReceipt(root: Record<string, unknown>): bool
       typeof payload === "object" && payload !== null && !Array.isArray(payload) &&
       new TextDecoder().decode(canonicalize(payload)) ===
         new TextDecoder().decode(canonicalize(withoutSignature));
+    return structurallyValid && typeof platformPublicKeys === "string" &&
+      await verifyTransferReceipt({
+        platformPublicKeys,
+        receipt: signed,
+        transferId: String(signed.transfer_id),
+        orgId: String(signed.org_id),
+        installationId: String(signed.installation_id),
+        contractVersion: Number(signed.contract_version),
+      });
   } catch {
     return false;
   }
 }
 
-export function hasForbiddenCommandFactSecret(value: unknown, factKind?: string): boolean {
+export async function hasForbiddenCommandFactSecret(
+  value: unknown,
+  factKind?: string,
+  platformPublicKeys?: string,
+): Promise<boolean> {
   const candidate = typeof value === "object" && value !== null && !Array.isArray(value)
     ? value as Record<string, unknown>
     : {};
   const root = factKind === undefined ? candidate : { ...candidate, fact_kind: factKind };
-  const allowedReceiptSignature = isStructurallyValidTransferReceipt(root);
-  const visit = (item: unknown, path: string[]): boolean => {
-    if (Array.isArray(item)) return item.some((entry, index) => visit(entry, [...path, String(index)]));
+  const allowedReceiptSignature = await hasVerifiedTransferReceipt(root, platformPublicKeys);
+  const visit = async (item: unknown, path: string[]): Promise<boolean> => {
+    if (Array.isArray(item)) {
+      for (let index = 0; index < item.length; index += 1) {
+        if (await visit(item[index], [...path, String(index)])) return true;
+      }
+      return false;
+    }
     if (typeof item === "string") {
       const text = item.trim();
+      if ((text.startsWith("{") && text.endsWith("}")) || (text.startsWith("[") && text.endsWith("]"))) {
+        try { return await visit(JSON.parse(text) as unknown, path); } catch { /* reject token-like malformed leaves below */ }
+      }
       if (/^Bearer\s+\S+/iu.test(text)) return true;
       if (/\beyJ[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}\b/u.test(text)) {
         return !(allowedReceiptSignature && path.join(".") === "response_json.receipt.signature");
-      }
-      if ((text.startsWith("{") && text.endsWith("}")) || (text.startsWith("[") && text.endsWith("]"))) {
-        try { return visit(JSON.parse(text) as unknown, path); } catch { return false; }
       }
       return false;
     }
@@ -105,7 +127,7 @@ export function hasForbiddenCommandFactSecret(value: unknown, factKind?: string)
       if (/^(access_jwt|jwt|client_secret|email|phone|name|contact|signed_operation_json|signed_assertion_json)$/iu.test(key)) {
         return true;
       }
-      if (visit(nested, [...path, key])) return true;
+      if (await visit(nested, [...path, key])) return true;
     }
     return false;
   };
@@ -124,7 +146,7 @@ export async function commandFactStatements(
   if (
     input.commandId.length === 0 || input.commandId.length > 160 ||
     !Number.isSafeInteger(Date.parse(input.createdAt)) ||
-    hasForbiddenCommandFactSecret(input.payload, input.kind)
+    await hasForbiddenCommandFactSecret(input.payload, input.kind, env.PLATFORM_PUBLIC_KEYS)
   ) {
     throw new Error("command_recovery_fact_invalid");
   }
@@ -193,7 +215,7 @@ export async function readCommandFact(
   if (
     decoder.decode(canonicalize(payload)) !== row.payload_json ||
     await sha256Hex(canonicalize(payload)) !== row.payload_sha256 ||
-    hasForbiddenCommandFactSecret(payload, row.fact_kind)
+    await hasForbiddenCommandFactSecret(payload, row.fact_kind, env.PLATFORM_PUBLIC_KEYS)
   ) {
     throw new Error("command_recovery_fact_corrupt");
   }

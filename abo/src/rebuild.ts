@@ -339,7 +339,8 @@ async function validateLedgerLine(env: RebuildEnv, line: LedgerLine): Promise<vo
     if (
       payloadCanonical !== payloadJson ||
       await sha256Hex(canonicalize(payload)) !== payloadHash ||
-      hasForbiddenCommandFactSecret(payload, factKind) || payload.command_id !== commandId ||
+      await hasForbiddenCommandFactSecret(payload, factKind, env.PLATFORM_PUBLIC_KEYS) ||
+      payload.command_id !== commandId ||
       !["command_intent", "relay_reserved", "platform_result", "local_result", "erasure_ack"].includes(factKind)
     ) throw new Error(`ledger_command_fact_invalid:${line.fact_seq}`);
     const expectedFactId = await sha256Hex(canonicalize({
