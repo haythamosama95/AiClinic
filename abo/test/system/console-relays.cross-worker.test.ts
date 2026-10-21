@@ -368,15 +368,19 @@ async function ensureMigrations(): Promise<void> {
 }
 
 async function seedOffersCatalogueFixture(): Promise<OffersFixtureExpectations | null> {
+  const fixture = offersFixture as {
+    expectations?: OffersFixtureExpectations;
+  };
+  if (fixture.expectations === undefined) return null;
   try {
-    const fixture = offersFixture as {
-      expectations?: OffersFixtureExpectations;
-    };
     await loadOffersFixture(fixture);
-    return fixture.expectations ?? null;
-  } catch {
-    return null;
+  } catch (cause) {
+    throw new Error(
+      "seedOffersCatalogueFixture failed while loading terms/offers into D1/R2",
+      { cause },
+    );
   }
+  return fixture.expectations;
 }
 
 async function registerAboGrantKeyOnPlatform(): Promise<void> {

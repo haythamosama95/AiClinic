@@ -2143,7 +2143,7 @@ describe("P4.11 digest, watch, housekeeping, rebuild (H-XW)", () => {
     ).bind(latePayment!.payment_id).first<{ n: number }>();
     expect(lateGrantWork?.n).toBe(1);
     const lateAlert = await env.DB.prepare(
-      `SELECT active FROM alert WHERE code = 'AL-08' AND subject = ?`,
+      `SELECT active FROM alert WHERE code = 'AL-08' AND detail_id = ?`,
     ).bind(checkoutId).first<{ active: number }>();
     expect(lateAlert?.active).toBe(1);
     await runScheduled("* * * * *");
