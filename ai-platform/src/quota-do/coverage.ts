@@ -3971,7 +3971,7 @@ async function shipCoverageOutboxInLock(
           `INSERT OR IGNORE INTO usage_event (
             usage_event_id, installation_id, term_id, request_id, origin_request_id,
             accounting_seq, quota_weight, tokens, cost, recorded_at
-          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+          ) VALUES (?, ?, ?, (SELECT request_id FROM ai_request WHERE request_id = ?), ?, ?, ?, ?, ?, ?)`,
         )
           .bind(
             usageEventId,

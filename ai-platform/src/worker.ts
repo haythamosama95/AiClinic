@@ -2439,7 +2439,6 @@ export class GatewayObject extends DurableObject {
   }
 
   async alarm(): Promise<void> {
-    console.log("[DIAG] " + new Date().toISOString() + " GatewayObject.alarm enter");
     const runtimeEnv = this.env as Env;
     const makeLog = createWorkerLogFactory(runtimeEnv);
     const log = makeLog("quota-do/index.ts");
@@ -2455,7 +2454,6 @@ export class GatewayObject extends DurableObject {
       "SELECT status FROM recovery_state WHERE singleton = 1 LIMIT 1",
     )[0];
     if (recovery?.status === "building" || recovery?.status === "blocked") {
-      console.log("[DIAG] " + new Date().toISOString() + " GatewayObject.alarm recovery status=" + String(recovery.status));
       await this.ctx.storage.setAlarm(physicalAlarmAt(Date.now() + 60_000));
       return;
     }
