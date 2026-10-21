@@ -450,6 +450,43 @@ describe("retention_expiry_platform_counter", () => {
     expect(oldCount?.c).toBe(0);
     expect(newCount?.c).toBe(1);
   });
+
+  it("R9-PRET1: pending aged settlement evidence retains its journal, attempt, and envelope", async () => {
+    const oldDate = new Date(
+      FIXTURE_NOW.getTime() - (JOURNAL_HORIZON_DAYS + 1) * MS_PER_DAY,
+    ).toISOString();
+    await seedRequestWithEnvelope(
+      "req-pending-settlement",
+      FIXTURE_INSTALLATION_A,
+      "cap",
+      oldDate,
+    );
+    await env.DB.prepare(
+      "UPDATE ai_request SET accounting_state = 'pending' WHERE request_id = ?",
+    ).bind("req-pending-settlement").run();
+    await env.DB.prepare(
+      `INSERT INTO ai_attempt (
+        attempt_id, request_id, attempt_no, provider, model, outcome,
+        latency_ms, tokens_in, tokens_out, cost, provider_request_id, error_code
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL)`,
+    ).bind(
+      "attempt-pending-settlement", "req-pending-settlement", 1, "deepseek",
+      "fixture", "success", 100, 10, 5, 0.01, "prov-pending",
+    ).run();
+
+    await runRetentionPurge({ db: env.DB, r2: env.R2, now: FIXTURE_NOW });
+
+    const request = await env.DB.prepare(
+      "SELECT accounting_state, payload_pointer FROM ai_request WHERE request_id = ?",
+    ).bind("req-pending-settlement").first<{ accounting_state: string; payload_pointer: string | null }>();
+    const attempt = await env.DB.prepare(
+      "SELECT COUNT(*) AS c FROM ai_attempt WHERE request_id = ?",
+    ).bind("req-pending-settlement").first<{ c: number }>();
+    expect(request?.accounting_state).toBe("pending");
+    expect(request?.payload_pointer).toBe("request/req-pending-settlement/envelope");
+    expect(attempt?.c).toBe(1);
+    expect(await env.R2.get("request/req-pending-settlement/envelope")).not.toBeNull();
+  });
 });
 
 describe("retention_diagnostic_prefilter_min_horizon", () => {

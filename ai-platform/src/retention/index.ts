@@ -213,6 +213,7 @@ export async function runRetentionPurge(
               completed_at, payload_pointer
        FROM ai_request
        WHERE payload_pointer IS NOT NULL
+         AND COALESCE(accounting_state, '') <> 'pending'
          AND COALESCE(completed_at, created_at) < ?`,
     )
     .bind(diagnosticScanCutoff)
@@ -242,7 +243,8 @@ export async function runRetentionPurge(
   // classes cannot orphan PII objects after the 90d journal cutoff.
   const journalExpired = await db
     .prepare(
-      `SELECT request_id, payload_pointer FROM ai_request WHERE created_at < ?`,
+      `SELECT request_id, payload_pointer FROM ai_request
+       WHERE created_at < ? AND COALESCE(accounting_state, '') <> 'pending'`,
     )
     .bind(journalCutoff)
     .all<{ request_id: string; payload_pointer: string | null }>();
@@ -259,7 +261,8 @@ export async function runRetentionPurge(
     .prepare(
       `UPDATE usage_event SET request_id = NULL
        WHERE request_id IN (
-         SELECT request_id FROM ai_request WHERE created_at < ?
+         SELECT request_id FROM ai_request
+         WHERE created_at < ? AND COALESCE(accounting_state, '') <> 'pending'
        )`,
     )
     .bind(journalCutoff)
@@ -269,14 +272,16 @@ export async function runRetentionPurge(
     .prepare(
       `DELETE FROM ai_attempt
        WHERE request_id IN (
-         SELECT request_id FROM ai_request WHERE created_at < ?
+         SELECT request_id FROM ai_request
+         WHERE created_at < ? AND COALESCE(accounting_state, '') <> 'pending'
        )`,
     )
     .bind(journalCutoff)
     .run();
 
   const journalRequestResult = await db
-    .prepare(`DELETE FROM ai_request WHERE created_at < ?`)
+    .prepare(`DELETE FROM ai_request
+       WHERE created_at < ? AND COALESCE(accounting_state, '') <> 'pending'`)
     .bind(journalCutoff)
     .run();
 
@@ -351,7 +356,8 @@ export async function purgeByInstallationId(
 
   const requests = await db
     .prepare(
-      `SELECT request_id, payload_pointer FROM ai_request WHERE installation_id = ?`,
+      `SELECT request_id, payload_pointer FROM ai_request
+       WHERE installation_id = ? AND COALESCE(accounting_state, '') <> 'pending'`,
     )
     .bind(installationId)
     .all<{ request_id: string; payload_pointer: string | null }>();
@@ -377,11 +383,12 @@ export async function purgeByInstallationId(
       .prepare(
         `DELETE FROM ai_attempt
          WHERE request_id IN (
-           SELECT request_id FROM ai_request WHERE installation_id = ?
+           SELECT request_id FROM ai_request
+           WHERE installation_id = ? AND COALESCE(accounting_state, '') <> 'pending'
          )`,
       )
       .bind(installationId),
-    db.prepare(`DELETE FROM ai_request WHERE installation_id = ?`).bind(
+    db.prepare(`DELETE FROM ai_request WHERE installation_id = ? AND COALESCE(accounting_state, '') <> 'pending'`).bind(
       installationId,
     ),
     db

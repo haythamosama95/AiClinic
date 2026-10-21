@@ -1985,6 +1985,16 @@ function settleReservationOnHot(
          ${sqlStringLocal(nowIso)}
        )`,
     );
+    insertOutbox(storage, "usage_adjustment", {
+      request_id: reservationId,
+      installation_id: request.installationId,
+      term_id: reservation.term_id,
+      quota_weight: chargedWeight,
+      accounting_seq: accountingSequence,
+      tokens: request.usage.tokens,
+      cost: request.usage.cost,
+      recorded_at: nowIso,
+    });
   });
   return {
     kind: "credit",
@@ -2233,6 +2243,16 @@ export async function settleFallbackRPC(
            ${chargedWeight}, ${accountingSequence}, ${sqlStringLocal(nowIso)}
          )`,
       );
+      insertOutbox(storage, "usage_adjustment", {
+        request_id: request.request_id,
+        installation_id: request.installationId,
+        term_id: request.term_id,
+        quota_weight: chargedWeight,
+        accounting_seq: accountingSequence,
+        tokens: 0,
+        cost: 0,
+        recorded_at: nowIso,
+      });
     });
     await applyFallbackWeightToLegacy(storage, request.request_id, chargedWeight);
     return {

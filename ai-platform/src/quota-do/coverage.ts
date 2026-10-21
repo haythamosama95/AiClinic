@@ -5146,10 +5146,19 @@ function reapplyUsageEventsAfterSnapshot(
     return;
   }
   const appliedSequences = new Set<number>();
-  for (const row of rows.filter((entry) => termIds.includes(entry.term_id) && entry.accounting_seq > accountingWatermark)) {
+  let highestReplayedSequence = accountingWatermark;
+  for (const row of rows.filter((entry) => entry.accounting_seq > accountingWatermark)) {
     if (appliedSequences.has(row.accounting_seq)) continue;
     appliedSequences.add(row.accounting_seq);
-    if (row.quota_weight > 0) applyUsageToDoTerm(storage, row.term_id, row.quota_weight);
+    highestReplayedSequence = Math.max(highestReplayedSequence, row.accounting_seq);
+    if (termIds.includes(row.term_id) && row.quota_weight > 0) {
+      applyUsageToDoTerm(storage, row.term_id, row.quota_weight);
+    }
+  }
+  // Released/zero-weight facts still consume an identity sequence. Persist the
+  // high watermark so a later settlement cannot reuse a replayed sequence.
+  if (highestReplayedSequence > accountingWatermark) {
+    updateHot(storage, { accounting_seq: highestReplayedSequence });
   }
 }
 

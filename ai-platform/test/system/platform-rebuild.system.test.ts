@@ -815,6 +815,122 @@ describe("platform rebuild procedures", () => {
     expect(rebuilt.detail).toContain("usage_accounting_sequence_gap");
   });
 
+  it("R9-PUS1: replayed zero-weight release advances the next settlement sequence", async () => {
+    const scenario = await newScenario();
+    await setupPromotedPolicy(scenario);
+    await coverClinic(scenario);
+    const activeTerm = (await readDoTerms(scenario.installationId))
+      .find((term) => term.state === "active");
+    expect(activeTerm).toBeTruthy();
+
+    const releasedId = crypto.randomUUID();
+    const released = await quotaDoStub(scenario.installationId).fetch(
+      "https://quota-do.internal/rpc",
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          contract_version: CHANNEL_VERSIONS.platformDo,
+          kind: "settleFallback",
+          installationId: scenario.installationId,
+          request_id: releasedId,
+          term_id: activeTerm!.term_id,
+          weight: 1,
+          outcome: "released",
+        }),
+      },
+    );
+    expect(await released.json()).toMatchObject({
+      kind: "settleFallback", outcome: "settled", chargedWeight: 0,
+      accountingSequence: 1,
+    });
+    await runDurableObjectAlarm(quotaDoStub(scenario.installationId));
+    const releasedFact = await queryOne<{ accounting_seq: number; quota_weight: number }>(
+      `SELECT accounting_seq, quota_weight FROM usage_event
+       WHERE installation_id = ? AND origin_request_id = ?`,
+      [scenario.installationId, releasedId],
+    );
+    expect(releasedFact).toEqual({ accounting_seq: 1, quota_weight: 0 });
+    await wipeClinicDo(scenario.installationId);
+
+    expect((await callRebuildClinicDo(scenario.installationId)).result).toBe("ok");
+    const consumedId = crypto.randomUUID();
+    const consumed = await quotaDoStub(scenario.installationId).fetch(
+      "https://quota-do.internal/rpc",
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          contract_version: CHANNEL_VERSIONS.platformDo,
+          kind: "settleFallback",
+          installationId: scenario.installationId,
+          request_id: consumedId,
+          term_id: activeTerm!.term_id,
+          weight: 1,
+          outcome: "consumed",
+        }),
+      },
+    );
+    expect(await consumed.json()).toMatchObject({
+      kind: "settleFallback", outcome: "settled", chargedWeight: 1,
+      accountingSequence: 2,
+    });
+    const receipts = await runInDurableObject(
+      quotaDoStub(scenario.installationId),
+      async (_instance, state) => sqlSelect<{ request_id: string; accounting_seq: number }>(
+        state,
+        "SELECT request_id, accounting_seq FROM usage_settlement_receipt ORDER BY accounting_seq",
+      ),
+    );
+    expect(receipts).toEqual([
+      { request_id: releasedId, accounting_seq: 1 },
+      { request_id: consumedId, accounting_seq: 2 },
+    ]);
+  });
+
+  it("R9-PUS1: rebuild blocks while a settlement accounting intent remains unshipped", async () => {
+    const scenario = await newScenario();
+    await coverClinic(scenario);
+    const activeTerm = (await readDoTerms(scenario.installationId))
+      .find((term) => term.state === "active");
+    expect(activeTerm).toBeTruthy();
+    const requestId = crypto.randomUUID();
+    const settled = await quotaDoStub(scenario.installationId).fetch(
+      "https://quota-do.internal/rpc",
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          contract_version: CHANNEL_VERSIONS.platformDo,
+          kind: "settleFallback",
+          installationId: scenario.installationId,
+          request_id: requestId,
+          term_id: activeTerm!.term_id,
+          weight: 1,
+          outcome: "consumed",
+        }),
+      },
+    );
+    expect(await settled.json()).toMatchObject({
+      kind: "settleFallback", outcome: "settled", accountingSequence: 1,
+    });
+
+    const rebuild = await callRebuildClinicDo(scenario.installationId);
+    expect(rebuild.result).toBe("rejected");
+    expect(rebuild.code).toBe("recovery_blocked");
+    const intent = await runInDurableObject(
+      quotaDoStub(scenario.installationId),
+      async (_instance, state) => sqlSelect<{ payload: string }>(
+        state, "SELECT payload FROM outbox WHERE kind = 'usage_adjustment'",
+      ).map((row) => JSON.parse(row.payload) as Record<string, unknown>),
+    );
+    expect(intent).toContainEqual(expect.objectContaining({
+      request_id: requestId, term_id: activeTerm!.term_id,
+      quota_weight: 1, accounting_seq: 1,
+    }));
+    expect(await readHotUsed(scenario.installationId)).toBe(1);
+  });
+
   it("R9-PDO1: rebuild refuses a nonempty DO and preserves an unshipped grant", async () => {
     const scenario = await newScenario();
     await coverClinic(scenario);

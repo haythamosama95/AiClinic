@@ -1244,6 +1244,74 @@ describe("admission settlement against terms", () => {
     expect(await readHotUsage(scenario.installationId)).toMatchObject({ used: 1 });
   });
 
+  it("R9-PUS1: normal and fallback settlements atomically enqueue sequenced usage facts", async () => {
+    const scenario = await newScenario();
+    await coverClinic(scenario, { max_allowance_per_month: 10 });
+    const termId = await readActiveTermId(scenario.installationId);
+    expect(termId).toBeTruthy();
+
+    const releasedId = crypto.randomUUID();
+    const released = await settleFallbackDirect(
+      scenario.installationId, releasedId, termId!, "released",
+    );
+    expect(released).toMatchObject({ outcome: "settled", chargedWeight: 0 });
+
+    const fallbackId = crypto.randomUUID();
+    const fallback = await settleFallbackDirect(
+      scenario.installationId, fallbackId, termId!, "consumed",
+    );
+    expect(fallback).toMatchObject({ outcome: "settled", chargedWeight: 1 });
+
+    const [reservation] = await seedOpenReservations(scenario, 1);
+    expect(reservation).toBeTruthy();
+    const normal = await quotaDoStub(scenario.installationId).fetch(
+      "https://quota-do.internal/rpc",
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          contract_version: CHANNEL_VERSIONS.platformDo,
+          kind: "credit",
+          installationId: scenario.installationId,
+          requestId: reservation!.requestId,
+          reservation_id: reservation!.requestId,
+          term_id: termId,
+          requestReference: "RM30-NORMAL-CREDIT",
+          usage: { tokens: 12, cost: 0.02 },
+          partial: false,
+          credits: 1,
+          outcome: "consumed",
+        }),
+      },
+    );
+    expect(await normal.json()).toMatchObject({
+      kind: "credit", ok: true, settlement: { disposition: "settled", chargedWeight: 1 },
+    });
+
+    const payloads = await runInDurableObject(
+      quotaDoStub(scenario.installationId),
+      async (_instance, state) => sqlSelect<{ payload: string }>(
+        state, "SELECT payload FROM outbox WHERE kind = 'usage_adjustment'",
+      ).map((row) => JSON.parse(row.payload) as Record<string, unknown>),
+    );
+    const byRequestId = new Map(payloads.map((payload) => [payload.request_id, payload]));
+    expect(byRequestId.get(releasedId)).toMatchObject({
+      installation_id: scenario.installationId, term_id: termId, quota_weight: 0,
+      accounting_seq: expect.any(Number), tokens: 0, cost: 0,
+    });
+    expect(byRequestId.get(fallbackId)).toMatchObject({
+      installation_id: scenario.installationId, term_id: termId, quota_weight: 1,
+      accounting_seq: expect.any(Number),
+    });
+    expect(byRequestId.get(reservation!.requestId)).toMatchObject({
+      installation_id: scenario.installationId, term_id: termId, quota_weight: 1,
+      accounting_seq: expect.any(Number), tokens: 12, cost: 0.02,
+    });
+    const sequences = [releasedId, fallbackId, reservation!.requestId]
+      .map((requestId) => Number(byRequestId.get(requestId)?.accounting_seq));
+    expect(new Set(sequences).size).toBe(3);
+  });
+
   it("R5-A3: fallback defers a matching live normal reservation and reuses its receipt", async () => {
     const scenario = await newScenario();
     await coverClinic(scenario, { max_allowance_per_month: 10 });
