@@ -360,7 +360,7 @@ async function persistInquiryResult(
     cumulativeReversedMinor: number;
     at: string;
     evidence: InquireResult["evidence"];
-    allowMissingContactForRebuild?: boolean;
+    allowMissingContactForRecoveredAttempt?: boolean;
   },
 ): Promise<{
   inquiryId: string;
@@ -396,7 +396,7 @@ async function persistInquiryResult(
      WHERE org_id = ? AND version = ?`,
   ).bind(input.checkout.org_id, input.checkout.billing_contact_version)
     .first<{ erasure_generation: number; erased_at: string | null }>();
-  if (contact === null && input.allowMissingContactForRebuild !== true) {
+  if (contact === null && input.allowMissingContactForRecoveredAttempt !== true) {
     return null;
   }
   let rawR2Key = "";
@@ -533,6 +533,29 @@ async function originalOrderMatches(
      WHERE checkout_id = ? AND order_id = ? AND state = 'created' LIMIT 1`,
   ).bind(checkoutId, txn.provider_order_id).first();
   return row !== null;
+}
+
+async function isSecretlessRecoveredAttemptWithoutContact(
+  env: WorkRunnerEnv,
+  checkout: CheckoutRow,
+  txn: ProviderTxn,
+): Promise<boolean> {
+  if (!await originalOrderMatches(env, checkout.checkout_id, txn)) return false;
+  const attempt = await env.DB.prepare(
+    `SELECT 1 FROM paymob_intention_attempt
+     WHERE checkout_id = ? AND order_id = ? AND state = 'created'
+       AND intention_id IS NOT NULL AND expires_at IS NOT NULL
+       AND client_secret IS NULL
+       AND NOT EXISTS (
+         SELECT 1 FROM paymob_intention pi WHERE pi.checkout_id = ?
+       )
+     LIMIT 1`,
+  ).bind(checkout.checkout_id, txn.provider_order_id, checkout.checkout_id).first();
+  if (attempt === null) return false;
+  const contact = await env.DB.prepare(
+    `SELECT 1 FROM billing_contact WHERE org_id = ? AND version = ?`,
+  ).bind(checkout.org_id, checkout.billing_contact_version).first();
+  return contact === null;
 }
 
 function mismatchAlertStatement(
@@ -847,7 +870,7 @@ export async function recordRebuiltPaidConfirmation(
     inquiry: InquireResult;
     nowIso: string;
     paymobTxnId?: string | null;
-    allowMissingContactForRebuild?: boolean;
+    allowMissingContactForRecoveredAttempt?: boolean;
   },
 ): Promise<boolean> {
   if (!(await originalOrderMatches(env, input.checkout.checkout_id, input.confirmedTxn))) {
@@ -895,7 +918,7 @@ export async function recordRebuiltPaidConfirmation(
     cumulativeReversedMinor: cumulativeReversed,
     at: input.nowIso,
     evidence: input.inquiry.evidence,
-    allowMissingContactForRebuild: input.allowMissingContactForRebuild,
+    allowMissingContactForRecoveredAttempt: input.allowMissingContactForRecoveredAttempt,
   });
   if (inquiryEvidence === null) {
     return false;
@@ -976,7 +999,7 @@ export async function recordRebuiltInquiryEvidence(
     txn: ProviderTxn;
     inquiry: InquireResult;
     nowIso: string;
-    allowMissingContactForRebuild?: boolean;
+    allowMissingContactForRecoveredAttempt?: boolean;
   },
 ): Promise<{ inquiryId: string; evidenceSha256: string } | null> {
   const evidenceHash = input.inquiry.evidence
@@ -1007,7 +1030,7 @@ export async function recordRebuiltInquiryEvidence(
     cumulativeReversedMinor: input.txn.reversal?.cumulative_reversed_minor ?? 0,
     at: input.nowIso,
     evidence: input.inquiry.evidence,
-    allowMissingContactForRebuild: input.allowMissingContactForRebuild,
+    allowMissingContactForRecoveredAttempt: input.allowMissingContactForRecoveredAttempt,
   });
   if (stored === null) return null;
   if (stored.statements.length === 0) {
@@ -1152,6 +1175,9 @@ async function confirmSuccessBatch(
   const normalizedState = effectiveKind;
   const subject = `checkout:${checkout.checkout_id}`;
   const nowIso = await clockNowIso(env);
+  const allowMissingContactForRecoveredAttempt =
+    effectiveKind === "payment_succeeded" &&
+    await isSecretlessRecoveredAttemptWithoutContact(env, checkout, confirmedTxn);
   const inquiryEvidence = await persistInquiryResult(env, {
     work,
     leaseToken,
@@ -1161,6 +1187,7 @@ async function confirmSuccessBatch(
     cumulativeReversedMinor: cumulativeReversed,
     at: nowIso,
     evidence: inquiry.evidence,
+    allowMissingContactForRecoveredAttempt,
   });
   if (inquiryEvidence === null) {
     await releaseLeaseRetry(

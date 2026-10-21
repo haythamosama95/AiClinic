@@ -827,7 +827,7 @@ async function maybeRecordSucceededPayment(
     inquiry,
     nowIso,
     paymobTxnId,
-    allowMissingContactForRebuild: true,
+    allowMissingContactForRecoveredAttempt: true,
   });
   if (!recorded) return false;
   const payment = await env.DB.prepare(
@@ -859,7 +859,7 @@ async function processAuthoritativeInquiry(
       txn,
       inquiry,
       nowIso,
-      allowMissingContactForRebuild: true,
+      allowMissingContactForRecoveredAttempt: true,
     });
     if (evidence === null) continue;
     if (txn.kind === "reversal") {

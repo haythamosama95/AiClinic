@@ -31,6 +31,7 @@ import hpActionsMigrationSql from "../../migrations/0007_hp_actions.sql?raw";
 import acceptedCommandsErasureFenceMigrationSql from "../../migrations/0012_accepted_commands_erasure_fence.sql?raw";
 import notificationProviderTxnIdMigrationSql from "../../migrations/0013_notification_provider_txn_id.sql?raw";
 import grantOutcomeEventsMigrationSql from "../../migrations/0014_grant_outcome_events.sql?raw";
+import reversalRequestMigrationSql from "../../migrations/0015_reversal_request.sql?raw";
 import reconciliationMigrationSql from "../../migrations/0008_reconciliation.sql?raw";
 import workLeaseTokenMigrationSql from "../../migrations/0010_work_lease_token.sql?raw";
 import checkoutCreationAttemptsMigrationSql from "../../migrations/0011_checkout_creation_attempts.sql?raw";
@@ -360,6 +361,7 @@ async function ensureMigrations(): Promise<void> {
     acceptedCommandsErasureFenceMigrationSql,
     notificationProviderTxnIdMigrationSql,
     grantOutcomeEventsMigrationSql,
+    reversalRequestMigrationSql,
     rebuildCheckpointMigrationSql,
     commandRecoveryFactsMigrationSql,
     rebuildPublicationFenceMigrationSql,
@@ -1582,7 +1584,23 @@ describe("P4.11 digest, watch, housekeeping, rebuild (H-XW)", () => {
     )
       .bind(gapGrantId)
       .first<{ result: string }>();
-    expect(grantOutcome?.result).toBe("already_applied");
+    expect(grantOutcome?.result).toBe("applied");
+    const grantWorkBeforeRepeat = await env.DB.prepare(
+      `SELECT COUNT(*) AS n FROM work WHERE kind = 'grant' AND subject_id = ?`,
+    ).bind(gapPaymentId).first<{ n: number }>();
+    const grantOutcomeCountBeforeRepeat = await env.DB.prepare(
+      `SELECT COUNT(*) AS n FROM grant_outcome WHERE grant_id = ?`,
+    ).bind(gapGrantId).first<{ n: number }>();
+    await rebuildAbo({ ...env, PLATFORM: rebuildPlatform } as never, {
+      providerTransactionReferences: [String(GAP_PAYMOB_TXN_ID)],
+    });
+    expect(await paymentIdForCheckout(gapCheckoutId)).toBe(gapPaymentId);
+    expect(await env.DB.prepare(
+      `SELECT COUNT(*) AS n FROM work WHERE kind = 'grant' AND subject_id = ?`,
+    ).bind(gapPaymentId).first<{ n: number }>()).toEqual(grantWorkBeforeRepeat);
+    expect(await env.DB.prepare(
+      `SELECT COUNT(*) AS n FROM grant_outcome WHERE grant_id = ?`,
+    ).bind(gapGrantId).first<{ n: number }>()).toEqual(grantOutcomeCountBeforeRepeat);
     expect(paidPaymentBefore?.payment_id).toBe(paid.paymentId);
     const openFindings = await env.DB.prepare(
       `SELECT f.finding_id, f.kind, f.subject, f.detail
