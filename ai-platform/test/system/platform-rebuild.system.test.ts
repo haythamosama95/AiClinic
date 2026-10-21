@@ -5,6 +5,7 @@
 import { env, runDurableObjectAlarm, runInDurableObject } from "cloudflare:test";
 import {
   CHANNEL_VERSIONS,
+  grantIdComp,
   grantIdPaid,
   sha256Hex,
 } from "vendor-contracts";
@@ -243,6 +244,99 @@ async function paidGrant(
     abo_kid: coverClinicAboKid(),
     abo_signature: aboSignature,
   });
+}
+
+async function complimentaryGrant(
+  scenario: Scenario,
+  grantId: string,
+): Promise<P311ResultEnvelope> {
+  const signer = coverClinicSigner();
+  const accessJwt = await mintVendorAccessJwt();
+  const ref = crypto.randomUUID().replace(/-/g, "");
+  const contentSha256 = await sha256Hex(new TextEncoder().encode(ref));
+  const envelope: Record<string, unknown> = {
+    contract_version: CONTRACT_VERSION,
+    grant_id: grantId,
+    org_id: scenario.orgId,
+    kind: "term",
+    placement: "queue",
+    source: {
+      kind: "complimentary",
+      ref,
+      operator_email: "untrusted-source@example.test",
+      reason: "RM29 recovery provenance fixture",
+    },
+    plan: { plan_id: "live-monthly", plan_version: 1 },
+    duration: { unit: "day", count: 14 },
+    allowance_credits: 10_000,
+    grace: { days: 7, cap_rule: "proportional" },
+    evidence: {
+      content_sha256: contentSha256,
+      approvals: [{ credential_id: signer.signerCredentialId, assertion: "stub" }],
+    },
+  };
+  const operation = {
+    op: "grant",
+    params: {
+      contract_version: CONTRACT_VERSION,
+      access_jwt: accessJwt,
+      envelope,
+    },
+    actor_email: VENDOR_OPERATOR_EMAIL,
+    issued_at: getVendorTestClockIso() ?? new Date().toISOString(),
+    nonce: crypto.randomUUID(),
+    contract_version: CONTRACT_VERSION,
+  };
+  const assertion = encodeVendorAssertion(
+    await signer.signerAuthenticator.assert({
+      operation,
+      rpId: env.WEBAUTHN_RP_ID,
+      origin: env.WEBAUTHN_ORIGIN,
+      up: true,
+      uv: true,
+    }),
+  );
+  return p311VendorCall(
+    "grant",
+    {
+      contract_version: CONTRACT_VERSION,
+      envelope,
+      signer_credential_id: signer.signerCredentialId,
+      operation,
+      assertion,
+    },
+    { accessJwt },
+  );
+}
+
+async function setupComplimentaryRecoveryCapsule(): Promise<{
+  scenario: Scenario;
+  grantId: string;
+  capsuleKey: string;
+  capsuleText: string;
+}> {
+  const scenario = await newScenario();
+  await coverClinic(scenario);
+  await newClinic(scenario);
+  const grantId = await grantIdComp(crypto.randomUUID().replace(/-/g, ""));
+  expect((await complimentaryGrant(scenario, grantId)).result).toBe("applied");
+  await shipCoverageOutbox(scenario.installationId);
+
+  const target = await queryOne<{ grant_id: string }>(
+    `SELECT grant_id FROM grant_ledger
+     WHERE installation_id = ? AND source_kind = 'complimentary' AND grant_id = ?`,
+    [scenario.installationId, grantId],
+  );
+  expect(target).toEqual({ grant_id: grantId });
+  const capsuleKey = `grant-ledger/${grantId}.recovery-v1.ndjson`;
+  const capsuleObject = await env.R2.get(capsuleKey);
+  expect(capsuleObject).not.toBeNull();
+  return {
+    scenario,
+    grantId,
+    capsuleKey,
+    capsuleText: await capsuleObject!.text(),
+  };
 }
 
 async function readDoGrants(
@@ -1053,43 +1147,60 @@ describe("platform rebuild procedures", () => {
     expect(JSON.parse(claim!.receipt)).toEqual(JSON.parse(original!.receipt));
   });
 
-  it("R9-PDO1 RM29-F2: capsule provenance tampering is rejected before any ledger import", async () => {
-    const scenario = await newScenario();
-    await coverClinic(scenario);
-    await newClinic(scenario);
-    await shipCoverageOutbox(scenario.installationId);
-    const target = await queryOne<{ grant_id: string }>(
-      `SELECT grant_id FROM grant_ledger
-       WHERE installation_id = ? AND source_kind = 'complimentary' LIMIT 1`,
-      [scenario.installationId],
-    );
-    expect(target).not.toBeNull();
-    const capsuleKey = `grant-ledger/${target!.grant_id}.recovery-v1.ndjson`;
-    const capsuleObject = await env.R2.get(capsuleKey);
-    expect(capsuleObject).not.toBeNull();
-    const capsuleText = await capsuleObject!.text();
+  it("R9-PDO1 RM29-F2: capsule ceiling-claim tampering is rejected before any ledger import", async () => {
+    const { scenario, capsuleKey, capsuleText } = await setupComplimentaryRecoveryCapsule();
     const capsule = JSON.parse(capsuleText) as Record<string, unknown>;
     capsule.ceiling_claim = null;
     await env.R2.put(capsuleKey, `${JSON.stringify(capsule)}\n`);
     await truncateGrantLedgerForInstallation(scenario.installationId);
 
     const accessJwt = await mintVendorAccessJwt();
-    const nullCeiling = await p311VendorCall(
+    const rejected = await p311VendorCall(
       "rebuildGrantLedger", { contract_version: CONTRACT_VERSION }, { accessJwt },
     );
-    expect(nullCeiling.result).toBe("rejected");
-    expect(nullCeiling.code).toBe("recovery_evidence_required");
-    expect(nullCeiling.detail).toContain("grant_recovery_ceiling_claim_required");
-    capsule.ceiling_claim = (JSON.parse(capsuleText) as Record<string, unknown>).ceiling_claim;
+    expect(rejected.result).toBe("rejected");
+    expect(rejected.code).toBe("recovery_evidence_required");
+    expect(rejected.detail).toContain("grant_recovery_ceiling_claim_required");
+    expect(await queryOne(
+      `SELECT grant_id FROM grant_ledger WHERE installation_id = ?`,
+      [scenario.installationId],
+    )).toBeNull();
+  });
+
+  it("R9-PDO1 RM29-F2: accepted-actor capsule provenance tampering is rejected", async () => {
+    const { scenario, capsuleKey, capsuleText } = await setupComplimentaryRecoveryCapsule();
+    const capsule = JSON.parse(capsuleText) as Record<string, unknown>;
     capsule.accepted_actor = "forged-actor@example.invalid";
+    await env.R2.put(capsuleKey, `${JSON.stringify(capsule)}\n`);
+    await truncateGrantLedgerForInstallation(scenario.installationId);
+
+    const accessJwt = await mintVendorAccessJwt();
+    const rejected = await p311VendorCall(
+      "rebuildGrantLedger", { contract_version: CONTRACT_VERSION }, { accessJwt },
+    );
+    expect(rejected.result).toBe("rejected");
+    expect(rejected.code).toBe("recovery_evidence_required");
+    expect(rejected.detail).toContain("grant_recovery_command_provenance_conflict");
+    expect(await queryOne(
+      `SELECT grant_id FROM grant_ledger WHERE installation_id = ?`,
+      [scenario.installationId],
+    )).toBeNull();
+  });
+
+  it("R9-PDO1 RM29-F2: route-generation capsule provenance tampering is rejected", async () => {
+    const { scenario, capsuleKey, capsuleText } = await setupComplimentaryRecoveryCapsule();
+    const capsule = JSON.parse(capsuleText) as Record<string, unknown>;
     capsule.route_generation = 999;
     await env.R2.put(capsuleKey, `${JSON.stringify(capsule)}\n`);
-    const forgedProvenance = await p311VendorCall(
+    await truncateGrantLedgerForInstallation(scenario.installationId);
+
+    const accessJwt = await mintVendorAccessJwt();
+    const rejected = await p311VendorCall(
       "rebuildGrantLedger", { contract_version: CONTRACT_VERSION }, { accessJwt },
     );
-    expect(forgedProvenance.result).toBe("rejected");
-    expect(forgedProvenance.code).toBe("recovery_evidence_required");
-    expect(forgedProvenance.detail).toContain("grant_recovery_");
+    expect(rejected.result).toBe("rejected");
+    expect(rejected.code).toBe("recovery_evidence_required");
+    expect(rejected.detail).toContain("grant_recovery_route_provenance_conflict");
     expect(await queryOne(
       `SELECT grant_id FROM grant_ledger WHERE installation_id = ?`,
       [scenario.installationId],
@@ -1100,6 +1211,9 @@ describe("platform rebuild procedures", () => {
     const scenario = await newScenario();
     await coverClinic(scenario);
     await newClinic(scenario);
+    await shipCoverageOutbox(scenario.installationId);
+    const secondGrantId = await grantIdPaid(crypto.randomUUID().replace(/-/g, ""));
+    expect((await paidGrant(scenario, secondGrantId)).result).toBe("applied");
     await shipCoverageOutbox(scenario.installationId);
     const rows = await queryAll<GrantLedgerRow & { operator_email: string | null }>(
       `SELECT grant_id, origin_grant_id, org_id, installation_id, kind, source_kind,
