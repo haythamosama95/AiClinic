@@ -385,14 +385,13 @@ async function seedAttemptAndUsage(opts: {
     },
     {
       sql: `INSERT INTO usage_event (
-              usage_event_id, installation_id, term_id, request_id, origin_request_id, quota_weight,
+              usage_event_id, installation_id, term_id, request_id, quota_weight,
               tokens, cost, recorded_at
-            ) VALUES (?, ?, ?, ?, ?, 1, ?, ?, ?)`,
+            ) VALUES (?, ?, ?, ?, 1, ?, ?, ?)`,
       params: [
         usageEventId,
         opts.installationId,
         `term-${opts.installationId.slice(0, 8)}`,
-        opts.requestId,
         opts.requestId,
         tokens,
         cost,
@@ -884,7 +883,7 @@ describe("Stage X — grace reconcile and retention (SX-017…SX-032)", () => {
     expect(await count("ai_request")).toBe(1);
   });
 
-  it("R9-PRET1 SX-028 — journal purge deletes 91d Completed; money row identity survives", async () => {
+  it("SX-028 — journal purge deletes 91d Completed; money row survives", async () => {
     await drainLeftoverTally();
     const scenario = await provisionHappyPath();
     const aged = await settleCompleted(scenario);
@@ -908,7 +907,6 @@ describe("Stage X — grace reconcile and retention (SX-017…SX-032)", () => {
     );
     expect(orphan).not.toBeNull();
     expect(orphan!.request_id).toBeNull();
-    expect(orphan!.origin_request_id).toBe(aged.requestId);
     expect(orphan!.tokens).toBe(tokens);
     expect(Number(orphan!.cost)).toBeCloseTo(cost, 6);
     expect(await r2Exists(aged.pointer)).toBe(false);
@@ -922,7 +920,7 @@ describe("Stage X — grace reconcile and retention (SX-017…SX-032)", () => {
     expect(await count("usage_rollup")).toBe(0);
   });
 
-  it("R9-PRET1 SX-029 — journal horizon strict less-than preserves aged usage identity", async () => {
+  it("SX-029 — journal horizon strict less-than at 90d", async () => {
     const scenario = await provisionHappyPath();
     const now = new Date();
     const nowMs = now.getTime();
@@ -991,7 +989,6 @@ describe("Stage X — grace reconcile and retention (SX-017…SX-032)", () => {
       [bMoney.usageEventId],
     );
     expect(bUsage?.request_id).toBeNull();
-    expect(bUsage?.origin_request_id).toBe(bId);
     expect(await r2Exists(bPointer)).toBe(false);
   });
 

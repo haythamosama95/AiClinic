@@ -71,7 +71,6 @@ import rm24FallbackAdmissionIdentityMigrationSql from "../migrations/20261020120
 import rm25FallbackSettlementSql from "../migrations/20261020130000_rm25_fallback_settlement.sql?raw";
 import rm26TransferPreparationSql from "../migrations/20261020140000_r6_rm26_transfer_preparation.sql?raw";
 import rm27DurableDeletionSql from "../migrations/20261020150000_rm27_durable_deletion.sql?raw";
-import rm30UsageAccountingMigrationSql from "../migrations/20261021120000_rm30_usage_accounting_identity.sql?raw";
 import planCatalogueMigrationSql from "../migrations/20260911120000_plan_catalogue.sql?raw";
 import issuerKeyTenantBindingMigrationSql from "../migrations/20261003130000_issuer_key_tenant_binding.sql?raw";
 import planVersionPaidGrantCoverageMigrationSql from "../migrations/20261003140000_plan_version_paid_grant_coverage.sql?raw";
@@ -582,7 +581,6 @@ async function seedInstallationRow(installationId: string): Promise<void> {
 
 async function seedInstallationFixture(installationId: string): Promise<void> {
   await env.DB.batch([
-    env.DB.prepare("DELETE FROM usage_term_retention"),
     env.DB.prepare("DELETE FROM usage_event"),
     env.DB.prepare("DELETE FROM ai_attempt"),
     env.DB.prepare("DELETE FROM ai_request"),
@@ -755,7 +753,6 @@ beforeAll(async () => {
     await applySql(env.DB, planVersionPaidGrantCoverageMigrationSql);
     await applySql(env.DB, usageTermMigrationSql);
     await applySql(env.DB, idempotencyFingerprintMigrationSql);
-    await applySql(env.DB, rm30UsageAccountingMigrationSql);
     await env.DB.prepare(
       `INSERT OR IGNORE INTO token_contract (ver, added_at, retired_at, changed_by)
        VALUES ('1', '2026-08-03T00:00:00.000Z', NULL, 'seed')`,
@@ -2290,7 +2287,7 @@ describe("R5-ADM2_fallback_cost_ceiling_and_R5-A4_zero_release", () => {
       rules: [
         {
           rule_id: "standard-only",
-          match: {},
+          match: { tiers: ["degraded"] },
           requires: {
             structured_output: false,
             min_context_window: 0,

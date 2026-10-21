@@ -729,7 +729,6 @@ function buildPostResponseInput(
   deferUsage?: boolean,
   accountingSettled?: boolean,
   settleFallbackAdmission?: boolean,
-  accountingSequence?: number,
 ): PostResponseInput {
   return {
     requestId,
@@ -740,7 +739,6 @@ function buildPostResponseInput(
     ...(deferUsage ? { deferUsage: true } : {}),
     ...(accountingSettled ? { accountingSettled: true } : {}),
     ...(settleFallbackAdmission ? { settleFallbackAdmission: true } : {}),
-    ...(accountingSequence !== undefined ? { accountingSequence } : {}),
     totalTokens: usage.tokens,
     totalCost: usage.cost,
     filteredContext,
@@ -767,7 +765,6 @@ type SettlementJournalInput = {
   deferUsage?: boolean;
   accountingSettled?: boolean;
   settleFallbackAdmission?: boolean;
-  accountingSequence?: number;
 };
 
 async function writeSettlementJournal(
@@ -790,7 +787,6 @@ async function writeSettlementJournal(
     input.deferUsage,
     input.accountingSettled,
     input.settleFallbackAdmission,
-    input.accountingSequence,
   );
   const ctx = createWorkerExecutionContext();
   writePostResponseDetail(detail, {
@@ -817,7 +813,7 @@ async function settleTerminalAccounting(
     idempotencyState?: CreditIdempotencyState;
     terminalErrorCode?: TaxonomyCode;
   },
-): Promise<{ acknowledged: boolean; chargedWeight?: number; accountingSequence?: number | null }> {
+): Promise<{ acknowledged: boolean; chargedWeight?: number }> {
   const recordedAt = await clockNowIso(runtimeEnv);
   const accountingRequestId = input.reservationId ?? input.requestId;
   await recordAccountingIntent(
@@ -860,11 +856,7 @@ async function settleTerminalAccounting(
       (settlement.outcome === "settled" ||
         settlement.outcome === "already_accounted")
     ) {
-      return {
-        acknowledged: true,
-        chargedWeight: settlement.chargedWeight,
-        accountingSequence: settlement.accountingSequence,
-      };
+      return { acknowledged: true, chargedWeight: settlement.chargedWeight };
     }
     return { acknowledged: false };
   }
@@ -893,11 +885,7 @@ async function settleTerminalAccounting(
     },
   );
   return settlement.ok
-    ? {
-        acknowledged: true,
-        chargedWeight: settlement.settlement.chargedWeight,
-        accountingSequence: settlement.settlement.accountingSequence,
-      }
+    ? { acknowledged: true, chargedWeight: settlement.settlement.chargedWeight }
     : { acknowledged: false };
 }
 
@@ -933,7 +921,6 @@ async function settleTerminal(
     ? {
         acknowledged: true,
         chargedWeight: input.accountingResult.settlement.chargedWeight,
-        accountingSequence: input.accountingResult.settlement.accountingSequence,
       }
     : input.skipCredit
       ? input.accountingMode === "fallback"
@@ -987,9 +974,6 @@ async function settleTerminal(
       ...(settlement.acknowledged
         ? { chargedWeight: settlement.chargedWeight }
         : { deferUsage: true }),
-      ...(settlement.acknowledged && settlement.accountingSequence !== null && settlement.accountingSequence !== undefined
-        ? { accountingSequence: settlement.accountingSequence }
-        : {}),
       ...(settlement.acknowledged ? { accountingSettled: true } : {}),
       ...(input.accountingMode === "fallback" && settlement.acknowledged
         ? { settleFallbackAdmission: true }
@@ -1048,9 +1032,6 @@ async function settleCompletedRequest(
       ...(settlement.acknowledged
         ? { chargedWeight: settlement.chargedWeight }
         : { deferUsage: true }),
-      ...(settlement.acknowledged && settlement.accountingSequence !== null && settlement.accountingSequence !== undefined
-        ? { accountingSequence: settlement.accountingSequence }
-        : {}),
       ...(settlement.acknowledged ? { accountingSettled: true } : {}),
       ...(input.accountingMode === "fallback" && settlement.acknowledged
         ? { settleFallbackAdmission: true }

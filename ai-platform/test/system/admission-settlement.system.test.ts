@@ -39,8 +39,6 @@ import { getPerRequestWriteCounts } from "../../src/quota-do/index";
 import { addDuration } from "../../src/coverage/calendar";
 import { reconcileGraceUsage } from "../../src/credit/index";
 
-const diag = (msg: string) => console.log(`[DIAG] ${new Date().toISOString()} ${msg}`);
-
 const QUOTA_WEIGHT = 1;
 const W_MAX = QUOTA_WEIGHT;
 const doGetReal = env.DO.get.bind(env.DO);
@@ -986,7 +984,7 @@ describe("admission settlement against terms", () => {
     expect(activation?.snapshot?.terms?.find((row) => row.term_id === successor?.term_id)?.used).toBe(0);
   });
 
-  it("R9-PUS1 R5-A2: late settlement keeps original term identity and sequence", async () => {
+  it("R5-A2: late consumption updates only its original term and release stays counter-neutral", async () => {
     const scenario = await newScenario();
     await coverClinic(scenario, { max_allowance_per_month: 2 });
     await coverClinic(scenario, { max_allowance_per_month: 2 });
@@ -1014,11 +1012,7 @@ describe("admission settlement against terms", () => {
       }),
     });
     expect(credit.ok).toBe(true);
-    expect(await credit.json()).toMatchObject({
-      kind: "credit",
-      ok: true,
-      settlement: { accountingSequence: 1 },
-    });
+    expect(await credit.json()).toMatchObject({ kind: "credit", ok: true });
 
     const release = await quotaDoStub(scenario.installationId).fetch("https://quota-do.internal/rpc", {
       method: "POST",
@@ -1244,74 +1238,6 @@ describe("admission settlement against terms", () => {
       settlementOutcome: "consumed",
     });
     expect(await readHotUsage(scenario.installationId)).toMatchObject({ used: 1 });
-  });
-
-  it("R9-PUS1: normal and fallback settlements atomically enqueue sequenced usage facts", async () => {
-    const scenario = await newScenario();
-    await coverClinic(scenario, { max_allowance_per_month: 10 });
-    const termId = await readActiveTermId(scenario.installationId);
-    expect(termId).toBeTruthy();
-
-    const releasedId = crypto.randomUUID();
-    const released = await settleFallbackDirect(
-      scenario.installationId, releasedId, termId!, "released",
-    );
-    expect(released).toMatchObject({ outcome: "settled", chargedWeight: 0 });
-
-    const fallbackId = crypto.randomUUID();
-    const fallback = await settleFallbackDirect(
-      scenario.installationId, fallbackId, termId!, "consumed",
-    );
-    expect(fallback).toMatchObject({ outcome: "settled", chargedWeight: 1 });
-
-    const [reservation] = await seedOpenReservations(scenario, 1);
-    expect(reservation).toBeTruthy();
-    const normal = await quotaDoStub(scenario.installationId).fetch(
-      "https://quota-do.internal/rpc",
-      {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          contract_version: CHANNEL_VERSIONS.platformDo,
-          kind: "credit",
-          installationId: scenario.installationId,
-          requestId: reservation!.requestId,
-          reservation_id: reservation!.requestId,
-          term_id: termId,
-          requestReference: "RM30-NORMAL-CREDIT",
-          usage: { tokens: 12, cost: 0.02 },
-          partial: false,
-          credits: 1,
-          outcome: "consumed",
-        }),
-      },
-    );
-    expect(await normal.json()).toMatchObject({
-      kind: "credit", ok: true, settlement: { disposition: "settled", chargedWeight: 1 },
-    });
-
-    const payloads = await runInDurableObject(
-      quotaDoStub(scenario.installationId),
-      async (_instance, state) => sqlSelect<{ payload: string }>(
-        state, "SELECT payload FROM outbox WHERE kind = 'usage_adjustment'",
-      ).map((row) => JSON.parse(row.payload) as Record<string, unknown>),
-    );
-    const byRequestId = new Map(payloads.map((payload) => [payload.request_id, payload]));
-    expect(byRequestId.get(releasedId)).toMatchObject({
-      installation_id: scenario.installationId, term_id: termId, quota_weight: 0,
-      accounting_seq: expect.any(Number), tokens: 0, cost: 0,
-    });
-    expect(byRequestId.get(fallbackId)).toMatchObject({
-      installation_id: scenario.installationId, term_id: termId, quota_weight: 1,
-      accounting_seq: expect.any(Number),
-    });
-    expect(byRequestId.get(reservation!.requestId)).toMatchObject({
-      installation_id: scenario.installationId, term_id: termId, quota_weight: 1,
-      accounting_seq: expect.any(Number), tokens: 12, cost: 0.02,
-    });
-    const sequences = [releasedId, fallbackId, reservation!.requestId]
-      .map((requestId) => Number(byRequestId.get(requestId)?.accounting_seq));
-    expect(new Set(sequences).size).toBe(3);
   });
 
   it("R5-A3: fallback defers a matching live normal reservation and reuses its receipt", async () => {
@@ -1546,52 +1472,34 @@ describe("admission settlement against terms", () => {
   });
 
   it("R5-A5: fallback exhaustion activates the queued successor once across receipt replay", async () => {
-    diag("R5-A5: fallback exhaustion activates the step 1 before newScenario");
     const scenario = await newScenario();
-    diag("R5-A5: fallback exhaustion activates the step 1 after newScenario");
-    diag("R5-A5: fallback exhaustion activates the step 2 before coverClinic");
     await coverClinic(scenario, { max_allowance_per_month: 2 });
-    diag("R5-A5: fallback exhaustion activates the step 2 after coverClinic");
-    diag("R5-A5: fallback exhaustion activates the step 3 before coverClinic");
     await coverClinic(scenario, { max_allowance_per_month: 2 });
-    diag("R5-A5: fallback exhaustion activates the step 3 after coverClinic");
-    diag("R5-A5: fallback exhaustion activates the step 4 before coverClinic");
     await coverClinic(scenario, { max_allowance_per_month: 2 });
-    diag("R5-A5: fallback exhaustion activates the step 4 after coverClinic");
-    diag("R5-A5: fallback exhaustion activates the step 5 before newClinic");
     await newClinic(scenario);
-    diag("R5-A5: fallback exhaustion activates the step 5 after newClinic");
-    diag("R5-A5: fallback exhaustion activates the step 6 before readDoTerms");
     const beforeTerms = await readDoTerms(scenario.installationId);
-    diag("R5-A5: fallback exhaustion activates the step 6 after readDoTerms");
     const activeBeforeFallback = beforeTerms.find((term) => term.state === "active");
     expect(activeBeforeFallback).toBeTruthy();
     const oldestUnheldSuccessor = beforeTerms
       .filter((term) => term.state === "queued")
       .sort((left, right) => left.position - right.position)[0];
     expect(oldestUnheldSuccessor).toBeTruthy();
-    diag("R5-A5: fallback exhaustion activates the step 7 before settleFallbackDirect");
     const priorUsage = await settleFallbackDirect(
       scenario.installationId,
       crypto.randomUUID(),
       activeBeforeFallback!.term_id,
     );
-    diag("R5-A5: fallback exhaustion activates the step 7 after settleFallbackDirect");
     expect(priorUsage).toMatchObject({ outcome: "settled", chargedWeight: 1 });
     const exhaustedId = activeBeforeFallback!.term_id;
     const requestId = crypto.randomUUID();
-    diag("R5-A5: fallback exhaustion activates the step 8 before settleFallbackDirect");
     const settled = await settleFallbackDirect(
       scenario.installationId,
       requestId,
       exhaustedId,
     );
-    diag("R5-A5: fallback exhaustion activates the step 8 after settleFallbackDirect");
     expect(settled).toMatchObject({ outcome: "settled", chargedWeight: 1 });
 
-    diag("R5-A5: fallback exhaustion activates the step 9 before readDoTerms");
     const afterTerms = await readDoTerms(scenario.installationId);
-    diag("R5-A5: fallback exhaustion activates the step 9 after readDoTerms");
     const predecessor = afterTerms.find((term) => term.term_id === exhaustedId);
     const successor = afterTerms
       .filter((term) => term.state === "active")
@@ -1601,7 +1509,6 @@ describe("admission settlement against terms", () => {
     expect(successor).toBeTruthy();
     expect(successor?.term_id).not.toBe(exhaustedId);
     expect(successor?.term_id).toBe(oldestUnheldSuccessor?.term_id);
-    diag("R5-A5: fallback exhaustion activates the step 10 before runInDurableObject");
     const eventCountBeforeReplay = await runInDurableObject(
       quotaDoStub(scenario.installationId),
       async (_instance, state) => sqlSelect<{ count: number }>(
@@ -1610,16 +1517,12 @@ describe("admission settlement against terms", () => {
          WHERE kind = 'coverage_event' AND payload LIKE '%term_ended%'`,
       ),
     );
-    diag("R5-A5: fallback exhaustion activates the step 10 after runInDurableObject");
-    diag("R5-A5: fallback exhaustion activates the step 11 before settleFallbackDirect");
     const replay = await settleFallbackDirect(
       scenario.installationId,
       requestId,
       exhaustedId,
     );
-    diag("R5-A5: fallback exhaustion activates the step 11 after settleFallbackDirect");
     expect(replay).toMatchObject({ outcome: "settled", chargedWeight: 1 });
-    diag("R5-A5: fallback exhaustion activates the step 12 before runInDurableObject");
     const eventCountAfterReplay = await runInDurableObject(
       quotaDoStub(scenario.installationId),
       async (_instance, state) => sqlSelect<{ count: number }>(
@@ -1628,11 +1531,8 @@ describe("admission settlement against terms", () => {
          WHERE kind = 'coverage_event' AND payload LIKE '%term_ended%'`,
       ),
     );
-    diag("R5-A5: fallback exhaustion activates the step 12 after runInDurableObject");
     expect(eventCountAfterReplay[0]?.count).toBe(eventCountBeforeReplay[0]?.count);
-    diag("R5-A5: fallback exhaustion activates the step 13 before readDoTerms");
     expect((await readDoTerms(scenario.installationId)).find((term) => term.term_id === exhaustedId)?.state).toBe("exhausted");
-    diag("R5-A5: fallback exhaustion activates the step 13 after readDoTerms");
     expect(beforeTerms.some((term) => term.term_id === exhaustedId)).toBe(true);
   });
 });

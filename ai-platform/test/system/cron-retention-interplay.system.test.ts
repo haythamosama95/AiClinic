@@ -37,7 +37,7 @@ beforeEach(async () => {
 });
 
 describe("cron retention interplay", () => {
-  it("R9-PRET1 SYS-8.1: journal erasure keeps usage identity and money row", async () => {
+  it("SYS-8.1 — Retention purge keeps usage_event money row", async () => {
     const scenario = await newScenario();
     await setupPromotedFakePolicy(scenario);
     const token = await mintAat(scenario);
@@ -50,14 +50,12 @@ describe("cron retention interplay", () => {
     const request = await getAiRequest(ref);
     const requestId = String(request?.request_id);
     const usageBefore = await env.DB.prepare(
-      "SELECT usage_event_id, request_id, origin_request_id, accounting_seq, tokens, cost FROM usage_event WHERE request_id = ?",
+      "SELECT usage_event_id, request_id, tokens, cost FROM usage_event WHERE request_id = ?",
     )
       .bind(requestId)
       .first<{
         usage_event_id: string;
         request_id: string;
-        origin_request_id: string;
-        accounting_seq: number;
         tokens: number;
         cost: number;
       }>();
@@ -78,20 +76,16 @@ describe("cron retention interplay", () => {
     expect(await r2Exists(`request/${requestId}/envelope`)).toBe(false);
 
     const usageAfter = await env.DB.prepare(
-      "SELECT usage_event_id, request_id, origin_request_id, accounting_seq, tokens, cost FROM usage_event WHERE usage_event_id = ?",
+      "SELECT usage_event_id, request_id, tokens, cost FROM usage_event WHERE usage_event_id = ?",
     )
       .bind(usageBefore!.usage_event_id)
       .first<{
         usage_event_id: string;
         request_id: string | null;
-        origin_request_id: string;
-        accounting_seq: number;
         tokens: number;
         cost: number;
       }>();
     expect(usageAfter?.request_id).toBeNull();
-    expect(usageAfter?.origin_request_id).toBe(requestId);
-    expect(usageAfter?.accounting_seq).toBe(usageBefore?.accounting_seq);
     expect(usageAfter?.tokens).toBe(usageBefore?.tokens);
     expect(usageAfter?.cost).toBe(usageBefore?.cost);
 

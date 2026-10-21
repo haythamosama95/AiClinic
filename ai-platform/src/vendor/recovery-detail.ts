@@ -15,9 +15,5 @@ export function recoveryBlockedOperatorDetail(reason?: string): string {
     return `${reason}: recovery is blocked because the grant-void evidence could not be verified or reconciled. Preserve the existing grant ledger, void state, and receipts unchanged; do not synthesize receipts or state. Operator checklist: retrieve and retain the original signed void evidence and its provenance, compare it with the grant ledger and stored receipt, then request maintainer/frontier adjudication using that original retained signed evidence.`;
   }
 
-  if (reason.startsWith("usage_accounting_")) {
-    return `Recovery blocked by ${reason}; maintainer adjudication is needed.`;
-  }
-
   return "";
 }

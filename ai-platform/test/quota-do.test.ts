@@ -116,7 +116,7 @@ type CreditAcknowledged = {
   kind: "credit";
   ok: true;
   periodCounters: PeriodCounters;
-  settlement: { disposition: "settled" | "already_accounted"; chargedWeight: number; accountingSequence: number | null };
+  settlement: { disposition: "settled" | "already_accounted"; chargedWeight: number };
 };
 
 type CreditUnknownRequest = {
@@ -628,7 +628,7 @@ describe("credit_reruns_period_reset_before_applying_usage", () => {
 });
 
 describe("credit_adjusts_counters_with_actual_usage", () => {
-  it("R9-PUS1: settlement returns its durable accounting sequence", async () => {
+  it("reflects tokens, cost, and requestsUsed after credit", async () => {
     const installationId = freshInstallationId();
     const requestReference = uniqueRequestReference();
     const usage = { tokens: 842, cost: 0.0031 };
@@ -646,7 +646,7 @@ describe("credit_adjusts_counters_with_actual_usage", () => {
     expect(body).toEqual({
       kind: "credit",
       ok: true,
-      settlement: { disposition: "settled", chargedWeight: 0, accountingSequence: null },
+      settlement: { disposition: "settled", chargedWeight: 0 },
       periodCounters: {
         requestsUsed: 1,
         tokensUsed: usage.tokens,
@@ -659,7 +659,7 @@ describe("credit_adjusts_counters_with_actual_usage", () => {
 });
 
 describe("credit_adjusts_counters_with_partial_usage", () => {
-  it("R9-PUS1: released settlement still receives a distinct sequence", async () => {
+  it("adjusts counters when partial is true", async () => {
     const installationId = freshInstallationId();
     const requestReference = uniqueRequestReference();
     const usage = { tokens: 120, cost: 0.0015 };
@@ -677,7 +677,7 @@ describe("credit_adjusts_counters_with_partial_usage", () => {
     expect(body).toEqual({
       kind: "credit",
       ok: true,
-      settlement: { disposition: "settled", chargedWeight: 0, accountingSequence: null },
+      settlement: { disposition: "settled", chargedWeight: 0 },
       periodCounters: {
         requestsUsed: 1,
         tokensUsed: usage.tokens,
@@ -1122,7 +1122,7 @@ describe("parallel_admissions_exact_final_count", () => {
     expect(settled.body).toEqual({
       kind: "credit",
       ok: true,
-      settlement: { disposition: "settled", chargedWeight: 0, accountingSequence: null },
+      settlement: { disposition: "settled", chargedWeight: 0 },
       periodCounters: {
         requestsUsed: parallelCount + 1,
         tokensUsed: tokensSum,

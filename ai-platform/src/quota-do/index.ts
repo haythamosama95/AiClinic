@@ -196,7 +196,6 @@ export type SettleFallbackResponse =
       outcome: "settled" | "already_accounted";
       chargedWeight: number;
       settlementOutcome: "consumed" | "released";
-      accountingSequence: number | null;
     }
   | { kind: "settleFallback"; outcome: "deferred" }
   | { kind: "settleFallback"; outcome: "conflict" };
@@ -319,7 +318,6 @@ export interface CreditAcknowledged {
   settlement: {
     disposition: "settled" | "already_accounted";
     chargedWeight: number;
-    accountingSequence: number | null;
   };
 }
 
@@ -803,7 +801,6 @@ async function creditOnLegacyState(
       disposition: "settled",
       chargedWeight:
         request.usage.tokens > 0 || request.usage.cost > 0 ? credits : 0,
-      accountingSequence: null,
     },
   };
 }
@@ -1007,7 +1004,6 @@ function persistParsedHot(storage: DurableObjectStorage, hot: ParsedHot): void {
     active_term_id: hot.row.active_term_id,
     suspended: hot.row.suspended,
     clinic_seq: hot.row.clinic_seq,
-    accounting_seq: hot.row.accounting_seq ?? 0,
     next_alarm_at: hot.row.next_alarm_at,
     reservations: JSON.stringify(hot.reservations),
     replay: JSON.stringify(hot.replay),
@@ -1215,8 +1211,6 @@ function chargeStaleReservations(
     storage.transactionSync(() => {
       recordHotWrites(storage, trackingRequestId, () => persistParsedHot(storage, hot));
       for (const reservation of staleReservations) {
-        const accountingSequence = (hot.row.accounting_seq ?? 0) + 1;
-        hot.row.accounting_seq = accountingSequence;
         if (reservation.term_id !== hot.row.active_term_id) {
           sqlExecLocal(
             storage,
@@ -1229,7 +1223,6 @@ function chargeStaleReservations(
           installation_id: installationId,
           term_id: reservation.term_id,
           quota_weight: reservation.weight,
-          accounting_seq: accountingSequence,
           tokens: 0,
           cost: 0,
           recorded_at: nowIso,
@@ -1238,15 +1231,14 @@ function chargeStaleReservations(
           storage,
           `INSERT OR IGNORE INTO usage_settlement_receipt (
              request_id, installation_id, term_id, weight, outcome,
-             charged_weight, accounting_seq, recorded_at
+             charged_weight, recorded_at
            ) VALUES (
              ${sqlStringLocal(reservation.id)}, ${sqlStringLocal(installationId)},
              ${sqlStringLocal(reservation.term_id)}, ${reservation.weight}, 'consumed',
-             ${reservation.weight}, ${accountingSequence}, ${sqlStringLocal(nowIso)}
+             ${reservation.weight}, ${sqlStringLocal(nowIso)}
            )`,
         );
       }
-      persistParsedHot(storage, hot);
     });
   }
   return changed;
@@ -1846,10 +1838,9 @@ function settleReservationOnHot(
       weight: number;
       outcome: "consumed" | "released";
       charged_weight: number;
-      accounting_seq: number | null;
     }>(
       storage,
-      `SELECT installation_id, term_id, weight, outcome, charged_weight, accounting_seq
+      `SELECT installation_id, term_id, weight, outcome, charged_weight
        FROM usage_settlement_receipt WHERE request_id = ${sqlStringLocal(reservationId)} LIMIT 1`,
     )[0];
     if (receipt !== undefined) {
@@ -1870,7 +1861,6 @@ function settleReservationOnHot(
         settlement: {
           disposition: "already_accounted",
           chargedWeight: receipt.charged_weight,
-          accountingSequence: receipt.accounting_seq,
         },
       };
     }
@@ -1885,7 +1875,6 @@ function settleReservationOnHot(
           installation_id?: unknown;
           term_id?: unknown;
           quota_weight?: unknown;
-          accounting_seq?: unknown;
         };
         if (
           payload.request_id === reservationId &&
@@ -1903,9 +1892,6 @@ function settleReservationOnHot(
             settlement: {
               disposition: "already_accounted",
               chargedWeight: Number(payload.quota_weight),
-              accountingSequence: Number.isSafeInteger(payload.accounting_seq)
-                ? Number(payload.accounting_seq)
-                : null,
             },
           };
         }
@@ -1934,8 +1920,6 @@ function settleReservationOnHot(
     hot.row.active_term_id !== null &&
     reservation.term_id === hot.row.active_term_id;
   const chargedWeight = consumed ? reservation.weight : 0;
-  const accountingSequence = (hot.row.accounting_seq ?? 0) + 1;
-  hot.row.accounting_seq = accountingSequence;
   const nowIso = new Date(now).toISOString();
   storage.transactionSync(() => {
     if (consumed) {
@@ -1977,30 +1961,20 @@ function settleReservationOnHot(
     sqlExecLocal(
       storage,
       `INSERT INTO usage_settlement_receipt (
-         request_id, installation_id, term_id, weight, outcome, charged_weight, accounting_seq, recorded_at
+         request_id, installation_id, term_id, weight, outcome, charged_weight, recorded_at
        ) VALUES (
          ${sqlStringLocal(reservationId)}, ${sqlStringLocal(request.installationId)},
          ${sqlStringLocal(reservation.term_id)}, ${reservation.weight},
-         ${sqlStringLocal(consumed ? "consumed" : "released")}, ${chargedWeight}, ${accountingSequence},
+         ${sqlStringLocal(consumed ? "consumed" : "released")}, ${chargedWeight},
          ${sqlStringLocal(nowIso)}
        )`,
     );
-    insertOutbox(storage, "usage_adjustment", {
-      request_id: reservationId,
-      installation_id: request.installationId,
-      term_id: reservation.term_id,
-      quota_weight: chargedWeight,
-      accounting_seq: accountingSequence,
-      tokens: request.usage.tokens,
-      cost: request.usage.cost,
-      recorded_at: nowIso,
-    });
   });
   return {
     kind: "credit",
     ok: true,
     periodCounters: { ...legacyCountersFromHot(hot.row) },
-    settlement: { disposition: "settled", chargedWeight, accountingSequence },
+    settlement: { disposition: "settled", chargedWeight },
   };
 }
 
@@ -2057,10 +2031,9 @@ export async function settleFallbackRPC(
       weight: number;
       outcome: "consumed" | "released";
       charged_weight: number;
-      accounting_seq: number | null;
     }>(
       storage,
-      `SELECT installation_id, term_id, weight, outcome, charged_weight, accounting_seq
+      `SELECT installation_id, term_id, weight, outcome, charged_weight
        FROM usage_settlement_receipt WHERE request_id = ${sqlStringLocal(request.request_id)} LIMIT 1`,
     )[0];
     if (storedReceipt !== undefined) {
@@ -2086,7 +2059,6 @@ export async function settleFallbackRPC(
         outcome: "settled",
         chargedWeight: storedReceipt.charged_weight,
         settlementOutcome: storedReceipt.outcome,
-        accountingSequence: storedReceipt.accounting_seq,
       };
     }
 
@@ -2131,7 +2103,6 @@ export async function settleFallbackRPC(
           installation_id?: unknown;
           term_id?: unknown;
           quota_weight?: unknown;
-          accounting_seq?: unknown;
         };
         if (payload.request_id !== request.request_id) continue;
         if (
@@ -2147,12 +2118,12 @@ export async function settleFallbackRPC(
             storage,
             `INSERT INTO usage_settlement_receipt (
                request_id, installation_id, term_id, weight, outcome,
-               charged_weight, accounting_seq, recorded_at
+               charged_weight, recorded_at
              ) VALUES (
                ${sqlStringLocal(request.request_id)},
                ${sqlStringLocal(request.installationId)},
                ${sqlStringLocal(request.term_id)}, ${request.weight}, 'consumed',
-               ${chargedWeight}, ${Number.isSafeInteger(payload.accounting_seq) ? Number(payload.accounting_seq) : "NULL"}, ${sqlStringLocal(nowIso)}
+               ${chargedWeight}, ${sqlStringLocal(nowIso)}
              )`,
           ),
         );
@@ -2166,9 +2137,6 @@ export async function settleFallbackRPC(
           outcome: "settled",
           chargedWeight,
           settlementOutcome: "consumed",
-          accountingSequence: Number.isSafeInteger(payload.accounting_seq)
-            ? Number(payload.accounting_seq)
-            : null,
         };
       } catch {
         continue;
@@ -2194,8 +2162,6 @@ export async function settleFallbackRPC(
       nowIso,
     };
     storage.transactionSync(() => {
-      const accountingSequence = (hot.row.accounting_seq ?? 0) + 1;
-      hot.row.accounting_seq = accountingSequence;
       if (chargedWeight > 0) {
         if (hot.row.active_term_id === request.term_id) {
           hot.row.used += chargedWeight;
@@ -2236,23 +2202,13 @@ export async function settleFallbackRPC(
       sqlExecLocal(
         storage,
         `INSERT INTO usage_settlement_receipt (
-           request_id, installation_id, term_id, weight, outcome, charged_weight, accounting_seq, recorded_at
+           request_id, installation_id, term_id, weight, outcome, charged_weight, recorded_at
          ) VALUES (
            ${sqlStringLocal(request.request_id)}, ${sqlStringLocal(request.installationId)},
            ${sqlStringLocal(request.term_id)}, ${request.weight}, ${sqlStringLocal(outcome)},
-           ${chargedWeight}, ${accountingSequence}, ${sqlStringLocal(nowIso)}
+           ${chargedWeight}, ${sqlStringLocal(nowIso)}
          )`,
       );
-      insertOutbox(storage, "usage_adjustment", {
-        request_id: request.request_id,
-        installation_id: request.installationId,
-        term_id: request.term_id,
-        quota_weight: chargedWeight,
-        accounting_seq: accountingSequence,
-        tokens: 0,
-        cost: 0,
-        recorded_at: nowIso,
-      });
     });
     await applyFallbackWeightToLegacy(storage, request.request_id, chargedWeight);
     return {
@@ -2260,7 +2216,6 @@ export async function settleFallbackRPC(
       outcome: "settled",
       chargedWeight,
       settlementOutcome: outcome,
-      accountingSequence: hot.row.accounting_seq,
     };
   });
 }
@@ -2516,7 +2471,6 @@ const COVERAGE_DO_SCHEMA_STATEMENTS = [
     band_emitted TEXT NOT NULL DEFAULT '{}',
     binding_epoch INTEGER NOT NULL DEFAULT 0,
     clinic_seq INTEGER NOT NULL DEFAULT 0,
-    accounting_seq INTEGER NOT NULL DEFAULT 0,
     next_alarm_at TEXT
   )`,
   `CREATE TABLE IF NOT EXISTS term (
@@ -2604,7 +2558,6 @@ const COVERAGE_DO_SCHEMA_STATEMENTS = [
     outcome TEXT NOT NULL CHECK (outcome IN ('consumed', 'released')),
     charged_weight INTEGER NOT NULL CHECK (charged_weight >= 0),
     acknowledged INTEGER NOT NULL DEFAULT 0 CHECK (acknowledged IN (0, 1)),
-    accounting_seq INTEGER,
     recorded_at TEXT NOT NULL
   )`,
   `CREATE TABLE IF NOT EXISTS recovery_state (
@@ -2641,16 +2594,6 @@ export async function ensureCoverageDoTables(
       sqlStorage.sql.exec("ALTER TABLE hot ADD COLUMN transfer_pending_id TEXT");
     } catch {
       // Existing Durable Objects already carry this forward schema field.
-    }
-    try {
-      sqlStorage.sql.exec("ALTER TABLE hot ADD COLUMN accounting_seq INTEGER NOT NULL DEFAULT 0");
-    } catch {
-      // Existing Durable Objects already carry this forward schema field.
-    }
-    try {
-      sqlStorage.sql.exec("ALTER TABLE usage_settlement_receipt ADD COLUMN accounting_seq INTEGER");
-    } catch {
-      // Existing receipts remain explicitly unsequenced for recovery adjudication.
     }
   });
 }

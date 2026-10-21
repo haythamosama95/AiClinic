@@ -9,8 +9,6 @@ import retentionIndexesSql from "../migrations/20260805120000_f3_retention_index
 import issuerKeyTenantBindingMigrationSql from "../migrations/20261003130000_issuer_key_tenant_binding.sql?raw";
 import planVersionPaidGrantCoverageMigrationSql from "../migrations/20261003140000_plan_version_paid_grant_coverage.sql?raw";
 import usageTermMigrationSql from "../migrations/20261006120000_usage_term.sql?raw";
-import rm25FallbackSettlementSql from "../migrations/20261020130000_rm25_fallback_settlement.sql?raw";
-import rm30UsageAccountingMigrationSql from "../migrations/20261021120000_rm30_usage_accounting_identity.sql?raw";
 import { applySqlStatements } from "./split-sql-statements";
 import {
   CONCURRENCY_LIMIT,
@@ -94,7 +92,6 @@ async function seedRequestWithEnvelope(
 async function clearTables(): Promise<void> {
   await env.DB.batch([
     env.DB.prepare("DELETE FROM usage_event"),
-    env.DB.prepare("DELETE FROM usage_term_retention"),
     env.DB.prepare("DELETE FROM usage_rollup"),
     env.DB.prepare("DELETE FROM platform_counter"),
     env.DB.prepare("DELETE FROM control_audit"),
@@ -122,8 +119,6 @@ beforeAll(async () => {
   await applyPlatformSchema(env.DB, issuerKeyTenantBindingMigrationSql);
   await applyPlatformSchema(env.DB, planVersionPaidGrantCoverageMigrationSql);
   await applyPlatformSchema(env.DB, usageTermMigrationSql);
-  await applyPlatformSchema(env.DB, rm25FallbackSettlementSql);
-  await applyPlatformSchema(env.DB, rm30UsageAccountingMigrationSql);
 });
 
 beforeEach(async () => {
@@ -239,7 +234,7 @@ describe("retention_expiry_journal", () => {
     expect(newCount?.c).toBe(1);
   });
 
-  it("R9-PRET1: journal erasure preserves stable identity on aged usage rows", async () => {
+  it("expires credited journal requests with attempts while retaining nulled usage_event", async () => {
     const oldDate = new Date(
       FIXTURE_NOW.getTime() - (JOURNAL_HORIZON_DAYS + 1) * MS_PER_DAY,
     ).toISOString();
@@ -293,17 +288,14 @@ describe("retention_expiry_journal", () => {
 
     await env.DB.prepare(
       `INSERT INTO usage_event (
-        usage_event_id, installation_id, term_id, request_id, origin_request_id,
-        accounting_seq, quota_weight, tokens, cost, recorded_at
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        usage_event_id, installation_id, term_id, request_id, quota_weight, tokens, cost, recorded_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
     )
       .bind(
         "ue-journal-credited",
         FIXTURE_INSTALLATION_A,
         "2026-05",
         "req-journal-credited",
-        "req-journal-credited",
-        1,
         1,
         15,
         0.01,
@@ -324,17 +316,15 @@ describe("retention_expiry_journal", () => {
       .bind("req-journal-credited")
       .first<{ c: number }>();
     const usageEvent = await env.DB.prepare(
-      "SELECT request_id, origin_request_id, accounting_seq FROM usage_event WHERE usage_event_id = ?",
+      "SELECT request_id FROM usage_event WHERE usage_event_id = ?",
     )
       .bind("ue-journal-credited")
-      .first<{ request_id: string | null; origin_request_id: string | null; accounting_seq: number | null }>();
+      .first<{ request_id: string | null }>();
 
     expect(requestCount?.c).toBe(0);
     expect(attemptCount?.c).toBe(0);
     expect(usageEvent).toBeDefined();
     expect(usageEvent?.request_id).toBeNull();
-    expect(usageEvent?.origin_request_id).toBe("req-journal-credited");
-    expect(usageEvent?.accounting_seq).toBe(1);
 
     const joined = await env.DB.prepare(
       `SELECT r.request_id
@@ -452,45 +442,6 @@ describe("retention_expiry_platform_counter", () => {
     expect(oldCount?.c).toBe(0);
     expect(newCount?.c).toBe(1);
   });
-
-  it("R9-PRET1: pending aged settlement evidence retains its journal, attempt, and envelope", async () => {
-    const oldDate = new Date(
-      FIXTURE_NOW.getTime() - (JOURNAL_HORIZON_DAYS + 1) * MS_PER_DAY,
-    ).toISOString();
-    await seedRequestWithEnvelope(
-      "req-pending-settlement",
-      FIXTURE_INSTALLATION_A,
-      "cap",
-      oldDate,
-    );
-    await env.DB.prepare(
-      "UPDATE ai_request SET accounting_state = 'pending' WHERE request_id = ?",
-    ).bind("req-pending-settlement").run();
-    await env.DB.prepare(
-      `INSERT INTO ai_attempt (
-        attempt_id, request_id, attempt_no, provider, model, outcome,
-        latency_ms, tokens_in, tokens_out, cost, provider_request_id, error_code
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL)`,
-    ).bind(
-      "attempt-pending-settlement", "req-pending-settlement", 1, "deepseek",
-      "fixture", "success", 100, 10, 5, 0.01, "prov-pending",
-    ).run();
-
-    await runRetentionPurge({ db: env.DB, r2: env.R2, now: FIXTURE_NOW });
-
-    const request = await env.DB.prepare(
-      "SELECT accounting_state, payload_pointer FROM ai_request WHERE request_id = ?",
-    ).bind("req-pending-settlement").first<{ accounting_state: string; payload_pointer: string | null }>();
-    const attempt = await env.DB.prepare(
-      "SELECT COUNT(*) AS c FROM ai_attempt WHERE request_id = ?",
-    ).bind("req-pending-settlement").first<{ c: number }>();
-    expect(request?.accounting_state).toBe("pending");
-    expect(request?.payload_pointer).toBe("request/req-pending-settlement/envelope");
-    expect(attempt?.c).toBe(1);
-    const obj = await env.R2.get("request/req-pending-settlement/envelope");
-    expect(obj).not.toBeNull();
-    await obj?.text();
-  });
 });
 
 describe("retention_diagnostic_prefilter_min_horizon", () => {
@@ -535,7 +486,7 @@ describe("manifest_retention_class_resolver", () => {
 });
 
 describe("retention_expiry_ledger", () => {
-  it("R9-PRET1: age alone preserves usage until a term is proven ended", async () => {
+  it("deletes past-horizon ledger rows and keeps in-horizon", async () => {
     const oldDate = new Date(
       FIXTURE_NOW.getTime() - (LEDGER_HORIZON_DAYS + 1) * MS_PER_DAY,
     ).toISOString();
@@ -615,46 +566,9 @@ describe("retention_expiry_ledger", () => {
       .bind("rollup-old")
       .first<{ c: number }>();
 
-    expect(oldUe?.c).toBe(1);
+    expect(oldUe?.c).toBe(0);
     expect(newUe?.c).toBe(1);
     expect(oldRollup?.c).toBe(0);
-  });
-
-  it("R9-PRET1: multiple aged rows survive for unended terms and purge only after ended evidence", async () => {
-    const oldDate = "2019-01-01T00:00:00.000Z";
-    await env.DB.prepare(
-      `INSERT INTO coverage_event (event_id, org_id, installation_id, binding_epoch, clinic_seq, kind, snapshot, at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-    ).bind(
-      "evt-retention-terms", FIXTURE_ORG, FIXTURE_INSTALLATION_A, 1, 1, "snapshot",
-      JSON.stringify({ terms: [
-        { term_id: "term-ended", state: "ended", ended_at: oldDate },
-        { term_id: "term-active", state: "active", ended_at: null },
-        { term_id: "term-held", state: "held", ended_at: null },
-      ] }), oldDate,
-    ).run();
-    for (const [id, termId, seq] of [
-      ["ue-ended", "term-ended", 1],
-      ["ue-active-1", "term-active", 2],
-      ["ue-active-2", "term-active", 3],
-      ["ue-held", "term-held", 4],
-    ] as const) {
-      await env.DB.prepare(
-        `INSERT INTO usage_event (
-          usage_event_id, installation_id, term_id, origin_request_id, accounting_seq,
-          quota_weight, tokens, cost, recorded_at
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-      ).bind(id, FIXTURE_INSTALLATION_A, termId, `origin-${id}`, seq, 1, 10, 0.01, oldDate).run();
-    }
-
-    await runRetentionPurge({ db: env.DB, r2: env.R2, now: FIXTURE_NOW });
-
-    const remaining = await env.DB.prepare(
-      `SELECT usage_event_id FROM usage_event WHERE installation_id = ? ORDER BY usage_event_id`,
-    ).bind(FIXTURE_INSTALLATION_A).all<{ usage_event_id: string }>();
-    expect(remaining.results?.map((row) => row.usage_event_id)).toEqual([
-      "ue-active-1", "ue-active-2", "ue-held",
-    ]);
   });
 });
 

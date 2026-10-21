@@ -488,7 +488,7 @@ CREATE TABLE "usage_event" (
   quota_weight INTEGER NOT NULL,
   tokens INTEGER NOT NULL,
   cost REAL NOT NULL,
-  recorded_at TEXT NOT NULL, origin_request_id TEXT, accounting_seq INTEGER,
+  recorded_at TEXT NOT NULL,
   FOREIGN KEY (installation_id) REFERENCES installation (installation_id),
   FOREIGN KEY (request_id) REFERENCES ai_request (request_id) ON DELETE SET NULL
 );
@@ -500,14 +500,3 @@ CREATE TABLE usage_rollup (
   tokens INTEGER NOT NULL,
   cost REAL NOT NULL
 , quota_weight INTEGER NOT NULL DEFAULT 0);
-
-CREATE TABLE usage_term_retention (
-  installation_id TEXT NOT NULL,
-  term_id TEXT NOT NULL,
-  term_state TEXT NOT NULL,
-  ended_at TEXT,
-  clinic_seq INTEGER NOT NULL,
-  snapshot_sha256 TEXT NOT NULL,
-  PRIMARY KEY (installation_id, term_id),
-  FOREIGN KEY (installation_id) REFERENCES installation (installation_id)
-);

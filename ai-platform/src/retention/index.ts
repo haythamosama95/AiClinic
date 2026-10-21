@@ -19,50 +19,6 @@ export const COUNTER_HORIZON_DAYS = JOURNAL_HORIZON_DAYS;
 
 export const MS_PER_DAY = 24 * 60 * 60 * 1000;
 
-async function checkpointAuthoritativeTermStates(db: D1Database): Promise<void> {
-  const latest = await db.prepare(
-    `SELECT e.installation_id, e.clinic_seq, e.snapshot
-     FROM coverage_event e
-     WHERE e.clinic_seq = (
-       SELECT MAX(next.clinic_seq) FROM coverage_event next
-       WHERE next.installation_id = e.installation_id
-     )`,
-  ).all<{ installation_id: string; clinic_seq: number; snapshot: string }>();
-  for (const event of latest.results ?? []) {
-    let terms: unknown;
-    try {
-      const parsed = JSON.parse(event.snapshot) as Record<string, unknown>;
-      terms = parsed.terms;
-      if (!Array.isArray(terms)) throw new Error("terms_missing");
-    } catch {
-      await db.prepare(
-        `UPDATE usage_term_retention SET term_state = 'unknown', ended_at = NULL,
-           clinic_seq = ?, snapshot_sha256 = '' WHERE installation_id = ? AND clinic_seq < ?`,
-      ).bind(event.clinic_seq, event.installation_id, event.clinic_seq).run();
-      continue;
-    }
-    const bytes = new TextEncoder().encode(event.snapshot);
-    const digest = await crypto.subtle.digest("SHA-256", bytes);
-    const snapshotSha256 = Array.from(new Uint8Array(digest), (byte) => byte.toString(16).padStart(2, "0")).join("");
-    const statements: D1PreparedStatement[] = [];
-    for (const item of terms) {
-      if (item === null || typeof item !== "object" || Array.isArray(item)) continue;
-      const term = item as Record<string, unknown>;
-      if (typeof term.term_id !== "string" || term.term_id.length === 0 || typeof term.state !== "string") continue;
-      const endedAt = term.state === "ended" && typeof term.ended_at === "string" ? term.ended_at : null;
-      statements.push(db.prepare(
-        `INSERT INTO usage_term_retention (installation_id, term_id, term_state, ended_at, clinic_seq, snapshot_sha256)
-         VALUES (?, ?, ?, ?, ?, ?)
-         ON CONFLICT(installation_id, term_id) DO UPDATE SET
-           term_state = excluded.term_state, ended_at = excluded.ended_at,
-           clinic_seq = excluded.clinic_seq, snapshot_sha256 = excluded.snapshot_sha256
-         WHERE excluded.clinic_seq > usage_term_retention.clinic_seq`,
-      ).bind(event.installation_id, term.term_id, term.state, endedAt, event.clinic_seq, snapshotSha256));
-    }
-    if (statements.length > 0) await db.batch(statements);
-  }
-}
-
 export type RetentionClassResolver = (
   capabilityId: string,
   capabilityVersion: string,
@@ -188,7 +144,6 @@ export async function runRetentionPurge(
   const resolveRetentionClass =
     bindings.resolveRetentionClass ?? defaultRetentionClassResolver();
   const { db, r2 } = bindings;
-  await checkpointAuthoritativeTermStates(db);
 
   const journalCutoff = new Date(
     now.getTime() - JOURNAL_HORIZON_DAYS * MS_PER_DAY,
@@ -213,7 +168,6 @@ export async function runRetentionPurge(
               completed_at, payload_pointer
        FROM ai_request
        WHERE payload_pointer IS NOT NULL
-         AND COALESCE(accounting_state, '') <> 'pending'
          AND COALESCE(completed_at, created_at) < ?`,
     )
     .bind(diagnosticScanCutoff)
@@ -243,8 +197,7 @@ export async function runRetentionPurge(
   // classes cannot orphan PII objects after the 90d journal cutoff.
   const journalExpired = await db
     .prepare(
-      `SELECT request_id, payload_pointer FROM ai_request
-       WHERE created_at < ? AND COALESCE(accounting_state, '') <> 'pending'`,
+      `SELECT request_id, payload_pointer FROM ai_request WHERE created_at < ?`,
     )
     .bind(journalCutoff)
     .all<{ request_id: string; payload_pointer: string | null }>();
@@ -255,14 +208,14 @@ export async function runRetentionPurge(
     );
   }
 
-  // Keep durable usage identity and accounting sequence while erasing the
-  // foreign-key join to the erasable request journal.
+  // Keep ledger money rows while the journal is purged. Nulling request_id
+  // is why usage_event.request_id is nullable: aged usage permanently loses
+  // request-level joinability, so reconciliation coverage shrinks with age.
   await db
     .prepare(
       `UPDATE usage_event SET request_id = NULL
        WHERE request_id IN (
-         SELECT request_id FROM ai_request
-         WHERE created_at < ? AND COALESCE(accounting_state, '') <> 'pending'
+         SELECT request_id FROM ai_request WHERE created_at < ?
        )`,
     )
     .bind(journalCutoff)
@@ -272,16 +225,14 @@ export async function runRetentionPurge(
     .prepare(
       `DELETE FROM ai_attempt
        WHERE request_id IN (
-         SELECT request_id FROM ai_request
-         WHERE created_at < ? AND COALESCE(accounting_state, '') <> 'pending'
+         SELECT request_id FROM ai_request WHERE created_at < ?
        )`,
     )
     .bind(journalCutoff)
     .run();
 
   const journalRequestResult = await db
-    .prepare(`DELETE FROM ai_request
-       WHERE created_at < ? AND COALESCE(accounting_state, '') <> 'pending'`)
+    .prepare(`DELETE FROM ai_request WHERE created_at < ?`)
     .bind(journalCutoff)
     .run();
 
@@ -290,14 +241,8 @@ export async function runRetentionPurge(
     (journalRequestResult.meta.changes ?? 0);
 
   const ledgerUsageEvent = await db
-    .prepare(`DELETE FROM usage_event
-      WHERE recorded_at < ? AND EXISTS (
-        SELECT 1 FROM usage_term_retention t
-        WHERE t.installation_id = usage_event.installation_id
-          AND t.term_id = usage_event.term_id
-          AND t.term_state = 'ended' AND t.ended_at < ?
-      )`)
-    .bind(ledgerCutoff, ledgerCutoff)
+    .prepare(`DELETE FROM usage_event WHERE recorded_at < ?`)
+    .bind(ledgerCutoff)
     .run();
 
   const ledgerCutoffPeriod = ledgerCutoff.slice(0, 7);
@@ -356,8 +301,7 @@ export async function purgeByInstallationId(
 
   const requests = await db
     .prepare(
-      `SELECT request_id, payload_pointer FROM ai_request
-       WHERE installation_id = ? AND COALESCE(accounting_state, '') <> 'pending'`,
+      `SELECT request_id, payload_pointer FROM ai_request WHERE installation_id = ?`,
     )
     .bind(installationId)
     .all<{ request_id: string; payload_pointer: string | null }>();
@@ -383,12 +327,11 @@ export async function purgeByInstallationId(
       .prepare(
         `DELETE FROM ai_attempt
          WHERE request_id IN (
-           SELECT request_id FROM ai_request
-           WHERE installation_id = ? AND COALESCE(accounting_state, '') <> 'pending'
+           SELECT request_id FROM ai_request WHERE installation_id = ?
          )`,
       )
       .bind(installationId),
-    db.prepare(`DELETE FROM ai_request WHERE installation_id = ? AND COALESCE(accounting_state, '') <> 'pending'`).bind(
+    db.prepare(`DELETE FROM ai_request WHERE installation_id = ?`).bind(
       installationId,
     ),
     db

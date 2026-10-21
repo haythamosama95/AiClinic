@@ -32,7 +32,7 @@ export type CreditResult =
   | {
       ok: true;
       periodCounters: PeriodCounters;
-      settlement: { disposition: "settled" | "already_accounted"; chargedWeight: number; accountingSequence: number | null };
+      settlement: { disposition: "settled" | "already_accounted"; chargedWeight: number };
     }
   | { ok: false; code: "unknown_request" | "unavailable" | "internal_error" };
 
@@ -50,7 +50,7 @@ type CreditWireResponse =
       kind: "credit";
       ok: true;
       periodCounters: PeriodCounters;
-      settlement: { disposition: "settled" | "already_accounted"; chargedWeight: number; accountingSequence: number | null };
+      settlement: { disposition: "settled" | "already_accounted"; chargedWeight: number };
     }
   | { kind: "credit"; ok: false; code: "unknown_request" };
 
@@ -58,7 +58,7 @@ type CreditRpcOutcome =
   | {
       ok: true;
       periodCounters: PeriodCounters;
-      settlement: { disposition: "settled" | "already_accounted"; chargedWeight: number; accountingSequence: number | null };
+      settlement: { disposition: "settled" | "already_accounted"; chargedWeight: number };
     }
   | { ok: false; reason: "unknown_request" | "unavailable" | "client_error" };
 
@@ -67,7 +67,6 @@ type SettleFallbackWireResponse = {
   outcome: "settled" | "already_accounted" | "deferred" | "conflict";
   chargedWeight?: number;
   settlementOutcome?: "consumed" | "released";
-  accountingSequence?: number | null;
 };
 
 type FallbackAdmissionRow = {
@@ -172,12 +171,7 @@ async function invokeCreditRpc(
   return {
     ok: true,
     periodCounters: body.periodCounters,
-    settlement: {
-      ...body.settlement,
-      accountingSequence: Number.isSafeInteger(body.settlement.accountingSequence)
-        ? body.settlement.accountingSequence
-        : null,
-    },
+    settlement: body.settlement,
   };
 }
 
@@ -272,7 +266,6 @@ export type FallbackSettlementResult =
       outcome: "settled" | "already_accounted";
       chargedWeight: number;
       settlementOutcome: "consumed" | "released";
-      accountingSequence: number | null;
     }
   | { ok: true; outcome: "deferred" | "conflict" }
   | { ok: false };
@@ -316,7 +309,6 @@ export async function settleFallbackUsage(
     outcome: result.outcome,
     chargedWeight: result.chargedWeight!,
     settlementOutcome: result.settlementOutcome,
-    accountingSequence: result.accountingSequence ?? null,
   };
 }
 
@@ -409,12 +401,11 @@ export async function reconcileGraceUsage(
       continue;
     }
     const existingUsage = await bindings.DB
-      .prepare("SELECT accounting_seq FROM usage_event WHERE request_id = ? LIMIT 1")
+      .prepare("SELECT 1 AS ok FROM usage_event WHERE request_id = ? LIMIT 1")
       .bind(intent.request_id)
-      .first<{ accounting_seq: number | null }>();
+      .first<{ ok: number }>();
     let chargedWeight: number;
-    let accountingSequence: number | null = existingUsage?.accounting_seq ?? null;
-    if (existingUsage !== null) {
+    if (existingUsage?.ok === 1) {
       // D1's durable usage fact is authoritative after a lost DO reply.
       chargedWeight = intent.accounting_outcome === "consumed"
         ? intent.accounting_quota_weight
@@ -452,7 +443,6 @@ export async function reconcileGraceUsage(
       );
       if (!result.ok) continue;
       chargedWeight = result.settlement.chargedWeight;
-      accountingSequence = result.settlement.accountingSequence;
     }
     const usage = await bindings.DB
       .prepare(
@@ -465,12 +455,12 @@ export async function reconcileGraceUsage(
     await bindings.DB.batch([
       bindings.DB.prepare(
         `INSERT OR IGNORE INTO usage_event (
-           usage_event_id, installation_id, term_id, request_id, origin_request_id,
-           accounting_seq, quota_weight, tokens, cost, recorded_at
-         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+           usage_event_id, installation_id, term_id, request_id,
+           quota_weight, tokens, cost, recorded_at
+         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
       ).bind(
         generateUlid(), intent.installation_id, intent.accounting_term_id,
-        intent.request_id, intent.request_id, accountingSequence, chargedWeight, usage?.tokens ?? 0,
+        intent.request_id, chargedWeight, usage?.tokens ?? 0,
         usage?.cost ?? 0, recordedAt,
       ),
       bindings.DB.prepare(
@@ -563,16 +553,14 @@ export async function reconcileGraceUsage(
     await bindings.DB.batch([
       bindings.DB.prepare(
         `INSERT OR IGNORE INTO usage_event (
-           usage_event_id, installation_id, term_id, request_id, origin_request_id,
-           accounting_seq, quota_weight, tokens, cost, recorded_at
-         ) VALUES (?, ?, ?, ?, ?, ?, ?, 0, 0, ?)`,
+           usage_event_id, installation_id, term_id, request_id,
+           quota_weight, tokens, cost, recorded_at
+         ) VALUES (?, ?, ?, ?, ?, 0, 0, ?)`,
       ).bind(
         generateUlid(),
         row.installation_id,
         row.term_id,
         row.request_id,
-        row.request_id,
-        settled.accountingSequence ?? null,
         settled.chargedWeight,
         recordedAt,
       ),

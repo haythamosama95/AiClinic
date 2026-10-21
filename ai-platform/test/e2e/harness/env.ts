@@ -79,7 +79,6 @@ export const PLATFORM_TABLES = [
   "ai_attempt",
   "usage_event",
   "usage_rollup",
-  "usage_term_retention",
   "platform_counter",
   "control_audit",
   "fallback_admission",

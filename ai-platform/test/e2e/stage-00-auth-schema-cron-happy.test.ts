@@ -89,7 +89,6 @@ const EXPECTED_PLATFORM_TABLES = [
   "transfer_step",
   "usage_event",
   "usage_rollup",
-  "usage_term_retention",
 ] as const;
 
 const BUSINESS_TABLES = PLATFORM_TABLES.filter(
