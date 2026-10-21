@@ -8,6 +8,7 @@ import rm24FallbackAdmissionIdentityMigrationSql from "../migrations/20261020120
 import rm25FallbackSettlementSql from "../migrations/20261020130000_rm25_fallback_settlement.sql?raw";
 import rm26TransferPreparationSql from "../migrations/20261020140000_r6_rm26_transfer_preparation.sql?raw";
 import rm27DurableDeletionSql from "../migrations/20261020150000_rm27_durable_deletion.sql?raw";
+import rm30UsageAccountingIdentitySql from "../migrations/20261021120000_rm30_usage_accounting_identity.sql?raw";
 import planCatalogueMigrationSql from "../migrations/20260911120000_plan_catalogue.sql?raw";
 import planVersionPaidGrantCoverageMigrationSql from "../migrations/20261003140000_plan_version_paid_grant_coverage.sql?raw";
 import usageTermMigrationSql from "../migrations/20261006120000_usage_term.sql?raw";
@@ -714,6 +715,7 @@ beforeAll(async () => {
   await applySqlStatements(env.DB, rm25FallbackSettlementSql);
   await applySqlStatements(env.DB, rm26TransferPreparationSql);
   await applySqlStatements(env.DB, rm27DurableDeletionSql);
+  await applySqlStatements(env.DB, rm30UsageAccountingIdentitySql);
 });
 
 async function pinHarnessTestClock(isoUtc: string = FIXTURE_NOW): Promise<void> {

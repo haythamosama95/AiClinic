@@ -59,6 +59,7 @@ import rm24FallbackAdmissionIdentitySql from "../../../ai-platform/migrations/20
 import rm25FallbackSettlementSql from "../../../ai-platform/migrations/20261020130000_rm25_fallback_settlement.sql?raw";
 import rm26TransferPreparationSql from "../../../ai-platform/migrations/20261020140000_r6_rm26_transfer_preparation.sql?raw";
 import rm27DurableDeletionSql from "../../../ai-platform/migrations/20261020150000_rm27_durable_deletion.sql?raw";
+import rm30UsageAccountingIdentitySql from "../../../ai-platform/migrations/20261021120000_rm30_usage_accounting_identity.sql?raw";
 
 const PLATFORM_MIGRATION_SQL: string[] = [
   platformSchemaSql,
@@ -95,6 +96,7 @@ const PLATFORM_MIGRATION_SQL: string[] = [
   rm25FallbackSettlementSql,
   rm26TransferPreparationSql,
   rm27DurableDeletionSql,
+  rm30UsageAccountingIdentitySql,
 ];
 
 const VENDOR_CONTRACT_VERSION = CHANNEL_VERSIONS.vendorEntrypoint;
@@ -107,7 +109,7 @@ const COVER_DEFAULT_CONCURRENCY = 4;
 const COVER_DEFAULT_ALLOWANCE = 10_000;
 const VENDOR_OPERATOR_EMAIL = "operator@vendor.test";
 // Increment when PLATFORM_MIGRATION_SQL or its bootstrap seeds change.
-const PLATFORM_MIGRATION_HARNESS_VERSION = 4;
+const PLATFORM_MIGRATION_HARNESS_VERSION = 5;
 
 declare module "cloudflare:test" {
   interface ProvidedEnv {

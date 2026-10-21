@@ -32,6 +32,7 @@ import r6Pt1ReversalRoutesSql from "../../../migrations/20261019150000_r6_pt1_re
 import r6Pt1TransferRouteManifestSql from "../../../migrations/20261019160000_r6_pt1_transfer_route_manifest.sql?raw";
 import r6Rm26TransferPreparationSql from "../../../migrations/20261020140000_r6_rm26_transfer_preparation.sql?raw";
 import rm27DurableDeletionSql from "../../../migrations/20261020150000_rm27_durable_deletion.sql?raw";
+import rm30UsageAccountingIdentitySql from "../../../migrations/20261021120000_rm30_usage_accounting_identity.sql?raw";
 import { splitSqlStatements } from "../../split-sql-statements";
 import { isolateConfigCache } from "../../../src/config-cache";
 import { clearE2eIssuerRegistry } from "./aat";
@@ -74,6 +75,7 @@ export const MIGRATION_SQL: readonly string[] = [
   r6Pt1TransferRouteManifestSql,
   r6Rm26TransferPreparationSql,
   rm27DurableDeletionSql,
+  rm30UsageAccountingIdentitySql,
 ];
 
 const TOKEN_CONTRACT_V2_SEED = {
