@@ -1979,5 +1979,8 @@ export async function rebuildAbo(
   }
   await refreshCoverageView(env);
 
-  await runReconciliation(env);
+  // R9-CRON1: an incomplete reconciliation is not a verified rebuild.
+  if ((await runReconciliation(env)) !== "succeeded") {
+    throw new Error("reconciliation_incomplete");
+  }
 }

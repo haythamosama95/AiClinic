@@ -870,6 +870,9 @@ export async function setupCrossWorkerHarness(): Promise<void> {
 
 async function clearAboTransactionalTables(): Promise<void> {
   for (const table of [
+    "scheduled_job_state",
+    "housekeeping_r2_cursor",
+    "finding_identity",
     "reversal_outcome",
     "reversal",
     "finding",

@@ -15,7 +15,7 @@ import {
   type AccessCertsDocument,
   type Assertion,
 } from "vendor-contracts";
-import { raiseAlert } from "../alert/index.js";
+import { prepareAlertDeactivation, raiseAlert } from "../alert/index.js";
 import {
   clinicErrorResponse,
   clinicJsonResponse,
@@ -36,6 +36,7 @@ import {
 } from "../provider/registry.js";
 import { runConfirmForWorkId } from "../work/runner.js";
 import { runReconciliation } from "../reconciliation/run.js";
+import { requeueScheduledJob } from "../scheduler/jobs.js";
 import { rememberOperatorCredential } from "../watch/hourly.js";
 import {
   determineReversalEffect,
@@ -2552,7 +2553,13 @@ async function handlePostPayoutImport(
     actionId,
   );
 
-  await runReconciliation(env);
+  // R9-CRON1 / F7(i): the import runs reconciliation now. A failure re-enqueues the current
+  // reconciliation period for the minute cron, even when the daily run already succeeded for
+  // it. The committed import response is unchanged.
+  const reconciliation = await runReconciliation(env);
+  if (reconciliation !== "succeeded") {
+    await requeueScheduledJob(env, "reconciliation", "import_reconciliation_incomplete");
+  }
 
   return clinicJsonResponse(
     {
@@ -2606,6 +2613,8 @@ async function handlePostResolveFinding(
       note,
       at: createdAt,
     };
+    // R9-AO5: resolution and the AL-10 deactivation commit together, so a resolved
+    // finding cannot keep repeating its alert, and a crash cannot leave a half-resolved one.
     await env.DB.batch([
       env.DB.prepare(
         `INSERT INTO finding_resolution (finding_id, resolved_by, note, at)
@@ -2618,6 +2627,7 @@ async function handlePostResolveFinding(
         resolutionCanonical,
         createdAt,
       ),
+      prepareAlertDeactivation(env.DB, `AL-10:${findingId}`),
     ]);
   }
 

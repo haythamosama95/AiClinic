@@ -9,6 +9,7 @@ import issuerKeyTenantBindingMigrationSql from "../migrations/20261003130000_iss
 import planVersionPaidGrantCoverageMigrationSql from "../migrations/20261003140000_plan_version_paid_grant_coverage.sql?raw";
 import idempotencyFingerprintMigrationSql from "../migrations/20261014120000_ai_request_idempotency_fingerprint.sql?raw";
 import operatorAuditMigrationSql from "../migrations/20261003120000_operator_credential_and_platform_alert.sql?raw";
+import rm31AlertDeliverySql from "../migrations/20261021130000_rm31_alert_delivery.sql?raw";
 import { applySqlStatements } from "./split-sql-statements";
 import schemaSnapSql from "../schema.snap.sql?raw";
 import {
@@ -492,6 +493,7 @@ beforeAll(async () => {
   await applySqlStatements(env.DB, planVersionPaidGrantCoverageMigrationSql);
   await applySqlStatements(env.DB, idempotencyFingerprintMigrationSql);
   await applySqlStatements(env.DB, operatorAuditMigrationSql);
+  await applySqlStatements(env.DB, rm31AlertDeliverySql);
 });
 
 beforeEach(async () => {

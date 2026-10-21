@@ -1,6 +1,7 @@
 import { CHANNEL_VERSIONS } from "vendor-contracts";
 import { raiseAlert, type AlertEnv } from "../alert/index.js";
 import { clockNowMs, type ClockEnv } from "../clock.js";
+import type { JobOutcome } from "../scheduler/jobs.js";
 
 const ONE_DAY_MS = 24 * 60 * 60 * 1000;
 const THIRTY_DAYS_MS = 30 * ONE_DAY_MS;
@@ -51,10 +52,24 @@ type AlertRow = {
   detail_id: string;
 };
 
-type JobRunRow = {
+type JobStateRow = {
   job: string;
-  last_run_at: string;
+  last_started_at: string | null;
+  last_succeeded_at: string | null;
+  last_error_at: string | null;
+  last_error_code: string | null;
+  next_attempt_at: string | null;
+  consecutive_failures: number;
 };
+
+// R9-CRON1: a platform read that fails is incomplete. The digest job then fails, and nothing
+// is sent or stamped as successful.
+class DigestReadUnavailableError extends Error {
+  constructor(source: string) {
+    super(`digest_read_unavailable:${source}`);
+    this.name = "DigestReadUnavailable";
+  }
+}
 
 type ChannelVersionRow = {
   channel: string;
@@ -92,38 +107,38 @@ function keyExpiresWithin30Days(notAfter: string, nowMs: number): boolean {
   return notAfterMs > nowMs && notAfterMs <= nowMs + THIRTY_DAYS_MS;
 }
 
+async function readIssuerKeys(env: DigestEnv): Promise<IssuerKeyRow[]> {
+  const response = await env.PLATFORM.listIssuerKeys({
+    contract_version: CHANNEL_VERSIONS.vendorEntrypoint,
+  });
+  if (response.result !== "ok" || typeof response.detail !== "string") {
+    throw new DigestReadUnavailableError("listIssuerKeys");
+  }
+  return JSON.parse(response.detail) as IssuerKeyRow[];
+}
+
+async function readServiceKeys(env: DigestEnv): Promise<ServiceKeyRow[]> {
+  const response = await env.PLATFORM.listServiceKeys({
+    contract_version: CHANNEL_VERSIONS.vendorEntrypoint,
+  });
+  if (response.result !== "ok" || typeof response.detail !== "string") {
+    throw new DigestReadUnavailableError("listServiceKeys");
+  }
+  return JSON.parse(response.detail) as ServiceKeyRow[];
+}
+
 async function raiseAl14ForExpiringKeys(
   env: DigestEnv,
   nowMs: number,
 ): Promise<void> {
-  const contractArgs = { contract_version: CHANNEL_VERSIONS.vendorEntrypoint };
-
-  let issuerKeys: IssuerKeyRow[] = [];
-  try {
-    const response = await env.PLATFORM.listIssuerKeys(contractArgs);
-    if (response.result === "ok" && typeof response.detail === "string") {
-      issuerKeys = JSON.parse(response.detail) as IssuerKeyRow[];
-    }
-  } catch {
-    // Platform read failures must not block the digest.
-  }
-
+  const issuerKeys = await readIssuerKeys(env);
   for (const key of issuerKeys) {
     if (keyExpiresWithin30Days(key.not_after, nowMs)) {
       await raiseAlert(env, "AL-14", `AL-14:${key.kid}`, key.kid);
     }
   }
 
-  let serviceKeys: ServiceKeyRow[] = [];
-  try {
-    const response = await env.PLATFORM.listServiceKeys(contractArgs);
-    if (response.result === "ok" && typeof response.detail === "string") {
-      serviceKeys = JSON.parse(response.detail) as ServiceKeyRow[];
-    }
-  } catch {
-    // Platform read failures must not block the digest.
-  }
-
+  const serviceKeys = await readServiceKeys(env);
   for (const key of serviceKeys) {
     if (keyExpiresWithin30Days(key.not_after, nowMs)) {
       await raiseAlert(env, "AL-14", `AL-14:${key.kid}`, key.kid);
@@ -157,20 +172,16 @@ async function oldestUnexportedFactSeq(db: D1Database): Promise<number | null> {
 async function readFeedConsumerHealth(
   env: DigestEnv,
 ): Promise<string | null> {
-  try {
-    const response = await env.PLATFORM.feedConsumerHealth({
-      contract_version: CHANNEL_VERSIONS.vendorEntrypoint,
-    });
-    if (response.result === "ok" && typeof response.detail === "string") {
-      const detail = JSON.parse(response.detail) as {
-        last_pull_at?: string | null;
-      };
-      return detail.last_pull_at ?? null;
-    }
-  } catch {
-    // Platform read failures must not block the digest.
+  const response = await env.PLATFORM.feedConsumerHealth({
+    contract_version: CHANNEL_VERSIONS.vendorEntrypoint,
+  });
+  if (response.result !== "ok" || typeof response.detail !== "string") {
+    throw new DigestReadUnavailableError("feedConsumerHealth");
   }
-  return null;
+  const detail = JSON.parse(response.detail) as {
+    last_pull_at?: string | null;
+  };
+  return detail.last_pull_at ?? null;
 }
 
 function grantEnvelopeDetails(envelopeJson: string): {
@@ -319,16 +330,17 @@ async function buildDigestBody(env: DigestEnv): Promise<string> {
     );
   }
 
-  lines.push("scheduled_job_runs:");
-  try {
-    const jobRuns = await env.DB.prepare(
-      `SELECT job, last_run_at FROM scheduled_job_run ORDER BY job`,
-    ).all<JobRunRow>();
-    for (const job of jobRuns.results ?? []) {
-      lines.push(`  ${job.job} last_run_at=${job.last_run_at}`);
-    }
-  } catch {
-    // Missing table is ignored.
+  // R9-CRON1: last success, and current failure or retry state, per logical job.
+  lines.push("scheduled_jobs:");
+  const jobStates = await env.DB.prepare(
+    `SELECT job, last_started_at, last_succeeded_at, last_error_at, last_error_code,
+            next_attempt_at, consecutive_failures
+     FROM scheduled_job_state ORDER BY job`,
+  ).all<JobStateRow>();
+  for (const job of jobStates.results ?? []) {
+    lines.push(
+      `  ${job.job} last_success=${job.last_succeeded_at ?? "null"} last_started=${job.last_started_at ?? "null"} last_error=${job.last_error_at ?? "null"} error_code=${job.last_error_code ?? "null"} next_attempt=${job.next_attempt_at ?? "null"} consecutive_failures=${job.consecutive_failures}`,
+    );
   }
 
   const lastPullAt = await readFeedConsumerHealth(env);
@@ -356,32 +368,15 @@ async function buildDigestBody(env: DigestEnv): Promise<string> {
   );
 
   lines.push("keys_expiring_within_30_days:");
-  const contractArgs = { contract_version: CHANNEL_VERSIONS.vendorEntrypoint };
-  try {
-    const issuerResponse = await env.PLATFORM.listIssuerKeys(contractArgs);
-    if (issuerResponse.result === "ok" && typeof issuerResponse.detail === "string") {
-      const issuerKeys = JSON.parse(issuerResponse.detail) as IssuerKeyRow[];
-      for (const key of issuerKeys) {
-        if (keyExpiresWithin30Days(key.not_after, nowMs)) {
-          lines.push(`  issuer kid=${key.kid} not_after=${key.not_after}`);
-        }
-      }
+  for (const key of await readIssuerKeys(env)) {
+    if (keyExpiresWithin30Days(key.not_after, nowMs)) {
+      lines.push(`  issuer kid=${key.kid} not_after=${key.not_after}`);
     }
-  } catch {
-    // Platform read failures must not block the digest.
   }
-  try {
-    const serviceResponse = await env.PLATFORM.listServiceKeys(contractArgs);
-    if (serviceResponse.result === "ok" && typeof serviceResponse.detail === "string") {
-      const serviceKeys = JSON.parse(serviceResponse.detail) as ServiceKeyRow[];
-      for (const key of serviceKeys) {
-        if (keyExpiresWithin30Days(key.not_after, nowMs)) {
-          lines.push(`  service kid=${key.kid} not_after=${key.not_after}`);
-        }
-      }
+  for (const key of await readServiceKeys(env)) {
+    if (keyExpiresWithin30Days(key.not_after, nowMs)) {
+      lines.push(`  service kid=${key.kid} not_after=${key.not_after}`);
     }
-  } catch {
-    // Platform read failures must not block the digest.
   }
 
   lines.push("channel_version_seen:");
@@ -418,9 +413,12 @@ async function sendDigestEmail(env: DigestEnv, body: string): Promise<void> {
   }
 }
 
-export async function runDailyDigest(env: DigestEnv): Promise<void> {
+// R9-CRON1: the outcome is succeeded only after the digest email send is acknowledged.
+// Any thrown read or send leaves the period pending. The runner then records the failure.
+export async function runDailyDigest(env: DigestEnv): Promise<JobOutcome> {
   const nowMs = await clockNowMs(env);
   await raiseAl14ForExpiringKeys(env, nowMs);
   const body = await buildDigestBody(env);
   await sendDigestEmail(env, body);
+  return "succeeded";
 }

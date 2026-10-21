@@ -2,6 +2,7 @@ import { env } from "cloudflare:test";
 import { beforeAll, beforeEach, describe, expect, it } from "vitest";
 import migrationSql from "../migrations/20260731120000_platform_schema.sql?raw";
 import operatorAuditMigrationSql from "../migrations/20261003120000_operator_credential_and_platform_alert.sql?raw";
+import rm31AlertDeliverySql from "../migrations/20261021130000_rm31_alert_delivery.sql?raw";
 import { MS_PER_DAY } from "../src/retention";
 import { supportLookup } from "../src/support";
 import type { Envelope } from "../src/journal";
@@ -233,6 +234,7 @@ async function loadControlHandlers(): Promise<{
 beforeAll(async () => {
   await applyPlatformSchema(env.DB, migrationSql);
   await applyPlatformSchema(env.DB, operatorAuditMigrationSql);
+  await applyPlatformSchema(env.DB, rm31AlertDeliverySql);
   await env.DB.prepare(
     `CREATE TABLE IF NOT EXISTS tenant_binding (
       org_id TEXT NOT NULL,

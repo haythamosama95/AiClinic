@@ -24,6 +24,8 @@ import commandRecoveryFactsMigrationSql from "../../migrations/0017_command_reco
 import rebuildPublicationFenceMigrationSql from "../../migrations/0018_rebuild_publication_fence.sql?raw";
 import secretlessCreatedAttemptsMigrationSql from "../../migrations/0019_secretless_created_attempts.sql?raw";
 import recoveryProvenanceAndInquiriesMigrationSql from "../../migrations/0020_recovery_provenance_and_inquiries.sql?raw";
+import scheduledJobStateMigrationSql from "../../migrations/0021_scheduled_job_state.sql?raw";
+import findingIdentityMigrationSql from "../../migrations/0022_finding_identity.sql?raw";
 
 const ABO_LEGACY_MIGRATION_SQL: string[] = [
   recordsMigrationSql,
@@ -49,6 +51,8 @@ const ABO_MIGRATION_SQL: string[] = [
   rebuildPublicationFenceMigrationSql,
   secretlessCreatedAttemptsMigrationSql,
   recoveryProvenanceAndInquiriesMigrationSql,
+  scheduledJobStateMigrationSql,
+  findingIdentityMigrationSql,
 ];
 
 function base64UrlEncode(bytes: Uint8Array): string {
@@ -69,6 +73,8 @@ declare module "cloudflare:test" {
     BILLING_HOST: string;
     OPS_HOST: string;
     HEARTBEAT_URL: string;
+    HEARTBEAT_URL_MINUTE?: string;
+    HEARTBEAT_URL_DIGEST?: string;
     ALERT_EMAIL_TO: string;
     ISSUER_ID: string;
     ISSUER_KEYS: string;
@@ -415,25 +421,37 @@ async function ensureLockRulesMock(): Promise<void> {
   lockMockReady = true;
 }
 
+// R9-CRON1 / RT2: every configured stream URL is intercepted, so a capture names the stream
+// that pinged. The shared HEARTBEAT_URL is included as the fallback.
+function configuredHeartbeatUrls(): string[] {
+  const urls = [
+    env.HEARTBEAT_URL,
+    env.HEARTBEAT_URL_MINUTE,
+    env.HEARTBEAT_URL_DIGEST,
+  ].filter((url): url is string => typeof url === "string" && url.length > 0);
+  return [...new Set(urls)];
+}
+
 async function ensureHeartbeatFetchMock(): Promise<void> {
   if (heartbeatHarness.interceptReady) {
     return;
   }
   const { fetchMock } = await import("cloudflare:test");
-  const heartbeatUrl = env.HEARTBEAT_URL;
-  const parsed = new URL(heartbeatUrl);
   await ensureLockRulesMock();
-  fetchMock
-    .get(parsed.origin)
-    .intercept({ path: parsed.pathname, method: "GET" })
-    .reply(() => {
-      heartbeatHarness.capturedFetches.push(heartbeatUrl);
-      if (heartbeatHarness.fetchThrows) {
-        throw new Error("heartbeat fetch failure injected by harness");
-      }
-      return { statusCode: 200, data: "ok" };
-    })
-    .persist();
+  for (const heartbeatUrl of configuredHeartbeatUrls()) {
+    const parsed = new URL(heartbeatUrl);
+    fetchMock
+      .get(parsed.origin)
+      .intercept({ path: parsed.pathname, method: "GET" })
+      .reply(() => {
+        heartbeatHarness.capturedFetches.push(heartbeatUrl);
+        if (heartbeatHarness.fetchThrows) {
+          throw new Error("heartbeat fetch failure injected by harness");
+        }
+        return { statusCode: 200, data: "ok" };
+      })
+      .persist();
+  }
   heartbeatHarness.interceptReady = true;
 }
 
@@ -658,6 +676,9 @@ export async function resetHarnessState(): Promise<void> {
   await env.DB.prepare("DELETE FROM harness_test_clock").run();
   await env.DB.prepare("DELETE FROM harness_issuer_pin").run();
   for (const table of [
+    "scheduled_job_state",
+    "housekeeping_r2_cursor",
+    "finding_identity",
     "token_use",
     "billing_contact",
     "org_erasure_fence",

@@ -6,6 +6,7 @@ export default defineWorkersConfig({
   test: {
     include: [
       "test/vendor-entrypoint.test.ts",
+      "test/alert-delivery.test.ts",
       "test/identity.test.ts",
       "test/entitlement.test.ts",
       "test/rate-limit.test.ts",

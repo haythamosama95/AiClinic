@@ -104,6 +104,9 @@ export default defineWorkersConfig({
             WEBAUTHN_ORIGIN: "https://ops.vendor.test",
             ABO_GRANT_KEY: JSON.stringify(ABO_GRANT_KEY),
             PLATFORM_PUBLIC_KEYS: JSON.stringify(PLATFORM_PUBLIC_KEYS),
+            // R9-CRON1 / RT2: distinct per-stream URLs so tests can tell the streams apart.
+            HEARTBEAT_URL_MINUTE: "https://heartbeat.test/minute",
+            HEARTBEAT_URL_DIGEST: "https://heartbeat.test/digest",
           },
           serviceBindings: {
             PLATFORM: { name: "platform", entrypoint: "VendorEntrypoint" },

@@ -85,7 +85,11 @@ import {
 import { supportLookup as runSupportLookup } from "../support";
 import { recoveryBlockedOperatorDetail } from "./recovery-detail";
 import { normalizeRequestReference } from "../reference";
-import { raiseAl19FromOutbox } from "../alert/index";
+import {
+  al19KillSwitchAlertKey,
+  buildAl19KillSwitchAlertStatement,
+  raiseAl19FromOutbox,
+} from "../alert/index";
 import {
   runRebuildClinicDo,
   runRebuildGrantLedger,
@@ -6710,7 +6714,9 @@ export class VendorEntrypoint extends WorkerEntrypoint<VendorEnv> {
       (await readActiveTenantBinding(this.env.DB, orgId))?.installation_id ??
       null;
     if (installationId === null) {
-      return rejected(version, "coverage_unknown");
+      // R9-AO4 F4: no active binding is a definitive not-found, distinct from
+      // a coverage DO that cannot be reached (coverage_unknown below).
+      return rejected(version, "coverage_not_found");
     }
 
     const doResponse = await callCoverageDo(this.env, installationId, {
@@ -6984,17 +6990,38 @@ export class VendorEntrypoint extends WorkerEntrypoint<VendorEnv> {
     args: Record<string, unknown>,
   ): Promise<VendorResultEnvelope> {
     return this.invokeClassH(args, async (version, email) => {
-      const result = await armKillSwitchAction({ DB: this.env.DB }, email, args);
+      const alertNowIso = await clockNowIso(this.env);
+      const result = await armKillSwitchAction({ DB: this.env.DB }, email, args, {
+        buildAlertStatement: (db, transition) =>
+          buildAl19KillSwitchAlertStatement(db, {
+            scope: String(args.scope),
+            target: String(args.target),
+            transition,
+            nowIso: alertNowIso,
+          }),
+      });
       if (!result.ok) {
         return envelopeFromControlResult(version, result);
       }
       const scope = String(args.scope);
       const target = String(args.target);
-      await raiseAl19FromOutbox(this.env, `AL-19:kill_switch:${scope}:${target}`, {
-        code: "AL-19",
-        scope,
-        target,
-      });
+      // R9-PAL1: the alert body is committed in the same batch as the mutation
+      // (see buildAl19KillSwitchAlertStatement). This post-commit call verifies
+      // the stored body, handles conflicts, and delivers. Keyed by this
+      // committed transition, so each arm or disarm gets its own alert row.
+      if (result.transition !== undefined) {
+        await raiseAl19FromOutbox(
+          this.env,
+          al19KillSwitchAlertKey(scope, target, result.transition),
+          {
+            code: "AL-19",
+            action: result.transition.action,
+            scope,
+            target,
+            changed_at: result.transition.changed_at,
+          },
+        );
+      }
       return envelopeFromControlResult(version, result);
     });
   }
@@ -7003,17 +7030,36 @@ export class VendorEntrypoint extends WorkerEntrypoint<VendorEnv> {
     args: Record<string, unknown>,
   ): Promise<VendorResultEnvelope> {
     return this.invokeClassH(args, async (version, email) => {
-      const result = await disarmKillSwitchAction({ DB: this.env.DB }, email, args);
+      const alertNowIso = await clockNowIso(this.env);
+      const result = await disarmKillSwitchAction({ DB: this.env.DB }, email, args, {
+        buildAlertStatement: (db, transition) =>
+          buildAl19KillSwitchAlertStatement(db, {
+            scope: String(args.scope),
+            target: String(args.target),
+            transition,
+            nowIso: alertNowIso,
+          }),
+      });
       if (!result.ok) {
         return envelopeFromControlResult(version, result);
       }
       const scope = String(args.scope);
       const target = String(args.target);
-      await raiseAl19FromOutbox(this.env, `AL-19:kill_switch:${scope}:${target}`, {
-        code: "AL-19",
-        scope,
-        target,
-      });
+      // R9-PAL1: body committed in the same batch as the mutation (see
+      // armKillSwitch). Keyed by this committed transition.
+      if (result.transition !== undefined) {
+        await raiseAl19FromOutbox(
+          this.env,
+          al19KillSwitchAlertKey(scope, target, result.transition),
+          {
+            code: "AL-19",
+            action: result.transition.action,
+            scope,
+            target,
+            changed_at: result.transition.changed_at,
+          },
+        );
+      }
       return envelopeFromControlResult(version, result);
     });
   }

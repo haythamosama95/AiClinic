@@ -41,6 +41,8 @@ import commandRecoveryFactsMigrationSql from "../../migrations/0017_command_reco
 import rebuildPublicationFenceMigrationSql from "../../migrations/0018_rebuild_publication_fence.sql?raw";
 import secretlessCreatedAttemptsMigrationSql from "../../migrations/0019_secretless_created_attempts.sql?raw";
 import recoveryProvenanceAndInquiriesMigrationSql from "../../migrations/0020_recovery_provenance_and_inquiries.sql?raw";
+import scheduledJobStateMigrationSql from "../../migrations/0021_scheduled_job_state.sql?raw";
+import findingIdentityMigrationSql from "../../migrations/0022_finding_identity.sql?raw";
 import { appendOffer, loadOffersFixture } from "../../src/records/append";
 import { resolveHistoricalCheckoutTimestamp } from "../../src/rebuild";
 import { exportFacts } from "../../src/records/export";
@@ -373,6 +375,8 @@ async function ensureMigrations(): Promise<void> {
     rebuildPublicationFenceMigrationSql,
     secretlessCreatedAttemptsMigrationSql,
     recoveryProvenanceAndInquiriesMigrationSql,
+    scheduledJobStateMigrationSql,
+    findingIdentityMigrationSql,
   ]) {
     await applySql(sql);
   }
@@ -1253,15 +1257,19 @@ async function seedDigestScenario(): Promise<DigestScenario> {
          alert_key, code, active, unsent, last_sent_at, next_send_at, detail_id
        ) VALUES (?, 'AL-99', 1, 0, ?, NULL, 'digest-open-alert')`,
     ).bind(openAlertKey, addHours(BASE_CLOCK, -3)),
+    // R9-CRON1: job success is recorded per logical job, not per cron string.
     env.DB.prepare(
-      `INSERT INTO scheduled_job_run (job, last_run_at) VALUES ('0 6 * * *', ?)`,
-    ).bind(DAILY_JOB_STAMP),
+      `INSERT INTO scheduled_job_state (job, last_started_at, last_succeeded_at)
+       VALUES ('digest', ?, ?)`,
+    ).bind(DAILY_JOB_STAMP, DAILY_JOB_STAMP),
     env.DB.prepare(
-      `INSERT INTO scheduled_job_run (job, last_run_at) VALUES ('0 * * * *', ?)`,
-    ).bind(HOURLY_JOB_STAMP),
+      `INSERT INTO scheduled_job_state (job, last_started_at, last_succeeded_at)
+       VALUES ('hourly_watch', ?, ?)`,
+    ).bind(HOURLY_JOB_STAMP, HOURLY_JOB_STAMP),
     env.DB.prepare(
-      `INSERT INTO scheduled_job_run (job, last_run_at) VALUES ('* * * * *', ?)`,
-    ).bind(MINUTE_JOB_STAMP),
+      `INSERT INTO scheduled_job_state (job, last_started_at, last_succeeded_at)
+       VALUES ('minute_processing', ?, ?)`,
+    ).bind(MINUTE_JOB_STAMP, MINUTE_JOB_STAMP),
     env.DB.prepare(
       `INSERT INTO channel_version_seen (
          channel, contract_version, received, unsupported
@@ -1312,6 +1320,79 @@ function emailsWithCode(code: string): ReadonlyArray<{
   text: string;
 }> {
   return getCapturedEmails().filter((message) => message.subject === code);
+}
+
+type ScheduledJobRow = {
+  last_succeeded_period: string | null;
+  last_error_at: string | null;
+  next_attempt_at: string | null;
+  lease_token: string | null;
+  lease_until: string | null;
+  last_started_at: string | null;
+};
+
+async function scheduledJobRow(job: string): Promise<ScheduledJobRow> {
+  const row = await env.DB.prepare(
+    `SELECT last_succeeded_period, last_error_at, next_attempt_at,
+            lease_token, lease_until, last_started_at
+     FROM scheduled_job_state WHERE job = ?`,
+  )
+    .bind(job)
+    .first<ScheduledJobRow>();
+  if (row === null) {
+    throw new Error(`scheduled_job_state row missing for ${job}`);
+  }
+  return row;
+}
+
+async function scheduledJobAlertRow(
+  job: string,
+): Promise<{ active: number; unsent: number } | null> {
+  return env.DB.prepare(
+    `SELECT active, unsent FROM alert WHERE alert_key = ?`,
+  )
+    .bind(`scheduled_job_failed:${job}`)
+    .first<{ active: number; unsent: number }>();
+}
+
+async function scheduledJobAlertCount(job: string): Promise<number> {
+  const row = await env.DB.prepare(
+    `SELECT COUNT(*) AS count FROM alert WHERE alert_key = ?`,
+  )
+    .bind(`scheduled_job_failed:${job}`)
+    .first<{ count: number }>();
+  return row?.count ?? 0;
+}
+
+// R9-CRON1 failure injection: the real platform binding, except that the named reads are
+// refused. The job code then sees a refused read, which is the same path a live refusal takes.
+function platformRefusing(methods: ReadonlyArray<string>): unknown {
+  const real = env.PLATFORM as unknown as Record<
+    string,
+    (...args: unknown[]) => unknown
+  >;
+  return new Proxy(
+    {},
+    {
+      get(_target, prop) {
+        if (typeof prop !== "string") {
+          return undefined;
+        }
+        if (methods.includes(prop)) {
+          return async () => ({ result: "refused", detail: "" });
+        }
+        return (...args: unknown[]) => real[prop]!(...args);
+      },
+    },
+  );
+}
+
+function envWithPlatform(platform: unknown): never {
+  return { ...env, PLATFORM: platform } as never;
+}
+
+function pauseMs(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
 async function registerIssuerKeyExpiringInDays(
@@ -1548,7 +1629,290 @@ describe("P4.11 digest, watch, housekeeping, rebuild (H-XW)", () => {
     expect(await rowExists("fact_log", "key", factKey)).toBe(true);
   });
 
-  it("E2E-P4.11-07 Digest send failure retried; daily heartbeat ping sent", async () => {
+  it("R9-CRON1 failed digest send stays pending with no digest heartbeat, and one minute retry completes it once", async () => {
+    await seedDigestScenario();
+    clearCapturedEmails();
+    clearCapturedHeartbeatFetches();
+    setSendEmailThrows(true);
+
+    await runScheduled("0 6 * * *");
+
+    const failed = await env.DB.prepare(
+      `SELECT last_succeeded_period, last_error_code, next_attempt_at
+       FROM scheduled_job_state WHERE job = 'digest'`,
+    ).first<{
+      last_succeeded_period: string | null;
+      last_error_code: string | null;
+      next_attempt_at: string | null;
+    }>();
+    expect(failed?.last_succeeded_period ?? null).toBeNull();
+    expect(failed?.last_error_code).toBeTruthy();
+    expect(failed?.next_attempt_at).not.toBeNull();
+    // R9-CRON1 / RT2: the digest success stream is pinged only after the send is acknowledged.
+    expect(getCapturedHeartbeatFetches()).not.toContain(env.HEARTBEAT_URL_DIGEST);
+    expect(digestEmails()).toHaveLength(0);
+
+    setSendEmailThrows(false);
+    await setClock(addMinutes(BASE_CLOCK, 16));
+    await runScheduled("* * * * *");
+    expect(digestEmails()).toHaveLength(1);
+    // R9-CRON1 / RT2 (was HEARTBEAT_URL): the digest success is the abo_daily_digest stream.
+    expect(getCapturedHeartbeatFetches()).toContain(env.HEARTBEAT_URL_DIGEST);
+
+    const completed = await env.DB.prepare(
+      `SELECT last_succeeded_period, next_attempt_at
+       FROM scheduled_job_state WHERE job = 'digest'`,
+    ).first<{ last_succeeded_period: string | null; next_attempt_at: string | null }>();
+    expect(completed?.last_succeeded_period).not.toBeNull();
+    expect(completed?.next_attempt_at).toBeNull();
+
+    clearCapturedEmails();
+    await runScheduled("* * * * *");
+    expect(digestEmails()).toHaveLength(0);
+  });
+
+  it("R9-CRON1 a live lease blocks an overlapping run of the same due period", async () => {
+    await seedDigestScenario();
+    clearCapturedEmails();
+    await env.DB.prepare(
+      `INSERT INTO scheduled_job_state (job, lease_token, lease_until)
+       VALUES ('digest', 'overlapping-run', ?)
+       ON CONFLICT(job) DO UPDATE SET
+         lease_token = excluded.lease_token,
+         lease_until = excluded.lease_until`,
+    )
+      .bind(addHours(BASE_CLOCK, 1))
+      .run();
+
+    await runScheduled("0 6 * * *");
+
+    expect(digestEmails()).toHaveLength(0);
+    const row = await env.DB.prepare(
+      `SELECT lease_token FROM scheduled_job_state WHERE job = 'digest'`,
+    ).first<{ lease_token: string | null }>();
+    expect(row?.lease_token).toBe("overlapping-run");
+  });
+
+  // The next three tests inject failures at the job-state level: the job runs through
+  // runDueScheduledJob with the real job code and a refused platform read. Only the failing
+  // run is injected this way. The minute retry runs through the real minute cron.
+  it("R9-CRON1 reconciliation failure leaves the period pending and the minute retry completes it once", async () => {
+    await seedDigestScenario();
+    const { runDueScheduledJob } = await import("../../src/scheduler/jobs.js");
+    const { runReconciliation } = await import("../../src/reconciliation/run.js");
+
+    const outcome = await runDueScheduledJob(
+      envWithPlatform(platformRefusing(["listGrants"])),
+      {
+        job: "reconciliation",
+        cadence: "daily",
+        run: (scoped) => runReconciliation(scoped as never),
+      },
+    );
+    expect(outcome).toBe("failed");
+    const pending = await scheduledJobRow("reconciliation");
+    expect(pending.last_succeeded_period).toBeNull();
+    expect(pending.last_error_at).not.toBeNull();
+    expect(pending.next_attempt_at).not.toBeNull();
+    expect((await scheduledJobAlertRow("reconciliation"))?.active).toBe(1);
+
+    await setClock(addMinutes(BASE_CLOCK, 16));
+    await runScheduled("* * * * *");
+    const completed = await scheduledJobRow("reconciliation");
+    expect(completed.last_succeeded_period).not.toBeNull();
+    expect(completed.next_attempt_at).toBeNull();
+    expect((await scheduledJobAlertRow("reconciliation"))?.active).toBe(0);
+
+    const startedAt = completed.last_started_at;
+    await runScheduled("* * * * *");
+    expect((await scheduledJobRow("reconciliation")).last_started_at).toBe(startedAt);
+  });
+
+  it("R9-CRON1 watch failure leaves the period pending", async () => {
+    await seedDigestScenario();
+    const { runDueScheduledJob } = await import("../../src/scheduler/jobs.js");
+    const { runHourlyWatch } = await import("../../src/watch/hourly.js");
+
+    const outcome = await runDueScheduledJob(
+      envWithPlatform(platformRefusing(["feedConsumerHealth"])),
+      {
+        job: "hourly_watch",
+        cadence: "hourly",
+        run: (scoped) => runHourlyWatch(scoped as never),
+      },
+    );
+    expect(outcome).not.toBe("succeeded");
+    const pending = await scheduledJobRow("hourly_watch");
+    expect(pending.last_succeeded_period).toBeNull();
+    expect(pending.next_attempt_at).not.toBeNull();
+
+    await setClock(addMinutes(BASE_CLOCK, 16));
+    await runScheduled("* * * * *");
+    const completed = await scheduledJobRow("hourly_watch");
+    expect(completed.last_succeeded_period).not.toBeNull();
+    expect(completed.next_attempt_at).toBeNull();
+  });
+
+  it("R9-CRON1 abandoned lease after a crash is retried by the minute cron", async () => {
+    await seedDigestScenario();
+    const { runDueScheduledJob } = await import("../../src/scheduler/jobs.js");
+    clearCapturedEmails();
+
+    // The run claims the digest period and never finishes, as a crash or timeout would.
+    void runDueScheduledJob(env as never, {
+      job: "digest",
+      cadence: "daily",
+      run: () => new Promise<never>(() => {}),
+    });
+    await pauseMs(200);
+    const crashed = await scheduledJobRow("digest");
+    expect(crashed.lease_token).not.toBeNull();
+    // F1: the claim sets next_attempt_at to the lease expiry, so the abandoned lease is retryable.
+    expect(crashed.next_attempt_at).toBe(crashed.lease_until);
+
+    await setClock(addMinutes(BASE_CLOCK, 5));
+    await runScheduled("* * * * *");
+    expect(digestEmails()).toHaveLength(0);
+
+    await setClock(addMinutes(BASE_CLOCK, 16));
+    await runScheduled("* * * * *");
+    expect(digestEmails()).toHaveLength(1);
+    const done = await scheduledJobRow("digest");
+    expect(done.last_succeeded_period).not.toBeNull();
+    expect(done.lease_token).toBeNull();
+    expect(done.next_attempt_at).toBeNull();
+  });
+
+  it("R9-CRON1 a missed daily period is caught up by the minute cron once", async () => {
+    await seedDigestScenario();
+    clearCapturedEmails();
+
+    // No 06:00 run happened for today's period. The first minute cron after the gap catches it up.
+    await setClock(addMinutes(BASE_CLOCK, 60));
+    await runScheduled("* * * * *");
+    expect(digestEmails()).toHaveLength(1);
+    expect((await scheduledJobRow("digest")).last_succeeded_period).not.toBeNull();
+
+    clearCapturedEmails();
+    await runScheduled("* * * * *");
+    expect(digestEmails()).toHaveLength(0);
+  });
+
+  it("R9-CRON1 scheduled_job_failed alert is raised once per job and deduplicated", async () => {
+    await seedDigestScenario();
+    clearCapturedEmails();
+    // Every digest send fails. Alert emails still go through.
+    Object.assign(env.SEND_EMAIL, {
+      async send(message: { from: string; to: string; subject: string; text: string }): Promise<void> {
+        if (message.subject === "digest") {
+          throw new Error("digest send failure injected by test");
+        }
+        await sendEmailBinding.send(message);
+      },
+    });
+    const digestAlertEmails = (): number =>
+      getCapturedEmails().filter(
+        (message) => message.text === "scheduled_job_failed digest",
+      ).length;
+
+    await runScheduled("0 6 * * *");
+    expect(await scheduledJobAlertCount("digest")).toBe(1);
+    expect(await scheduledJobAlertRow("digest")).toMatchObject({ active: 1, unsent: 0 });
+    expect(digestAlertEmails()).toBe(1);
+
+    await setClock(addMinutes(BASE_CLOCK, 16));
+    await runScheduled("* * * * *");
+    expect(await scheduledJobAlertCount("digest")).toBe(1);
+    expect(digestAlertEmails()).toBe(1);
+
+    Object.assign(env.SEND_EMAIL, sendEmailBinding);
+    await setClock(addMinutes(BASE_CLOCK, 32));
+    await runScheduled("* * * * *");
+    expect(await scheduledJobAlertRow("digest")).toMatchObject({ active: 0, unsent: 0 });
+    expect(await scheduledJobAlertCount("digest")).toBe(1);
+  });
+
+  it("R9-CRON1 minute and digest producers ping their own configured stream URLs", async () => {
+    await seedDigestScenario();
+    clearCapturedHeartbeatFetches();
+
+    await runScheduled("0 6 * * *");
+    expect(getCapturedHeartbeatFetches()).toContain(env.HEARTBEAT_URL_DIGEST);
+    expect(getCapturedHeartbeatFetches()).not.toContain(env.HEARTBEAT_URL_MINUTE);
+
+    clearCapturedHeartbeatFetches();
+    await runScheduled("* * * * *");
+    expect(getCapturedHeartbeatFetches()).toContain(env.HEARTBEAT_URL_MINUTE);
+    expect(getCapturedHeartbeatFetches()).not.toContain(env.HEARTBEAT_URL_DIGEST);
+  });
+
+  it("rebuild throws reconciliation_incomplete when reconciliation is not succeeded", async () => {
+    await wipeAboD1();
+    await reapplyAboSchema();
+    const { rebuildAbo } = await import("../../src/rebuild.js");
+    // R9-CRON1 decision (d): an incomplete reconciliation is not a verified rebuild. The grant
+    // listing is refused, so the reconciliation that rebuild runs last returns failed.
+    await expect(
+      rebuildAbo(envWithPlatform(platformRefusing(["listGrants"])), {
+        providerTransactionReferences: [],
+      }),
+    ).rejects.toThrow(/reconciliation_incomplete/u);
+  });
+
+  it("R9-AO6 expired hmac-invalid objects are removed across R2 pages and resume after an interrupted run", async () => {
+    await setClock(BASE_CLOCK);
+    const dayAt = (offsetDays: number): string =>
+      addDays(BASE_CLOCK, offsetDays).slice(0, 10);
+    const expired = [-33, -32, -31].map(
+      (offset) => `hmac-invalid/${dayAt(offset)}/expired-${-offset}`,
+    );
+    const kept = [
+      `hmac-invalid/${dayAt(-30)}/cutoff-day`,
+      `hmac-invalid/${dayAt(-1)}/recent`,
+    ];
+    const outsidePrefix = "evidence/keep-raw-proof";
+    for (const key of [...expired, ...kept, outsidePrefix]) {
+      await env.R2.put(key, "body");
+    }
+    const { runHousekeeping } = await import("../../src/housekeeping/run.js");
+
+    const first = await runHousekeeping(env as never, {
+      r2PageLimit: 2,
+      deleteBudget: 2,
+    });
+    expect(first).toBe("deferred");
+    const second = await runHousekeeping(env as never, {
+      r2PageLimit: 2,
+      deleteBudget: 2,
+    });
+    expect(second).toBe("succeeded");
+
+    for (const key of expired) {
+      expect(await env.R2.head(key)).toBeNull();
+    }
+    for (const key of [...kept, outsidePrefix]) {
+      expect(await env.R2.head(key)).not.toBeNull();
+    }
+  });
+
+  it("R9-AO5 a valid fresh feed health result clears a previously active AL-15", async () => {
+    await seedBackendFeedPull(addMinutes(BASE_CLOCK, -6));
+    clearCapturedEmails();
+    await runScheduled("0 * * * *");
+    expect(emailsWithCode("AL-15").length).toBeGreaterThanOrEqual(1);
+
+    await seedBackendFeedPull(addMinutes(addHours(BASE_CLOCK, 1), -1));
+    await setClock(addHours(BASE_CLOCK, 1));
+    await runScheduled("0 * * * *");
+
+    const row = await env.DB.prepare(
+      `SELECT active, unsent FROM alert WHERE alert_key = 'AL-15:feed'`,
+    ).first<{ active: number; unsent: number }>();
+    expect(row?.active).toBe(0);
+    expect(row?.unsent).toBe(0);
+  });
+
+  it("E2E-P4.11-07 R9-CRON1 Digest send failure retried; daily digest stream ping sent", async () => {
     await seedDigestScenario();
     installDigestRetrySendBinding();
     clearCapturedEmails();
@@ -1558,7 +1922,8 @@ describe("P4.11 digest, watch, housekeeping, rebuild (H-XW)", () => {
 
     expect(digestSendAttempts).toBe(2);
     expect(digestEmails()).toHaveLength(1);
-    expect(getCapturedHeartbeatFetches()).toContain(env.HEARTBEAT_URL);
+    // R9-CRON1 / RT2 (was HEARTBEAT_URL): the digest success is the abo_daily_digest stream.
+    expect(getCapturedHeartbeatFetches()).toContain(env.HEARTBEAT_URL_DIGEST);
   });
 
   it("E2E-P4.11-03 FM-10: feed_consumer stale for 6 min → AL-15 hourly", async () => {
@@ -2813,12 +3178,14 @@ describe("P4.11 digest, watch, housekeeping, rebuild (H-XW)", () => {
     await expect(exportFacts(env)).rejects.toThrow(/abo_recovery_in_progress/u);
     expect((await billingFetch("/v1/offers")).status).toBe(503);
     const scheduledBeforeFence = await env.DB.prepare(
-      `SELECT last_run_at FROM scheduled_job_run WHERE job = '* * * * *'`,
-    ).first<{ last_run_at: string }>();
+      `SELECT last_started_at, last_succeeded_at FROM scheduled_job_state
+       WHERE job = 'minute_processing'`,
+    ).first<{ last_started_at: string; last_succeeded_at: string }>();
     await runScheduled("* * * * *");
     const scheduledAfterFence = await env.DB.prepare(
-      `SELECT last_run_at FROM scheduled_job_run WHERE job = '* * * * *'`,
-    ).first<{ last_run_at: string }>();
+      `SELECT last_started_at, last_succeeded_at FROM scheduled_job_state
+       WHERE job = 'minute_processing'`,
+    ).first<{ last_started_at: string; last_succeeded_at: string }>();
     expect(scheduledAfterFence).toEqual(scheduledBeforeFence);
 
     await setClock(new Date(Date.parse(BASE_CLOCK) + 6 * 60_000).toISOString());

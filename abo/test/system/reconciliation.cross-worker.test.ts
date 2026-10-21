@@ -44,6 +44,7 @@ import {
   pinIssuer,
   runScheduled,
   scriptPaymobInquiry,
+  setD1BatchThrows,
 } from "./harness";
 import { mintHxwVendorAccessJwt } from "./hxw-access-fixture";
 import {
@@ -79,6 +80,7 @@ const ORG_RC_06 = "a4100006-0006-4006-8006-000000000006";
 const ORG_RC_07 = "a4100007-0007-4007-8007-000000000007";
 const ORG_RC_08 = "a4100008-0008-4008-8008-000000000008";
 const ORG_RC_09 = "a4100009-0009-4009-8009-000000000009";
+const ORG_RC_10 = "a410000a-000a-400a-800a-00000000000a";
 
 const HPAY_TXN_ID = 99001;
 
@@ -1527,6 +1529,104 @@ describe("reconciliation cross-worker", () => {
     expect(await findingResolutionCount(finding!.finding_id)).toBe(1);
   });
 
+  it("R9-AO4 R9-AO5 repeated detection keeps one canonical finding, and resolution keeps its alert inactive", async () => {
+    const orgId = ORG_RC_02;
+    await setupReconciliationHarness();
+    const hp = await ensureActiveHpCredential();
+    await setupActivePlatformCoverage(orgId);
+    await drainPlatformDurableObjects();
+
+    clearCapturedEmails();
+    await runDailyReconciliation();
+    const finding = await findingRow("grant_without_payment");
+    expect(finding).not.toBeNull();
+
+    await setClock("2026-06-02T12:00:00.000Z");
+    await runDailyReconciliation();
+    expect(await findingCount("grant_without_payment")).toBe(1);
+
+    const resolve = await opsFetch(
+      `/ops/findings/${finding!.finding_id}/resolve`,
+      {
+        method: "POST",
+        headers: await opsHeaders(hp.accessJwt),
+        body: JSON.stringify({ note: "reviewed in harness" }),
+      },
+    );
+    expect(resolve.status).toBe(200);
+    const alertKey = `AL-10:${finding!.finding_id}`;
+    const resolved = await env.DB.prepare(
+      `SELECT active, unsent FROM alert WHERE alert_key = ?`,
+    )
+      .bind(alertKey)
+      .first<{ active: number; unsent: number }>();
+    expect(resolved?.active).toBe(0);
+    expect(resolved?.unsent).toBe(0);
+
+    await setClock("2026-06-03T12:00:00.000Z");
+    await runDailyReconciliation();
+    expect(await findingCount("grant_without_payment")).toBe(1);
+    const replayed = await env.DB.prepare(
+      `SELECT active FROM alert WHERE alert_key = ?`,
+    )
+      .bind(alertKey)
+      .first<{ active: number }>();
+    expect(replayed?.active).toBe(0);
+  });
+
+  it("R9-AO4 batch insert is atomic: a failure mid-batch leaves no partial findings", async () => {
+    const orgId = ORG_RC_02;
+    await setupReconciliationHarness();
+    await ensureActiveHpCredential();
+    await setupActivePlatformCoverage(orgId);
+    await drainPlatformDurableObjects();
+
+    clearCapturedEmails();
+    // The finding, its fact and its AL-10 row are the only D1 batch reconciliation writes, so
+    // the first batch is the finding batch. The harness can fail a batch before it runs but not
+    // partway through its statements. D1 applies a batch whole or not at all, so this checks
+    // that nothing from the failed batch survives.
+    setD1BatchThrows(true, 0);
+    try {
+      await runDailyReconciliation();
+    } finally {
+      setD1BatchThrows(false);
+    }
+    expect(await findingCount("grant_without_payment")).toBe(0);
+    const partial = await env.DB.prepare(
+      `SELECT
+         (SELECT COUNT(*) FROM finding_identity WHERE kind = 'grant_without_payment') AS identities,
+         (SELECT COUNT(*) FROM alert WHERE code = 'AL-10') AS alerts,
+         (SELECT COUNT(*) FROM fact_log WHERE "table" = 'finding') AS facts`,
+    ).first<{ identities: number; alerts: number; facts: number }>();
+    expect(partial).toEqual({ identities: 0, alerts: 0, facts: 0 });
+
+    // The failed daily run left its period pending with a retry mark, so the minute cron
+    // completes the detection once, with one finding and one alert.
+    const nowSec = await harnessClockNowSeconds();
+    await setClock(new Date(nowSec * 1000 + 16 * 60_000).toISOString());
+    await runScheduled("* * * * *");
+    expect(await findingCount("grant_without_payment")).toBe(1);
+    const alert = await env.DB.prepare(
+      `SELECT COUNT(*) AS count FROM alert WHERE code = 'AL-10'`,
+    ).first<{ count: number }>();
+    expect(alert?.count).toBe(1);
+  });
+
+  it("R9-AO4 an unresolved historical finding without an AL-10 row gets one on the daily run", async () => {
+    await env.DB.prepare(
+      `INSERT INTO finding (finding_id, kind, subject, detail, detected_at)
+       VALUES ('legacy-finding-ao4', 'legacy_probe', 'subject-ao4', '', '2026-05-30T00:00:00.000Z')`,
+    ).run();
+
+    await runDailyReconciliation();
+
+    const alert = await env.DB.prepare(
+      `SELECT active FROM alert WHERE alert_key = 'AL-10:legacy-finding-ao4'`,
+    ).first<{ active: number }>();
+    expect(alert?.active).toBe(1);
+  });
+
   it("R6-PT1: E2E-P4.10-03 complimentary and transfer grants without ABO authorisation raise findings", async () => {
     await setupReconciliationHarness();
     await ensureGrantTenantBinding(ORG_RC_03A);
@@ -1648,6 +1748,30 @@ describe("reconciliation cross-worker", () => {
     const reversalFinding = await findingRow("reversal_not_applied");
     expect(reversalFinding).not.toBeNull();
     expect(reversalFinding!.subject).toBe(reversalId);
+  });
+
+  it("R9-AO4 F4 coverage_not_found is a complete check, not a permanent failure", async () => {
+    const expectations = await setupReconciliationHarness();
+    const orgId = ORG_RC_10;
+    await paidCheckoutWithGrant(
+      orgId,
+      expectations,
+      94110,
+      "req-rc-10-no-binding",
+    );
+    await seedCoverageViewFromPlatform(orgId);
+    // Remove the active binding so the platform answers coverage_not_found
+    // (definitive no-binding), not coverage_unknown (DO unreachable).
+    await env.PLATFORM_DB.prepare(
+      `UPDATE tenant_binding SET status = 'held_for_transfer'
+       WHERE org_id = ? AND status = 'active'`,
+    )
+      .bind(orgId)
+      .run();
+
+    await runDailyReconciliation();
+
+    expect(await findingRow("feed_divergence")).toBeNull();
   });
 
   it("E2E-P4.10-09 tampered grant_outcome receipt raises receipt_mismatch and AL-10", async () => {

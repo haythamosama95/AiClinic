@@ -111,6 +111,7 @@ vi.mock("../src/alert/index", () => ({
   raiseAl12GrantFromOutbox: vi.fn(),
   raiseAl17FromOutbox: vi.fn(),
   raiseAl19FromOutbox: vi.fn(),
+  persistDurableAlertBody: vi.fn(),
   sendDailyAl18ForHeldBindings: vi.fn(),
 }));
 

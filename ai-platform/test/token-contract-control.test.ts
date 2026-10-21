@@ -6,6 +6,7 @@ import issuerKeyTenantBindingMigrationSql from "../migrations/20261003130000_iss
 import planVersionPaidGrantCoverageMigrationSql from "../migrations/20261003140000_plan_version_paid_grant_coverage.sql?raw";
 import usageTermMigrationSql from "../migrations/20261006120000_usage_term.sql?raw";
 import operatorCredentialMigrationSql from "../migrations/20261003120000_operator_credential_and_platform_alert.sql?raw";
+import rm31AlertDeliverySql from "../migrations/20261021130000_rm31_alert_delivery.sql?raw";
 import { applySqlStatements } from "./split-sql-statements";
 import { ConfigCache, createD1ConfigReader } from "../src/config-cache";
 import { IssuerTokenVerifier, type VerifyContext } from "../src/identity";
@@ -303,6 +304,7 @@ beforeAll(async () => {
   await applySql(env.DB, planVersionPaidGrantCoverageMigrationSql);
   await applySql(env.DB, usageTermMigrationSql);
   await applySql(env.DB, operatorCredentialMigrationSql);
+  await applySql(env.DB, rm31AlertDeliverySql);
 });
 
 beforeEach(async () => {

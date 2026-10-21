@@ -23,10 +23,16 @@ import { handleOpsShell } from "./ops/browser/shell.js";
 import { refreshCoverageView } from "./coverage/view.js";
 import { markExportLagIfDue, sendDueAlerts } from "./alert/index.js";
 import { checkR2BucketLock } from "./alert/lock.js";
-import { clockNowIso } from "./clock.js";
 import { isAboRecoveryActive } from "./recovery-fence.js";
 import { runDailyDigest } from "./digest/run.js";
 import { runHousekeeping } from "./housekeeping/run.js";
+import {
+  boundedErrorCode,
+  recordUngatedOutcome,
+  runDueScheduledJobs,
+  type Cadence,
+  type ScheduledJobDefinition,
+} from "./scheduler/jobs.js";
 import { runHourlyWatch } from "./watch/hourly.js";
 import {
   handleGetNotifyPaymob,
@@ -49,7 +55,11 @@ export interface Env {
   R2: R2Bucket;
   BILLING_HOST: string;
   OPS_HOST: string;
+  // R9-CRON1 / RT2: per-stream heartbeat URLs. HEARTBEAT_URL remains the fallback for a stream
+  // whose own URL is unset, so existing deployments keep working.
   HEARTBEAT_URL: string;
+  HEARTBEAT_URL_MINUTE?: string;
+  HEARTBEAT_URL_DIGEST?: string;
   ALERT_EMAIL_TO: string;
   ISSUER_ID: string;
   ISSUER_KEYS: string;
@@ -142,23 +152,129 @@ export interface Env {
 
 const SIGNING_KEY_GATE_ROW_ID = 1;
 
-async function stampScheduledJobRun(env: Env, job: string): Promise<void> {
+const MINUTE_PROCESSING_JOB = "minute_processing";
+
+// R9-CRON1: due daily, hourly and six-hourly jobs. Each cron runs its own cadence. The minute
+// cron claims any period that has not succeeded, so failed, deferred, abandoned and never
+// attempted periods (catch-up) run once. The digest success heartbeat is pinged only after
+// the digest is acknowledged as sent.
+const SCHEDULED_JOBS: ReadonlyArray<ScheduledJobDefinition<Env>> = [
+  {
+    job: "reversal_population_six_hour",
+    cadence: "six_hour",
+    run: async (env) => {
+      await enqueueSixHourReversalPopulation(env);
+      return "succeeded";
+    },
+  },
+  {
+    job: "reversal_population_hourly",
+    cadence: "hourly",
+    run: async (env) => {
+      await enqueueHourlyReversalPopulation(env);
+      return "succeeded";
+    },
+  },
+  {
+    job: "hourly_watch",
+    cadence: "hourly",
+    run: (env) => runHourlyWatch(env),
+  },
+  {
+    job: "r2_lock_check",
+    cadence: "daily",
+    run: (env) => checkR2BucketLock(env),
+  },
+  {
+    job: "reconciliation",
+    cadence: "daily",
+    run: (env) => runReconciliation(env),
+  },
+  {
+    job: "reversal_population_daily",
+    cadence: "daily",
+    run: async (env) => {
+      await enqueueDailyReversalPopulation(env);
+      return "succeeded";
+    },
+  },
+  {
+    job: "digest",
+    cadence: "daily",
+    run: (env) => runDailyDigest(env),
+    onSucceeded: (env) => pingHeartbeat(env, "digest"),
+  },
+  {
+    job: "housekeeping",
+    cadence: "daily",
+    run: (env) => runHousekeeping(env),
+  },
+];
+
+async function runCronJobs(
+  env: Env,
+  cadences: ReadonlyArray<Cadence>,
+): Promise<void> {
+  await runDueScheduledJobs(
+    env,
+    SCHEDULED_JOBS.filter((definition) => cadences.includes(definition.cadence)),
+  );
+}
+
+// R9-CRON1: each minute step is isolated. A failing step is recorded and the remaining steps
+// still run. The minute row records the last success and the last failure.
+async function runMinuteProcessing(env: Env): Promise<void> {
+  const steps: ReadonlyArray<readonly [string, () => Promise<unknown>]> = [
+    ["export_lag", () => markExportLagIfDue(env)],
+    ["fact_export", () => exportFacts(env)],
+    ["alert_dispatch", () => sendDueAlerts(env)],
+    ["coverage_view", () => refreshCoverageView(env)],
+    ["inquiry_budget", () => runMinuteInquiryBudget(env)],
+    ["transfer_steps", () => runDueTransferSteps(env)],
+    ["export_lag", () => markExportLagIfDue(env)],
+  ];
+  let failed = false;
+  for (const [name, step] of steps) {
+    try {
+      await step();
+    } catch (error) {
+      failed = true;
+      console.error(
+        JSON.stringify({
+          event: "minute_step_failed",
+          step: name,
+          code: boundedErrorCode(error),
+        }),
+      );
+    }
+  }
   try {
-    const nowIso = await clockNowIso(env);
-    await env.DB.prepare(
-      `INSERT INTO scheduled_job_run (job, last_run_at) VALUES (?, ?)
-       ON CONFLICT(job) DO UPDATE SET last_run_at = excluded.last_run_at`,
-    )
-      .bind(job, nowIso)
-      .run();
+    await recordUngatedOutcome(
+      env,
+      MINUTE_PROCESSING_JOB,
+      failed ? "failed" : "succeeded",
+      "minute_step_failed",
+    );
   } catch {
-    // Missing table is ignored.
+    // Recording must not block the minute heartbeat.
   }
 }
 
-async function pingHeartbeat(env: Env): Promise<void> {
+// R9-CRON1 / RT2: each stream pings its own configured URL. A stream whose URL is unset uses
+// HEARTBEAT_URL, so one stream's observation never stands in for another's configured URL
+// when both are set.
+function heartbeatUrlFor(env: Env, stream: "minute" | "digest"): string {
+  const own =
+    stream === "minute" ? env.HEARTBEAT_URL_MINUTE : env.HEARTBEAT_URL_DIGEST;
+  return typeof own === "string" && own.length > 0 ? own : env.HEARTBEAT_URL;
+}
+
+async function pingHeartbeat(
+  env: Env,
+  stream: "minute" | "digest",
+): Promise<void> {
   try {
-    await fetch(env.HEARTBEAT_URL);
+    await fetch(heartbeatUrlFor(env, stream));
   } catch {
     // Heartbeat failures must not block the cron.
   }
@@ -388,13 +504,8 @@ export default {
   ): Promise<void> {
     if (await isAboRecoveryActive(env)) return;
     const cron = controller.cron;
-    await stampScheduledJobRun(env, cron);
     if (cron === "0 */6 * * *") {
-      try {
-        await enqueueSixHourReversalPopulation(env);
-      } catch {
-        // Six-hour population failures must not block the cron.
-      }
+      await runCronJobs(env, ["six_hour"]);
       return;
     }
     if (cron === "0 * * * *") {
@@ -403,70 +514,28 @@ export default {
       } catch {
         // Signing-key check failures must not block the hourly cron.
       }
-      try {
-        await enqueueHourlyReversalPopulation(env);
-      } catch {
-        // Hourly population failures must not block the hourly cron.
-      }
-      try {
-        await runHourlyWatch(env);
-      } catch {
-        // Hourly watch failures must not block the hourly cron.
-      }
+      await runCronJobs(env, ["hourly"]);
       return;
     }
     await maybeRefreshSigningKeyCheck(env);
     if (cron === "* * * * *") {
-      await markExportLagIfDue(env);
-      try {
-        await exportFacts(env);
-      } catch {
-        // Export races must not block the minute cron.
-      }
-      await sendDueAlerts(env);
-      try {
-        await refreshCoverageView(env);
-      } catch {
-        // Platform feed failures must not block the minute cron.
-      }
-      try {
-        await runMinuteInquiryBudget(env);
-      } catch {
-        // Inquiry budget failures must not block the minute cron.
-      }
-      try {
-        await runDueTransferSteps(env);
-      } catch {
-        // Transfer saga failures must not block the minute cron.
-      }
-      await markExportLagIfDue(env);
-      await pingHeartbeat(env);
+      await runMinuteProcessing(env);
+      // Minute cron claims every due period that has not succeeded: failed, deferred,
+      // abandoned and never-attempted periods alike (catch-up). The period lease keeps each
+      // period to one completion.
+      await runCronJobs(env, ["six_hour", "hourly", "daily"]);
+      // F7(ii): the minute stream pings unconditionally, after the minute work. It is a cron
+      // liveness signal only. The digest success stream is pinged separately from the digest.
+      await pingHeartbeat(env, "minute");
       return;
     }
     if (cron === "0 6 * * *") {
-      await checkR2BucketLock(env);
+      await runCronJobs(env, ["daily"]);
       try {
-        await runReconciliation(env);
+        await sendDueAlerts(env);
       } catch {
-        // Reconciliation failures must not block the 06:00 cron.
+        // Alert dispatch failures are retried by the next minute cron.
       }
-      try {
-        await enqueueDailyReversalPopulation(env);
-      } catch {
-        // Daily population failures must not block the 06:00 cron.
-      }
-      try {
-        await runDailyDigest(env);
-      } catch {
-        // Digest failures must not block the 06:00 cron.
-      }
-      await pingHeartbeat(env);
-      try {
-        await runHousekeeping(env);
-      } catch {
-        // Housekeeping failures must not block the 06:00 cron.
-      }
-      await sendDueAlerts(env);
     }
   },
 };

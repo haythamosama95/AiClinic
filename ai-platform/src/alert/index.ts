@@ -1,5 +1,4 @@
-import { CHANNEL_VERSIONS } from "vendor-contracts";
-import { clockNowIso, clockNowMs } from "../clock";
+import { clockNowIso } from "../clock";
 import { sendPlatformEmail, type SendEmailEnv } from "./email";
 
 export type AlertEnv = SendEmailEnv & {
@@ -19,6 +18,14 @@ const FIVE_MINUTE_CRON = "*/5 * * * *";
 const ONE_DAY_MS = 24 * 60 * 60 * 1000;
 const AL20_ALERT_KEY = "AL-20";
 
+// R9-PAL1: a delivery attempt holds a lease for this long. A crashed owner
+// releases the row when the lease expires; a live owner acknowledges it first.
+const ALERT_LEASE_MS = 2 * 60 * 1000;
+// Failure backoff: the first retry runs on the next five-minute tick, then
+// 5, 10, 20, 40 and 60 minutes (capped).
+const ALERT_BACKOFF_BASE_MS = 5 * 60 * 1000;
+const ALERT_BACKOFF_CAP_MS = 60 * 60 * 1000;
+
 export type Al13Kind = "bootstrap" | "register" | "revoke";
 
 export type Al13Body = {
@@ -33,10 +40,6 @@ function al13AlertKey(credentialId: string, kind: Al13Kind): string {
   return `AL-13:${credentialId}:${kind}`;
 }
 
-function al13EmailText(body: Al13Body): string {
-  return JSON.stringify(body);
-}
-
 export type Al13IssuerKeyKind = "register" | "retire" | "revoke";
 
 export type Al13IssuerKeyBody = {
@@ -47,145 +50,6 @@ export type Al13IssuerKeyBody = {
 
 function al13IssuerKeyAlertKey(kid: string, kind: Al13IssuerKeyKind): string {
   return `AL-13:issuer_key:${kid}:${kind}`;
-}
-
-function al13IssuerKeyEmailText(body: Al13IssuerKeyBody): string {
-  return JSON.stringify(body);
-}
-
-function parseAl13IssuerKeyAlertKey(
-  alertKey: string,
-): { kid: string; kind: Al13IssuerKeyKind } | null {
-  const prefix = "AL-13:issuer_key:";
-  if (!alertKey.startsWith(prefix)) {
-    return null;
-  }
-  const rest = alertKey.slice(prefix.length);
-  const separator = rest.lastIndexOf(":");
-  if (separator <= 0) {
-    return null;
-  }
-  const kid = rest.slice(0, separator);
-  const kind = rest.slice(separator + 1);
-  if (kind !== "register" && kind !== "retire" && kind !== "revoke") {
-    return null;
-  }
-  return { kid, kind };
-}
-
-function issuerKeyHpMethod(kind: Al13IssuerKeyKind): string {
-  if (kind === "register") {
-    return "registerIssuerKey";
-  }
-  if (kind === "retire") {
-    return "retireIssuerKey";
-  }
-  return "revokeIssuerKey";
-}
-
-async function readIssuerKeyForAlert(
-  db: D1Database,
-  kid: string,
-): Promise<{
-  public_key: string;
-  not_before: string;
-  not_after: string;
-} | null> {
-  return db
-    .prepare(
-      `SELECT public_key, not_before, not_after FROM issuer_key WHERE kid = ?`,
-    )
-    .bind(kid)
-    .first<{ public_key: string; not_before: string; not_after: string }>();
-}
-
-async function rebuildAl13IssuerKeyOperation(
-  db: D1Database,
-  kid: string,
-  kind: Al13IssuerKeyKind,
-): Promise<Record<string, unknown> | null> {
-  const method = issuerKeyHpMethod(kind);
-  const audit = await db
-    .prepare(
-      `SELECT actor, assertion_sha256, recorded_at
-       FROM control_audit
-       WHERE action = ? AND target = ? AND assertion_sha256 IS NOT NULL
-       ORDER BY recorded_at DESC
-       LIMIT 1`,
-    )
-    .bind(method, kid)
-    .first<{
-      actor: string;
-      assertion_sha256: string;
-      recorded_at: string;
-    }>();
-  if (audit === null) {
-    return null;
-  }
-  const used = await db
-    .prepare(
-      `SELECT credential_id FROM assertion_used WHERE challenge_sha256 = ?`,
-    )
-    .bind(audit.assertion_sha256)
-    .first<{ credential_id: string }>();
-  const contractVersion = CHANNEL_VERSIONS.vendorEntrypoint;
-  const params: Record<string, unknown> = {
-    contract_version: contractVersion,
-    access_jwt: "",
-    kid,
-    signer_credential_id: used?.credential_id ?? "",
-  };
-  if (kind === "register") {
-    const row = await readIssuerKeyForAlert(db, kid);
-    if (row === null) {
-      return null;
-    }
-    params.public_key = row.public_key;
-    params.not_before = row.not_before;
-    params.not_after = row.not_after;
-  }
-  return {
-    op: method,
-    params,
-    actor_email: audit.actor,
-    issued_at: audit.recorded_at,
-    nonce: audit.assertion_sha256,
-    contract_version: contractVersion,
-  };
-}
-
-async function readPlatformAlertSendState(
-  db: D1Database,
-  alertKey: string,
-): Promise<"sent" | "unsent" | null> {
-  const row = await db
-    .prepare("SELECT send_state FROM platform_alert WHERE alert_key = ?")
-    .bind(alertKey)
-    .first<{ send_state: string }>();
-  if (row === null) {
-    return null;
-  }
-  return row.send_state === "sent" ? "sent" : "unsent";
-}
-
-async function sendAl13IssuerKeyBody(
-  env: AlertEnv,
-  body: Al13IssuerKeyBody,
-  alertKey: string,
-): Promise<void> {
-  const message = {
-    from: env.ALERT_EMAIL_TO,
-    to: env.ALERT_EMAIL_TO,
-    subject: "AL-13",
-    text: al13IssuerKeyEmailText(body),
-  };
-  try {
-    await sendPlatformEmail(env, message);
-    await markAlertSent(env.DB, alertKey);
-  } catch {
-    const nowIso = await clockNowIso(env);
-    await markAlertUnsent(env.DB, alertKey, nowIso);
-  }
 }
 
 export type Al13ServiceKeyKind = "register" | "revoke";
@@ -200,123 +64,433 @@ function al13ServiceKeyAlertKey(kid: string, kind: Al13ServiceKeyKind): string {
   return `AL-13:service_key:${kid}:${kind}`;
 }
 
-function al13ServiceKeyEmailText(body: Al13ServiceKeyBody): string {
-  return JSON.stringify(body);
+export type Al20Body = {
+  code: "AL-20";
+};
+
+/**
+ * Canonical JSON with sorted object keys. The stored body and any later
+ * identity check use this form, so the same accepted payload always compares
+ * equal regardless of property order.
+ */
+export function stableAlertJson(value: unknown): string {
+  return JSON.stringify(canonicalAlertValue(value));
 }
 
-function parseAl13ServiceKeyAlertKey(
-  alertKey: string,
-): { kid: string; kind: Al13ServiceKeyKind } | null {
-  const prefix = "AL-13:service_key:";
-  if (!alertKey.startsWith(prefix)) {
-    return null;
+function canonicalAlertValue(value: unknown): unknown {
+  if (Array.isArray(value)) {
+    return value.map(canonicalAlertValue);
   }
-  const rest = alertKey.slice(prefix.length);
-  const separator = rest.lastIndexOf(":");
-  if (separator <= 0) {
-    return null;
+  if (value !== null && typeof value === "object") {
+    const source = value as Record<string, unknown>;
+    const out: Record<string, unknown> = {};
+    for (const key of Object.keys(source).sort()) {
+      out[key] = canonicalAlertValue(source[key]);
+    }
+    return out;
   }
-  const kid = rest.slice(0, separator);
-  const kind = rest.slice(separator + 1);
-  if (kind !== "register" && kind !== "revoke") {
-    return null;
-  }
-  return { kid, kind };
+  return value;
 }
 
-function serviceKeyHpMethod(kind: Al13ServiceKeyKind): string {
-  return kind === "register" ? "registerServiceKey" : "revokeServiceKey";
-}
+export type DurableAlertInput = {
+  alertKey: string;
+  code: string;
+  body: Record<string, unknown>;
+  nowIso: string;
+  channelVersion?: number | null;
+  originEventId?: string | null;
+};
 
-async function readServiceKeyForAlert(
+/**
+ * Records the immutable original body of an alert before any send is
+ * attempted (R9-PAL1 step 1). A matching key with a different stored body is
+ * an explicit conflict and is never overwritten. A legacy row without a body
+ * is filled only from this exact accepted payload.
+ */
+export async function persistDurableAlertBody(
   db: D1Database,
-  kid: string,
-): Promise<{
-  public_key: string;
-  not_before: string;
-  not_after: string;
-} | null> {
+  input: DurableAlertInput,
+  options: { countRepeat: boolean },
+): Promise<void> {
+  const bodyJson = stableAlertJson(input.body);
+  await db
+    .prepare(
+      `INSERT INTO platform_alert
+         (alert_key, code, severity, first_at, last_at, count, send_state, next_send_at, resolved_at,
+          body_json, body_state, channel_version, origin_event_id, attempts)
+       VALUES (?, ?, 'high', ?, ?, 1, 'unsent', NULL, NULL, ?, 'stored', ?, ?, 0)
+       ON CONFLICT(alert_key) DO NOTHING`,
+    )
+    .bind(
+      input.alertKey,
+      input.code,
+      input.nowIso,
+      input.nowIso,
+      bodyJson,
+      input.channelVersion ?? null,
+      input.originEventId ?? null,
+    )
+    .run();
+
+  const row = await db
+    .prepare(
+      `SELECT code, body_json, body_state FROM platform_alert WHERE alert_key = ?`,
+    )
+    .bind(input.alertKey)
+    .first<{ code: string; body_json: string | null; body_state: string }>();
+  if (row === null) {
+    throw new Error(`alert_persist_missing:${input.alertKey}`);
+  }
+  if (row.code !== input.code) {
+    throw new Error(`alert_code_conflict:${input.alertKey}`);
+  }
+  if (row.body_state === "stored") {
+    if (row.body_json !== bodyJson) {
+      throw new Error(`alert_body_conflict:${input.alertKey}`);
+    }
+  } else {
+    await db
+      .prepare(
+        `UPDATE platform_alert
+         SET body_json = ?, body_state = 'stored',
+             channel_version = COALESCE(channel_version, ?),
+             origin_event_id = COALESCE(origin_event_id, ?)
+         WHERE alert_key = ? AND body_state = 'incomplete'`,
+      )
+      .bind(
+        bodyJson,
+        input.channelVersion ?? null,
+        input.originEventId ?? null,
+        input.alertKey,
+      )
+      .run();
+  }
+
+  if (options.countRepeat) {
+    await db
+      .prepare(
+        `UPDATE platform_alert SET last_at = ?, count = count + 1 WHERE alert_key = ?`,
+      )
+      .bind(input.nowIso, input.alertKey)
+      .run();
+  }
+}
+
+export function isAlertBodyConflictError(error: unknown): boolean {
+  return error instanceof Error
+    && (error.message.startsWith("alert_body_conflict:")
+      || error.message.startsWith("alert_code_conflict:"));
+}
+
+/**
+ * Records a conflicting alert body for the operator (R9-PAL1). The record is
+ * its own durable row with a fixed body, so repeated conflicts neither resend
+ * nor overwrite it. The conflicting body itself is never stored here.
+ */
+async function recordAlertBodyConflict(
+  db: D1Database,
+  input: DurableAlertInput,
+  error: unknown,
+): Promise<void> {
+  const message = error instanceof Error ? error.message : String(error);
+  console.log(
+    JSON.stringify({
+      code: "alert_body_conflict",
+      alert_key: input.alertKey,
+      alert_code: input.code,
+      error: message,
+    }),
+  );
+  await persistDurableAlertBody(
+    db,
+    {
+      alertKey: `alert_body_conflict:${input.alertKey}`,
+      code: "alert_body_conflict",
+      body: {
+        code: "alert_body_conflict",
+        alert_key: input.alertKey,
+        alert_code: input.code,
+      },
+      nowIso: input.nowIso,
+    },
+    { countRepeat: false },
+  );
+}
+
+/**
+ * Persists an alert body for a mutation or outbox row that has already
+ * committed (R9-PAL1). A body conflict must not turn a committed change into
+ * an error: it is logged and recorded for the operator, and `false` tells the
+ * caller to skip delivery. Non-conflict failures still throw.
+ */
+export async function persistCommittedAlertBody(
+  db: D1Database,
+  input: DurableAlertInput,
+  options: { countRepeat: boolean },
+): Promise<boolean> {
+  try {
+    await persistDurableAlertBody(db, input, options);
+    return true;
+  } catch (error) {
+    if (!isAlertBodyConflictError(error)) {
+      throw error;
+    }
+    await recordAlertBodyConflict(db, input, error);
+    return false;
+  }
+}
+
+/**
+ * Kill-switch AL-19 identity (R9-PAL1). Each arm or disarm transition has its
+ * own key, so arm, disarm and arm again each produce a distinct durable alert.
+ */
+export type KillSwitchTransition = {
+  action: "arm" | "disarm";
+  changed_at: string;
+};
+
+export function al19KillSwitchAlertKey(
+  scope: string,
+  target: string,
+  transition: KillSwitchTransition,
+): string {
+  return `AL-19:kill_switch:${transition.action}:${scope}:${target}:${transition.changed_at}`;
+}
+
+/**
+ * Builds the AL-19 body insert so it commits in the same D1 batch as the
+ * kill-switch transition (R9-PAL1 step 1). It runs only when the preceding
+ * audit row was written (changes() chain). The post-commit
+ * persistCommittedAlertBody call still verifies the stored body, handles
+ * conflicts, and delivers.
+ */
+export function buildAl19KillSwitchAlertStatement(
+  db: D1Database,
+  input: {
+    scope: string;
+    target: string;
+    transition: KillSwitchTransition;
+    nowIso: string;
+  },
+): D1PreparedStatement {
+  const body = {
+    code: "AL-19",
+    action: input.transition.action,
+    scope: input.scope,
+    target: input.target,
+    changed_at: input.transition.changed_at,
+  };
   return db
     .prepare(
-      `SELECT public_key, not_before, not_after FROM service_key WHERE kid = ?`,
+      `INSERT INTO platform_alert
+         (alert_key, code, severity, first_at, last_at, count, send_state, next_send_at, resolved_at,
+          body_json, body_state, channel_version, origin_event_id, attempts)
+       SELECT ?, 'AL-19', 'high', ?, ?, 1, 'unsent', NULL, NULL, ?, 'stored', NULL, NULL, 0
+       WHERE changes() > 0
+       ON CONFLICT(alert_key) DO NOTHING`,
     )
-    .bind(kid)
-    .first<{ public_key: string; not_before: string; not_after: string }>();
+    .bind(
+      al19KillSwitchAlertKey(input.scope, input.target, input.transition),
+      input.nowIso,
+      input.nowIso,
+      stableAlertJson(body),
+    );
 }
 
-async function rebuildAl13ServiceKeyOperation(
+/**
+ * Legacy rows written before R9-PAL1 have no recoverable body. They stay
+ * unsent and are listed here so the operator can adjudicate them. Nothing
+ * sends them automatically.
+ */
+export async function listIncompleteUnsentPlatformAlerts(
   db: D1Database,
-  kid: string,
-  kind: Al13ServiceKeyKind,
-): Promise<Record<string, unknown> | null> {
-  const method = serviceKeyHpMethod(kind);
-  const audit = await db
+): Promise<Array<{ alert_key: string; code: string; first_at: string; last_at: string; count: number }>> {
+  const rows = await db
     .prepare(
-      `SELECT actor, assertion_sha256, recorded_at
-       FROM control_audit
-       WHERE action = ? AND target = ? AND assertion_sha256 IS NOT NULL
-       ORDER BY recorded_at DESC
-       LIMIT 1`,
+      `SELECT alert_key, code, first_at, last_at, count FROM platform_alert
+       WHERE body_state = 'incomplete' AND send_state = 'unsent'
+       ORDER BY first_at ASC`,
     )
-    .bind(method, kid)
-    .first<{
-      actor: string;
-      assertion_sha256: string;
-      recorded_at: string;
-    }>();
-  if (audit === null) {
-    return null;
-  }
-  const used = await db
-    .prepare(
-      `SELECT credential_id FROM assertion_used WHERE challenge_sha256 = ?`,
-    )
-    .bind(audit.assertion_sha256)
-    .first<{ credential_id: string }>();
-  const contractVersion = CHANNEL_VERSIONS.vendorEntrypoint;
-  const params: Record<string, unknown> = {
-    contract_version: contractVersion,
-    access_jwt: "",
-    kid,
-    signer_credential_id: used?.credential_id ?? "",
-  };
-  if (kind === "register") {
-    const row = await readServiceKeyForAlert(db, kid);
-    if (row === null) {
-      return null;
-    }
-    params.public_key = row.public_key;
-    params.not_before = row.not_before;
-    params.not_after = row.not_after;
-  }
-  return {
-    op: method,
-    params,
-    actor_email: audit.actor,
-    issued_at: audit.recorded_at,
-    nonce: audit.assertion_sha256,
-    contract_version: contractVersion,
-  };
+    .all<{ alert_key: string; code: string; first_at: string; last_at: string; count: number }>();
+  return rows.results ?? [];
 }
 
-async function sendAl13ServiceKeyBody(
-  env: AlertEnv,
-  body: Al13ServiceKeyBody,
+/**
+ * Repeat scheduling for a recurring condition: reopens a resolved or sent row
+ * so the leased dispatcher sends it again. One-shot events never call this.
+ */
+async function reopenAlertForRepeat(
+  db: D1Database,
   alertKey: string,
+  nowIso: string,
 ): Promise<void> {
-  const message = {
-    from: env.ALERT_EMAIL_TO,
-    to: env.ALERT_EMAIL_TO,
-    subject: "AL-13",
-    text: al13ServiceKeyEmailText(body),
-  };
-  try {
-    await sendPlatformEmail(env, message);
-    await markAlertSent(env.DB, alertKey);
-  } catch {
-    const nowIso = await clockNowIso(env);
-    await markAlertUnsent(env.DB, alertKey, nowIso);
+  await db
+    .prepare(
+      `UPDATE platform_alert
+       SET send_state = 'unsent', next_send_at = NULL, resolved_at = NULL,
+           last_at = ?, count = count + 1
+       WHERE alert_key = ?`,
+    )
+    .bind(nowIso, alertKey)
+    .run();
+}
+
+function nextSendAfterSuccess(code: string, nowIso: string): string | null {
+  const nowMs = Date.parse(nowIso);
+  if (code === "AL-17") {
+    return new Date(nowMs + ONE_HOUR_MS).toISOString();
   }
+  if (code === "AL-20") {
+    return new Date(nowMs + ONE_DAY_MS).toISOString();
+  }
+  return null;
+}
+
+/**
+ * Backoff after the failure that makes `failures` total failures. The first
+ * failure retries on the next tick; later ones grow to a bounded cap.
+ */
+function nextSendAfterFailure(failures: number, nowIso: string): string {
+  const delayMs = failures <= 1
+    ? 0
+    : Math.min(ALERT_BACKOFF_BASE_MS * 2 ** Math.min(failures - 2, 16), ALERT_BACKOFF_CAP_MS);
+  return new Date(Date.parse(nowIso) + delayMs).toISOString();
+}
+
+/**
+ * Single leased delivery path for every supported code (R9-PAL1 step 2).
+ * Only the lease owner sends. Email is at-least-once across a lost
+ * acknowledgement; a successfully acknowledged one-shot is never sent again.
+ */
+export async function deliverDurableAlert(
+  env: CoverageAlertEnv,
+  alertKey: string,
+): Promise<boolean> {
+  const nowIso = await clockNowIso(env);
+  const leaseToken = crypto.randomUUID();
+  const leaseExpiresAt = new Date(Date.parse(nowIso) + ALERT_LEASE_MS).toISOString();
+  const claimed = await env.DB.prepare(
+    `UPDATE platform_alert
+     SET lease_token = ?, lease_expires_at = ?
+     WHERE alert_key = ? AND send_state = 'unsent' AND body_state = 'stored'
+       AND resolved_at IS NULL
+       AND (next_send_at IS NULL OR next_send_at <= ?)
+       AND (lease_expires_at IS NULL OR lease_expires_at <= ?)`,
+  )
+    .bind(leaseToken, leaseExpiresAt, alertKey, nowIso, nowIso)
+    .run();
+  if ((claimed.meta?.changes ?? 0) !== 1) {
+    return false;
+  }
+
+  const row = await env.DB.prepare(
+    `SELECT code, body_json, attempts FROM platform_alert
+     WHERE alert_key = ? AND lease_token = ?`,
+  )
+    .bind(alertKey, leaseToken)
+    .first<{ code: string; body_json: string; attempts: number }>();
+  if (row === null) {
+    return false;
+  }
+
+  try {
+    await sendPlatformEmail(env, {
+      from: env.ALERT_EMAIL_TO,
+      to: env.ALERT_EMAIL_TO,
+      subject: row.code,
+      text: row.body_json,
+    });
+  } catch {
+    await env.DB.prepare(
+      `UPDATE platform_alert
+       SET send_state = 'unsent', next_send_at = ?, attempts = attempts + 1,
+           lease_token = NULL, lease_expires_at = NULL
+       WHERE alert_key = ? AND lease_token = ?`,
+    )
+      .bind(nextSendAfterFailure(row.attempts + 1, nowIso), alertKey, leaseToken)
+      .run();
+    return false;
+  }
+
+  await env.DB.prepare(
+    `UPDATE platform_alert
+     SET send_state = 'sent', next_send_at = ?, attempts = 0,
+         lease_token = NULL, lease_expires_at = NULL
+     WHERE alert_key = ? AND lease_token = ?`,
+  )
+    .bind(nextSendAfterSuccess(row.code, nowIso), alertKey, leaseToken)
+    .run();
+  return true;
+}
+
+export async function raiseAl13(
+  env: AlertEnv,
+  input: {
+    credentialId: string;
+    operatorEmail: string;
+    kind: Al13Kind;
+    operation: Record<string, unknown> | null;
+  },
+): Promise<void> {
+  const nowIso = await clockNowIso(env);
+  const alertKey = al13AlertKey(input.credentialId, input.kind);
+  const body: Al13Body = {
+    code: "AL-13",
+    credential_id: input.credentialId,
+    operator_email: input.operatorEmail,
+    kind: input.kind,
+    operation: input.operation,
+  };
+  const persisted = await persistCommittedAlertBody(
+    env.DB,
+    { alertKey, code: "AL-13", body, nowIso },
+    { countRepeat: true },
+  );
+  if (!persisted) {
+    return;
+  }
+  await deliverDurableAlert(env, alertKey);
+}
+
+export async function raiseAl13Bootstrap(
+  env: AlertEnv,
+  input: {
+    credentialId: string;
+    operatorEmail: string;
+  },
+): Promise<void> {
+  await raiseAl13(env, {
+    credentialId: input.credentialId,
+    operatorEmail: input.operatorEmail,
+    kind: "bootstrap",
+    operation: null,
+  });
+}
+
+export async function insertDoRebuildMismatchAlert(
+  db: D1Database,
+  installationId: string,
+  nowIso: string,
+  reason?: string,
+): Promise<void> {
+  const alertKey = reason === undefined
+    ? `do-rebuild:${installationId}`
+    : `do-rebuild:${installationId}:${reason}`;
+  // The five-minute dispatcher sends this row; the rebuild path has no mail binding.
+  await persistDurableAlertBody(
+    db,
+    {
+      alertKey,
+      code: "do_rebuild_mismatch",
+      body: {
+        code: "do_rebuild_mismatch",
+        installation_id: installationId,
+        reason: reason ?? null,
+      },
+      nowIso,
+    },
+    { countRepeat: true },
+  );
 }
 
 export async function raiseAl13ServiceKey(
@@ -328,22 +502,21 @@ export async function raiseAl13ServiceKey(
   },
 ): Promise<void> {
   const alertKey = al13ServiceKeyAlertKey(input.kid, input.kind);
-  const priorSendState = await readPlatformAlertSendState(env.DB, alertKey);
-  if (priorSendState === "sent") {
-    const nowIso = await clockNowIso(env);
-    await upsertPlatformAlert(env.DB, alertKey, "AL-13", nowIso);
-    return;
-  }
-
   const nowIso = await clockNowIso(env);
-  await upsertPlatformAlert(env.DB, alertKey, "AL-13", nowIso);
-
   const body: Al13ServiceKeyBody = {
     code: "AL-13",
     kid: input.kid,
     operation: input.operation,
   };
-  await sendAl13ServiceKeyBody(env, body, alertKey);
+  const persisted = await persistCommittedAlertBody(
+    env.DB,
+    { alertKey, code: "AL-13", body, nowIso },
+    { countRepeat: true },
+  );
+  if (!persisted) {
+    return;
+  }
+  await deliverDurableAlert(env, alertKey);
 }
 
 export async function raiseAl13IssuerKey(
@@ -355,68 +528,33 @@ export async function raiseAl13IssuerKey(
   },
 ): Promise<void> {
   const alertKey = al13IssuerKeyAlertKey(input.kid, input.kind);
-  const priorSendState = await readPlatformAlertSendState(env.DB, alertKey);
-  if (priorSendState === "sent") {
-    const nowIso = await clockNowIso(env);
-    await upsertPlatformAlert(env.DB, alertKey, "AL-13", nowIso);
-    return;
-  }
-
   const nowIso = await clockNowIso(env);
-  await upsertPlatformAlert(env.DB, alertKey, "AL-13", nowIso);
-
   const body: Al13IssuerKeyBody = {
     code: "AL-13",
     kid: input.kid,
     operation: input.operation,
   };
-  await sendAl13IssuerKeyBody(env, body, alertKey);
-}
-
-export type Al20Body = {
-  code: "AL-20";
-};
-
-function al20EmailText(): string {
-  return JSON.stringify({ code: "AL-20" } satisfies Al20Body);
-}
-
-async function markAl20AlertSent(
-  db: D1Database,
-  nextSendAtIso: string,
-): Promise<void> {
-  await db
-    .prepare(
-      `UPDATE platform_alert
-       SET send_state = 'sent', next_send_at = ?
-       WHERE alert_key = ?`,
-    )
-    .bind(nextSendAtIso, AL20_ALERT_KEY)
-    .run();
-}
-
-async function sendAl20Body(env: AlertEnv): Promise<void> {
-  const message = {
-    from: env.ALERT_EMAIL_TO,
-    to: env.ALERT_EMAIL_TO,
-    subject: "AL-20",
-    text: al20EmailText(),
-  };
-  try {
-    await sendPlatformEmail(env, message);
-    const nowMs = await clockNowMs(env);
-    const nextSendAt = new Date(nowMs + ONE_DAY_MS).toISOString();
-    await markAl20AlertSent(env.DB, nextSendAt);
-  } catch {
-    const nowIso = await clockNowIso(env);
-    await markAlertUnsent(env.DB, AL20_ALERT_KEY, nowIso);
+  const persisted = await persistCommittedAlertBody(
+    env.DB,
+    { alertKey, code: "AL-13", body, nowIso },
+    { countRepeat: true },
+  );
+  if (!persisted) {
+    return;
   }
+  await deliverDurableAlert(env, alertKey);
 }
 
 export async function raiseAl20(env: AlertEnv): Promise<void> {
   const nowIso = await clockNowIso(env);
-  await upsertPlatformAlert(env.DB, AL20_ALERT_KEY, "AL-20", nowIso);
-  await sendAl20Body(env);
+  const body: Al20Body = { code: "AL-20" };
+  await persistDurableAlertBody(
+    env.DB,
+    { alertKey: AL20_ALERT_KEY, code: "AL-20", body, nowIso },
+    { countRepeat: false },
+  );
+  await reopenAlertForRepeat(env.DB, AL20_ALERT_KEY, nowIso);
+  await deliverDurableAlert(env, AL20_ALERT_KEY);
 }
 
 async function countEpochOneBindingsLast24Hours(
@@ -458,7 +596,8 @@ async function retryDueAl20Alerts(env: AlertEnv): Promise<void> {
 
   const count = await countEpochOneBindingsLast24Hours(env.DB, nowIso);
   if (count > 50) {
-    await sendAl20Body(env);
+    await reopenAlertForRepeat(env.DB, AL20_ALERT_KEY, nowIso);
+    await deliverDurableAlert(env, AL20_ALERT_KEY);
     return;
   }
 
@@ -469,458 +608,18 @@ async function retryDueAl20Alerts(env: AlertEnv): Promise<void> {
     .run();
 }
 
-async function upsertPlatformAlert(
-  db: D1Database,
-  alertKey: string,
-  code: string,
-  nowIso: string,
-): Promise<void> {
-  const existing = await db
-    .prepare("SELECT alert_key FROM platform_alert WHERE alert_key = ?")
-    .bind(alertKey)
-    .first<{ alert_key: string }>();
-
-  if (existing) {
-    await db
-      .prepare(
-        `UPDATE platform_alert
-         SET last_at = ?, count = count + 1
-         WHERE alert_key = ?`,
-      )
-      .bind(nowIso, alertKey)
-      .run();
-    return;
-  }
-
-  await db
-    .prepare(
-      `INSERT INTO platform_alert
-         (alert_key, code, severity, first_at, last_at, count, send_state, next_send_at, resolved_at)
-       VALUES (?, ?, 'high', ?, ?, 1, 'unsent', NULL, NULL)`,
-    )
-    .bind(alertKey, code, nowIso, nowIso)
-    .run();
-}
-
-async function markAlertSent(db: D1Database, alertKey: string): Promise<void> {
-  await db
-    .prepare(
-      `UPDATE platform_alert SET send_state = 'sent', next_send_at = NULL WHERE alert_key = ?`,
-    )
-    .bind(alertKey)
-    .run();
-}
-
-async function markAlertUnsent(
-  db: D1Database,
-  alertKey: string,
-  nowIso: string,
-): Promise<void> {
-  await db
-    .prepare(
-      `UPDATE platform_alert SET send_state = 'unsent', next_send_at = ? WHERE alert_key = ?`,
-    )
-    .bind(nowIso, alertKey)
-    .run();
-}
-
-export async function raiseAl13(
-  env: AlertEnv,
-  input: {
-    credentialId: string;
-    operatorEmail: string;
-    kind: Al13Kind;
-    operation: Record<string, unknown> | null;
-  },
-): Promise<void> {
-  const nowIso = await clockNowIso(env);
-  const alertKey = al13AlertKey(input.credentialId, input.kind);
-  await upsertPlatformAlert(env.DB, alertKey, "AL-13", nowIso);
-
-  const body: Al13Body = {
-    code: "AL-13",
-    credential_id: input.credentialId,
-    operator_email: input.operatorEmail,
-    kind: input.kind,
-    operation: input.operation,
-  };
-  const message = {
-    from: env.ALERT_EMAIL_TO,
-    to: env.ALERT_EMAIL_TO,
-    subject: "AL-13",
-    text: al13EmailText(body),
-  };
-
-  try {
-    await sendPlatformEmail(env, message);
-    await markAlertSent(env.DB, alertKey);
-  } catch {
-    await markAlertUnsent(env.DB, alertKey, nowIso);
-  }
-}
-
-export async function raiseAl13Bootstrap(
-  env: AlertEnv,
-  input: {
-    credentialId: string;
-    operatorEmail: string;
-  },
-): Promise<void> {
-  await raiseAl13(env, {
-    credentialId: input.credentialId,
-    operatorEmail: input.operatorEmail,
-    kind: "bootstrap",
-    operation: null,
-  });
-}
-
-export async function insertDoRebuildMismatchAlert(
-  db: D1Database,
-  installationId: string,
-  nowIso: string,
-  reason?: string,
-): Promise<void> {
-  const alertKey = reason === undefined
-    ? `do-rebuild:${installationId}`
-    : `do-rebuild:${installationId}:${reason}`;
-  await upsertPlatformAlert(db, alertKey, "do_rebuild_mismatch", nowIso);
-}
-
-function parseAl13AlertKey(
-  alertKey: string,
-): { credentialId: string; kind: Al13Kind } | null {
-  const prefix = "AL-13:";
-  if (!alertKey.startsWith(prefix)) {
-    return null;
-  }
-  const rest = alertKey.slice(prefix.length);
-  const separator = rest.lastIndexOf(":");
-  if (separator <= 0) {
-    return null;
-  }
-  const credentialId = rest.slice(0, separator);
-  const kind = rest.slice(separator + 1);
-  if (kind !== "bootstrap" && kind !== "register" && kind !== "revoke") {
-    return null;
-  }
-  return { credentialId, kind };
-}
-
-async function readOperatorCredentialForAlert(
-  db: D1Database,
-  credentialId: string,
-): Promise<{ operator_email: string; public_key_cose: string; alg: string } | null> {
-  return db
-    .prepare(
-      `SELECT operator_email, public_key_cose, alg
-       FROM operator_credential WHERE credential_id = ?`,
-    )
-    .bind(credentialId)
-    .first<{ operator_email: string; public_key_cose: string; alg: string }>();
-}
-
-async function rebuildAl13Operation(
-  db: D1Database,
-  credentialId: string,
-  kind: Al13Kind,
-): Promise<Record<string, unknown> | null> {
-  if (kind === "bootstrap") {
-    return null;
-  }
-  const method =
-    kind === "register"
-      ? "registerOperatorCredential"
-      : "revokeOperatorCredential";
-  const audit = await db
-    .prepare(
-      `SELECT actor, assertion_sha256, recorded_at
-       FROM control_audit
-       WHERE action = ? AND target = ? AND assertion_sha256 IS NOT NULL
-       ORDER BY recorded_at DESC
-       LIMIT 1`,
-    )
-    .bind(method, credentialId)
-    .first<{
-      actor: string;
-      assertion_sha256: string;
-      recorded_at: string;
-    }>();
-  if (audit === null) {
-    return null;
-  }
-  const used = await db
-    .prepare(
-      `SELECT credential_id FROM assertion_used WHERE challenge_sha256 = ?`,
-    )
-    .bind(audit.assertion_sha256)
-    .first<{ credential_id: string }>();
-  const contractVersion = CHANNEL_VERSIONS.vendorEntrypoint;
-  const params: Record<string, unknown> = {
-    contract_version: contractVersion,
-    access_jwt: "",
-    credential_id: credentialId,
-    signer_credential_id: used?.credential_id ?? "",
-  };
-  if (kind === "register") {
-    const row = await readOperatorCredentialForAlert(db, credentialId);
-    if (row === null) {
-      return null;
-    }
-    params.attestation = {
-      alg: row.alg,
-      public_key: row.public_key_cose,
-    };
-  }
-  return {
-    op: method,
-    params,
-    actor_email: audit.actor,
-    issued_at: audit.recorded_at,
-    nonce: audit.assertion_sha256,
-    contract_version: contractVersion,
-  };
-}
-
-async function sendScheduledJobFailedBody(
-  env: AlertEnv,
-  alertKey: string,
-  job: string,
-): Promise<void> {
-  const message = {
-    from: env.ALERT_EMAIL_TO,
-    to: env.ALERT_EMAIL_TO,
-    subject: "scheduled_job_failed",
-    text: JSON.stringify({
-      code: "scheduled_job_failed",
-      cron: FIVE_MINUTE_CRON,
-      job,
-    }),
-  };
-  try {
-    await sendPlatformEmail(env, message);
-    await markAlertSent(env.DB, alertKey);
-  } catch {
-    const nowIso = await clockNowIso(env);
-    await markAlertUnsent(env.DB, alertKey, nowIso);
-  }
-}
-
-async function sendAl13Body(
-  env: AlertEnv,
-  body: Al13Body,
-  alertKey: string,
-): Promise<void> {
-  const message = {
-    from: env.ALERT_EMAIL_TO,
-    to: env.ALERT_EMAIL_TO,
-    subject: "AL-13",
-    text: al13EmailText(body),
-  };
-  try {
-    await sendPlatformEmail(env, message);
-    await markAlertSent(env.DB, alertKey);
-  } catch {
-    const nowIso = await clockNowIso(env);
-    await markAlertUnsent(env.DB, alertKey, nowIso);
-  }
-}
-
-export async function retryUnsentPlatformAlerts(env: AlertEnv): Promise<void> {
-  const rows = await env.DB.prepare(
-    `SELECT alert_key, code FROM platform_alert WHERE send_state = 'unsent'`,
-  ).all<{ alert_key: string; code: string }>();
-
-  for (const row of rows.results ?? []) {
-    if (row.code === "scheduled_job_failed") {
-      const prefix = "scheduled_job_failed:";
-      const job = row.alert_key.startsWith(prefix)
-        ? row.alert_key.slice(prefix.length)
-        : "";
-      await sendScheduledJobFailedBody(env, row.alert_key, job);
-      continue;
-    }
-    if (row.code === "AL-20") {
-      await sendAl20Body(env);
-      continue;
-    }
-    if (row.code === "AL-11") {
-      continue;
-    }
-    if (row.code === "AL-17") {
-      const nowMs = await clockNowMs(env);
-      const nextSendAt = new Date(nowMs + ONE_HOUR_MS).toISOString();
-      const body =
-        row.alert_key === "AL-17:global"
-          ? { code: "AL-17" }
-          : {
-              code: "AL-17",
-              org_id: row.alert_key.slice("AL-17:clinic:".length),
-            };
-      await sendAl17Body(env, body, row.alert_key, nextSendAt);
-      continue;
-    }
-    if (row.code !== "AL-13") {
-      continue;
-    }
-    const issuerParsed = parseAl13IssuerKeyAlertKey(row.alert_key);
-    if (issuerParsed !== null) {
-      const operation = await rebuildAl13IssuerKeyOperation(
-        env.DB,
-        issuerParsed.kid,
-        issuerParsed.kind,
-      );
-      const body: Al13IssuerKeyBody = {
-        code: "AL-13",
-        kid: issuerParsed.kid,
-        operation,
-      };
-      await sendAl13IssuerKeyBody(env, body, row.alert_key);
-      continue;
-    }
-    const serviceKeyParsed = parseAl13ServiceKeyAlertKey(row.alert_key);
-    if (serviceKeyParsed !== null) {
-      const operation = await rebuildAl13ServiceKeyOperation(
-        env.DB,
-        serviceKeyParsed.kid,
-        serviceKeyParsed.kind,
-      );
-      const body: Al13ServiceKeyBody = {
-        code: "AL-13",
-        kid: serviceKeyParsed.kid,
-        operation,
-      };
-      await sendAl13ServiceKeyBody(env, body, row.alert_key);
-      continue;
-    }
-    const parsed = parseAl13AlertKey(row.alert_key);
-    if (parsed === null) {
-      continue;
-    }
-    const credential = await readOperatorCredentialForAlert(
-      env.DB,
-      parsed.credentialId,
-    );
-    if (credential === null) {
-      continue;
-    }
-    const operation = await rebuildAl13Operation(
-      env.DB,
-      parsed.credentialId,
-      parsed.kind,
-    );
-    const body: Al13Body = {
-      code: "AL-13",
-      credential_id: parsed.credentialId,
-      operator_email: credential.operator_email,
-      kind: parsed.kind,
-      operation,
-    };
-    await sendAl13Body(env, body, row.alert_key);
-  }
-}
-
-export async function pingPlatformHeartbeat(env: AlertEnv): Promise<void> {
-  const response = await fetch(env.HEARTBEAT_URL);
-  if (!response.ok) {
-    throw new Error(`heartbeat fetch failed: ${response.status}`);
-  }
-}
-
-async function insertScheduledJobFailedAlert(
-  env: AlertEnv,
-  job: string,
-): Promise<void> {
-  const nowIso = await clockNowIso(env);
-  const alertKey = `scheduled_job_failed:${job}`;
-  await upsertPlatformAlert(env.DB, alertKey, "scheduled_job_failed", nowIso);
-}
-
-function logScheduledJobFailure(
-  cron: string,
-  job: string,
-  error: unknown,
-): void {
-  const message = error instanceof Error ? error.message : String(error);
-  console.log(
-    JSON.stringify({
-      cron,
-      job,
-      error: message,
-      code: "scheduled_job_failed",
-    }),
-  );
-}
-
-async function runFiveMinuteJob(
-  env: AlertEnv,
-  job: "alert_retry" | "heartbeat",
-  run: () => Promise<void>,
-): Promise<void> {
-  try {
-    await run();
-  } catch (error) {
-    logScheduledJobFailure(FIVE_MINUTE_CRON, job, error);
-    await insertScheduledJobFailedAlert(env, job);
-  }
-}
-
-async function sendAl11GrantBody(
-  env: CoverageAlertEnv,
-  body: Record<string, unknown>,
-  alertKey: string,
-): Promise<void> {
-  const message = {
-    from: env.ALERT_EMAIL_TO,
-    to: env.ALERT_EMAIL_TO,
-    subject: "AL-11",
-    text: JSON.stringify(body),
-  };
-  try {
-    await sendPlatformEmail(env, message);
-    await markAlertSent(env.DB, alertKey);
-  } catch {
-    const nowIso = await clockNowIso(env);
-    await markAlertUnsent(env.DB, alertKey, nowIso);
-  }
-}
-
-async function sendAl17Body(
-  env: CoverageAlertEnv,
-  body: Record<string, unknown>,
-  alertKey: string,
-  nextSendAt: string,
-): Promise<void> {
-  const message = {
-    from: env.ALERT_EMAIL_TO,
-    to: env.ALERT_EMAIL_TO,
-    subject: "AL-17",
-    text: JSON.stringify(body),
-  };
-  try {
-    await sendPlatformEmail(env, message);
-    await env.DB.prepare(
-      `UPDATE platform_alert SET send_state = 'sent', next_send_at = ? WHERE alert_key = ?`,
-    )
-      .bind(nextSendAt, alertKey)
-      .run();
-  } catch {
-    const nowIso = await clockNowIso(env);
-    await markAlertUnsent(env.DB, alertKey, nowIso);
-  }
-}
-
 export async function raiseAl11GrantFromOutbox(
   env: CoverageAlertEnv,
   alertKey: string,
   body: Record<string, unknown>,
 ): Promise<void> {
   const nowIso = await clockNowIso(env);
-  const existing = await readPlatformAlertSendState(env.DB, alertKey);
-  if (existing === "sent") {
-    return;
-  }
-  await upsertPlatformAlert(env.DB, alertKey, "AL-11", nowIso);
-  await sendAl11GrantBody(env, body, alertKey);
+  await persistDurableAlertBody(
+    env.DB,
+    { alertKey, code: "AL-11", body, nowIso },
+    { countRepeat: false },
+  );
+  await deliverDurableAlert(env, alertKey);
 }
 
 export async function raiseAl11Transfer(
@@ -930,13 +629,13 @@ export async function raiseAl11Transfer(
 ): Promise<void> {
   const alertKey = `AL-11:transfer:${transferId}`;
   const nowIso = await clockNowIso(env);
-  const existing = await readPlatformAlertSendState(env.DB, alertKey);
-  if (existing === "sent") {
-    return;
-  }
   const body = { code: "AL-11", transfer_id: transferId, org_id: orgId };
-  await upsertPlatformAlert(env.DB, alertKey, "AL-11", nowIso);
-  await sendAl11GrantBody(env, body, alertKey);
+  await persistDurableAlertBody(
+    env.DB,
+    { alertKey, code: "AL-11", body, nowIso },
+    { countRepeat: true },
+  );
+  await deliverDurableAlert(env, alertKey);
 }
 
 export async function raiseAl18HeldBinding(
@@ -946,13 +645,13 @@ export async function raiseAl18HeldBinding(
 ): Promise<void> {
   const alertKey = `AL-18:${installationId}`;
   const nowIso = await clockNowIso(env);
-  const existing = await readPlatformAlertSendState(env.DB, alertKey);
-  if (existing === "sent") {
-    return;
-  }
   const body = { code: "AL-18", org_id: orgId, installation_id: installationId };
-  await upsertPlatformAlert(env.DB, alertKey, "AL-18", nowIso);
-  await sendCoverageAlertBody(env, "AL-18", body, alertKey);
+  await persistDurableAlertBody(
+    env.DB,
+    { alertKey, code: "AL-18", body, nowIso },
+    { countRepeat: true },
+  );
+  await deliverDurableAlert(env, alertKey);
 }
 
 export async function sendDailyAl18ForHeldBindings(
@@ -974,42 +673,20 @@ export async function sendDailyAl18ForHeldBindings(
     if (alert !== null && alert.last_at > cutoffIso) {
       continue;
     }
-    if (alert === null) {
-      await upsertPlatformAlert(env.DB, alertKey, "AL-18", nowIso);
-    } else {
-      await env.DB.prepare(
-        `UPDATE platform_alert SET last_at = ?, count = count + 1 WHERE alert_key = ?`,
-      )
-        .bind(nowIso, alertKey)
-        .run();
-    }
     const body = {
       code: "AL-18",
       org_id: row.org_id,
       installation_id: row.installation_id,
     };
-    await sendCoverageAlertBody(env, "AL-18", body, alertKey);
-  }
-}
-
-async function sendCoverageAlertBody(
-  env: CoverageAlertEnv,
-  subject: string,
-  body: Record<string, unknown>,
-  alertKey: string,
-): Promise<void> {
-  const message = {
-    from: env.ALERT_EMAIL_TO,
-    to: env.ALERT_EMAIL_TO,
-    subject,
-    text: JSON.stringify(body),
-  };
-  try {
-    await sendPlatformEmail(env, message);
-    await markAlertSent(env.DB, alertKey);
-  } catch {
-    const nowIso = await clockNowIso(env);
-    await markAlertUnsent(env.DB, alertKey, nowIso);
+    await persistDurableAlertBody(
+      env.DB,
+      { alertKey, code: "AL-18", body, nowIso },
+      { countRepeat: false },
+    );
+    if (alert !== null) {
+      await reopenAlertForRepeat(env.DB, alertKey, nowIso);
+    }
+    await deliverDurableAlert(env, alertKey);
   }
 }
 
@@ -1019,12 +696,12 @@ export async function raiseAl12GrantFromOutbox(
   body: Record<string, unknown>,
 ): Promise<void> {
   const nowIso = await clockNowIso(env);
-  const existing = await readPlatformAlertSendState(env.DB, alertKey);
-  if (existing === "sent") {
-    return;
-  }
-  await upsertPlatformAlert(env.DB, alertKey, "AL-12", nowIso);
-  await sendCoverageAlertBody(env, "AL-12", body, alertKey);
+  await persistDurableAlertBody(
+    env.DB,
+    { alertKey, code: "AL-12", body, nowIso },
+    { countRepeat: false },
+  );
+  await deliverDurableAlert(env, alertKey);
 }
 
 export async function raiseAl19FromOutbox(
@@ -1033,12 +710,15 @@ export async function raiseAl19FromOutbox(
   body: Record<string, unknown>,
 ): Promise<void> {
   const nowIso = await clockNowIso(env);
-  const existing = await readPlatformAlertSendState(env.DB, alertKey);
-  if (existing === "sent") {
+  const persisted = await persistCommittedAlertBody(
+    env.DB,
+    { alertKey, code: "AL-19", body, nowIso },
+    { countRepeat: false },
+  );
+  if (!persisted) {
     return;
   }
-  await upsertPlatformAlert(env.DB, alertKey, "AL-19", nowIso);
-  await sendCoverageAlertBody(env, "AL-19", body, alertKey);
+  await deliverDurableAlert(env, alertKey);
 }
 
 export async function raiseAl17FromOutbox(
@@ -1047,15 +727,13 @@ export async function raiseAl17FromOutbox(
   body: Record<string, unknown>,
 ): Promise<void> {
   const nowIso = await clockNowIso(env);
-  const nowMs = await clockNowMs(env);
-  const nextSendAt = new Date(nowMs + ONE_HOUR_MS).toISOString();
-  await upsertPlatformAlert(env.DB, alertKey, "AL-17", nowIso);
-  await env.DB.prepare(
-    `UPDATE platform_alert SET next_send_at = ? WHERE alert_key = ?`,
-  )
-    .bind(nextSendAt, alertKey)
-    .run();
-  await sendAl17Body(env, body, alertKey, nextSendAt);
+  await persistDurableAlertBody(
+    env.DB,
+    { alertKey, code: "AL-17", body, nowIso },
+    { countRepeat: false },
+  );
+  await reopenAlertForRepeat(env.DB, alertKey, nowIso);
+  await deliverDurableAlert(env, alertKey);
 }
 
 async function countPaidGrantsForOrgLast24Hours(
@@ -1109,7 +787,6 @@ async function al17ConditionStillHolds(
 
 async function retryDueAl17Alerts(env: AlertEnv): Promise<void> {
   const nowIso = await clockNowIso(env);
-  const nowMs = await clockNowMs(env);
   const rows = await env.DB.prepare(
     `SELECT alert_key, next_send_at, resolved_at
      FROM platform_alert
@@ -1133,15 +810,85 @@ async function retryDueAl17Alerts(env: AlertEnv): Promise<void> {
         .run();
       continue;
     }
-    const body =
-      row.alert_key === "AL-17:global"
-        ? { code: "AL-17" }
-        : {
-            code: "AL-17",
-            org_id: row.alert_key.slice("AL-17:clinic:".length),
-          };
-    const nextSendAt = new Date(nowMs + ONE_HOUR_MS).toISOString();
-    await sendAl17Body(env, body, row.alert_key, nextSendAt);
+    await reopenAlertForRepeat(env.DB, row.alert_key, nowIso);
+    await deliverDurableAlert(env, row.alert_key);
+  }
+}
+
+/**
+ * The one dispatcher for every due, unsent alert with a stored body
+ * (R9-PAL1 step 2). Rows without a stored body remain explicit incomplete
+ * evidence for the operator and are never sent.
+ */
+export async function retryUnsentPlatformAlerts(env: AlertEnv): Promise<void> {
+  const nowIso = await clockNowIso(env);
+  const rows = await env.DB.prepare(
+    `SELECT alert_key FROM platform_alert
+     WHERE send_state = 'unsent' AND body_state = 'stored' AND resolved_at IS NULL
+       AND (next_send_at IS NULL OR next_send_at <= ?)
+       AND (lease_expires_at IS NULL OR lease_expires_at <= ?)
+     ORDER BY last_at ASC
+     LIMIT 100`,
+  )
+    .bind(nowIso, nowIso)
+    .all<{ alert_key: string }>();
+
+  for (const row of rows.results ?? []) {
+    await deliverDurableAlert(env, row.alert_key);
+  }
+}
+
+export async function pingPlatformHeartbeat(env: AlertEnv): Promise<void> {
+  const response = await fetch(env.HEARTBEAT_URL);
+  if (!response.ok) {
+    throw new Error(`heartbeat fetch failed: ${response.status}`);
+  }
+}
+
+async function insertScheduledJobFailedAlert(
+  env: AlertEnv,
+  job: string,
+): Promise<void> {
+  const nowIso = await clockNowIso(env);
+  const alertKey = `scheduled_job_failed:${job}`;
+  await persistDurableAlertBody(
+    env.DB,
+    {
+      alertKey,
+      code: "scheduled_job_failed",
+      body: { code: "scheduled_job_failed", cron: FIVE_MINUTE_CRON, job },
+      nowIso,
+    },
+    { countRepeat: true },
+  );
+}
+
+function logScheduledJobFailure(
+  cron: string,
+  job: string,
+  error: unknown,
+): void {
+  const message = error instanceof Error ? error.message : String(error);
+  console.log(
+    JSON.stringify({
+      cron,
+      job,
+      error: message,
+      code: "scheduled_job_failed",
+    }),
+  );
+}
+
+async function runFiveMinuteJob(
+  env: AlertEnv,
+  job: "alert_retry" | "heartbeat",
+  run: () => Promise<void>,
+): Promise<void> {
+  try {
+    await run();
+  } catch (error) {
+    logScheduledJobFailure(FIVE_MINUTE_CRON, job, error);
+    await insertScheduledJobFailedAlert(env, job);
   }
 }
 

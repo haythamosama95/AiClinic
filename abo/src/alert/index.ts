@@ -38,7 +38,9 @@ export type AlertCode =
   | "AL-15"
   | "AL-16"
   | "AL-22"
-  | "AL-23";
+  | "AL-23"
+  // R9-CRON1 decision (a): a scheduled job period failed. Keyed `scheduled_job_failed:<job>`.
+  | "scheduled_job_failed";
 
 type AlertRow = {
   alert_key: string;
@@ -58,7 +60,12 @@ function nextSendAtForCode(
   code: string,
   nowMs: number,
 ): string | null {
-  if (code === "AL-16" || code === "AL-10" || code === "AL-14") {
+  if (
+    code === "AL-16" ||
+    code === "AL-10" ||
+    code === "AL-14" ||
+    code === "scheduled_job_failed"
+  ) {
     return new Date(nowMs + ONE_DAY_MS).toISOString();
   }
   if (
@@ -120,16 +127,26 @@ async function activateExportLagAlert(
     .run();
 }
 
+// R9-AO5: deactivation stops repeats and keeps last-sent audit metadata. It can be
+// batched with the condition change that resolved the alert.
+export function prepareAlertDeactivation(
+  db: D1Database,
+  alertKey: string,
+): D1PreparedStatement {
+  return db
+    .prepare(`UPDATE alert SET active = 0, unsent = 0 WHERE alert_key = ?`)
+    .bind(alertKey);
+}
+
+export async function deactivateAlert(
+  env: AlertEnv,
+  alertKey: string,
+): Promise<void> {
+  await prepareAlertDeactivation(env.DB, alertKey).run();
+}
+
 async function clearAlert(env: AlertEnv, alertKey: string): Promise<void> {
-  const existing = await readAlert(env.DB, alertKey);
-  if (existing === null) {
-    return;
-  }
-  await env.DB.prepare(
-    `UPDATE alert SET active = 0, unsent = 0 WHERE alert_key = ?`,
-  )
-    .bind(alertKey)
-    .run();
+  await deactivateAlert(env, alertKey);
 }
 
 type OldestUnexported = {
@@ -152,12 +169,11 @@ async function oldestUnexportedFact(
     .first<OldestUnexported>();
 }
 
+// R9-AO5: clears whenever the oldest unexported fact is absent or no longer over one hour
+// old, whether or not the alert was already sent. Last-sent metadata is preserved.
 async function clearExportLagWhenResolved(env: AlertEnv): Promise<void> {
   const existing = await readAlert(env.DB, EXPORT_LAG_ALERT_KEY);
   if (existing === null || existing.active === 0) {
-    return;
-  }
-  if (existing.last_sent_at !== null) {
     return;
   }
   await clearAlert(env, EXPORT_LAG_ALERT_KEY);
@@ -197,38 +213,41 @@ async function markRepeatDueIfNeeded(
     .run();
 }
 
+// Prepared single-statement upsert with the same semantics as raiseAlert. It can be placed
+// in a D1 batch so the alert commits atomically with the condition that raised it. It
+// never resets last_sent_at, and it marks the alert unsent only when it is new,
+// inactive, unsent, or never sent.
+export function prepareRaiseAlert(
+  db: D1Database,
+  code: AlertCode,
+  alertKey: string,
+  detailId: string,
+): D1PreparedStatement {
+  return db
+    .prepare(
+      `INSERT INTO alert (
+        alert_key, code, active, unsent, last_sent_at, next_send_at, detail_id
+      ) VALUES (?, ?, 1, 1, NULL, NULL, ?)
+      ON CONFLICT(alert_key) DO UPDATE SET
+        active = 1,
+        unsent = CASE
+          WHEN alert.active = 0 OR alert.unsent = 1 OR alert.last_sent_at IS NULL
+          THEN 1
+          ELSE alert.unsent
+        END,
+        code = excluded.code,
+        detail_id = excluded.detail_id`,
+    )
+    .bind(alertKey, code, detailId);
+}
+
 export async function raiseAlert(
   env: AlertEnv,
   code: AlertCode,
   alertKey: string,
   detailId: string,
 ): Promise<void> {
-  const existing = await readAlert(env.DB, alertKey);
-  if (existing === null) {
-    await env.DB.prepare(
-      `INSERT INTO alert (
-        alert_key, code, active, unsent, last_sent_at, next_send_at, detail_id
-      ) VALUES (?, ?, 1, 1, NULL, NULL, ?)`,
-    )
-      .bind(alertKey, code, detailId)
-      .run();
-    return;
-  }
-
-  const unsent =
-    existing.active === 0 ||
-    existing.unsent === 1 ||
-    existing.last_sent_at === null
-      ? 1
-      : existing.unsent;
-
-  await env.DB.prepare(
-    `UPDATE alert
-     SET active = 1, unsent = ?, code = ?, detail_id = ?
-     WHERE alert_key = ?`,
-  )
-    .bind(unsent, code, detailId, alertKey)
-    .run();
+  await prepareRaiseAlert(env.DB, code, alertKey, detailId).run();
 }
 
 async function sendAlertRow(env: AlertEnv, row: AlertRow): Promise<void> {

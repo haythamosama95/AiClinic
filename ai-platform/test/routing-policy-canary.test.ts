@@ -4,6 +4,7 @@ import migrationSql from "../migrations/20260731120000_platform_schema.sql?raw";
 import canaryMigrationSql from "../migrations/20260803100000_routing_policy_canary.sql?raw";
 import statusMigrationSql from "../migrations/20260805190000_routing_policy_status.sql?raw";
 import operatorCredentialMigrationSql from "../migrations/20261003120000_operator_credential_and_platform_alert.sql?raw";
+import rm31AlertDeliverySql from "../migrations/20261021130000_rm31_alert_delivery.sql?raw";
 import planVersionPaidGrantCoverageMigrationSql from "../migrations/20261003140000_plan_version_paid_grant_coverage.sql?raw";
 import { applySqlStatements } from "./split-sql-statements";
 import {
@@ -588,6 +589,7 @@ beforeAll(async () => {
   await applyPlatformSchema(env.DB, canaryMigrationSql);
   await applyPlatformSchema(env.DB, statusMigrationSql);
   await applySqlStatements(env.DB, operatorCredentialMigrationSql);
+  await applySqlStatements(env.DB, rm31AlertDeliverySql);
   await applySqlStatements(env.DB, planVersionPaidGrantCoverageMigrationSql);
 });
 

@@ -6,9 +6,13 @@ import {
   sha256Hex,
   ulid,
 } from "vendor-contracts";
-import { raiseAlert, type AlertEnv } from "../alert/index.js";
+import {
+  prepareRaiseAlert,
+  type AlertEnv,
+} from "../alert/index.js";
 import { clockNowIso, clockNowMs, type ClockEnv } from "../clock.js";
 import { insertFactLog } from "../records/append.js";
+import type { JobOutcome } from "../scheduler/jobs.js";
 import {
   parseStoredPaymobNotification,
   type ProviderRegistryEnv,
@@ -43,17 +47,72 @@ async function newId(env: ReconciliationEnv): Promise<string> {
   return ulid(nowMs, random);
 }
 
-async function findingExists(
+// R9-CRON1: a platform read that is refused or malformed is incomplete, not an empty result.
+// Throwing it fails the reconciliation job, so the period stays pending and is retried.
+class PlatformReadUnavailableError extends Error {
+  constructor(source: string) {
+    super(`platform_read_unavailable:${source}`);
+    this.name = "PlatformReadUnavailable";
+  }
+}
+
+// R9-AO4: a finding identity is (kind, subject). The first detection claims it, and the
+// finding, its fact and its AL-10 alert are written in one D1 batch.
+async function findingIdForIdentity(
   env: ReconciliationEnv,
   kind: string,
   subject: string,
-): Promise<boolean> {
-  const row = await env.DB.prepare(
-    `SELECT 1 FROM finding WHERE kind = ? AND subject = ?`,
+): Promise<string | null> {
+  const claimed = await env.DB.prepare(
+    `SELECT finding_id FROM finding_identity WHERE kind = ? AND subject = ?`,
   )
     .bind(kind, subject)
+    .first<{ finding_id: string }>();
+  if (claimed !== null) {
+    return claimed.finding_id;
+  }
+  // Rows restored by rebuild, or written before the registry, are claimed by the earliest
+  // matching finding. Duplicates are retained and never deleted.
+  const earliest = await env.DB.prepare(
+    `SELECT finding_id FROM finding
+     WHERE kind = ? AND subject = ?
+     ORDER BY detected_at ASC, finding_id ASC
+     LIMIT 1`,
+  )
+    .bind(kind, subject)
+    .first<{ finding_id: string }>();
+  if (earliest === null) {
+    return null;
+  }
+  await env.DB.prepare(
+    `INSERT OR IGNORE INTO finding_identity (kind, subject, finding_id)
+     VALUES (?, ?, ?)`,
+  )
+    .bind(kind, subject, earliest.finding_id)
+    .run();
+  const winner = await env.DB.prepare(
+    `SELECT finding_id FROM finding_identity WHERE kind = ? AND subject = ?`,
+  )
+    .bind(kind, subject)
+    .first<{ finding_id: string }>();
+  return winner?.finding_id ?? null;
+}
+
+// Ensures an unresolved finding has an AL-10 row. Existing delivery state is kept. A
+// resolved finding is never reopened.
+async function ensureFindingAlert(
+  env: ReconciliationEnv,
+  findingId: string,
+): Promise<void> {
+  const resolution = await env.DB.prepare(
+    `SELECT 1 FROM finding_resolution WHERE finding_id = ?`,
+  )
+    .bind(findingId)
     .first();
-  return row !== null;
+  if (resolution !== null) {
+    return;
+  }
+  await prepareRaiseAlert(env.DB, "AL-10", `AL-10:${findingId}`, findingId).run();
 }
 
 async function insertFinding(
@@ -62,7 +121,9 @@ async function insertFinding(
   subject: string,
   detail: string,
 ): Promise<void> {
-  if (await findingExists(env, kind, subject)) {
+  const existingId = await findingIdForIdentity(env, kind, subject);
+  if (existingId !== null) {
+    await ensureFindingAlert(env, existingId);
     return;
   }
   const findingId = await newId(env);
@@ -74,27 +135,43 @@ async function insertFinding(
     detail,
     detected_at: detectedAt,
   };
-  await env.DB.batch([
-    env.DB.prepare(
-      `INSERT INTO finding (finding_id, kind, subject, detail, detected_at)
-       VALUES (?, ?, ?, ?, ?)`,
-    ).bind(findingId, kind, subject, detail, detectedAt),
-    await insertFactLog(env, "finding", findingId, canonicalRow, detectedAt),
-  ]);
-  await raiseAlert(env, "AL-10", `AL-10:${findingId}`, findingId);
+  try {
+    await env.DB.batch([
+      // The identity insert is first. A concurrent claim makes the whole batch roll back,
+      // so no second finding, fact or alert is written.
+      env.DB.prepare(
+        `INSERT INTO finding_identity (kind, subject, finding_id) VALUES (?, ?, ?)`,
+      ).bind(kind, subject, findingId),
+      env.DB.prepare(
+        `INSERT INTO finding (finding_id, kind, subject, detail, detected_at)
+         VALUES (?, ?, ?, ?, ?)`,
+      ).bind(findingId, kind, subject, detail, detectedAt),
+      await insertFactLog(env, "finding", findingId, canonicalRow, detectedAt),
+      prepareRaiseAlert(env.DB, "AL-10", `AL-10:${findingId}`, findingId),
+    ]);
+  } catch (error) {
+    const winnerId = await findingIdForIdentity(env, kind, subject);
+    if (winnerId === null) {
+      throw error;
+    }
+    await ensureFindingAlert(env, winnerId);
+  }
 }
 
 async function parsePlatformGrants(
   env: ReconciliationEnv,
-): Promise<PlatformGrant[] | null> {
+): Promise<PlatformGrant[]> {
   const envelope = await env.PLATFORM.listGrants({
     contract_version: CHANNEL_VERSIONS.vendorEntrypoint,
   });
   if (envelope.result !== "ok" || typeof envelope.detail !== "string") {
-    return null;
+    throw new PlatformReadUnavailableError("listGrants");
   }
   const parsed = JSON.parse(envelope.detail) as unknown;
-  return Array.isArray(parsed) ? (parsed as PlatformGrant[]) : [];
+  if (!Array.isArray(parsed)) {
+    throw new PlatformReadUnavailableError("listGrants");
+  }
+  return parsed as PlatformGrant[];
 }
 
 async function paidGrantIdsFromPayments(
@@ -173,9 +250,6 @@ async function checkPaymentWithoutGrant(env: ReconciliationEnv): Promise<void> {
 async function checkGrantWithoutPayment(env: ReconciliationEnv): Promise<void> {
   const paidGrantIds = await paidGrantIdsFromPayments(env);
   const grants = await parsePlatformGrants(env);
-  if (grants === null) {
-    return;
-  }
   for (const grant of grants) {
     if (grant.source_kind !== "paid") {
       continue;
@@ -193,9 +267,6 @@ async function checkGrantWithoutOperatorAction(
 ): Promise<void> {
   const authorisedGrantIds = await complimentaryActionGrantIds(env);
   const grants = await parsePlatformGrants(env);
-  if (grants === null) {
-    return;
-  }
   for (const grant of grants) {
     if (grant.source_kind !== "complimentary") {
       continue;
@@ -212,9 +283,6 @@ async function checkTransferWithoutAuthorisation(
   env: ReconciliationEnv,
 ): Promise<void> {
   const grants = await parsePlatformGrants(env);
-  if (grants === null) {
-    return;
-  }
   for (const grant of grants) {
     if (grant.source_kind !== "transfer") {
       continue;
@@ -505,7 +573,7 @@ async function clinicsWithRecentCoverageEvents(
       limit: 200,
     });
     if (envelope.result !== "ok" || typeof envelope.detail !== "string") {
-      break;
+      throw new PlatformReadUnavailableError("readCoverageEvents");
     }
     const page = JSON.parse(envelope.detail) as {
       events?: Array<Record<string, unknown>>;
@@ -578,8 +646,16 @@ async function checkFeedDivergence(env: ReconciliationEnv): Promise<void> {
       contract_version: CHANNEL_VERSIONS.vendorEntrypoint,
       org_id: orgId,
     });
-    if (coverage.result !== "ok" || typeof coverage.detail !== "string") {
+    // R9-AO4 F4: a definitive no-binding answer is a complete check with no
+    // divergence to report. Any other non-ok result stays incomplete.
+    if (
+      coverage.result === "rejected" &&
+      coverage.code === "coverage_not_found"
+    ) {
       continue;
+    }
+    if (coverage.result !== "ok" || typeof coverage.detail !== "string") {
+      throw new PlatformReadUnavailableError("getCoverage");
     }
     const detail = JSON.parse(coverage.detail) as {
       snapshot?: Record<string, unknown>;
@@ -600,9 +676,6 @@ async function checkFeedDivergence(env: ReconciliationEnv): Promise<void> {
 
 async function checkReceiptMismatch(env: ReconciliationEnv): Promise<void> {
   const grants = await parsePlatformGrants(env);
-  if (grants === null) {
-    return;
-  }
   const grantsById = new Map<string, PlatformGrant>();
   for (const grant of grants) {
     const grantId = String(grant.grant_id ?? "");
@@ -647,16 +720,61 @@ async function checkReceiptMismatch(env: ReconciliationEnv): Promise<void> {
   }
 }
 
-export async function runReconciliation(env: ReconciliationEnv): Promise<void> {
-  await checkPaymentWithoutGrant(env);
-  await checkGrantWithoutPayment(env);
-  await checkGrantWithoutOperatorAction(env);
-  await checkTransferWithoutAuthorisation(env);
-  await checkReversalNotApplied(env);
-  await checkPayoutUnmatched(env);
-  await checkPaymentNotInPayout(env);
-  await checkUnrecordedReversal(env);
-  await checkCallbackWithoutConfirmation(env);
-  await checkFeedDivergence(env);
-  await checkReceiptMismatch(env);
+// R9-CRON1: each check is isolated. One failing check does not stop the others, and any
+// failure makes the job outcome failed so its period stays pending.
+const RECONCILIATION_CHECKS: ReadonlyArray<
+  readonly [string, (env: ReconciliationEnv) => Promise<void>]
+> = [
+  ["payment_without_grant", checkPaymentWithoutGrant],
+  ["grant_without_payment", checkGrantWithoutPayment],
+  ["grant_without_operator_action", checkGrantWithoutOperatorAction],
+  ["transfer_without_authorisation", checkTransferWithoutAuthorisation],
+  ["reversal_not_applied", checkReversalNotApplied],
+  ["payout_unmatched", checkPayoutUnmatched],
+  ["payment_not_in_payout", checkPaymentNotInPayout],
+  ["unrecorded_reversal", checkUnrecordedReversal],
+  ["callback_without_confirmation", checkCallbackWithoutConfirmation],
+  ["feed_divergence", checkFeedDivergence],
+  ["receipt_mismatch", checkReceiptMismatch],
+];
+
+// R9-AO4: an unresolved finding whose AL-10 row is missing gets one.
+async function repairUnalertedFindings(env: ReconciliationEnv): Promise<void> {
+  const rows = await env.DB.prepare(
+    `SELECT f.finding_id
+     FROM finding f
+     LEFT JOIN finding_resolution fr ON fr.finding_id = f.finding_id
+     LEFT JOIN alert a ON a.alert_key = 'AL-10:' || f.finding_id
+     WHERE fr.finding_id IS NULL AND a.alert_key IS NULL
+     ORDER BY f.finding_id`,
+  ).all<{ finding_id: string }>();
+  for (const row of rows.results ?? []) {
+    await ensureFindingAlert(env, row.finding_id);
+  }
+}
+
+export async function runReconciliation(
+  env: ReconciliationEnv,
+): Promise<JobOutcome> {
+  let outcome: JobOutcome = "succeeded";
+  for (const [name, check] of RECONCILIATION_CHECKS) {
+    try {
+      await check(env);
+    } catch (error) {
+      outcome = "failed";
+      console.error(
+        JSON.stringify({
+          event: "reconciliation_check_failed",
+          check: name,
+          code: error instanceof Error ? error.name : "non_error_throw",
+        }),
+      );
+    }
+  }
+  try {
+    await repairUnalertedFindings(env);
+  } catch {
+    outcome = "failed";
+  }
+  return outcome;
 }

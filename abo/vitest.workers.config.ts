@@ -36,6 +36,9 @@ export default defineWorkersConfig({
             PAYMOB_BASE_URL: "https://paymob.harness.test",
             PAYMOB_HMAC_SECRET: "paymob-hmac-test-secret",
             PAYMOB_API_KEY: "paymob-api-test-key",
+            // R9-CRON1 / RT2: distinct per-stream URLs so tests can tell the streams apart.
+            HEARTBEAT_URL_MINUTE: "https://heartbeat.test/minute",
+            HEARTBEAT_URL_DIGEST: "https://heartbeat.test/digest",
           },
           serviceBindings: {
             PLATFORM: { name: "platform", entrypoint: "VendorEntrypoint" },

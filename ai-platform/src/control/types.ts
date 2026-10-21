@@ -1,5 +1,11 @@
 export type ControlActionResult =
-  | { ok: true; body: Record<string, unknown> }
+  | {
+      ok: true;
+      body: Record<string, unknown>;
+      // R9-PAL1: identity of a committed kill-switch transition (changed_at is
+      // the value the mutation wrote). Not part of the HTTP response body.
+      transition?: { action: "arm" | "disarm"; changed_at: string };
+    }
   | { ok: false; status: number; error: string };
 
 export type ControlBindings = {

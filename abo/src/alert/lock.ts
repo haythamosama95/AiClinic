@@ -1,3 +1,4 @@
+import type { JobOutcome } from "../scheduler/jobs.js";
 import type { AlertEnv } from "./index.js";
 
 const R2_LOCK_ALERT_KEY = "AL-16:r2-lock";
@@ -60,7 +61,7 @@ async function markR2LockAlertDue(env: AlertEnv): Promise<void> {
     .run();
 }
 
-export async function checkR2BucketLock(env: AlertEnv): Promise<void> {
+export async function checkR2BucketLock(env: AlertEnv): Promise<JobOutcome> {
   const url =
     `https://api.cloudflare.com/client/v4/accounts/${env.CLOUDFLARE_ACCOUNT_ID}` +
     `/r2/buckets/${env.R2_BUCKET_NAME}/lock`;
@@ -70,15 +71,18 @@ export async function checkR2BucketLock(env: AlertEnv): Promise<void> {
       headers: { Authorization: `Bearer ${env.R2_LOCK_READ_TOKEN}` },
     });
     const body = (await response.json()) as LockResponse;
+    // R9-CRON1: a non-success or thrown read is unknown. It is reported as a failed job
+    // and leaves the r2-lock alert unchanged.
     if (body.success !== true) {
-      return;
+      return "failed";
     }
     if (lockIsPresent(body)) {
       await clearR2LockAlert(env);
-      return;
+      return "succeeded";
     }
     await markR2LockAlertDue(env);
+    return "succeeded";
   } catch {
-    // Non-success or thrown fetch leaves the r2-lock alert unchanged.
+    return "failed";
   }
 }

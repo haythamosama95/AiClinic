@@ -673,22 +673,29 @@ describe("catalogue", () => {
       false,
     );
 
+    // R9-CRON1: the daily job runs once per daily period, so each later 06:00 run moves to a
+    // new day. Same-day re-runs are no-ops by design.
     clearCapturedEmails();
     setLockRulesBody({ success: true, result: { rules: [] } });
+    await setClock(addHours(retryCreatedAt, 26));
     await runScheduled("0 6 * * *");
     expect(emailsWithAl16()).toHaveLength(1);
     expect(emailsWithAl16()[0]!.text).toContain("AL-16");
     expect(emailsWithAl16()[0]!.text).toContain("r2-lock");
 
+    // R9-AO5: an unknown lock read clears nothing. The still-active alert repeats once due.
     clearCapturedEmails();
     setLockRulesBody({ success: false, result: { rules: [] } });
+    await setClock(addHours(retryCreatedAt, 50));
     await runScheduled("0 6 * * *");
-    expect(emailsWithAl16()).toHaveLength(0);
+    expect(emailsWithAl16()).toHaveLength(1);
+    expect(emailsWithAl16()[0]!.text).toContain("r2-lock");
   });
 
-  it("E2E-P4.1-10 minute cron pings the heartbeat URL", async () => {
+  it("E2E-P4.1-10 R9-CRON1 minute cron pings the abo_minute stream URL", async () => {
     clearCapturedHeartbeatFetches();
     await runScheduled("* * * * *");
-    expect(getCapturedHeartbeatFetches()).toContain(env.HEARTBEAT_URL);
+    // R9-CRON1 / RT2 (was HEARTBEAT_URL): the minute cron pings the abo_minute stream.
+    expect(getCapturedHeartbeatFetches()).toContain(env.HEARTBEAT_URL_MINUTE);
   });
 });

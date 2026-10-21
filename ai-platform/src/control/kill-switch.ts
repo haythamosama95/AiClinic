@@ -93,10 +93,22 @@ function payloadFromArgs(
   return { scope: scopeRaw, target: targetRaw };
 }
 
+/**
+ * Optional extra statement committed in the same D1 batch as the transition,
+ * after the audit row. It must be guarded so it runs only when the transition
+ * wrote (R9-PAL1 step 1: accepted operation and target persisted with the
+ * mutation).
+ */
+export type KillSwitchAlertStatementBuilder = (
+  db: D1Database,
+  transition: { action: "arm" | "disarm"; changed_at: string },
+) => D1PreparedStatement;
+
 export async function armKillSwitchAction(
   bindings: ControlBindings,
   actor: string,
   args: Record<string, unknown>,
+  options: { buildAlertStatement?: KillSwitchAlertStatementBuilder } = {},
 ): Promise<ControlActionResult> {
   const body = payloadFromArgs(args);
   if ("ok" in body && body.ok === false) {
@@ -122,7 +134,7 @@ export async function armKillSwitchAction(
 
   let transitioned = false;
   try {
-    const results = await DB.batch([
+    const statements: D1PreparedStatement[] = [
       DB.prepare(
         `INSERT INTO kill_switch (scope, target, active, changed_at, changed_by)
          VALUES (?, ?, 1, ?, ?)
@@ -142,7 +154,13 @@ export async function armKillSwitchAction(
         "active",
         true,
       ),
-    ]);
+    ];
+    if (options.buildAlertStatement) {
+      statements.push(
+        options.buildAlertStatement(DB, { action: "arm", changed_at: recordedAt }),
+      );
+    }
+    const results = await DB.batch(statements);
     transitioned = (results[0]?.meta.changes ?? 0) > 0;
   } catch {
     return { ok: false, status: 500, error: "storage_error" };
@@ -151,13 +169,18 @@ export async function armKillSwitchAction(
     return { ok: false, status: 409, error: "illegal_kill_switch_transition" };
   }
 
-  return { ok: true, body: {} };
+  return {
+    ok: true,
+    body: {},
+    transition: { action: "arm", changed_at: recordedAt },
+  };
 }
 
 export async function disarmKillSwitchAction(
   bindings: ControlBindings,
   actor: string,
   args: Record<string, unknown>,
+  options: { buildAlertStatement?: KillSwitchAlertStatementBuilder } = {},
 ): Promise<ControlActionResult> {
   const body = payloadFromArgs(args);
   if ("ok" in body && body.ok === false) {
@@ -176,7 +199,7 @@ export async function disarmKillSwitchAction(
 
   let transitioned = false;
   try {
-    const results = await DB.batch([
+    const statements: D1PreparedStatement[] = [
       DB.prepare(
         `UPDATE kill_switch
          SET active = 0, changed_at = ?, changed_by = ?
@@ -192,7 +215,13 @@ export async function disarmKillSwitchAction(
         "inactive",
         true,
       ),
-    ]);
+    ];
+    if (options.buildAlertStatement) {
+      statements.push(
+        options.buildAlertStatement(DB, { action: "disarm", changed_at: recordedAt }),
+      );
+    }
+    const results = await DB.batch(statements);
     transitioned = (results[0]?.meta.changes ?? 0) > 0;
   } catch {
     return { ok: false, status: 500, error: "storage_error" };
@@ -201,5 +230,9 @@ export async function disarmKillSwitchAction(
     return { ok: false, status: 409, error: "illegal_kill_switch_transition" };
   }
 
-  return { ok: true, body: {} };
+  return {
+    ok: true,
+    body: {},
+    transition: { action: "disarm", changed_at: recordedAt },
+  };
 }

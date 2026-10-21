@@ -13,6 +13,8 @@ import type { Logger } from "../logger";
 import { noopLogger } from "../logger";
 import { generateUlid } from "../trace";
 import { decodeDoResponse } from "./response-decoder";
+import { persistCommittedAlertBody } from "../alert/index";
+
 type SqlStorage = DurableObjectStorage & {
   sql?: {
     exec: (query: string, ...bindings: unknown[]) => Iterable<Record<string, unknown>>;
@@ -1658,6 +1660,8 @@ async function finalizeGrantApply(input: {
       request.envelope,
       input.attentionAl11,
     ),
+    channel_version: request.vendorContractVersion,
+    origin_event_id: grantId,
     } },
   ];
 
@@ -1670,6 +1674,8 @@ async function finalizeGrantApply(input: {
         org_id: request.orgId,
         operation: { op: "grant", params: request.envelope },
       },
+      channel_version: request.vendorContractVersion,
+      origin_event_id: grantId,
     } });
   }
   if (input.observePaidVelocity) {
@@ -2414,8 +2420,10 @@ export async function suspendResumeRPC(
         snapshot: snapshotAfterToggle,
       });
       const alertOp = request.kind;
+      // R9-PAL1: one-shot identity is the accepted transition, so every
+      // suspension and resume keeps its own durable alert.
       insertOutbox(storage, "alert", {
-        alert_key: `AL-19:${alertOp}:${request.orgId}`,
+        alert_key: `AL-19:${alertOp}:${request.orgId}:${hotAfterToggle.clinic_seq}`,
         code: "AL-19",
         body: {
           code: "AL-19",
@@ -2425,6 +2433,11 @@ export async function suspendResumeRPC(
             params: { org_id: request.orgId, reason: request.reason },
           },
         },
+        channel_version: request.vendorContractVersion,
+        origin_event_id: coverageEventId(
+          request.installationId,
+          hotAfterToggle.clinic_seq,
+        ),
       });
       const outboxCount =
         sqlSelect<{ count: number }>(
@@ -4001,6 +4014,33 @@ async function shipCoverageOutboxInLock(
           throw new Error("usage_accounting_identity_conflict");
         }
       } else if (row.kind === "alert") {
+        // R9-PAL1: the original body reaches D1 before this outbox row is
+        // deleted. A crash in between replays the same body. A conflicting
+        // body for the key is recorded for the operator and this row is left
+        // in the outbox untouched; the remaining rows still ship.
+        const persisted = await persistCommittedAlertBody(
+          env.DB,
+          {
+            alertKey: String(payload.alert_key),
+            code: String(payload.code),
+            body: payload.body as Record<string, unknown>,
+            nowIso,
+            channelVersion: typeof payload.channel_version === "number"
+              ? payload.channel_version
+              : null,
+            originEventId: typeof payload.origin_event_id === "string"
+              ? payload.origin_event_id
+              : null,
+          },
+          { countRepeat: false },
+        );
+        if (!persisted) {
+          logger.error("Coverage alert body conflicts with a stored body; row left for operator", {
+            installation_id: installationId,
+            alert_key: String(payload.alert_key),
+          });
+          continue;
+        }
         shippedAlerts.push({
           alert_key: String(payload.alert_key),
           code: String(payload.code),
