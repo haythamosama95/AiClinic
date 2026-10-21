@@ -202,6 +202,16 @@ async function shipCoverageOutbox(installationId: string): Promise<void> {
   await runDurableObjectAlarm(quotaDoStub(installationId));
 }
 
+// Drain any unshipped outbox evidence and cancel the alarm the DO re-arms
+// afterwards, so no real alarm is left pending when the test storage frame is
+// torn down. Mirrors shipCoverageOutbox in admission-settlement.system.test.ts.
+async function drainAndCancelDoAlarm(installationId: string): Promise<void> {
+  await shipCoverageOutbox(installationId);
+  await runInDurableObject(quotaDoStub(installationId), async (_instance, state) => {
+    await state.storage.deleteAlarm();
+  });
+}
+
 async function buildPaidGrantEnvelope(input: {
   orgId: string;
   grantId: string;
@@ -891,6 +901,7 @@ describe("platform rebuild procedures", () => {
       { request_id: releasedId, accounting_seq: 1 },
       { request_id: consumedId, accounting_seq: 2 },
     ]);
+    await drainAndCancelDoAlarm(scenario.installationId);
   });
 
   it("R9-PUS1: rebuild blocks while a settlement accounting intent remains unshipped", async () => {
@@ -934,6 +945,9 @@ describe("platform rebuild procedures", () => {
       quota_weight: 1, accounting_seq: 1,
     }));
     expect(await readHotUsed(scenario.installationId)).toBe(1);
+    // All assertions above run against the unshipped intent. Drain afterwards
+    // so no re-armed alarm can fire during storage-frame teardown.
+    await drainAndCancelDoAlarm(scenario.installationId);
   });
 
   it("R9-PDO1: rebuild refuses a nonempty DO and preserves an unshipped grant", async () => {
