@@ -2017,6 +2017,19 @@ export class GatewayObject extends DurableObject {
       await ensureCoverageDoTables(this.ctx.storage, (fn) =>
         this.ctx.blockConcurrencyWhile(fn),
       );
+      if (kind !== "rebuild_clinic_do") {
+        const recovery = sqlSelect<{ status: string }>(
+          this.ctx.storage,
+          "SELECT status FROM recovery_state WHERE singleton = 1 LIMIT 1",
+        )[0];
+        if (recovery?.status === "building" || recovery?.status === "blocked") {
+          return platformDoResponse(
+            { kind: String(kind ?? "unknown"), result: "recovery_blocked" },
+            contractVersion,
+            { status: 409 },
+          );
+        }
+      }
       const quotaLog = makeLog("quota-do/index.ts", {
         installation_id:
           typeof (body as { installationId?: string }).installationId === "string"
@@ -2416,6 +2429,14 @@ export class GatewayObject extends DurableObject {
     const nowIso = await clockNowIso(runtimeEnv);
     const durationScale =
       runtimeEnv.DURATION_SCALE === "staging" ? "staging" : undefined;
+    const recovery = sqlSelect<{ status: string }>(
+      this.ctx.storage,
+      "SELECT status FROM recovery_state WHERE singleton = 1 LIMIT 1",
+    )[0];
+    if (recovery?.status === "building" || recovery?.status === "blocked") {
+      await this.ctx.storage.setAlarm(Date.now() + 60_000);
+      return;
+    }
     const shippedAlerts = await shipCoverageOutboxAlarm(
       this.ctx,
       this.ctx.storage,

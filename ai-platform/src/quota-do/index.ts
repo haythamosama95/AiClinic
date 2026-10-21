@@ -2560,6 +2560,16 @@ const COVERAGE_DO_SCHEMA_STATEMENTS = [
     acknowledged INTEGER NOT NULL DEFAULT 0 CHECK (acknowledged IN (0, 1)),
     recorded_at TEXT NOT NULL
   )`,
+  `CREATE TABLE IF NOT EXISTS recovery_state (
+    singleton INTEGER PRIMARY KEY CHECK (singleton = 1),
+    generation TEXT NOT NULL,
+    installation_id TEXT NOT NULL,
+    org_id TEXT NOT NULL,
+    binding_epoch INTEGER NOT NULL,
+    anchor_event_id TEXT NOT NULL,
+    status TEXT NOT NULL CHECK (status IN ('building', 'blocked', 'complete')),
+    updated_at TEXT NOT NULL
+  )`,
 ] as const;
 
 /** Per-clinic coverage tables (P3.3); idempotent on every versioned fetch. */

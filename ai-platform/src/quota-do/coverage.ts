@@ -6,6 +6,7 @@ import {
   receiptSigningBytes,
   sha256Hex,
   signCompactJws,
+  verifyReceiptSignature,
 } from "vendor-contracts";
 import { addDuration, type DurationScale } from "../coverage/calendar";
 import type { Logger } from "../logger";
@@ -1633,6 +1634,12 @@ async function finalizeGrantApply(input: {
     envelope_sha256: envelopeSha256,
     receipt,
     applied_at: request.nowIso,
+    recovery_capsule: {
+      version: 1,
+      envelope: request.envelope,
+      evidence: request.envelope.evidence ?? request.envelope,
+      ceiling_claim: request.ceilingClaim ?? null,
+    },
   };
   const outboxRows: Array<{ kind: string; payload: unknown }> = [
     ...boundaryPayloads.map((payload) => ({ kind: "coverage_event", payload })),
@@ -3543,6 +3550,265 @@ export type ShippedCoverageAlert = {
   body: Record<string, unknown>;
 };
 
+function canonicalValuesEqual(left: unknown, right: unknown): boolean {
+  const leftBytes = canonicalize(left);
+  const rightBytes = canonicalize(right);
+  return leftBytes.length === rightBytes.length && leftBytes.every(
+    (byte, index) => byte === rightBytes[index],
+  );
+}
+
+async function persistGrantRecoveryCapsule(
+  db: D1Database,
+  r2: R2Bucket,
+  storage: DurableObjectStorage,
+  ledger: Record<string, unknown>,
+): Promise<void> {
+  const grantId = String(ledger.grant_id ?? "");
+  if (ledger.source_kind === "transfer") {
+    const transferId = typeof ledger.transfer_id === "string" ? ledger.transfer_id : "";
+    if (transferId.length === 0) throw new Error(`transfer_recovery_evidence_missing:${grantId}`);
+    const localGrant = sqlSelect<{
+      envelope: string; evidence: string; receipt: string | null;
+    }>(storage,
+      `SELECT envelope, evidence, receipt FROM grant WHERE grant_id = ${sqlString(grantId)} LIMIT 1`,
+    )[0];
+    if (localGrant === undefined || localGrant.receipt === null) {
+      throw new Error(`transfer_recovery_grant_missing:${grantId}`);
+    }
+    const transfer = await db.prepare(
+      `SELECT transfer_id, org_id, from_installation_id, to_installation_id, package, created_at
+       FROM transfer WHERE transfer_id = ?`,
+    ).bind(transferId).first<{
+      transfer_id: string; org_id: string; from_installation_id: string;
+      to_installation_id: string; package: string | null; created_at: string;
+    }>();
+    if (transfer === null || transfer.package === null || transfer.org_id !== ledger.org_id ||
+        transfer.to_installation_id !== ledger.installation_id) {
+      throw new Error(`transfer_recovery_transfer_conflict:${grantId}`);
+    }
+    const preparation = await db.prepare(
+      `SELECT org_id, from_installation_id, source_epoch, to_installation_id,
+              destination_epoch, phase
+       FROM transfer_preparation WHERE transfer_id = ?`,
+    ).bind(transferId).first<{
+      org_id: string; from_installation_id: string; source_epoch: number;
+      to_installation_id: string; destination_epoch: number; phase: string;
+    }>();
+    if (preparation === null || preparation.phase !== "completed" ||
+        preparation.org_id !== transfer.org_id ||
+        preparation.from_installation_id !== transfer.from_installation_id ||
+        preparation.to_installation_id !== transfer.to_installation_id) {
+      throw new Error(`transfer_recovery_preparation_conflict:${grantId}`);
+    }
+    const transferSteps = await db.prepare(
+      `SELECT step, receipt, applied_at FROM transfer_step WHERE transfer_id = ? ORDER BY step ASC`,
+    ).bind(transferId).all<{ step: string; receipt: string; applied_at: string }>();
+    const transferStepRows = transferSteps.results ?? [];
+    const sourceStep = transferStepRows.find((step) => step.step === "transfer_out");
+    const destinationStep = transferStepRows.find((step) => step.step === "transfer_in");
+    const replay = sqlSelect<{ request_sha256: string; response_json: string }>(storage,
+      `SELECT request_sha256, response_json FROM transfer_replay
+       WHERE transfer_id = ${sqlString(transferId)} AND step = 'transfer_in' LIMIT 2`,
+    );
+    if (transferStepRows.length !== 2 || sourceStep === undefined || destinationStep === undefined || replay.length !== 1 ||
+        !/^[a-f0-9]{64}$/u.test(replay[0]!.request_sha256)) {
+      throw new Error(`transfer_recovery_evidence_missing:${grantId}`);
+    }
+    let packageTerms: unknown;
+    let envelope: unknown;
+    let localEvidence: unknown;
+    let importedReceipt: unknown;
+    let sourceReceipt: unknown;
+    let destinationReceipt: unknown;
+    let response: Record<string, unknown>;
+    try {
+      packageTerms = JSON.parse(transfer.package);
+      envelope = JSON.parse(localGrant.envelope);
+      localEvidence = JSON.parse(localGrant.evidence);
+      importedReceipt = JSON.parse(localGrant.receipt);
+      sourceReceipt = JSON.parse(sourceStep.receipt);
+      destinationReceipt = JSON.parse(destinationStep.receipt);
+      response = JSON.parse(replay[0]!.response_json) as Record<string, unknown>;
+    } catch {
+      throw new Error(`transfer_recovery_evidence_invalid:${grantId}`);
+    }
+    if (!Array.isArray(packageTerms) || !isEnvelopeRecord(envelope) || !isEnvelopeRecord(localEvidence) ||
+        localEvidence.transfer_id !== transferId || localEvidence.step !== "transfer_in" ||
+        replay[0]!.request_sha256 !== await sha256Hex(canonicalize({
+          installation_id: transfer.to_installation_id,
+          org_id: transfer.org_id,
+          binding_epoch: preparation.destination_epoch,
+          package: packageTerms,
+        })) ||
+        !canonicalValuesEqual(response.receipt, destinationReceipt) ||
+        !isEnvelopeRecord(sourceReceipt) || !isEnvelopeRecord(destinationReceipt) ||
+        response.kind !== "transfer_in" || response.result !== "applied" ||
+        sourceReceipt.transfer_id !== transferId || sourceReceipt.installation_id !== transfer.from_installation_id ||
+        sourceReceipt.org_id !== transfer.org_id || sourceReceipt.result !== "applied" ||
+        sourceReceipt.applied_at !== sourceStep.applied_at ||
+        destinationReceipt.transfer_id !== transferId || destinationReceipt.installation_id !== transfer.to_installation_id ||
+        destinationReceipt.org_id !== transfer.org_id || destinationReceipt.result !== "applied" ||
+        destinationReceipt.applied_at !== destinationStep.applied_at ||
+        typeof sourceReceipt.signature !== "string" || typeof destinationReceipt.signature !== "string" ||
+        typeof sourceReceipt.kid !== "string" || destinationReceipt.kid !== sourceReceipt.kid ||
+        sourceReceipt.envelope_sha256 !== await sha256Hex(canonicalize(packageTerms)) ||
+        destinationReceipt.envelope_sha256 !== sourceReceipt.envelope_sha256) {
+      throw new Error(`transfer_recovery_evidence_conflict:${grantId}`);
+    }
+    const packageIndex = await (async () => {
+      for (let index = 0; index < packageTerms.length; index += 1) {
+        if (await transferGrantId(transferId, index) === grantId) return index;
+      }
+      return -1;
+    })();
+    if (packageIndex < 0 || !canonicalValuesEqual(envelope, packageTerms[packageIndex]) ||
+        !canonicalValuesEqual(importedReceipt, ledger.receipt) ||
+        !isEnvelopeRecord(importedReceipt) || importedReceipt.grant_id !== grantId ||
+        importedReceipt.org_id !== ledger.org_id || importedReceipt.installation_id !== ledger.installation_id ||
+        importedReceipt.envelope_sha256 !== ledger.envelope_sha256 || importedReceipt.applied_at !== ledger.applied_at ||
+        await grantEnvelopeHash(envelope) !== ledger.envelope_sha256 ||
+        !Array.isArray(response.term_ids) || response.term_ids.length !== packageTerms.length ||
+        !Array.isArray(sourceReceipt.term_ids) || sourceReceipt.term_ids.length !== packageTerms.length ||
+        !Array.isArray(destinationReceipt.term_ids) ||
+        !canonicalValuesEqual(response.term_ids, destinationReceipt.term_ids) ||
+        destinationReceipt.term_ids.length !== packageTerms.length) {
+      throw new Error(`transfer_recovery_package_conflict:${grantId}`);
+    }
+    const transferEvidence = {
+      transfer_id: transferId,
+      step: "transfer_in",
+      request_sha256: replay[0]!.request_sha256,
+      response_json: replay[0]!.response_json,
+      receipt_text: destinationStep.receipt,
+      applied_at: destinationStep.applied_at,
+      transfer: {
+        org_id: transfer.org_id,
+        from_installation_id: transfer.from_installation_id,
+        to_installation_id: transfer.to_installation_id,
+        package: transfer.package,
+        created_at: transfer.created_at,
+      },
+      source_step: { receipt_text: sourceStep.receipt, applied_at: sourceStep.applied_at },
+    };
+    const capsule = {
+      version: 1,
+      grant_id: grantId,
+      org_id: ledger.org_id,
+      installation_id: ledger.installation_id,
+      binding_epoch: null,
+      route_generation: null,
+      source_kind: "transfer",
+      envelope,
+      envelope_sha256: ledger.envelope_sha256,
+      evidence: localEvidence,
+      receipt: importedReceipt,
+      accepted_command: null,
+      accepted_actor: null,
+      signer_credential_id: null,
+      assertion_sha256: null,
+      override_assertion_sha256: null,
+      accepted_contract_version: null,
+      accepted_ceiling_policy_version: null,
+      plan_snapshot: null,
+      accepted_at: null,
+      created_at: null,
+      completed_at: null,
+      ceiling_claim: null,
+      transfer_evidence: transferEvidence,
+    };
+    const key = `grant-ledger/${grantId}.recovery-v1.ndjson`;
+    const line = `${new TextDecoder().decode(canonicalize(capsule))}\n`;
+    const existing = await r2.get(key);
+    if (existing !== null) {
+      if (await existing.text() !== line) throw new Error(`grant_recovery_capsule_conflict:${grantId}`);
+      return;
+    }
+    await r2.put(key, line);
+    return;
+  }
+  const claim = await db.prepare(
+    `SELECT grant_id, org_id, source_kind, envelope, envelope_sha256,
+            installation_id, binding_epoch, route_generation, state, receipt,
+            accepted_command, accepted_actor, signer_credential_id,
+            assertion_sha256, override_assertion_sha256,
+            accepted_contract_version, accepted_ceiling_policy_version,
+            plan_snapshot, accepted_at, command_state, created_at, completed_at
+     FROM grant_claim WHERE grant_id = ?`,
+  ).bind(grantId).first<Record<string, unknown>>();
+  if (
+    claim === null || claim.state !== "completed" ||
+    claim.org_id !== ledger.org_id || claim.installation_id !== ledger.installation_id ||
+    claim.source_kind !== ledger.source_kind || claim.envelope_sha256 !== ledger.envelope_sha256 ||
+    claim.receipt === null ||
+    !canonicalValuesEqual(JSON.parse(String(claim.receipt)), ledger.receipt) ||
+    !canonicalValuesEqual(
+      JSON.parse(String(claim.envelope)),
+      (ledger.recovery_capsule as Record<string, unknown>).envelope,
+    )
+  ) {
+    throw new Error(`grant_recovery_claim_conflict:${grantId}`);
+  }
+  if (claim.source_kind === "complimentary" && (
+    typeof claim.accepted_command !== "string" || claim.command_state !== "completed"
+  )) {
+    throw new Error(`grant_recovery_command_missing:${grantId}`);
+  }
+  const ceiling = await db.prepare(
+    `SELECT grant_id, org_id, envelope_sha256, plan_id, plan_version,
+            allowance_denominator, day_contribution, allowance_contribution,
+            apply_per_grant_caps, source_reconciled, override_authorized,
+            status, receipt, applied_at, created_at
+     FROM complimentary_ceiling_claim WHERE grant_id = ?`,
+  ).bind(grantId).first<Record<string, unknown>>();
+  if (claim.source_kind === "complimentary" && (
+    ceiling === null || ceiling.status !== "applied" ||
+    ceiling.envelope_sha256 !== claim.envelope_sha256 ||
+    ceiling.org_id !== claim.org_id || ceiling.receipt === null ||
+    !canonicalValuesEqual(JSON.parse(String(ceiling.receipt)), ledger.receipt)
+  )) {
+    throw new Error(`grant_recovery_ceiling_conflict:${grantId}`);
+  }
+  const capsule = {
+    version: 1,
+    grant_id: grantId,
+    org_id: claim.org_id,
+    installation_id: claim.installation_id,
+    binding_epoch: claim.binding_epoch,
+    route_generation: claim.route_generation,
+    source_kind: claim.source_kind,
+    envelope: JSON.parse(String(claim.envelope)),
+    envelope_sha256: claim.envelope_sha256,
+    evidence: (ledger.recovery_capsule as Record<string, unknown>).evidence,
+    receipt: JSON.parse(String(claim.receipt)),
+    accepted_command: claim.accepted_command,
+    accepted_actor: claim.accepted_actor,
+    signer_credential_id: claim.signer_credential_id,
+    assertion_sha256: claim.assertion_sha256,
+    override_assertion_sha256: claim.override_assertion_sha256,
+    accepted_contract_version: claim.accepted_contract_version,
+    accepted_ceiling_policy_version: claim.accepted_ceiling_policy_version,
+    plan_snapshot: claim.plan_snapshot,
+    accepted_at: claim.accepted_at,
+    created_at: claim.created_at,
+    completed_at: claim.completed_at,
+    ceiling_claim: ceiling,
+  };
+  if (capsule.evidence === null || capsule.evidence === undefined) {
+    throw new Error(`grant_recovery_evidence_missing:${grantId}`);
+  }
+  const key = `grant-ledger/${grantId}.recovery-v1.ndjson`;
+  const line = `${new TextDecoder().decode(canonicalize(capsule))}\n`;
+  const existing = await r2.get(key);
+  if (existing !== null) {
+    if (await existing.text() !== line) {
+      throw new Error(`grant_recovery_capsule_conflict:${grantId}`);
+    }
+    return;
+  }
+  await r2.put(key, line);
+}
+
 async function shipCoverageOutboxInLock(
   state: DurableObjectState,
   storage: DurableObjectStorage,
@@ -3572,7 +3838,7 @@ async function shipCoverageOutboxInLock(
     for (const row of rows) {
       const payload = JSON.parse(row.payload) as Record<string, unknown>;
       if (row.kind === "coverage_event") {
-        await env.DB.prepare(
+        stagedStatements.push(env.DB.prepare(
           `INSERT OR IGNORE INTO coverage_event (
             event_id, org_id, installation_id, binding_epoch, clinic_seq, kind, snapshot, at
           ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
@@ -3635,6 +3901,7 @@ async function shipCoverageOutboxInLock(
           });
           await env.R2.put(key, `${line}\n`);
         }
+        await persistGrantRecoveryCapsule(env.DB, env.R2, storage, payload);
       } else if (row.kind === "grant_void") {
         await env.DB.prepare(
           `INSERT OR IGNORE INTO grant_void (grant_id, reason, source, evidence_sha256, at)
@@ -3755,6 +4022,14 @@ export async function shipCoverageOutboxAlarm(
   durationScale?: DurationScale,
 ): Promise<ShippedCoverageAlert[]> {
   return blockConcurrencyWhile(async () => {
+    const recovery = sqlSelect<{ status: string }>(
+      storage,
+      "SELECT status FROM recovery_state WHERE singleton = 1 LIMIT 1",
+    )[0];
+    if (recovery?.status === "building" || recovery?.status === "blocked") {
+      await state.storage.setAlarm(Date.now() + 60_000);
+      return [];
+    }
     try {
       return await shipCoverageOutboxInLock(
         state,
@@ -3768,6 +4043,11 @@ export async function shipCoverageOutboxAlarm(
     } catch (error) {
       // Alarm delivery is at-least-once. Preserve the pending row and restore
       // a durable wake-up if a downstream write or D1 observation fails.
+      const detail = error instanceof Error ? error.message : "coverage_outbox_ship_failed";
+      logger.error("Coverage outbox evidence could not be shipped; retry scheduled", {
+        installation_id: installationId,
+        reason: detail,
+      });
       await scheduleOutboxAlarmIfPending(state, storage, nowIso);
       throw error;
     }
@@ -4852,36 +5132,18 @@ function snapshotUsedByTermId(
   return usedByTerm;
 }
 
-async function reapplyUsageEventsAfterSnapshot(
-  db: D1Database,
+function reapplyUsageEventsAfterSnapshot(
   storage: DurableObjectStorage,
-  installationId: string,
-  snapshotAt: string,
   termIds: string[],
   anchorSnapshot: Record<string, unknown>,
-): Promise<void> {
+  rows: Array<{ request_id: string; term_id: string; quota_weight: number; recorded_at: string }>,
+): void {
   if (termIds.length === 0) {
     return;
   }
-  const placeholders = termIds.map(() => "?").join(", ");
-  const rows = await db
-    .prepare(
-      `SELECT request_id, term_id, quota_weight, recorded_at FROM usage_event
-       WHERE installation_id = ? AND recorded_at >= ?
-         AND term_id IN (${placeholders})
-       ORDER BY recorded_at ASC, request_id ASC`,
-    )
-    .bind(installationId, snapshotAt, ...termIds)
-    .all<{
-      request_id: string;
-      term_id: string;
-      quota_weight: number;
-      recorded_at: string;
-    }>();
-
   const snapshotUsedRemaining = snapshotUsedByTermId(anchorSnapshot);
   const appliedRequestIds = new Set<string>();
-  for (const row of rows.results ?? []) {
+  for (const row of rows.filter((entry) => termIds.includes(entry.term_id))) {
     if (appliedRequestIds.has(row.request_id)) {
       continue;
     }
@@ -4919,27 +5181,467 @@ type GrantLedgerRebuildRow = {
   applied_at: string;
 };
 
-async function loadGrantLedgerR2Line(
+async function verifyGrantRecoveryCapsule(
+  db: D1Database,
   r2: R2Bucket,
   grantId: string,
-): Promise<Record<string, unknown> | null> {
-  const key = `grant-ledger/${grantId}.ndjson`;
+  ledgerRow: GrantLedgerRebuildRow,
+  platformSigningKeyJson?: string,
+): Promise<Record<string, unknown>> {
+  const key = `grant-ledger/${grantId}.recovery-v1.ndjson`;
   const object = await r2.get(key);
-  if (object === null) {
-    return null;
+  if (object === null) throw new Error(`grant_recovery_capsule_required:${grantId}`);
+  const lines = (await object.text()).trimEnd().split("\n");
+  if (lines.length !== 1 || lines[0]!.length === 0) {
+    throw new Error(`grant_recovery_capsule_invalid:${grantId}`);
   }
-  const text = await object.text();
-  const line = text.trim().split("\n")[0] ?? "";
-  if (line.length === 0) {
-    return null;
+  let capsule: Record<string, unknown>;
+  let ledgerReceipt: unknown;
+  try {
+    const parsed: unknown = JSON.parse(lines[0]!);
+    if (parsed === null || typeof parsed !== "object" || Array.isArray(parsed)) {
+      throw new Error("capsule_not_object");
+    }
+    capsule = parsed as Record<string, unknown>;
+    ledgerReceipt = typeof ledgerRow.receipt === "string"
+      ? JSON.parse(ledgerRow.receipt)
+      : ledgerRow.receipt;
+  } catch {
+    throw new Error(`grant_recovery_capsule_invalid:${grantId}`);
   }
-  return JSON.parse(line) as Record<string, unknown>;
+  const commonFields = [
+    "version", "grant_id", "org_id", "installation_id", "binding_epoch",
+    "route_generation", "source_kind", "envelope", "envelope_sha256", "evidence",
+    "receipt", "accepted_command", "accepted_actor", "signer_credential_id",
+    "assertion_sha256", "override_assertion_sha256", "accepted_contract_version",
+    "accepted_ceiling_policy_version", "plan_snapshot", "accepted_at", "created_at",
+    "completed_at", "ceiling_claim",
+  ];
+  const expectedFields = [...commonFields, ...(ledgerRow.source_kind === "transfer" ? ["transfer_evidence"] : [])].sort();
+  if (JSON.stringify(Object.keys(capsule).sort()) !== JSON.stringify(expectedFields)) {
+    throw new Error(`grant_recovery_capsule_schema_conflict:${grantId}`);
+  }
+  if (!["paid", "complimentary", "transfer"].includes(String(ledgerRow.source_kind))) {
+    throw new Error(`grant_recovery_source_kind_invalid:${grantId}`);
+  }
+  const envelope = capsule.envelope;
+  const receipt = capsule.receipt;
+  if (
+    capsule.version !== 1 || capsule.grant_id !== grantId ||
+    capsule.org_id !== ledgerRow.org_id ||
+    capsule.installation_id !== ledgerRow.installation_id ||
+    capsule.source_kind !== ledgerRow.source_kind ||
+    capsule.envelope_sha256 !== ledgerRow.envelope_sha256 ||
+    envelope === null || typeof envelope !== "object" || Array.isArray(envelope) ||
+    receipt === null || typeof receipt !== "object" || Array.isArray(receipt) ||
+    capsule.evidence === null || capsule.evidence === undefined ||
+    !canonicalValuesEqual(capsule.receipt, ledgerReceipt) ||
+    await grantEnvelopeHash(envelope as Record<string, unknown>) !== ledgerRow.envelope_sha256
+  ) {
+    throw new Error(`grant_recovery_capsule_link_conflict:${grantId}`);
+  }
+  const signedReceipt = receipt as Record<string, unknown>;
+  if (
+    signedReceipt.grant_id !== grantId || signedReceipt.org_id !== ledgerRow.org_id ||
+    signedReceipt.installation_id !== ledgerRow.installation_id ||
+    signedReceipt.envelope_sha256 !== ledgerRow.envelope_sha256 ||
+    signedReceipt.applied_at !== ledgerRow.applied_at
+  ) {
+    throw new Error(`grant_recovery_receipt_identity_conflict:${grantId}`);
+  }
+  await verifyPlatformReceiptForRecovery(signedReceipt, platformSigningKeyJson, grantId);
+  if (ledgerRow.source_kind === "complimentary" || ledgerRow.source_kind === "paid") {
+    if (Object.hasOwn(capsule, "transfer_evidence")) {
+      throw new Error(`grant_recovery_capsule_schema_conflict:${grantId}`);
+    }
+    await verifyClaimRecoveryMetadata(db, grantId, capsule);
+  } else if (ledgerRow.source_kind === "transfer") {
+    if (capsule.binding_epoch !== null || capsule.route_generation !== null ||
+        capsule.accepted_command !== null || capsule.accepted_actor !== null ||
+        capsule.signer_credential_id !== null || capsule.assertion_sha256 !== null ||
+        capsule.override_assertion_sha256 !== null || capsule.accepted_contract_version !== null ||
+        capsule.accepted_ceiling_policy_version !== null || capsule.plan_snapshot !== null ||
+        capsule.accepted_at !== null || capsule.created_at !== null || capsule.completed_at !== null ||
+        capsule.ceiling_claim !== null) {
+      throw new Error(`grant_recovery_transfer_claim_fields_conflict:${grantId}`);
+    }
+    await verifyTransferRecoveryMetadata(db, grantId, ledgerRow, capsule, platformSigningKeyJson);
+  } else {
+    throw new Error(`grant_recovery_source_kind_invalid:${grantId}`);
+  }
+  return capsule;
+}
+
+function isRecoveryRecord(value: unknown): value is Record<string, unknown> {
+  return value !== null && typeof value === "object" && !Array.isArray(value);
+}
+
+function recoveryNullableString(value: unknown): boolean {
+  return value === null || typeof value === "string";
+}
+
+async function verifyClaimRecoveryMetadata(
+  db: D1Database,
+  grantId: string,
+  capsule: Record<string, unknown>,
+): Promise<void> {
+  const envelope = capsule.envelope as Record<string, unknown>;
+  const receipt = capsule.receipt as Record<string, unknown>;
+  const sourceKind = capsule.source_kind;
+  const claimOnlyFields = [
+    capsule.accepted_command, capsule.accepted_actor, capsule.signer_credential_id,
+    capsule.assertion_sha256, capsule.override_assertion_sha256,
+    capsule.accepted_contract_version, capsule.accepted_ceiling_policy_version,
+    capsule.plan_snapshot, capsule.accepted_at,
+  ];
+  if (sourceKind === "paid") {
+    if (claimOnlyFields.some((value) => value !== null) || capsule.ceiling_claim !== null ||
+        capsule.route_generation !== 1 || !Number.isInteger(capsule.binding_epoch) ||
+        (envelope.evidence !== undefined
+          ? !canonicalValuesEqual(capsule.evidence, envelope.evidence)
+          : !canonicalValuesEqual(capsule.evidence, envelope))) {
+      throw new Error(`grant_recovery_paid_metadata_conflict:${grantId}`);
+    }
+    await verifyRecoveryRouteMetadata(db, grantId, capsule);
+    return;
+  }
+  const acceptedCommandText = capsule.accepted_command;
+  if (
+    typeof acceptedCommandText !== "string" || typeof capsule.accepted_actor !== "string" ||
+    capsule.accepted_actor.length === 0 || typeof capsule.signer_credential_id !== "string" ||
+    capsule.signer_credential_id.length === 0 ||
+    typeof capsule.assertion_sha256 !== "string" || !/^[a-f0-9]{64}$/u.test(capsule.assertion_sha256) ||
+    !recoveryNullableString(capsule.override_assertion_sha256) ||
+    (capsule.override_assertion_sha256 !== null && !/^[a-f0-9]{64}$/u.test(String(capsule.override_assertion_sha256))) ||
+    !Number.isInteger(capsule.accepted_contract_version) ||
+    !Number.isInteger(capsule.accepted_ceiling_policy_version) ||
+    !Number.isInteger(capsule.binding_epoch) || (capsule.binding_epoch as number) < 1 ||
+    !Number.isInteger(capsule.route_generation) || (capsule.route_generation as number) < 1 ||
+    typeof capsule.accepted_at !== "string" || !Number.isFinite(Date.parse(capsule.accepted_at)) ||
+    typeof capsule.created_at !== "string" || !Number.isFinite(Date.parse(capsule.created_at)) ||
+    typeof capsule.completed_at !== "string" || !Number.isFinite(Date.parse(capsule.completed_at))
+  ) {
+    throw new Error(`grant_recovery_command_metadata_invalid:${grantId}`);
+  }
+  let command: Record<string, unknown>;
+  try {
+    const parsed: unknown = JSON.parse(acceptedCommandText);
+    if (!isRecoveryRecord(parsed)) throw new Error("accepted_command_not_object");
+    command = parsed;
+  } catch {
+    throw new Error(`grant_recovery_command_invalid:${grantId}`);
+  }
+  if (
+    JSON.stringify(Object.keys(command).sort()) !== JSON.stringify(["contract_version", "envelope", "operation", "override_operation"].sort()) ||
+    command.contract_version !== capsule.accepted_contract_version ||
+    !canonicalValuesEqual(command.envelope, envelope) ||
+    !isRecoveryRecord(command.operation) ||
+    command.override_operation !== null && !isRecoveryRecord(command.override_operation)
+  ) {
+    throw new Error(`grant_recovery_command_link_conflict:${grantId}`);
+  }
+  const operation = command.operation as Record<string, unknown>;
+  if (
+    operation.op !== "grant" || operation.contract_version !== capsule.accepted_contract_version ||
+    operation.actor_email !== capsule.accepted_actor || !isRecoveryRecord(operation.params) ||
+    !canonicalValuesEqual((operation.params as Record<string, unknown>).envelope, envelope) ||
+    await sha256Hex(canonicalize(operation)) !== capsule.assertion_sha256
+  ) {
+    throw new Error(`grant_recovery_command_provenance_conflict:${grantId}`);
+  }
+  const used = await db.prepare(
+    `SELECT credential_id FROM assertion_used WHERE challenge_sha256 = ?`,
+  ).bind(capsule.assertion_sha256).first<{ credential_id: string }>();
+  const audit = await db.prepare(
+    `SELECT actor, assertion_sha256 FROM control_audit
+     WHERE action = 'grant' AND target = ? AND assertion_sha256 = ?
+     ORDER BY recorded_at DESC LIMIT 1`,
+  ).bind(grantId, capsule.assertion_sha256).first<{ actor: string | null; assertion_sha256: string | null }>();
+  if (used?.credential_id !== capsule.signer_credential_id ||
+      audit?.actor !== capsule.accepted_actor || audit.assertion_sha256 !== capsule.assertion_sha256) {
+    throw new Error(`grant_recovery_command_provenance_missing:${grantId}`);
+  }
+  if (capsule.override_assertion_sha256 === null) {
+    if (command.override_operation !== null || envelope.ceiling_override !== undefined) {
+      throw new Error(`grant_recovery_override_link_conflict:${grantId}`);
+    }
+  } else {
+    const override = command.override_operation as Record<string, unknown>;
+    const overrideUsed = await db.prepare(
+      `SELECT credential_id FROM assertion_used WHERE challenge_sha256 = ?`,
+    ).bind(capsule.override_assertion_sha256).first<{ credential_id: string }>();
+    const withoutOverride = { ...envelope };
+    delete withoutOverride.ceiling_override;
+    if (
+      !isRecoveryRecord(envelope.ceiling_override) || override.op !== "ceiling_override" ||
+      override.contract_version !== capsule.accepted_contract_version ||
+      override.actor_email !== capsule.accepted_actor || !isRecoveryRecord(override.params) ||
+      !canonicalValuesEqual((override.params as Record<string, unknown>).envelope, withoutOverride) ||
+      await sha256Hex(canonicalize(override)) !== capsule.override_assertion_sha256 ||
+      overrideUsed?.credential_id !== capsule.signer_credential_id
+    ) {
+      throw new Error(`grant_recovery_override_provenance_conflict:${grantId}`);
+    }
+  }
+  const plan = envelope.plan;
+  const snapshot = typeof capsule.plan_snapshot === "string"
+    ? JSON.parse(capsule.plan_snapshot)
+    : capsule.plan_snapshot;
+  if (
+    !isRecoveryRecord(plan) || !isRecoveryRecord(snapshot) ||
+    plan.plan_id !== snapshot.plan_id || plan.plan_version !== snapshot.version
+  ) {
+    throw new Error(`grant_recovery_plan_snapshot_conflict:${grantId}`);
+  }
+  const ceiling = capsule.ceiling_claim;
+  const duration = envelope.duration;
+  const ceilingFields = [
+    "grant_id", "org_id", "envelope_sha256", "plan_id", "plan_version",
+    "allowance_denominator", "day_contribution", "allowance_contribution",
+    "apply_per_grant_caps", "source_reconciled", "override_authorized", "status",
+    "receipt", "applied_at", "created_at",
+  ];
+  if (!isRecoveryRecord(ceiling) || !isRecoveryRecord(duration) ||
+      JSON.stringify(Object.keys(ceiling).sort()) !== JSON.stringify([...ceilingFields].sort())) {
+    throw new Error(`grant_recovery_ceiling_claim_required:${grantId}`);
+  }
+  const expectedDays = duration.unit === "month" && Number.isInteger(duration.count)
+    ? (duration.count as number) * 31
+    : duration.unit === "day" && Number.isInteger(duration.count)
+      ? duration.count as number
+      : null;
+  const overrideAuthorized = capsule.override_assertion_sha256 === null ? 0 : 1;
+  if (
+    ceiling.grant_id !== grantId || ceiling.org_id !== capsule.org_id ||
+    ceiling.envelope_sha256 !== capsule.envelope_sha256 ||
+    ceiling.plan_id !== plan.plan_id || ceiling.plan_version !== plan.plan_version ||
+    !Number.isInteger(ceiling.allowance_denominator) || (ceiling.allowance_denominator as number) < 1 ||
+    ceiling.day_contribution !== expectedDays ||
+    ceiling.allowance_contribution !== envelope.allowance_credits ||
+    (ceiling.apply_per_grant_caps !== 0 && ceiling.apply_per_grant_caps !== 1) ||
+    ceiling.source_reconciled !== 1 || ceiling.override_authorized !== overrideAuthorized ||
+    ceiling.status !== "applied" || !canonicalValuesEqual(ceiling.receipt, receipt) ||
+    ceiling.applied_at !== receipt.applied_at || typeof ceiling.created_at !== "string" ||
+    !Number.isFinite(Date.parse(ceiling.created_at))
+  ) {
+    throw new Error(`grant_recovery_ceiling_claim_conflict:${grantId}`);
+  }
+  if (envelope.evidence !== undefined
+    ? !canonicalValuesEqual(capsule.evidence, envelope.evidence)
+    : !canonicalValuesEqual(capsule.evidence, envelope)) {
+    throw new Error(`grant_recovery_evidence_conflict:${grantId}`);
+  }
+  await verifyRecoveryRouteMetadata(db, grantId, capsule);
+}
+
+async function verifyRecoveryRouteMetadata(
+  db: D1Database,
+  grantId: string,
+  capsule: Record<string, unknown>,
+): Promise<void> {
+  const route = await db.prepare(
+    `SELECT org_id, installation_id, binding_epoch, generation
+     FROM live_value_route WHERE grant_id = ?`,
+  ).bind(grantId).first<{
+    org_id: string; installation_id: string; binding_epoch: number; generation: number;
+  }>();
+  if (route === null || route.org_id !== capsule.org_id ||
+      route.installation_id !== capsule.installation_id ||
+      route.binding_epoch !== capsule.binding_epoch ||
+      route.generation !== capsule.route_generation) {
+    throw new Error(`grant_recovery_route_provenance_conflict:${grantId}`);
+  }
+  const claim = await db.prepare(
+    `SELECT org_id, installation_id, binding_epoch, route_generation, source_kind,
+            envelope_sha256, accepted_command, accepted_actor, signer_credential_id,
+            assertion_sha256, override_assertion_sha256, accepted_contract_version,
+            accepted_ceiling_policy_version, plan_snapshot, accepted_at, created_at,
+            completed_at, receipt
+     FROM grant_claim WHERE grant_id = ?`,
+  ).bind(grantId).first<Record<string, unknown>>();
+  if (claim === null) return;
+  const fields = [
+    "org_id", "installation_id", "binding_epoch", "route_generation", "source_kind",
+    "envelope_sha256", "accepted_command", "accepted_actor", "signer_credential_id",
+    "assertion_sha256", "override_assertion_sha256", "accepted_contract_version",
+    "accepted_ceiling_policy_version", "accepted_at", "created_at", "completed_at",
+  ] as const;
+  const planSnapshot = typeof claim.plan_snapshot === "string"
+    ? JSON.parse(claim.plan_snapshot)
+    : claim.plan_snapshot;
+  if (fields.some((field) => claim[field] !== capsule[field]) ||
+      !canonicalValuesEqual(typeof claim.receipt === "string" ? JSON.parse(claim.receipt) : claim.receipt, capsule.receipt) ||
+      !canonicalValuesEqual(planSnapshot, typeof capsule.plan_snapshot === "string"
+        ? JSON.parse(capsule.plan_snapshot)
+        : capsule.plan_snapshot)) {
+    throw new Error(`grant_recovery_claim_provenance_conflict:${grantId}`);
+  }
+}
+
+async function verifyTransferRecoveryMetadata(
+  db: D1Database,
+  grantId: string,
+  ledgerRow: GrantLedgerRebuildRow,
+  capsule: Record<string, unknown>,
+  platformSigningKeyJson: string | undefined,
+): Promise<void> {
+  const transferEvidence = capsule.transfer_evidence;
+  if (!isRecoveryRecord(transferEvidence) ||
+      JSON.stringify(Object.keys(transferEvidence).sort()) !== JSON.stringify([
+        "applied_at", "receipt_text", "request_sha256", "response_json", "source_step",
+        "step", "transfer",
+      ].sort())) {
+    throw new Error(`grant_recovery_transfer_evidence_required:${grantId}`);
+  }
+  const transfer = transferEvidence.transfer;
+  const sourceStep = transferEvidence.source_step;
+  if (!isRecoveryRecord(transfer) || !isRecoveryRecord(sourceStep) ||
+      JSON.stringify(Object.keys(transfer).sort()) !== JSON.stringify([
+        "created_at", "from_installation_id", "org_id", "package", "to_installation_id",
+      ].sort()) ||
+      JSON.stringify(Object.keys(sourceStep).sort()) !== JSON.stringify(["applied_at", "receipt_text"].sort()) ||
+      transferEvidence.step !== "transfer_in" ||
+      typeof transferEvidence.transfer_id !== "string" ||
+      typeof transferEvidence.request_sha256 !== "string" || !/^[a-f0-9]{64}$/u.test(transferEvidence.request_sha256) ||
+      typeof transferEvidence.response_json !== "string" ||
+      typeof transferEvidence.receipt_text !== "string" ||
+      typeof transferEvidence.applied_at !== "string" ||
+      typeof transfer.package !== "string" ||
+      typeof transfer.created_at !== "string" ||
+      typeof transfer.org_id !== "string" ||
+      typeof transfer.from_installation_id !== "string" ||
+      typeof transfer.to_installation_id !== "string" ||
+      typeof sourceStep.receipt_text !== "string" || typeof sourceStep.applied_at !== "string") {
+    throw new Error(`grant_recovery_transfer_evidence_invalid:${grantId}`);
+  }
+  let packageTerms: unknown;
+  let response: Record<string, unknown>;
+  let sourceReceipt: Record<string, unknown>;
+  let destinationReceipt: Record<string, unknown>;
+  try {
+    packageTerms = JSON.parse(transfer.package);
+    response = JSON.parse(transferEvidence.response_json) as Record<string, unknown>;
+    sourceReceipt = JSON.parse(sourceStep.receipt_text) as Record<string, unknown>;
+    destinationReceipt = JSON.parse(transferEvidence.receipt_text) as Record<string, unknown>;
+  } catch {
+    throw new Error(`grant_recovery_transfer_evidence_invalid:${grantId}`);
+  }
+  if (!Array.isArray(packageTerms) || !isRecoveryRecord(response) ||
+      !isRecoveryRecord(sourceReceipt) || !isRecoveryRecord(destinationReceipt) ||
+      response.kind !== "transfer_in" || response.result !== "applied" ||
+      !canonicalValuesEqual(response.receipt, destinationReceipt) ||
+      !Array.isArray(response.term_ids) || !Array.isArray(destinationReceipt.term_ids) ||
+      !canonicalValuesEqual(response.term_ids, destinationReceipt.term_ids) ||
+      !Array.isArray(sourceReceipt.term_ids) ||
+      sourceReceipt.term_ids.length !== packageTerms.length ||
+      destinationReceipt.term_ids.length !== packageTerms.length ||
+      response.term_ids.length !== packageTerms.length ||
+      transferEvidence.transfer_id === "" || transfer.org_id !== ledgerRow.org_id ||
+      transfer.to_installation_id !== ledgerRow.installation_id ||
+      destinationReceipt.transfer_id !== transferEvidence.transfer_id ||
+      sourceReceipt.transfer_id !== transferEvidence.transfer_id ||
+      destinationReceipt.org_id !== transfer.org_id || sourceReceipt.org_id !== transfer.org_id ||
+      destinationReceipt.installation_id !== transfer.to_installation_id ||
+      sourceReceipt.installation_id !== transfer.from_installation_id ||
+      destinationReceipt.applied_at !== transferEvidence.applied_at ||
+      sourceReceipt.applied_at !== sourceStep.applied_at ||
+      destinationReceipt.result !== "applied" || sourceReceipt.result !== "applied" ||
+      destinationReceipt.envelope_sha256 !== await sha256Hex(canonicalize(packageTerms)) ||
+      sourceReceipt.envelope_sha256 !== destinationReceipt.envelope_sha256 ||
+      destinationReceipt.grant_id !== grantId ||
+      !canonicalValuesEqual(capsule.evidence, { transfer_id: transferEvidence.transfer_id, step: "transfer_in" })) {
+    throw new Error(`grant_recovery_transfer_evidence_conflict:${grantId}`);
+  }
+  const index = await (async () => {
+    for (let i = 0; i < packageTerms.length; i += 1) {
+      if (await transferGrantId(String(transferEvidence.transfer_id), i) === grantId) return i;
+    }
+    return -1;
+  })();
+  const prepared = await db.prepare(
+    `SELECT destination_epoch, phase, org_id, from_installation_id, to_installation_id
+     FROM transfer_preparation WHERE transfer_id = ?`,
+  ).bind(transferEvidence.transfer_id).first<{
+    destination_epoch: number; phase: string; org_id: string;
+    from_installation_id: string; to_installation_id: string;
+  }>();
+  const storedTransfer = await db.prepare(
+    `SELECT org_id, from_installation_id, to_installation_id, package, created_at
+     FROM transfer WHERE transfer_id = ?`,
+  ).bind(transferEvidence.transfer_id).first<{
+    org_id: string; from_installation_id: string; to_installation_id: string;
+    package: string | null; created_at: string;
+  }>();
+  const storedSteps = await db.prepare(
+    `SELECT step, receipt, applied_at FROM transfer_step WHERE transfer_id = ?`,
+  ).bind(transferEvidence.transfer_id).all<{
+    step: string; receipt: string; applied_at: string;
+  }>();
+  const steps = storedSteps.results ?? [];
+  const storedSource = steps.find((step) => step.step === "transfer_out");
+  const storedDestination = steps.find((step) => step.step === "transfer_in");
+  if (index < 0 || prepared === null || prepared.phase !== "completed" ||
+      storedTransfer === null || storedTransfer.package === null ||
+      steps.length !== 2 || storedSource === undefined || storedDestination === undefined ||
+      prepared.org_id !== transfer.org_id ||
+      prepared.from_installation_id !== transfer.from_installation_id ||
+      prepared.to_installation_id !== transfer.to_installation_id ||
+      storedTransfer.org_id !== transfer.org_id ||
+      storedTransfer.from_installation_id !== transfer.from_installation_id ||
+      storedTransfer.to_installation_id !== transfer.to_installation_id ||
+      storedTransfer.package !== transfer.package || storedTransfer.created_at !== transfer.created_at ||
+      storedSource.receipt !== sourceStep.receipt_text || storedSource.applied_at !== sourceStep.applied_at ||
+      storedDestination.receipt !== transferEvidence.receipt_text ||
+      storedDestination.applied_at !== transferEvidence.applied_at ||
+      !canonicalValuesEqual(capsule.envelope, packageTerms[index]) ||
+      await grantEnvelopeHash(capsule.envelope as Record<string, unknown>) !== ledgerRow.envelope_sha256 ||
+      capsule.receipt === null || !canonicalValuesEqual(capsule.receipt, ledgerRow.receipt) ||
+      destinationReceipt.grant_id !== grantId || destinationReceipt.envelope_sha256 !== ledgerRow.envelope_sha256 ||
+      destinationReceipt.applied_at !== ledgerRow.applied_at ||
+      !canonicalValuesEqual(response.receipt, destinationReceipt)) {
+    throw new Error(`grant_recovery_transfer_evidence_conflict:${grantId}`);
+  }
+  const expectedRequestHash = await sha256Hex(canonicalize({
+    installation_id: transfer.to_installation_id,
+    org_id: transfer.org_id,
+    binding_epoch: prepared.destination_epoch,
+    package: packageTerms,
+  }));
+  if (expectedRequestHash !== transferEvidence.request_sha256) {
+    throw new Error(`grant_recovery_transfer_request_conflict:${grantId}`);
+  }
+  await verifyPlatformReceiptForRecovery(sourceReceipt, platformSigningKeyJson, grantId);
+  await verifyPlatformReceiptForRecovery(destinationReceipt, platformSigningKeyJson, grantId);
+}
+
+async function verifyPlatformReceiptForRecovery(
+  receipt: Record<string, unknown>,
+  platformSigningKeyJson: string | undefined,
+  identity: string,
+): Promise<void> {
+  if (typeof platformSigningKeyJson !== "string") {
+    throw new Error(`grant_recovery_signing_key_unavailable:${identity}`);
+  }
+  let signing: { kid?: unknown; public_key?: unknown };
+  try { signing = JSON.parse(platformSigningKeyJson) as typeof signing; }
+  catch { throw new Error(`grant_recovery_signing_key_invalid:${identity}`); }
+  if (typeof signing.kid !== "string" || receipt.kid !== signing.kid || typeof signing.public_key !== "string") {
+    throw new Error(`grant_recovery_signing_key_unknown:${identity}`);
+  }
+  const base64 = signing.public_key.replace(/-/gu, "+").replace(/_/gu, "/");
+  let raw: Uint8Array;
+  try { raw = Uint8Array.from(atob(base64), (character) => character.charCodeAt(0)); }
+  catch { throw new Error(`grant_recovery_signing_key_invalid:${identity}`); }
+  const publicKey = await crypto.subtle.importKey("raw", raw, { name: "Ed25519" }, false, ["verify"]);
+  if (!(await verifyReceiptSignature({ receipt, publicKey }))) {
+    throw new Error(`grant_recovery_receipt_invalid:${identity}`);
+  }
 }
 
 function insertDoGrantRowFromLedger(
   storage: DurableObjectStorage,
   row: GrantLedgerRebuildRow,
-  r2Line: Record<string, unknown> | null,
+  capsule: Record<string, unknown>,
 ): void {
   const existing = sqlSelect<{ grant_id: string }>(
     storage,
@@ -4948,14 +5650,9 @@ function insertDoGrantRowFromLedger(
   if (existing !== undefined) {
     return;
   }
-  const receipt =
-    r2Line !== null &&
-    typeof r2Line.receipt === "object" &&
-    r2Line.receipt !== null
-      ? (r2Line.receipt as Record<string, unknown>)
-      : (JSON.parse(row.receipt) as Record<string, unknown>);
-  const envelopeJson =
-    r2Line !== null ? JSON.stringify(r2Line) : JSON.stringify({ grant_id: row.grant_id });
+  const receipt = capsule.receipt as Record<string, unknown>;
+  const envelopeJson = JSON.stringify(capsule.envelope);
+  const evidenceJson = JSON.stringify(capsule.evidence);
   sqlExec(
     storage,
     `INSERT INTO grant (
@@ -4963,33 +5660,10 @@ function insertDoGrantRowFromLedger(
     ) VALUES (
       ${sqlString(row.grant_id)}, ${sqlString(row.kind)}, ${sqlString(row.source_kind)},
       ${sqlString(row.envelope_sha256)}, ${sqlString(envelopeJson)},
-      ${sqlString("{}")}, ${sqlString(JSON.stringify(receipt))},
+      ${sqlString(evidenceJson)}, ${sqlString(JSON.stringify(receipt))},
       ${sqlString(row.applied_at)}, NULL, NULL
     )`,
   );
-}
-
-async function restoreDoGrantRowsFromLedger(
-  storage: DurableObjectStorage,
-  db: D1Database,
-  installationId: string,
-  anchorAt: string,
-  r2: R2Bucket,
-): Promise<void> {
-  const rows = await db
-    .prepare(
-      `SELECT grant_id, origin_grant_id, org_id, installation_id, kind, source_kind,
-              operator_credential_id, operator_email, envelope_sha256, receipt, applied_at
-       FROM grant_ledger
-       WHERE installation_id = ? AND applied_at <= ?
-       ORDER BY applied_at ASC, grant_id ASC`,
-    )
-    .bind(installationId, anchorAt)
-    .all<GrantLedgerRebuildRow>();
-  for (const row of rows.results ?? []) {
-    const r2Line = await loadGrantLedgerR2Line(r2, row.grant_id);
-    insertDoGrantRowFromLedger(storage, row, r2Line);
-  }
 }
 
 function snapshotTermsIncludeGrant(
@@ -5012,59 +5686,22 @@ function snapshotTermsIncludeGrant(
   return false;
 }
 
-async function findGrantAppliedSnapshotForGrant(
-  db: D1Database,
-  installationId: string,
-  grantId: string,
-  afterClinicSeq: number,
-): Promise<Record<string, unknown> | null> {
-  const rows = await db
-    .prepare(
-      `SELECT snapshot, clinic_seq FROM coverage_event
-       WHERE installation_id = ? AND kind = 'grant_applied' AND clinic_seq > ?
-       ORDER BY clinic_seq ASC`,
-    )
-    .bind(installationId, afterClinicSeq)
-    .all<{ snapshot: string; clinic_seq: number }>();
-  for (const row of rows.results ?? []) {
-    try {
-      const snapshot = JSON.parse(row.snapshot) as Record<string, unknown>;
-      if (snapshotTermsIncludeGrant(snapshot, grantId)) {
-        return snapshot;
-      }
-    } catch {
-      continue;
-    }
-  }
-  return null;
-}
-
-async function applyGrantLedgerRowToDo(
-  storage: DurableObjectStorage,
-  row: GrantLedgerRebuildRow,
-  r2: R2Bucket,
-  db: D1Database,
-  installationId: string,
-  anchorClinicSeq: number,
-): Promise<void> {
-  const r2Line = await loadGrantLedgerR2Line(r2, row.grant_id);
-  insertDoGrantRowFromLedger(storage, row, r2Line);
-
-  const grantAppliedSnapshot = await findGrantAppliedSnapshotForGrant(
-    db,
-    installationId,
-    row.grant_id,
-    anchorClinicSeq,
-  );
-  if (grantAppliedSnapshot !== null) {
-    syncDoTermsAndHotFromCoverageSnapshot(storage, grantAppliedSnapshot);
-  }
-}
-
 function applyGrantVoidRowToDo(
   storage: DurableObjectStorage,
   row: { grant_id: string; reason: string; at: string },
 ): void {
+  const grant = sqlSelect<{ grant_id: string }>(
+    storage,
+    `SELECT grant_id FROM grant WHERE grant_id = ${sqlString(row.grant_id)} LIMIT 1`,
+  )[0];
+  if (grant === undefined) {
+    throw new Error(`grant_void_recovery_grant_missing:${row.grant_id}`);
+  }
+  sqlExec(
+    storage,
+    `UPDATE grant SET voided_at = ${sqlString(row.at)}, void_reason = ${sqlString(row.reason)}
+     WHERE grant_id = ${sqlString(row.grant_id)}`,
+  );
   const terms = loadTerms(storage);
   const term = findTermForGrant(terms, row.grant_id);
   if (term === undefined) {
@@ -5127,12 +5764,14 @@ export type RebuildClinicDoRequest = {
 
 export type RebuildClinicDoResponse = {
   kind: "rebuild_clinic_do";
-  result: "ok" | "not_found";
+  result: "ok" | "not_found" | "blocked";
+  blocked_reason?: string;
   snapshot?: Record<string, unknown>;
 };
 
 export type RunRebuildClinicDoResult =
   | { status: "not_found" }
+  | { status: "blocked"; reason?: string }
   | { status: "ok"; compare: "clean" | "mismatch" };
 
 export async function rebuildClinicDoRPC(
@@ -5166,110 +5805,378 @@ export async function rebuildClinicDoRPC(
       return { kind: "rebuild_clinic_do", result: "not_found" };
     }
 
+    const binding = await request.db.prepare(
+      `SELECT org_id, epoch FROM tenant_binding
+       WHERE installation_id = ? AND org_id = ?
+         AND status IN ('active', 'held_for_transfer')`,
+    ).bind(request.installationId, request.orgId)
+      .first<{ org_id: string; epoch: number }>();
+    if (
+      binding === null || binding.epoch !== request.bindingEpoch ||
+      anchor.org_id !== request.orgId || anchor.installation_id !== request.installationId ||
+      anchor.binding_epoch !== request.bindingEpoch
+    ) {
+      return { kind: "rebuild_clinic_do", result: "blocked" };
+    }
+    const existingState = sqlSelect<{
+      generation: string;
+      installation_id: string;
+      org_id: string;
+      binding_epoch: number;
+      anchor_event_id: string;
+      status: string;
+    }>(storage, "SELECT * FROM recovery_state WHERE singleton = 1 LIMIT 1")[0];
+    const coreTables = ["hot", "term", "grant", "outbox"];
+    const occupiedCore = coreTables.some((table) => Number(sqlSelect<{ count: number }>(
+      storage, `SELECT COUNT(*) AS count FROM ${table}`,
+    )[0]?.count ?? 0) > 0);
+    const generation = `${request.installationId}:${request.bindingEpoch}:${anchor.event_id}`;
+    // A continuation marker is only a bypass for an empty, freshly wiped DO.
+    // Never let a previous failed attempt authorize replacing authoritative rows.
+    const sameCandidate = !occupiedCore && existingState !== undefined &&
+      existingState.generation === generation &&
+      existingState.installation_id === request.installationId &&
+      existingState.org_id === request.orgId &&
+      existingState.binding_epoch === request.bindingEpoch &&
+      existingState.anchor_event_id === anchor.event_id &&
+      existingState.status === "building";
+    if ((occupiedCore && !sameCandidate) || (existingState !== undefined && (
+      existingState.generation !== generation ||
+      existingState.installation_id !== request.installationId ||
+      existingState.org_id !== request.orgId ||
+      existingState.binding_epoch !== request.bindingEpoch ||
+      existingState.anchor_event_id !== anchor.event_id ||
+      existingState.status === "complete" ||
+      existingState.status === "blocked" ||
+      (existingState.status === "building" && !sameCandidate)
+    ))) {
+      return { kind: "rebuild_clinic_do", result: "blocked" };
+    }
+    const persistBlockedRecoveryMarker = (): void => {
+      storage.transactionSync(() => sqlExec(storage,
+        `INSERT OR IGNORE INTO recovery_state (
+           singleton, generation, installation_id, org_id, binding_epoch,
+           anchor_event_id, status, updated_at
+         ) VALUES (1, ${sqlString(generation)}, ${sqlString(request.installationId)},
+           ${sqlString(request.orgId)}, ${request.bindingEpoch}, ${sqlString(anchor.event_id)},
+           'blocked', ${sqlString(new Date().toISOString())})`,
+      ));
+    };
+    if (!sameCandidate) persistBlockedRecoveryMarker();
+
+    const transferHistory = await request.db.prepare(
+      `SELECT transfer_id, org_id, from_installation_id, to_installation_id, package FROM transfer
+       WHERE from_installation_id = ? OR to_installation_id = ?`,
+    ).bind(request.installationId, request.installationId).all<{
+      transfer_id: string; org_id: string; package: string | null;
+      from_installation_id: string;
+      to_installation_id: string;
+    }>();
+    const movedRouteClaims = await request.db.prepare(
+      `SELECT grant_id, envelope_sha256, route_generation FROM grant_claim
+       WHERE installation_id = ? AND route_generation > 1`,
+    ).bind(request.installationId).all<{
+      grant_id: string;
+      envelope_sha256: string;
+      route_generation: number;
+    }>();
+    const openTransferPreparation = await request.db.prepare(
+      `SELECT transfer_id FROM transfer_preparation
+       WHERE phase <> 'completed'
+         AND (from_installation_id = ? OR to_installation_id = ?) LIMIT 1`,
+    ).bind(request.installationId, request.installationId).first<{ transfer_id: string }>();
+    if (openTransferPreparation !== null) {
+      return { kind: "rebuild_clinic_do", result: "blocked" };
+    }
+
+    let missingRouteSeal = false;
+    for (const claim of movedRouteClaims.results ?? []) {
+      const seal = sqlSelect<{ envelope_sha256: string; route_generation: number }>(
+        storage,
+        `SELECT envelope_sha256, route_generation FROM grant_route_seal
+         WHERE grant_id = ${sqlString(claim.grant_id)} LIMIT 1`,
+      )[0];
+      if (seal === undefined || seal.envelope_sha256 !== claim.envelope_sha256 ||
+          seal.route_generation !== claim.route_generation) {
+        missingRouteSeal = true;
+        break;
+      }
+    }
+    if (missingRouteSeal) {
+      persistBlockedRecoveryMarker();
+      return {
+        kind: "rebuild_clinic_do",
+        result: "blocked",
+        blocked_reason: "grant_route_seal_evidence_missing",
+      };
+    }
+    const transferRows = transferHistory.results ?? [];
+    if (transferRows.length > 0) {
+      let missingTransferReplay = false;
+      for (const transfer of transferRows) {
+        const transferId = transfer.transfer_id;
+        const expectedStep = transfer.from_installation_id === request.installationId
+          ? "transfer_out"
+          : "transfer_in";
+        const preparation = await request.db.prepare(
+          `SELECT org_id, from_installation_id, source_epoch, to_installation_id,
+                  destination_epoch, phase
+           FROM transfer_preparation WHERE transfer_id = ?`,
+        ).bind(transferId).first<{
+          org_id: string; from_installation_id: string; source_epoch: number;
+          to_installation_id: string; destination_epoch: number; phase: string;
+        }>();
+        if (transfer.package === null || preparation === null || preparation.phase !== "completed" ||
+            preparation.org_id !== transfer.org_id ||
+            preparation.from_installation_id !== transfer.from_installation_id ||
+            preparation.to_installation_id !== transfer.to_installation_id) {
+          missingTransferReplay = true;
+          break;
+        }
+        const transferSteps = await request.db.prepare(
+          `SELECT step, receipt, applied_at FROM transfer_step
+           WHERE transfer_id = ? ORDER BY step ASC`,
+        ).bind(transferId).all<{ step: string; receipt: string; applied_at: string }>();
+        const steps = transferSteps.results ?? [];
+        const sourceStep = steps.find((step) => step.step === "transfer_out");
+        const destinationStep = steps.find((step) => step.step === "transfer_in");
+        const localStep = expectedStep === "transfer_out" ? sourceStep : destinationStep;
+        if (steps.length !== 2 || sourceStep === undefined || destinationStep === undefined || localStep === undefined) {
+          missingTransferReplay = true;
+          break;
+        }
+        const replayRows = sqlSelect<{ request_sha256: string; response_json: string }>(
+          storage,
+          `SELECT request_sha256, response_json FROM transfer_replay
+           WHERE transfer_id = ${sqlString(transferId)} AND step = ${sqlString(expectedStep)}`,
+        );
+        if (replayRows.length !== 1 || !/^[a-f0-9]{64}$/u.test(replayRows[0]!.request_sha256)) {
+          missingTransferReplay = true;
+          break;
+        }
+        try {
+          const packageTerms = JSON.parse(transfer.package) as unknown;
+          const sourceReceipt = JSON.parse(sourceStep.receipt) as Record<string, unknown>;
+          const destinationReceipt = JSON.parse(destinationStep.receipt) as Record<string, unknown>;
+          const replay = replayRows[0]!;
+          const response = JSON.parse(replay.response_json) as Record<string, unknown>;
+          const requestHash = await sha256Hex(canonicalize(expectedStep === "transfer_out"
+            ? {
+              installation_id: request.installationId,
+              org_id: request.orgId,
+              binding_epoch: preparation.source_epoch,
+              to_installation_id: transfer.to_installation_id,
+            }
+            : {
+              installation_id: request.installationId,
+              org_id: request.orgId,
+              binding_epoch: preparation.destination_epoch,
+              package: packageTerms,
+            }));
+          const packageHash = await sha256Hex(canonicalize(packageTerms));
+          const validateStepReceipt = async (
+            receipt: Record<string, unknown>,
+            step: { receipt: string; applied_at: string },
+            installationId: string,
+            expectedTermIds?: unknown,
+          ): Promise<boolean> => {
+            const exact = JSON.parse(step.receipt) as unknown;
+            if (!canonicalValuesEqual(receipt, exact) ||
+                receipt.transfer_id !== transferId || receipt.org_id !== request.orgId ||
+                receipt.installation_id !== installationId || receipt.result !== "applied" ||
+                receipt.applied_at !== step.applied_at || receipt.envelope_sha256 !== packageHash ||
+                receipt.contract_version !== request.vendorContractVersion ||
+                !Number.isSafeInteger(receipt.ledger_seq) ||
+                typeof receipt.kid !== "string" || typeof receipt.signature !== "string" ||
+                !Array.isArray(receipt.term_ids) ||
+                (expectedTermIds !== undefined && !canonicalValuesEqual(receipt.term_ids, expectedTermIds))) {
+              return false;
+            }
+            await verifyPlatformReceiptForRecovery(receipt, request.platformSigningKeyJson, transferId);
+            return true;
+          };
+          const sourceReceiptValid = await validateStepReceipt(
+            sourceReceipt, sourceStep, transfer.from_installation_id,
+          );
+          const destinationReceiptValid = await validateStepReceipt(
+            destinationReceipt, destinationStep, transfer.to_installation_id,
+            expectedStep === "transfer_in" ? response.term_ids : undefined,
+          );
+          const responseReceipt = expectedStep === "transfer_out" ? sourceReceipt : destinationReceipt;
+          const responseKind = expectedStep;
+          const expectedResult = "applied";
+          const responseValid = response.kind === responseKind && response.result === expectedResult &&
+            canonicalValuesEqual(response.receipt, responseReceipt) &&
+            response.ledger_seq === responseReceipt.ledger_seq &&
+            canonicalValuesEqual(response.term_ids, responseReceipt.term_ids) &&
+            (expectedStep !== "transfer_out" || canonicalValuesEqual(response.package, packageTerms));
+          if (
+            transfer.org_id !== request.orgId ||
+            replay.request_sha256 !== requestHash || !sourceReceiptValid || !destinationReceiptValid ||
+            !responseValid || !Array.isArray(sourceReceipt.term_ids) ||
+            !Array.isArray(destinationReceipt.term_ids) ||
+            sourceReceipt.term_ids.length !== (packageTerms as unknown[]).length ||
+            destinationReceipt.term_ids.length !== (packageTerms as unknown[]).length
+          ) {
+            missingTransferReplay = true;
+            break;
+          }
+        } catch {
+          missingTransferReplay = true;
+          break;
+        }
+        if (missingTransferReplay) break;
+      }
+      if (missingTransferReplay) {
+        persistBlockedRecoveryMarker();
+        return {
+          kind: "rebuild_clinic_do",
+          result: "blocked",
+          blocked_reason: "transfer_replay_evidence_missing",
+        };
+      }
+    }
+    const sameRecovery = sameCandidate;
+
     const anchorSnapshot = JSON.parse(anchor.snapshot) as Record<
       string,
       unknown
     >;
 
-    wipeCoverageDoTables(storage);
-    hydrateDoFromCoverageSnapshot(
-      storage,
-      anchorSnapshot,
-      request.bindingEpoch,
-    );
-    updateHot(storage, { reservations: "[]", reserved: 0 });
-    await restoreDoGrantRowsFromLedger(
-      storage,
-      request.db,
-      request.installationId,
-      anchor.at,
-      request.r2,
-    );
-
-    const ledgerRows = await request.db
-      .prepare(
-        `SELECT grant_id, origin_grant_id, org_id, installation_id, kind, source_kind,
-                operator_credential_id, operator_email, envelope_sha256, receipt, applied_at
-         FROM grant_ledger
-         WHERE installation_id = ? AND applied_at > ?
-         ORDER BY applied_at ASC, grant_id ASC`,
-      )
-      .bind(request.installationId, anchor.at)
-      .all<{
-        grant_id: string;
-        origin_grant_id: string;
-        org_id: string;
-        installation_id: string;
-        kind: string;
-        source_kind: string;
-        operator_credential_id: string;
-        operator_email: string | null;
-        envelope_sha256: string;
-        receipt: string;
-        applied_at: string;
-      }>();
-
-    for (const row of ledgerRows.results ?? []) {
-      await applyGrantLedgerRowToDo(
-        storage,
-        row,
-        request.r2,
-        request.db,
-        request.installationId,
-        anchor.clinic_seq,
-      );
-    }
-
-    const voidRows = await request.db
-      .prepare(
-        `SELECT grant_id, reason, source, evidence_sha256, at
-         FROM grant_void
-         WHERE grant_id IN (
-           SELECT grant_id FROM grant_ledger WHERE installation_id = ?
-         ) AND at > ?
-         ORDER BY at ASC, grant_id ASC`,
-      )
-      .bind(request.installationId, anchor.at)
-      .all<{ grant_id: string; reason: string; at: string }>();
-
-    for (const row of voidRows.results ?? []) {
-      applyGrantVoidRowToDo(storage, row);
-    }
-
-    const coverageRows = await request.db
-      .prepare(
-        `SELECT kind, snapshot, clinic_seq, at
-         FROM coverage_event
-         WHERE installation_id = ? AND clinic_seq > ?
-         ORDER BY clinic_seq ASC`,
-      )
-      .bind(request.installationId, anchor.clinic_seq)
-      .all<{ kind: string; snapshot: string; clinic_seq: number; at: string }>();
-
-    for (const row of coverageRows.results ?? []) {
-      if (!REBUILD_COVERAGE_EVENT_KINDS.has(row.kind)) {
-        continue;
+    const ledgerQuery = `SELECT grant_id, origin_grant_id, org_id, installation_id, kind, source_kind,
+        operator_credential_id, operator_email, envelope_sha256, receipt, applied_at
+      FROM grant_ledger WHERE installation_id = ?`;
+    const [beforeResult, afterResult, voidResult, coverageResult, usageResult] = await Promise.all([
+      request.db.prepare(`${ledgerQuery} AND applied_at <= ? ORDER BY applied_at ASC, grant_id ASC`)
+        .bind(request.installationId, anchor.at).all<GrantLedgerRebuildRow>(),
+      request.db.prepare(`${ledgerQuery} AND applied_at > ? ORDER BY applied_at ASC, grant_id ASC`)
+        .bind(request.installationId, anchor.at).all<GrantLedgerRebuildRow>(),
+      request.db.prepare(
+        `SELECT v.grant_id, v.reason, v.source, v.evidence_sha256, v.at
+         FROM grant_void v
+         JOIN grant_ledger l ON l.grant_id = v.grant_id
+         WHERE l.installation_id = ? AND l.org_id = ?
+         ORDER BY v.at ASC, v.grant_id ASC`,
+      ).bind(request.installationId, request.orgId).all<{ grant_id: string; reason: string; source: string; evidence_sha256: string; at: string }>(),
+      request.db.prepare(
+        `SELECT kind, snapshot, clinic_seq, at FROM coverage_event
+         WHERE installation_id = ? AND clinic_seq > ? ORDER BY clinic_seq ASC`,
+      ).bind(request.installationId, anchor.clinic_seq).all<{ kind: string; snapshot: string; clinic_seq: number; at: string }>(),
+      request.db.prepare(
+        `SELECT request_id, term_id, quota_weight, recorded_at FROM usage_event
+         WHERE installation_id = ? AND recorded_at >= ? ORDER BY recorded_at ASC, request_id ASC`,
+      ).bind(request.installationId, anchor.at).all<{ request_id: string; term_id: string; quota_weight: number; recorded_at: string }>(),
+    ]);
+    const beforeRows = beforeResult.results ?? [];
+    const afterRows = afterResult.results ?? [];
+    const allLedgerRows = [...beforeRows, ...afterRows];
+    const capsules = new Map<string, Record<string, unknown>>();
+    for (const row of allLedgerRows) {
+      if (row.org_id !== request.orgId || row.installation_id !== request.installationId) {
+        throw new Error(`grant_recovery_identity_conflict:${row.grant_id}`);
       }
-      const eventSnapshot = JSON.parse(row.snapshot) as Record<string, unknown>;
-      wipeCoverageDoTables(storage);
-      hydrateDoFromCoverageSnapshot(
-        storage,
-        eventSnapshot,
-        request.bindingEpoch,
-      );
-      updateHot(storage, { reservations: "[]", reserved: 0 });
+      capsules.set(row.grant_id, await verifyGrantRecoveryCapsule(
+        request.db, request.r2, row.grant_id, row, request.platformSigningKeyJson,
+      ));
+    }
+    const voidRows = voidResult.results ?? [];
+    try {
+      for (const row of voidRows) {
+        const ledger = allLedgerRows.find((entry) => entry.grant_id === row.grant_id);
+        if (ledger === undefined) throw new Error(`grant_void_recovery_ledger_missing:${row.grant_id}`);
+        const key = `grant-ledger/${row.grant_id}.void.ndjson`;
+        const object = await request.r2.get(key);
+        if (object === null) throw new Error(`grant_void_recovery_evidence_missing:${row.grant_id}`);
+        let proof: Record<string, unknown>;
+        try {
+          const lines = (await object.text()).trimEnd().split("\n");
+          if (lines.length !== 1 || lines[0]!.length === 0) throw new Error("invalid_lines");
+          proof = JSON.parse(lines[0]!) as Record<string, unknown>;
+        } catch {
+          throw new Error(`grant_void_recovery_evidence_invalid:${row.grant_id}`);
+        }
+        if (!canonicalValuesEqual(proof, {
+          grant_id: row.grant_id,
+          reason: row.reason,
+          source: row.source,
+          evidence_sha256: row.evidence_sha256,
+          at: row.at,
+          receipt: proof.receipt,
+        }) || proof.receipt === null || typeof proof.receipt !== "object" || Array.isArray(proof.receipt)) {
+          throw new Error(`grant_void_recovery_evidence_conflict:${row.grant_id}`);
+        }
+        const receipt = proof.receipt as Record<string, unknown>;
+        const expectedEnvelopeHash = row.source === "operator" ? "" : ledger.envelope_sha256;
+        if (
+          receipt.installation_id !== request.installationId || receipt.org_id !== request.orgId ||
+          receipt.applied_at !== row.at || receipt.envelope_sha256 !== expectedEnvelopeHash ||
+          receipt.result !== "applied" || !Array.isArray(receipt.term_ids) ||
+          (row.source === "operator" ? receipt.grant_id !== row.grant_id : typeof receipt.reversal_id !== "string")
+        ) throw new Error(`grant_void_recovery_receipt_conflict:${row.grant_id}`);
+        await verifyPlatformReceiptForRecovery(receipt, request.platformSigningKeyJson, row.grant_id);
+      }
+    } catch (error) {
+      const detail = error instanceof Error ? error.message : "grant_void_recovery_evidence_invalid";
+      persistBlockedRecoveryMarker();
+      return {
+        kind: "rebuild_clinic_do",
+        result: "blocked",
+        blocked_reason: detail,
+      };
+    }
+    const coverageRows = coverageResult.results ?? [];
+    const grantSnapshots = new Map<string, Record<string, unknown>>();
+    for (const event of coverageRows) {
+      if (event.kind !== "grant_applied") continue;
+      const snapshot = JSON.parse(event.snapshot) as Record<string, unknown>;
+      for (const grant of allLedgerRows) {
+        if (!grantSnapshots.has(grant.grant_id) && snapshotTermsIncludeGrant(snapshot, grant.grant_id)) {
+          grantSnapshots.set(grant.grant_id, snapshot);
+        }
+      }
     }
 
-    const terms = loadTerms(storage);
-    const termIds = terms.map((term) => term.term_id);
-    await reapplyUsageEventsAfterSnapshot(
-      request.db,
+    storage.transactionSync(() => {
+      wipeCoverageDoTables(storage);
+      hydrateDoFromCoverageSnapshot(storage, anchorSnapshot, request.bindingEpoch);
+      updateHot(storage, { reservations: "[]", reserved: 0 });
+      for (const row of beforeRows) insertDoGrantRowFromLedger(storage, row, capsules.get(row.grant_id)!);
+      for (const row of afterRows) {
+        insertDoGrantRowFromLedger(storage, row, capsules.get(row.grant_id)!);
+        const snapshot = grantSnapshots.get(row.grant_id);
+        if (snapshot !== undefined) syncDoTermsAndHotFromCoverageSnapshot(storage, snapshot);
+      }
+      for (const event of coverageRows) {
+        if (!REBUILD_COVERAGE_EVENT_KINDS.has(event.kind)) continue;
+        const snapshot = JSON.parse(event.snapshot) as Record<string, unknown>;
+        wipeCoverageDoTables(storage);
+        hydrateDoFromCoverageSnapshot(storage, snapshot, request.bindingEpoch);
+        updateHot(storage, { reservations: "[]", reserved: 0 });
+        for (const row of allLedgerRows) insertDoGrantRowFromLedger(storage, row, capsules.get(row.grant_id)!);
+      }
+      for (const row of voidRows) applyGrantVoidRowToDo(storage, row);
+      reapplyUsageEventsAfterSnapshot(
+        storage,
+        loadTerms(storage).map((term) => term.term_id),
+        anchorSnapshot,
+        usageResult.results ?? [],
+      );
+      sqlExec(storage,
+        `UPDATE recovery_state SET status = 'building', updated_at = ${sqlString(new Date().toISOString())}
+         WHERE singleton = 1 AND generation = ${sqlString(generation)}`,
+      );
+    });
+
+    const recoveredAt = new Date().toISOString();
+    applyDueBoundaries({
       storage,
-      request.installationId,
-      anchor.at,
-      termIds,
-      anchorSnapshot,
-    );
+      clockNowIso: recoveredAt,
+      installationId: request.installationId,
+      orgId: request.orgId,
+      vendorContractVersion: request.vendorContractVersion,
+      durationScale: request.durationScale,
+    });
+    await scheduleCoverageAlarm(state, storage, recoveredAt);
 
     const hotAfter = loadHot(storage);
     const termsAfter = loadTerms(storage);
@@ -5282,6 +6189,18 @@ export async function rebuildClinicDoRPC(
     });
     rebuiltSnapshot.clinic_seq = hotAfter.clinic_seq;
 
+    if (!(await coverageMirrorMatchesSnapshot(request.db, request.installationId, rebuiltSnapshot))) {
+      storage.transactionSync(() => sqlExec(storage,
+        `UPDATE recovery_state SET status = 'blocked', updated_at = ${sqlString(new Date().toISOString())}
+         WHERE singleton = 1 AND generation = ${sqlString(generation)}`,
+      ));
+      return { kind: "rebuild_clinic_do", result: "blocked", snapshot: rebuiltSnapshot };
+    }
+
+    storage.transactionSync(() => sqlExec(storage,
+      `UPDATE recovery_state SET status = 'complete', updated_at = ${sqlString(new Date().toISOString())}
+       WHERE singleton = 1 AND generation = ${sqlString(generation)}`,
+    ));
     return { kind: "rebuild_clinic_do", result: "ok", snapshot: rebuiltSnapshot };
   });
 }
@@ -5395,16 +6314,26 @@ export async function runRebuildClinicDo(
   installationId: string,
   options?: { onMismatch: (installationId: string) => Promise<void> },
 ): Promise<RunRebuildClinicDoResult> {
-  const binding = await env.DB.prepare(
-    `SELECT org_id, binding_epoch FROM coverage_event
-     WHERE installation_id = ?
-     ORDER BY clinic_seq DESC
-     LIMIT 1`,
+  const bindings = await env.DB.prepare(
+    `SELECT org_id, epoch AS binding_epoch FROM tenant_binding
+     WHERE installation_id = ? AND status IN ('active', 'held_for_transfer')`,
   )
     .bind(installationId)
-    .first<{ org_id: string; binding_epoch: number }>();
-  if (binding === null) {
+    .all<{ org_id: string; binding_epoch: number }>();
+  if ((bindings.results ?? []).length === 0) {
     return { status: "not_found" };
+  }
+  if (bindings.results!.length !== 1) return { status: "blocked" };
+  const binding = bindings.results![0]!;
+  const anchor = await env.DB.prepare(
+    `SELECT org_id, binding_epoch FROM coverage_event WHERE installation_id = ?
+     ORDER BY clinic_seq DESC LIMIT 1`,
+  ).bind(installationId).first<{ org_id: string; binding_epoch: number }>();
+  if (
+    anchor === null || anchor.org_id !== binding.org_id ||
+    anchor.binding_epoch !== binding.binding_epoch
+  ) {
+    return { status: "blocked" };
   }
 
   const durationScale =
@@ -5438,6 +6367,9 @@ export async function runRebuildClinicDo(
     return { status: "not_found" };
   }
   if (body === undefined || body.result !== "ok" || body.snapshot === undefined) {
+    if (body?.result === "blocked") {
+      return { status: "blocked", ...(body.blocked_reason ? { reason: body.blocked_reason } : {}) };
+    }
     return { status: "not_found" };
   }
 
@@ -5453,15 +6385,17 @@ export async function runRebuildClinicDo(
 }
 
 export async function runRebuildGrantLedger(
-  env: { DB: D1Database; R2: R2Bucket },
+  env: { DB: D1Database; R2: R2Bucket; PLATFORM_SIGNING_KEY?: string },
 ): Promise<{ grant_ledger: number; grant_void: number }> {
   const recovered: Array<{ key: string; row: Record<string, unknown>; isVoid: boolean }> = [];
+  const recoveryCapsules = new Map<string, Record<string, unknown>>();
   const seenGrantIds = new Set<string>();
   let cursor: string | undefined;
   do {
     const listed = await env.R2.list({ prefix: "grant-ledger/", cursor });
     for (const object of listed.objects) {
       const key = object.key;
+      if (/^grant-ledger\/[a-f0-9]{64}\.recovery-v1\.ndjson$/u.test(key)) continue;
       const match = /^grant-ledger\/([a-f0-9]{64})(\.void)?\.ndjson$/u.exec(key);
       if (match === null) {
         throw new Error(`grant_ledger_object_key_invalid:${key}`);
@@ -5483,7 +6417,7 @@ export async function runRebuildGrantLedger(
       }
       seenGrantIds.add(`${grantId}:${isVoid}`);
       const expectedFields = isVoid
-        ? ["grant_id", "reason", "source", "evidence_sha256", "at"]
+        ? ["grant_id", "reason", "source", "evidence_sha256", "at", "receipt"]
         : ["grant_id", "origin_grant_id", "org_id", "installation_id", "kind",
           "source_kind", "operator_credential_id", "operator_email", "envelope_sha256",
           "applied_at", "receipt"];
@@ -5501,10 +6435,16 @@ export async function runRebuildGrantLedger(
           typeof parsed.reason !== "string" || typeof parsed.source !== "string" ||
           typeof parsed.evidence_sha256 !== "string" ||
           !/^[a-f0-9]{64}$/u.test(parsed.evidence_sha256 as string) ||
-          typeof parsed.at !== "string" || !Number.isFinite(Date.parse(parsed.at as string))
+          typeof parsed.at !== "string" || !Number.isFinite(Date.parse(parsed.at as string)) ||
+          parsed.receipt === null || typeof parsed.receipt !== "object" || Array.isArray(parsed.receipt)
         ) {
           throw new Error(`grant_ledger_void_invalid:${key}`);
         }
+        const voidReceipt = parsed.receipt as Record<string, unknown>;
+        if (voidReceipt.grant_id !== grantId || voidReceipt.applied_at !== parsed.at) {
+          throw new Error(`grant_ledger_void_receipt_conflict:${key}`);
+        }
+        await verifyPlatformReceiptForRecovery(voidReceipt, env.PLATFORM_SIGNING_KEY, grantId);
       } else {
         const receipt = parsed.receipt;
         if (
@@ -5531,26 +6471,193 @@ export async function runRebuildGrantLedger(
         ) {
           throw new Error(`grant_ledger_receipt_identity_conflict:${key}`);
         }
+        recoveryCapsules.set(grantId, await verifyGrantRecoveryCapsule(
+          env.DB,
+          env.R2,
+          grantId,
+          parsed as unknown as GrantLedgerRebuildRow,
+          env.PLATFORM_SIGNING_KEY,
+        ));
       }
       recovered.push({ key, row: parsed, isVoid });
     }
     cursor = listed.truncated ? listed.cursor : undefined;
   } while (cursor !== undefined);
 
-  if (recovered.length > 0) {
-    // RM18 deferred the signed recovery capsule to RM29. The existing receipt
-    // does not authenticate operator/source/route lineage, and the active key
-    // alone cannot corroborate compromised historical signing keys. No row is
-    // inserted until the capsule decoder and historical trust registry exist.
-    throw new Error("grant_ledger_recovery_capsule_required:RM29");
+  const stagedStatements: D1PreparedStatement[] = [];
+  for (const item of recovered) {
+    if (item.isVoid) {
+      const row = item.row;
+      const existing = await env.DB.prepare(
+        `SELECT grant_id, reason, source, evidence_sha256, at FROM grant_void WHERE grant_id = ?`,
+      ).bind(row.grant_id).first<Record<string, unknown>>();
+      if (existing !== null && !canonicalValuesEqual(existing, {
+        grant_id: row.grant_id, reason: row.reason, source: row.source,
+        evidence_sha256: row.evidence_sha256, at: row.at,
+      })) throw new Error(`grant_void_recovery_conflict:${item.key}`);
+      if (existing === null) {
+        stagedStatements.push(env.DB.prepare(
+          `INSERT INTO grant_void (grant_id, reason, source, evidence_sha256, at)
+           VALUES (?, ?, ?, ?, ?)`,
+        ).bind(row.grant_id, row.reason, row.source, row.evidence_sha256, row.at));
+      }
+      continue;
+    }
+    const row = item.row;
+    const capsule = recoveryCapsules.get(String(row.grant_id));
+    if (capsule === undefined) throw new Error(`grant_recovery_capsule_required:${String(row.grant_id)}`);
+    if (capsule.source_kind !== "transfer") {
+    const existingClaim = await env.DB.prepare(
+      `SELECT org_id, source_kind, envelope, envelope_sha256, installation_id,
+              binding_epoch, route_generation, state, receipt, accepted_command,
+              accepted_actor, signer_credential_id, assertion_sha256,
+              override_assertion_sha256, accepted_contract_version,
+              accepted_ceiling_policy_version, plan_snapshot, accepted_at, command_state,
+              created_at, completed_at
+       FROM grant_claim WHERE grant_id = ?`,
+    ).bind(row.grant_id).first<Record<string, unknown>>();
+    const expectedClaim = {
+      org_id: capsule.org_id,
+      source_kind: capsule.source_kind,
+      envelope: capsule.envelope,
+      envelope_sha256: capsule.envelope_sha256,
+      installation_id: capsule.installation_id,
+      binding_epoch: capsule.binding_epoch,
+      route_generation: capsule.route_generation,
+      state: "completed",
+      receipt: capsule.receipt,
+      accepted_command: capsule.accepted_command,
+      accepted_actor: capsule.accepted_actor,
+      signer_credential_id: capsule.signer_credential_id,
+      assertion_sha256: capsule.assertion_sha256,
+      override_assertion_sha256: capsule.override_assertion_sha256,
+      accepted_contract_version: capsule.accepted_contract_version,
+      accepted_ceiling_policy_version: capsule.accepted_ceiling_policy_version,
+      plan_snapshot: typeof capsule.plan_snapshot === "string" ? JSON.parse(capsule.plan_snapshot) : capsule.plan_snapshot,
+      accepted_at: capsule.accepted_at,
+      created_at: capsule.created_at,
+      completed_at: capsule.completed_at,
+      command_state: capsule.accepted_command === null ? "none" : "completed",
+    };
+    const comparableClaim = existingClaim === null ? null : {
+      ...existingClaim,
+      envelope: typeof existingClaim.envelope === "string" ? JSON.parse(existingClaim.envelope) : existingClaim.envelope,
+      receipt: typeof existingClaim.receipt === "string" ? JSON.parse(existingClaim.receipt) : existingClaim.receipt,
+      plan_snapshot: typeof existingClaim.plan_snapshot === "string" ? JSON.parse(existingClaim.plan_snapshot) : existingClaim.plan_snapshot,
+    };
+    if (comparableClaim !== null && !canonicalValuesEqual(comparableClaim, expectedClaim)) {
+      throw new Error(`grant_claim_recovery_conflict:${item.key}`);
+    }
+    if (existingClaim === null) {
+      stagedStatements.push(env.DB.prepare(
+        `INSERT INTO grant_claim (
+           grant_id, org_id, source_kind, envelope, envelope_sha256, installation_id,
+           binding_epoch, route_generation, state, receipt, created_at, completed_at,
+           accepted_command, accepted_actor, signer_credential_id, assertion_sha256,
+           override_assertion_sha256, accepted_contract_version,
+           accepted_ceiling_policy_version, plan_snapshot, accepted_at, command_state
+         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'completed', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+      ).bind(
+        row.grant_id, capsule.org_id, capsule.source_kind,
+        new TextDecoder().decode(canonicalize(capsule.envelope)),
+        capsule.envelope_sha256, capsule.installation_id, capsule.binding_epoch,
+        capsule.route_generation, new TextDecoder().decode(canonicalize(capsule.receipt)),
+        capsule.created_at, capsule.completed_at, capsule.accepted_command, capsule.accepted_actor,
+        capsule.signer_credential_id, capsule.assertion_sha256,
+        capsule.override_assertion_sha256, capsule.accepted_contract_version,
+        capsule.accepted_ceiling_policy_version, capsule.plan_snapshot,
+        capsule.accepted_at, capsule.accepted_command === null ? "none" : "completed",
+      ));
+    }
+    const assertionClaims = [
+      [capsule.assertion_sha256, capsule.signer_credential_id],
+      [capsule.override_assertion_sha256, capsule.signer_credential_id],
+    ] as const;
+    for (const [challenge, credential] of assertionClaims) {
+      if (typeof challenge !== "string" || challenge.length === 0 || typeof credential !== "string") continue;
+      const existingAssertion = await env.DB.prepare(
+        `SELECT credential_id FROM assertion_used WHERE challenge_sha256 = ?`,
+      ).bind(challenge).first<{ credential_id: string }>();
+      if (existingAssertion?.credential_id !== credential) {
+        throw new Error(`grant_assertion_recovery_conflict:${item.key}`);
+      }
+    }
+    const ceiling = capsule.ceiling_claim as Record<string, unknown> | null;
+    if (ceiling !== null) {
+      const existingCeiling = await env.DB.prepare(
+        `SELECT grant_id, org_id, envelope_sha256, plan_id, plan_version,
+                allowance_denominator, day_contribution, allowance_contribution,
+                apply_per_grant_caps, source_reconciled, override_authorized,
+                status, receipt, applied_at, created_at
+         FROM complimentary_ceiling_claim WHERE grant_id = ?`,
+      ).bind(row.grant_id).first<Record<string, unknown>>();
+      const comparableCeiling = existingCeiling === null ? null : {
+        ...existingCeiling,
+        receipt: typeof existingCeiling.receipt === "string"
+          ? JSON.parse(existingCeiling.receipt)
+          : existingCeiling.receipt,
+      };
+      if (comparableCeiling !== null && !canonicalValuesEqual(comparableCeiling, ceiling)) {
+        throw new Error(`grant_ceiling_recovery_conflict:${item.key}`);
+      }
+      if (existingCeiling === null) {
+        stagedStatements.push(env.DB.prepare(
+          `INSERT INTO complimentary_ceiling_claim (
+             grant_id, org_id, envelope_sha256, plan_id, plan_version,
+             allowance_denominator, day_contribution, allowance_contribution,
+             apply_per_grant_caps, source_reconciled, override_authorized,
+             status, receipt, applied_at, created_at
+           ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+        ).bind(
+          ceiling.grant_id, ceiling.org_id, ceiling.envelope_sha256, ceiling.plan_id,
+          ceiling.plan_version, ceiling.allowance_denominator, ceiling.day_contribution,
+          ceiling.allowance_contribution, ceiling.apply_per_grant_caps,
+          ceiling.source_reconciled, ceiling.override_authorized, ceiling.status,
+          ceiling.receipt, ceiling.applied_at, ceiling.created_at,
+        ));
+      }
+    }
+    }
+    const existing = await env.DB.prepare(
+      `SELECT grant_id, origin_grant_id, org_id, installation_id, kind, source_kind,
+              operator_credential_id, operator_email, envelope_sha256, receipt, applied_at
+       FROM grant_ledger WHERE grant_id = ?`,
+    ).bind(row.grant_id).first<Record<string, unknown>>();
+    const comparableExisting = existing === null ? null : {
+      ...existing,
+      receipt: typeof existing.receipt === "string" ? JSON.parse(existing.receipt) : existing.receipt,
+    };
+    if (comparableExisting !== null && !canonicalValuesEqual(comparableExisting, row)) {
+      throw new Error(`grant_ledger_recovery_conflict:${item.key}`);
+    }
+    if (existing === null) {
+      stagedStatements.push(env.DB.prepare(
+        `INSERT INTO grant_ledger (
+          grant_id, origin_grant_id, org_id, installation_id, kind, source_kind,
+          operator_credential_id, operator_email, envelope_sha256, receipt, applied_at
+         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      ).bind(
+        row.grant_id, row.origin_grant_id, row.org_id, row.installation_id,
+        row.kind, row.source_kind, row.operator_credential_id, row.operator_email,
+        row.envelope_sha256, JSON.stringify(row.receipt), row.applied_at,
+      ));
+    }
   }
-  return { grant_ledger: 0, grant_void: 0 };
+  // No writes occur until every recovery object and every existing-row
+  // comparison has passed. D1 batch applies the staged inserts atomically;
+  // unique-key races fail the batch instead of being silently ignored.
+  if (stagedStatements.length > 0) await env.DB.batch(stagedStatements);
+  return {
+    grant_ledger: recovered.filter((item) => !item.isVoid).length,
+    grant_void: recovered.filter((item) => item.isVoid).length,
+  };
 }
 
 export type RefreshCoverageSnapshotRequest = {
   kind: "refresh_coverage_snapshot";
   installationId: string;
   orgId: string;
+  bindingEpoch: number;
   vendorContractVersion: number;
   durationScale?: DurationScale;
   db: D1Database;
@@ -5560,7 +6667,7 @@ export type RefreshCoverageSnapshotRequest = {
 
 export type RefreshCoverageSnapshotResponse = {
   kind: "refresh_coverage_snapshot";
-  result: "ok" | "not_found";
+  result: "ok" | "not_found" | "blocked";
   event_id?: string;
   shipped_alerts?: ShippedCoverageAlert[];
 };
@@ -5576,6 +6683,17 @@ export async function refreshCoverageSnapshotRPC(
     const hotRows = sqlSelect<HotRow>(storage, "SELECT * FROM hot LIMIT 1");
     if (hotRows.length === 0) {
       return { kind: "refresh_coverage_snapshot", result: "not_found" };
+    }
+
+    const storedInstallationId = resolveInstallationIdFromStorage(storage);
+    const storedOrgId = resolveOrgIdFromStorage(storage);
+    const hot = loadHot(storage);
+    if (
+      storedInstallationId !== request.installationId ||
+      storedOrgId !== request.orgId ||
+      hot.binding_epoch !== request.bindingEpoch
+    ) {
+      return { kind: "refresh_coverage_snapshot", result: "blocked" };
     }
 
     const clinicSeq = emitCoverageEvent(storage, {
@@ -5616,14 +6734,28 @@ export async function runRefreshCoverageSnapshot(
   },
   installationId: string,
   nowIso: string,
-): Promise<{ event_id: string } | "not_found"> {
-  const binding = await env.DB.prepare(
-    `SELECT org_id FROM coverage_event WHERE installation_id = ? LIMIT 1`,
+): Promise<{ event_id: string } | "not_found" | "blocked"> {
+  const bindings = await env.DB.prepare(
+    `SELECT org_id, epoch FROM tenant_binding
+     WHERE installation_id = ? AND status IN ('active', 'held_for_transfer')`,
   )
     .bind(installationId)
-    .first<{ org_id: string }>();
-  if (binding === null) {
+    .all<{ org_id: string; epoch: number }>();
+  if ((bindings.results ?? []).length === 0) {
     return "not_found";
+  }
+  if (bindings.results!.length !== 1) return "blocked";
+  const binding = bindings.results![0]!;
+
+  const eventIdentity = await env.DB.prepare(
+    `SELECT org_id, binding_epoch FROM coverage_event
+     WHERE installation_id = ? ORDER BY clinic_seq DESC LIMIT 1`,
+  ).bind(installationId).first<{ org_id: string; binding_epoch: number }>();
+  if (
+    eventIdentity !== null &&
+    (eventIdentity.org_id !== binding.org_id || eventIdentity.binding_epoch !== binding.epoch)
+  ) {
+    return "blocked";
   }
 
   const durationScale =
@@ -5638,6 +6770,7 @@ export async function runRefreshCoverageSnapshot(
       kind: "refresh_coverage_snapshot",
       installationId,
       orgId: binding.org_id,
+      bindingEpoch: binding.epoch,
       vendorContractVersion: CHANNEL_VERSIONS.platformDo,
       durationScale,
       nowIso,
@@ -5654,6 +6787,9 @@ export async function runRefreshCoverageSnapshot(
     );
   } catch {
     return "not_found";
+  }
+  if (body?.result === "blocked") {
+    return "blocked";
   }
   if (body === undefined || body.result !== "ok" || body.event_id === undefined) {
     return "not_found";

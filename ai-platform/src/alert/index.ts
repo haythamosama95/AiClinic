@@ -578,8 +578,11 @@ export async function insertDoRebuildMismatchAlert(
   db: D1Database,
   installationId: string,
   nowIso: string,
+  reason?: string,
 ): Promise<void> {
-  const alertKey = `do-rebuild:${installationId}`;
+  const alertKey = reason === undefined
+    ? `do-rebuild:${installationId}`
+    : `do-rebuild:${installationId}:${reason}`;
   await upsertPlatformAlert(db, alertKey, "do_rebuild_mismatch", nowIso);
 }
 

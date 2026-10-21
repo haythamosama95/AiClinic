@@ -83,6 +83,7 @@ import {
   createManifestRetentionClassResolver,
 } from "../retention";
 import { supportLookup as runSupportLookup } from "../support";
+import { recoveryBlockedOperatorDetail } from "./recovery-detail";
 import { normalizeRequestReference } from "../reference";
 import { raiseAl19FromOutbox } from "../alert/index";
 import {
@@ -7115,6 +7116,16 @@ export class VendorEntrypoint extends WorkerEntrypoint<VendorEnv> {
       if (outcome.status === "not_found") {
         return rejected(version, "not_found");
       }
+      if (outcome.status === "blocked") {
+        await insertDoRebuildMismatchAlert(
+          this.env.DB,
+          installationId,
+          nowIso,
+          outcome.reason,
+        );
+        const detail = recoveryBlockedOperatorDetail(outcome.reason);
+        return rejected(version, "recovery_blocked", detail);
+      }
       if (outcome.compare === "clean") {
         return ok(
           version,
@@ -7133,11 +7144,14 @@ export class VendorEntrypoint extends WorkerEntrypoint<VendorEnv> {
   ): Promise<VendorResultEnvelope> {
     return this.invokeClassH(args, async (version) => {
       try {
-        const counts = await runRebuildGrantLedger(this.env);
+        const counts = await runRebuildGrantLedger({
+          ...this.env,
+          PLATFORM_SIGNING_KEY: this.env.PLATFORM_SIGNING_KEY,
+        });
         return ok(version, JSON.stringify(counts));
       } catch (error) {
         const message = error instanceof Error ? error.message : String(error);
-        if (message.startsWith("grant_ledger_recovery_capsule_required:")) {
+        if (message.startsWith("grant_")) {
           return rejected(version, "recovery_evidence_required", message);
         }
         throw error;
@@ -7153,14 +7167,6 @@ export class VendorEntrypoint extends WorkerEntrypoint<VendorEnv> {
       if (typeof installationId !== "string" || installationId.length === 0) {
         return rejected(version, "missing_installation_id");
       }
-      const row = await this.env.DB.prepare(
-        `SELECT event_id FROM coverage_event WHERE installation_id = ? LIMIT 1`,
-      )
-        .bind(installationId)
-        .first();
-      if (row === null) {
-        return rejected(version, "not_found");
-      }
       const nowIso = await clockNowIso(this.env);
       const refreshed = await runRefreshCoverageSnapshot(
         this.env,
@@ -7169,6 +7175,10 @@ export class VendorEntrypoint extends WorkerEntrypoint<VendorEnv> {
       );
       if (refreshed === "not_found") {
         return rejected(version, "not_found");
+      }
+      if (refreshed === "blocked") {
+        await insertDoRebuildMismatchAlert(this.env.DB, installationId, nowIso);
+        return rejected(version, "recovery_identity_conflict");
       }
       return ok(
         version,

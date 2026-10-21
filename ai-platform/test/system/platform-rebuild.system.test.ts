@@ -50,7 +50,10 @@ type P311VendorMethod =
   | VendorMethod
   | "rebuildClinicDo"
   | "rebuildGrantLedger"
-  | "refreshCoverageSnapshot";
+  | "refreshCoverageSnapshot"
+  | "beginTransfer"
+  | "transferOut"
+  | "transferIn";
 
 type P311ResultEnvelope = VendorResultEnvelope;
 
@@ -315,6 +318,66 @@ async function callReleaseHeld(grantId: string): Promise<P311ResultEnvelope> {
   );
 }
 
+async function completeTransferForRebuild(scenario: Scenario): Promise<{
+  transferId: string;
+  destinationInstallationId: string;
+}> {
+  const accessJwt = await mintVendorAccessJwt();
+  const signer = coverClinicSigner();
+  const reason = "platform rebuild transfer evidence fixture";
+  const operation = {
+    op: "beginTransfer",
+    params: {
+      contract_version: CONTRACT_VERSION,
+      access_jwt: accessJwt,
+      org_id: scenario.orgId,
+      from_installation_id: scenario.installationId,
+      reason,
+    },
+    actor_email: VENDOR_OPERATOR_EMAIL,
+    issued_at: getVendorTestClockIso() ?? new Date().toISOString(),
+    nonce: crypto.randomUUID(),
+    contract_version: CONTRACT_VERSION,
+  };
+  const assertion = encodeVendorAssertion(
+    await signer.signerAuthenticator.assert({
+      operation,
+      rpId: env.WEBAUTHN_RP_ID,
+      origin: env.WEBAUTHN_ORIGIN,
+      up: true,
+      uv: true,
+    }),
+  );
+  const begun = await p311VendorCall("beginTransfer", {
+    contract_version: CONTRACT_VERSION,
+    org_id: scenario.orgId,
+    from_installation_id: scenario.installationId,
+    reason,
+    signer_credential_id: signer.signerCredentialId,
+    operation,
+    assertion,
+  }, { accessJwt });
+  expect(begun.result).toBe("ok");
+  const transfer = JSON.parse(begun.detail ?? "{}") as {
+    transfer_id?: string; to_installation_id?: string;
+  };
+  expect(transfer.transfer_id).toBeTruthy();
+  expect(transfer.to_installation_id).toBeTruthy();
+  const transferId = transfer.transfer_id!;
+  const destinationInstallationId = transfer.to_installation_id!;
+  expect((await p311VendorCall("transferOut", {
+    contract_version: CONTRACT_VERSION,
+    transfer_id: transferId,
+  })).result).toBe("applied");
+  await runDurableObjectAlarm(quotaDoStub(scenario.installationId));
+  expect((await p311VendorCall("transferIn", {
+    contract_version: CONTRACT_VERSION,
+    transfer_id: transferId,
+  })).result).toBe("applied");
+  await runDurableObjectAlarm(quotaDoStub(destinationInstallationId));
+  return { transferId, destinationInstallationId };
+}
+
 async function setupPromotedPolicy(scenario: Scenario): Promise<string> {
   const document = fakePolicyDocument(POLICY_ID, POLICY_VERSION);
   const published = await publishPolicy(POLICY_ID, POLICY_VERSION, document);
@@ -573,7 +636,54 @@ describe("platform rebuild procedures", () => {
     expect(alert).toBeNull();
   });
 
-  it("E2E-P3.11-02 a rebuild that diverges from the mirror alerts", async () => {
+  it("R9-PDO1: rebuild refuses a nonempty DO and preserves an unshipped grant", async () => {
+    const scenario = await newScenario();
+    await coverClinic(scenario);
+    await newClinic(scenario);
+    const before = await recordDoTermSnapshots(scenario.installationId);
+    const outboxBefore = await runInDurableObject(
+      quotaDoStub(scenario.installationId),
+      async (_instance, state) => sqlSelect<{ count: number }>(state, "SELECT COUNT(*) AS count FROM outbox")[0]?.count ?? 0,
+    );
+
+    const rebuilt = await callRebuildClinicDo(scenario.installationId);
+    expect(rebuilt.result).toBe("rejected");
+    expect(rebuilt.code).toBe("recovery_blocked");
+    expect(await recordDoTermSnapshots(scenario.installationId)).toEqual(before);
+    const outboxAfter = await runInDurableObject(
+      quotaDoStub(scenario.installationId),
+      async (_instance, state) => sqlSelect<{ count: number }>(state, "SELECT COUNT(*) AS count FROM outbox")[0]?.count ?? 0,
+    );
+    expect(outboxAfter).toBe(outboxBefore);
+  });
+
+  it("R9-PDO1 RM29-F1: a building recovery marker cannot authorize wiping a nonempty DO", async () => {
+    const scenario = await newScenario();
+    await coverClinic(scenario);
+    await newClinic(scenario);
+    const before = await readDoTermSnapshots(scenario.installationId);
+    const anchor = await queryOne<{ event_id: string; binding_epoch: number }>(
+      `SELECT event_id, binding_epoch FROM coverage_event
+       WHERE installation_id = ? ORDER BY clinic_seq DESC LIMIT 1`,
+      [scenario.installationId],
+    );
+    expect(anchor).not.toBeNull();
+    await runInDurableObject(quotaDoStub(scenario.installationId), async (_instance, state) => {
+      sqlExec(state, `INSERT INTO recovery_state (
+        singleton, generation, installation_id, org_id, binding_epoch,
+        anchor_event_id, status, updated_at
+      ) VALUES (1, '${scenario.installationId}:${anchor!.binding_epoch}:${anchor!.event_id}',
+        '${scenario.installationId}', '${scenario.orgId}', ${anchor!.binding_epoch},
+        '${anchor!.event_id}', 'building', '2026-10-21T00:00:00.000Z')`);
+    });
+
+    const rebuilt = await callRebuildClinicDo(scenario.installationId);
+    expect(rebuilt.result).toBe("rejected");
+    expect(rebuilt.code).toBe("recovery_blocked");
+    expect(await readDoTermSnapshots(scenario.installationId)).toEqual(before);
+  });
+
+  it("R9-PDO1: mirror mismatch blocks activation and alerts", async () => {
     const scenario = await newScenario();
     await setupFm20Clinic(scenario);
     await recordDoTermSnapshots(scenario.installationId);
@@ -586,7 +696,8 @@ describe("platform rebuild procedures", () => {
 
     await wipeClinicDo(scenario.installationId);
     const rebuilt = await callRebuildClinicDo(scenario.installationId);
-    expect(rebuilt.result).toBe("ok");
+    expect(rebuilt.result).toBe("rejected");
+    expect(rebuilt.code).toBe("recovery_blocked");
 
     const alert = await queryOne<{
       alert_key: string;
@@ -606,7 +717,187 @@ describe("platform rebuild procedures", () => {
     });
   });
 
-  it("R9-REC1 platform ledger replay blocks legacy rows without the RM29 recovery capsule", async () => {
+  it("R9-PDO1: rebuild preserves signed pre-anchor void evidence and exact void state", async () => {
+    const scenario = await newScenario();
+    await setupFm20Clinic(scenario);
+    const voidRow = await queryOne<{
+      grant_id: string; reason: string; at: string;
+    }>(
+      `SELECT grant_id, reason, at FROM grant_void
+       WHERE grant_id IN (SELECT grant_id FROM grant_ledger WHERE installation_id = ?)
+       ORDER BY at ASC LIMIT 1`,
+      [scenario.installationId],
+    );
+    expect(voidRow).not.toBeNull();
+    const before = await queryOne<{ at: string; reason: string }>(
+      `SELECT at, reason FROM grant_void WHERE grant_id = ?`, [voidRow!.grant_id],
+    );
+    await wipeClinicDo(scenario.installationId);
+
+    const rebuilt = await callRebuildClinicDo(scenario.installationId);
+    expect(rebuilt.result).toBe("ok");
+    const state = await runInDurableObject(
+      quotaDoStub(scenario.installationId),
+      async (_instance, durableState) => ({
+        grant: sqlSelect<{ voided_at: string | null; void_reason: string | null }>(
+          durableState,
+          `SELECT voided_at, void_reason FROM grant WHERE grant_id = '${voidRow!.grant_id}'`,
+        )[0],
+        term: sqlSelect<{ state: string; end_reason: string | null; ended_at: string | null }>(
+          durableState,
+          `SELECT state, end_reason, ended_at FROM term WHERE grant_id = '${voidRow!.grant_id}'`,
+        )[0],
+      }),
+    );
+    expect(state.grant).toEqual({ voided_at: before!.at, void_reason: before!.reason });
+    expect(state.term?.state).toBe("ended");
+    expect(state.term?.end_reason).toBe("reversed");
+    expect(state.term?.ended_at).toBe(before!.at);
+  });
+
+  it("R9-PDO1: rebuild blocks with operator evidence reason when a pre-anchor void proof is missing", async () => {
+    const scenario = await newScenario();
+    await setupFm20Clinic(scenario);
+    const voidRow = await queryOne<{ grant_id: string; reason: string; at: string }>(
+      `SELECT grant_id, reason, at FROM grant_void
+       WHERE grant_id IN (SELECT grant_id FROM grant_ledger WHERE installation_id = ?)
+       ORDER BY at ASC LIMIT 1`,
+      [scenario.installationId],
+    );
+    expect(voidRow).not.toBeNull();
+    await env.R2.delete(`grant-ledger/${voidRow!.grant_id}.void.ndjson`);
+    await wipeClinicDo(scenario.installationId);
+
+    const rebuilt = await callRebuildClinicDo(scenario.installationId);
+    expect(rebuilt.result).toBe("rejected");
+    expect(rebuilt.code).toBe("recovery_blocked");
+    expect(rebuilt.detail).toContain("grant_void_recovery_evidence_missing");
+    expect(await queryOne(
+      `SELECT grant_id FROM grant_void WHERE grant_id = ?`, [voidRow!.grant_id],
+    )).toEqual({ grant_id: voidRow!.grant_id });
+  });
+
+  it("R9-PDO1: missing transfer replay evidence fences rebuild and preserves the D1 step", async () => {
+    const scenario = await newScenario();
+    await coverClinic(scenario);
+    await newClinic(scenario);
+    const { transferId, destinationInstallationId } = await completeTransferForRebuild(scenario);
+    const stepBefore = await queryOne<{ receipt: string }>(
+      `SELECT receipt FROM transfer_step WHERE transfer_id = ? AND step = 'transfer_in'`,
+      [transferId],
+    );
+    expect(stepBefore?.receipt).toBeTruthy();
+    await runInDurableObject(
+      quotaDoStub(destinationInstallationId),
+      async (_instance, state) => sqlExec(state,
+        `DELETE FROM transfer_replay WHERE transfer_id = '${transferId}' AND step = 'transfer_in'`,
+      ),
+    );
+    await wipeClinicDo(destinationInstallationId);
+
+    const rebuilt = await callRebuildClinicDo(destinationInstallationId);
+    expect(rebuilt.result).toBe("rejected");
+    expect(rebuilt.code).toBe("recovery_blocked");
+    expect(rebuilt.detail).toContain("transfer_replay_evidence_missing");
+    expect(rebuilt.detail).toContain("do not synthesize request hashes or response_json");
+
+    const stepAfter = await queryOne<{ receipt: string }>(
+      "SELECT receipt FROM transfer_step WHERE transfer_id = ? AND step = 'transfer_in'",
+      [transferId],
+    );
+    expect(stepAfter?.receipt).toBe(stepBefore?.receipt);
+    const recovery = await runInDurableObject(
+      quotaDoStub(destinationInstallationId),
+      async (_instance, state) => sqlSelect<{ status: string }>(
+        state,
+        "SELECT status FROM recovery_state WHERE singleton = 1",
+      )[0]?.status,
+    );
+    expect(recovery).toBe("blocked");
+    const alert = await queryOne<{ alert_key: string; code: string }>(
+      "SELECT alert_key, code FROM platform_alert WHERE alert_key = ?",
+      [`do-rebuild:${destinationInstallationId}:transfer_replay_evidence_missing`],
+    );
+    expect(alert?.code).toBe("do_rebuild_mismatch");
+  });
+
+  it("R9-PDO1: rebuild preserves verified transfer replay evidence without blocking", async () => {
+    const scenario = await newScenario();
+    await coverClinic(scenario);
+    await newClinic(scenario);
+    const { transferId, destinationInstallationId } = await completeTransferForRebuild(scenario);
+    const ledger = await queryOne<{ grant_id: string }>(
+      `SELECT grant_id FROM grant_ledger
+       WHERE installation_id = ? AND source_kind = 'transfer' LIMIT 1`,
+      [destinationInstallationId],
+    );
+    expect(ledger?.grant_id).toBeTruthy();
+    expect(await r2Exists(`grant-ledger/${ledger!.grant_id}.recovery-v1.ndjson`)).toBe(true);
+    const step = await queryOne<{ receipt: string }>(
+      `SELECT receipt FROM transfer_step WHERE transfer_id = ? AND step = 'transfer_in'`,
+      [transferId],
+    );
+    expect(step?.receipt).toBeTruthy();
+    await wipeClinicDo(destinationInstallationId);
+
+    const rebuilt = await callRebuildClinicDo(destinationInstallationId);
+    expect(rebuilt.result).toBe("ok");
+    const preserved = await runInDurableObject(
+      quotaDoStub(destinationInstallationId),
+      async (_instance, state) => sqlSelect<{
+        request_sha256: string;
+        response_json: string;
+      }>(
+        state,
+        `SELECT request_sha256, response_json FROM transfer_replay
+         WHERE transfer_id = '${transferId}' AND step = 'transfer_in'`,
+      )[0],
+    );
+    expect(preserved?.request_sha256).toMatch(/^[a-f0-9]{64}$/u);
+    expect(JSON.parse(preserved!.response_json).receipt).toEqual(JSON.parse(step!.receipt));
+  });
+
+  it("R9-PDO1: transfer replay request-hash and signed-receipt tampering fence rebuild", async () => {
+    for (const tamper of ["request_hash", "receipt"] as const) {
+      const scenario = await newScenario();
+      await coverClinic(scenario);
+      await newClinic(scenario);
+      const { transferId, destinationInstallationId } = await completeTransferForRebuild(scenario);
+      await runInDurableObject(
+        quotaDoStub(destinationInstallationId),
+        async (_instance, state) => {
+          const replay = sqlSelect<{ response_json: string }>(
+            state,
+            `SELECT response_json FROM transfer_replay
+             WHERE transfer_id = '${transferId}' AND step = 'transfer_in'`,
+          )[0];
+          if (replay === undefined) throw new Error("transfer-in replay missing from fixture");
+          if (tamper === "request_hash") {
+            sqlExec(state,
+              `UPDATE transfer_replay SET request_sha256 = '${"e".repeat(64)}'
+               WHERE transfer_id = '${transferId}' AND step = 'transfer_in'`,
+            );
+          } else {
+            const response = JSON.parse(replay.response_json) as Record<string, unknown>;
+            const receipt = response.receipt as Record<string, unknown>;
+            receipt.signature = `${String(receipt.signature)}-tampered`;
+            const responseJson = JSON.stringify(response).replaceAll("'", "''");
+            sqlExec(state,
+              `UPDATE transfer_replay SET response_json = '${responseJson}'
+               WHERE transfer_id = '${transferId}' AND step = 'transfer_in'`,
+            );
+          }
+        },
+      );
+      await wipeClinicDo(destinationInstallationId);
+      const rebuilt = await callRebuildClinicDo(destinationInstallationId);
+      expect(rebuilt.result).toBe("rejected");
+      expect(rebuilt.code).toBe("recovery_blocked");
+      expect(rebuilt.detail).toContain("transfer_replay_evidence_missing");
+    }
+  });
+
+  it("R9-PDO1: ledger replay blocks when the verified recovery capsule is missing", async () => {
     const scenario = await newScenario();
     await coverClinic(scenario);
     await newClinic(scenario);
@@ -623,6 +914,7 @@ describe("platform rebuild procedures", () => {
 
     const copy = await copyGrantLedgerForInstallation(scenario.installationId);
     expect(copy.ledger.length).toBeGreaterThan(0);
+    await env.R2.delete(`grant-ledger/${grantRow!.grant_id}.recovery-v1.ndjson`);
 
     await truncateGrantLedgerForInstallation(scenario.installationId);
     expect(
@@ -639,11 +931,174 @@ describe("platform rebuild procedures", () => {
     );
     expect(rebuilt.result).toBe("rejected");
     expect(rebuilt.code).toBe("recovery_evidence_required");
-    expect(rebuilt.detail).toContain("RM29");
+    expect(rebuilt.detail).toContain("grant_recovery_capsule_required");
 
     const stillEmpty = await copyGrantLedgerForInstallation(scenario.installationId);
     expect(stillEmpty.ledger).toEqual([]);
     expect(stillEmpty.voids).toEqual([]);
+  });
+
+  it("R9-PDO1: verified recovery capsule restores the exact grant ledger and accepted claim", async () => {
+    const scenario = await newScenario();
+    await coverClinic(scenario);
+    await newClinic(scenario);
+    await shipCoverageOutbox(scenario.installationId);
+    const original = await queryOne<{ grant_id: string; receipt: string }>(
+      `SELECT grant_id, receipt FROM grant_ledger WHERE installation_id = ? ORDER BY applied_at ASC LIMIT 1`,
+      [scenario.installationId],
+    );
+    expect(original?.grant_id).toBeTruthy();
+    await truncateGrantLedgerForInstallation(scenario.installationId);
+
+    const accessJwt = await mintVendorAccessJwt();
+    const rebuilt = await p311VendorCall(
+      "rebuildGrantLedger",
+      { contract_version: CONTRACT_VERSION },
+      { accessJwt },
+    );
+    expect(rebuilt.result).toBe("ok");
+    const restored = await queryOne<{ grant_id: string; receipt: string }>(
+      `SELECT grant_id, receipt FROM grant_ledger WHERE grant_id = ?`,
+      [original!.grant_id],
+    );
+    expect(restored?.grant_id).toBe(original!.grant_id);
+    expect(JSON.parse(restored!.receipt)).toEqual(JSON.parse(original!.receipt));
+    const claim = await queryOne<{ state: string; receipt: string }>(
+      `SELECT state, receipt FROM grant_claim WHERE grant_id = ?`,
+      [original!.grant_id],
+    );
+    expect(claim?.state).toBe("completed");
+    expect(JSON.parse(claim!.receipt)).toEqual(JSON.parse(original!.receipt));
+  });
+
+  it("R9-PDO1 RM29-F2: capsule provenance tampering is rejected before any ledger import", async () => {
+    const scenario = await newScenario();
+    await coverClinic(scenario);
+    await newClinic(scenario);
+    await shipCoverageOutbox(scenario.installationId);
+    const target = await queryOne<{ grant_id: string }>(
+      `SELECT grant_id FROM grant_ledger
+       WHERE installation_id = ? AND source_kind = 'complimentary' LIMIT 1`,
+      [scenario.installationId],
+    );
+    expect(target).not.toBeNull();
+    const capsuleKey = `grant-ledger/${target!.grant_id}.recovery-v1.ndjson`;
+    const capsuleObject = await env.R2.get(capsuleKey);
+    expect(capsuleObject).not.toBeNull();
+    const capsuleText = await capsuleObject!.text();
+    const capsule = JSON.parse(capsuleText) as Record<string, unknown>;
+    capsule.ceiling_claim = null;
+    await env.R2.put(capsuleKey, `${JSON.stringify(capsule)}\n`);
+    await truncateGrantLedgerForInstallation(scenario.installationId);
+
+    const accessJwt = await mintVendorAccessJwt();
+    const nullCeiling = await p311VendorCall(
+      "rebuildGrantLedger", { contract_version: CONTRACT_VERSION }, { accessJwt },
+    );
+    expect(nullCeiling.result).toBe("rejected");
+    expect(nullCeiling.code).toBe("recovery_evidence_required");
+    expect(nullCeiling.detail).toContain("grant_recovery_ceiling_claim_required");
+    capsule.ceiling_claim = (JSON.parse(capsuleText) as Record<string, unknown>).ceiling_claim;
+    capsule.accepted_actor = "forged-actor@example.invalid";
+    capsule.route_generation = 999;
+    await env.R2.put(capsuleKey, `${JSON.stringify(capsule)}\n`);
+    const forgedProvenance = await p311VendorCall(
+      "rebuildGrantLedger", { contract_version: CONTRACT_VERSION }, { accessJwt },
+    );
+    expect(forgedProvenance.result).toBe("rejected");
+    expect(forgedProvenance.code).toBe("recovery_evidence_required");
+    expect(forgedProvenance.detail).toContain("grant_recovery_");
+    expect(await queryOne(
+      `SELECT grant_id FROM grant_ledger WHERE installation_id = ?`,
+      [scenario.installationId],
+    )).toBeNull();
+  });
+
+  it("R9-PDO1 RM29-F4: later ledger collision leaves earlier recovery rows uninstalled", async () => {
+    const scenario = await newScenario();
+    await coverClinic(scenario);
+    await newClinic(scenario);
+    await shipCoverageOutbox(scenario.installationId);
+    const rows = await queryAll<GrantLedgerRow & { operator_email: string | null }>(
+      `SELECT grant_id, origin_grant_id, org_id, installation_id, kind, source_kind,
+              operator_credential_id, operator_email, envelope_sha256, receipt, applied_at
+       FROM grant_ledger WHERE installation_id = ? ORDER BY grant_id ASC`,
+      [scenario.installationId],
+    );
+    expect(rows.length).toBeGreaterThan(1);
+    await truncateGrantLedgerForInstallation(scenario.installationId);
+    const first = rows[0]!;
+    const colliding = rows.at(-1)!;
+    await env.DB.prepare(
+      `INSERT INTO grant_ledger (
+        grant_id, origin_grant_id, org_id, installation_id, kind, source_kind,
+        operator_credential_id, operator_email, envelope_sha256, receipt, applied_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    ).bind(
+      colliding.grant_id, colliding.origin_grant_id, colliding.org_id,
+      colliding.installation_id, colliding.kind, colliding.source_kind,
+      "forged-credential", colliding.operator_email, colliding.envelope_sha256,
+      colliding.receipt, colliding.applied_at,
+    ).run();
+
+    const accessJwt = await mintVendorAccessJwt();
+    const rebuilt = await p311VendorCall(
+      "rebuildGrantLedger", { contract_version: CONTRACT_VERSION }, { accessJwt },
+    );
+    expect(rebuilt.result).toBe("rejected");
+    expect(rebuilt.code).toBe("recovery_evidence_required");
+    expect(rebuilt.detail).toContain("grant_ledger_recovery_conflict");
+    expect(await queryOne(
+      `SELECT grant_id FROM grant_ledger WHERE grant_id = ?`, [first.grant_id],
+    )).toBeNull();
+    expect(await queryOne<{ operator_credential_id: string }>(
+      `SELECT operator_credential_id FROM grant_ledger WHERE grant_id = ?`,
+      [colliding.grant_id],
+    )).toEqual({ operator_credential_id: "forged-credential" });
+  });
+
+  it("R9-PDO1 RM29-F5: fetch and alarm shipments remain fenced during recovery", async () => {
+    const scenario = await newScenario();
+    await coverClinic(scenario);
+    await newClinic(scenario);
+    const anchor = await queryOne<{ event_id: string; binding_epoch: number }>(
+      `SELECT event_id, binding_epoch FROM coverage_event
+       WHERE installation_id = ? ORDER BY clinic_seq DESC LIMIT 1`,
+      [scenario.installationId],
+    );
+    expect(anchor).not.toBeNull();
+    await runInDurableObject(quotaDoStub(scenario.installationId), async (_instance, state) => {
+      sqlExec(state, `INSERT INTO recovery_state (
+        singleton, generation, installation_id, org_id, binding_epoch,
+        anchor_event_id, status, updated_at
+      ) VALUES (1, '${scenario.installationId}:${anchor!.binding_epoch}:${anchor!.event_id}',
+        '${scenario.installationId}', '${scenario.orgId}', ${anchor!.binding_epoch},
+        '${anchor!.event_id}', 'building', '2026-10-21T00:00:00.000Z')`);
+      sqlExec(state, `INSERT INTO outbox (kind, payload) VALUES ('coverage_event', '{}')`);
+    });
+
+    const blockedResponse = await quotaDoStub(scenario.installationId).fetch(
+      "https://quota-do.internal/rpc",
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          contract_version: CHANNEL_VERSIONS.platformDo,
+          kind: "refresh_coverage_snapshot",
+        }),
+      },
+    );
+    expect(blockedResponse.status).toBe(409);
+    expect((await blockedResponse.json() as { result: string }).result).toBe("recovery_blocked");
+
+    const pendingBeforeAlarm = await runInDurableObject(quotaDoStub(scenario.installationId), async (_instance, state) =>
+      sqlSelect<{ count: number }>(state, "SELECT COUNT(*) AS count FROM outbox")[0]?.count ?? 0,
+    );
+    await runDurableObjectAlarm(quotaDoStub(scenario.installationId));
+    const remaining = await runInDurableObject(quotaDoStub(scenario.installationId), async (_instance, state) =>
+      sqlSelect<{ count: number }>(state, "SELECT COUNT(*) AS count FROM outbox")[0]?.count ?? 0,
+    );
+    expect(remaining).toBe(pendingBeforeAlarm);
   });
 
   it("E2E-P3.11-04 snapshot refresh writes one coverage_event and updates the mirror", async () => {
@@ -723,5 +1178,56 @@ describe("platform rebuild procedures", () => {
     expect(mirrorAfter?.binding_epoch).toBe(snapshotEvent!.binding_epoch);
     expect(mirrorAfter?.term_snapshot).toBe(snapshotEvent!.snapshot);
     expect(mirrorAfter!.clinic_seq).toBe(mirrorBefore!.clinic_seq + 1);
+  });
+
+  it("R9-PD1: restored binding bootstraps a surviving DO after event and mirror loss", async () => {
+    const scenario = await newScenario();
+    await coverClinic(scenario);
+    await newClinic(scenario);
+    await shipCoverageOutbox(scenario.installationId);
+    const prior = await queryOne<{ clinic_seq: number; binding_epoch: number }>(
+      `SELECT clinic_seq, binding_epoch FROM coverage_mirror WHERE installation_id = ?`,
+      [scenario.installationId],
+    );
+    expect(prior).toBeTruthy();
+
+    await env.DB.prepare("DROP TRIGGER IF EXISTS coverage_event_no_delete").run();
+    await env.DB.prepare("DROP TRIGGER IF EXISTS coverage_mirror_no_delete").run();
+    await env.DB.prepare("DELETE FROM coverage_event WHERE installation_id = ?")
+      .bind(scenario.installationId).run();
+    await env.DB.prepare("DELETE FROM coverage_mirror WHERE installation_id = ?")
+      .bind(scenario.installationId).run();
+
+    const accessJwt = await mintVendorAccessJwt();
+    const refreshed = await p311VendorCall(
+      "refreshCoverageSnapshot",
+      { contract_version: CONTRACT_VERSION, installation_id: scenario.installationId },
+      { accessJwt },
+    );
+    expect(refreshed.result).toBe("ok");
+
+    const event = await queryOne<{
+      org_id: string;
+      installation_id: string;
+      binding_epoch: number;
+      clinic_seq: number;
+      kind: string;
+    }>(
+      `SELECT org_id, installation_id, binding_epoch, clinic_seq, kind FROM coverage_event
+       WHERE installation_id = ? ORDER BY clinic_seq DESC LIMIT 1`,
+      [scenario.installationId],
+    );
+    expect(event).toMatchObject({
+      org_id: scenario.orgId,
+      installation_id: scenario.installationId,
+      binding_epoch: prior!.binding_epoch,
+      kind: "snapshot",
+    });
+    expect(event!.clinic_seq).toBeGreaterThan(prior!.clinic_seq);
+    const mirror = await queryOne<{ clinic_seq: number; binding_epoch: number }>(
+      `SELECT clinic_seq, binding_epoch FROM coverage_mirror WHERE installation_id = ?`,
+      [scenario.installationId],
+    );
+    expect(mirror).toEqual({ clinic_seq: event!.clinic_seq, binding_epoch: event!.binding_epoch });
   });
 });
