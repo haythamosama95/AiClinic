@@ -9,7 +9,7 @@ import {
   grantIdPaid,
   sha256Hex,
 } from "vendor-contracts";
-import { beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   applyAllMigrations,
   CAPABILITY_ID,
@@ -25,7 +25,7 @@ import {
   mintAat,
   mintVendorAccessJwt,
   newClinic,
-  newScenario,
+  newScenario as harnessNewScenario,
   POLICY_ID,
   POLICY_VERSION,
   promote,
@@ -69,6 +69,18 @@ const p311VendorCall = vendorCall as (
 
 function quotaDoStub(installationId: string) {
   return env.DO.get(env.DO.idFromName(installationId));
+}
+
+// Installations whose DO may have armed a real alarm during the current test.
+// Cleared by the afterEach in the top-level describe.
+const touchedInstallations = new Set<string>();
+
+async function newScenario(
+  ...args: Parameters<typeof harnessNewScenario>
+): Promise<Awaited<ReturnType<typeof harnessNewScenario>>> {
+  const scenario = await harnessNewScenario(...args);
+  touchedInstallations.add(scenario.installationId);
+  return scenario;
 }
 
 function sqlExec(state: DurableObjectState, query: string): void {
@@ -472,6 +484,7 @@ async function completeTransferForRebuild(
   expect(transfer.to_installation_id).toBeTruthy();
   const transferId = transfer.transfer_id!;
   const destinationInstallationId = transfer.to_installation_id!;
+  touchedInstallations.add(destinationInstallationId);
   expect((await p311VendorCall("transferOut", {
     contract_version: CONTRACT_VERSION,
     transfer_id: transferId,
@@ -643,6 +656,18 @@ beforeEach(async () => {
 });
 
 describe("platform rebuild procedures", () => {
+  afterEach(async () => {
+    try {
+      for (const installationId of touchedInstallations) {
+        await runInDurableObject(quotaDoStub(installationId), async (_instance, state) => {
+          await state.storage.deleteAlarm();
+        });
+      }
+    } finally {
+      touchedInstallations.clear();
+    }
+  });
+
   it("R2-C3: rebuild and refresh reject mismatched DO versions without advancing projection", async () => {
     const scenario = await newScenario();
     await coverClinic(scenario);
