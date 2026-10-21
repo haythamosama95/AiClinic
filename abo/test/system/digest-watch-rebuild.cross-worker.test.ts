@@ -91,6 +91,8 @@ const POLICY_ID = "standard";
 const POLICY_VERSION = "1";
 const PAID_PAYMOB_TXN_ID = 941105;
 const GAP_PAYMOB_TXN_ID = 941106;
+const RESUME_PAYMOB_TXN_ID = 941107;
+const RESUME_INSTALLATION_ID = "install-r9-rec1-resume";
 const EXTRA_ISSUER_KID = "watch-extra-issuer-kid";
 const EXTRA_CREDENTIAL_ID = "watch-extra-credential-id";
 const BACKEND_LAST_PULL = "2026-06-15T05:54:00.000Z";
@@ -550,7 +552,40 @@ async function clearRebuildLedgerArtifacts(): Promise<void> {
   }
 }
 
-async function setupRebuildHarness(): Promise<OffersFixtureExpectations> {
+async function wipePlatformD1(): Promise<void> {
+  const objects = await env.PLATFORM_DB.prepare(
+    `SELECT name, type FROM sqlite_master
+     WHERE type IN ('table', 'trigger', 'view')
+       AND name NOT LIKE 'sqlite_%'
+       AND name NOT LIKE '_cf_%'
+     ORDER BY rowid DESC`,
+  ).all<{ name: string; type: string }>();
+  const rows = objects.results ?? [];
+  for (const row of rows) {
+    if (row.type === "trigger") {
+      await env.PLATFORM_DB.prepare(`DROP TRIGGER IF EXISTS ${row.name}`).run();
+    }
+  }
+  for (const row of rows) {
+    if (row.type === "view") {
+      await env.PLATFORM_DB.prepare(`DROP VIEW IF EXISTS ${row.name}`).run();
+    }
+  }
+  for (const row of rows) {
+    if (row.type === "table") {
+      await env.PLATFORM_DB.prepare(`DROP TABLE IF EXISTS ${row.name}`).run();
+    }
+  }
+}
+
+async function setupRebuildHarness(options?: {
+  freshPlatformState?: boolean;
+}): Promise<OffersFixtureExpectations> {
+  if (options?.freshPlatformState === true) {
+    await wipePlatformD1();
+    await setupCrossWorkerHarness();
+    await setClock(BASE_CLOCK);
+  }
   // Catalogue and fact rows are append-only, so the ordinary per-case reset
   // cannot isolate the shared offers fixture. Clear its ledger objects and
   // recreate suite-local D1 before loading it so each case seeds it once.
@@ -566,7 +601,10 @@ async function setupRebuildHarness(): Promise<OffersFixtureExpectations> {
   return expectations!;
 }
 
-async function ensureGrantTenantBinding(orgId: string): Promise<void> {
+async function ensureGrantTenantBinding(
+  orgId: string,
+  installationId = crypto.randomUUID(),
+): Promise<void> {
   const existing = await env.PLATFORM_DB.prepare(
     `SELECT installation_id FROM tenant_binding
      WHERE org_id = ? AND status = 'active'`,
@@ -576,7 +614,6 @@ async function ensureGrantTenantBinding(orgId: string): Promise<void> {
   if (existing?.installation_id) {
     return;
   }
-  const installationId = crypto.randomUUID();
   const createdAt = "2026-06-01T12:00:00.000Z";
   await env.PLATFORM_DB.batch([
     env.PLATFORM_DB.prepare(
@@ -2506,13 +2543,18 @@ describe("P4.11 digest, watch, housekeeping, rebuild (H-XW)", () => {
   });
 
   it("R9-REC1 interrupted ledger replay resumes with original fact sequences", async () => {
-    const expectations = await setupRebuildHarness();
-    await paidCheckoutWithGrant(
+    const expectations = await setupRebuildHarness({ freshPlatformState: true });
+    await ensureGrantTenantBinding(ORG_REBUILD, RESUME_INSTALLATION_ID);
+    const { paymentId } = await paidCheckoutWithGrant(
       ORG_REBUILD,
       expectations,
-      PAID_PAYMOB_TXN_ID,
+      RESUME_PAYMOB_TXN_ID,
       "req-r9-rec1-resume",
     );
+    const grantOutcome = await env.DB.prepare(
+      `SELECT result FROM grant_outcome WHERE grant_id = ?`,
+    ).bind(await grantIdPaid(paymentId)).first<{ result: string }>();
+    expect(grantOutcome?.result).toMatch(/^(applied|already_applied)$/u);
     await exportLedgerFacts();
     const listed = await env.R2.list({ prefix: "ledger/" });
     const originalLines = await Promise.all(listed.objects.map(async (object) => {
@@ -2578,6 +2620,7 @@ describe("P4.11 digest, watch, housekeeping, rebuild (H-XW)", () => {
     const maxSeq = await env.DB.prepare(`SELECT MAX(fact_seq) AS n FROM fact_log`)
       .first<{ n: number }>();
     expect(maxSeq?.n).toBe(originalLines.length + 1);
+    expect(maxSeq?.n).toBe(21);
     await exportFacts(env);
     for (const [key, expectedBody] of originalObjects) {
       const retained = await env.R2.get(key);
