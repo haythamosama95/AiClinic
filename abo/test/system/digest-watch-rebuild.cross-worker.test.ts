@@ -28,6 +28,7 @@ import grantMigrationSql from "../../migrations/0004_grant.sql?raw";
 import reversalMigrationSql from "../../migrations/0005_reversal.sql?raw";
 import operatorActionMigrationSql from "../../migrations/0006_operator_action.sql?raw";
 import hpActionsMigrationSql from "../../migrations/0007_hp_actions.sql?raw";
+import digestWatchMigrationSql from "../../migrations/0009_digest_watch.sql?raw";
 import acceptedCommandsErasureFenceMigrationSql from "../../migrations/0012_accepted_commands_erasure_fence.sql?raw";
 import notificationProviderTxnIdMigrationSql from "../../migrations/0013_notification_provider_txn_id.sql?raw";
 import grantOutcomeEventsMigrationSql from "../../migrations/0014_grant_outcome_events.sql?raw";
@@ -360,6 +361,7 @@ async function ensureMigrations(): Promise<void> {
     operatorActionMigrationSql,
     hpActionsMigrationSql,
     reconciliationMigrationSql,
+    digestWatchMigrationSql,
     workLeaseTokenMigrationSql,
     checkoutCreationAttemptsMigrationSql,
     acceptedCommandsErasureFenceMigrationSql,
@@ -372,21 +374,26 @@ async function ensureMigrations(): Promise<void> {
     secretlessCreatedAttemptsMigrationSql,
     recoveryProvenanceAndInquiriesMigrationSql,
   ]) {
-    try {
-      await applySql(sql);
-    } catch {
-      // Migration not present yet.
-    }
+    await applySql(sql);
   }
 }
 
 async function ensureDigestWatchMigration(): Promise<void> {
   await applySql(DIGEST_WATCH_SCHEMA_SQL);
-  try {
-    await env.DB.prepare(`ALTER TABLE fact_log ADD COLUMN row_json TEXT`).run();
-  } catch {
-    // Column already present.
-  }
+  const factColumns = await env.DB.prepare(`PRAGMA table_info(fact_log)`).all<{
+    name: string;
+  }>();
+  const checkoutColumns = await env.DB.prepare(`PRAGMA table_info(checkout)`).all<{
+    name: string;
+  }>();
+  const recoveryTable = await env.DB.prepare(
+    `SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'rebuild_inquiry_attempt'`,
+  ).first<{ name: string }>();
+  expect(factColumns.results?.some((column) => column.name === "row_json"))
+    .toBe(true);
+  expect(checkoutColumns.results?.some((column) => column.name === "created_at_provenance"))
+    .toBe(true);
+  expect(recoveryTable?.name).toBe("rebuild_inquiry_attempt");
 }
 
 async function seedBackendFeedPull(lastPullAt: string): Promise<void> {
@@ -1349,6 +1356,11 @@ function installDigestRetrySendBinding(): void {
 }
 
 describe("P4.11 digest, watch, housekeeping, rebuild (H-XW)", () => {
+  it("R9-REC1 isolated schema reapply installs migration 0009 before recovery provenance", async () => {
+    await wipeAboD1();
+    await reapplyAboSchema();
+  });
+
   it("R9-REC1 rejects missing and expiry-inferred checkout timestamps during recovery", () => {
     expect(() => resolveHistoricalCheckoutTimestamp({
       checkoutId: "checkout-r9-missing-time",
@@ -1436,7 +1448,6 @@ describe("P4.11 digest, watch, housekeeping, rebuild (H-XW)", () => {
     clinicIssuer = null;
     await resetCrossWorkerHarness();
     await setupCrossWorkerHarness();
-    await ensureMigrations();
     await ensureDigestWatchMigration();
     await scriptPaymobStub("ok");
     await env.PAYMOB_STUB.fetch("http://paymob.stub/__script", {
