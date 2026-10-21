@@ -39,6 +39,8 @@ import { getPerRequestWriteCounts } from "../../src/quota-do/index";
 import { addDuration } from "../../src/coverage/calendar";
 import { reconcileGraceUsage } from "../../src/credit/index";
 
+const diag = (msg: string) => console.log(`[DIAG] ${new Date().toISOString()} ${msg}`);
+
 const QUOTA_WEIGHT = 1;
 const W_MAX = QUOTA_WEIGHT;
 const doGetReal = env.DO.get.bind(env.DO);
@@ -1544,34 +1546,52 @@ describe("admission settlement against terms", () => {
   });
 
   it("R5-A5: fallback exhaustion activates the queued successor once across receipt replay", async () => {
+    diag("R5-A5: fallback exhaustion activates the step 1 before newScenario");
     const scenario = await newScenario();
+    diag("R5-A5: fallback exhaustion activates the step 1 after newScenario");
+    diag("R5-A5: fallback exhaustion activates the step 2 before coverClinic");
     await coverClinic(scenario, { max_allowance_per_month: 2 });
+    diag("R5-A5: fallback exhaustion activates the step 2 after coverClinic");
+    diag("R5-A5: fallback exhaustion activates the step 3 before coverClinic");
     await coverClinic(scenario, { max_allowance_per_month: 2 });
+    diag("R5-A5: fallback exhaustion activates the step 3 after coverClinic");
+    diag("R5-A5: fallback exhaustion activates the step 4 before coverClinic");
     await coverClinic(scenario, { max_allowance_per_month: 2 });
+    diag("R5-A5: fallback exhaustion activates the step 4 after coverClinic");
+    diag("R5-A5: fallback exhaustion activates the step 5 before newClinic");
     await newClinic(scenario);
+    diag("R5-A5: fallback exhaustion activates the step 5 after newClinic");
+    diag("R5-A5: fallback exhaustion activates the step 6 before readDoTerms");
     const beforeTerms = await readDoTerms(scenario.installationId);
+    diag("R5-A5: fallback exhaustion activates the step 6 after readDoTerms");
     const activeBeforeFallback = beforeTerms.find((term) => term.state === "active");
     expect(activeBeforeFallback).toBeTruthy();
     const oldestUnheldSuccessor = beforeTerms
       .filter((term) => term.state === "queued")
       .sort((left, right) => left.position - right.position)[0];
     expect(oldestUnheldSuccessor).toBeTruthy();
+    diag("R5-A5: fallback exhaustion activates the step 7 before settleFallbackDirect");
     const priorUsage = await settleFallbackDirect(
       scenario.installationId,
       crypto.randomUUID(),
       activeBeforeFallback!.term_id,
     );
+    diag("R5-A5: fallback exhaustion activates the step 7 after settleFallbackDirect");
     expect(priorUsage).toMatchObject({ outcome: "settled", chargedWeight: 1 });
     const exhaustedId = activeBeforeFallback!.term_id;
     const requestId = crypto.randomUUID();
+    diag("R5-A5: fallback exhaustion activates the step 8 before settleFallbackDirect");
     const settled = await settleFallbackDirect(
       scenario.installationId,
       requestId,
       exhaustedId,
     );
+    diag("R5-A5: fallback exhaustion activates the step 8 after settleFallbackDirect");
     expect(settled).toMatchObject({ outcome: "settled", chargedWeight: 1 });
 
+    diag("R5-A5: fallback exhaustion activates the step 9 before readDoTerms");
     const afterTerms = await readDoTerms(scenario.installationId);
+    diag("R5-A5: fallback exhaustion activates the step 9 after readDoTerms");
     const predecessor = afterTerms.find((term) => term.term_id === exhaustedId);
     const successor = afterTerms
       .filter((term) => term.state === "active")
@@ -1581,6 +1601,7 @@ describe("admission settlement against terms", () => {
     expect(successor).toBeTruthy();
     expect(successor?.term_id).not.toBe(exhaustedId);
     expect(successor?.term_id).toBe(oldestUnheldSuccessor?.term_id);
+    diag("R5-A5: fallback exhaustion activates the step 10 before runInDurableObject");
     const eventCountBeforeReplay = await runInDurableObject(
       quotaDoStub(scenario.installationId),
       async (_instance, state) => sqlSelect<{ count: number }>(
@@ -1589,12 +1610,16 @@ describe("admission settlement against terms", () => {
          WHERE kind = 'coverage_event' AND payload LIKE '%term_ended%'`,
       ),
     );
+    diag("R5-A5: fallback exhaustion activates the step 10 after runInDurableObject");
+    diag("R5-A5: fallback exhaustion activates the step 11 before settleFallbackDirect");
     const replay = await settleFallbackDirect(
       scenario.installationId,
       requestId,
       exhaustedId,
     );
+    diag("R5-A5: fallback exhaustion activates the step 11 after settleFallbackDirect");
     expect(replay).toMatchObject({ outcome: "settled", chargedWeight: 1 });
+    diag("R5-A5: fallback exhaustion activates the step 12 before runInDurableObject");
     const eventCountAfterReplay = await runInDurableObject(
       quotaDoStub(scenario.installationId),
       async (_instance, state) => sqlSelect<{ count: number }>(
@@ -1603,8 +1628,11 @@ describe("admission settlement against terms", () => {
          WHERE kind = 'coverage_event' AND payload LIKE '%term_ended%'`,
       ),
     );
+    diag("R5-A5: fallback exhaustion activates the step 12 after runInDurableObject");
     expect(eventCountAfterReplay[0]?.count).toBe(eventCountBeforeReplay[0]?.count);
+    diag("R5-A5: fallback exhaustion activates the step 13 before readDoTerms");
     expect((await readDoTerms(scenario.installationId)).find((term) => term.term_id === exhaustedId)?.state).toBe("exhausted");
+    diag("R5-A5: fallback exhaustion activates the step 13 after readDoTerms");
     expect(beforeTerms.some((term) => term.term_id === exhaustedId)).toBe(true);
   });
 });

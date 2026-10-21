@@ -44,6 +44,8 @@ import {
   type VendorResultEnvelope,
 } from "./harness";
 
+const diag = (msg: string) => console.log(`[DIAG] ${new Date().toISOString()} ${msg}`);
+
 const CONTRACT_VERSION = CHANNEL_VERSIONS.vendorEntrypoint;
 const QUOTA_WEIGHT = 1;
 
@@ -669,6 +671,7 @@ describe("platform rebuild procedures", () => {
   });
 
   it("R2-C3: rebuild and refresh reject mismatched DO versions without advancing projection", async () => {
+    diag("START R2-C3: rebuild and refresh reject mismatched DO ");
     const scenario = await newScenario();
     await coverClinic(scenario);
     await newClinic(scenario);
@@ -736,9 +739,11 @@ describe("platform rebuild procedures", () => {
         [scenario.installationId],
       ),
     ).toEqual(mirrorBefore);
+    diag("END R2-C3: rebuild and refresh reject mismatched DO ");
   });
 
   it("R9-PUS1 FM-20: distinct accounting sequences rebuild usage once and compare clean", async () => {
+    diag("START R9-PUS1 FM-20: distinct accounting sequences reb");
     const scenario = await newScenario();
     await setupFm20Clinic(scenario);
 
@@ -777,9 +782,11 @@ describe("platform rebuild procedures", () => {
       [`do-rebuild:${scenario.installationId}`],
     );
     expect(alert).toBeNull();
+    diag("END R9-PUS1 FM-20: distinct accounting sequences reb");
   });
 
   it("R9-PUS1: delayed journal rows after an accounting-watermarked snapshot do not double-charge", async () => {
+    diag("START R9-PUS1: delayed journal rows after an accountin");
     const scenario = await newScenario();
     await coverClinic(scenario);
     await newClinic(scenario);
@@ -830,9 +837,11 @@ describe("platform rebuild procedures", () => {
     const rebuilt = await callRebuildClinicDo(scenario.installationId);
     expect(rebuilt.result).toBe("ok");
     expect(await recordDoTermSnapshots(scenario.installationId)).toEqual(before);
+    diag("END R9-PUS1: delayed journal rows after an accountin");
   });
 
   it("R9-PUS1: a missing post-snapshot accounting sequence blocks rebuild", async () => {
+    diag("START R9-PUS1: a missing post-snapshot accounting sequ");
     const scenario = await newScenario();
     await coverClinic(scenario);
     await newClinic(scenario);
@@ -853,9 +862,11 @@ describe("platform rebuild procedures", () => {
     expect(rebuilt.result).toBe("rejected");
     expect(rebuilt.code).toBe("recovery_blocked");
     expect(rebuilt.detail).toContain("usage_accounting_sequence_gap");
+    diag("END R9-PUS1: a missing post-snapshot accounting sequ");
   });
 
   it("R9-PUS1: replayed zero-weight release advances the next settlement sequence", async () => {
+    diag("START R9-PUS1: replayed zero-weight release advances t");
     const scenario = await newScenario();
     await setupPromotedPolicy(scenario);
     await coverClinic(scenario);
@@ -927,15 +938,24 @@ describe("platform rebuild procedures", () => {
       { request_id: consumedId, accounting_seq: 2 },
     ]);
     await drainAndCancelDoAlarm(scenario.installationId);
+    diag("END R9-PUS1: replayed zero-weight release advances t");
   });
 
   it("R9-PUS1: rebuild blocks while a settlement accounting intent remains unshipped", async () => {
+    diag("START R9-PUS1: rebuild blocks while a settlement accou");
+    diag("R9-PUS1: rebuild blocks while a settleme step 1 before newScenario");
     const scenario = await newScenario();
+    diag("R9-PUS1: rebuild blocks while a settleme step 1 after newScenario");
+    diag("R9-PUS1: rebuild blocks while a settleme step 2 before coverClinic");
     await coverClinic(scenario);
+    diag("R9-PUS1: rebuild blocks while a settleme step 2 after coverClinic");
+    diag("R9-PUS1: rebuild blocks while a settleme step 3 before readDoTerms");
     const activeTerm = (await readDoTerms(scenario.installationId))
       .find((term) => term.state === "active");
+    diag("R9-PUS1: rebuild blocks while a settleme step 3 after readDoTerms");
     expect(activeTerm).toBeTruthy();
     const requestId = crypto.randomUUID();
+    diag("R9-PUS1: rebuild blocks while a settleme step 4 before quotaDoStub");
     const settled = await quotaDoStub(scenario.installationId).fetch(
       "https://quota-do.internal/rpc",
       {
@@ -952,51 +972,82 @@ describe("platform rebuild procedures", () => {
         }),
       },
     );
+    diag("R9-PUS1: rebuild blocks while a settleme step 4 after quotaDoStub");
+    diag("R9-PUS1: rebuild blocks while a settleme step 5 before settled");
     expect(await settled.json()).toMatchObject({
       kind: "settleFallback", outcome: "settled", accountingSequence: 1,
     });
+    diag("R9-PUS1: rebuild blocks while a settleme step 5 after settled");
 
+    diag("R9-PUS1: rebuild blocks while a settleme step 6 before callRebuildClinicDo");
     const rebuild = await callRebuildClinicDo(scenario.installationId);
+    diag("R9-PUS1: rebuild blocks while a settleme step 6 after callRebuildClinicDo");
     expect(rebuild.result).toBe("rejected");
     expect(rebuild.code).toBe("recovery_blocked");
+    diag("R9-PUS1: rebuild blocks while a settleme step 7 before runInDurableObject");
     const intent = await runInDurableObject(
       quotaDoStub(scenario.installationId),
       async (_instance, state) => sqlSelect<{ payload: string }>(
         state, "SELECT payload FROM outbox WHERE kind = 'usage_adjustment'",
       ).map((row) => JSON.parse(row.payload) as Record<string, unknown>),
     );
+    diag("R9-PUS1: rebuild blocks while a settleme step 7 after runInDurableObject");
     expect(intent).toContainEqual(expect.objectContaining({
       request_id: requestId, term_id: activeTerm!.term_id,
       quota_weight: 1, accounting_seq: 1,
     }));
+    diag("R9-PUS1: rebuild blocks while a settleme step 8 before readHotUsed");
     expect(await readHotUsed(scenario.installationId)).toBe(1);
+    diag("R9-PUS1: rebuild blocks while a settleme step 8 after readHotUsed");
     // All assertions above run against the unshipped intent. Drain afterwards
     // so no re-armed alarm can fire during storage-frame teardown.
+    diag("R9-PUS1: rebuild blocks while a settleme step 9 before drainAndCancelDoAlarm");
     await drainAndCancelDoAlarm(scenario.installationId);
+    diag("R9-PUS1: rebuild blocks while a settleme step 9 after drainAndCancelDoAlarm");
+    diag("END R9-PUS1: rebuild blocks while a settlement accou");
   });
 
   it("R9-PDO1: rebuild refuses a nonempty DO and preserves an unshipped grant", async () => {
+    diag("START R9-PDO1: rebuild refuses a nonempty DO and prese");
+    diag("R9-PDO1: rebuild refuses a nonempty DO a step 1 before newScenario");
     const scenario = await newScenario();
+    diag("R9-PDO1: rebuild refuses a nonempty DO a step 1 after newScenario");
+    diag("R9-PDO1: rebuild refuses a nonempty DO a step 2 before coverClinic");
     await coverClinic(scenario);
+    diag("R9-PDO1: rebuild refuses a nonempty DO a step 2 after coverClinic");
+    diag("R9-PDO1: rebuild refuses a nonempty DO a step 3 before newClinic");
     await newClinic(scenario);
+    diag("R9-PDO1: rebuild refuses a nonempty DO a step 3 after newClinic");
+    diag("R9-PDO1: rebuild refuses a nonempty DO a step 4 before recordDoTermSnapshots");
     const before = await recordDoTermSnapshots(scenario.installationId);
+    diag("R9-PDO1: rebuild refuses a nonempty DO a step 4 after recordDoTermSnapshots");
+    diag("R9-PDO1: rebuild refuses a nonempty DO a step 5 before runInDurableObject");
     const outboxBefore = await runInDurableObject(
       quotaDoStub(scenario.installationId),
       async (_instance, state) => sqlSelect<{ count: number }>(state, "SELECT COUNT(*) AS count FROM outbox")[0]?.count ?? 0,
     );
+    diag("R9-PDO1: rebuild refuses a nonempty DO a step 5 after runInDurableObject");
 
+    diag("R9-PDO1: rebuild refuses a nonempty DO a step 6 before callRebuildClinicDo");
     const rebuilt = await callRebuildClinicDo(scenario.installationId);
+    diag("R9-PDO1: rebuild refuses a nonempty DO a step 6 after callRebuildClinicDo");
     expect(rebuilt.result).toBe("rejected");
     expect(rebuilt.code).toBe("recovery_blocked");
+    diag("R9-PDO1: rebuild refuses a nonempty DO a step 7 before recordDoTermSnapshots");
     expect(await recordDoTermSnapshots(scenario.installationId)).toEqual(before);
+    diag("R9-PDO1: rebuild refuses a nonempty DO a step 7 after recordDoTermSnapshots");
+    diag("R9-PDO1: rebuild refuses a nonempty DO a step 8 before runInDurableObject");
     const outboxAfter = await runInDurableObject(
       quotaDoStub(scenario.installationId),
       async (_instance, state) => sqlSelect<{ count: number }>(state, "SELECT COUNT(*) AS count FROM outbox")[0]?.count ?? 0,
     );
+    diag("R9-PDO1: rebuild refuses a nonempty DO a step 8 after runInDurableObject");
     expect(outboxAfter).toBe(outboxBefore);
+    diag("END R9-PDO1: rebuild refuses a nonempty DO and prese");
   });
 
   it("R9-PDO1 RM29-F1: a building recovery marker cannot authorize wiping a nonempty DO", async () => {
+    diag("START R9-PDO1 RM29-F1: a building recovery marker cann");
     const scenario = await newScenario();
     await coverClinic(scenario);
     await newClinic(scenario);
@@ -1020,9 +1071,11 @@ describe("platform rebuild procedures", () => {
     expect(rebuilt.result).toBe("rejected");
     expect(rebuilt.code).toBe("recovery_blocked");
     expect(await recordDoTermSnapshots(scenario.installationId)).toEqual(before);
+    diag("END R9-PDO1 RM29-F1: a building recovery marker cann");
   });
 
   it("R9-PDO1: mirror mismatch blocks activation and alerts", async () => {
+    diag("START R9-PDO1: mirror mismatch blocks activation and a");
     const scenario = await newScenario();
     await setupFm20Clinic(scenario);
     await recordDoTermSnapshots(scenario.installationId);
@@ -1054,9 +1107,11 @@ describe("platform rebuild procedures", () => {
       severity: "high",
       send_state: "unsent",
     });
+    diag("END R9-PDO1: mirror mismatch blocks activation and a");
   });
 
   it("R9-PDO1: rebuild preserves signed pre-anchor void evidence and exact void state", async () => {
+    diag("START R9-PDO1: rebuild preserves signed pre-anchor voi");
     const scenario = await newScenario();
     await setupFm20Clinic(scenario);
     const voidRow = await queryOne<{
@@ -1092,9 +1147,11 @@ describe("platform rebuild procedures", () => {
     expect(state.term?.state).toBe("ended");
     expect(state.term?.end_reason).toBe("reversed");
     expect(state.term?.ended_at).toBe(before!.at);
+    diag("END R9-PDO1: rebuild preserves signed pre-anchor voi");
   });
 
   it("R9-PDO1: rebuild blocks with operator evidence reason when a pre-anchor void proof is missing", async () => {
+    diag("START R9-PDO1: rebuild blocks with operator evidence r");
     const scenario = await newScenario();
     await setupFm20Clinic(scenario);
     const voidRow = await queryOne<{ grant_id: string; reason: string; at: string }>(
@@ -1114,9 +1171,11 @@ describe("platform rebuild procedures", () => {
     expect(await queryOne(
       `SELECT grant_id FROM grant_void WHERE grant_id = ?`, [voidRow!.grant_id],
     )).toEqual({ grant_id: voidRow!.grant_id });
+    diag("END R9-PDO1: rebuild blocks with operator evidence r");
   });
 
   it("R9-PDO1: missing transfer replay evidence fences rebuild and preserves the D1 step", async () => {
+    diag("START R9-PDO1: missing transfer replay evidence fences");
     const scenario = await newScenario();
     await coverClinic(scenario);
     await newClinic(scenario);
@@ -1158,9 +1217,11 @@ describe("platform rebuild procedures", () => {
       [`do-rebuild:${destinationInstallationId}:transfer_replay_evidence_missing`],
     );
     expect(alert?.code).toBe("do_rebuild_mismatch");
+    diag("END R9-PDO1: missing transfer replay evidence fences");
   });
 
   it("R9-PDO1: rebuild preserves verified transfer replay evidence without blocking", async () => {
+    diag("START R9-PDO1: rebuild preserves verified transfer rep");
     const scenario = await newScenario();
     await coverClinic(scenario);
     await newClinic(scenario);
@@ -1194,9 +1255,11 @@ describe("platform rebuild procedures", () => {
     );
     expect(preserved?.request_sha256).toMatch(/^[a-f0-9]{64}$/u);
     expect(JSON.parse(preserved!.response_json).receipt).toEqual(JSON.parse(step!.receipt));
+    diag("END R9-PDO1: rebuild preserves verified transfer rep");
   });
 
   it("R9-PDO1 RM29-F3: transfer grant recovery capsule ships from the outbox and is acknowledged", async () => {
+    diag("START R9-PDO1 RM29-F3: transfer grant recovery capsule");
     const scenario = await newScenario();
     await coverClinic(scenario);
     await newClinic(scenario);
@@ -1271,9 +1334,11 @@ describe("platform rebuild procedures", () => {
       [transferId],
     );
     expect(capsule.transfer_evidence.receipt_text).toBe(transferStep?.receipt);
+    diag("END R9-PDO1 RM29-F3: transfer grant recovery capsule");
   });
 
   it("R9-PDO1: transfer replay request-hash and signed-receipt tampering fence rebuild", async () => {
+    diag("START R9-PDO1: transfer replay request-hash and signed");
     for (const tamper of ["request_hash", "receipt"] as const) {
       const scenario = await newScenario();
       await coverClinic(scenario);
@@ -1311,9 +1376,11 @@ describe("platform rebuild procedures", () => {
       expect(rebuilt.code).toBe("recovery_blocked");
       expect(rebuilt.detail).toContain("transfer_replay_evidence_missing");
     }
+    diag("END R9-PDO1: transfer replay request-hash and signed");
   });
 
   it("R9-PDO1: ledger replay blocks when the verified recovery capsule is missing", async () => {
+    diag("START R9-PDO1: ledger replay blocks when the verified ");
     const scenario = await newScenario();
     await coverClinic(scenario);
     await newClinic(scenario);
@@ -1352,9 +1419,11 @@ describe("platform rebuild procedures", () => {
     const stillEmpty = await copyGrantLedgerForInstallation(scenario.installationId);
     expect(stillEmpty.ledger).toEqual([]);
     expect(stillEmpty.voids).toEqual([]);
+    diag("END R9-PDO1: ledger replay blocks when the verified ");
   });
 
   it("R9-PDO1: verified recovery capsule restores the exact grant ledger and accepted claim", async () => {
+    diag("START R9-PDO1: verified recovery capsule restores the ");
     const scenario = await newScenario();
     await coverClinic(scenario);
     await newClinic(scenario);
@@ -1385,9 +1454,11 @@ describe("platform rebuild procedures", () => {
     );
     expect(claim?.state).toBe("completed");
     expect(JSON.parse(claim!.receipt)).toEqual(JSON.parse(original!.receipt));
+    diag("END R9-PDO1: verified recovery capsule restores the ");
   });
 
   it("R9-PDO1 RM29-F2: capsule ceiling-claim tampering is rejected before any ledger import", async () => {
+    diag("START R9-PDO1 RM29-F2: capsule ceiling-claim tampering");
     const { scenario, capsuleKey, capsuleText } = await setupComplimentaryRecoveryCapsule();
     const capsule = JSON.parse(capsuleText) as Record<string, unknown>;
     capsule.ceiling_claim = null;
@@ -1405,9 +1476,11 @@ describe("platform rebuild procedures", () => {
       `SELECT grant_id FROM grant_ledger WHERE installation_id = ?`,
       [scenario.installationId],
     )).toBeNull();
+    diag("END R9-PDO1 RM29-F2: capsule ceiling-claim tampering");
   });
 
   it("R9-PDO1 RM29-F2: accepted-actor capsule provenance tampering is rejected", async () => {
+    diag("START R9-PDO1 RM29-F2: accepted-actor capsule provenan");
     const { scenario, capsuleKey, capsuleText } = await setupComplimentaryRecoveryCapsule();
     const capsule = JSON.parse(capsuleText) as Record<string, unknown>;
     capsule.accepted_actor = "forged-actor@example.invalid";
@@ -1425,9 +1498,11 @@ describe("platform rebuild procedures", () => {
       `SELECT grant_id FROM grant_ledger WHERE installation_id = ?`,
       [scenario.installationId],
     )).toBeNull();
+    diag("END R9-PDO1 RM29-F2: accepted-actor capsule provenan");
   });
 
   it("R9-PDO1 RM29-F2: route-generation capsule provenance tampering is rejected", async () => {
+    diag("START R9-PDO1 RM29-F2: route-generation capsule proven");
     const { scenario, capsuleKey, capsuleText } = await setupComplimentaryRecoveryCapsule();
     const capsule = JSON.parse(capsuleText) as Record<string, unknown>;
     capsule.route_generation = 999;
@@ -1445,9 +1520,11 @@ describe("platform rebuild procedures", () => {
       `SELECT grant_id FROM grant_ledger WHERE installation_id = ?`,
       [scenario.installationId],
     )).toBeNull();
+    diag("END R9-PDO1 RM29-F2: route-generation capsule proven");
   });
 
   it("R9-PDO1 RM29-F2: fresh complimentary recovery accepts source_reconciled=0 and JSON-text ceiling receipts", async () => {
+    diag("START R9-PDO1 RM29-F2: fresh complimentary recovery ac");
     const { scenario, grantId, capsuleText } = await setupComplimentaryRecoveryCapsule();
     const capsule = JSON.parse(capsuleText) as Record<string, unknown>;
     const ceiling = capsule.ceiling_claim as Record<string, unknown>;
@@ -1476,9 +1553,11 @@ describe("platform rebuild procedures", () => {
     );
     expect(restored?.source_reconciled).toBe(0);
     expect(JSON.parse(restored!.receipt)).toEqual(capsule.receipt);
+    diag("END R9-PDO1 RM29-F2: fresh complimentary recovery ac");
   });
 
   it("R9-PDO1 RM29-F2: malformed or non-object ceiling receipts are rejected", async () => {
+    diag("START R9-PDO1 RM29-F2: malformed or non-object ceiling");
     for (const invalidReceipt of ["{", "[]"]) {
       const { scenario, capsuleKey, capsuleText } = await setupComplimentaryRecoveryCapsule();
       const capsule = JSON.parse(capsuleText) as Record<string, unknown>;
@@ -1498,9 +1577,11 @@ describe("platform rebuild procedures", () => {
         [scenario.installationId],
       )).toBeNull();
     }
+    diag("END R9-PDO1 RM29-F2: malformed or non-object ceiling");
   });
 
   it("R9-PDO1 RM29-F4: later ledger collision leaves earlier recovery rows uninstalled", async () => {
+    diag("START R9-PDO1 RM29-F4: later ledger collision leaves e");
     const scenario = await newScenario();
     await coverClinic(scenario);
     await newClinic(scenario);
@@ -1544,9 +1625,11 @@ describe("platform rebuild procedures", () => {
       `SELECT operator_credential_id FROM grant_ledger WHERE grant_id = ?`,
       [colliding.grant_id],
     )).toEqual({ operator_credential_id: "forged-credential" });
+    diag("END R9-PDO1 RM29-F4: later ledger collision leaves e");
   });
 
   it("R9-PDO1 RM29-F5: fetch and alarm shipments remain fenced during recovery", async () => {
+    diag("START R9-PDO1 RM29-F5: fetch and alarm shipments remai");
     const scenario = await newScenario();
     await coverClinic(scenario);
     await newClinic(scenario);
@@ -1588,9 +1671,11 @@ describe("platform rebuild procedures", () => {
       sqlSelect<{ count: number }>(state, "SELECT COUNT(*) AS count FROM outbox")[0]?.count ?? 0,
     );
     expect(remaining).toBe(pendingBeforeAlarm);
+    diag("END R9-PDO1 RM29-F5: fetch and alarm shipments remai");
   });
 
   it("E2E-P3.11-04 snapshot refresh writes one coverage_event and updates the mirror", async () => {
+    diag("START E2E-P3.11-04 snapshot refresh writes one coverag");
     const scenario = await newScenario();
     await coverClinic(scenario);
     await newClinic(scenario);
@@ -1667,9 +1752,11 @@ describe("platform rebuild procedures", () => {
     expect(mirrorAfter?.binding_epoch).toBe(snapshotEvent!.binding_epoch);
     expect(mirrorAfter?.term_snapshot).toBe(snapshotEvent!.snapshot);
     expect(mirrorAfter!.clinic_seq).toBe(mirrorBefore!.clinic_seq + 1);
+    diag("END E2E-P3.11-04 snapshot refresh writes one coverag");
   });
 
   it("R9-PD1: restored binding bootstraps a surviving DO after event and mirror loss", async () => {
+    diag("START R9-PD1: restored binding bootstraps a surviving ");
     const scenario = await newScenario();
     await coverClinic(scenario);
     await newClinic(scenario);
@@ -1718,5 +1805,6 @@ describe("platform rebuild procedures", () => {
       [scenario.installationId],
     );
     expect(mirror).toEqual({ clinic_seq: event!.clinic_seq, binding_epoch: event!.binding_epoch });
+    diag("END R9-PD1: restored binding bootstraps a surviving ");
   });
 });
