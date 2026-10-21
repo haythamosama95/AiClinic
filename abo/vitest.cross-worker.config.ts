@@ -78,6 +78,7 @@ export default defineWorkersConfig({
     testTimeout: 120_000,
     poolOptions: {
       workers: {
+        singleWorker: true,
         main: "./src/worker.ts",
         wrangler: {
           configPath: "./wrangler.toml",
