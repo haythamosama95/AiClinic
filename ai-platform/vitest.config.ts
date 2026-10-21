@@ -52,6 +52,7 @@ export default defineConfig({
       "test/system/**/*.system.test.ts",
       "test/version-matrix/**",
       "test/vendor-entrypoint.test.ts",
+      "test/alert-delivery.test.ts",
       "test/e2e/**",
     ],
     testTimeout: 120_000,

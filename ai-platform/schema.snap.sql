@@ -328,7 +328,8 @@ CREATE TABLE platform_alert (
   send_state TEXT NOT NULL,
   next_send_at TEXT,
   resolved_at TEXT
-);
+, body_json TEXT, body_state TEXT NOT NULL DEFAULT 'incomplete'
+  CHECK (body_state IN ('stored', 'incomplete')), channel_version INTEGER, origin_event_id TEXT, attempts INTEGER NOT NULL DEFAULT 0, lease_token TEXT, lease_expires_at TEXT);
 
 CREATE TABLE platform_counter (
   counter_id TEXT PRIMARY KEY NOT NULL,

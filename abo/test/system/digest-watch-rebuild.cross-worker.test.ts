@@ -1111,6 +1111,10 @@ async function buildGrantEnvelope(input: {
 }
 
 async function seedDigestScenario(): Promise<DigestScenario> {
+  // Append-only triggers block the harness reset from clearing checkout rows,
+  // so a second seed in the same file must start from a fresh schema.
+  await wipeAboD1();
+  await reapplyAboSchema();
   const checkoutOpenedAt = addHours(BASE_CLOCK, -12);
   const paymentPaidAt = addHours(BASE_CLOCK, -10);
   const checkoutId = "01JDIGESTCHECKOUT00001";

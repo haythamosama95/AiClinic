@@ -116,7 +116,8 @@ describe("R9-PAL1 alert delivery durability", () => {
     expect(callsFor(send, "inst-r9-pal1-2")).toHaveLength(0);
 
     await retryUnsentPlatformAlerts(mailEnv(send));
-    expect(callsFor(send, "org-r9-pal1-2")).toHaveLength(3);
+    // Two failed first attempts (AL-12, AL-19) plus one successful retry each.
+    expect(callsFor(send, "org-r9-pal1-2")).toHaveLength(4);
     expect(callsFor(send, "inst-r9-pal1-2")).toHaveLength(1);
     expect(callsFor(send, "inst-r9-pal1-2")[0]?.[0]).toMatchObject({
       subject: "do_rebuild_mismatch",
@@ -126,7 +127,7 @@ describe("R9-PAL1 alert delivery durability", () => {
     expect((await alertRow("do-rebuild:inst-r9-pal1-2:r9_pal1"))?.send_state).toBe("sent");
 
     await retryUnsentPlatformAlerts(mailEnv(send));
-    expect(callsFor(send, "org-r9-pal1-2")).toHaveLength(3);
+    expect(callsFor(send, "org-r9-pal1-2")).toHaveLength(4);
     expect(callsFor(send, "inst-r9-pal1-2")).toHaveLength(1);
   });
 
