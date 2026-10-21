@@ -487,7 +487,9 @@ describe("retention_expiry_platform_counter", () => {
     expect(request?.accounting_state).toBe("pending");
     expect(request?.payload_pointer).toBe("request/req-pending-settlement/envelope");
     expect(attempt?.c).toBe(1);
-    expect(await env.R2.get("request/req-pending-settlement/envelope")).not.toBeNull();
+    const obj = await env.R2.get("request/req-pending-settlement/envelope");
+    expect(obj).not.toBeNull();
+    await obj?.text();
   });
 });
 

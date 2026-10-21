@@ -746,6 +746,8 @@ describe("platform rebuild procedures", () => {
 
   it("R9-PUS1: delayed journal rows after an accounting-watermarked snapshot do not double-charge", async () => {
     const scenario = await newScenario();
+    await coverClinic(scenario);
+    await newClinic(scenario);
     await setupPromotedPolicy(scenario);
     await completeChargedRequest(scenario);
     await completeChargedRequest(scenario);
@@ -797,6 +799,8 @@ describe("platform rebuild procedures", () => {
 
   it("R9-PUS1: a missing post-snapshot accounting sequence blocks rebuild", async () => {
     const scenario = await newScenario();
+    await coverClinic(scenario);
+    await newClinic(scenario);
     await setupPromotedPolicy(scenario);
     await completeChargedRequest(scenario);
     await completeChargedRequest(scenario);
@@ -811,7 +815,8 @@ describe("platform rebuild procedures", () => {
     await wipeClinicDo(scenario.installationId);
 
     const rebuilt = await callRebuildClinicDo(scenario.installationId);
-    expect(rebuilt.result).toBe("blocked");
+    expect(rebuilt.result).toBe("rejected");
+    expect(rebuilt.code).toBe("recovery_blocked");
     expect(rebuilt.detail).toContain("usage_accounting_sequence_gap");
   });
 

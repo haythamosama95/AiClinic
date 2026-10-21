@@ -6384,6 +6384,7 @@ function normalizeCoverageSnapshotForMirrorCompare(
     unknown
   >;
   delete normalized.grace_base_used;
+  delete normalized.accounting_seq;
 
   const term = normalized.term;
   if (term !== null && typeof term === "object" && !Array.isArray(term)) {
