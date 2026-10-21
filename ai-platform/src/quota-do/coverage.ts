@@ -4055,7 +4055,7 @@ export async function shipCoverageOutboxAlarm(
       "SELECT status FROM recovery_state WHERE singleton = 1 LIMIT 1",
     )[0];
     if (recovery?.status === "building" || recovery?.status === "blocked") {
-      await state.storage.setAlarm(Date.now() + 60_000);
+      await state.storage.setAlarm(physicalAlarmAt(Date.now() + 60_000));
       return [];
     }
     try {
