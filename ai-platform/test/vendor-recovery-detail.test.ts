@@ -20,4 +20,11 @@ describe("vendor recovery blocker operator details", () => {
   it("R9-PDO1: leaves unrelated recovery reasons unmapped", () => {
     expect(recoveryBlockedOperatorDetail("some_other_recovery_stop")).toBe("");
   });
+
+  it("R9-PDO1: returns safe guidance when the recovery reason is omitted", () => {
+    const detail = recoveryBlockedOperatorDetail();
+
+    expect(detail).toContain("recovery is fenced");
+    expect(detail).toContain("Preserve existing Durable Object and D1 state unchanged");
+  });
 });

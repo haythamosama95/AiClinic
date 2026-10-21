@@ -1,4 +1,8 @@
-export function recoveryBlockedOperatorDetail(reason: string): string {
+export function recoveryBlockedOperatorDetail(reason?: string): string {
+  if (typeof reason !== "string" || reason.length === 0) {
+    return "recovery_blocked: recovery is fenced because retained recovery evidence could not be verified. Preserve existing Durable Object and D1 state unchanged; do not synthesize evidence or receipts. Operator checklist: retain the original evidence and request maintainer/frontier adjudication.";
+  }
+
   if (reason === "transfer_replay_evidence_missing") {
     return "transfer_replay_evidence_missing: recovery is fenced because a D1 transfer step has no byte-verifiable Durable Object replay. Preserve existing transfer_replay and D1 transfer_step rows unchanged; do not synthesize request hashes or response_json. Operator checklist: compare each transfer_id/step receipt against its Durable Object replay, retain the original evidence, then request maintainer/frontier adjudication for missing historical bytes.";
   }

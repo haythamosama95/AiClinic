@@ -666,7 +666,7 @@ describe("platform rebuild procedures", () => {
     const scenario = await newScenario();
     await coverClinic(scenario);
     await newClinic(scenario);
-    const before = await readDoTermSnapshots(scenario.installationId);
+    const before = await recordDoTermSnapshots(scenario.installationId);
     const anchor = await queryOne<{ event_id: string; binding_epoch: number }>(
       `SELECT event_id, binding_epoch FROM coverage_event
        WHERE installation_id = ? ORDER BY clinic_seq DESC LIMIT 1`,
@@ -685,7 +685,7 @@ describe("platform rebuild procedures", () => {
     const rebuilt = await callRebuildClinicDo(scenario.installationId);
     expect(rebuilt.result).toBe("rejected");
     expect(rebuilt.code).toBe("recovery_blocked");
-    expect(await readDoTermSnapshots(scenario.installationId)).toEqual(before);
+    expect(await recordDoTermSnapshots(scenario.installationId)).toEqual(before);
   });
 
   it("R9-PDO1: mirror mismatch blocks activation and alerts", async () => {

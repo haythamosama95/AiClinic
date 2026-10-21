@@ -5136,6 +5136,7 @@ function reapplyUsageEventsAfterSnapshot(
   storage: DurableObjectStorage,
   termIds: string[],
   anchorSnapshot: Record<string, unknown>,
+  snapshotAt: string,
   rows: Array<{ request_id: string; term_id: string; quota_weight: number; recorded_at: string }>,
 ): void {
   if (termIds.length === 0) {
@@ -5489,6 +5490,7 @@ async function verifyTransferRecoveryMetadata(
   if (!isRecoveryRecord(transferEvidence) ||
       JSON.stringify(Object.keys(transferEvidence).sort()) !== JSON.stringify([
         "applied_at", "receipt_text", "request_sha256", "response_json", "source_step",
+        "transfer_id",
         "step", "transfer",
       ].sort())) {
     throw new Error(`grant_recovery_transfer_evidence_required:${grantId}`);
@@ -5518,11 +5520,15 @@ async function verifyTransferRecoveryMetadata(
   let response: Record<string, unknown>;
   let sourceReceipt: Record<string, unknown>;
   let destinationReceipt: Record<string, unknown>;
+  let ledgerReceipt: Record<string, unknown>;
   try {
     packageTerms = JSON.parse(transfer.package);
     response = JSON.parse(transferEvidence.response_json) as Record<string, unknown>;
     sourceReceipt = JSON.parse(sourceStep.receipt_text) as Record<string, unknown>;
     destinationReceipt = JSON.parse(transferEvidence.receipt_text) as Record<string, unknown>;
+    ledgerReceipt = typeof ledgerRow.receipt === "string"
+      ? JSON.parse(ledgerRow.receipt) as Record<string, unknown>
+      : ledgerRow.receipt as unknown as Record<string, unknown>;
   } catch {
     throw new Error(`grant_recovery_transfer_evidence_invalid:${grantId}`);
   }
@@ -5548,7 +5554,6 @@ async function verifyTransferRecoveryMetadata(
       destinationReceipt.result !== "applied" || sourceReceipt.result !== "applied" ||
       destinationReceipt.envelope_sha256 !== await sha256Hex(canonicalize(packageTerms)) ||
       sourceReceipt.envelope_sha256 !== destinationReceipt.envelope_sha256 ||
-      destinationReceipt.grant_id !== grantId ||
       !canonicalValuesEqual(capsule.evidence, { transfer_id: transferEvidence.transfer_id, step: "transfer_in" })) {
     throw new Error(`grant_recovery_transfer_evidence_conflict:${grantId}`);
   }
@@ -5595,9 +5600,11 @@ async function verifyTransferRecoveryMetadata(
       storedDestination.applied_at !== transferEvidence.applied_at ||
       !canonicalValuesEqual(capsule.envelope, packageTerms[index]) ||
       await grantEnvelopeHash(capsule.envelope as Record<string, unknown>) !== ledgerRow.envelope_sha256 ||
-      capsule.receipt === null || !canonicalValuesEqual(capsule.receipt, ledgerRow.receipt) ||
-      destinationReceipt.grant_id !== grantId || destinationReceipt.envelope_sha256 !== ledgerRow.envelope_sha256 ||
-      destinationReceipt.applied_at !== ledgerRow.applied_at ||
+      capsule.receipt === null || !canonicalValuesEqual(capsule.receipt, ledgerReceipt) ||
+      ledgerReceipt.grant_id !== grantId || ledgerReceipt.org_id !== ledgerRow.org_id ||
+      ledgerReceipt.installation_id !== ledgerRow.installation_id ||
+      ledgerReceipt.envelope_sha256 !== ledgerRow.envelope_sha256 ||
+      ledgerReceipt.applied_at !== ledgerRow.applied_at ||
       !canonicalValuesEqual(response.receipt, destinationReceipt)) {
     throw new Error(`grant_recovery_transfer_evidence_conflict:${grantId}`);
   }
@@ -6071,13 +6078,20 @@ export async function rebuildClinicDoRPC(
     const afterRows = afterResult.results ?? [];
     const allLedgerRows = [...beforeRows, ...afterRows];
     const capsules = new Map<string, Record<string, unknown>>();
-    for (const row of allLedgerRows) {
-      if (row.org_id !== request.orgId || row.installation_id !== request.installationId) {
-        throw new Error(`grant_recovery_identity_conflict:${row.grant_id}`);
+    try {
+      for (const row of allLedgerRows) {
+        if (row.org_id !== request.orgId || row.installation_id !== request.installationId) {
+          throw new Error(`grant_recovery_identity_conflict:${row.grant_id}`);
+        }
+        capsules.set(row.grant_id, await verifyGrantRecoveryCapsule(
+          request.db, request.r2, row.grant_id, row, request.platformSigningKeyJson,
+        ));
       }
-      capsules.set(row.grant_id, await verifyGrantRecoveryCapsule(
-        request.db, request.r2, row.grant_id, row, request.platformSigningKeyJson,
-      ));
+    } catch (error) {
+      const detail = error instanceof Error ? error.message : "grant_recovery_evidence_invalid";
+      if (!/^(?:grant_recovery_|grant_void_recovery_)/u.test(detail)) throw error;
+      persistBlockedRecoveryMarker();
+      return { kind: "rebuild_clinic_do", result: "blocked", blocked_reason: detail };
     }
     const voidRows = voidResult.results ?? [];
     try {
@@ -6106,7 +6120,37 @@ export async function rebuildClinicDoRPC(
           throw new Error(`grant_void_recovery_evidence_conflict:${row.grant_id}`);
         }
         const receipt = proof.receipt as Record<string, unknown>;
-        const expectedEnvelopeHash = row.source === "operator" ? "" : ledger.envelope_sha256;
+        let expectedEnvelopeHash = "";
+        if (row.source === "reversal") {
+          if (typeof receipt.reversal_id !== "string" || receipt.reversal_id.length === 0) {
+            throw new Error(`grant_void_recovery_command_provenance_conflict:${row.grant_id}`);
+          }
+          const command = await request.db.prepare(
+            `SELECT reversal_id, grant_id, request_sha256, request_body, state, receipt
+             FROM reversal_command WHERE reversal_id = ?`,
+          ).bind(receipt.reversal_id).first<{
+            reversal_id: string; grant_id: string; request_sha256: string; request_body: string;
+            state: string; receipt: string | null;
+          }>();
+          let commandBody: Record<string, unknown> | null = null;
+          try {
+            const parsed: unknown = command === null ? null : JSON.parse(command.request_body);
+            if (isRecoveryRecord(parsed)) commandBody = parsed;
+          } catch { /* handled by the provenance check below */ }
+          if (command === null || commandBody === null || command.state !== "terminal" ||
+              command.reversal_id !== receipt.reversal_id || command.grant_id !== row.grant_id ||
+              command.request_sha256 !== receipt.envelope_sha256 ||
+              await sha256Hex(canonicalize(commandBody)) !== command.request_sha256 ||
+              commandBody.grant_id !== row.grant_id || commandBody.reversal_id !== receipt.reversal_id ||
+              commandBody.reason !== row.reason || commandBody.evidence_sha256 !== row.evidence_sha256 ||
+              command.receipt === null ||
+              !canonicalValuesEqual(JSON.parse(command.receipt), receipt)) {
+            throw new Error(`grant_void_recovery_command_provenance_conflict:${row.grant_id}`);
+          }
+          expectedEnvelopeHash = command.request_sha256;
+        } else if (row.source !== "operator") {
+          throw new Error(`grant_void_recovery_source_invalid:${row.grant_id}`);
+        }
         if (
           receipt.installation_id !== request.installationId || receipt.org_id !== request.orgId ||
           receipt.applied_at !== row.at || receipt.envelope_sha256 !== expectedEnvelopeHash ||
@@ -6159,6 +6203,7 @@ export async function rebuildClinicDoRPC(
         storage,
         loadTerms(storage).map((term) => term.term_id),
         anchorSnapshot,
+        anchor.at,
         usageResult.results ?? [],
       );
       sqlExec(storage,
