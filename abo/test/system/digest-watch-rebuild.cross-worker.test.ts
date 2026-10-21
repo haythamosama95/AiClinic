@@ -2156,7 +2156,11 @@ describe("P4.11 digest, watch, housekeeping, rebuild (H-XW)", () => {
     await scriptPaymobInquiry("reversed", amount, amount);
     const platform = env.PLATFORM;
     const interruptedPlatform = {
-      ...platform,
+      grant: (args: Record<string, unknown>) => platform.grant(args),
+      listGrants: (args: Record<string, unknown>) => platform.listGrants(args),
+      readCoverageEvents: (args: Record<string, unknown>) =>
+        platform.readCoverageEvents(args),
+      getCoverage: (args: Record<string, unknown>) => platform.getCoverage(args),
       voidForReversal: async () => { throw new Error("simulated_interruption"); },
     };
     await rebuildAbo({ ...env, PLATFORM: interruptedPlatform } as never, {
@@ -2204,7 +2208,11 @@ describe("P4.11 digest, watch, housekeeping, rebuild (H-XW)", () => {
     await scriptPaymobInquiry("rate_limit");
     let resumedVoidBody: Record<string, unknown> | null = null;
     const resumedPlatform = {
-      ...platform,
+      grant: (args: Record<string, unknown>) => platform.grant(args),
+      listGrants: (args: Record<string, unknown>) => platform.listGrants(args),
+      readCoverageEvents: (args: Record<string, unknown>) =>
+        platform.readCoverageEvents(args),
+      getCoverage: (args: Record<string, unknown>) => platform.getCoverage(args),
       voidForReversal: async (args: Record<string, unknown>) => {
         resumedVoidBody = args;
         return platform.voidForReversal(args);
@@ -2823,11 +2831,16 @@ describe("P4.11 digest, watch, housekeeping, rebuild (H-XW)", () => {
       key: string;
       row_sha256: string;
     }>();
-    expect(replayed.results).toEqual(
-      originalLines
-        .map(({ fact_seq, table, key, row_sha256 }) => ({ fact_seq, table, key, row_sha256 }))
-        .sort((a, b) => a.fact_seq - b.fact_seq),
-    );
+    const originalFacts = originalLines
+      .map(({ fact_seq, table, key, row_sha256 }) => ({ fact_seq, table, key, row_sha256 }))
+      .sort((a, b) => a.fact_seq - b.fact_seq);
+    expect(replayed.results.slice(0, originalFacts.length)).toEqual(originalFacts);
+    expect(replayed.results.slice(originalFacts.length)).toEqual([
+      expect.objectContaining({
+        fact_seq: originalFacts.length + 1,
+        table: "rebuild_inquiry_attempt",
+      }),
+    ]);
 
     await appendOffer(env, {
       offer_id: "offer-r9-rec1-after-rebuild",
@@ -2836,17 +2849,23 @@ describe("P4.11 digest, watch, housekeeping, rebuild (H-XW)", () => {
     });
     const maxSeq = await env.DB.prepare(`SELECT MAX(fact_seq) AS n FROM fact_log`)
       .first<{ n: number }>();
-    expect(maxSeq?.n).toBe(originalLines.length + 1);
-    expect(maxSeq?.n).toBe(21);
+    expect(maxSeq?.n).toBe(originalLines.length + 2);
+    expect(maxSeq?.n).toBe(22);
     await exportFacts(env);
     for (const [key, expectedBody] of originalObjects) {
       const retained = await env.R2.get(key);
       expect(await retained?.text()).toBe(expectedBody);
     }
-    const nextObject = await env.R2.get(`ledger/${originalLines.length + 1}.ndjson`);
+    const inquiryObject = await env.R2.get(`ledger/${originalLines.length + 1}.ndjson`);
+    expect(inquiryObject).not.toBeNull();
+    expect(JSON.parse(await inquiryObject!.text())).toMatchObject({
+      fact_seq: originalLines.length + 1,
+      table: "rebuild_inquiry_attempt",
+    });
+    const nextObject = await env.R2.get(`ledger/${originalLines.length + 2}.ndjson`);
     expect(nextObject).not.toBeNull();
     expect(JSON.parse(await nextObject!.text())).toMatchObject({
-      fact_seq: originalLines.length + 1,
+      fact_seq: originalLines.length + 2,
       table: "offer",
       key: "offer-r9-rec1-after-rebuild",
     });

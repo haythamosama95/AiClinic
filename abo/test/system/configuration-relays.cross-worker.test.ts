@@ -4,7 +4,7 @@
  */
 
 import { env, SELF } from "cloudflare:test";
-import { beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import {
   canonicalize,
   CHANNEL_VERSIONS,
@@ -64,6 +64,7 @@ const CAPABILITY_VERSION = "1.0.0";
 const POLICY_ID = "standard";
 const POLICY_VERSION = "1";
 const GATEWAY_ORIGIN = "https://ai-gateway.test";
+const INITIAL_ABO_GRANT_KEY = env.ABO_GRANT_KEY;
 
 const ORG_CFG_02 = "a4890002-0002-4002-8002-000000000002";
 const ORG_CFG_03 = "a4890003-0003-4003-8003-000000000003";
@@ -1435,6 +1436,10 @@ beforeEach(async () => {
   await scriptPaymobInquiry("bound_success");
   await setClock("2026-06-01T12:00:00.000Z");
   clinicIssuer = null;
+});
+
+afterEach(() => {
+  Object.assign(env, { ABO_GRANT_KEY: INITIAL_ABO_GRANT_KEY });
 });
 
 describe("configuration relays cross-worker", () => {
