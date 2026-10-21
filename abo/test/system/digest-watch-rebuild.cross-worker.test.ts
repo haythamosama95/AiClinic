@@ -43,6 +43,9 @@ import secretlessCreatedAttemptsMigrationSql from "../../migrations/0019_secretl
 import recoveryProvenanceAndInquiriesMigrationSql from "../../migrations/0020_recovery_provenance_and_inquiries.sql?raw";
 import scheduledJobStateMigrationSql from "../../migrations/0021_scheduled_job_state.sql?raw";
 import findingIdentityMigrationSql from "../../migrations/0022_finding_identity.sql?raw";
+import payoutImportFileIdentityMigrationSql from "../../migrations/0023_payout_import_file_identity.sql?raw";
+import payoutLineReversalIdentityMigrationSql from "../../migrations/0024_payout_line_reversal_identity.sql?raw";
+import reversalProviderIdentityMigrationSql from "../../migrations/0025_reversal_provider_identity.sql?raw";
 import { appendOffer, loadOffersFixture } from "../../src/records/append";
 import { resolveHistoricalCheckoutTimestamp } from "../../src/rebuild";
 import { exportFacts } from "../../src/records/export";
@@ -377,6 +380,9 @@ async function ensureMigrations(): Promise<void> {
     recoveryProvenanceAndInquiriesMigrationSql,
     scheduledJobStateMigrationSql,
     findingIdentityMigrationSql,
+    payoutImportFileIdentityMigrationSql,
+    payoutLineReversalIdentityMigrationSql,
+    reversalProviderIdentityMigrationSql,
   ]) {
     await applySql(sql);
   }

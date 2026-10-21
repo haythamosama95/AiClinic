@@ -26,6 +26,9 @@ import secretlessCreatedAttemptsMigrationSql from "../../migrations/0019_secretl
 import recoveryProvenanceAndInquiriesMigrationSql from "../../migrations/0020_recovery_provenance_and_inquiries.sql?raw";
 import scheduledJobStateMigrationSql from "../../migrations/0021_scheduled_job_state.sql?raw";
 import findingIdentityMigrationSql from "../../migrations/0022_finding_identity.sql?raw";
+import payoutImportFileIdentityMigrationSql from "../../migrations/0023_payout_import_file_identity.sql?raw";
+import payoutLineReversalIdentityMigrationSql from "../../migrations/0024_payout_line_reversal_identity.sql?raw";
+import reversalProviderIdentityMigrationSql from "../../migrations/0025_reversal_provider_identity.sql?raw";
 
 const ABO_LEGACY_MIGRATION_SQL: string[] = [
   recordsMigrationSql,
@@ -53,6 +56,9 @@ const ABO_MIGRATION_SQL: string[] = [
   recoveryProvenanceAndInquiriesMigrationSql,
   scheduledJobStateMigrationSql,
   findingIdentityMigrationSql,
+  payoutImportFileIdentityMigrationSql,
+  payoutLineReversalIdentityMigrationSql,
+  reversalProviderIdentityMigrationSql,
 ];
 
 function base64UrlEncode(bytes: Uint8Array): string {

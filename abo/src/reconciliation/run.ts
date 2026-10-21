@@ -336,21 +336,40 @@ async function checkTransferWithoutAuthorisation(
   }
 }
 
+// R9-AO1: a stored void outcome is evidence only when it is an applied/already-applied
+// receipt bound to this reversal. The receipt is written only after its signature verifies.
+function outcomeReceiptBindsReversal(
+  reversalId: string,
+  result: string,
+  receipt: string,
+): boolean {
+  if (result !== "applied" && result !== "already_applied") {
+    return false;
+  }
+  const parsed = receiptObject(receipt);
+  return parsed !== null && parsed.reversal_id === reversalId;
+}
+
 async function checkReversalNotApplied(env: ReconciliationEnv): Promise<void> {
   const rows = await env.DB.prepare(
     `SELECT reversal_id, effect FROM reversal WHERE is_full = 1`,
   ).all<{ reversal_id: string; effect: string }>();
 
   for (const row of rows.results ?? []) {
-    if (row.effect === "none" || row.effect === "tombstone") {
+    // R9-AO1: only a genuine no-effect reversal is exempt. A requested tombstone is intent,
+    // not proof of completion, so it needs the same verified outcome as every other effect.
+    if (row.effect === "none") {
       continue;
     }
     const outcome = await env.DB.prepare(
-      `SELECT 1 FROM reversal_outcome WHERE reversal_id = ?`,
+      `SELECT result, receipt FROM reversal_outcome WHERE reversal_id = ?`,
     )
       .bind(row.reversal_id)
-      .first();
-    if (outcome !== null) {
+      .first<{ result: string; receipt: string }>();
+    if (
+      outcome !== null &&
+      outcomeReceiptBindsReversal(row.reversal_id, outcome.result, outcome.receipt)
+    ) {
       continue;
     }
     await insertFinding(
@@ -465,28 +484,109 @@ async function checkPaymentNotInPayout(env: ReconciliationEnv): Promise<void> {
   }
 }
 
+type PayoutReversalEvidence = {
+  import_id: string;
+  line_no: number;
+  kind: string;
+  payment_id: string | null;
+  reversal_ref: string | null;
+  amount_minor: number | null;
+};
+
+async function payoutLineAlreadyLinked(
+  env: ReconciliationEnv,
+  importId: string,
+  lineNo: number,
+): Promise<boolean> {
+  const link = await env.DB.prepare(
+    `SELECT 1 FROM payout_reversal_link WHERE import_id = ? AND line_no = ?`,
+  )
+    .bind(importId, lineNo)
+    .first();
+  return link !== null;
+}
+
+// R9-AO2: exact match on normalized identity, payment, kind and amount. Only reversals recorded from
+// the provider path carry an identity row, so manual reversals never match. Unrelated partial
+// refunds carry a different identity and cannot satisfy a chargeback. Ambiguity matches nothing.
+async function matchingProviderReversal(
+  env: ReconciliationEnv,
+  evidence: PayoutReversalEvidence,
+): Promise<string | null> {
+  if (
+    evidence.payment_id === null ||
+    evidence.reversal_ref === null ||
+    evidence.amount_minor === null
+  ) {
+    return null;
+  }
+  const matches = await env.DB.prepare(
+    `SELECT r.reversal_id
+     FROM reversal_provider_identity rpi
+     INNER JOIN reversal r ON r.reversal_id = rpi.reversal_id
+     WHERE rpi.reversal_ref = ?
+       AND r.payment_id = ?
+       AND r.kind = ?
+       AND r.amount_minor = ?
+     ORDER BY r.reversal_id
+     LIMIT 2`,
+  )
+    .bind(evidence.reversal_ref, evidence.payment_id, evidence.kind, evidence.amount_minor)
+    .all<{ reversal_id: string }>();
+  const found = matches.results ?? [];
+  return found.length === 1 ? found[0]!.reversal_id : null;
+}
+
+// R9-AO2: the link is immutable and written once per payout line, however often reconciliation
+// re-examines it. It records a match only; it never creates a reversal or a void.
+async function linkPayoutReversal(
+  env: ReconciliationEnv,
+  importId: string,
+  lineNo: number,
+  reversalId: string,
+): Promise<void> {
+  const nowIso = await clockNowIso(env);
+  try {
+    await env.DB.batch([
+      env.DB.prepare(
+        `INSERT INTO payout_reversal_link (import_id, line_no, reversal_id) VALUES (?, ?, ?)`,
+      ).bind(importId, lineNo, reversalId),
+      await insertFactLog(
+        env,
+        "payout_reversal_link",
+        `${importId}:${lineNo}`,
+        { import_id: importId, line_no: lineNo, reversal_id: reversalId },
+        nowIso,
+      ),
+    ]);
+  } catch (error) {
+    // A concurrent run linked this line first; that link is the answer.
+    if (!(await payoutLineAlreadyLinked(env, importId, lineNo))) {
+      throw error;
+    }
+  }
+}
+
 async function checkUnrecordedReversal(env: ReconciliationEnv): Promise<void> {
   const rows = await env.DB.prepare(
-    `SELECT import_id, line_no, kind, payment_id
-     FROM payout_line WHERE kind IN ('refund', 'chargeback')`,
-  ).all<{
-    import_id: string;
-    line_no: number;
-    kind: string;
-    payment_id: string | null;
-  }>();
+    `SELECT pl.import_id, pl.line_no, pl.kind, pl.payment_id,
+            plr.reversal_ref, plr.amount_minor
+     FROM payout_line pl
+     LEFT JOIN payout_line_reversal plr
+       ON plr.import_id = pl.import_id AND plr.line_no = pl.line_no
+     WHERE pl.kind IN ('refund', 'chargeback')`,
+  ).all<PayoutReversalEvidence>();
 
   for (const row of rows.results ?? []) {
-    if (row.payment_id !== null) {
-      const reversal = await env.DB.prepare(
-        `SELECT 1 FROM reversal WHERE payment_id = ?`,
-      )
-        .bind(row.payment_id)
-        .first();
-      if (reversal !== null) {
-        continue;
-      }
+    if (await payoutLineAlreadyLinked(env, row.import_id, row.line_no)) {
+      continue;
     }
+    const reversalId = await matchingProviderReversal(env, row);
+    if (reversalId !== null) {
+      await linkPayoutReversal(env, row.import_id, row.line_no, reversalId);
+      continue;
+    }
+    // Historical payout rows with no retained evidence have no identity and stay unmatched (D-5).
     await insertFinding(
       env,
       "unrecorded_reversal",
@@ -557,12 +657,14 @@ async function checkCallbackWithoutConfirmation(
   }
 }
 
+// Returns each org with a recent valid feed event, keyed to the epoch/sequence evidence of its
+// latest such event (R9-AO3 keeps this evidence when a local view is missing).
 async function clinicsWithRecentCoverageEvents(
   env: ReconciliationEnv,
-): Promise<Set<string>> {
+): Promise<Map<string, string>> {
   const nowMs = await clockNowMs(env);
   const cutoffMs = nowMs - ONE_DAY_MS;
-  const orgIds = new Set<string>();
+  const orgIds = new Map<string, string>();
   let after = 0;
   let hasMore = true;
 
@@ -588,7 +690,13 @@ async function clinicsWithRecentCoverageEvents(
       }
       const eventMs = Date.parse(at);
       if (!Number.isNaN(eventMs) && eventMs >= cutoffMs && eventMs <= nowMs) {
-        orgIds.add(orgId);
+        orgIds.set(
+          orgId,
+          JSON.stringify({
+            binding_epoch: event.binding_epoch ?? null,
+            clinic_seq: event.clinic_seq ?? null,
+          }),
+        );
       }
     }
     if (typeof page.next_after === "number") {
@@ -632,13 +740,16 @@ function receiptObject(value: unknown): Record<string, unknown> | null {
 
 async function checkFeedDivergence(env: ReconciliationEnv): Promise<void> {
   const orgIds = await clinicsWithRecentCoverageEvents(env);
-  for (const orgId of orgIds) {
+  for (const [orgId, eventEvidence] of orgIds) {
     const stored = await env.DB.prepare(
       `SELECT snapshot FROM coverage_view WHERE org_id = ?`,
     )
       .bind(orgId)
       .first<{ snapshot: string }>();
     if (stored === null) {
+      // R9-AO3: an org established by a recent valid event must have its local view. A missing
+      // copy is a divergence, not a valid no-coverage state. The live read is not copied here.
+      await insertFinding(env, "feed_divergence", orgId, eventEvidence);
       continue;
     }
 
@@ -684,20 +795,26 @@ async function checkReceiptMismatch(env: ReconciliationEnv): Promise<void> {
     }
   }
 
+  // R9-AO3: LEFT JOIN so an applied outcome whose request copy is missing is examined. Only an
+  // explicitly known transfer request is excluded; a missing request is never a transfer.
   const rows = await env.DB.prepare(
     `SELECT go.grant_id, go.result, go.receipt, gr.source_kind
      FROM grant_outcome go
-     INNER JOIN grant_request gr ON gr.grant_id = go.grant_id
+     LEFT JOIN grant_request gr ON gr.grant_id = go.grant_id
      WHERE go.result IN ('applied', 'already_applied')
-       AND gr.source_kind != 'transfer'`,
+       AND (gr.source_kind IS NULL OR gr.source_kind != 'transfer')`,
   ).all<{
     grant_id: string;
     result: string;
     receipt: string;
-    source_kind: string;
+    source_kind: string | null;
   }>();
 
   for (const row of rows.results ?? []) {
+    if (row.source_kind === null) {
+      await insertFinding(env, "receipt_mismatch", row.grant_id, "missing_grant_request");
+      continue;
+    }
     const platformGrant = grantsById.get(row.grant_id);
     if (platformGrant === undefined) {
       await insertFinding(env, "receipt_mismatch", row.grant_id, "");

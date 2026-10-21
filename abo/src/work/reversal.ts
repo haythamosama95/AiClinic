@@ -644,6 +644,8 @@ async function insertReversalRow(
     evidenceSha256: string;
     effect: ReversalEffect;
     dedupeKey: string;
+    /** R9-AO2: adapter-owned identity of the reversal transaction, or null when the adapter gave none. */
+    providerReversalRef: string | null;
   },
 ): Promise<boolean> {
   const nowIso = await clockNowIso(env);
@@ -662,7 +664,7 @@ async function insertReversalRow(
     effect: input.effect,
     dedupe_key: input.dedupeKey,
   };
-  const result = await env.DB.batch([
+  const statements: D1PreparedStatement[] = [
     env.DB.prepare(
       `INSERT INTO reversal (
          reversal_id, payment_id, reference, amount_minor, kind, is_full,
@@ -683,7 +685,23 @@ async function insertReversalRow(
       input.dedupeKey,
     ),
     await insertFactLog(env, "reversal", input.reversalId, canonical, nowIso),
-  ]);
+  ];
+  // R9-AO2: only the provider path records identity, in the same batch and after its reversal row.
+  if (input.providerReversalRef !== null) {
+    statements.push(
+      env.DB.prepare(
+        `INSERT INTO reversal_provider_identity (reversal_id, reversal_ref) VALUES (?, ?)`,
+      ).bind(input.reversalId, input.providerReversalRef),
+      await insertFactLog(
+        env,
+        "reversal_provider_identity",
+        input.reversalId,
+        { reversal_id: input.reversalId, reversal_ref: input.providerReversalRef },
+        nowIso,
+      ),
+    );
+  }
+  const result = await env.DB.batch(statements);
   return (result[0]?.meta.changes ?? 0) > 0;
 }
 
@@ -719,6 +737,8 @@ export async function recordReversalFromProviderTxn(
     return null;
   }
   const dedupeKey = reversalDedupeKey(parentRef, cumulative);
+  // R9-AO2: identity is computed by the adapter and carried on the reversal.
+  const providerReversalRef = txn.reversal.reversal_ref;
 
   const payment = await loadPayment(env, paymentIdValue);
   if (
@@ -782,6 +802,7 @@ export async function recordReversalFromProviderTxn(
     evidenceSha256,
     effect,
     dedupeKey,
+    providerReversalRef,
   });
   if (!inserted) {
     return null;

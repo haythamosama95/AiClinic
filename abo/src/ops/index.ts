@@ -2415,11 +2415,120 @@ async function handleGetGrants(
   );
 }
 
+const PAYOUT_IMPORT_ACTION = "Import a payout CSV";
+const PAYOUT_IMPORT_LIST_DEFAULT_LIMIT = 50;
+const PAYOUT_IMPORT_LIST_MAX_LIMIT = 200;
+
+/**
+ * R9-AO8: lists stored payout imports, newest period first and then by import ID. The cursor is
+ * the last returned `period|import_id`. Raw CSV contents are never read or returned. A database
+ * failure is a 500, never an empty success.
+ */
 async function handleGetPayoutImports(
+  env: OpsEnv,
+  url: URL,
   contractVersion: number,
 ): Promise<Response> {
+  const limitParam = url.searchParams.get("limit");
+  const limit =
+    limitParam === null
+      ? PAYOUT_IMPORT_LIST_DEFAULT_LIMIT
+      : /^\d+$/u.test(limitParam)
+        ? Number(limitParam)
+        : Number.NaN;
+  if (
+    !Number.isSafeInteger(limit) ||
+    limit < 1 ||
+    limit > PAYOUT_IMPORT_LIST_MAX_LIMIT
+  ) {
+    return clinicErrorResponse("invalid_request", 422, contractVersion);
+  }
+  const cursor = url.searchParams.get("cursor");
+  let cursorPeriod: string | null = null;
+  let cursorImportId: string | null = null;
+  if (cursor !== null) {
+    const parts = /^(\d{4}-\d{2})\|([^|]+)$/u.exec(cursor);
+    if (parts === null) {
+      return clinicErrorResponse("invalid_request", 422, contractVersion);
+    }
+    cursorPeriod = parts[1]!;
+    cursorImportId = parts[2]!;
+  }
+
+  try {
+    const sql =
+      cursorPeriod === null
+        ? `SELECT import_id, provider_id, file_sha256, period, imported_by
+           FROM payout_import
+           ORDER BY period DESC, import_id DESC
+           LIMIT ?`
+        : `SELECT import_id, provider_id, file_sha256, period, imported_by
+           FROM payout_import
+           WHERE period < ? OR (period = ? AND import_id < ?)
+           ORDER BY period DESC, import_id DESC
+           LIMIT ?`;
+    const statement = env.DB.prepare(sql);
+    const bound =
+      cursorPeriod === null
+        ? statement.bind(limit + 1)
+        : statement.bind(cursorPeriod, cursorPeriod, cursorImportId, limit + 1);
+    const result = await bound.all<{
+      import_id: string;
+      provider_id: string;
+      file_sha256: string;
+      period: string;
+      imported_by: string;
+    }>();
+    const rows = result.results ?? [];
+    const page = rows.slice(0, limit);
+    const last = page[page.length - 1];
+    return clinicJsonResponse(
+      {
+        contract_version: contractVersion,
+        payout_imports: page.map((row) => ({
+          import_id: row.import_id,
+          provider_id: row.provider_id,
+          file_sha256: row.file_sha256,
+          period: row.period,
+          imported_by: row.imported_by,
+        })),
+        next_cursor:
+          rows.length > limit && last !== undefined
+            ? `${last.period}|${last.import_id}`
+            : null,
+      },
+      200,
+      contractVersion,
+    );
+  } catch {
+    return clinicErrorResponse("internal_error", 500, contractVersion);
+  }
+}
+
+/** R6-O1 identity: returns the stored response for an already accepted payout file, or null. */
+async function findPayoutImportReplay(
+  env: OpsEnv,
+  fileSha256: string,
+  contractVersion: number,
+): Promise<Response | null> {
+  const row = await env.DB.prepare(
+    `SELECT pi.import_id, oa.action_id
+     FROM payout_import pi
+     LEFT JOIN operator_action oa
+       ON oa.subject = pi.import_id AND oa.action = ?
+     WHERE pi.provider_id = ? AND pi.file_sha256 = ?`,
+  )
+    .bind(PAYOUT_IMPORT_ACTION, PAYMOB_PROVIDER_ID, fileSha256)
+    .first<{ import_id: string; action_id: string | null }>();
+  if (row === null) {
+    return null;
+  }
   return clinicJsonResponse(
-    { contract_version: contractVersion, payout_imports: [] },
+    {
+      contract_version: contractVersion,
+      import_id: row.import_id,
+      action_id: row.action_id,
+    },
     200,
     contractVersion,
   );
@@ -2432,14 +2541,6 @@ async function newOpsId(env: OpsEnv): Promise<string> {
   return ulid(nowMs, random);
 }
 
-function periodFromSettledAt(settledAt: string): string {
-  const parsed = Date.parse(settledAt);
-  const date = Number.isNaN(parsed) ? new Date(settledAt) : new Date(parsed);
-  const year = date.getUTCFullYear();
-  const month = String(date.getUTCMonth() + 1).padStart(2, "0");
-  return `${year}-${month}`;
-}
-
 async function handlePostPayoutImport(
   env: OpsEnv,
   access: VerifiedAccess,
@@ -2449,17 +2550,30 @@ async function handlePostPayoutImport(
   const bytes = new Uint8Array(await request.arrayBuffer());
   const fileSha256 = await sha256Hex(bytes);
   const r2Key = `payouts/${fileSha256}`;
-  await env.R2.put(r2Key, bytes);
 
   const provider = providerForId(env, PAYMOB_PROVIDER_ID);
   if (provider === null) {
     return clinicErrorResponse("internal_error", 500, contractVersion);
   }
-  const lines = await provider.payoutLines(bytes);
-  const period =
-    lines.length > 0
-      ? periodFromSettledAt(lines[0]!.settled_at)
-      : (await clockNowIso(env)).slice(0, 7);
+  // R9-AO7: the whole file is validated before any R2 or import write. Rejected files keep no
+  // accepted import, fact or line. Only line numbers and reason codes are returned.
+  const parsed = await provider.payoutLines(bytes);
+  if (!parsed.ok) {
+    return clinicErrorResponse("invalid_request", 422, contractVersion, {
+      line_errors: parsed.errors,
+    });
+  }
+
+  // R6-O1 identity: the provider and file hash identify one accepted import. An exact retry
+  // returns the stored result and does not create another import, fact or audit row.
+  const replay = await findPayoutImportReplay(env, fileSha256, contractVersion);
+  if (replay !== null) {
+    return replay;
+  }
+
+  await env.R2.put(r2Key, bytes);
+  const period = parsed.period;
+  const lines = parsed.lines;
 
   const importId = await newOpsId(env);
   const actionId = crypto.randomUUID();
@@ -2524,10 +2638,42 @@ async function handlePostPayoutImport(
         createdAt,
       ),
     );
+    // R9-AO2: refund and chargeback lines retain their opaque reversal identity in the same batch.
+    if (line.reversal_ref !== null && line.reversal_amount_minor !== null) {
+      const reversalCanonical = {
+        import_id: importId,
+        line_no: lineNo + 1,
+        reversal_ref: line.reversal_ref,
+        amount_minor: line.reversal_amount_minor,
+      };
+      statements.push(
+        env.DB.prepare(
+          `INSERT INTO payout_line_reversal (import_id, line_no, reversal_ref, amount_minor)
+           VALUES (?, ?, ?, ?)`,
+        ).bind(importId, lineNo + 1, line.reversal_ref, line.reversal_amount_minor),
+        await insertFactLog(
+          env,
+          "payout_line_reversal",
+          `${importId}:${lineNo + 1}`,
+          reversalCanonical,
+          createdAt,
+        ),
+      );
+    }
   }
-  await env.DB.batch(statements);
+  try {
+    await env.DB.batch(statements);
+  } catch (error) {
+    // R9-AO7 / R6-O1: a concurrent exact retry committed the same file identity first. Its stored
+    // result is the answer; any other batch failure is rethrown with nothing accepted.
+    const winner = await findPayoutImportReplay(env, fileSha256, contractVersion);
+    if (winner === null) {
+      throw error;
+    }
+    return winner;
+  }
 
-  const action = "Import a payout CSV";
+  const action = PAYOUT_IMPORT_ACTION;
   const paramsSha256 = await sha256Hex(
     canonicalize({ action, subject: importId }),
   );
@@ -4888,7 +5034,7 @@ export async function handleOps(
   }
 
   if (request.method === "GET" && path === "/ops/payout-imports") {
-    return handleGetPayoutImports(contractVersion);
+    return handleGetPayoutImports(env, url, contractVersion);
   }
 
   if (request.method === "POST" && path === "/ops/payout-imports") {

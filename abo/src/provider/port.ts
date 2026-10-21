@@ -63,6 +63,11 @@ export type ProviderReversal = {
   cumulative_reversed_minor: number;
   /** True only when the authenticated original-parent inquiry supplied a valid cumulative. */
   cumulative_verified: boolean;
+  /**
+   * R9-AO2: adapter-owned opaque identity of this reversal transaction (matches payout CSV lines),
+   * or null when the adapter gave none. Computed by the adapter, never by the domain layer.
+   */
+  reversal_ref: string | null;
 };
 
 /** Normalised provider transaction (04 §5.2). */
@@ -141,7 +146,28 @@ export type PayoutLine = {
   fee_minor: number;
   net_minor: number;
   settled_at: string;
+  /**
+   * R9-AO2: opaque, adapter-owned identity of a refund or chargeback line. Null for every other
+   * kind. Reconciliation compares it for equality only and never parses it.
+   */
+  reversal_ref: string | null;
+  /** R9-AO2: positive normalized reversal amount for refund and chargeback lines, else null. */
+  reversal_amount_minor: number | null;
 };
+
+/** One rejected payout-file line. `line_no` is 1-based over physical lines (the header is 1). */
+export type PayoutLineError = {
+  line_no: number;
+  reason: string;
+};
+
+/**
+ * Typed payout-file parse result (R9-AO7). A file is accepted only when every row is valid, at
+ * least one row exists, and all rows settle in the same UTC month. `period` is that month (YYYY-MM).
+ */
+export type PayoutLinesResult =
+  | { ok: true; period: string; lines: PayoutLine[] }
+  | { ok: false; errors: PayoutLineError[] };
 
 /** Adapter surface for checkout creation in this unit. */
 export interface ProviderPort {
@@ -152,5 +178,5 @@ export interface ProviderPort {
     request: ProviderNotificationRequest,
   ): Promise<ParseNotificationResult>;
   inquire(input: InquireInput): Promise<InquireResult>;
-  payoutLines(file: Uint8Array): Promise<PayoutLine[]>;
+  payoutLines(file: Uint8Array): Promise<PayoutLinesResult>;
 }

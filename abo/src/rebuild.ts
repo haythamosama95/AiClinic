@@ -104,7 +104,8 @@ const LEDGER_TABLES = new Set([
   "checkout", "checkout_event", "notification", "inquiry_result", "payment",
   "payment_release", "grant_request", "grant_outcome", "grant_outcome_event", "reversal",
   "operator_action", "command_recovery_fact", "finding", "finding_resolution", "payout_import",
-  "payout_line", "paymob_intention_attempt_event", "rebuild_inquiry_attempt",
+  "payout_line", "payout_line_reversal", "reversal_provider_identity", "payout_reversal_link",
+  "paymob_intention_attempt_event", "rebuild_inquiry_attempt",
   "reversal_request",
 ]);
 
@@ -131,6 +132,9 @@ const LEDGER_COLUMN_FIELDS: Record<string, readonly string[]> = {
   finding_resolution: ["finding_id", "resolved_by", "note", "at"],
   payout_import: ["import_id", "provider_id", "file_sha256", "r2_key", "imported_by", "period"],
   payout_line: ["import_id", "line_no", "kind", "gross_minor", "fee_minor", "net_minor", "settled_at", "payment_id"],
+  payout_line_reversal: ["import_id", "line_no", "reversal_ref", "amount_minor"],
+  reversal_provider_identity: ["reversal_id", "reversal_ref"],
+  payout_reversal_link: ["import_id", "line_no", "reversal_id"],
   paymob_intention_attempt_event: ["event_key", "checkout_id", "attempt_no", "state", "lease_token", "lease_until", "special_reference", "intention_id", "order_id", "expires_at", "started_at", "finished_at", "event_at"],
 };
 
@@ -157,6 +161,9 @@ const LEDGER_KEY_FIELDS: Record<string, readonly string[]> = {
   finding_resolution: ["finding_id"],
   payout_import: ["import_id"],
   payout_line: ["import_id", "line_no"],
+  payout_line_reversal: ["import_id", "line_no"],
+  reversal_provider_identity: ["reversal_id"],
+  payout_reversal_link: ["import_id", "line_no"],
   paymob_intention_attempt_event: ["event_key"],
 };
 

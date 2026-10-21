@@ -1,4 +1,5 @@
 import { canonicalize, CHANNEL_VERSIONS, paymentId, sha256Hex } from "vendor-contracts";
+import { paymobReversalRef } from "./payout-reversal-ref.js";
 import type {
   CancelCheckoutResult,
   CreateCheckoutInput,
@@ -9,7 +10,9 @@ import type {
   ProviderCapabilities,
   ProviderNotificationRequest,
   PayoutLine,
+  PayoutLineError,
   PayoutLineKind,
+  PayoutLinesResult,
   ProviderPort,
   type ProviderReversal,
   ProviderTxn,
@@ -663,9 +666,9 @@ function safeMinorFromCents(value: string | number | undefined): number | null {
   return Number.isSafeInteger(parsed) && parsed >= 0 ? parsed : null;
 }
 
-function reversalFromTxn(
+async function reversalFromTxn(
   txn: PaymobAcceptanceTransaction,
-): ProviderReversal | undefined {
+): Promise<ProviderReversal | undefined> {
   const cumulative = safeMinorFromCents(txn.refunded_amount_cents);
   const amount = amountMinorFromCents(txn.amount_cents);
   if (txn.is_voided || txn.is_refunded || (cumulative ?? 0) > 0) {
@@ -674,6 +677,8 @@ function reversalFromTxn(
       amount_minor: amount,
       cumulative_reversed_minor: cumulative ?? 0,
       cumulative_verified: cumulative !== null,
+      // R9-AO2: this txn.id is the reversal transaction's own id (parent id is carried separately).
+      reversal_ref: await paymobReversalRef(String(txn.id)),
     };
   }
   return undefined;
@@ -756,7 +761,7 @@ async function providerTxnFromAcceptanceAsync(
     currency: txn.currency,
     occurred_at: await clockNowIso(env),
     dedupe_key: `paymob:txn:${txnId}:${kind}`,
-    reversal: kind === "reversal" ? reversalFromTxn(txn) : undefined,
+    reversal: kind === "reversal" ? await reversalFromTxn(txn) : undefined,
     provider_txn_id: txnId,
     provider_parent_txn_id: paymobParentTxnId(txn),
   };
@@ -1045,6 +1050,12 @@ const PAYOUT_LINE_KINDS = new Set<PayoutLineKind>([
   "other",
 ]);
 
+function isReversalKind(kind: PayoutLineKind): boolean {
+  return kind === "refund" || kind === "chargeback";
+}
+
+/** R9-AO2 domain separator: the reversal reference is a hash of the Paymob transaction identity. */
+
 function parsePayoutLineKind(value: string): PayoutLineKind | null {
   if (PAYOUT_LINE_KINDS.has(value as PayoutLineKind)) {
     return value as PayoutLineKind;
@@ -1052,79 +1063,158 @@ function parsePayoutLineKind(value: string): PayoutLineKind | null {
   return null;
 }
 
-function parsePayoutCsv(text: string): Array<{
+// R9-AO7: strict full-string integers. Anything else (blank, signed noise, decimals, exponents,
+// values beyond the safe-integer range) is rejected instead of truncated by parseInt.
+const PAYOUT_INTEGER = /^-?\d+$/u;
+const PAYOUT_SETTLED_AT = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d{1,9})?Z$/u;
+
+function parsePayoutInteger(value: string): number | null {
+  if (!PAYOUT_INTEGER.test(value)) {
+    return null;
+  }
+  const parsed = Number(value);
+  return Number.isSafeInteger(parsed) ? parsed : null;
+}
+
+/** Returns the UTC YYYY-MM of a real UTC instant, or null when the text is not one. */
+function payoutSettledAtMonth(value: string): string | null {
+  if (!PAYOUT_SETTLED_AT.test(value)) {
+    return null;
+  }
+  const ms = Date.parse(value);
+  if (Number.isNaN(ms)) {
+    return null;
+  }
+  const iso = new Date(ms).toISOString();
+  // Rejects calendar overflow such as 2026-02-30, which Date.parse would otherwise roll over.
+  if (iso.slice(0, 19) !== value.slice(0, 19)) {
+    return null;
+  }
+  return iso.slice(0, 7);
+}
+
+type ParsedPayoutRow = {
   txnId: string;
   kind: PayoutLineKind;
   grossMinor: number;
   feeMinor: number;
   netMinor: number;
   settledAt: string;
-}> {
-  const lines = text
-    .replace(/\r\n/gu, "\n")
-    .replace(/\r/gu, "\n")
-    .split("\n")
-    .map((line) => line.trim())
-    .filter((line) => line.length > 0);
-  if (lines.length === 0) {
-    return [];
+  month: string;
+};
+
+function parsePayoutRow(
+  line: string,
+): { row: ParsedPayoutRow } | { reason: string } {
+  const parts = line.split(",");
+  if (parts.length !== 6) {
+    return { reason: "field_count" };
   }
-  const header = lines[0]!;
-  if (header !== PAYOUT_CSV_HEADER) {
-    return [];
+  const txnId = parts[0]!;
+  if (txnId.length === 0 || txnId.trim() !== txnId) {
+    return { reason: "invalid_transaction_id" };
   }
-  const rows: Array<{
-    txnId: string;
-    kind: PayoutLineKind;
-    grossMinor: number;
-    feeMinor: number;
-    netMinor: number;
-    settledAt: string;
-  }> = [];
-  for (let index = 1; index < lines.length; index += 1) {
-    const parts = lines[index]!.split(",");
-    if (parts.length !== 6) {
-      continue;
-    }
-    const kind = parsePayoutLineKind(parts[1]!);
-    if (kind === null) {
-      continue;
-    }
-    const grossMinor = Number.parseInt(parts[2]!, 10);
-    const feeMinor = Number.parseInt(parts[3]!, 10);
-    const netMinor = Number.parseInt(parts[4]!, 10);
-    if (
-      !Number.isFinite(grossMinor) ||
-      !Number.isFinite(feeMinor) ||
-      !Number.isFinite(netMinor)
-    ) {
-      continue;
-    }
-    rows.push({
-      txnId: parts[0]!,
+  const kind = parsePayoutLineKind(parts[1]!);
+  if (kind === null) {
+    return { reason: "invalid_kind" };
+  }
+  const grossMinor = parsePayoutInteger(parts[2]!);
+  const feeMinor = parsePayoutInteger(parts[3]!);
+  const netMinor = parsePayoutInteger(parts[4]!);
+  if (grossMinor === null || feeMinor === null || netMinor === null) {
+    return { reason: "invalid_amount" };
+  }
+  // R9-AO2: a refund or chargeback must carry a positive normalized amount to be matchable.
+  if (isReversalKind(kind) && grossMinor === 0) {
+    return { reason: "invalid_amount" };
+  }
+  const month = payoutSettledAtMonth(parts[5]!);
+  if (month === null) {
+    return { reason: "invalid_settled_at" };
+  }
+  return {
+    row: {
+      txnId,
       kind,
       grossMinor,
       feeMinor,
       netMinor,
       settledAt: parts[5]!,
-    });
+      month,
+    },
+  };
+}
+
+type ParsedPayoutCsv =
+  | { ok: true; period: string; rows: ParsedPayoutRow[] }
+  | { ok: false; errors: PayoutLineError[] };
+
+/**
+ * Validates the whole file before any row is returned. A single bad row rejects the file, an
+ * empty or header-only file establishes no period, and rows from more than one UTC month are
+ * rejected as a split file.
+ */
+function parsePayoutCsv(text: string): ParsedPayoutCsv {
+  const physical = text.replace(/\r\n/gu, "\n").replace(/\r/gu, "\n").split("\n");
+  if (physical.length > 1 && physical[physical.length - 1] === "") {
+    physical.pop();
   }
-  return rows;
+  if (physical.length === 0 || physical[0] !== PAYOUT_CSV_HEADER) {
+    return { ok: false, errors: [{ line_no: 1, reason: "invalid_header" }] };
+  }
+
+  const errors: PayoutLineError[] = [];
+  const rows: ParsedPayoutRow[] = [];
+  for (let index = 1; index < physical.length; index += 1) {
+    const lineNo = index + 1;
+    const result = parsePayoutRow(physical[index]!);
+    if ("reason" in result) {
+      errors.push({ line_no: lineNo, reason: result.reason });
+    } else {
+      rows.push(result.row);
+    }
+  }
+  if (errors.length > 0) {
+    return { ok: false, errors };
+  }
+  if (rows.length === 0) {
+    return { ok: false, errors: [{ line_no: 1, reason: "no_rows" }] };
+  }
+
+  const period = rows[0]!.month;
+  rows.forEach((row, index) => {
+    if (row.month !== period) {
+      errors.push({ line_no: index + 2, reason: "mixed_period" });
+    }
+  });
+  if (errors.length > 0) {
+    return { ok: false, errors };
+  }
+  return { ok: true, period, rows };
 }
 
 async function payoutLinesImpl(
   env: PaymobAdapterEnv,
   file: Uint8Array,
-): Promise<PayoutLine[]> {
-  const text = new TextDecoder().decode(file);
+): Promise<PayoutLinesResult> {
+  let text: string;
+  try {
+    text = new TextDecoder("utf-8", { fatal: true }).decode(file);
+  } catch {
+    return { ok: false, errors: [{ line_no: 1, reason: "invalid_encoding" }] };
+  }
   const parsed = parsePayoutCsv(text);
+  if (!parsed.ok) {
+    return parsed;
+  }
   const lines: PayoutLine[] = [];
-  for (const row of parsed) {
+  for (const row of parsed.rows) {
     const txnRow = await env.DB.prepare(
       `SELECT payment_id FROM paymob_txn WHERE txn_id = ?`,
     )
       .bind(row.txnId)
       .first<{ payment_id: string | null }>();
+    const reversal = isReversalKind(row.kind);
     lines.push({
       kind: row.kind,
       payment_id: txnRow?.payment_id ?? null,
@@ -1132,9 +1222,11 @@ async function payoutLinesImpl(
       fee_minor: row.feeMinor,
       net_minor: row.netMinor,
       settled_at: row.settledAt,
+      reversal_ref: reversal ? await paymobReversalRef(row.txnId) : null,
+      reversal_amount_minor: reversal ? Math.abs(row.grossMinor) : null,
     });
   }
-  return lines;
+  return { ok: true, period: parsed.period, lines };
 }
 
 async function parseNotificationImpl(
@@ -1213,7 +1305,7 @@ export function createPaymobAdapter(env: PaymobAdapterEnv): ProviderPort {
     inquire(input: InquireInput): Promise<InquireResult> {
       return inquireImpl(env, input);
     },
-    payoutLines(file: Uint8Array): Promise<PayoutLine[]> {
+    payoutLines(file: Uint8Array): Promise<PayoutLinesResult> {
       return payoutLinesImpl(env, file);
     },
   };

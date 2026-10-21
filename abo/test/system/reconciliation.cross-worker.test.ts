@@ -31,6 +31,8 @@ import notificationProviderTxnIdMigrationSql from "../../migrations/0013_notific
 import reconciliationMigrationSql from "../../migrations/0008_reconciliation.sql?raw";
 import { loadOffersFixture } from "../../src/records/append";
 import { runReconciliation } from "../../src/reconciliation/run";
+import { recordReversalFromProviderTxn } from "../../src/work/reversal";
+import { paymobReversalRef } from "../../src/provider/paymob/payout-reversal-ref";
 import { verifyTransferReceipt } from "../../src/work/transfer-receipt";
 import {
   applySql,
@@ -81,6 +83,10 @@ const ORG_RC_07 = "a4100007-0007-4007-8007-000000000007";
 const ORG_RC_08 = "a4100008-0008-4008-8008-000000000008";
 const ORG_RC_09 = "a4100009-0009-4009-8009-000000000009";
 const ORG_RC_10 = "a410000a-000a-400a-800a-00000000000a";
+const ORG_RC_R9AO2_A = "a4110001-0001-4001-8001-00000000000a";
+const ORG_RC_R9AO2_B = "a4110002-0002-4002-8002-00000000000b";
+const ORG_RC_R9AO2_C = "a4110003-0003-4003-8003-00000000000c";
+const ORG_RC_R9AO2_D = "a4110004-0004-4004-8004-00000000000d";
 
 const HPAY_TXN_ID = 99001;
 
@@ -674,6 +680,7 @@ async function tamperCoverageViewSnapshot(orgId: string): Promise<void> {
 async function seedFullReversalWithoutOutcome(
   paymentId: string,
   reference: string,
+  effect = "hold",
 ): Promise<string> {
   const reversalId = crypto.randomUUID();
   await env.DB.prepare(
@@ -681,13 +688,14 @@ async function seedFullReversalWithoutOutcome(
        reversal_id, payment_id, reference, amount_minor, kind, is_full,
        source, cumulative_reversed_minor, detected_via, recorded_by,
        evidence_sha256, effect, dedupe_key
-     ) VALUES (?, ?, ?, 1000, 'refund', 1, 'operator', 1000, 'manual', ?, 'evidence', 'hold', ?)`,
+     ) VALUES (?, ?, ?, 1000, 'refund', 1, 'operator', 1000, 'manual', ?, 'evidence', ?, ?)`,
   )
     .bind(
       reversalId,
       paymentId,
       reference,
       VENDOR_OPERATOR_EMAIL,
+      effect,
       `reversal-${paymentId}`,
     )
     .run();
@@ -1372,6 +1380,48 @@ function capturedEmailMentions(code: string): boolean {
   return getCapturedEmails().some((email) => email.text.includes(code));
 }
 
+// Mirrors what recordReversalFromProviderTxn writes in one batch: the reversal row and its sibling
+// provider identity row. Manual operator reversals write no identity row.
+async function seedProviderIdentityReversal(input: {
+  paymentId: string;
+  kind: string;
+  amountMinor: number;
+  isFull: boolean;
+  providerTxnId: string;
+}): Promise<string> {
+  const reversalId = crypto.randomUUID();
+  const reversalRef = await paymobReversalRef(input.providerTxnId);
+  await env.DB.batch([
+    env.DB.prepare(
+      `INSERT INTO reversal (
+         reversal_id, payment_id, reference, amount_minor, kind, is_full,
+         source, cumulative_reversed_minor, detected_via, recorded_by,
+         evidence_sha256, effect, dedupe_key
+       ) VALUES (?, ?, ?, ?, ?, ?, 'provider', ?, 'notification', 'abo', 'evidence', 'hold', ?)`,
+    ).bind(
+      reversalId,
+      input.paymentId,
+      `REV-${reversalId}`,
+      input.amountMinor,
+      input.kind,
+      input.isFull ? 1 : 0,
+      input.amountMinor,
+      `provider-${reversalId}`,
+    ),
+    env.DB.prepare(
+      `INSERT INTO reversal_provider_identity (reversal_id, reversal_ref) VALUES (?, ?)`,
+    ).bind(reversalId, reversalRef),
+  ]);
+  return reversalId;
+}
+
+async function payoutReversalLinkCount(): Promise<number> {
+  const row = await env.DB.prepare(
+    `SELECT COUNT(*) AS n FROM payout_reversal_link`,
+  ).first<{ n: number }>();
+  return row?.n ?? 0;
+}
+
 async function runDailyReconciliation(): Promise<void> {
   clearCapturedEmails();
   await runScheduled("0 6 * * *");
@@ -1750,6 +1800,52 @@ describe("reconciliation cross-worker", () => {
     expect(reversalFinding!.subject).toBe(reversalId);
   });
 
+  it("R9-AO1 a planned tombstone without a verified outcome raises reversal_not_applied", async () => {
+    const expectations = await setupReconciliationHarness();
+    const { paymentId } = await paidCheckoutWithGrant(
+      ORG_RC_08,
+      expectations,
+      941082,
+      "req-rc-08-ao1-tombstone",
+    );
+    const paymentRow = await env.DB.prepare(
+      `SELECT reference FROM payment WHERE payment_id = ?`,
+    )
+      .bind(paymentId)
+      .first<{ reference: string }>();
+    const reversalId = await seedFullReversalWithoutOutcome(
+      paymentId,
+      paymentRow!.reference,
+      "tombstone",
+    );
+
+    await runDailyReconciliation();
+
+    const finding = await findingRow("reversal_not_applied");
+    expect(finding).not.toBeNull();
+    expect(finding!.subject).toBe(reversalId);
+  });
+
+  it("R9-AO3 a missing local coverage_view for an org with a recent feed event raises feed_divergence", async () => {
+    const expectations = await setupReconciliationHarness();
+    await paidCheckoutWithGrant(
+      ORG_RC_08,
+      expectations,
+      94109,
+      "req-rc-08-ao3-view",
+    );
+    await seedCoverageViewFromPlatform(ORG_RC_08);
+    await env.DB.prepare(`DELETE FROM coverage_view WHERE org_id = ?`)
+      .bind(ORG_RC_08)
+      .run();
+
+    await runDailyReconciliation();
+
+    const finding = await findingRow("feed_divergence");
+    expect(finding).not.toBeNull();
+    expect(finding!.subject).toBe(ORG_RC_08);
+  });
+
   it("R9-AO4 F4 coverage_not_found is a complete check, not a permanent failure", async () => {
     const expectations = await setupReconciliationHarness();
     const orgId = ORG_RC_10;
@@ -1804,7 +1900,315 @@ describe("reconciliation cross-worker", () => {
     expect(capturedEmailMentions("AL-10")).toBe(true);
   });
 
-  it("E2E-P4.10-05 unrecorded payout chargeback resolves after manual chargeback and re-run (R2-P1 bound params)", async () => {
+  it("R9-AO7 malformed, partial, unsafe, mixed-period and empty payout files create no accepted import", async () => {
+    await setupReconciliationHarness();
+    const hp = await ensureActiveHpCredential();
+    const header = "transaction_id,type,gross_minor,fee_minor,net_minor,settled_at";
+    const rejected = [
+      "transaction_id,type,gross_minor,fee_minor,net_minor\n99001,payment,1,0,1,2026-01-31T12:00:00.000Z\n",
+      `${header}\n99001,payment,1,0,1,2026-01-31T12:00:00.000Z\nnot-a-row\n`,
+      `${header}\n99001,payment,9007199254740993,0,1,2026-01-31T12:00:00.000Z\n`,
+      `${header}\n99001,payment,1.5,0,1,2026-01-31T12:00:00.000Z\n`,
+      `${header}\n99001,payment,1,0,1,2026-02-30T12:00:00.000Z\n`,
+      `${header}\n99001,payment,1,0,1,2026-01-31T12:00:00.000Z\n99002,payment,1,0,1,2026-02-01T00:00:00.000Z\n`,
+      `${header}\n`,
+    ];
+    const before = await env.DB.prepare(
+      `SELECT COUNT(*) AS n FROM payout_import`,
+    ).first<{ n: number }>();
+
+    for (const csv of rejected) {
+      const response = await postPayoutImport(hp.accessJwt, csv);
+      expect(response.status).toBe(422);
+    }
+
+    const after = await env.DB.prepare(
+      `SELECT COUNT(*) AS n FROM payout_import`,
+    ).first<{ n: number }>();
+    expect(after?.n).toBe(before?.n);
+  });
+
+  it("R9-AO7 an exact payout file retry returns the original import and writes its lines once", async () => {
+    await setupReconciliationHarness();
+    const hp = await ensureActiveHpCredential();
+
+    const first = await postPayoutImport(hp.accessJwt, payoutAmountMismatchCsv);
+    expect(first.status).toBe(200);
+    const firstBody = (await first.json()) as { import_id: string; action_id: string };
+
+    const retry = await postPayoutImport(hp.accessJwt, payoutAmountMismatchCsv);
+    expect(retry.status).toBe(200);
+    const retryBody = (await retry.json()) as { import_id: string; action_id: string };
+    expect(retryBody.import_id).toBe(firstBody.import_id);
+    expect(retryBody.action_id).toBe(firstBody.action_id);
+
+    const lines = await env.DB.prepare(
+      `SELECT COUNT(*) AS n FROM payout_line WHERE import_id = ?`,
+    )
+      .bind(firstBody.import_id)
+      .first<{ n: number }>();
+    expect(lines?.n).toBe(1);
+  });
+
+  it("R9-AO2 a chargeback payout line keeps an opaque positive reversal identity and exact retries write it once", async () => {
+    await setupReconciliationHarness();
+    const hp = await ensureActiveHpCredential();
+
+    const first = await postPayoutImport(hp.accessJwt, payoutUnrecordedChargebackCsv);
+    expect(first.status).toBe(200);
+    const firstBody = (await first.json()) as { import_id: string };
+
+    const evidence = await env.DB.prepare(
+      `SELECT line_no, reversal_ref, amount_minor FROM payout_line_reversal WHERE import_id = ?`,
+    )
+      .bind(firstBody.import_id)
+      .all<{ line_no: number; reversal_ref: string; amount_minor: number }>();
+    expect(evidence.results).toHaveLength(1);
+    const [row] = evidence.results!;
+    expect(row!.line_no).toBe(1);
+    expect(row!.amount_minor).toBe(5000);
+    expect(row!.reversal_ref).toMatch(/^[0-9a-f]{64}$/u);
+    expect(row!.reversal_ref).not.toContain("99001");
+
+    const retry = await postPayoutImport(hp.accessJwt, payoutUnrecordedChargebackCsv);
+    expect(retry.status).toBe(200);
+    const count = await env.DB.prepare(
+      `SELECT COUNT(*) AS n FROM payout_line_reversal WHERE import_id = ?`,
+    )
+      .bind(firstBody.import_id)
+      .first<{ n: number }>();
+    expect(count?.n).toBe(1);
+  });
+
+  it("R9-AO2 a refund or chargeback line with a zero normalized amount rejects the whole payout file", async () => {
+    await setupReconciliationHarness();
+    const hp = await ensureActiveHpCredential();
+    const header = "transaction_id,type,gross_minor,fee_minor,net_minor,settled_at";
+    const csv = `${header}\n99001,payment,1,0,1,2026-01-31T12:00:00.000Z\n99002,chargeback,0,0,0,2026-01-31T12:00:00.000Z\n`;
+
+    const response = await postPayoutImport(hp.accessJwt, csv);
+    expect(response.status).toBe(422);
+    const imports = await env.DB.prepare(
+      `SELECT COUNT(*) AS n FROM payout_line_reversal`,
+    ).first<{ n: number }>();
+    expect(imports?.n).toBe(0);
+  });
+
+  it("R9-AO2 a distinct chargeback stays unrecorded_reversal until matching provider evidence exists", async () => {
+    const expectations = await setupReconciliationHarness();
+    const hp = await ensureActiveHpCredential();
+    const { paymentId } = await paidCheckoutWithGrant(
+      ORG_RC_R9AO2_A,
+      expectations,
+      HPAY_TXN_ID,
+      "req-r9-ao2-a",
+    );
+
+    const importResponse = await postPayoutImport(hp.accessJwt, payoutUnrecordedChargebackCsv);
+    expect(importResponse.status).toBe(200);
+    // CSV evidence alone never creates a reversal.
+    expect(await env.DB.prepare(`SELECT COUNT(*) AS n FROM reversal`).first<{ n: number }>()).toEqual({ n: 0 });
+
+    await runDailyReconciliation();
+    expect(await findingCount("unrecorded_reversal")).toBe(1);
+
+    // A manual full chargeback has no provider identity, so it cannot match the payout line.
+    await env.DB.prepare(
+      `INSERT INTO reversal (
+         reversal_id, payment_id, reference, amount_minor, kind, is_full,
+         source, cumulative_reversed_minor, detected_via, recorded_by,
+         evidence_sha256, effect, dedupe_key
+       ) VALUES (?, ?, 'REV-MANUAL-CB', 5000, 'chargeback', 1, 'operator', 5000, 'manual', ?, 'evidence', 'none', ?)`,
+    )
+      .bind(crypto.randomUUID(), paymentId, VENDOR_OPERATOR_EMAIL, `manual-${paymentId}`)
+      .run();
+    await runDailyReconciliation();
+    expect(await payoutReversalLinkCount()).toBe(0);
+    expect(await findingCount("unrecorded_reversal")).toBe(1);
+  });
+
+  it("R9-AO2 an unrelated partial refund does not satisfy a distinct chargeback", async () => {
+    const expectations = await setupReconciliationHarness();
+    const hp = await ensureActiveHpCredential();
+    const { paymentId } = await paidCheckoutWithGrant(
+      ORG_RC_R9AO2_B,
+      expectations,
+      HPAY_TXN_ID,
+      "req-r9-ao2-b",
+    );
+    await seedProviderIdentityReversal({
+      paymentId,
+      kind: "refund",
+      amountMinor: 1000,
+      isFull: false,
+      providerTxnId: "99002",
+    });
+
+    const importResponse = await postPayoutImport(hp.accessJwt, payoutUnrecordedChargebackCsv);
+    expect(importResponse.status).toBe(200);
+    await runDailyReconciliation();
+
+    expect(await payoutReversalLinkCount()).toBe(0);
+    expect(await findingCount("unrecorded_reversal")).toBe(1);
+  });
+
+  it("R9-AO2 test-only seeded chargeback scenario: repeated exact payout evidence links to the seeded reversal once", async () => {
+    // TEST-ONLY SCENARIO: production code cannot create a provider chargeback reversal today
+    // (paymob reversalFromTxn yields only refund and void; see completion record, owner decision).
+    // This seed exercises the matching path only; chargeback matching is seeded-only coverage.
+    const expectations = await setupReconciliationHarness();
+    const hp = await ensureActiveHpCredential();
+    const { paymentId } = await paidCheckoutWithGrant(
+      ORG_RC_R9AO2_C,
+      expectations,
+      HPAY_TXN_ID,
+      "req-r9-ao2-c",
+    );
+    const reversalId = await seedProviderIdentityReversal({
+      paymentId,
+      kind: "chargeback",
+      amountMinor: 5000,
+      isFull: true,
+      providerTxnId: "99001",
+    });
+
+    const importResponse = await postPayoutImport(hp.accessJwt, payoutUnrecordedChargebackCsv);
+    expect(importResponse.status).toBe(200);
+    await runDailyReconciliation();
+    await runDailyReconciliation();
+
+    expect(await payoutReversalLinkCount()).toBe(1);
+    const link = await env.DB.prepare(
+      `SELECT reversal_id FROM payout_reversal_link`,
+    ).first<{ reversal_id: string }>();
+    expect(link?.reversal_id).toBe(reversalId);
+    expect(await findingCount("unrecorded_reversal")).toBe(0);
+    const reversals = await env.DB.prepare(`SELECT COUNT(*) AS n FROM reversal`).first<{ n: number }>();
+    expect(reversals?.n).toBe(1);
+  });
+
+  it("R9-AO2 a provider refund recorded through recordReversalFromProviderTxn matches its payout line once", async () => {
+    const expectations = await setupReconciliationHarness();
+    const hp = await ensureActiveHpCredential();
+    const { paymentId } = await paidCheckoutWithGrant(
+      ORG_RC_R9AO2_D,
+      expectations,
+      HPAY_TXN_ID,
+      "req-r9-ao2-d",
+    );
+    const payment = await env.DB.prepare(
+      `SELECT checkout_id, amount_minor, currency FROM payment WHERE payment_id = ?`,
+    )
+      .bind(paymentId)
+      .first<{ checkout_id: string; amount_minor: number; currency: string }>();
+    // The refund transaction has its own id (refundProviderTxnId); its parent is the original payment txn.
+    const refundProviderTxnId = "99003";
+    const refundReversalRef = await paymobReversalRef(refundProviderTxnId);
+    const refundTxn = {
+      kind: "reversal",
+      checkout_id: payment!.checkout_id,
+      payment_id: paymentId,
+      amount_minor: payment!.amount_minor,
+      currency: payment!.currency,
+      occurred_at: "2026-03-15T00:00:00.000Z",
+      dedupe_key: `paymob:txn:${refundProviderTxnId}:reversal`,
+      reversal: {
+        kind: "refund",
+        amount_minor: payment!.amount_minor,
+        cumulative_reversed_minor: payment!.amount_minor,
+        cumulative_verified: true,
+        reversal_ref: refundReversalRef,
+      },
+      provider_txn_id: refundProviderTxnId,
+      provider_parent_txn_id: String(HPAY_TXN_ID),
+    } as Parameters<typeof recordReversalFromProviderTxn>[1];
+
+    const reversalId = await recordReversalFromProviderTxn(
+      env as unknown as Parameters<typeof recordReversalFromProviderTxn>[0],
+      refundTxn,
+      "notification",
+      "evidence-r9-ao2-d",
+    );
+    expect(reversalId).not.toBeNull();
+
+    // The identity row and its fact_log entry are written in the same batch as the reversal row.
+    const identity = await env.DB.prepare(
+      `SELECT reversal_ref FROM reversal_provider_identity WHERE reversal_id = ?`,
+    )
+      .bind(reversalId!)
+      .first<{ reversal_ref: string }>();
+    expect(identity?.reversal_ref).toBe(refundReversalRef);
+    const identityFact = await env.DB.prepare(
+      `SELECT COUNT(*) AS n FROM fact_log WHERE "table" = 'reversal_provider_identity' AND key = ?`,
+    )
+      .bind(reversalId!)
+      .first<{ n: number }>();
+    expect(identityFact?.n).toBe(1);
+
+    const csv = `transaction_id,type,gross_minor,fee_minor,net_minor,settled_at\n${refundProviderTxnId},refund,${payment!.amount_minor},0,${payment!.amount_minor},2026-03-15T00:00:00.000Z\n`;
+    const importResponse = await postPayoutImport(hp.accessJwt, csv);
+    expect(importResponse.status).toBe(200);
+    await runDailyReconciliation();
+    await runDailyReconciliation();
+
+    expect(await payoutReversalLinkCount()).toBe(1);
+    const link = await env.DB.prepare(
+      `SELECT reversal_id FROM payout_reversal_link`,
+    ).first<{ reversal_id: string }>();
+    expect(link?.reversal_id).toBe(reversalId);
+    expect(await findingCount("unrecorded_reversal")).toBe(0);
+  });
+
+  it("R9-AO8 lists payout imports for ops, newest period first, with bounded pages and no CSV contents", async () => {
+    await setupReconciliationHarness();
+    const hp = await ensureActiveHpCredential();
+    const headers = await opsHeadersRaw(hp.accessJwt);
+
+    const empty = await opsFetch("/ops/payout-imports", { headers });
+    expect(empty.status).toBe(200);
+    expect(((await empty.json()) as { payout_imports: unknown[] }).payout_imports).toEqual([]);
+
+    const amount = await postPayoutImport(hp.accessJwt, payoutAmountMismatchCsv);
+    const amountBody = (await amount.json()) as { import_id: string };
+    const chargeback = await postPayoutImport(hp.accessJwt, payoutUnrecordedChargebackCsv);
+    const chargebackBody = (await chargeback.json()) as { import_id: string };
+
+    const list = await opsFetch("/ops/payout-imports", { headers });
+    expect(list.status).toBe(200);
+    const listText = await list.text();
+    expect(listText).not.toContain("transaction_id");
+    const listBody = JSON.parse(listText) as {
+      payout_imports: Array<{ import_id: string; period: string; file_sha256: string }>;
+      next_cursor: string | null;
+    };
+    expect(listBody.payout_imports.map((row) => row.import_id)).toEqual([
+      chargebackBody.import_id,
+      amountBody.import_id,
+    ]);
+    expect(listBody.payout_imports[0]!.file_sha256).toMatch(/^[0-9a-f]{64}$/u);
+    expect(listBody.next_cursor).toBeNull();
+
+    const pageOne = await opsFetch("/ops/payout-imports?limit=1", { headers });
+    const pageOneBody = (await pageOne.json()) as {
+      payout_imports: Array<{ import_id: string }>;
+      next_cursor: string | null;
+    };
+    expect(pageOneBody.payout_imports.map((row) => row.import_id)).toEqual([chargebackBody.import_id]);
+    expect(pageOneBody.next_cursor).not.toBeNull();
+
+    const pageTwo = await opsFetch(
+      `/ops/payout-imports?limit=1&cursor=${encodeURIComponent(pageOneBody.next_cursor!)}`,
+      { headers },
+    );
+    expect(((await pageTwo.json()) as { payout_imports: Array<{ import_id: string }> }).payout_imports.map(
+      (row) => row.import_id,
+    )).toEqual([amountBody.import_id]);
+
+    const badLimit = await opsFetch("/ops/payout-imports?limit=0", { headers });
+    expect(badLimit.status).toBe(422);
+  });
+
+  it("E2E-P4.10-05 unrecorded payout chargeback remains after a manual chargeback and re-run (R2-P1 bound params; R9-AO2 manual reversals never match identity)", async () => {
     const expectations = await setupReconciliationHarness();
     const orgId = ORG_RC_05;
     const hp = await ensureActiveHpCredential();
