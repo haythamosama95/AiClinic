@@ -685,6 +685,7 @@ async function putBillingContact(org: string): Promise<void> {
       phone: "+201001234567",
     }),
   });
+  await response.text();
   expect(response.status).toBe(200);
 }
 
