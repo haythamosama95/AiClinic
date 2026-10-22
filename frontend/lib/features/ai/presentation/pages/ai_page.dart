@@ -753,7 +753,11 @@ class _AiFeatureSection extends StatelessWidget {
 
 /// Live [AiFeatureHostPage] composed from clinic Supabase + platform reachability.
 class _LiveVisitSummaryHost extends ConsumerStatefulWidget {
-  const _LiveVisitSummaryHost({required this.visitId, required this.staffIsAdministrator});
+  const _LiveVisitSummaryHost({
+    super.key,
+    required this.visitId,
+    required this.staffIsAdministrator,
+  });
 
   final String visitId;
   final bool staffIsAdministrator;
