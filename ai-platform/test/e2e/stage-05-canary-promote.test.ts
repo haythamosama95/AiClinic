@@ -155,8 +155,14 @@ function malformedDocument(): Record<string, unknown> {
   };
 }
 
-function policyPointer(version: string): string {
-  return `control/routing-policy/${POLICY_ID}/${version}.json`;
+// R8-PUB1: content objects are digest-keyed; the exact key is read back from D1.
+function policyPointerPattern(version: string): RegExp {
+  return new RegExp(`^control/routing-policy/${POLICY_ID}/${version}/sha256-[0-9a-f]{64}\\.json$`);
+}
+
+async function storedPointer(version: string): Promise<string> {
+  const row = (await getRoutingPolicy(POLICY_ID, version)) as { content_pointer?: string } | null;
+  return row?.content_pointer ?? "";
 }
 
 function policyTarget(version: string): string {
@@ -263,7 +269,7 @@ async function assertR2Document(
   version: string,
   document: Record<string, unknown>,
 ): Promise<void> {
-  const key = policyPointer(version);
+  const key = await storedPointer(version);
   expect(await r2Exists(key)).toBe(true);
   expect(await getR2Json(key)).toEqual(document);
   const object = await env.R2.get(key);
@@ -280,7 +286,7 @@ async function assertPublishedRow(
   expect(row).not.toBeNull();
   expect(row?.policy_id).toBe(POLICY_ID);
   expect(row?.version).toBe(version);
-  expect(row?.content_pointer).toBe(policyPointer(version));
+  expect(row?.content_pointer).toMatch(policyPointerPattern(version));
   expectIsoTimestamp(row?.active_from);
   expect(row?.activated_by).toBe(OPERATOR_ID);
   expect(row?.canary_installation_ids).toBeNull();
@@ -296,7 +302,7 @@ async function assertPublishedRow(
   expect(audits[0]?.operator_id).toBe(OPERATOR_ID);
   expect(audits[0]?.target).toBe(policyTarget(version));
   expect(audits[0]?.before_pointer).toBeNull();
-  expect(audits[0]?.after_pointer).toBe(policyPointer(version));
+  expect(audits[0]?.after_pointer).toMatch(policyPointerPattern(version));
   expectIsoTimestamp(audits[0]?.recorded_at);
   return row!;
 }
@@ -369,7 +375,7 @@ describe("Stage 05 — canary and promote (S05-021…S05-041)", () => {
     assertEmptySuccess(result);
     await assertPublishedRow(POLICY_VERSION, document);
 
-    const stored = await getR2Json(policyPointer(POLICY_VERSION));
+    const stored = await getR2Json(await storedPointer(POLICY_VERSION));
     expect(stored.future_field).toEqual({ experimental: true });
     const rules = stored.rules as Record<string, unknown>[];
     expect(rules[0]?.note).toBe("ops-only");
@@ -400,7 +406,7 @@ describe("Stage 05 — canary and promote (S05-021…S05-041)", () => {
     const row = await getRoutingPolicy(POLICY_ID, POLICY_VERSION);
     expect(row?.status).toBe("canary");
     expect(row?.canary_installation_ids).toBe(instACanaryList());
-    expect(row?.content_pointer).toBe(policyPointer(POLICY_VERSION));
+    expect(row?.content_pointer).toMatch(policyPointerPattern(POLICY_VERSION));
 
     const audits = await getAudits(
       "routing_policy_canary",
@@ -421,7 +427,7 @@ describe("Stage 05 — canary and promote (S05-021…S05-041)", () => {
     expect(parsedAfter.installation_ids).toEqual([INST_A]);
     expect(parsedAfter.details.cohort_name).toBe(COHORT_NAME);
 
-    expect(await r2Exists(policyPointer(POLICY_VERSION))).toBe(true);
+    expect(await r2Exists(await storedPointer(POLICY_VERSION))).toBe(true);
     expect(await count("routing_policy")).toBe(1);
   });
 
@@ -610,7 +616,7 @@ describe("Stage 05 — canary and promote (S05-021…S05-041)", () => {
 
   it("S05-035 — Promote first version", async () => {
     const document = await publishStandardV1();
-    const r2Before = await getR2Json(policyPointer(POLICY_VERSION));
+    const r2Before = await getR2Json(await storedPointer(POLICY_VERSION));
 
     const result = await promotePolicy(POLICY_ID, POLICY_VERSION);
 
@@ -619,7 +625,7 @@ describe("Stage 05 — canary and promote (S05-021…S05-041)", () => {
     const row = await getRoutingPolicy(POLICY_ID, POLICY_VERSION);
     expect(row?.status).toBe("active");
     expect(row?.canary_installation_ids).toBeNull();
-    expect(row?.content_pointer).toBe(policyPointer(POLICY_VERSION));
+    expect(row?.content_pointer).toMatch(policyPointerPattern(POLICY_VERSION));
 
     const audits = await getAudits(
       "routing_policy_promote",
@@ -633,8 +639,8 @@ describe("Stage 05 — canary and promote (S05-021…S05-041)", () => {
     expect(audits[0]?.after_pointer).toBe(policyTarget(POLICY_VERSION));
     expectIsoTimestamp(audits[0]?.recorded_at);
 
-    expect(await getR2Json(policyPointer(POLICY_VERSION))).toEqual(r2Before);
-    expect(await getR2Json(policyPointer(POLICY_VERSION))).toEqual(document);
+    expect(await getR2Json(await storedPointer(POLICY_VERSION))).toEqual(r2Before);
+    expect(await getR2Json(await storedPointer(POLICY_VERSION))).toEqual(document);
     expect(await count("routing_policy")).toBe(1);
   });
 

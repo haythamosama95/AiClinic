@@ -5,6 +5,7 @@
  */
 
 import { noopLogger, type Logger } from "../logger";
+import { sha256HexOfBytes } from "../router/policy-document";
 
 export type ConfigEntityKind =
   | "installations"
@@ -199,7 +200,29 @@ async function loadRoutingPolicyDocument(
     logger.error("routing_policy_r2_miss", { content_pointer: pointer });
     return "miss";
   }
-  const document = JSON.parse(await object.text()) as unknown;
+  const bytes = await object.arrayBuffer();
+  // R8-PUB1: verify the fetched bytes against the digest recorded at publish.
+  // A mismatch fails explicitly and nothing is served from this row.
+  const expectedDigest = row.content_sha256;
+  if (typeof expectedDigest === "string") {
+    if ((await sha256HexOfBytes(bytes)) !== expectedDigest) {
+      logger.error("routing_policy_digest_mismatch", {
+        content_pointer: pointer,
+        policy_id: row.policy_id,
+        version: row.version,
+      });
+      return "miss";
+    }
+  } else {
+    // Legacy row published before content_sha256 existed. Tolerated for now;
+    // operators must quarantine and republish (see RM33 report).
+    logger.error("routing_policy_digest_absent_warning", {
+      content_pointer: pointer,
+      policy_id: row.policy_id,
+      version: row.version,
+    });
+  }
+  const document = JSON.parse(new TextDecoder().decode(bytes)) as unknown;
   return { ...row, document };
 }
 

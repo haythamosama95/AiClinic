@@ -10,6 +10,7 @@ import {
   loadConfig,
 } from "../config-cache";
 import type { Logger } from "../logger";
+import { parseRoutingPolicyDocument } from "./policy-document";
 import { noopLogger } from "../logger";
 
 export { parseRoutingPolicyDocument } from "./policy-document";
@@ -87,7 +88,8 @@ export type RoutingPolicyErrorCode =
   | "policy_identity_mismatch"
   | "unsupported_schema_version"
   | "missing_catch_all"
-  | "no_matching_rule";
+  | "no_matching_rule"
+  | "invalid_policy_document";
 
 export class RoutingPolicyError extends Error {
   readonly code: RoutingPolicyErrorCode;
@@ -269,6 +271,13 @@ function validatePolicyDocument(
       "missing_catch_all",
       "Routing policy document must end with a catch-all rule (empty/absent match)",
     );
+  }
+
+  // R8-ROUTE1: the same shared parser that gates publication validates the
+  // full document shape before any rule is evaluated.
+  const parsed = parseRoutingPolicyDocument(document);
+  if (!parsed.ok) {
+    throw new RoutingPolicyError("invalid_policy_document", parsed.reason);
   }
 }
 

@@ -452,10 +452,27 @@ describe("T-D2-11 router_filter_latency_class", () => {
   });
 });
 
-describe("filterTargets fail-closed on malformed target features", () => {
+// R8-ROUTE1: the shared parser now rejects the whole routing document when any
+// target's features are malformed (missing or wrongly typed fields), so routing
+// fails closed with invalid_policy_document instead of excluding that single
+// target with feature_unsupported. The parser itself is unchanged; these
+// assertions pin the document-level rejection.
+function expectInvalidPolicyDocument(run: () => unknown): void {
+  try {
+    run();
+    expect.unreachable("expected RoutingPolicyError");
+  } catch (error) {
+    expect(error).toBeInstanceOf(RoutingPolicyError);
+    expect((error as RoutingPolicyError).code).toBe(
+      "invalid_policy_document",
+    );
+  }
+}
+
+describe("R8-ROUTE1: filterTargets fail-closed on malformed target features", () => {
   const wellFormedSibling = policyTarget("google", "well-formed");
 
-  it("excludes a missing min_context_window with feature_unsupported instead of routing it", () => {
+  it("R8-ROUTE1: excludes a missing min_context_window with feature_unsupported instead of routing it", () => {
     const missingWindow = { ...wellFormedFeatureFields() };
     delete missingWindow.min_context_window;
     const document = buildPolicyDocument({
@@ -467,20 +484,18 @@ describe("filterTargets fail-closed on malformed target features", () => {
       ],
     });
     const cache = preloadPolicyCache(document);
-    const outcome = route(
-      cache,
-      defaultContext({
-        requirements: defaultRequirements({ min_context_window: 32_000 }),
-      }),
-    );
 
-    expect(chainKeys(outcome)).toEqual(["google/well-formed"]);
-    expect(excludedReasons(outcome, "deepseek", "undeclared-window")).toEqual([
-      "feature_unsupported",
-    ]);
+    expectInvalidPolicyDocument(() =>
+      route(
+        cache,
+        defaultContext({
+          requirements: defaultRequirements({ min_context_window: 32_000 }),
+        }),
+      ),
+    );
   });
 
-  it("excludes a non-numeric min_context_window with feature_unsupported", () => {
+  it("R8-ROUTE1: excludes a non-numeric min_context_window with feature_unsupported", () => {
     const document = buildPolicyDocument({
       rules: [
         catchAllRule("unknown-window", [
@@ -494,20 +509,18 @@ describe("filterTargets fail-closed on malformed target features", () => {
       ],
     });
     const cache = preloadPolicyCache(document);
-    const outcome = route(
-      cache,
-      defaultContext({
-        requirements: defaultRequirements({ min_context_window: 32_000 }),
-      }),
-    );
 
-    expect(chainKeys(outcome)).toEqual(["google/well-formed"]);
-    expect(excludedReasons(outcome, "deepseek", "string-window")).toEqual([
-      "feature_unsupported",
-    ]);
+    expectInvalidPolicyDocument(() =>
+      route(
+        cache,
+        defaultContext({
+          requirements: defaultRequirements({ min_context_window: 32_000 }),
+        }),
+      ),
+    );
   });
 
-  it("excludes an unknown cost_class typo with feature_unsupported instead of surviving the ceiling", () => {
+  it("R8-ROUTE1: excludes an unknown cost_class typo with feature_unsupported instead of surviving the ceiling", () => {
     const document = buildPolicyDocument({
       rules: [
         catchAllRule("malformed-cost", [
@@ -521,21 +534,19 @@ describe("filterTargets fail-closed on malformed target features", () => {
       ],
     });
     const cache = preloadPolicyCache(document);
-    const outcome = route(
-      cache,
-      defaultContext({
-        manifestCostClass: "standard",
-        entitlementMaxCostClass: "premium",
-      }),
-    );
 
-    expect(chainKeys(outcome)).toEqual(["google/well-formed"]);
-    expect(excludedReasons(outcome, "deepseek", "typo-cost")).toEqual([
-      "feature_unsupported",
-    ]);
+    expectInvalidPolicyDocument(() =>
+      route(
+        cache,
+        defaultContext({
+          manifestCostClass: "standard",
+          entitlementMaxCostClass: "premium",
+        }),
+      ),
+    );
   });
 
-  it("excludes a missing cost_class with feature_unsupported instead of surviving any ceiling", () => {
+  it("R8-ROUTE1: excludes a missing cost_class with feature_unsupported instead of surviving any ceiling", () => {
     const missingCost = { ...wellFormedFeatureFields() };
     delete missingCost.cost_class;
     const document = buildPolicyDocument({
@@ -547,15 +558,11 @@ describe("filterTargets fail-closed on malformed target features", () => {
       ],
     });
     const cache = preloadPolicyCache(document);
-    const outcome = route(cache);
 
-    expect(chainKeys(outcome)).toEqual(["google/well-formed"]);
-    expect(excludedReasons(outcome, "deepseek", "undeclared-cost")).toEqual([
-      "feature_unsupported",
-    ]);
+    expectInvalidPolicyDocument(() => route(cache));
   });
 
-  it("excludes missing languages with feature_unsupported and does not throw", () => {
+  it("R8-ROUTE1: excludes missing languages with feature_unsupported and does not throw", () => {
     const missingLanguages = { ...wellFormedFeatureFields() };
     delete missingLanguages.languages;
     const document = buildPolicyDocument({
@@ -572,23 +579,17 @@ describe("filterTargets fail-closed on malformed target features", () => {
     });
     const cache = preloadPolicyCache(document);
 
-    let outcome: RouterOutcome | undefined;
-    expect(() => {
-      outcome = route(
+    expectInvalidPolicyDocument(() =>
+      route(
         cache,
         defaultContext({
           requirements: defaultRequirements({ languages: ["en"] }),
         }),
-      );
-    }).not.toThrow();
-
-    expect(chainKeys(outcome!)).toEqual(["google/well-formed"]);
-    expect(
-      excludedReasons(outcome!, "deepseek", "undeclared-languages"),
-    ).toEqual(["feature_unsupported"]);
+      ),
+    );
   });
 
-  it("excludes a non-array languages field with feature_unsupported and does not throw", () => {
+  it("R8-ROUTE1: excludes a non-array languages field with feature_unsupported and does not throw", () => {
     const document = buildPolicyDocument({
       rules: [
         catchAllRule("non-array-languages", [
@@ -603,20 +604,14 @@ describe("filterTargets fail-closed on malformed target features", () => {
     });
     const cache = preloadPolicyCache(document);
 
-    let outcome: RouterOutcome | undefined;
-    expect(() => {
-      outcome = route(
+    expectInvalidPolicyDocument(() =>
+      route(
         cache,
         defaultContext({
           requirements: defaultRequirements({ languages: ["en"] }),
         }),
-      );
-    }).not.toThrow();
-
-    expect(chainKeys(outcome!)).toEqual(["google/well-formed"]);
-    expect(excludedReasons(outcome!, "deepseek", "string-languages")).toEqual([
-      "feature_unsupported",
-    ]);
+      ),
+    );
   });
 });
 

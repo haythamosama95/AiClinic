@@ -309,3 +309,12 @@ export function parseRoutingPolicyDocument(
     throw err;
   }
 }
+
+/**
+ * Lowercase hex SHA-256 digest of raw bytes (R8-PUB1). Used to name immutable
+ * content objects and to verify stored bytes against routing_policy.content_sha256.
+ */
+export async function sha256HexOfBytes(bytes: ArrayBuffer | Uint8Array): Promise<string> {
+  const digest = await crypto.subtle.digest("SHA-256", bytes);
+  return Array.from(new Uint8Array(digest), (byte) => byte.toString(16).padStart(2, "0")).join("");
+}

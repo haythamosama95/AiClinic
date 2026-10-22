@@ -1,5 +1,9 @@
 import { buildEntrypointAuditStatement, nowIso } from "./audit";
 import type { ControlActionResult, ControlBindings } from "./types";
+import {
+  parseRoutingPolicyDocument,
+  sha256HexOfBytes,
+} from "../router/policy-document";
 import visitSummaryPublished from "../../manifests/published/clinic.visit_summary@1.0.0.json";
 
 type RoutingPolicyRow = {
@@ -8,7 +12,57 @@ type RoutingPolicyRow = {
   status: string;
   canary_installation_ids: string | null;
   active_from: string;
+  content_pointer?: string | null;
+  content_sha256?: string | null;
 };
+
+/**
+ * R8-ROUTE1 step 2 / R8-PUB1: loads the stored bytes for one routing row and
+ * verifies them before any serving-state change. Returns null when the bytes
+ * are present, digest-consistent (when recorded) and parse as a complete
+ * document for this row's identity; otherwise returns invalid_policy_document.
+ */
+async function verifyStoredRoutingPolicy(
+  R2: R2Bucket,
+  row: RoutingPolicyRow,
+): Promise<ControlActionResult | null> {
+  const invalid: ControlActionResult = {
+    ok: false,
+    status: 422,
+    error: "invalid_policy_document",
+  };
+  if (typeof row.content_pointer !== "string") {
+    return invalid;
+  }
+  const object = await R2.get(row.content_pointer);
+  if (!object) {
+    return invalid;
+  }
+  const bytes = await object.arrayBuffer();
+  if (
+    typeof row.content_sha256 === "string" &&
+    (await sha256HexOfBytes(bytes)) !== row.content_sha256
+  ) {
+    return invalid;
+  }
+  let parsedJson: unknown;
+  try {
+    parsedJson = JSON.parse(new TextDecoder().decode(bytes));
+  } catch {
+    return invalid;
+  }
+  const parsed = parseRoutingPolicyDocument(parsedJson);
+  if (!parsed.ok) {
+    return invalid;
+  }
+  if (
+    parsed.document.policy_id !== row.policy_id ||
+    String(parsed.document.policy_version) !== row.version
+  ) {
+    return invalid;
+  }
+  return null;
+}
 
 type PublishedCapabilityManifest = {
   Routing?: {
@@ -152,8 +206,17 @@ export async function publishRoutingPolicyAction(
 
   const { DB, R2 } = bindings;
   const recordedAt = nowIso();
-  const contentPointer = `control/routing-policy/${policyId}/${version}.json`;
   const target = `${policyId}@${version}`;
+
+  // R8-ROUTE1 step 1: full shape validation precedes any R2 or D1 write.
+  const parsed = parseRoutingPolicyDocument(document);
+  if (!parsed.ok) {
+    return { ok: false, status: 422, error: "invalid_policy_document" };
+  }
+  // R8-PUB1: digest-keyed immutable content; distinct bytes never share a key.
+  const contentBytes = new TextEncoder().encode(JSON.stringify(document));
+  const contentSha256 = await sha256HexOfBytes(contentBytes);
+  const contentPointer = `control/routing-policy/${policyId}/${version}/sha256-${contentSha256}.json`;
 
   const alreadyPublished = await DB.prepare(
     `SELECT policy_id FROM routing_policy WHERE policy_id = ? AND version = ?`,
@@ -164,7 +227,7 @@ export async function publishRoutingPolicyAction(
     return { ok: false, status: 409, error: "already_published" };
   }
 
-  await R2.put(contentPointer, JSON.stringify(document), {
+  await R2.put(contentPointer, contentBytes, {
     httpMetadata: { contentType: "application/json" },
   });
 
@@ -172,10 +235,10 @@ export async function publishRoutingPolicyAction(
     await DB.batch([
       DB.prepare(
         `INSERT INTO routing_policy (
-           policy_id, version, content_pointer, active_from, activated_by,
+           policy_id, version, content_pointer, content_sha256, active_from, activated_by,
            canary_installation_ids, status
-         ) VALUES (?, ?, ?, ?, ?, NULL, 'published')`,
-      ).bind(policyId, version, contentPointer, recordedAt, actor),
+         ) VALUES (?, ?, ?, ?, ?, ?, NULL, 'published')`,
+      ).bind(policyId, version, contentPointer, contentSha256, recordedAt, actor),
       buildEntrypointAuditStatement(
         DB,
         actor,
@@ -216,11 +279,15 @@ export async function canaryRoutingPolicyAction(
     return missing;
   }
 
+  if (!bindings.R2) {
+    return { ok: false, status: 500, error: "missing_r2_binding" };
+  }
   const { DB } = bindings;
   const target = `${policyId}@${version}`;
 
   const existing = await DB.prepare(
-    `SELECT policy_id, version, status, canary_installation_ids, active_from
+    `SELECT policy_id, version, status, canary_installation_ids, active_from,
+            content_pointer, content_sha256
      FROM routing_policy WHERE policy_id = ? AND version = ?`,
   )
     .bind(policyId, version)
@@ -241,6 +308,11 @@ export async function canaryRoutingPolicyAction(
   )
     .bind(policyId)
     .first<{ canary_installation_ids: string | null }>();
+
+  const storedInvalid = await verifyStoredRoutingPolicy(bindings.R2, existing);
+  if (storedInvalid) {
+    return storedInvalid;
+  }
 
   const beforePointer = priorCanary?.canary_installation_ids ?? null;
   const afterPointer =
@@ -288,11 +360,15 @@ export async function promoteRoutingPolicyAction(
   policyId: string,
   version: string,
 ): Promise<ControlActionResult> {
+  if (!bindings.R2) {
+    return { ok: false, status: 500, error: "missing_r2_binding" };
+  }
   const { DB } = bindings;
   const target = `${policyId}@${version}`;
 
   const existing = await DB.prepare(
-    `SELECT policy_id, version, status, canary_installation_ids, active_from
+    `SELECT policy_id, version, status, canary_installation_ids, active_from,
+            content_pointer, content_sha256
      FROM routing_policy WHERE policy_id = ? AND version = ?`,
   )
     .bind(policyId, version)
@@ -307,6 +383,11 @@ export async function promoteRoutingPolicyAction(
   }
   if (existing.status === "superseded") {
     return { ok: false, status: 409, error: "illegal_policy_transition" };
+  }
+
+  const storedInvalid = await verifyStoredRoutingPolicy(bindings.R2, existing);
+  if (storedInvalid) {
+    return storedInvalid;
   }
 
   const priorActive = await DB.prepare(

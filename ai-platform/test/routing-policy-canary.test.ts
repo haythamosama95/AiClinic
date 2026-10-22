@@ -1441,11 +1441,11 @@ describe("routing_policy_publish_document_validation", () => {
       .prepare("SELECT COUNT(*) AS count FROM routing_policy")
       .first<{ count: number }>();
     expect(stored?.count ?? 0).toBe(0);
-    expect(
-      await env.R2.get(
-        `control/routing-policy/${FIXTURE_POLICY_ID}/${FIXTURE_VERSION_V1}.json`,
-      ),
-    ).toBeNull();
+    // R8-PUB1: digest-keyed content objects live under a per-version prefix.
+    const written = await env.R2.list({
+      prefix: `control/routing-policy/${FIXTURE_POLICY_ID}/${FIXTURE_VERSION_V1}/`,
+    });
+    expect(written.objects).toHaveLength(0);
   });
 
   it("warns with unreferenced_policy when no manifest references the policy identity", async () => {
@@ -1762,9 +1762,14 @@ describe("routing_policy_control_robustness", () => {
     expect(duplicate.status).toBe(409);
     expect(await duplicate.json()).toEqual({ error: "already_published" });
 
-    const stored = await env.R2.get(
-      `control/routing-policy/${FIXTURE_POLICY_ID}/${FIXTURE_VERSION_V1}.json`,
+    const storedRow = await env.DB
+      .prepare("SELECT content_pointer FROM routing_policy WHERE policy_id = ? AND version = ?")
+      .bind(FIXTURE_POLICY_ID, FIXTURE_VERSION_V1)
+      .first<{ content_pointer: string }>();
+    expect(storedRow?.content_pointer).toMatch(
+      new RegExp(`^control/routing-policy/${FIXTURE_POLICY_ID}/${FIXTURE_VERSION_V1}/sha256-[0-9a-f]{64}\\.json$`),
     );
+    const stored = await env.R2.get(storedRow!.content_pointer);
     expect(stored).not.toBeNull();
     const published = JSON.parse(await stored!.text()) as {
       rules: Array<{ targets: Array<{ provider_id: string }> }>;
