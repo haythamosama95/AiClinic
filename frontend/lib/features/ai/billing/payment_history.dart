@@ -4,9 +4,13 @@ import 'package:flutter/material.dart';
 
 /// Shows payment history from `GET /v1/payments` in response order.
 class PaymentHistory extends StatefulWidget {
-  const PaymentHistory({super.key, required this.client});
+  const PaymentHistory({super.key, required this.client, this.generation = 0});
 
   final AboClient client;
+
+  /// R7-UI2: the parent's billing-read generation. A change resets the list and cursor and restarts
+  /// at the first page.
+  final int generation;
 
   @override
   State<PaymentHistory> createState() => _PaymentHistoryState();
@@ -20,20 +24,39 @@ class _PaymentHistoryState extends State<PaymentHistory> {
   var _hasMore = false;
   Object? _error;
 
+  /// Every first-page or next-page request takes a sequence number. A reply whose number is no
+  /// longer current (a reset or a newer request happened meanwhile) is discarded, so an old
+  /// in-flight page never appends to the restarted list.
+  var _requestSeq = 0;
+
   @override
   void initState() {
     super.initState();
     _load();
   }
 
+  @override
+  void didUpdateWidget(covariant PaymentHistory oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.generation != widget.generation) {
+      _load();
+    }
+  }
+
   Future<void> _load() async {
+    final seq = ++_requestSeq;
+    final generation = widget.generation;
     setState(() {
       _loading = true;
+      _loadingNextPage = false;
       _error = null;
+      _payments = const [];
+      _nextCursor = '';
+      _hasMore = false;
     });
     try {
       final response = await widget.client.getPayments();
-      if (!mounted) {
+      if (!mounted || seq != _requestSeq || generation != widget.generation) {
         return;
       }
       setState(() {
@@ -43,7 +66,7 @@ class _PaymentHistoryState extends State<PaymentHistory> {
         _loading = false;
       });
     } catch (error) {
-      if (!mounted) {
+      if (!mounted || seq != _requestSeq || generation != widget.generation) {
         return;
       }
       setState(() {
@@ -57,13 +80,16 @@ class _PaymentHistoryState extends State<PaymentHistory> {
     if (!_hasMore || _loadingNextPage) {
       return;
     }
+    final seq = ++_requestSeq;
+    final generation = widget.generation;
+    final cursor = _nextCursor;
     setState(() {
       _loadingNextPage = true;
       _error = null;
     });
     try {
-      final response = await widget.client.getPayments(cursor: _nextCursor);
-      if (!mounted) {
+      final response = await widget.client.getPayments(cursor: cursor);
+      if (!mounted || seq != _requestSeq || generation != widget.generation) {
         return;
       }
       setState(() {
@@ -73,7 +99,7 @@ class _PaymentHistoryState extends State<PaymentHistory> {
         _loadingNextPage = false;
       });
     } catch (error) {
-      if (!mounted) {
+      if (!mounted || seq != _requestSeq || generation != widget.generation) {
         return;
       }
       setState(() {

@@ -517,4 +517,118 @@ class AppLocalizationsEn extends AppLocalizations {
   @override
   String get aiBillingErrorRateLimited =>
       'Too many billing requests. Try again later.';
+
+  @override
+  String get aiBillingRefresh => 'Refresh billing';
+
+  @override
+  String get aiBillingProjectionPending =>
+      'Coverage update requested. Your plan and credits may take a few minutes to appear. Refresh to check again.';
+
+  @override
+  String get aiBillingProjectionPullFailed =>
+      'Coverage update could not be requested. Refresh to try again.';
+
+  @override
+  String get aiBillingNoticeDuplicatePayment =>
+      'A payment for this clinic looks like a duplicate and is under review. Contact support if you were charged twice.';
+
+  @override
+  String get aiBillingNoticeLatePaymentHonoured =>
+      'A payment arrived after its checkout window and was honoured.';
+
+  @override
+  String get aiBillingNoticePaymentWithheld =>
+      'A payment is withheld because its details did not match. Contact support to resolve it.';
+
+  @override
+  String get aiBillingNoticeReversalRecorded =>
+      'A payment reversal was recorded for this clinic. Check coverage and contact support if it looks wrong.';
+
+  @override
+  String get aiBillingNoticeTermsHeld =>
+      'Some subscription terms are on hold and will not take effect until they are released.';
+
+  @override
+  String get aiNoticeUnavailable =>
+      'Status information is unavailable right now.';
+
+  @override
+  String get aiNoticeAskAdministrator => 'ask your administrator';
+
+  @override
+  String get aiNoticeEndsSoonAdmin =>
+      'Your AI coverage ends soon. Renew to avoid an interruption.';
+
+  @override
+  String get aiNoticeEndsSoonStaff => 'AI coverage ends soon.';
+
+  @override
+  String aiNoticeInGraceAdmin(int days) {
+    String _temp0 = intl.Intl.pluralLogic(
+      days,
+      locale: localeName,
+      other: '$days days left',
+      one: '1 day left',
+      zero: 'less than one day left',
+    );
+    return 'Your AI coverage is in its grace period: $_temp0. Renew to keep AI available.';
+  }
+
+  @override
+  String aiNoticeInGraceStaff(int days) {
+    String _temp0 = intl.Intl.pluralLogic(
+      days,
+      locale: localeName,
+      other: '$days days left',
+      one: '1 day left',
+      zero: 'less than one day left',
+    );
+    return 'AI coverage is in its grace period: $_temp0.';
+  }
+
+  @override
+  String get aiNoticeAllowanceLowAdmin =>
+      'Most of this clinic\'s AI credits are used. Renew or add credits before they run out.';
+
+  @override
+  String get aiNoticeAllowanceLowStaff => 'AI credits are running low.';
+
+  @override
+  String get aiNoticeAllowanceExhaustedAdmin =>
+      'This clinic\'s AI credits are used up. Renew to keep using AI.';
+
+  @override
+  String get aiNoticeAllowanceExhaustedStaff =>
+      'AI credits for this clinic are used up.';
+
+  @override
+  String get aiNoticeLapsedAdmin =>
+      'AI coverage has lapsed. Renew to use AI again.';
+
+  @override
+  String get aiNoticeLapsedStaff => 'AI coverage has lapsed.';
+
+  @override
+  String get aiNoticeEndedReversedAdmin =>
+      'AI coverage ended after a plan ending was reversed. Contact support if it looks wrong.';
+
+  @override
+  String get aiNoticeEndedReversedStaff =>
+      'AI coverage changed after a plan ending was reversed.';
+
+  @override
+  String get aiNoticeSuspendedAdmin =>
+      'AI access is suspended for this clinic. Contact support to restore it.';
+
+  @override
+  String get aiNoticeSuspendedStaff =>
+      'AI access is suspended for this clinic.';
+
+  @override
+  String get aiNoticeStatusStaleAdmin =>
+      'AI status could not be confirmed recently, so the coverage shown may be out of date.';
+
+  @override
+  String get aiNoticeStatusStaleStaff => 'AI status may be out of date.';
 }

@@ -160,5 +160,45 @@
   "aiBillingErrorBillingContactRequired": "أضف جهة اتصال للفوترة قبل الدفع.",
   "aiBillingErrorTermsNotAccepted": "اقبل الشروط الحالية قبل الدفع.",
   "aiBillingErrorProviderUnavailable": "مزوّد الدفع غير متاح. حاول مرة أخرى لاحقًا.",
-  "aiBillingErrorRateLimited": "طلبات الفوترة كثيرة جدًا. حاول مرة أخرى لاحقًا."
+  "aiBillingErrorRateLimited": "طلبات الفوترة كثيرة جدًا. حاول مرة أخرى لاحقًا.",
+  "aiBillingRefresh": "تحديث الفوترة",
+  "aiBillingProjectionPending": "تم طلب تحديث التغطية. قد يستغرق ظهور الخطة والأرصدة بضع دقائق. حدّث الصفحة للتحقق مرة أخرى.",
+  "aiBillingProjectionPullFailed": "تعذّر طلب تحديث التغطية. حدّث الصفحة للمحاولة مرة أخرى.",
+  "aiBillingNoticeDuplicatePayment": "يبدو أن دفعة لهذه العيادة مكررة وهي قيد المراجعة. تواصل مع الدعم إذا تم خصم المبلغ مرتين.",
+  "aiBillingNoticeLatePaymentHonoured": "وصلت دفعة بعد نافذة الدفع الخاصة بها وتم اعتمادها.",
+  "aiBillingNoticePaymentWithheld": "تم حجز دفعة لأن تفاصيلها لم تتطابق. تواصل مع الدعم لحلها.",
+  "aiBillingNoticeReversalRecorded": "تم تسجيل عكس دفعة لهذه العيادة. راجع التغطية وتواصل مع الدعم إذا بدت غير صحيحة.",
+  "aiBillingNoticeTermsHeld": "بعض شروط الاشتراك معلّقة ولن تسري حتى يتم الإفراج عنها.",
+  "aiNoticeUnavailable": "معلومات الحالة غير متاحة حاليًا.",
+  "aiNoticeAskAdministrator": "راجع مسؤول العيادة",
+  "aiNoticeEndsSoonAdmin": "ستنتهي تغطية الذكاء الاصطناعي قريبًا. جدّد الاشتراك لتجنب انقطاع الخدمة.",
+  "aiNoticeEndsSoonStaff": "ستنتهي تغطية الذكاء الاصطناعي قريبًا.",
+  "aiNoticeInGraceAdmin": "تغطية الذكاء الاصطناعي في فترة السماح: {days, plural, =0{أقل من يوم واحد متبقٍ} =1{يوم واحد متبقٍ} =2{يومان متبقيان} few{{days} أيام متبقية} many{{days} يومًا متبقيًا} other{{days} يوم متبقٍ}}. جدّد للحفاظ على إمكانية استخدام الذكاء الاصطناعي.",
+  "@aiNoticeInGraceAdmin": {
+    "placeholders": {
+      "days": {
+        "type": "int"
+      }
+    }
+  },
+  "aiNoticeInGraceStaff": "تغطية الذكاء الاصطناعي في فترة السماح: {days, plural, =0{أقل من يوم واحد متبقٍ} =1{يوم واحد متبقٍ} =2{يومان متبقيان} few{{days} أيام متبقية} many{{days} يومًا متبقيًا} other{{days} يوم متبقٍ}}.",
+  "@aiNoticeInGraceStaff": {
+    "placeholders": {
+      "days": {
+        "type": "int"
+      }
+    }
+  },
+  "aiNoticeAllowanceLowAdmin": "استُخدم معظم أرصدة الذكاء الاصطناعي لهذه العيادة. جدّد أو أضف رصيدًا قبل نفاده.",
+  "aiNoticeAllowanceLowStaff": "أرصدة الذكاء الاصطناعي على وشك النفاد.",
+  "aiNoticeAllowanceExhaustedAdmin": "نفدت أرصدة الذكاء الاصطناعي لهذه العيادة. جدّد لمتابعة الاستخدام.",
+  "aiNoticeAllowanceExhaustedStaff": "نفدت أرصدة الذكاء الاصطناعي لهذه العيادة.",
+  "aiNoticeLapsedAdmin": "انتهت تغطية الذكاء الاصطناعي. جدّد لاستخدامه مرة أخرى.",
+  "aiNoticeLapsedStaff": "انتهت تغطية الذكاء الاصطناعي.",
+  "aiNoticeEndedReversedAdmin": "انتهت تغطية الذكاء الاصطناعي بعد عكس إنهاء خطة. تواصل مع الدعم إذا بدا ذلك غير صحيح.",
+  "aiNoticeEndedReversedStaff": "تغيّرت تغطية الذكاء الاصطناعي بعد عكس إنهاء خطة.",
+  "aiNoticeSuspendedAdmin": "الوصول إلى الذكاء الاصطناعي موقوف لهذه العيادة. تواصل مع الدعم لاستعادته.",
+  "aiNoticeSuspendedStaff": "الوصول إلى الذكاء الاصطناعي موقوف لهذه العيادة.",
+  "aiNoticeStatusStaleAdmin": "لم يتم تأكيد حالة الذكاء الاصطناعي مؤخرًا، لذا قد تكون التغطية المعروضة غير محدّثة.",
+  "aiNoticeStatusStaleStaff": "قد تكون حالة الذكاء الاصطناعي غير محدّثة."
 }

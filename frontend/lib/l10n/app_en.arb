@@ -160,5 +160,45 @@
   "aiBillingErrorBillingContactRequired": "Add a billing contact before checkout.",
   "aiBillingErrorTermsNotAccepted": "Accept the current terms before checkout.",
   "aiBillingErrorProviderUnavailable": "The payment provider is unavailable. Try again later.",
-  "aiBillingErrorRateLimited": "Too many billing requests. Try again later."
+  "aiBillingErrorRateLimited": "Too many billing requests. Try again later.",
+  "aiBillingRefresh": "Refresh billing",
+  "aiBillingProjectionPending": "Coverage update requested. Your plan and credits may take a few minutes to appear. Refresh to check again.",
+  "aiBillingProjectionPullFailed": "Coverage update could not be requested. Refresh to try again.",
+  "aiBillingNoticeDuplicatePayment": "A payment for this clinic looks like a duplicate and is under review. Contact support if you were charged twice.",
+  "aiBillingNoticeLatePaymentHonoured": "A payment arrived after its checkout window and was honoured.",
+  "aiBillingNoticePaymentWithheld": "A payment is withheld because its details did not match. Contact support to resolve it.",
+  "aiBillingNoticeReversalRecorded": "A payment reversal was recorded for this clinic. Check coverage and contact support if it looks wrong.",
+  "aiBillingNoticeTermsHeld": "Some subscription terms are on hold and will not take effect until they are released.",
+  "aiNoticeUnavailable": "Status information is unavailable right now.",
+  "aiNoticeAskAdministrator": "ask your administrator",
+  "aiNoticeEndsSoonAdmin": "Your AI coverage ends soon. Renew to avoid an interruption.",
+  "aiNoticeEndsSoonStaff": "AI coverage ends soon.",
+  "aiNoticeInGraceAdmin": "Your AI coverage is in its grace period: {days, plural, =0{less than one day left} =1{1 day left} other{{days} days left}}. Renew to keep AI available.",
+  "@aiNoticeInGraceAdmin": {
+    "placeholders": {
+      "days": {
+        "type": "int"
+      }
+    }
+  },
+  "aiNoticeInGraceStaff": "AI coverage is in its grace period: {days, plural, =0{less than one day left} =1{1 day left} other{{days} days left}}.",
+  "@aiNoticeInGraceStaff": {
+    "placeholders": {
+      "days": {
+        "type": "int"
+      }
+    }
+  },
+  "aiNoticeAllowanceLowAdmin": "Most of this clinic's AI credits are used. Renew or add credits before they run out.",
+  "aiNoticeAllowanceLowStaff": "AI credits are running low.",
+  "aiNoticeAllowanceExhaustedAdmin": "This clinic's AI credits are used up. Renew to keep using AI.",
+  "aiNoticeAllowanceExhaustedStaff": "AI credits for this clinic are used up.",
+  "aiNoticeLapsedAdmin": "AI coverage has lapsed. Renew to use AI again.",
+  "aiNoticeLapsedStaff": "AI coverage has lapsed.",
+  "aiNoticeEndedReversedAdmin": "AI coverage ended after a plan ending was reversed. Contact support if it looks wrong.",
+  "aiNoticeEndedReversedStaff": "AI coverage changed after a plan ending was reversed.",
+  "aiNoticeSuspendedAdmin": "AI access is suspended for this clinic. Contact support to restore it.",
+  "aiNoticeSuspendedStaff": "AI access is suspended for this clinic.",
+  "aiNoticeStatusStaleAdmin": "AI status could not be confirmed recently, so the coverage shown may be out of date.",
+  "aiNoticeStatusStaleStaff": "AI status may be out of date."
 }

@@ -14,6 +14,7 @@ import 'package:ai_clinic/app/router.dart';
 import 'package:ai_clinic/core/config/supabase_config.dart';
 import 'package:ai_clinic/core/contract_versions.dart';
 import 'package:ai_clinic/core/ui/theme/app_theme.dart';
+import 'package:ai_clinic/l10n/app_localizations.dart';
 import 'package:ai_clinic/features/ai/presentation/pages/ai_page.dart';
 import 'package:ai_clinic/features/auth/domain/auth_session.dart';
 import 'package:crypto/crypto.dart';
@@ -43,6 +44,9 @@ const _paymobHmacSecret = 'paymob-hmac-unconfigured';
 
 const _subscriptionSummaryKey = Key('billing_subscription_summary');
 const _commercialNoticesKey = Key('billing_commercial_notices');
+
+// R7-UI3: notices render localized administrator text, not wire codes.
+final _enL10n = lookupAppLocalizations(const Locale('en'));
 const _paymentHistoryKey = Key('billing_payment_history');
 const _paymentHistoryNextKey = Key('billing_payment_history_next');
 const _renewNoticeKey = Key('ai_notice_renew');
@@ -226,7 +230,7 @@ void main() {
       expect(find.byKey(_subscriptionSummaryKey), findsOneWidget);
       expect(find.byKey(_commercialNoticesKey), findsOneWidget);
       expect(find.byKey(_paymentHistoryKey), findsOneWidget);
-      expect(find.text('duplicate_payment'), findsOneWidget);
+      expect(find.text(_enL10n.aiBillingNoticeDuplicatePayment), findsOneWidget);
       expect(find.text('likely_duplicate'), findsOneWidget);
       expect(find.text('${payments.first['reference']}'), findsOneWidget);
       expect(find.text('${payments.last['reference']}'), findsOneWidget);
@@ -355,9 +359,9 @@ void main() {
       expect(find.byKey(_subscriptionSummaryKey), findsOneWidget);
       expect(find.byKey(_commercialNoticesKey), findsOneWidget);
       expect(find.byKey(_paymentHistoryKey), findsOneWidget);
-      expect(find.text('reversal_recorded'), findsOneWidget);
-      expect(find.text('terms_held'), findsOneWidget);
-      expect(find.text('ended_reversed'), findsOneWidget);
+      expect(find.text(_enL10n.aiBillingNoticeReversalRecorded), findsOneWidget);
+      expect(find.text(_enL10n.aiBillingNoticeTermsHeld), findsOneWidget);
+      expect(find.text(_enL10n.aiBillingEndedReversed), findsOneWidget);
       expect(find.text(reversalReference), findsOneWidget);
     });
   });
@@ -472,8 +476,8 @@ void main() {
       await _openSubscriptionPageFromRenew(tester, clinic: clinic);
 
       expect(find.byKey(_commercialNoticesKey), findsOneWidget);
-      expect(find.text('late_payment_honoured'), findsOneWidget);
-      expect(find.text('payment_withheld'), findsOneWidget);
+      expect(find.text(_enL10n.aiBillingNoticeLatePaymentHonoured), findsOneWidget);
+      expect(find.text(_enL10n.aiBillingNoticePaymentWithheld), findsOneWidget);
     });
   });
 

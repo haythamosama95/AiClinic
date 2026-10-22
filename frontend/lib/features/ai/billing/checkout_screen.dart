@@ -1,8 +1,5 @@
 import 'dart:async';
 
-import 'package:ai_clinic/core/contract_version_guard.dart';
-import 'package:ai_clinic/core/contract_versions.dart';
-import 'package:ai_clinic/core/rpc/rpc_result.dart';
 import 'package:ai_clinic/core/ui/components/app_button.dart';
 import 'package:ai_clinic/features/ai/billing/abo_client.dart';
 import 'package:ai_clinic/features/ai/billing/billing_money.dart';
@@ -10,10 +7,13 @@ import 'package:ai_clinic/features/ai/degraded/ai_degraded_mode.dart';
 import 'package:ai_clinic/features/ai/degraded/ai_degraded_view.dart';
 import 'package:ai_clinic/l10n/app_localizations.dart';
 import 'package:flutter/material.dart';
-import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:url_launcher/url_launcher.dart';
 
-/// Checkout progress, queued-term notice, polling, and Active refresh.
+/// Checkout progress, queued-term notice, and polling.
+///
+/// R7-UI2: every authoritative read that changes the shown state or reference is reported through
+/// [onCheckoutStateChanged]. The parent owns sibling billing refreshes and the Active projection
+/// pull; this screen never issues a second checkout or payment mutation for a read.
 class CheckoutScreen extends StatefulWidget {
   const CheckoutScreen({
     super.key,
@@ -23,7 +23,7 @@ class CheckoutScreen extends StatefulWidget {
     this.checkoutId,
     this.reference,
     this.initialCheckout,
-    this.supabaseClient,
+    this.onCheckoutStateChanged,
     this.onTermsNotAccepted,
     this.onOfferUnavailable,
     this.onBillingContactRequired,
@@ -36,7 +36,7 @@ class CheckoutScreen extends StatefulWidget {
   final String? checkoutId;
   final String? reference;
   final CheckoutRead? initialCheckout;
-  final SupabaseClient? supabaseClient;
+  final ValueChanged<CheckoutRead>? onCheckoutStateChanged;
   final VoidCallback? onTermsNotAccepted;
   final VoidCallback? onOfferUnavailable;
   final VoidCallback? onBillingContactRequired;
@@ -52,7 +52,6 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
   var _submitting = false;
   var _pendingLaunch = false;
   var _launched = false;
-  var _refreshRequested = false;
   var _showAppUpdate = false;
   Timer? _pollTimer;
   var _polling = false;
@@ -136,14 +135,18 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
   }
 
   void _applyCheckoutRead(CheckoutRead read) {
+    final previous = _checkoutRead;
     setState(() {
       _checkoutRead = read;
       _displayPriceMinor = read.offer.chargedPriceMinor;
       _errorMessage = null;
     });
     _syncPolling(read.shownState);
-    if (read.shownState == CheckoutShownState.active) {
-      unawaited(_requestAiStatusRefreshOnce());
+    final changed = previous == null ||
+        previous.shownState != read.shownState ||
+        previous.reference != read.reference;
+    if (changed) {
+      widget.onCheckoutStateChanged?.call(read);
     }
   }
 
@@ -333,24 +336,6 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
     });
     _startPolling();
     await _refreshCheckout();
-  }
-
-  Future<void> _requestAiStatusRefreshOnce() async {
-    if (_refreshRequested) {
-      return;
-    }
-    _refreshRequested = true;
-    final client = widget.supabaseClient ?? Supabase.instance.client;
-    final raw = await client.rpc(
-      'request_ai_status_refresh',
-      params: {'p_contract_version': backendRpc},
-    );
-    final result = RpcResult.fromDynamic(raw);
-    // R2-C3: an unversioned or mismatched refresh reply never counts as success.
-    requireEchoedRpcContractVersion(result, sent: backendRpc, current: backendRpc);
-    if (!result.success) {
-      throw RpcFailure(result);
-    }
   }
 
   String _shownStateLabel(AppLocalizations l10n, CheckoutShownState state) {

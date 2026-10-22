@@ -45,11 +45,20 @@ class SubscriptionSummary extends StatefulWidget {
     required this.client,
     this.supabaseClient,
     this.rpc,
+    this.generation = 0,
+    this.onLoaded,
   });
 
   final AboClient client;
   final SupabaseClient? supabaseClient;
   final SubscriptionSummaryRpcInvoke? rpc;
+
+  /// R7-UI2: the parent's billing-read generation. A change reloads the summary; results from an
+  /// earlier generation are ignored.
+  final int generation;
+
+  /// Called after each successful load that is still current.
+  final ValueChanged<SubscriptionSummaryData>? onLoaded;
 
   @override
   State<SubscriptionSummary> createState() => _SubscriptionSummaryState();
@@ -61,6 +70,7 @@ class _SubscriptionSummaryState extends State<SubscriptionSummary> {
   var _loading = true;
   SubscriptionSummaryData? _summary;
   Object? _error;
+  var _requestSeq = 0;
 
   @override
   void initState() {
@@ -68,7 +78,17 @@ class _SubscriptionSummaryState extends State<SubscriptionSummary> {
     _load();
   }
 
+  @override
+  void didUpdateWidget(covariant SubscriptionSummary oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.generation != widget.generation) {
+      _load();
+    }
+  }
+
   Future<void> _load() async {
+    final seq = ++_requestSeq;
+    final generation = widget.generation;
     setState(() {
       _loading = true;
       _error = null;
@@ -81,15 +101,17 @@ class _SubscriptionSummaryState extends State<SubscriptionSummary> {
       final billingStatus = results[0] as Map<String, dynamic>;
       // Subscription read completes before render; null snapshot still shows summary (T014).
       final _ = results[1] as SubscriptionResponse;
-      if (!mounted) {
+      if (!mounted || seq != _requestSeq || generation != widget.generation) {
         return;
       }
+      final summary = _parseSummary(billingStatus);
       setState(() {
-        _summary = _parseSummary(billingStatus);
+        _summary = summary;
         _loading = false;
       });
+      widget.onLoaded?.call(summary);
     } on AboContractVersionUnsupportedException {
-      if (!mounted) {
+      if (!mounted || seq != _requestSeq || generation != widget.generation) {
         return;
       }
       setState(() {
@@ -97,7 +119,7 @@ class _SubscriptionSummaryState extends State<SubscriptionSummary> {
         _loading = false;
       });
     } catch (error) {
-      if (!mounted) {
+      if (!mounted || seq != _requestSeq || generation != widget.generation) {
         return;
       }
       setState(() {

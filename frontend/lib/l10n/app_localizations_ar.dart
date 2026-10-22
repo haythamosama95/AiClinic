@@ -515,4 +515,125 @@ class AppLocalizationsAr extends AppLocalizations {
   @override
   String get aiBillingErrorRateLimited =>
       'طلبات الفوترة كثيرة جدًا. حاول مرة أخرى لاحقًا.';
+
+  @override
+  String get aiBillingRefresh => 'تحديث الفوترة';
+
+  @override
+  String get aiBillingProjectionPending =>
+      'تم طلب تحديث التغطية. قد يستغرق ظهور الخطة والأرصدة بضع دقائق. حدّث الصفحة للتحقق مرة أخرى.';
+
+  @override
+  String get aiBillingProjectionPullFailed =>
+      'تعذّر طلب تحديث التغطية. حدّث الصفحة للمحاولة مرة أخرى.';
+
+  @override
+  String get aiBillingNoticeDuplicatePayment =>
+      'يبدو أن دفعة لهذه العيادة مكررة وهي قيد المراجعة. تواصل مع الدعم إذا تم خصم المبلغ مرتين.';
+
+  @override
+  String get aiBillingNoticeLatePaymentHonoured =>
+      'وصلت دفعة بعد نافذة الدفع الخاصة بها وتم اعتمادها.';
+
+  @override
+  String get aiBillingNoticePaymentWithheld =>
+      'تم حجز دفعة لأن تفاصيلها لم تتطابق. تواصل مع الدعم لحلها.';
+
+  @override
+  String get aiBillingNoticeReversalRecorded =>
+      'تم تسجيل عكس دفعة لهذه العيادة. راجع التغطية وتواصل مع الدعم إذا بدت غير صحيحة.';
+
+  @override
+  String get aiBillingNoticeTermsHeld =>
+      'بعض شروط الاشتراك معلّقة ولن تسري حتى يتم الإفراج عنها.';
+
+  @override
+  String get aiNoticeUnavailable => 'معلومات الحالة غير متاحة حاليًا.';
+
+  @override
+  String get aiNoticeAskAdministrator => 'راجع مسؤول العيادة';
+
+  @override
+  String get aiNoticeEndsSoonAdmin =>
+      'ستنتهي تغطية الذكاء الاصطناعي قريبًا. جدّد الاشتراك لتجنب انقطاع الخدمة.';
+
+  @override
+  String get aiNoticeEndsSoonStaff => 'ستنتهي تغطية الذكاء الاصطناعي قريبًا.';
+
+  @override
+  String aiNoticeInGraceAdmin(int days) {
+    String _temp0 = intl.Intl.pluralLogic(
+      days,
+      locale: localeName,
+      other: '$days يوم متبقٍ',
+      many: '$days يومًا متبقيًا',
+      few: '$days أيام متبقية',
+      two: 'يومان متبقيان',
+      one: 'يوم واحد متبقٍ',
+      zero: 'أقل من يوم واحد متبقٍ',
+    );
+    return 'تغطية الذكاء الاصطناعي في فترة السماح: $_temp0. جدّد للحفاظ على إمكانية استخدام الذكاء الاصطناعي.';
+  }
+
+  @override
+  String aiNoticeInGraceStaff(int days) {
+    String _temp0 = intl.Intl.pluralLogic(
+      days,
+      locale: localeName,
+      other: '$days يوم متبقٍ',
+      many: '$days يومًا متبقيًا',
+      few: '$days أيام متبقية',
+      two: 'يومان متبقيان',
+      one: 'يوم واحد متبقٍ',
+      zero: 'أقل من يوم واحد متبقٍ',
+    );
+    return 'تغطية الذكاء الاصطناعي في فترة السماح: $_temp0.';
+  }
+
+  @override
+  String get aiNoticeAllowanceLowAdmin =>
+      'استُخدم معظم أرصدة الذكاء الاصطناعي لهذه العيادة. جدّد أو أضف رصيدًا قبل نفاده.';
+
+  @override
+  String get aiNoticeAllowanceLowStaff =>
+      'أرصدة الذكاء الاصطناعي على وشك النفاد.';
+
+  @override
+  String get aiNoticeAllowanceExhaustedAdmin =>
+      'نفدت أرصدة الذكاء الاصطناعي لهذه العيادة. جدّد لمتابعة الاستخدام.';
+
+  @override
+  String get aiNoticeAllowanceExhaustedStaff =>
+      'نفدت أرصدة الذكاء الاصطناعي لهذه العيادة.';
+
+  @override
+  String get aiNoticeLapsedAdmin =>
+      'انتهت تغطية الذكاء الاصطناعي. جدّد لاستخدامه مرة أخرى.';
+
+  @override
+  String get aiNoticeLapsedStaff => 'انتهت تغطية الذكاء الاصطناعي.';
+
+  @override
+  String get aiNoticeEndedReversedAdmin =>
+      'انتهت تغطية الذكاء الاصطناعي بعد عكس إنهاء خطة. تواصل مع الدعم إذا بدا ذلك غير صحيح.';
+
+  @override
+  String get aiNoticeEndedReversedStaff =>
+      'تغيّرت تغطية الذكاء الاصطناعي بعد عكس إنهاء خطة.';
+
+  @override
+  String get aiNoticeSuspendedAdmin =>
+      'الوصول إلى الذكاء الاصطناعي موقوف لهذه العيادة. تواصل مع الدعم لاستعادته.';
+
+  @override
+  String get aiNoticeSuspendedStaff =>
+      'الوصول إلى الذكاء الاصطناعي موقوف لهذه العيادة.';
+
+  @override
+  String get aiNoticeStatusStaleAdmin =>
+      'لم يتم تأكيد حالة الذكاء الاصطناعي مؤخرًا، لذا قد تكون التغطية المعروضة غير محدّثة.';
+
+  @override
+  String get aiNoticeStatusStaleStaff =>
+      'قد تكون حالة الذكاء الاصطناعي غير محدّثة.';
 }

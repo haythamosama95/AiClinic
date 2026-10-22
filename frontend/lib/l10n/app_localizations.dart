@@ -1063,6 +1063,162 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Too many billing requests. Try again later.'**
   String get aiBillingErrorRateLimited;
+
+  /// No description provided for @aiBillingRefresh.
+  ///
+  /// In en, this message translates to:
+  /// **'Refresh billing'**
+  String get aiBillingRefresh;
+
+  /// No description provided for @aiBillingProjectionPending.
+  ///
+  /// In en, this message translates to:
+  /// **'Coverage update requested. Your plan and credits may take a few minutes to appear. Refresh to check again.'**
+  String get aiBillingProjectionPending;
+
+  /// No description provided for @aiBillingProjectionPullFailed.
+  ///
+  /// In en, this message translates to:
+  /// **'Coverage update could not be requested. Refresh to try again.'**
+  String get aiBillingProjectionPullFailed;
+
+  /// No description provided for @aiBillingNoticeDuplicatePayment.
+  ///
+  /// In en, this message translates to:
+  /// **'A payment for this clinic looks like a duplicate and is under review. Contact support if you were charged twice.'**
+  String get aiBillingNoticeDuplicatePayment;
+
+  /// No description provided for @aiBillingNoticeLatePaymentHonoured.
+  ///
+  /// In en, this message translates to:
+  /// **'A payment arrived after its checkout window and was honoured.'**
+  String get aiBillingNoticeLatePaymentHonoured;
+
+  /// No description provided for @aiBillingNoticePaymentWithheld.
+  ///
+  /// In en, this message translates to:
+  /// **'A payment is withheld because its details did not match. Contact support to resolve it.'**
+  String get aiBillingNoticePaymentWithheld;
+
+  /// No description provided for @aiBillingNoticeReversalRecorded.
+  ///
+  /// In en, this message translates to:
+  /// **'A payment reversal was recorded for this clinic. Check coverage and contact support if it looks wrong.'**
+  String get aiBillingNoticeReversalRecorded;
+
+  /// No description provided for @aiBillingNoticeTermsHeld.
+  ///
+  /// In en, this message translates to:
+  /// **'Some subscription terms are on hold and will not take effect until they are released.'**
+  String get aiBillingNoticeTermsHeld;
+
+  /// No description provided for @aiNoticeUnavailable.
+  ///
+  /// In en, this message translates to:
+  /// **'Status information is unavailable right now.'**
+  String get aiNoticeUnavailable;
+
+  /// No description provided for @aiNoticeAskAdministrator.
+  ///
+  /// In en, this message translates to:
+  /// **'ask your administrator'**
+  String get aiNoticeAskAdministrator;
+
+  /// No description provided for @aiNoticeEndsSoonAdmin.
+  ///
+  /// In en, this message translates to:
+  /// **'Your AI coverage ends soon. Renew to avoid an interruption.'**
+  String get aiNoticeEndsSoonAdmin;
+
+  /// No description provided for @aiNoticeEndsSoonStaff.
+  ///
+  /// In en, this message translates to:
+  /// **'AI coverage ends soon.'**
+  String get aiNoticeEndsSoonStaff;
+
+  /// No description provided for @aiNoticeInGraceAdmin.
+  ///
+  /// In en, this message translates to:
+  /// **'Your AI coverage is in its grace period: {days, plural, =0{less than one day left} =1{1 day left} other{{days} days left}}. Renew to keep AI available.'**
+  String aiNoticeInGraceAdmin(int days);
+
+  /// No description provided for @aiNoticeInGraceStaff.
+  ///
+  /// In en, this message translates to:
+  /// **'AI coverage is in its grace period: {days, plural, =0{less than one day left} =1{1 day left} other{{days} days left}}.'**
+  String aiNoticeInGraceStaff(int days);
+
+  /// No description provided for @aiNoticeAllowanceLowAdmin.
+  ///
+  /// In en, this message translates to:
+  /// **'Most of this clinic\'s AI credits are used. Renew or add credits before they run out.'**
+  String get aiNoticeAllowanceLowAdmin;
+
+  /// No description provided for @aiNoticeAllowanceLowStaff.
+  ///
+  /// In en, this message translates to:
+  /// **'AI credits are running low.'**
+  String get aiNoticeAllowanceLowStaff;
+
+  /// No description provided for @aiNoticeAllowanceExhaustedAdmin.
+  ///
+  /// In en, this message translates to:
+  /// **'This clinic\'s AI credits are used up. Renew to keep using AI.'**
+  String get aiNoticeAllowanceExhaustedAdmin;
+
+  /// No description provided for @aiNoticeAllowanceExhaustedStaff.
+  ///
+  /// In en, this message translates to:
+  /// **'AI credits for this clinic are used up.'**
+  String get aiNoticeAllowanceExhaustedStaff;
+
+  /// No description provided for @aiNoticeLapsedAdmin.
+  ///
+  /// In en, this message translates to:
+  /// **'AI coverage has lapsed. Renew to use AI again.'**
+  String get aiNoticeLapsedAdmin;
+
+  /// No description provided for @aiNoticeLapsedStaff.
+  ///
+  /// In en, this message translates to:
+  /// **'AI coverage has lapsed.'**
+  String get aiNoticeLapsedStaff;
+
+  /// No description provided for @aiNoticeEndedReversedAdmin.
+  ///
+  /// In en, this message translates to:
+  /// **'AI coverage ended after a plan ending was reversed. Contact support if it looks wrong.'**
+  String get aiNoticeEndedReversedAdmin;
+
+  /// No description provided for @aiNoticeEndedReversedStaff.
+  ///
+  /// In en, this message translates to:
+  /// **'AI coverage changed after a plan ending was reversed.'**
+  String get aiNoticeEndedReversedStaff;
+
+  /// No description provided for @aiNoticeSuspendedAdmin.
+  ///
+  /// In en, this message translates to:
+  /// **'AI access is suspended for this clinic. Contact support to restore it.'**
+  String get aiNoticeSuspendedAdmin;
+
+  /// No description provided for @aiNoticeSuspendedStaff.
+  ///
+  /// In en, this message translates to:
+  /// **'AI access is suspended for this clinic.'**
+  String get aiNoticeSuspendedStaff;
+
+  /// No description provided for @aiNoticeStatusStaleAdmin.
+  ///
+  /// In en, this message translates to:
+  /// **'AI status could not be confirmed recently, so the coverage shown may be out of date.'**
+  String get aiNoticeStatusStaleAdmin;
+
+  /// No description provided for @aiNoticeStatusStaleStaff.
+  ///
+  /// In en, this message translates to:
+  /// **'AI status may be out of date.'**
+  String get aiNoticeStatusStaleStaff;
 }
 
 class _AppLocalizationsDelegate

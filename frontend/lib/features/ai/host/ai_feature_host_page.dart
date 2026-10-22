@@ -15,6 +15,7 @@ import 'package:ai_clinic/core/ai/taxonomy.dart';
 import 'package:ai_clinic/core/ai/usage_summary_client.dart';
 import 'package:ai_clinic/core/ui/components/app_button.dart';
 import 'package:ai_clinic/core/ui/theme/app_typography.dart';
+import 'package:ai_clinic/l10n/app_localizations.dart';
 
 import '../availability/ai_availability.dart';
 import '../availability/ai_status_snapshot.dart';
@@ -685,6 +686,8 @@ class _AiStatusNoticeBanner extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context)!;
+    final message = _statusNoticeText(l10n, notice, administrator: staffIsAdministrator);
     if (staffIsAdministrator) {
       return Padding(
         padding: const EdgeInsets.only(bottom: 8),
@@ -692,7 +695,7 @@ class _AiStatusNoticeBanner extends StatelessWidget {
           children: [
             Expanded(
               child: Text(
-                notice.code,
+                message,
                 style: AppTypography.bodySm(context),
               ),
             ),
@@ -708,10 +711,43 @@ class _AiStatusNoticeBanner extends StatelessWidget {
 
     return Padding(
       padding: const EdgeInsets.only(bottom: 8),
-      child: Text(
-        'ask your administrator',
-        style: AppTypography.bodySm(context),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(message, style: AppTypography.bodySm(context)),
+          Text(l10n.aiNoticeAskAdministrator, style: AppTypography.bodySm(context)),
+        ],
       ),
     );
   }
+}
+
+/// R7-UI3: maps each 04 §3.2 status code to its audience-specific localized wording. The wire code
+/// is never printed. `in_grace` uses `grace_days_left`; zero renders as less than one day. A
+/// missing grace value or an unknown code gets the neutral status-unavailable text.
+String _statusNoticeText(
+  AppLocalizations l10n,
+  AiStatusNotice notice, {
+  required bool administrator,
+}) {
+  if (notice.code == 'in_grace') {
+    final graceDaysLeft = notice.graceDaysLeft;
+    if (graceDaysLeft == null || graceDaysLeft < 0) {
+      return l10n.aiNoticeUnavailable;
+    }
+    return administrator
+        ? l10n.aiNoticeInGraceAdmin(graceDaysLeft)
+        : l10n.aiNoticeInGraceStaff(graceDaysLeft);
+  }
+  return switch (notice.code) {
+    'ends_soon' => administrator ? l10n.aiNoticeEndsSoonAdmin : l10n.aiNoticeEndsSoonStaff,
+    'allowance_low' => administrator ? l10n.aiNoticeAllowanceLowAdmin : l10n.aiNoticeAllowanceLowStaff,
+    'allowance_exhausted' =>
+      administrator ? l10n.aiNoticeAllowanceExhaustedAdmin : l10n.aiNoticeAllowanceExhaustedStaff,
+    'lapsed' => administrator ? l10n.aiNoticeLapsedAdmin : l10n.aiNoticeLapsedStaff,
+    'ended_reversed' => administrator ? l10n.aiNoticeEndedReversedAdmin : l10n.aiNoticeEndedReversedStaff,
+    'suspended' => administrator ? l10n.aiNoticeSuspendedAdmin : l10n.aiNoticeSuspendedStaff,
+    'status_stale' => administrator ? l10n.aiNoticeStatusStaleAdmin : l10n.aiNoticeStatusStaleStaff,
+    _ => l10n.aiNoticeUnavailable,
+  };
 }
