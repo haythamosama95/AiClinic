@@ -65,6 +65,19 @@ async function insertProviderKillSwitch(providerId: string): Promise<void> {
   clearConfigCache();
 }
 
+/** R8-PUB1: the stored content key is the routing_policy row's digest-keyed content_pointer. */
+async function pointerFor(policyId: string, version: string): Promise<string> {
+  const row = await env.DB.prepare(
+    "SELECT content_pointer FROM routing_policy WHERE policy_id = ? AND version = ?",
+  )
+    .bind(policyId, version)
+    .first<{ content_pointer: string }>();
+  if (!row) {
+    throw new Error(`routing_policy row not found: ${policyId}@${version}`);
+  }
+  return row.content_pointer;
+}
+
 describe("routing policy traffic", () => {
   it("SYS-4.1 — Publish validation & immutability", async () => {
     const probePolicyId = "probe-publish";
@@ -103,9 +116,11 @@ describe("routing policy traffic", () => {
     expect(stringVersion.json.error).toBe("invalid_policy_identity");
 
     expect(await count("routing_policy")).toBe(0);
-    expect(
-      await r2Exists(`control/routing-policy/${probePolicyId}/${version}.json`),
-    ).toBe(false);
+    // R8-PUB1: no digest-keyed content object exists under the version prefix before publish.
+    const preList = await env.R2.list({
+      prefix: `control/routing-policy/${probePolicyId}/${version}/`,
+    });
+    expect(preList.objects).toHaveLength(0);
 
     const legacyPublish = await SELF.fetch(
       new Request(
@@ -132,9 +147,7 @@ describe("routing policy traffic", () => {
     expect(unreferenced.status).toBe(200);
     expect(unreferenced.json.warnings).toEqual(["unreferenced_policy"]);
     expect(
-      await r2Exists(
-        `control/routing-policy/${unreferencedPolicyId}/${version}.json`,
-      ),
+      await r2Exists(await pointerFor(unreferencedPolicyId, version)),
     ).toBe(true);
     expect(
       await count("routing_policy", "policy_id = ? AND version = ?", [
@@ -146,7 +159,7 @@ describe("routing policy traffic", () => {
     const first = await publishPolicy(probePolicyId, version, validDocument);
     expect(first.status).toBe(200);
 
-    const pointer = `control/routing-policy/${probePolicyId}/${version}.json`;
+    const pointer = await pointerFor(probePolicyId, version);
     const storedBefore = await getR2Json(pointer);
     expect(storedBefore.policy_id).toBe(probePolicyId);
 
@@ -244,9 +257,10 @@ describe("routing policy traffic", () => {
       .run();
     clearConfigCache();
 
+    // R8-ROLLBACK1: the predecessor of v2 is not recorded as known, so rollback to "1" is refused.
     const rollbackNoSuperseded = await rollback(POLICY_ID, "1");
     expect(rollbackNoSuperseded.status).toBe(409);
-    expect(rollbackNoSuperseded.json.error).toBe("illegal_policy_transition");
+    expect(rollbackNoSuperseded.json.error).toBe("rollback_predecessor_unknown");
   });
 
   it("SYS-4.4 — Version tie-break", async () => {
@@ -270,6 +284,7 @@ describe("routing policy traffic", () => {
     }
 
     const equalActiveFrom = "2026-08-03T12:00:00.000Z";
+    // R8-ROLLBACK1: rollback reads the activation record, so name 11 as active with a known predecessor.
     await env.DB.prepare(
       `UPDATE routing_policy
        SET active_from = ?
@@ -286,6 +301,13 @@ describe("routing policy traffic", () => {
     await env.DB.prepare(
       `UPDATE routing_policy SET status = 'active'
        WHERE policy_id = ? AND version = '11'`,
+    )
+      .bind(POLICY_ID)
+      .run();
+    clearConfigCache();
+
+    await env.DB.prepare(
+      "UPDATE routing_policy_activation SET active_version='11', predecessor_version='10', predecessor_state='known' WHERE policy_id=?",
     )
       .bind(POLICY_ID)
       .run();
@@ -335,7 +357,7 @@ describe("routing policy traffic", () => {
     expect(await r2Exists(pointer)).toBe(true);
   });
 
-  it("SYS-4.6 — Fail-closed target filters", async () => {
+  it("SYS-4.6 — Fail-closed target filters (R8-ROUTE1: malformed document rejected at publish)", async () => {
     const scenario = await newScenario();
     await coverClinic(scenario);
     await newClinic(scenario);
@@ -378,7 +400,8 @@ describe("routing policy traffic", () => {
       ],
     });
     const malformed = await publishPolicy(POLICY_ID, "21", malformedLanguagesDocument);
-    expect(malformed.status).toBe(422);
+    // R8-ROUTE1: the strict parser rejects at publish; the system harness maps invalid_policy_document to 400.
+    expect(malformed.status).toBe(400);
     expect(malformed.json).toEqual({ error: "invalid_policy_document" });
 
     const latencyDocument = fakePolicyDocument(POLICY_ID, "22", {

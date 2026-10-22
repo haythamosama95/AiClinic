@@ -1481,9 +1481,15 @@ describe("routing_policy_publish_document_validation", () => {
       .bind(unreferencedPolicyId, FIXTURE_VERSION_V1)
       .first<{ count: number }>();
     expect(stored?.count ?? 0).toBe(1);
-    const object = await env.R2.get(
-      `control/routing-policy/${unreferencedPolicyId}/${FIXTURE_VERSION_V1}.json`,
+    // R8-ROUTE1/R8-PUB1: content lives at the digest-keyed pointer on the row.
+    const pointerRow = await env.DB
+      .prepare("SELECT content_pointer FROM routing_policy WHERE policy_id = ? AND version = ?")
+      .bind(unreferencedPolicyId, FIXTURE_VERSION_V1)
+      .first<{ content_pointer: string }>();
+    expect(pointerRow?.content_pointer).toMatch(
+      new RegExp(`^control/routing-policy/${unreferencedPolicyId}/${FIXTURE_VERSION_V1}/sha256-[0-9a-f]{64}\\.json$`),
     );
+    const object = await env.R2.get(pointerRow!.content_pointer);
     expect(object).not.toBeNull();
     const published = JSON.parse(await object!.text()) as { policy_id: string };
     expect(published.policy_id).toBe(unreferencedPolicyId);
@@ -1845,7 +1851,7 @@ describe("routing_policy_control_robustness", () => {
     expect(active?.version).toBe("11");
   });
 
-  it("promote audit before_pointer uses later rowid when two actives share active_from", async () => {
+  it("R8-ROLLBACK1: promote audit before_pointer comes from the activation record", async () => {
     const operatorAuth = createFakeOperatorAuth();
     const bindings = { DB: env.DB, R2: env.R2 };
     const { handleRoutingPolicyPublish, handleRoutingPolicyPromote } =
@@ -1866,6 +1872,16 @@ describe("routing_policy_control_robustness", () => {
          ) VALUES (?, '10', 'control/routing-policy/standard/10.json', ?, ?, NULL, 'active')`,
       ).bind(FIXTURE_POLICY_ID, sameFrom, FAKE_OPERATOR_ID),
     ]);
+    // R8-ROLLBACK1: the activation record, not active_from ordering, names the
+    // currently active version (10) that promote 11 supersedes.
+    await env.DB
+      .prepare(
+        `INSERT OR REPLACE INTO routing_policy_activation (
+           policy_id, generation, active_version, predecessor_version, predecessor_state
+         ) VALUES (?, 0, '10', '9', 'known')`,
+      )
+      .bind(FIXTURE_POLICY_ID)
+      .run();
 
     const publish = await handleRoutingPolicyPublish(
       buildPublishRequest( policyDocument(11, "deepseek")),

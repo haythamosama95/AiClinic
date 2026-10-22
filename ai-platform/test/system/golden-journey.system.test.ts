@@ -290,9 +290,13 @@ describe("golden journey", () => {
       .bind(POLICY_ID, POLICY_VERSION)
       .first<{ status: string; content_pointer: string }>();
     expect(policy?.status).toBe("published");
-    expect(policy?.content_pointer).toBe(
-      `control/routing-policy/${POLICY_ID}/${POLICY_VERSION}.json`,
+    // R8-PUB1: content is keyed by digest under a per-version prefix.
+    expect(policy?.content_pointer).toMatch(
+      new RegExp(
+        `^control/routing-policy/${POLICY_ID}/${POLICY_VERSION}/sha256-[0-9a-f]{64}\\.json$`,
+      ),
     );
+    expect(await r2Exists(policy!.content_pointer)).toBe(true);
     const stored = await getR2Json(policy!.content_pointer);
     expect(stored.policy_id).toBe(POLICY_ID);
 

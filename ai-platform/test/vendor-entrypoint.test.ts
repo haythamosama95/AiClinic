@@ -7,6 +7,10 @@ import tokenContractMigrationSql from "../migrations/20260803120000_token_contra
 import issuerKeyTenantBindingMigrationSql from "../migrations/20261003130000_issuer_key_tenant_binding.sql?raw";
 import operatorCredentialMigrationSql from "../migrations/20261003120000_operator_credential_and_platform_alert.sql?raw";
 import rm31AlertDeliverySql from "../migrations/20261021130000_rm31_alert_delivery.sql?raw";
+import routingPolicyCanarySql from "../migrations/20260803100000_routing_policy_canary.sql?raw";
+import routingPolicyStatusSql from "../migrations/20260805190000_routing_policy_status.sql?raw";
+import rm33RoutingIntegritySql from "../migrations/20261021140000_rm33_routing_configuration_integrity.sql?raw";
+import rm33ActivationGenerationSql from "../migrations/20261021150000_rm33_routing_activation_generation.sql?raw";
 import { applySqlStatements } from "./split-sql-statements";
 
 declare module "cloudflare:test" {
@@ -92,6 +96,10 @@ beforeAll(async () => {
   await applySql(env.DB, issuerKeyTenantBindingMigrationSql);
   await applySql(env.DB, operatorCredentialMigrationSql);
   await applySql(env.DB, rm31AlertDeliverySql);
+  await applySql(env.DB, routingPolicyCanarySql);
+  await applySql(env.DB, routingPolicyStatusSql);
+  await applySql(env.DB, rm33RoutingIntegritySql);
+  await applySql(env.DB, rm33ActivationGenerationSql);
   await env.DB.prepare(
     `INSERT OR IGNORE INTO token_contract (ver, added_at, retired_at, changed_by)
      VALUES ('1', '2026-08-03T00:00:00.000Z', NULL, 'seed')`,
@@ -167,6 +175,25 @@ describe("class_h_vendor_entrypoint", () => {
   });
 
   it("R8-PUB1: canary, promote and rollback handlers pass the R2 binding", async () => {
+    // Seed the installation and policy chain so each handler reaches the R2 check
+    // instead of returning installation_not_found or policy_version_not_found early.
+    await env.DB.prepare(
+      `INSERT OR IGNORE INTO installation (
+        installation_id, org_id, display_name, status, region, enrolled_at
+      ) VALUES ('inst-r2-binding-probe', 'org-r2-probe', 'R2 probe', 'active', 'us-east-1', '2026-08-03T00:00:00.000Z')`,
+    ).run();
+    await env.DB.prepare(
+      `INSERT OR IGNORE INTO routing_policy (
+        policy_id, version, content_pointer, active_from, activated_by
+      ) VALUES ('standard', '1',
+        'control/routing-policy/standard/1/sha256-${"0".repeat(64)}.json',
+        '2026-08-03T00:00:00.000Z', 'seed')`,
+    ).run();
+    await env.DB.prepare(
+      `INSERT OR IGNORE INTO routing_policy_activation (
+        policy_id, generation, active_version, predecessor_version, predecessor_state
+      ) VALUES ('standard', 0, NULL, NULL, 'unknown')`,
+    ).run();
     const accessJwt = await mintAccessJwt();
     const args = {
       contract_version: CONTRACT_VERSION,
@@ -182,6 +209,8 @@ describe("class_h_vendor_entrypoint", () => {
     ];
     for (const envelope of await Promise.all(handlers)) {
       expect(envelope.code).not.toBe("missing_r2_binding");
+      expect(envelope.code).not.toBe("installation_not_found");
+      expect(envelope.code).not.toBe("policy_version_not_found");
     }
   });
 });
