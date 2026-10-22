@@ -211,6 +211,27 @@ describe("R8-ROLLBACK1: routing activation generation fencing", () => {
     expect(await auditCount("routing_policy_promote", `${POLICY_ID}@2`)).toBe(0);
   });
 
+  it("R8-ROLLBACK1: second rollback with predecessor none returns a conflict", async () => {
+    // A first version promoted with no prior active version records predecessor_state 'none'.
+    await publish(1, "deepseek");
+    expect((await promoteRoutingPolicyAction(bindings(), OPERATOR, POLICY_ID, "1")).ok).toBe(true);
+    const predecessorState = await env.DB
+      .prepare(`SELECT predecessor_state FROM routing_policy_activation WHERE policy_id = ?`)
+      .bind(POLICY_ID)
+      .first<{ predecessor_state: string }>();
+    expect(predecessorState?.predecessor_state).toBe("none");
+    const generationBefore = await generationOf();
+
+    const first = await rollbackRoutingPolicyAction(bindings(), OPERATOR, POLICY_ID, "1");
+    expect(first).toEqual({ ok: false, status: 409, error: "illegal_policy_transition" });
+    const second = await rollbackRoutingPolicyAction(bindings(), OPERATOR, POLICY_ID, "1");
+    expect(second).toEqual({ ok: false, status: 409, error: "illegal_policy_transition" });
+
+    expect(await activeVersion()).toBe("1");
+    expect(await generationOf()).toBe(generationBefore);
+    expect(await auditCount("routing_policy_rollback", `${POLICY_ID}@1`)).toBe(0);
+  });
+
   it("R8-ROLLBACK1: promotion records the predecessor and fresh generation", async () => {
     await publish(1, "deepseek");
     await publish(2, "gemini");

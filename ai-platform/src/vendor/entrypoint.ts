@@ -6937,7 +6937,7 @@ export class VendorEntrypoint extends WorkerEntrypoint<VendorEnv> {
       const cohortName =
         typeof args.cohort_name === "string" ? args.cohort_name : undefined;
       const result = await canaryRoutingPolicyAction(
-        { DB: this.env.DB },
+        { DB: this.env.DB, R2: this.env.R2 },
         email,
         policyId,
         policyVersion,
@@ -6957,11 +6957,21 @@ export class VendorEntrypoint extends WorkerEntrypoint<VendorEnv> {
       if (typeof policyId !== "string" || typeof policyVersion !== "string") {
         return rejected(version, "bad_request");
       }
+      const expectedGeneration = args.expected_generation as number | undefined;
+      if (
+        expectedGeneration !== undefined &&
+        (typeof expectedGeneration !== "number" ||
+          !Number.isInteger(expectedGeneration) ||
+          expectedGeneration <= 0)
+      ) {
+        return rejected(version, "bad_request");
+      }
       const result = await promoteRoutingPolicyAction(
-        { DB: this.env.DB },
+        { DB: this.env.DB, R2: this.env.R2 },
         email,
         policyId,
         policyVersion,
+        expectedGeneration,
       );
       return envelopeFromControlResult(version, result);
     });
@@ -6976,11 +6986,21 @@ export class VendorEntrypoint extends WorkerEntrypoint<VendorEnv> {
       if (typeof policyId !== "string" || typeof policyVersion !== "string") {
         return rejected(version, "bad_request");
       }
+      const expectedGeneration = args.expected_generation as number | undefined;
+      if (
+        expectedGeneration !== undefined &&
+        (typeof expectedGeneration !== "number" ||
+          !Number.isInteger(expectedGeneration) ||
+          expectedGeneration <= 0)
+      ) {
+        return rejected(version, "bad_request");
+      }
       const result = await rollbackRoutingPolicyAction(
-        { DB: this.env.DB },
+        { DB: this.env.DB, R2: this.env.R2 },
         email,
         policyId,
         policyVersion,
+        expectedGeneration,
       );
       return envelopeFromControlResult(version, result);
     });

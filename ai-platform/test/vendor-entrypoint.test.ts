@@ -29,6 +29,27 @@ declare module "cloudflare:test" {
         code: string;
         detail: string;
       }>;
+      canaryRoutingPolicy(
+        args: Record<string, unknown>,
+      ): Promise<{
+        result: string;
+        code: string;
+        detail: string;
+      }>;
+      promoteRoutingPolicy(
+        args: Record<string, unknown>,
+      ): Promise<{
+        result: string;
+        code: string;
+        detail: string;
+      }>;
+      rollbackRoutingPolicy(
+        args: Record<string, unknown>,
+      ): Promise<{
+        result: string;
+        code: string;
+        detail: string;
+      }>;
     };
   }
 }
@@ -143,5 +164,24 @@ describe("class_h_vendor_entrypoint", () => {
     });
     expect(envelope.result).not.toBe("ok");
     expect(envelope.code).toBe("missing_document");
+  });
+
+  it("R8-PUB1: canary, promote and rollback handlers pass the R2 binding", async () => {
+    const accessJwt = await mintAccessJwt();
+    const args = {
+      contract_version: CONTRACT_VERSION,
+      access_jwt: accessJwt,
+      policy_id: "standard",
+      version: "1",
+      installation_ids: ["inst-r2-binding-probe"],
+    };
+    const handlers = [
+      env.VENDOR.canaryRoutingPolicy(args),
+      env.VENDOR.promoteRoutingPolicy(args),
+      env.VENDOR.rollbackRoutingPolicy(args),
+    ];
+    for (const envelope of await Promise.all(handlers)) {
+      expect(envelope.code).not.toBe("missing_r2_binding");
+    }
   });
 });
