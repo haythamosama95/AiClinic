@@ -1847,7 +1847,8 @@ describe("P4.11 digest, watch, housekeeping, rebuild (H-XW)", () => {
     const row = await scheduledJobRow("digest");
     expect(row.last_succeeded_period).toBeNull();
     expect(row.next_attempt_at).toBeNull();
-    expect(row.last_started_at).toBeNull();
+    // The seed carries the previous day's start; no new start was recorded.
+    expect(row.last_started_at).toBe("2026-06-14T06:00:00.000Z");
   });
 
   it("FV-P3 repeated minute ticks keep one alert row and send one alert email", async () => {
