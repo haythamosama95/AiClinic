@@ -1511,6 +1511,14 @@ async function manualBasisCount(): Promise<number> {
   return row?.n ?? 0;
 }
 
+async function alertSnapshot(findingId: string): Promise<unknown> {
+  return env.DB.prepare(
+    `SELECT active, unsent, last_sent_at, next_send_at FROM alert WHERE alert_key = ?`,
+  )
+    .bind(`AL-10:${findingId}`)
+    .first();
+}
+
 async function alertActive(findingId: string): Promise<number | null> {
   const row = await env.DB.prepare(`SELECT active FROM alert WHERE alert_key = ?`)
     .bind(`AL-10:${findingId}`)
@@ -2254,6 +2262,7 @@ describe("reconciliation cross-worker", () => {
     }
     expect(await findingResolutionCount(finding!.finding_id)).toBe(1);
     expect(await alertActive(finding!.finding_id)).toBe(0);
+    const quietAlert = await alertSnapshot(finding!.finding_id);
 
     await setClock("2026-06-02T12:00:00.000Z");
     await runDailyReconciliation();
@@ -2261,8 +2270,9 @@ describe("reconciliation cross-worker", () => {
     await runDailyReconciliation();
     expect(await findingCount("unrecorded_reversal")).toBe(1);
     expect(await findingResolutionCount(finding!.finding_id)).toBe(1);
+    // Unrelated findings of the harness may still alert; this finding's alert row is unchanged.
+    expect(await alertSnapshot(finding!.finding_id)).toEqual(quietAlert);
     expect(await alertActive(finding!.finding_id)).toBe(0);
-    expect(capturedEmailMentions("AL-10")).toBe(false);
     expect(await payoutReversalLinkCount()).toBe(1);
     expect(await manualBasisCount()).toBe(1);
     // The link records evidence only: it creates no reversal and no void.
@@ -2593,13 +2603,14 @@ describe("reconciliation cross-worker", () => {
     expect(linked.status).toBe(200);
     expect(await findingResolutionCount(finding!.finding_id)).toBe(1);
     expect(await alertActive(finding!.finding_id)).toBe(0);
+    const quietAlert = await alertSnapshot(finding!.finding_id);
 
     await setClock("2026-06-02T12:00:00.000Z");
     await runDailyReconciliation();
     expect(await findingCount("unrecorded_reversal")).toBe(1);
     expect(await findingResolutionCount(finding!.finding_id)).toBe(1);
+    expect(await alertSnapshot(finding!.finding_id)).toEqual(quietAlert);
     expect(await alertActive(finding!.finding_id)).toBe(0);
-    expect(capturedEmailMentions("AL-10")).toBe(false);
   });
 
   it("E2E-P4.10-06 payout amount mismatch and omitted payment raise payout findings", async () => {
