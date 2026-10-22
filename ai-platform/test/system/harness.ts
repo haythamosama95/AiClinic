@@ -78,6 +78,8 @@ import quotaWeightMigrationSql from "../../migrations/20260911180000_usage_rollu
 import invoiceMigrationSql from "../../migrations/20260911200000_invoice.sql?raw";
 import operatorCredentialMigrationSql from "../../migrations/20261003120000_operator_credential_and_platform_alert.sql?raw";
 import rm31AlertDeliverySql from "../../migrations/20261021130000_rm31_alert_delivery.sql?raw";
+import rm33RoutingConfigurationIntegritySql from "../../migrations/20261021140000_rm33_routing_configuration_integrity.sql?raw";
+import rm33RoutingActivationGenerationSql from "../../migrations/20261021150000_rm33_routing_activation_generation.sql?raw";
 import issuerKeyTenantBindingMigrationSql from "../../migrations/20261003130000_issuer_key_tenant_binding.sql?raw";
 import planVersionPaidGrantCoverageMigrationSql from "../../migrations/20261003140000_plan_version_paid_grant_coverage.sql?raw";
 import usageTermMigrationSql from "../../migrations/20261006120000_usage_term.sql?raw";
@@ -306,6 +308,8 @@ const MIGRATION_SQL = [
   rm27DurableDeletionSql,
   rm30UsageAccountingMigrationSql,
   rm31AlertDeliverySql,
+  rm33RoutingConfigurationIntegritySql,
+  rm33RoutingActivationGenerationSql,
 ];
 
 const CATALOGUE_PLAN_NAME = "standard";
