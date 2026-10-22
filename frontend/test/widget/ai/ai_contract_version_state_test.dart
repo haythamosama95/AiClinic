@@ -313,7 +313,10 @@ class _ContractVersionHttpClient extends http.BaseClient {
       return http.StreamedResponse(
         Stream.value(utf8.encode(payload)),
         200,
-        headers: {'content-type': 'text/event-stream'},
+        headers: {
+          'content-type': 'text/event-stream',
+          'aip-contract-version': '$platformClinic',
+        },
       );
     }
 

@@ -84,6 +84,8 @@ class _FakeDiscoveryHttpClient extends http.BaseClient {
   Future<http.StreamedResponse> send(http.BaseRequest request) async {
     return http.StreamedResponse(Stream.value(utf8.encode(body)), statusCode, headers: {
       'content-type': 'application/json',
+      // R2-C3: successful discovery replies must echo the sent platform version.
+      if (statusCode >= 200 && statusCode < 300) 'aip-contract-version': '1',
     });
   }
 }

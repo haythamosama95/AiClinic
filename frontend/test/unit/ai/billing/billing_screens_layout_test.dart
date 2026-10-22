@@ -169,6 +169,7 @@ AboClient _client(Future<http.Response> Function(http.Request) handler) {
   final tokenClient = BillingTokenClient.withRpc(
     rpc: (_, __) async => {
       'success': true,
+      'contract_version': 1,
       'data': {
         'token': 'test-token',
         'abo_base_url': 'https://abo.example',
@@ -176,7 +177,21 @@ AboClient _client(Future<http.Response> Function(http.Request) handler) {
       },
     },
   );
-  return AboClient(tokenClient: tokenClient, httpClient: MockClient(handler));
+  // R2-C3: every successful ABO reply echoes the sent Abo-Contract-Version header.
+  return AboClient(
+    tokenClient: tokenClient,
+    httpClient: MockClient((request) async {
+      final response = await handler(request);
+      if (response.statusCode < 200 || response.statusCode >= 300) {
+        return response;
+      }
+      return http.Response(
+        response.body,
+        response.statusCode,
+        headers: {...response.headers, 'abo-contract-version': '1'},
+      );
+    }),
+  );
 }
 
 Map<String, dynamic> _offer(int version) => {

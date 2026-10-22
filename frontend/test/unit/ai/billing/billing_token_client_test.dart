@@ -9,6 +9,7 @@ void main() {
         mintCount++;
         return {
           'success': true,
+          'contract_version': 1,
           'data': {
             'token': 'token-$mintCount',
             'abo_base_url': 'https://abo.example',

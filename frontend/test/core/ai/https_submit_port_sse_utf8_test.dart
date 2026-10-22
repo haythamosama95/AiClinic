@@ -17,6 +17,7 @@ class _SseClient extends http.BaseClient {
   Future<http.StreamedResponse> send(http.BaseRequest request) async {
     return http.StreamedResponse(_body, 200, headers: {
       'content-type': 'text/event-stream',
+      'aip-contract-version': '1',
     });
   }
 }

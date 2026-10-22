@@ -1,5 +1,6 @@
 import 'dart:convert';
 
+import 'package:ai_clinic/core/contract_version_guard.dart';
 import 'package:ai_clinic/core/contract_versions.dart';
 import 'package:ai_clinic/features/ai/availability/ai_availability.dart';
 import 'package:http/http.dart' as http;
@@ -61,6 +62,9 @@ class DiscoveryClient {
 
     final response = await _client.get(Uri.parse('$base/v1/capabilities'), headers: headers);
     if (response.statusCode == 304) {
+      // R2-C3: a revalidation reply must still echo the sent version before the
+      // cached manifests are reused.
+      _requireEchoedVersion(response.headers, body: null);
       return DiscoveryFetchResult(manifests: const [], etag: etag, notModified: true);
     }
 
@@ -69,6 +73,8 @@ class DiscoveryClient {
       if (decoded is! Map<String, dynamic>) {
         throw const FormatException('Discovery body is not an object');
       }
+      // R2-C3: reject unknown or mismatched versions before manifests are read or cached.
+      _requireEchoedVersion(response.headers, body: decoded);
       final manifestsRaw = decoded['manifests'];
       final manifests = manifestsRaw is List
           ? manifestsRaw
@@ -88,6 +94,19 @@ class DiscoveryClient {
     }
 
     throw _mapAuthFailure(response);
+  }
+
+  void _requireEchoedVersion(Map<String, String> headers, {Map<String, Object?>? body}) {
+    final echoed = echoesContractVersion(
+      headers: headers,
+      headerName: 'Aip-Contract-Version',
+      sent: platformClinic,
+      current: platformClinic,
+      body: body,
+    );
+    if (!echoed) {
+      throw const ContractVersionUnsupportedException();
+    }
   }
 
   DiscoveryAuthFailure _mapAuthFailure(http.Response response) {

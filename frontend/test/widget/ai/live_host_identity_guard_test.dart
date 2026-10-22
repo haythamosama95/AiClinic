@@ -31,7 +31,7 @@ const _coverageBody = {
 http.Response _coverageResponse() => http.Response(
   jsonEncode(_coverageBody),
   200,
-  headers: {'content-type': 'application/json'},
+  headers: {'content-type': 'application/json', 'aip-contract-version': '1'},
 );
 
 void main() {

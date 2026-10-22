@@ -12,6 +12,7 @@ void main() {
       final tokenClient = BillingTokenClient.withRpc(
         rpc: (_, __) async => {
           'success': true,
+          'contract_version': 1,
           'data': {
             'token': 'test-token',
             'abo_base_url': 'https://abo.example',

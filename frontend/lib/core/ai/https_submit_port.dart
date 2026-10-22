@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:convert';
 
+import 'package:ai_clinic/core/contract_version_guard.dart';
 import 'package:ai_clinic/core/contract_versions.dart';
 import 'package:ai_clinic/features/ai/availability/ai_availability.dart';
 import 'package:http/http.dart' as http;
@@ -56,6 +57,19 @@ class PlatformHttpsSubmitPort implements HttpsSubmitPort {
     if (response.statusCode < 200 || response.statusCode >= 300 || !contentType.contains('text/event-stream')) {
       final responseBody = await http.Response.fromStream(response);
       throw _mapPreStreamHttpError(responseBody);
+    }
+
+    // R2-C3: an SSE stream whose header does not echo the sent version is closed
+    // unread, so none of its events are consumed.
+    final echoed = echoesContractVersion(
+      headers: response.headers,
+      headerName: 'Aip-Contract-Version',
+      sent: platformClinic,
+      current: platformClinic,
+    );
+    if (!echoed) {
+      unawaited(response.stream.listen(null).cancel());
+      throw const ContractVersionUnsupportedException();
     }
 
     return _HttpSseConnection(response: response);

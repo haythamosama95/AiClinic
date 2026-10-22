@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:ai_clinic/core/contract_version_guard.dart';
 import 'package:ai_clinic/core/contract_versions.dart';
 import 'package:ai_clinic/core/rpc/rpc_result.dart';
 import 'package:ai_clinic/core/ui/components/app_button.dart';
@@ -345,6 +346,8 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
       params: {'p_contract_version': backendRpc},
     );
     final result = RpcResult.fromDynamic(raw);
+    // R2-C3: an unversioned or mismatched refresh reply never counts as success.
+    requireEchoedRpcContractVersion(result, sent: backendRpc, current: backendRpc);
     if (!result.success) {
       throw RpcFailure(result);
     }

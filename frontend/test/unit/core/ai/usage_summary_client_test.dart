@@ -10,7 +10,7 @@ UsageSummaryClient _clientReturning(Map<String, Object?> body) => UsageSummaryCl
     (request) async => http.Response(
       jsonEncode(body),
       200,
-      headers: {'content-type': 'application/json'},
+      headers: {'content-type': 'application/json', 'aip-contract-version': '1'},
     ),
   ),
 );

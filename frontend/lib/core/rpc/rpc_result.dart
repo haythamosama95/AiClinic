@@ -2,12 +2,22 @@ import 'dart:convert';
 
 /// Parsed response from PostgreSQL `public.rpc_result` composite type.
 class RpcResult {
-  const RpcResult({required this.success, this.data, this.errorCode, this.errorMessage});
+  const RpcResult({
+    required this.success,
+    this.data,
+    this.errorCode,
+    this.errorMessage,
+    this.contractVersion,
+  });
 
   final bool success;
   final Map<String, dynamic>? data;
   final String? errorCode;
   final String? errorMessage;
+
+  /// Version echoed by `rpc_result.contract_version` (R2-C3). Null when the
+  /// reply carries no version; versioned adapters reject that reply.
+  final int? contractVersion;
 
   static RpcResult fromDynamic(dynamic raw) {
     if (raw is RpcResult) {
@@ -20,6 +30,7 @@ class RpcResult {
         data: _coerceData(raw['data']),
         errorCode: raw['error_code']?.toString() ?? raw['errorCode']?.toString(),
         errorMessage: raw['error_message']?.toString() ?? raw['errorMessage']?.toString(),
+        contractVersion: _readVersion(raw['contract_version'] ?? raw['contractVersion']),
       );
     }
 
@@ -29,10 +40,21 @@ class RpcResult {
         data: _coerceData(raw[1]),
         errorCode: raw[2]?.toString(),
         errorMessage: raw[3]?.toString(),
+        contractVersion: raw.length >= 5 ? _readVersion(raw[4]) : null,
       );
     }
 
     throw FormatException('Unrecognized rpc_result payload: $raw');
+  }
+
+  static int? _readVersion(dynamic value) {
+    if (value is int) {
+      return value;
+    }
+    if (value is String) {
+      return int.tryParse(value.trim());
+    }
+    return null;
   }
 
   static bool _readSuccess(dynamic value) {

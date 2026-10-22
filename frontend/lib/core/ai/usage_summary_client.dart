@@ -1,6 +1,8 @@
 import 'dart:convert';
 
+import 'package:ai_clinic/core/contract_version_guard.dart';
 import 'package:ai_clinic/core/contract_versions.dart';
+import 'package:ai_clinic/features/ai/availability/ai_availability.dart';
 import 'package:http/http.dart' as http;
 
 import 'taxonomy.dart';
@@ -61,10 +63,20 @@ class UsageSummaryClient {
     );
 
     if (response.statusCode >= 200 && response.statusCode < 300) {
-      // Seam: R2-C3 response-version guard (RM37, blocked)
       final decoded = jsonDecode(response.body);
       if (decoded is! Map<String, dynamic>) {
         throw const FormatException('Coverage body is not an object');
+      }
+      // R2-C3: reject unknown or mismatched versions before any coverage field is read.
+      final echoed = echoesContractVersion(
+        headers: response.headers,
+        headerName: 'Aip-Contract-Version',
+        sent: platformClinic,
+        current: platformClinic,
+        body: decoded,
+      );
+      if (!echoed) {
+        throw const ContractVersionUnsupportedException();
       }
       final subscriptionRef = decoded['subscription_ref']?.toString();
       // Producer wire: `{subscription_ref, snapshot: {term, ...}, queued_terms, recent_terms}`.

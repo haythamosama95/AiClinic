@@ -1,3 +1,4 @@
+import 'package:ai_clinic/core/contract_version_guard.dart';
 import 'package:ai_clinic/core/contract_versions.dart';
 import 'package:ai_clinic/core/rpc/rpc_result.dart';
 import 'package:ai_clinic/features/ai/availability/ai_availability.dart';
@@ -102,6 +103,8 @@ class BillingTokenClient {
     try {
       final raw = await _rpc(rpcName, {'p_contract_version': backendRpc});
       final result = RpcResult.fromDynamic(raw);
+      // R2-C3: reject unversioned, mismatched, or refused replies before any use.
+      requireEchoedRpcContractVersion(result, sent: backendRpc, current: backendRpc);
       if (!result.success) {
         if (result.errorCode == 'CONTRACT_VERSION_UNSUPPORTED') {
           throw const ContractVersionUnsupportedException();

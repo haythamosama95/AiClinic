@@ -1,3 +1,4 @@
+import 'package:ai_clinic/core/contract_version_guard.dart';
 import 'package:ai_clinic/core/contract_versions.dart';
 import 'package:ai_clinic/core/rpc/rpc_result.dart';
 import 'package:ai_clinic/features/ai/billing/abo_client.dart';
@@ -109,6 +110,8 @@ class _SubscriptionSummaryState extends State<SubscriptionSummary> {
   Future<Map<String, dynamic>> _fetchBillingStatus() async {
     final raw = await _callRpc(_rpcName, {'p_contract_version': backendRpc});
     final result = RpcResult.fromDynamic(raw);
+    // R2-C3: validate the echoed version before any business cast.
+    requireEchoedRpcContractVersion(result, sent: backendRpc, current: backendRpc);
     if (!result.success) {
       if (result.errorCode == 'CONTRACT_VERSION_UNSUPPORTED') {
         throw const ContractVersionUnsupportedException();

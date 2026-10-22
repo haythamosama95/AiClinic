@@ -1,6 +1,7 @@
 import 'dart:convert';
 import 'dart:io';
 
+import 'package:ai_clinic/core/contract_version_guard.dart';
 import 'package:ai_clinic/core/contract_versions.dart';
 import 'package:meta/meta.dart';
 import 'package:ai_clinic/features/ai/billing/billing_token_client.dart';
@@ -761,6 +762,7 @@ class AboClient {
 
   void _throwOnError(http.Response response) {
     if (response.statusCode >= 200 && response.statusCode < 300) {
+      _requireEchoedContractVersion(response);
       return;
     }
     final body = _tryDecodeObject(response.body);
@@ -794,6 +796,26 @@ class AboClient {
         throw AboInvalidRequestException(contractVersion: contractVersion);
       default:
         throw AboUnknownException(code: code ?? 'abo_error', contractVersion: contractVersion);
+    }
+  }
+
+  /// R2-C3: a successful ABO reply must echo the sent `Abo-Contract-Version`
+  /// in its header and its `contract_version` body field before any DTO is built.
+  void _requireEchoedContractVersion(http.Response response) {
+    final sent = _contractVersionHeaderValue();
+    final echoed = echoesContractVersion(
+      headers: response.headers,
+      headerName: 'Abo-Contract-Version',
+      sent: sent,
+      current: aboClinic,
+      body: _tryDecodeObject(response.body),
+      bodyRequired: true,
+    );
+    if (!echoed) {
+      throw AboContractVersionUnsupportedException(
+        contractVersion: sent,
+        acceptedVersions: [aboClinic - 1, aboClinic],
+      );
     }
   }
 
