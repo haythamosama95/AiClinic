@@ -398,7 +398,7 @@ commit.
 | FR02 | complete | 0b321c34 | [39814585550](https://github.com/haythamosama95/AiClinic/actions/runs/39814585550) | 2026-10-22 | Mapping table moved to 170450; operator rehearsal and procedure in FR02.md |
 | FR03 | complete | 59a9fbcf | [39823583374](https://github.com/haythamosama95/AiClinic/actions/runs/39823583374) | 2026-10-22 | Exact txn-id check, action+work in one batch; action label now inaccurate (docs owner) |
 | FR04 | complete | b1466aae | [39827618617](https://github.com/haythamosama95/AiClinic/actions/runs/39827618617) | 2026-10-22 | Operator link action + manual basis table (0026); refund test waits on FD-3 |
-| FR05 | not started | | | | FD-2 = detect |
+| FR05 | blocked | | | 2026-10-22 | Three CI rounds failed on one FV-P3 test (assertion error, see FR05 report); code fix at 6be26784f needs a one-line test correction |
 | FR06 | not started | | | | FD-4 = gate |
 
 ## 6. Post-remediation review gate
