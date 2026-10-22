@@ -16,6 +16,7 @@ import {
   type Assertion,
 } from "vendor-contracts";
 import { prepareAlertDeactivation, raiseAlert } from "../alert/index.js";
+import { loadIssuerPins } from "../clinic-api/auth.js";
 import {
   clinicErrorResponse,
   clinicJsonResponse,
@@ -32,6 +33,7 @@ import {
   readCommandFact,
   safeResultPayload,
 } from "../records/command-facts.js";
+import { serviceKeyActive } from "../work/grant.js";
 import { validateGrantReceipt } from "../work/grant-receipt.js";
 import { verifyTransferReceipt } from "../work/transfer-receipt.js";
 import {
@@ -69,7 +71,13 @@ export interface OpsEnv extends ClockEnv, ProviderRegistryEnv {
   OPS_HOST: string;
   ABO_GRANT_KEY: string;
   PLATFORM_PUBLIC_KEYS: string;
+  /** Pinned issuer keys (02 §6). Read by `GET /ops/launch-state` only. */
+  ISSUER_KEYS?: string;
+  TEST_CLOCK?: string;
   PLATFORM: {
+    countLedgerRows(
+      args: Record<string, unknown>,
+    ): Promise<Record<string, unknown>>;
     inspectCoverage(
       args: Record<string, unknown>,
     ): Promise<Record<string, unknown>>;
@@ -78,6 +86,10 @@ export interface OpsEnv extends ClockEnv, ProviderRegistryEnv {
       args: Record<string, unknown>,
     ): Promise<Record<string, unknown>>;
     listServiceKeys(
+      args: Record<string, unknown>,
+    ): Promise<Record<string, unknown>>;
+    /** R9-RT1 / RM35: platform launch-state read. Read by `GET /ops/launch-state` only. */
+    readLaunchState(
       args: Record<string, unknown>,
     ): Promise<Record<string, unknown>>;
     listOperatorCredentials(
@@ -2981,6 +2993,263 @@ async function parsePlatformList(
     : [];
 }
 
+/**
+ * R9-RT1 / RM35: read-only launch-state for the operator launch check. It
+ * writes nothing. `abo_signing_kid` is the `kid` of the ABO grant key (the key
+ * material is never returned). `issuer_keys_pinned` is true only when the
+ * platform's listed issuer keys match `ISSUER_KEYS` exactly by `kid` and
+ * `public_key`. `al_23_active` is true while an AL-23 alert is active.
+ * `term_count` and `grant_count` come from `countLedgerRows`, where terms =
+ * live `term` rows across all clinic DOs. A failed
+ * platform count answers 503 `transient`, never a partial success.
+ * R9-RT1 additions: `channel_versions` (ABO), `platform_channel_versions`
+ * (null when `readLaunchState` is not ok), `platform_signing_key_set` and
+ * `platform_signing_kid` (pinned, non-development keys only), and
+ * `key_self_check_passes` / `key_self_check_checked_at` (fresh unpaused gate
+ * plus a read-only recompute of the ABO key). Nothing is written.
+ */
+async function handleGetLaunchState(
+  env: OpsEnv,
+  contractVersion: number,
+): Promise<Response> {
+  let terms: number;
+  let grants: number;
+  try {
+    const envelope = await env.PLATFORM.countLedgerRows({
+      contract_version: CHANNEL_VERSIONS.vendorEntrypoint,
+    });
+    if (envelope.result !== "ok" || typeof envelope.detail !== "string") {
+      return clinicErrorResponse("transient", 503, contractVersion);
+    }
+    const counts = JSON.parse(envelope.detail) as {
+      terms?: unknown;
+      grants?: unknown;
+    };
+    if (
+      !Number.isSafeInteger(counts.terms) ||
+      !Number.isSafeInteger(counts.grants)
+    ) {
+      return clinicErrorResponse("transient", 503, contractVersion);
+    }
+    terms = counts.terms as number;
+    grants = counts.grants as number;
+  } catch {
+    return clinicErrorResponse("transient", 503, contractVersion);
+  }
+
+  const alertRow = await env.DB.prepare(
+    `SELECT COUNT(*) AS count FROM alert WHERE code = 'AL-23' AND active = 1`,
+  ).first<{ count: number }>();
+
+  const platform = await readPlatformLaunchDetail(env);
+  const platformSigning = platformSigningKey(env, platform);
+  const keySelf = await keySelfCheck(env);
+
+  return clinicJsonResponse(
+    {
+      contract_version: contractVersion,
+      abo_signing_kid: readAboSigningKid(env.ABO_GRANT_KEY),
+      issuer_keys_pinned: await issuerKeysPinned(env),
+      al_23_active: Number(alertRow?.count ?? 0) > 0,
+      term_count: terms,
+      grant_count: grants,
+      channel_versions: { ...CHANNEL_VERSIONS },
+      platform_channel_versions: platformChannelVersions(platform),
+      platform_signing_key_set: platformSigning.set,
+      platform_signing_kid: platformSigning.kid,
+      key_self_check_passes: keySelf.passes,
+      key_self_check_checked_at: keySelf.checkedAt,
+    },
+    200,
+    contractVersion,
+  );
+}
+
+const SIGNING_KEY_GATE_ROW_ID = 1;
+const KEY_SELF_CHECK_MAX_AGE_MS = 2 * 60 * 60 * 1000;
+
+type PlatformLaunchDetail = {
+  channel_versions?: unknown;
+  signing_key?: unknown;
+  environment?: unknown;
+};
+
+/** Platform `readLaunchState` detail, or null when the call is not ok or unreadable. */
+async function readPlatformLaunchDetail(
+  env: OpsEnv,
+): Promise<PlatformLaunchDetail | null> {
+  try {
+    const envelope = await env.PLATFORM.readLaunchState({
+      contract_version: CHANNEL_VERSIONS.vendorEntrypoint,
+    });
+    if (envelope.result !== "ok") {
+      return null;
+    }
+    const detail =
+      typeof envelope.detail === "string"
+        ? (JSON.parse(envelope.detail) as unknown)
+        : envelope.detail;
+    if (typeof detail !== "object" || detail === null || Array.isArray(detail)) {
+      return null;
+    }
+    return detail as PlatformLaunchDetail;
+  } catch {
+    return null;
+  }
+}
+
+function platformChannelVersions(
+  platform: PlatformLaunchDetail | null,
+): Record<string, unknown> | null {
+  const versions = platform?.channel_versions;
+  if (typeof versions !== "object" || versions === null || Array.isArray(versions)) {
+    return null;
+  }
+  return versions as Record<string, unknown>;
+}
+
+/**
+ * True only when the platform reports a non-development signing key that is
+ * pinned in PLATFORM_PUBLIC_KEYS by both `kid` and `public_key`.
+ */
+function platformSigningKey(
+  env: OpsEnv,
+  platform: PlatformLaunchDetail | null,
+): { set: boolean; kid: string | null } {
+  const notSet = { set: false, kid: null };
+  if (platform === null || typeof platform.signing_key !== "object" || platform.signing_key === null) {
+    return notSet;
+  }
+  const signingKey = platform.signing_key as { kid?: unknown; public_key?: unknown };
+  const environment = platform.environment;
+  if (
+    typeof environment !== "string" ||
+    environment.length === 0 ||
+    environment === "development" ||
+    typeof signingKey.kid !== "string" ||
+    typeof signingKey.public_key !== "string"
+  ) {
+    return notSet;
+  }
+  let pins: unknown;
+  try {
+    pins = JSON.parse(env.PLATFORM_PUBLIC_KEYS) as unknown;
+  } catch {
+    return notSet;
+  }
+  if (!Array.isArray(pins)) {
+    return notSet;
+  }
+  const pinned = pins.some(
+    (pin) =>
+      typeof pin === "object" &&
+      pin !== null &&
+      (pin as { kid?: unknown }).kid === signingKey.kid &&
+      (pin as { public_key?: unknown }).public_key === signingKey.public_key,
+  );
+  return pinned ? { set: true, kid: signingKey.kid } : notSet;
+}
+
+/**
+ * Read-only check that the ABO grant signing key is fresh and active. Reads
+ * the gate row with a SELECT only and recomputes key activity without writing.
+ */
+async function keySelfCheck(
+  env: OpsEnv,
+): Promise<{ passes: boolean; checkedAt: string | null }> {
+  const notPassing = { passes: false, checkedAt: null as string | null };
+  let row: { paused: unknown; checked_at: unknown } | null;
+  try {
+    row = await env.DB.prepare(
+      `SELECT paused, checked_at FROM signing_key_gate WHERE id = ?`,
+    )
+      .bind(SIGNING_KEY_GATE_ROW_ID)
+      .first<{ paused: unknown; checked_at: unknown }>();
+  } catch {
+    return notPassing;
+  }
+  if (row === null || row === undefined) {
+    return notPassing;
+  }
+  const checkedAt = typeof row.checked_at === "string" ? row.checked_at : null;
+  const result = { passes: false, checkedAt };
+  if (row.paused !== 0 || checkedAt === null) {
+    return result;
+  }
+  const checkedMs = Date.parse(checkedAt);
+  if (Number.isNaN(checkedMs)) {
+    return result;
+  }
+  const nowMs = await clockNowMs(env);
+  const ageMs = nowMs - checkedMs;
+  if (ageMs < 0 || ageMs > KEY_SELF_CHECK_MAX_AGE_MS) {
+    return result;
+  }
+  const kid = readAboSigningKid(env.ABO_GRANT_KEY);
+  if (kid === null) {
+    return result;
+  }
+  try {
+    const response = await env.PLATFORM.listServiceKeys({
+      contract_version: CHANNEL_VERSIONS.vendorEntrypoint,
+    });
+    if (response.result !== "ok" || typeof response.detail !== "string") {
+      return result;
+    }
+    const keys = JSON.parse(response.detail) as Parameters<typeof serviceKeyActive>[0];
+    if (!Array.isArray(keys)) {
+      return result;
+    }
+    return { passes: serviceKeyActive(keys, kid, nowMs), checkedAt };
+  } catch {
+    return result;
+  }
+}
+
+function readAboSigningKid(grantKeyJson: string): string | null {
+  try {
+    const parsed = JSON.parse(grantKeyJson) as { kid?: unknown };
+    return typeof parsed.kid === "string" ? parsed.kid : null;
+  } catch {
+    return null;
+  }
+}
+
+async function issuerKeysPinned(env: OpsEnv): Promise<boolean> {
+  try {
+    const envelope = await env.PLATFORM.listIssuerKeys({
+      contract_version: CHANNEL_VERSIONS.vendorEntrypoint,
+    });
+    if (envelope.result !== "ok" || typeof envelope.detail !== "string") {
+      return false;
+    }
+    const platformKeys = JSON.parse(envelope.detail) as Array<{
+      kid?: unknown;
+      public_key?: unknown;
+    }>;
+    if (!Array.isArray(platformKeys) || platformKeys.length === 0) {
+      return false;
+    }
+    const pins = await loadIssuerPins({
+      DB: env.DB,
+      ISSUER_ID: "",
+      ISSUER_KEYS: env.ISSUER_KEYS ?? "[]",
+      TEST_CLOCK: env.TEST_CLOCK,
+    });
+    if (pins.size !== platformKeys.length) {
+      return false;
+    }
+    return platformKeys.every(
+      (key) =>
+        typeof key.kid === "string" &&
+        typeof key.public_key === "string" &&
+        pins.get(key.kid) === key.public_key,
+    );
+  } catch {
+    return false;
+  }
+}
+
 async function handleGetRegistries(
   env: OpsEnv,
   contractVersion: number,
@@ -5189,6 +5458,10 @@ export async function handleOps(
 
   if (request.method === "GET" && path === "/ops/grants") {
     return handleGetGrants(env, contractVersion);
+  }
+
+  if (request.method === "GET" && path === "/ops/launch-state") {
+    return handleGetLaunchState(env, contractVersion);
   }
 
   if (request.method === "GET" && path === "/ops/payout-imports") {

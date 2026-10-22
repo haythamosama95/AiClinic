@@ -1,0 +1,16 @@
+{
+  "environment": "staging-test",
+  "cloudflare_account_id": "0123456789abcdef0123456789abcdef",
+  "zone_id": "fedcba9876543210fedcba9876543210",
+  "script_names": ["abo-worker", "platform-worker"],
+  "d1_database_ids": ["d1-test-1"],
+  "access_app_ids": ["app-test-1"],
+  "ops_host": "ops.example.test",
+  "platform_host": "platform.example.test",
+  "access_app_hostnames": ["ops.example.test"],
+  "supabase_project_ref": "abcdefghijklmnop",
+  "backend_database": "postgres",
+  "monitor_host": "monitor.example.test",
+  "abo_contract_version": 1,
+  "expected_contract_versions": { "abo": 1 }
+}

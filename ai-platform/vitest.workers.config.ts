@@ -34,6 +34,7 @@ export default defineWorkersConfig({
       "test/worker-request-orchestrator.test.ts",
       "test/plan-catalogue.test.ts",
       "test/quota-inspect.test.ts",
+      "test/count-terms.test.ts",
       "test/usage-summary.test.ts",
       "test/system/**/*.system.test.ts",
     ],

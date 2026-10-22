@@ -116,6 +116,8 @@ const METHOD_CLASS = {
   listOperatorCredentials: "M",
   listIssuerKeys: "M",
   listServiceKeys: "M",
+  countLedgerRows: "M",
+  readLaunchState: "M",
   grant: "M",
   getCoverage: "M",
   listGrants: "M",
@@ -286,6 +288,58 @@ function rejected(
       ? { accepted_versions: [VENDOR_CHANNEL - 1, VENDOR_CHANNEL] }
       : {}),
   };
+}
+
+/**
+ * Public half of the platform signing key for R9-RT1 readLaunchState. The
+ * private key is loaded through loadPlatformSigningKey (which rejects missing,
+ * malformed and published development keys), then proven to pair with the
+ * secret's declared public_key by signing a fixed probe. Any mismatch or
+ * malformed public key returns null, never the private material.
+ */
+async function readPublicSigningKey(
+  json: string | undefined,
+  environment: string,
+): Promise<{ kid: string; public_key: string } | null> {
+  const material = await loadPlatformSigningKey(json, environment);
+  if (material === null) {
+    return null;
+  }
+  try {
+    const parsed = JSON.parse(json as string) as { public_key?: unknown };
+    if (typeof parsed.public_key !== "string") {
+      return null;
+    }
+    const publicBytes = base64UrlDecode(parsed.public_key);
+    if (publicBytes === null || publicBytes.length !== 32) {
+      return null;
+    }
+    const publicKey = await crypto.subtle.importKey(
+      "raw",
+      publicBytes,
+      { name: "Ed25519" },
+      false,
+      ["verify"],
+    );
+    const probe = new TextEncoder().encode("R9-RT1 launch-state probe");
+    const signature = await crypto.subtle.sign(
+      "Ed25519",
+      material.privateKey,
+      probe,
+    );
+    const verified = await crypto.subtle.verify(
+      "Ed25519",
+      publicKey,
+      signature,
+      probe,
+    );
+    if (!verified) {
+      return null;
+    }
+    return { kid: material.kid, public_key: parsed.public_key };
+  } catch {
+    return null;
+  }
 }
 
 function ok(contractVersion: number, detail: string): VendorResultEnvelope {
@@ -3581,6 +3635,120 @@ export class VendorEntrypoint extends WorkerEntrypoint<VendorEnv> {
     }));
 
     return ok(version, JSON.stringify(keys));
+  }
+
+  /**
+   * R9-RT1 / RM35: read-only launch-state counts. `terms` is the sum of live
+   * `term` rows across every clinic DO, including deleted installations, read
+   * one DO after another with `count_terms`. `grants` counts `grant_ledger`
+   * rows in platform D1. Any unreachable or malformed answer makes the whole
+   * result transient with no counts, never a partial sum. Writes nothing.
+   */
+  async countLedgerRows(
+    args: Record<string, unknown>,
+  ): Promise<VendorResultEnvelope> {
+    const requested = parseRequestedVersion(args);
+    const negotiated = negotiate(VENDOR_CHANNEL, requested);
+    if (!negotiated.ok) {
+      return rejected(VENDOR_CHANNEL, negotiated.code);
+    }
+    const version = negotiated.version;
+    const unavailable: VendorResultEnvelope = {
+      contract_version: version,
+      result: "transient",
+      code: "",
+      detail: "unavailable",
+    };
+
+    let installationIds: string[];
+    let grants: number;
+    try {
+      const installations = await this.env.DB.prepare(
+        "SELECT installation_id FROM installation ORDER BY installation_id",
+      ).all<{ installation_id: string }>();
+      installationIds = (installations.results ?? []).map(
+        (row) => row.installation_id,
+      );
+      const grantRow = await this.env.DB.prepare(
+        "SELECT COUNT(*) AS count FROM grant_ledger",
+      ).first<{ count: number }>();
+      grants = Number(grantRow?.count ?? 0);
+    } catch {
+      return unavailable;
+    }
+    if (!Number.isSafeInteger(grants) || grants < 0) {
+      return unavailable;
+    }
+
+    let terms = 0;
+    for (const installationId of installationIds) {
+      const answer = await callCoverageDo(this.env, installationId, {
+        kind: "count_terms",
+      });
+      if (
+        answer === null ||
+        answer.kind !== "count_terms" ||
+        typeof answer.terms !== "number" ||
+        !Number.isSafeInteger(answer.terms) ||
+        answer.terms < 0
+      ) {
+        return unavailable;
+      }
+      terms += answer.terms;
+      if (!Number.isSafeInteger(terms)) {
+        return unavailable;
+      }
+    }
+
+    return ok(
+      version,
+      JSON.stringify({
+        terms,
+        grants,
+        installations: installationIds.length,
+      }),
+    );
+  }
+
+  /**
+   * R9-RT1 / RM35: read-only launch state. `channel_versions` is the
+   * platform's CHANNEL_VERSIONS, `environment` is the Worker environment, and
+   * `signing_key` is the public half {kid, public_key} of the platform signing
+   * key, or null when the secret is missing, malformed, the published
+   * development key, or does not verify against its declared public key. The
+   * private key is never returned. Writes nothing; any exception is transient
+   * with no partial data.
+   */
+  async readLaunchState(
+    args: Record<string, unknown>,
+  ): Promise<GrantResultEnvelope> {
+    const requested = parseRequestedVersion(args);
+    const negotiated = negotiate(VENDOR_CHANNEL, requested);
+    if (!negotiated.ok) {
+      return rejected(VENDOR_CHANNEL, negotiated.code);
+    }
+    const version = negotiated.version;
+    try {
+      const signingKey = await readPublicSigningKey(
+        this.env.PLATFORM_SIGNING_KEY,
+        this.env.ENVIRONMENT,
+      );
+      return ok(
+        version,
+        JSON.stringify({
+          channel_versions: { ...CHANNEL_VERSIONS },
+          environment: this.env.ENVIRONMENT,
+          signing_key: signingKey,
+        }),
+      );
+    } catch {
+      return {
+        contract_version: version,
+        result: "transient",
+        code: "",
+        detail: "unavailable",
+      };
+    }
   }
 
   async retireIssuerKey(

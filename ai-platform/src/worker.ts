@@ -103,6 +103,7 @@ import {
   applyGrantRPC,
   creditRPC,
   ensureCoverageDoTables,
+  countTermsRPC,
   inspectCoverageRPC,
   inspectRPC,
   openAwaitingTransferRPC,
@@ -2275,6 +2276,14 @@ export class GatewayObject extends DurableObject {
           this.ctx.storage,
           (fn) => this.ctx.blockConcurrencyWhile(fn),
           body as Parameters<typeof suspendResumeRPC>[3],
+        );
+        return platformDoResponse(result, contractVersion);
+      }
+      if (kind === "count_terms") {
+        const result = await countTermsRPC(
+          this.ctx.storage,
+          (fn) => this.ctx.blockConcurrencyWhile(fn),
+          body as Parameters<typeof countTermsRPC>[2],
         );
         return platformDoResponse(result, contractVersion);
       }

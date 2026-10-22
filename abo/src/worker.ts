@@ -81,6 +81,9 @@ export interface Env {
   ACCESS_TEAM_DOMAIN: string;
   ACCESS_AUD: string;
   PLATFORM: {
+    countLedgerRows(
+      args: Record<string, unknown>,
+    ): Promise<Record<string, unknown>>;
     getCoverage(args: Record<string, unknown>): Promise<Record<string, unknown>>;
     readCoverageEvents(
       args: Record<string, unknown>,
@@ -113,6 +116,9 @@ export interface Env {
       args: Record<string, unknown>,
     ): Promise<Record<string, unknown>>;
     listServiceKeys(
+      args: Record<string, unknown>,
+    ): Promise<Record<string, unknown>>;
+    readLaunchState(
       args: Record<string, unknown>,
     ): Promise<Record<string, unknown>>;
     voidForReversal(

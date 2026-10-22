@@ -169,6 +169,7 @@ Each boundary lists the untrusted side and the controls that make the crossing s
 | K-8  | Access session                               | Operator browser                                | 1 hour                                               | Console perimeter and attribution                                    |
 | K-9  | Cloudflare and Supabase account credentials, deploy tooling | Developer only                   | Interactive, hardware-key MFA                        | Deploys and administration; no stored production token (§4.4)        |
 | K-10 | Audit-watcher token                          | External watcher                                | 90 days                                              | Read-only Cloudflare audit logs                                      |
+| K-11 | Cloudflare launch-check read token           | Operator, for one launch check (production account and zone only) | 24 hours or less, created per check | Read-only: Workers Scripts Read, Workers Routes Read, Access Apps and Policies Read. Separate from K-10 |
 
 
 Removed: the shared `OPERATOR_BEARER_TOKEN` (`ai-platform/src/control/auth.ts:16-51`, `src/worker.ts:124,1613`), per-clinic installation keys (`backend/supabase/migrations/20260801120000_ai_keystore_schema.sql:51-66`) and their 365-day expiry (`ai-platform/src/control/lifecycle.ts:30-37`).

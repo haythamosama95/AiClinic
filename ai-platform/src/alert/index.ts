@@ -5,6 +5,7 @@ export type AlertEnv = SendEmailEnv & {
   DB: D1Database;
   ALERT_EMAIL_TO: string;
   HEARTBEAT_URL: string;
+  HEARTBEAT_URL_PLATFORM?: string;
 };
 
 export type CoverageAlertEnv = SendEmailEnv & {
@@ -838,8 +839,13 @@ export async function retryUnsentPlatformAlerts(env: AlertEnv): Promise<void> {
   }
 }
 
+// R9-RT2: the platform_5min stream pings its own configured URL. HEARTBEAT_URL is the fallback
+// only while HEARTBEAT_URL_PLATFORM is unset, so the platform stream never shares a URL with
+// an ABO stream once the per-stream variable is provisioned.
 export async function pingPlatformHeartbeat(env: AlertEnv): Promise<void> {
-  const response = await fetch(env.HEARTBEAT_URL);
+  const own = env.HEARTBEAT_URL_PLATFORM;
+  const url = typeof own === "string" && own.length > 0 ? own : env.HEARTBEAT_URL;
+  const response = await fetch(url);
   if (!response.ok) {
     throw new Error(`heartbeat fetch failed: ${response.status}`);
   }

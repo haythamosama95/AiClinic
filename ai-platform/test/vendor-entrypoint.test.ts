@@ -12,6 +12,7 @@ import routingPolicyStatusSql from "../migrations/20260805190000_routing_policy_
 import rm33RoutingIntegritySql from "../migrations/20261021140000_rm33_routing_configuration_integrity.sql?raw";
 import rm33ActivationGenerationSql from "../migrations/20261021150000_rm33_routing_activation_generation.sql?raw";
 import { applySqlStatements } from "./split-sql-statements";
+import { VendorEntrypoint } from "../src/vendor/entrypoint";
 
 declare module "cloudflare:test" {
   interface ProvidedEnv {
@@ -212,5 +213,241 @@ describe("class_h_vendor_entrypoint", () => {
       expect(envelope.code).not.toBe("installation_not_found");
       expect(envelope.code).not.toBe("policy_version_not_found");
     }
+  });
+});
+
+describe("R9-RT1 countLedgerRows", () => {
+  type DoOutcome = number | "unreachable" | "recovery_blocked";
+
+  function fakeDoNamespace(
+    outcomes: Record<string, DoOutcome>,
+    seen: Array<Record<string, unknown>>,
+  ): DurableObjectNamespace {
+    return {
+      idFromName: (name: string) => name,
+      get: (id: string) => ({
+        fetch: async (_url: string, init?: RequestInit) => {
+          const body = JSON.parse(String(init?.body)) as Record<string, unknown>;
+          seen.push(body);
+          const outcome = outcomes[id];
+          if (outcome === "unreachable") {
+            throw new Error("clinic DO unreachable");
+          }
+          if (outcome === "recovery_blocked") {
+            return new Response(
+              JSON.stringify({
+                contract_version: CHANNEL_VERSIONS.platformDo,
+                kind: body.kind,
+                result: "recovery_blocked",
+              }),
+              { status: 409, headers: { "Content-Type": "application/json" } },
+            );
+          }
+          return new Response(
+            JSON.stringify({
+              contract_version: body.contract_version,
+              kind: "count_terms",
+              terms: outcome,
+            }),
+            { status: 200, headers: { "Content-Type": "application/json" } },
+          );
+        },
+      }),
+    } as unknown as DurableObjectNamespace;
+  }
+
+  function vendorWithDo(doNamespace: DurableObjectNamespace): VendorEntrypoint {
+    return new VendorEntrypoint(
+      {} as ExecutionContext,
+      { ...env, DO: doNamespace } as unknown as ConstructorParameters<
+        typeof VendorEntrypoint
+      >[1],
+    );
+  }
+
+  async function insertInstallation(id: string, status: string): Promise<void> {
+    await env.DB.prepare(
+      `INSERT INTO installation (installation_id, org_id, display_name, status, region, enrolled_at)
+       VALUES (?, ?, ?, ?, 'eu', '2026-10-01T00:00:00.000Z')`,
+    )
+      .bind(id, `org-${id}`, `Clinic ${id}`, status)
+      .run();
+  }
+
+  it("R9-RT1 countLedgerRows counts live DO terms across every installation, including deleted", async () => {
+    await insertInstallation("inst-ledger-active", "active");
+    await insertInstallation("inst-ledger-deleted", "deleted");
+    const seen: Array<Record<string, unknown>> = [];
+    const vendor = vendorWithDo(
+      fakeDoNamespace({ "inst-ledger-active": 3, "inst-ledger-deleted": 4 }, seen),
+    );
+
+    const counted = await vendor.countLedgerRows({
+      contract_version: CONTRACT_VERSION,
+    });
+
+    expect(counted.result).toBe("ok");
+    expect(JSON.parse(counted.detail)).toEqual({
+      terms: 7,
+      grants: 0,
+      installations: 2,
+    });
+    expect(seen.map((body) => body.kind)).toEqual(["count_terms", "count_terms"]);
+    expect(
+      await env.DB.prepare("SELECT COUNT(*) AS count FROM usage_term_retention").first<{
+        count: number;
+      }>(),
+    ).toEqual({ count: 0 });
+  });
+
+  it("R9-RT1 countLedgerRows is transient when any clinic DO is unreachable", async () => {
+    await insertInstallation("inst-down-active", "active");
+    await insertInstallation("inst-down-deleted", "deleted");
+
+    for (const outcome of ["unreachable", "recovery_blocked"] as const) {
+      const vendor = vendorWithDo(
+        fakeDoNamespace({ "inst-down-active": 2, "inst-down-deleted": outcome }, []),
+      );
+
+      const counted = await vendor.countLedgerRows({
+        contract_version: CONTRACT_VERSION,
+      });
+
+      expect(counted).toEqual({
+        contract_version: CONTRACT_VERSION,
+        result: "transient",
+        code: "",
+        detail: "unavailable",
+      });
+      expect(counted).not.toHaveProperty("receipt");
+    }
+  });
+
+  it("R9-RT1 countLedgerRows writes nothing", async () => {
+    await insertInstallation("inst-readonly", "active");
+    const before = {
+      installation: await env.DB.prepare("SELECT COUNT(*) AS count FROM installation").first<{ count: number }>(),
+      grants: await env.DB.prepare("SELECT COUNT(*) AS count FROM grant_ledger").first<{ count: number }>(),
+      retention: await env.DB.prepare("SELECT COUNT(*) AS count FROM usage_term_retention").first<{ count: number }>(),
+    };
+    const seen: Array<Record<string, unknown>> = [];
+    const vendor = vendorWithDo(fakeDoNamespace({ "inst-readonly": 1 }, seen));
+
+    const counted = await vendor.countLedgerRows({
+      contract_version: CONTRACT_VERSION,
+    });
+
+    expect(counted.result).toBe("ok");
+    expect(seen.every((body) => body.kind === "count_terms")).toBe(true);
+    expect(await env.DB.prepare("SELECT COUNT(*) AS count FROM installation").first<{ count: number }>()).toEqual(before.installation);
+    expect(await env.DB.prepare("SELECT COUNT(*) AS count FROM grant_ledger").first<{ count: number }>()).toEqual(before.grants);
+    expect(await env.DB.prepare("SELECT COUNT(*) AS count FROM usage_term_retention").first<{ count: number }>()).toEqual(before.retention);
+  });
+});
+
+describe("R9-RT1 readLaunchState", () => {
+  const PUBLISHED_DEVELOPMENT_KEY =
+    '{"kid":"platform-test","pkcs8":"MC4CAQAwBQYDK2VwBCIEIN2ndQQArm1dlsCuHaGGaUB8nnqfj7W2HaVbj_JJA9Lk","public_key":"GNzxZ6Gymues_aeJArGyb3wDESTOUJeqhuZBfTByni0"}';
+
+  function bytesToBase64Url(bytes: Uint8Array): string {
+    let binary = "";
+    for (const byte of bytes) binary += String.fromCharCode(byte);
+    return btoa(binary).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/u, "");
+  }
+
+  async function signingSecret(kid: string): Promise<{ json: string; pkcs8: string; publicKey: string }> {
+    const pair = await crypto.subtle.generateKey("Ed25519", true, ["sign", "verify"]);
+    const pkcs8 = bytesToBase64Url(new Uint8Array(await crypto.subtle.exportKey("pkcs8", pair.privateKey)));
+    const publicKey = bytesToBase64Url(new Uint8Array(await crypto.subtle.exportKey("raw", pair.publicKey)));
+    return { json: JSON.stringify({ kid, pkcs8, public_key: publicKey }), pkcs8, publicKey };
+  }
+
+  function vendorWith(overrides: Record<string, unknown>): VendorEntrypoint {
+    return new VendorEntrypoint(
+      {} as ExecutionContext,
+      { ...env, ...overrides } as unknown as ConstructorParameters<
+        typeof VendorEntrypoint
+      >[1],
+    );
+  }
+
+  it("R9-RT1 readLaunchState returns channel versions and a public signing key, never the private key", async () => {
+    const secret = await signingSecret("staging-launch-1");
+    const vendor = vendorWith({ ENVIRONMENT: "staging", PLATFORM_SIGNING_KEY: secret.json });
+
+    const state = await vendor.readLaunchState({ contract_version: CONTRACT_VERSION });
+
+    expect(state.result).toBe("ok");
+    expect(state.code).toBe("");
+    expect(state.detail).not.toContain(secret.pkcs8);
+    expect(JSON.parse(state.detail)).toEqual({
+      channel_versions: CHANNEL_VERSIONS,
+      environment: "staging",
+      signing_key: { kid: "staging-launch-1", public_key: secret.publicKey },
+    });
+    expect(Object.keys(CHANNEL_VERSIONS)).toHaveLength(9);
+  });
+
+  it("R9-RT1 readLaunchState returns null signing_key when the secret is missing", async () => {
+    const vendor = vendorWith({ ENVIRONMENT: "staging", PLATFORM_SIGNING_KEY: undefined });
+
+    const state = await vendor.readLaunchState({ contract_version: CONTRACT_VERSION });
+
+    expect(state.result).toBe("ok");
+    expect(JSON.parse(state.detail)).toEqual({
+      channel_versions: CHANNEL_VERSIONS,
+      environment: "staging",
+      signing_key: null,
+    });
+  });
+
+  it("R9-RT1 readLaunchState returns null signing_key for the published development key under production", async () => {
+    const vendor = vendorWith({ ENVIRONMENT: "production", PLATFORM_SIGNING_KEY: PUBLISHED_DEVELOPMENT_KEY });
+
+    const state = await vendor.readLaunchState({ contract_version: CONTRACT_VERSION });
+
+    expect(state.result).toBe("ok");
+    expect(JSON.parse(state.detail).signing_key).toBeNull();
+    expect(state.detail).not.toContain("pkcs8");
+  });
+
+  it("R9-RT1 readLaunchState returns null signing_key when the public key does not match the secret", async () => {
+    const mine = await signingSecret("staging-mismatch");
+    const other = await signingSecret("unused");
+    const mismatched = JSON.stringify({
+      kid: "staging-mismatch",
+      pkcs8: JSON.parse(mine.json).pkcs8,
+      public_key: other.publicKey,
+    });
+    const vendor = vendorWith({ ENVIRONMENT: "staging", PLATFORM_SIGNING_KEY: mismatched });
+
+    const state = await vendor.readLaunchState({ contract_version: CONTRACT_VERSION });
+
+    expect(state.result).toBe("ok");
+    expect(JSON.parse(state.detail).signing_key).toBeNull();
+    expect(state.detail).not.toContain(mine.pkcs8);
+  });
+
+  it("R9-RT1 readLaunchState writes nothing", async () => {
+    await env.DB.prepare(
+      `INSERT INTO installation (installation_id, org_id, display_name, status, region, enrolled_at)
+       VALUES ('inst-launch-readonly', 'org-inst-launch-readonly', 'Clinic launch', 'active', 'eu', '2026-10-01T00:00:00.000Z')`,
+    ).run();
+    const count = async (table: string) =>
+      env.DB.prepare(`SELECT COUNT(*) AS count FROM ${table}`).first<{ count: number }>();
+    const before = {
+      installation: await count("installation"),
+      grants: await count("grant_ledger"),
+      retention: await count("usage_term_retention"),
+    };
+    const secret = await signingSecret("staging-readonly");
+    const vendor = vendorWith({ ENVIRONMENT: "staging", PLATFORM_SIGNING_KEY: secret.json });
+
+    const state = await vendor.readLaunchState({ contract_version: CONTRACT_VERSION });
+
+    expect(state.result).toBe("ok");
+    expect(await count("installation")).toEqual(before.installation);
+    expect(await count("grant_ledger")).toEqual(before.grants);
+    expect(await count("usage_term_retention")).toEqual(before.retention);
   });
 });

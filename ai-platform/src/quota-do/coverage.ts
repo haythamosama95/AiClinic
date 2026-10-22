@@ -2381,6 +2381,17 @@ export interface InspectCoverageResponse {
   reservations: unknown;
 }
 
+export interface CountTermsRequest {
+  kind: "count_terms";
+  contract_version: number;
+  installationId: string;
+}
+
+export interface CountTermsResponse {
+  kind: "count_terms";
+  terms: number;
+}
+
 export async function suspendResumeRPC(
   state: DurableObjectState,
   storage: DurableObjectStorage,
@@ -2490,6 +2501,32 @@ export async function inspectCoverageRPC(
       grants,
       reservations,
     };
+  });
+}
+
+/**
+ * R9-RT1 / RM35: live `term` row count for one clinic DO. Reads with a
+ * single COUNT(*) and fails closed when SQL storage is unavailable, so a
+ * missing binding can never read as zero terms.
+ */
+export async function countTermsRPC(
+  storage: DurableObjectStorage,
+  blockConcurrencyWhile: <T>(fn: () => Promise<T>) => Promise<T>,
+  request: CountTermsRequest,
+): Promise<CountTermsResponse> {
+  return blockConcurrencyWhile(async () => {
+    const sqlStorage = storage as SqlStorage;
+    if (!sqlStorage.sql) {
+      throw new Error("count_terms: SQL storage unavailable");
+    }
+    const rows = [
+      ...sqlStorage.sql.exec("SELECT COUNT(*) AS count FROM term"),
+    ] as Array<{ count: unknown }>;
+    const count = rows[0]?.count;
+    if (typeof count !== "number" || !Number.isSafeInteger(count) || count < 0) {
+      throw new Error("count_terms: malformed count");
+    }
+    return { kind: "count_terms", terms: count };
   });
 }
 

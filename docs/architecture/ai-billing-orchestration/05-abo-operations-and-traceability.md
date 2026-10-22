@@ -236,8 +236,8 @@ Before staging, the same flows run locally with `wrangler dev` and no Paymob acc
 These are conditions on the production state, not tasks.
 
 - The tenancy retrofit (01 R-1) is live, and RC-06 legal confirmation is recorded (01 R-9).
-- No `/control/*` route, `OPERATOR_BEARER_TOKEN`, `set_ai_availability` or manual entitle path exists (FR-91).
-- Production platform D1 holds no terms or grants. Pre-launch installations are deleted (their ledgers stay, per RC-05). A pilot clinic that keeps AI gets an HP complimentary grant of 30 days (unit `day`) with reason "pre-launch pilot"; this fits the ceilings (03 §3.2), and the clinic then buys like everyone else (FR-92).
+- No `/control/*` route, `OPERATOR_BEARER_TOKEN`, `set_ai_availability` or manual entitle path exists (FR-91). The manual entitle path is probed with GET on `/control/installations/00000000-0000-0000-0000-000000000000/entitle` and `/override` (the removed routes, §1.3 Removed, probed with the nil UUID). A 404 from both is the pass; any other answer from 200 to 499 fails, and a 5xx or network error fails the source.
+- Production: the platform holds no terms (clinic DOs) or grants (D1). Pre-launch installations are deleted (their ledgers stay, per RC-05). A pilot clinic that keeps AI gets an HP complimentary grant of 30 days (unit `day`) with reason "pre-launch pilot"; this fits the ceilings (03 §3.2), and the clinic then buys like everyone else (FR-92).
 - The first operator credential is bootstrapped and a second one is registered (24-hour delay). The issuer and service keys are registered, the platform signing key is set, and the issuer keys are pinned in the ABO's `ISSUER_KEYS`; the ABO's key self-check passes (AL-23 clear).
 - Every channel runs contract version 1 on both sides, and the backend's `ai.contract_versions` matches the shared package (04 §7).
 - R-9 advice on payer contact data is recorded, and the erasure action (§3.2) has been run once in staging.

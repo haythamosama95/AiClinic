@@ -202,7 +202,8 @@ async function clearAlertActive(env: GrantEnv, alertKey: string): Promise<void> 
     .run();
 }
 
-function serviceKeyActive(
+// Exported for the read-only launch-state key self check (R9-RT1). No behaviour change.
+export function serviceKeyActive(
   keys: ServiceKeyRow[],
   kid: string,
   nowMs: number,

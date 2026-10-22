@@ -5,6 +5,7 @@ import {
   deliverDurableAlert,
   insertDoRebuildMismatchAlert,
   listIncompleteUnsentPlatformAlerts,
+  pingPlatformHeartbeat,
   persistCommittedAlertBody,
   persistDurableAlertBody,
   raiseAl11GrantFromOutbox,
@@ -404,6 +405,26 @@ describe("R9-PAL1 alert delivery durability", () => {
       const row = await alertRow(key);
       expect(row?.body_state).toBe("incomplete");
       expect(row?.send_state).toBe("unsent");
+    }
+  });
+});
+
+describe("R9-RT2 platform heartbeat stream", () => {
+  it("R9-RT2 platform_5min pings HEARTBEAT_URL_PLATFORM and uses HEARTBEAT_URL only while it is unset", async () => {
+    const fetchSpy = vi
+      .spyOn(globalThis, "fetch")
+      .mockResolvedValue(new Response("ok", { status: 200 }));
+    try {
+      await pingPlatformHeartbeat({
+        ...mailEnv(vi.fn()),
+        HEARTBEAT_URL_PLATFORM: "https://heartbeat.test/platform",
+      });
+      expect(fetchSpy).toHaveBeenLastCalledWith("https://heartbeat.test/platform");
+
+      await pingPlatformHeartbeat(mailEnv(vi.fn()));
+      expect(fetchSpy).toHaveBeenLastCalledWith("https://heartbeat.test/ping");
+    } finally {
+      fetchSpy.mockRestore();
     }
   });
 });

@@ -1,3 +1,7 @@
 {
-  "received_pings": ["platform_5min", "abo_daily_digest"]
+  "last_seen": {
+    "platform_5min": "2026-10-22T00:00:00Z",
+    "abo_daily_digest": "2026-10-22T00:00:00Z",
+    "audit_watcher": "2026-10-22T00:00:00Z"
+  }
 }

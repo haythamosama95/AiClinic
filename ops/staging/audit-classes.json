@@ -1,0 +1,5 @@
+{
+  "version": 1,
+  "description": "R9-RT2 (01 §3.8 D-6): maps Cloudflare audit (resource.type, action.type) pairs to AL-21 classes deploy, secret, d1_export or access_policy. Empty until the staging capture (one deploy, one secret put, one D1 export, one Access edit) fills it. The audit watcher's loader fails closed while entries is empty.",
+  "entries": []
+}

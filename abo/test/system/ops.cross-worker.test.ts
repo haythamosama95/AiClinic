@@ -23,6 +23,7 @@ import { loadOffersFixture } from "../../src/records/append";
 import {
   applySql,
   billingFetch,
+  OPS_ORIGIN,
   harnessClockNowSeconds,
   mintBilling,
   newIssuer,
@@ -33,6 +34,7 @@ import {
   tableCount,
 } from "./harness";
 import { mintHxwVendorAccessJwt } from "./hxw-access-fixture";
+import aboWorker from "../../src/worker";
 import {
   mintVendorAccessJwt,
   platformCall,
@@ -554,6 +556,69 @@ async function paidCheckoutFlow(
   expect(intake.status).toBe(200);
   await runScheduled("* * * * *");
   return checkout;
+}
+
+const LAUNCH_NOW_ISO = "2026-10-22T12:00:00.000Z";
+const LAUNCH_PINNED_PLATFORM_KEY = {
+  kid: "platform-test",
+  public_key: "GNzxZ6Gymues_aeJArGyb3wDESTOUJeqhuZBfTByni0",
+};
+type LaunchPlatformCall = (
+  args: Record<string, unknown>,
+) => Promise<Record<string, unknown>>;
+
+/** Platform stub for launch-state: real reads, with the given methods overridden. */
+function launchStatePlatform(overrides: Record<string, LaunchPlatformCall>) {
+  const base = env.PLATFORM;
+  return {
+    countLedgerRows: (args: Record<string, unknown>) => base.countLedgerRows(args),
+    listIssuerKeys: (args: Record<string, unknown>) => base.listIssuerKeys(args),
+    listServiceKeys: (args: Record<string, unknown>) => base.listServiceKeys(args),
+    ...overrides,
+  };
+}
+
+async function fetchLaunchState(
+  envOverrides: Record<string, unknown>,
+): Promise<{ status: number; body: Record<string, unknown> }> {
+  const accessJwt = await mintVendorAccessJwt(OPS_OPERATOR_EMAIL);
+  const response = await aboWorker.fetch(
+    new Request(`${OPS_ORIGIN}/ops/launch-state`, {
+      headers: await opsHeaders(accessJwt),
+    }),
+    { ...env, ...envOverrides } as unknown as typeof env,
+    { waitUntil() {}, passThroughOnException() {} } as unknown as ExecutionContext,
+  );
+  return {
+    status: response.status,
+    body: (await response.json()) as Record<string, unknown>,
+  };
+}
+
+async function setLaunchGate(paused: number, checkedAt: string): Promise<void> {
+  await env.DB.prepare(
+    `INSERT OR REPLACE INTO signing_key_gate (id, paused, checked_at) VALUES (1, ?, ?)`,
+  )
+    .bind(paused, checkedAt)
+    .run();
+}
+
+function launchPlatformSigningState(
+  overrides: { environment?: string; public_key?: string } = {},
+): LaunchPlatformCall {
+  return async () => ({
+    contract_version: CONTRACT_VERSION,
+    result: "ok",
+    code: "",
+    detail: {
+      channel_versions: { ...CHANNEL_VERSIONS },
+      signing_key: {
+        kid: LAUNCH_PINNED_PLATFORM_KEY.kid,
+        public_key: overrides.public_key ?? LAUNCH_PINNED_PLATFORM_KEY.public_key,
+      },
+      environment: overrides.environment ?? "staging",
+    },
+  });
 }
 
 async function setupOpsHarness(): Promise<{
@@ -1271,6 +1336,261 @@ describe("ops cross-worker", () => {
     expect(await env.DB.prepare(`SELECT state FROM work WHERE work_id = ?`)
       .bind(legacyWorkId).first<{ state: string }>()).toEqual({ state: "parked" });
     expect(await tableCount("operator_action")).toBe(actionsBeforeLegacyRetry);
+  });
+
+  it("R9-RT1 GET /ops/launch-state is read-only, GET-only and returns the launch fields behind Access", async () => {
+    await setupOpsHarness();
+    const accessJwt = await mintVendorAccessJwt(OPS_OPERATOR_EMAIL);
+    const sessionHeaders = await opsHeaders(accessJwt);
+    const grantLedgerBefore = await platformTableCount("grant_ledger");
+    const operatorActionBefore = await tableCount("operator_action");
+
+    const unauthenticated = await opsFetch("/ops/launch-state", {
+      headers: await opsHeaders(),
+    });
+    expect(unauthenticated.status).toBe(401);
+
+    const launchState = await opsFetch("/ops/launch-state", {
+      headers: sessionHeaders,
+    });
+    expect(launchState.status).toBe(200);
+    const body = (await launchState.json()) as Record<string, unknown>;
+    expectContractVersion(launchState, body);
+    expect(Object.keys(body).sort()).toEqual(
+      [
+        "abo_signing_kid",
+        "al_23_active",
+        "channel_versions",
+        "contract_version",
+        "grant_count",
+        "issuer_keys_pinned",
+        "key_self_check_checked_at",
+        "key_self_check_passes",
+        "platform_channel_versions",
+        "platform_signing_key_set",
+        "platform_signing_kid",
+        "term_count",
+      ].sort(),
+    );
+    const grantKey = JSON.parse(env.ABO_GRANT_KEY) as { kid: string };
+    expect(body.abo_signing_kid).toBe(grantKey.kid);
+    expect(typeof body.issuer_keys_pinned).toBe("boolean");
+    expect(typeof body.al_23_active).toBe("boolean");
+    expect(Number.isSafeInteger(body.term_count)).toBe(true);
+    expect(Number.isSafeInteger(body.grant_count)).toBe(true);
+
+    const postAttempt = await opsFetch("/ops/launch-state", {
+      method: "POST",
+      headers: sessionHeaders,
+    });
+    expect(postAttempt.status).toBe(404);
+
+    expect(await platformTableCount("grant_ledger")).toBe(grantLedgerBefore);
+    expect(await tableCount("operator_action")).toBe(operatorActionBefore);
+  });
+
+  it("R9-RT1 countLedgerRows returns term and grant counts and writes nothing", async () => {
+    await setupOpsHarness();
+    const grantLedgerBefore = await platformTableCount("grant_ledger");
+    const termRetentionBefore = await platformTableCount("usage_term_retention");
+    const installationsBefore = await platformTableCount("installation");
+
+    const counted = await platformCall("countLedgerRows", {
+      contract_version: CONTRACT_VERSION,
+    });
+    expect(counted.result).toBe("ok");
+    const counts = JSON.parse(counted.detail as string) as {
+      terms: number;
+      grants: number;
+      installations: number;
+    };
+    // Terms are summed from the live clinic DOs, one per installation
+    // (including deleted ones), so the detail carries exactly these keys.
+    expect(Object.keys(counts).sort()).toEqual(
+      ["grants", "installations", "terms"].sort(),
+    );
+    expect(Number.isSafeInteger(counts.terms)).toBe(true);
+    expect(counts.terms).toBeGreaterThanOrEqual(0);
+    expect(counts.grants).toBe(grantLedgerBefore);
+    expect(counts.installations).toBe(installationsBefore);
+
+    expect(await platformTableCount("grant_ledger")).toBe(grantLedgerBefore);
+    expect(await platformTableCount("usage_term_retention")).toBe(
+      termRetentionBefore,
+    );
+  });
+
+  it("R9-RT1 GET /ops/launch-state answers 503 transient when the platform term count is unavailable", async () => {
+    await setupOpsHarness();
+    const accessJwt = await mintVendorAccessJwt(OPS_OPERATOR_EMAIL);
+    const transientPlatform = {
+      countLedgerRows: async () => ({
+        contract_version: CONTRACT_VERSION,
+        result: "transient",
+        code: "",
+        detail: "unavailable",
+      }),
+    };
+    const response = await aboWorker.fetch(
+      new Request(`${OPS_ORIGIN}/ops/launch-state`, {
+        headers: await opsHeaders(accessJwt),
+      }),
+      { ...env, PLATFORM: transientPlatform } as unknown as typeof env,
+      { waitUntil() {}, passThroughOnException() {} } as unknown as ExecutionContext,
+    );
+    expect(response.status).toBe(503);
+    const body = (await response.json()) as Record<string, unknown>;
+    expect(body.code).toBe("transient");
+    expect(body).not.toHaveProperty("term_count");
+    expect(body).not.toHaveProperty("grant_count");
+  });
+
+  it("R9-RT1 launch-state reports channel versions for both sides", async () => {
+    await setupOpsHarness();
+    const platformVersions = { ...CHANNEL_VERSIONS, aboClinic: 2 };
+
+    const unreadable = await fetchLaunchState({});
+    expect(unreadable.status).toBe(200);
+    expect(unreadable.body.channel_versions).toEqual({ ...CHANNEL_VERSIONS });
+    expect(Object.keys(unreadable.body.channel_versions as object).length).toBe(9);
+    expect(unreadable.body.platform_channel_versions).toBeNull();
+
+    const read = await fetchLaunchState({
+      PLATFORM: launchStatePlatform({
+        readLaunchState: async () => ({
+          contract_version: CONTRACT_VERSION,
+          result: "ok",
+          code: "",
+          detail: {
+            channel_versions: platformVersions,
+            signing_key: null,
+            environment: "staging",
+          },
+        }),
+      }),
+    });
+    expect(read.status).toBe(200);
+    expect(read.body.channel_versions).toEqual({ ...CHANNEL_VERSIONS });
+    expect(read.body.platform_channel_versions).toEqual(platformVersions);
+  });
+
+  it("R9-RT1 launch-state key_self_check passes on a fresh unpaused gate", async () => {
+    await setupOpsHarness();
+    await setClock(LAUNCH_NOW_ISO);
+    await setLaunchGate(0, LAUNCH_NOW_ISO);
+
+    const { status, body } = await fetchLaunchState({});
+    expect(status).toBe(200);
+    expect(body.key_self_check_passes).toBe(true);
+    expect(body.key_self_check_checked_at).toBe(LAUNCH_NOW_ISO);
+  });
+
+  it("R9-RT1 launch-state key_self_check fails when paused, when the gate row is missing, when stale (use TEST_CLOCK), and when the kid is not active", async () => {
+    await setupOpsHarness();
+    await setClock(LAUNCH_NOW_ISO);
+    const aboKid = (JSON.parse(env.ABO_GRANT_KEY) as { kid: string }).kid;
+
+    await setLaunchGate(1, LAUNCH_NOW_ISO);
+    const paused = await fetchLaunchState({});
+    expect(paused.body.key_self_check_passes).toBe(false);
+    expect(paused.body.key_self_check_checked_at).toBe(LAUNCH_NOW_ISO);
+
+    await env.DB.prepare(`DELETE FROM signing_key_gate`).run();
+    const missing = await fetchLaunchState({});
+    expect(missing.body.key_self_check_passes).toBe(false);
+    expect(missing.body.key_self_check_checked_at).toBeNull();
+
+    // Exactly two hours old still passes; one second older fails.
+    await setLaunchGate(0, "2026-10-22T10:00:00.000Z");
+    const boundary = await fetchLaunchState({});
+    expect(boundary.body.key_self_check_passes).toBe(true);
+
+    await setLaunchGate(0, "2026-10-22T09:59:59.000Z");
+    const stale = await fetchLaunchState({});
+    expect(stale.body.key_self_check_passes).toBe(false);
+
+    await setLaunchGate(0, LAUNCH_NOW_ISO);
+    const revoked = await fetchLaunchState({
+      PLATFORM: launchStatePlatform({
+        listServiceKeys: async () => ({
+          contract_version: CONTRACT_VERSION,
+          result: "ok",
+          code: "",
+          detail: JSON.stringify([
+            {
+              kid: aboKid,
+              status: "revoked",
+              not_before: "2020-01-01T00:00:00.000Z",
+              not_after: "2099-01-01T00:00:00.000Z",
+            },
+          ]),
+        }),
+      }),
+    });
+    expect(revoked.body.key_self_check_passes).toBe(false);
+  });
+
+  it("R9-RT1 launch-state platform_signing_key_set is true only on a matching pin, false on mismatch, false on an empty pin list, false on a development environment", async () => {
+    await setupOpsHarness();
+    const pins = JSON.stringify([LAUNCH_PINNED_PLATFORM_KEY]);
+
+    const matching = await fetchLaunchState({
+      PLATFORM_PUBLIC_KEYS: pins,
+      PLATFORM: launchStatePlatform({ readLaunchState: launchPlatformSigningState() }),
+    });
+    expect(matching.body.platform_signing_key_set).toBe(true);
+    expect(matching.body.platform_signing_kid).toBe(LAUNCH_PINNED_PLATFORM_KEY.kid);
+
+    const mismatch = await fetchLaunchState({
+      PLATFORM_PUBLIC_KEYS: pins,
+      PLATFORM: launchStatePlatform({
+        readLaunchState: launchPlatformSigningState({ public_key: "not-the-pinned-key" }),
+      }),
+    });
+    expect(mismatch.body.platform_signing_key_set).toBe(false);
+    expect(mismatch.body.platform_signing_kid).toBeNull();
+
+    const emptyPins = await fetchLaunchState({
+      PLATFORM_PUBLIC_KEYS: "[]",
+      PLATFORM: launchStatePlatform({ readLaunchState: launchPlatformSigningState() }),
+    });
+    expect(emptyPins.body.platform_signing_key_set).toBe(false);
+    expect(emptyPins.body.platform_signing_kid).toBeNull();
+
+    const development = await fetchLaunchState({
+      PLATFORM_PUBLIC_KEYS: pins,
+      PLATFORM: launchStatePlatform({
+        readLaunchState: launchPlatformSigningState({ environment: "development" }),
+      }),
+    });
+    expect(development.body.platform_signing_key_set).toBe(false);
+    expect(development.body.platform_signing_kid).toBeNull();
+  });
+
+  it("R9-RT1 launch-state writes nothing", async () => {
+    await setupOpsHarness();
+    await setClock(LAUNCH_NOW_ISO);
+    await setLaunchGate(0, LAUNCH_NOW_ISO);
+    const gateBefore = (
+      await env.DB.prepare(`SELECT id, paused, checked_at FROM signing_key_gate`).all()
+    ).results;
+    const alertsBefore = await tableCount("alert");
+    const operatorActionBefore = await tableCount("operator_action");
+    const grantLedgerBefore = await platformTableCount("grant_ledger");
+
+    const { status, body } = await fetchLaunchState({
+      PLATFORM: launchStatePlatform({ readLaunchState: launchPlatformSigningState() }),
+    });
+    expect(status).toBe(200);
+    expect(body.key_self_check_passes).toBe(true);
+
+    expect(
+      (await env.DB.prepare(`SELECT id, paused, checked_at FROM signing_key_gate`).all())
+        .results,
+    ).toEqual(gateBefore);
+    expect(await tableCount("alert")).toBe(alertsBefore);
+    expect(await tableCount("operator_action")).toBe(operatorActionBefore);
+    expect(await platformTableCount("grant_ledger")).toBe(grantLedgerBefore);
   });
 
   it("R9-FACT1 cancellation fact is exported with the accepted cancel event", async () => {
