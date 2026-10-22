@@ -355,6 +355,53 @@ Widget liveVisitSummaryHostBody({
   );
 }
 
+/// R7-UI1: immutable composition identity for the live visit host.
+///
+/// Any change to the authenticated user, the active organization, the
+/// administrator role or the selected visit yields a different identity, so the
+/// keyed host (and the dependencies it composed) is disposed before the new
+/// label is shown.
+@visibleForTesting
+@immutable
+class LiveVisitHostIdentity {
+  const LiveVisitHostIdentity({
+    required this.userId,
+    required this.organizationId,
+    required this.staffIsAdministrator,
+    required this.visitId,
+  });
+
+  final String? userId;
+  final String? organizationId;
+  final bool staffIsAdministrator;
+  final String visitId;
+
+  @override
+  bool operator ==(Object other) =>
+      other is LiveVisitHostIdentity &&
+      other.userId == userId &&
+      other.organizationId == organizationId &&
+      other.staffIsAdministrator == staffIsAdministrator &&
+      other.visitId == visitId;
+
+  @override
+  int get hashCode => Object.hash(userId, organizationId, staffIsAdministrator, visitId);
+}
+
+/// Derives the live-host identity from the current auth context (not cached billing claims).
+@visibleForTesting
+LiveVisitHostIdentity liveVisitHostIdentityFor({
+  required AuthSessionContext? authContext,
+  required String visitId,
+}) {
+  return LiveVisitHostIdentity(
+    userId: authContext?.staffProfile.staffMemberId,
+    organizationId: authContext?.organizationId,
+    staffIsAdministrator: authContext?.staffProfile.role == StaffRole.administrator,
+    visitId: visitId,
+  );
+}
+
 /// Clinic AI hub — exposes implemented AI capabilities and design-system widgets.
 class AiPage extends ConsumerStatefulWidget {
   const AiPage({super.key});
@@ -385,8 +432,8 @@ class _AiPageState extends ConsumerState<AiPage> {
   @override
   Widget build(BuildContext context) {
     final colors = context.appColors;
-    final isAdministrator =
-        ref.watch(authSessionProvider).context?.staffProfile.role == StaffRole.administrator;
+    final authContext = ref.watch(authSessionProvider).context;
+    final isAdministrator = authContext?.staffProfile.role == StaffRole.administrator;
     final l10n = AppLocalizations.of(context)!;
 
     final body = Column(
@@ -462,7 +509,15 @@ class _AiPageState extends ConsumerState<AiPage> {
                   style: AppTypography.bodySm(context).copyWith(color: colors.textSecondary),
                 )
               else
-                _LiveVisitSummaryHost(visitId: _activeVisitId!),
+                // R7-UI1: keyed by the full identity so an A->B visit change (or user/org/role
+                // change) disposes the old host and its composed dependencies before B is shown.
+                _LiveVisitSummaryHost(
+                  key: ValueKey(
+                    liveVisitHostIdentityFor(authContext: authContext, visitId: _activeVisitId!),
+                  ),
+                  visitId: _activeVisitId!,
+                  staffIsAdministrator: isAdministrator,
+                ),
               const SizedBox(height: AppSpacing.space6),
               const AppSectionHeader(
                 title: 'Surface primitives',
@@ -691,9 +746,10 @@ class _AiFeatureSection extends StatelessWidget {
 
 /// Live [AiFeatureHostPage] composed from clinic Supabase + platform reachability.
 class _LiveVisitSummaryHost extends ConsumerStatefulWidget {
-  const _LiveVisitSummaryHost({required this.visitId});
+  const _LiveVisitSummaryHost({required this.visitId, required this.staffIsAdministrator});
 
   final String visitId;
+  final bool staffIsAdministrator;
 
   @override
   ConsumerState<_LiveVisitSummaryHost> createState() => _LiveVisitSummaryHostState();
@@ -702,6 +758,8 @@ class _LiveVisitSummaryHost extends ConsumerStatefulWidget {
 class _LiveVisitSummaryHostState extends ConsumerState<_LiveVisitSummaryHost> {
   LiveVisitSummaryComposition? _composition;
   var _loading = true;
+  // R7-UI1: generation of the latest composition load; a superseded load must not install state.
+  var _loadGeneration = 0;
 
   @override
   void initState() {
@@ -709,22 +767,42 @@ class _LiveVisitSummaryHostState extends ConsumerState<_LiveVisitSummaryHost> {
     unawaited(_load());
   }
 
+  @override
+  void didUpdateWidget(_LiveVisitSummaryHost oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    // Normally the parent key remounts this state on identity change; in-place changes
+    // still drop the old composition and recompose under the new inputs.
+    if (oldWidget.visitId != widget.visitId ||
+        oldWidget.staffIsAdministrator != widget.staffIsAdministrator) {
+      setState(() {
+        _composition = null;
+        _loading = true;
+      });
+      unawaited(_load());
+    }
+  }
+
   Future<void> _load() async {
+    // Capture every input before the first await so a later identity change cannot leak into this load.
+    final generation = ++_loadGeneration;
+    final visitId = widget.visitId;
+    final staffIsAdministrator = widget.staffIsAdministrator;
     final client = ref.read(supabaseClientProvider);
-    final auth = ref.read(authSessionProvider);
-    final role = auth.context?.staffProfile.role;
+    final onStatusRefresh = ref.read(aiShellStatusRefreshProvider);
     final composition = await composeLiveVisitSummaryHost(
       client: client,
-      visitId: widget.visitId,
-      staffIsAdministrator: role == StaffRole.administrator,
-      onStatusRefresh: ref.read(aiShellStatusRefreshProvider),
+      visitId: visitId,
+      staffIsAdministrator: staffIsAdministrator,
+      onStatusRefresh: onStatusRefresh,
     );
-    if (mounted) {
-      setState(() {
-        _composition = composition;
-        _loading = false;
-      });
+    // Mounted guard plus generation/visit checks: a disposed or superseded A load cannot install into B.
+    if (!mounted || generation != _loadGeneration || visitId != widget.visitId) {
+      return;
     }
+    setState(() {
+      _composition = composition;
+      _loading = false;
+    });
   }
 
   @override

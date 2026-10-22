@@ -123,6 +123,13 @@ class _AiFeatureHostPageState extends State<AiFeatureHostPage> {
   String? _denialWireCode;
   String? _denialRetryAfter;
 
+  // R7-UI1: request generation for awaited bootstrap/coverage reads. Bumped when the
+  // administrator role or coverage client changes; a read that started under an older
+  // generation never commits commercial fields.
+  // T1 seam: status/coverage generation shared with ai_shell_status_provider is
+  // coordinated in the T1 sub-task; this counter guards identity/role only.
+  var _requestGeneration = 0;
+
   @override
   void initState() {
     super.initState();
@@ -134,6 +141,7 @@ class _AiFeatureHostPageState extends State<AiFeatureHostPage> {
     super.didUpdateWidget(oldWidget);
     if (oldWidget.dependencies.staffIsAdministrator != widget.dependencies.staffIsAdministrator ||
         oldWidget.dependencies.usageSummaryClient != widget.dependencies.usageSummaryClient) {
+      _requestGeneration++;
       unawaited(_refreshAdministratorCoverage());
     }
   }
@@ -146,6 +154,7 @@ class _AiFeatureHostPageState extends State<AiFeatureHostPage> {
   }
 
   Future<void> _bootstrap() async {
+    final generation = _requestGeneration;
     try {
       final availability = await widget.dependencies.availabilityReader.read();
 
@@ -193,10 +202,15 @@ class _AiFeatureHostPageState extends State<AiFeatureHostPage> {
         _loading = false;
         _mode = mode;
         _platformReachable = reachable;
-        _creditsUsed = creditsUsed;
-        _creditBudget = creditBudget;
-        _subscriptionRef = subscriptionRef;
-        _planDisplayName = planDisplayName;
+        // Commercial fields commit only for the generation that started them and only while
+        // the current role is administrator; otherwise they stay cleared.
+        if (generation == _requestGeneration) {
+          final isAdministrator = widget.dependencies.staffIsAdministrator;
+          _creditsUsed = isAdministrator ? creditsUsed : null;
+          _creditBudget = isAdministrator ? creditBudget : null;
+          _subscriptionRef = isAdministrator ? subscriptionRef : null;
+          _planDisplayName = isAdministrator ? planDisplayName : null;
+        }
         _notices = availability.notices;
         if (mode == AiDegradedMode.ready) {
           _resolver = ContextResolver(providerPort: widget.dependencies.contextProvider);
@@ -234,6 +248,7 @@ class _AiFeatureHostPageState extends State<AiFeatureHostPage> {
       if (!mounted) {
         return;
       }
+      // Role lost: clear commercial fields synchronously (before any await).
       setState(() {
         _creditsUsed = null;
         _creditBudget = null;
@@ -243,14 +258,19 @@ class _AiFeatureHostPageState extends State<AiFeatureHostPage> {
       return;
     }
 
+    final generation = _requestGeneration;
     final availability = await widget.dependencies.availabilityReader.read();
+    if (!mounted || generation != _requestGeneration || !widget.dependencies.staffIsAdministrator) {
+      return;
+    }
     final baseUrl = availability.platformBaseUrl;
     if (baseUrl == null || baseUrl.isEmpty) {
       return;
     }
 
     final summary = await _fetchCoverage(baseUrl);
-    if (!mounted) {
+    // R7-UI1: drop the response if the role was lost or the generation moved on while in flight.
+    if (!mounted || generation != _requestGeneration || !widget.dependencies.staffIsAdministrator) {
       return;
     }
     setState(() {
@@ -393,8 +413,10 @@ class _AiFeatureHostPageState extends State<AiFeatureHostPage> {
       staffIsAdministrator: widget.dependencies.staffIsAdministrator,
       wireCode: _denialWireCode,
       retryAfter: _denialRetryAfter,
-      subscriptionRef: _subscriptionRef,
-      planDisplayName: _planDisplayName,
+      // R7-UI1: commercial fields are masked at render time for non-administrators, so a role
+      // downgrade removes them in the same frame, before any pending read completes.
+      subscriptionRef: widget.dependencies.staffIsAdministrator ? _subscriptionRef : null,
+      planDisplayName: widget.dependencies.staffIsAdministrator ? _planDisplayName : null,
       child: hideSurface
           ? const Text('Clinical workflows remain available.')
           : _resolver != null
