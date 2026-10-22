@@ -12,6 +12,8 @@ import {
 import type { Logger } from "../logger";
 import { noopLogger } from "../logger";
 
+export { parseRoutingPolicyDocument } from "./policy-document";
+
 export type RoutingTier = "standard" | "degraded";
 export type CostClass = "economy" | "standard" | "premium";
 export type CostClassSource =
