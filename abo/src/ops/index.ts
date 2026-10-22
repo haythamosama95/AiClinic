@@ -3488,11 +3488,14 @@ async function handlePostSubmitTransactionId(
   if (checkout === null) {
     return clinicErrorResponse("not_found", 404, contractVersion);
   }
+  // FV-M3: refuse only a transaction id that is already known. Checkouts that
+  // already have captures may receive further captures; the confirm path's
+  // order binding still refuses a transaction not bound to this checkout.
   const knownTransaction = await env.DB.prepare(
-    `SELECT 1 FROM paymob_txn WHERE checkout_id = ? LIMIT 1`,
+    `SELECT checkout_id FROM paymob_txn WHERE txn_id = ?`,
   )
-    .bind(checkoutId)
-    .first();
+    .bind(transactionId)
+    .first<{ checkout_id: string }>();
   if (knownTransaction !== null) {
     return clinicErrorResponse("conflict", 409, contractVersion);
   }
@@ -3505,34 +3508,35 @@ async function handlePostSubmitTransactionId(
   const paramsSha256 = await sha256Hex(
     canonicalize({ action, subject, transaction_id: transactionId }),
   );
-  await insertOperatorAction(
-    env,
-    {
-      action_id: actionId,
-      actor_email: access.email,
-      access_jti: access.jti,
-      action,
-      subject,
-      params_sha256: paramsSha256,
-      assertion_sha256: null,
-      result: "submitted",
-    },
-    nowIso,
-  );
-  await env.DB.prepare(
-    `INSERT INTO work (
-       work_id, kind, subject_id, dedupe_key, state, attempts,
-       next_attempt_at, lease_until, lease_token, last_error, opened_at
-     ) VALUES (?, 'confirm', ?, ?, 'open', 0, NULL, NULL, NULL, NULL, ?)
-     ON CONFLICT(dedupe_key) DO NOTHING`,
-  )
-    .bind(
+  // FV-M3: the operator_action row, its fact and the confirm work commit together.
+  await env.DB.batch([
+    ...(await operatorActionStatements(
+      env,
+      {
+        action_id: actionId,
+        actor_email: access.email,
+        access_jti: access.jti,
+        action,
+        subject,
+        params_sha256: paramsSha256,
+        assertion_sha256: null,
+        result: "submitted",
+      },
+      nowIso,
+    )),
+    env.DB.prepare(
+      `INSERT INTO work (
+         work_id, kind, subject_id, dedupe_key, state, attempts,
+         next_attempt_at, lease_until, lease_token, last_error, opened_at
+       ) VALUES (?, 'confirm', ?, ?, 'open', 0, NULL, NULL, NULL, NULL, ?)
+       ON CONFLICT(dedupe_key) DO NOTHING`,
+    ).bind(
       workId,
       checkoutId,
       `confirm:manual:${actionId}:${transactionId}`,
       nowIso,
-    )
-    .run();
+    ),
+  ]);
 
   await recordPlatformOperatorAction(
     env,

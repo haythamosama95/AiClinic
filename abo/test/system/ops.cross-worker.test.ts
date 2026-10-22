@@ -31,6 +31,7 @@ import {
   pinIssuer,
   runScheduled,
   scriptPaymobInquiry,
+  setD1BatchThrows,
   tableCount,
 } from "./harness";
 import { mintHxwVendorAccessJwt } from "./hxw-access-fixture";
@@ -738,6 +739,71 @@ async function grantOutcomeResult(grantId: string): Promise<string | null> {
   } catch {
     return null;
   }
+}
+
+async function submitOperatorTransactionId(
+  checkoutId: string,
+  transactionId: string,
+  accessJwt: string,
+): Promise<Response> {
+  return opsFetch(`/ops/checkouts/${checkoutId}/transaction-id`, {
+    method: "POST",
+    headers: {
+      ...(await opsHeaders(accessJwt)),
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({ transaction_id: transactionId }),
+  });
+}
+
+async function operatorSubmissionCounts(): Promise<{
+  actions: number;
+  work: number;
+  payments: number;
+}> {
+  const row = await env.DB.prepare(
+    `SELECT
+       (SELECT COUNT(*) FROM operator_action) AS actions,
+       (SELECT COUNT(*) FROM work WHERE dedupe_key LIKE 'confirm:manual:%') AS work,
+       (SELECT COUNT(*) FROM payment) AS payments`,
+  ).first<{ actions: number; work: number; payments: number }>();
+  return { actions: row!.actions, work: row!.work, payments: row!.payments };
+}
+
+async function operatorActionFactCount(): Promise<number> {
+  const row = await env.DB.prepare(
+    `SELECT COUNT(*) AS n FROM fact_log WHERE "table" = 'operator_action'`,
+  ).first<{ n: number }>();
+  return row?.n ?? 0;
+}
+
+async function opsCheckoutWithCallbackCapture(
+  txnId: number,
+): Promise<{
+  checkoutId: string;
+  accessJwt: string;
+  expectations: OffersFixtureExpectations;
+  offerVersions: Record<number, { offerId: string; version: number }>;
+}> {
+  const { expectations, offerVersions } = await setupOpsHarness();
+  const orgId = ORG_OPS_08;
+  await setClock("2026-06-01T12:00:00.000Z");
+  await setupActivePlatformCoverage(orgId);
+  const { checkoutId } = await paidCheckoutFlow(
+    orgId,
+    offerVersions[1],
+    expectations,
+    txnId,
+  );
+  expect(await paymentIdForCheckout(checkoutId)).not.toBeNull();
+  // Keep the second capture's inquiry out of the first capture's minute budget.
+  await setClock("2026-06-01T12:05:00.000Z");
+  return {
+    checkoutId,
+    accessJwt: await mintVendorAccessJwt(OPS_OPERATOR_EMAIL),
+    expectations,
+    offerVersions,
+  };
 }
 
 async function operatorActionRow(
@@ -1768,6 +1834,126 @@ describe("ops cross-worker", () => {
     );
     expect(rejectedBinding.status).toBe(200);
     expect(await paymentIdForCheckout(unbound.checkoutId)).toBeNull();
+  });
+
+  it("FV-M3: operator submission records a second capture on a checkout that already has one", async () => {
+    const { checkoutId, accessJwt } = await opsCheckoutWithCallbackCapture(96801);
+
+    const submit = await submitOperatorTransactionId(checkoutId, "96802", accessJwt);
+    expect(submit.status).toBe(200);
+
+    const payments = await env.DB.prepare(
+      `SELECT payment_id, classification FROM payment WHERE checkout_id = ?`,
+    )
+      .bind(checkoutId)
+      .all<{ payment_id: string; classification: string }>();
+    expect(payments.results).toHaveLength(2);
+    expect(payments.results.map((row) => row.classification).sort()).toEqual([
+      "likely_duplicate",
+      "normal",
+    ]);
+    const txns = await env.DB.prepare(
+      `SELECT txn_id FROM paymob_txn WHERE checkout_id = ? ORDER BY txn_id`,
+    )
+      .bind(checkoutId)
+      .all<{ txn_id: string }>();
+    expect(txns.results.map((row) => row.txn_id)).toEqual(["96801", "96802"]);
+    const grantWork = await env.DB.prepare(
+      `SELECT COUNT(DISTINCT subject_id) AS n FROM work
+       WHERE kind = 'grant' AND subject_id IN (
+         SELECT payment_id FROM payment WHERE checkout_id = ?)`,
+    )
+      .bind(checkoutId)
+      .first<{ n: number }>();
+    expect(grantWork?.n).toBe(2);
+  });
+
+  it("FV-M3: resubmitting a known capture returns 409 and adds no action or work", async () => {
+    const { checkoutId, accessJwt, expectations, offerVersions } =
+      await opsCheckoutWithCallbackCapture(96811);
+    expect(
+      (await submitOperatorTransactionId(checkoutId, "96812", accessJwt)).status,
+    ).toBe(200);
+    // A capture already known for another checkout is refused as well.
+    const other = await postCheckout(
+      ORG_OPS_08,
+      offerVersions[1],
+      expectations,
+      "req-fv-m3-other-checkout",
+    );
+    const before = await operatorSubmissionCounts();
+    const workBefore = await tableCount("work");
+
+    for (const known of ["96811", "96812"]) {
+      const repeat = await submitOperatorTransactionId(checkoutId, known, accessJwt);
+      expect(repeat.status).toBe(409);
+      const repeatBody = (await repeat.json()) as Record<string, unknown>;
+      expect(repeatBody.code).toBe("conflict");
+    }
+    expect(
+      (await submitOperatorTransactionId(other.checkoutId, "96811", accessJwt)).status,
+    ).toBe(409);
+
+    expect(await operatorSubmissionCounts()).toEqual(before);
+    expect(await tableCount("work")).toBe(workBefore);
+  });
+
+  it("FV-M3: a submitted id bound to another order records no payment on a checkout with captures", async () => {
+    const { checkoutId, accessJwt } = await opsCheckoutWithCallbackCapture(96821);
+    const before = await operatorSubmissionCounts();
+    await scriptPaymobInquiry("unbound");
+
+    const submit = await submitOperatorTransactionId(checkoutId, "96822", accessJwt);
+    expect(submit.status).toBe(200);
+
+    const after = await operatorSubmissionCounts();
+    expect(after.payments).toBe(before.payments);
+    const unknown = await env.DB.prepare(
+      `SELECT COUNT(*) AS n FROM paymob_txn WHERE txn_id = '96822'`,
+    ).first<{ n: number }>();
+    expect(unknown?.n).toBe(0);
+  });
+
+  it("FV-M3: a failed work insert leaves no operator_action row behind", async () => {
+    const { checkoutId, accessJwt } = await opsCheckoutWithCallbackCapture(96831);
+    const before = await operatorSubmissionCounts();
+    const factsBefore = await operatorActionFactCount();
+
+    // The action row, its fact and the work row share one D1 batch; the harness fails the
+    // batch whole, so nothing from it may survive.
+    setD1BatchThrows(true, 0);
+    let failedStatus: number | null = null;
+    try {
+      const failed = await aboWorker.fetch(
+        new Request(`${OPS_ORIGIN}/ops/checkouts/${checkoutId}/transaction-id`, {
+          method: "POST",
+          headers: {
+            ...(await opsHeaders(accessJwt)),
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({ transaction_id: "96832" }),
+        }),
+        env,
+        { waitUntil() {}, passThroughOnException() {} } as unknown as ExecutionContext,
+      );
+      failedStatus = failed.status;
+    } catch {
+      failedStatus = null;
+    } finally {
+      setD1BatchThrows(false);
+    }
+    expect(failedStatus).not.toBe(200);
+    expect(await operatorSubmissionCounts()).toEqual(before);
+    expect(await operatorActionFactCount()).toBe(factsBefore);
+
+    // The failed attempt did not consume the id: a retry succeeds once.
+    const retry = await submitOperatorTransactionId(checkoutId, "96832", accessJwt);
+    expect(retry.status).toBe(200);
+    const after = await operatorSubmissionCounts();
+    expect(after.actions).toBe(before.actions + 1);
+    expect(after.work).toBe(before.work + 1);
+    expect(after.payments).toBe(before.payments + 1);
+    expect(await operatorActionFactCount()).toBe(factsBefore + 1);
   });
 
   it("E2E-P4.6-06 stale contract version rejects before auth and writes", async () => {
