@@ -304,7 +304,7 @@ export async function detectMissedScheduledPeriod<E extends SchedulerEnv>(
      SET last_error_at = ?, last_error_code = ?,
          consecutive_failures = consecutive_failures + 1
      WHERE job = ?
-       AND NOT (last_error_code = ? AND last_error_at >= ?)`,
+       AND (last_error_code IS NOT ? OR last_error_at IS NULL OR last_error_at < ?)`,
   )
     .bind(
       nowIso,
