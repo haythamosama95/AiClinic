@@ -1233,6 +1233,29 @@ async function ensureCoverageMirrorForOrg(orgId: string): Promise<void> {
         ? term.grace_ends_at
         : null;
 
+  const snapshotClinicSeq = typeof snapshot.clinic_seq === "number" ? snapshot.clinic_seq : 1;
+  // RM36: the platform projects the snapshot (no capabilities or max_cost_class in term), so an
+  // existing mirror at or ahead of (binding_epoch, clinic_seq) is kept rather than overwritten.
+  const existingMirror = await env.PLATFORM_DB.prepare(
+    `SELECT binding_epoch, clinic_seq FROM coverage_mirror WHERE installation_id = ?`,
+  )
+    .bind(binding.installation_id)
+    .first<{ binding_epoch: number; clinic_seq: number }>();
+  if (
+    existingMirror !== null &&
+    (existingMirror.binding_epoch > binding.epoch ||
+      (existingMirror.binding_epoch === binding.epoch &&
+        existingMirror.clinic_seq >= snapshotClinicSeq))
+  ) {
+    return;
+  }
+  // Put the published plan's capabilities and max_cost_class back into the stored term.
+  const storedTerm =
+    typeof snapshot.term === "object" && snapshot.term !== null
+      ? { ...(snapshot.term as Record<string, unknown>), capabilities: [CAPABILITY_ID], max_cost_class: 2 }
+      : snapshot.term;
+  const storedSnapshot = { ...snapshot, term: storedTerm };
+
   await env.PLATFORM_DB.prepare(
     `INSERT OR REPLACE INTO coverage_mirror (
        installation_id, org_id, binding_epoch, clinic_seq, state, suspended,
@@ -1243,10 +1266,10 @@ async function ensureCoverageMirrorForOrg(orgId: string): Promise<void> {
       binding.installation_id,
       orgId,
       binding.epoch,
-      typeof snapshot.clinic_seq === "number" ? snapshot.clinic_seq : 1,
+      snapshotClinicSeq,
       typeof snapshot.state === "string" ? snapshot.state : "active",
       hardStopAt,
-      JSON.stringify(snapshot),
+      JSON.stringify(storedSnapshot),
     )
     .run();
 }

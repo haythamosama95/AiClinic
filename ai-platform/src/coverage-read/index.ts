@@ -17,6 +17,7 @@ import { clockNowMs, clockNowSeconds } from "../clock";
 import { buildErrorBody, liveHttpStatusForCode } from "../errors";
 import { IssuerTokenVerifier } from "../identity";
 import { noopLogger, type Logger } from "../logger";
+import type { DurationScale } from "../coverage/calendar";
 import type { ReadCoverageResponse } from "../quota-do";
 import { generateRequestReference } from "../reference";
 import { generateUlid } from "../trace";
@@ -30,6 +31,7 @@ export interface CoverageReadEnv extends AlertEnv {
   R2?: R2Bucket;
   ISSUER_ID: string;
   TEST_CLOCK?: string;
+  DURATION_SCALE?: string;
 }
 
 function unauthenticatedResponse(): Response {
@@ -48,6 +50,7 @@ async function callReadCoverage(
   doNamespace: DurableObjectNamespace,
   installationId: string,
   orgId: string,
+  durationScale: DurationScale | undefined,
 ): Promise<
   | { ok: true; body: ReadCoverageResponse }
   | { ok: false; reason: "unavailable" | "contract_rejected" }
@@ -63,6 +66,7 @@ async function callReadCoverage(
         kind: "read_coverage",
         orgId,
         vendorContractVersion: CHANNEL_VERSIONS.platformDo,
+        ...(durationScale !== undefined ? { durationScale } : {}),
       }),
     });
     if (!response.ok) {
@@ -144,7 +148,12 @@ export async function handleCoverageReadRequest(
   const orgId = verifyResult.principal.organizationId;
   const installationId = verifyResult.principal.installationId;
 
-  const doResponse = await callReadCoverage(env.DO, installationId, orgId);
+  const doResponse = await callReadCoverage(
+    env.DO,
+    installationId,
+    orgId,
+    env.DURATION_SCALE === "staging" ? "staging" : undefined,
+  );
   if (!doResponse.ok) {
     if (doResponse.reason === "contract_rejected") {
       const status = liveHttpStatusForCode("coverage_unknown") ?? 503;

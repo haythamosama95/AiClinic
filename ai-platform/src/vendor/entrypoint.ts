@@ -6893,6 +6893,7 @@ export class VendorEntrypoint extends WorkerEntrypoint<VendorEnv> {
       kind: "read_coverage",
       orgId,
       vendorContractVersion: version,
+      durationScale: durationScaleFromEnv(this.env),
     });
     if (doResponse === null) {
       return rejected(version, "coverage_unknown");

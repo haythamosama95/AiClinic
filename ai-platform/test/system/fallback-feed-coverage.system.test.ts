@@ -2,6 +2,7 @@
  * P3.9 — Fallback admission, coverage feed, administrator coverage read (H-AP).
  */
 
+import { env as workerBindings } from "cloudflare:workers";
 import { env, runInDurableObject, SELF } from "cloudflare:test";
 import {
   CHANNEL_VERSIONS,
@@ -116,8 +117,17 @@ async function readHotUsed(installationId: string): Promise<number> {
 async function countDoRows(installationId: string, table: "hot" | "term"): Promise<number> {
   const rows = await runInDurableObject(
     quotaDoStub(installationId),
-    async (_instance, state) =>
-      sqlSelect<{ n: number }>(state, `SELECT count(*) AS n FROM ${table}`),
+    async (_instance, state) => {
+      // An uninitialized DO has no tables yet, so the count is 0 rather than a no-such-table error.
+      const exists = sqlSelect<{ n: number }>(
+        state,
+        `SELECT count(*) AS n FROM sqlite_master WHERE type = 'table' AND name = '${table}'`,
+      );
+      if ((exists[0]?.n ?? 0) === 0) {
+        return [];
+      }
+      return sqlSelect<{ n: number }>(state, `SELECT count(*) AS n FROM ${table}`);
+    },
   );
   return rows[0]?.n ?? 0;
 }
@@ -135,6 +145,27 @@ async function initializeEmptyDo(installationId: string): Promise<void> {
         idempotency, band_emitted, binding_epoch, clinic_seq, next_alarm_at
       ) VALUES (0, NULL, 0, 0, NULL, 0, 0, 0, '[]', '{}', '{}', '{}', 0, 0, NULL)`,
     ) ?? [])];
+  });
+}
+
+// Same pattern as term-boundaries-grace-renewal: set DURATION_SCALE on both bindings and restore afterwards.
+function withDurationScale<T>(scale: string, fn: () => Promise<T>): Promise<T> {
+  const targets = [
+    env as { DURATION_SCALE?: string },
+    workerBindings as { DURATION_SCALE?: string },
+  ];
+  const previous = targets.map((target) => target.DURATION_SCALE);
+  for (const target of targets) {
+    target.DURATION_SCALE = scale;
+  }
+  return fn().finally(() => {
+    targets.forEach((target, index) => {
+      if (previous[index] === undefined) {
+        delete target.DURATION_SCALE;
+      } else {
+        target.DURATION_SCALE = previous[index];
+      }
+    });
   });
 }
 
@@ -818,6 +849,33 @@ describe("P3.9 fallback admission, feed, and coverage read", () => {
     expect(await countDoRows(scenario.installationId, "term")).toBe(0);
   });
 
+  it("R7-A1 coverage read uses the same duration scale as the write path", async () => {
+    await withDurationScale("staging", async () => {
+      const scenario = await newScenario();
+      await coverClinic(scenario);
+      await grantSecondPaidTerm(scenario);
+
+      // The grant wrote a coverage_event whose snapshot was built with the staging scale.
+      const stored = await runInDurableObject(
+        quotaDoStub(scenario.installationId),
+        async (_instance, state) =>
+          sqlSelect<{ payload: string }>(
+            state,
+            "SELECT payload FROM outbox WHERE kind = 'coverage_event' ORDER BY seq DESC LIMIT 1",
+          ),
+      );
+      const storedPayload = JSON.parse(stored[0]!.payload) as {
+        snapshot: Record<string, unknown>;
+      };
+
+      const adminToken = await mintAat(scenario, { role: "administrator" });
+      const response = await readCoverageAs(adminToken);
+      expect(response.status).toBe(200);
+      const body = (await response.json()) as { snapshot: Record<string, unknown> };
+      expect(body.snapshot.coverage_through).toBe(storedPayload.snapshot.coverage_through);
+    });
+  });
+
   it("R7-PS4 coverage read on a suspended installation: administrator reads 200 with suspended true, staff get 403, retired and deleted-unheld bindings are denied, and reads still work after resume", async () => {
     const scenario = await newScenario();
     await coverClinic(scenario);
@@ -847,7 +905,9 @@ describe("P3.9 fallback admission, feed, and coverage read", () => {
     const staffRead = await readCoverageAs(await mintAat(scenario, { role: "staff" }));
     expect(staffRead.status).toBe(403);
 
-    // A retired binding is not a live binding, so the diagnostic read is denied.
+    // A retired binding is not a live binding, so the read does not reuse the covered installation.
+    // Identity re-binds the org to a fresh installation at a higher epoch (resolveInstallationId),
+    // so the read succeeds against an uninitialized DO: state none, binding_epoch 0, not the covered state.
     const retired = await newScenario();
     await coverClinic(retired);
     await env.DB.prepare(
@@ -858,7 +918,19 @@ describe("P3.9 fallback admission, feed, and coverage read", () => {
     const retiredRead = await readCoverageAs(
       await mintAat(retired, { role: "administrator" }),
     );
-    expect(retiredRead.status).toBe(liveHttpStatusForCode("unauthenticated"));
+    expect(retiredRead.status).toBe(200);
+    const reboundBinding = await env.DB.prepare(
+      "SELECT installation_id, epoch FROM tenant_binding WHERE org_id = ? AND status = 'active'",
+    )
+      .bind(retired.orgId)
+      .first<{ installation_id: string; epoch: number }>();
+    expect(reboundBinding?.epoch).toBe(2);
+    expect(reboundBinding?.installation_id).not.toBe(retired.installationId);
+    const retiredBody = (await retiredRead.json()) as {
+      snapshot: Record<string, unknown>;
+    };
+    expect(retiredBody.snapshot.state).toBe("none");
+    expect(retiredBody.snapshot.binding_epoch).toBe(0);
 
     // A deleted installation without a held-for-transfer binding is denied.
     const deleted = await newScenario();

@@ -360,6 +360,7 @@ export interface ReadCoverageRequest {
   installationId: string;
   orgId: string;
   vendorContractVersion: number;
+  durationScale?: DurationScale;
 }
 
 export interface ReadCoverageResponse {
@@ -2565,6 +2566,7 @@ export async function readCoverageRPC(
         orgId: request.orgId,
         hot: emptyHot,
         terms: [],
+        durationScale: request.durationScale,
       });
       return {
         kind: "read_coverage",
@@ -2579,6 +2581,7 @@ export async function readCoverageRPC(
       orgId: request.orgId,
       hot,
       terms,
+      durationScale: request.durationScale,
     });
     return {
       kind: "read_coverage",

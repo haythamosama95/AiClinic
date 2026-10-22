@@ -14,6 +14,7 @@ export {
   acceptedVersions,
   negotiate,
   validateCoverageSnapshot,
+  projectCoverageSnapshot,
   validateFeedEvent,
   grantEnvelopeHash,
   validateGrantEnvelope,
