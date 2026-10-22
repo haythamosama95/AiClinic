@@ -1041,26 +1041,4 @@ describe("Stage 05 — rollback, serving, and post-accept routing failures (S05-
     expect(await count("control_audit")).toBe(0);
     expect(await r2KeysUnder("control/routing-policy/")).toEqual([]);
   });
-
-    const result = await invokeVisitSummary(instA, "idem-s05-062-0001");
-
-    const ref = assertAccepted(result);
-    const decision = parseRoutingDecision(await getAiRequest(ref));
-    expect(decision?.excluded).toEqual([
-      {
-        provider_id: "deepseek",
-        model_id: "deepseek-v4-flash",
-        reason_code: "feature_unsupported",
-      },
-    ]);
-    expect(decision?.chain).toEqual([
-      {
-        ordinal: 0,
-        provider_id: "gemini",
-        model_id: "gemini-3.5-flash",
-        max_attempts: 2,
-        timeout_ms: 30000,
-      },
-    ]);
-  });
 });
