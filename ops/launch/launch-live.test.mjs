@@ -38,7 +38,11 @@ const LINE = [
   "The issuer and service keys are registered. The issuer keys are pinned in the ABO's `ISSUER_KEYS`. The platform signing key is set.",
   "The platform holds no terms (clinic DOs) or grants (D1).",
   "The audit watcher and the heartbeat monitor are live.",
+  "No published, canary or active routing policy row lacks a content digest.",
 ];
+
+// The routing digest failure line carries the failing policy ids; compare it by its fixed prefix.
+const baseLine = (line) => (line.startsWith(LINE[8]) ? LINE[8] : line);
 
 // A channel map with every CHANNEL_KEYS name set to value, with optional per-key overrides.
 function channelMap(value = 1, overrides = {}) {
@@ -197,6 +201,7 @@ function routeFor(clock, options = {}) {
             key_self_check_checked_at: "2026-10-22T11:55:00Z",
             platform_signing_key_set: true,
             platform_signing_kid: "platform-kid-1",
+            legacy_routing_policy_ids: [],
             ...o.launchStateOverrides,
           },
           opts,
@@ -291,7 +296,8 @@ test("R9-RT1 the four former gap reads are live: no gap observations are needed,
   // closed. The probe, Cloudflare and monitor conditions are unaffected.
   const absent = await evaluateWith({ launchStateOverrides: { platform_signing_key_set: undefined } });
   assert.deepEqual(absent.errors, [{ source: "abo", reason: "schema-mismatch" }]);
-  assert.deepEqual(absent.failures, [LINE[2], LINE[3], LINE[4], LINE[5], LINE[6]]);
+  // FR06 / FV-P4: the routing digest condition also comes from the ABO, so it fails closed too.
+  assert.deepEqual(absent.failures.map(baseLine), [LINE[2], LINE[3], LINE[4], LINE[5], LINE[6], LINE[8]]);
 });
 
 test("R9-RT1 workers_dev flipping to true changes the result with no local file edited", async () => {
@@ -370,7 +376,7 @@ test("R9-RT1 a Cloudflare account id that differs from the target discards its o
 
 test("R9-RT1 an ABO RP id that differs from the target host discards the ABO observations", async () => {
   const { failures } = await evaluateWith({ rpId: "other.example.test" });
-  assert.deepEqual(failures, [LINE[2], LINE[3], LINE[4], LINE[5], LINE[6]]);
+  assert.deepEqual(failures.map(baseLine), [LINE[2], LINE[3], LINE[4], LINE[5], LINE[6], LINE[8]]);
 });
 
 test("R9-RT1 a source that returns 401 fails its conditions with a fixed reason", async () => {

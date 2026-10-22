@@ -388,6 +388,7 @@ describe("R9-RT1 readLaunchState", () => {
       channel_versions: CHANNEL_VERSIONS,
       environment: "staging",
       signing_key: { kid: "staging-launch-1", public_key: secret.publicKey },
+      legacy_routing_policy_ids: [],
     });
     expect(Object.keys(CHANNEL_VERSIONS)).toHaveLength(9);
   });
@@ -402,7 +403,40 @@ describe("R9-RT1 readLaunchState", () => {
       channel_versions: CHANNEL_VERSIONS,
       environment: "staging",
       signing_key: null,
+      legacy_routing_policy_ids: [],
     });
+  });
+
+  it("FV-P4 readLaunchState lists published, canary and active routing rows with a NULL content digest, and none once republished with a digest", async () => {
+    const insert = (policyId: string, version: string, status: string, digest: string | null) =>
+      env.DB.prepare(
+        `INSERT INTO routing_policy (policy_id, version, content_pointer, active_from, activated_by, status, content_sha256)
+         VALUES (?, ?, ?, '2026-10-01T00:00:00.000Z', 'operator-test', ?, ?)`,
+      )
+        .bind(policyId, version, `control/routing-policy/${policyId}/${version}.json`, status, digest)
+        .run();
+    await insert("fv-p4-legacy-a", "1", "published", null);
+    await insert("fv-p4-legacy-b", "2", "active", null);
+    await insert("fv-p4-legacy-c", "3", "canary", null);
+    await insert("fv-p4-superseded", "1", "superseded", null);
+    await insert("fv-p4-digested", "1", "active", "a".repeat(64));
+    const secret = await signingSecret("staging-fv-p4");
+    const vendor = vendorWith({ ENVIRONMENT: "staging", PLATFORM_SIGNING_KEY: secret.json });
+
+    const before = JSON.parse((await vendor.readLaunchState({ contract_version: CONTRACT_VERSION })).detail);
+    expect(before.legacy_routing_policy_ids).toEqual([
+      "fv-p4-legacy-a@1",
+      "fv-p4-legacy-b@2",
+      "fv-p4-legacy-c@3",
+    ]);
+
+    // Republished: the quarantined rows are replaced by digested versions and the legacy rows are retired.
+    await env.DB.prepare(
+      `UPDATE routing_policy SET status = 'superseded' WHERE policy_id LIKE 'fv-p4-legacy-%'`,
+    ).run();
+    await insert("fv-p4-legacy-a", "4", "published", "b".repeat(64));
+    const after = JSON.parse((await vendor.readLaunchState({ contract_version: CONTRACT_VERSION })).detail);
+    expect(after.legacy_routing_policy_ids).toEqual([]);
   });
 
   it("R9-RT1 readLaunchState returns null signing_key for the published development key under production", async () => {

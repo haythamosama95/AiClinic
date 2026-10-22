@@ -20,12 +20,22 @@ const FAILED_CONDITION_LINES = [
   "The issuer and service keys are registered. The issuer keys are pinned in the ABO's `ISSUER_KEYS`. The platform signing key is set.",
   "The platform holds no terms (clinic DOs) or grants (D1).",
   "The audit watcher and the heartbeat monitor are live.",
+  "No published, canary or active routing policy row lacks a content digest.",
 ];
+
+// FR06 / FV-P4 (RM33 R8-PUB1 step 3): the operator procedure for legacy routing rows.
+const LEGACY_ROUTING_HINT =
+  "Quarantine and republish each as a new digested version (docs/review/abo-remediation/RM33.md, operator checklist items 2-3).";
+
+function legacyRoutingFailureLine(ids) {
+  const named = Array.isArray(ids) && ids.length > 0 ? ids.join(", ") : "not readable";
+  return `${FAILED_CONDITION_LINES[8]} Failing policy ids (policy_id@version): ${named}. ${LEGACY_ROUTING_HINT}`;
+}
 
 const OFFLINE_NOTICE =
   "launch-check offline evaluation: a supplied snapshot is evidence only and never reports a launch pass (01 §3.8 D-6).";
 const LIVE_NOTICE =
-  "launch-check live evaluation: every observation was acquired in this run from the target. Exit 0 only when all eight conditions pass.";
+  "launch-check live evaluation: every observation was acquired in this run from the target. Exit 0 only when all nine conditions pass.";
 const NO_MODE_NOTICE =
   "launch-check: no evaluation mode was given (--target <file> for live, --offline <file> for supplied evidence). Launch success cannot be confirmed. No result was produced.";
 
@@ -86,6 +96,12 @@ export function evaluateRules(input) {
     failures.push(FAILED_CONDITION_LINES[7]);
   }
 
+  // Only an array of ids that is empty passes. Absent, null or a non-array fails closed.
+  const legacy = input.legacy_routing_policy_ids;
+  if (!Array.isArray(legacy) || legacy.length > 0 || !legacy.every((id) => typeof id === "string")) {
+    failures.push(legacyRoutingFailureLine(legacy));
+  }
+
   return failures;
 }
 
@@ -134,6 +150,7 @@ const RULE_KEYS = new Set([
   "platform_d1_grants",
   "audit_watcher_live",
   "heartbeat_monitor_live",
+  "legacy_routing_policy_ids",
 ]);
 
 // Builds the rule input only from observations that pass target, freshness and key checks.
@@ -239,7 +256,7 @@ async function runLive(file, { env, fetchImpl, clock, runPsql }) {
     console.error(`${LIVE_NOTICE} Result: not passed.`);
     return 1;
   }
-  console.error(`${LIVE_NOTICE} Result: all eight conditions passed for ${target.environment}.`);
+  console.error(`${LIVE_NOTICE} Result: all nine conditions passed for ${target.environment}.`);
   return 0;
 }
 

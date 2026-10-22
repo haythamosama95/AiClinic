@@ -17,5 +17,6 @@
   "platform_d1_terms": 0,
   "platform_d1_grants": 0,
   "audit_watcher_live": true,
-  "heartbeat_monitor_live": true
+  "heartbeat_monitor_live": true,
+  "legacy_routing_policy_ids": []
 }

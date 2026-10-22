@@ -3717,8 +3717,11 @@ export class VendorEntrypoint extends WorkerEntrypoint<VendorEnv> {
    * `signing_key` is the public half {kid, public_key} of the platform signing
    * key, or null when the secret is missing, malformed, the published
    * development key, or does not verify against its declared public key. The
-   * private key is never returned. Writes nothing; any exception is transient
-   * with no partial data.
+   * private key is never returned. `legacy_routing_policy_ids` (FR06 / FV-P4)
+   * lists `policy_id@version` for every published, canary or active
+   * `routing_policy` row whose `content_sha256 IS NULL`, so the launch check
+   * can gate on legacy undigested routing rows. Writes nothing; any exception
+   * is transient with no partial data.
    */
   async readLaunchState(
     args: Record<string, unknown>,
@@ -3734,12 +3737,21 @@ export class VendorEntrypoint extends WorkerEntrypoint<VendorEnv> {
         this.env.PLATFORM_SIGNING_KEY,
         this.env.ENVIRONMENT,
       );
+      const legacyRouting = await this.env.DB.prepare(
+        `SELECT policy_id, version FROM routing_policy
+         WHERE content_sha256 IS NULL
+           AND status IN ('published', 'canary', 'active')
+         ORDER BY policy_id ASC, version ASC`,
+      ).all<{ policy_id: string; version: string }>();
       return ok(
         version,
         JSON.stringify({
           channel_versions: { ...CHANNEL_VERSIONS },
           environment: this.env.ENVIRONMENT,
           signing_key: signingKey,
+          legacy_routing_policy_ids: (legacyRouting.results ?? []).map(
+            (row) => `${row.policy_id}@${row.version}`,
+          ),
         }),
       );
     } catch {

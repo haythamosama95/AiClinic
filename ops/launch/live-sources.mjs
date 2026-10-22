@@ -275,6 +275,12 @@ export function createAboSource({ env, fetchImpl }) {
         !isObject(state.channel_versions) ||
         (state.platform_channel_versions !== null && !isObject(state.platform_channel_versions)) ||
         typeof state.key_self_check_passes !== "boolean" ||
+        // FR06 / FV-P4: null (platform unreadable) or the list of undigested routing rows.
+        (state.legacy_routing_policy_ids !== null &&
+          !(
+            Array.isArray(state.legacy_routing_policy_ids) &&
+            state.legacy_routing_policy_ids.every((id) => typeof id === "string" && id.length > 0)
+          )) ||
         (state.key_self_check_checked_at !== null && typeof state.key_self_check_checked_at !== "string") ||
         typeof state.platform_signing_key_set !== "boolean" ||
         (state.platform_signing_kid !== null && typeof state.platform_signing_kid !== "string")
@@ -314,6 +320,7 @@ export function createAboSource({ env, fetchImpl }) {
         ),
         emit("key_self_check_passes", state.key_self_check_passes),
         emit("platform_signing_key_set", state.platform_signing_key_set),
+        emit("legacy_routing_policy_ids", state.legacy_routing_policy_ids),
       ];
     },
   };

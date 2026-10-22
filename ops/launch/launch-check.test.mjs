@@ -29,6 +29,7 @@ const FAILED_CONDITION_LINES = [
   "The issuer and service keys are registered. The issuer keys are pinned in the ABO's `ISSUER_KEYS`. The platform signing key is set.",
   "The platform holds no terms (clinic DOs) or grants (D1).",
   "The audit watcher and the heartbeat monitor are live.",
+  "No published, canary or active routing policy row lacks a content digest.",
 ];
 
 function runLaunchCheck(fixturePath) {
@@ -293,4 +294,148 @@ test("R9-RT1 launch-state 503 fails the terms condition", async () => {
   assert.equal(observations.some((item) => item.key === "platform_d1_terms"), false);
   const failures = evaluateLive(observations, target, nowMs - 1000, nowMs);
   assert.ok(failures.includes(FAILED_CONDITION_LINES[6]));
+});
+
+// FR06 / FV-P4 (RM33 R8-PUB1 step 3): legacy routing rows with no content digest gate the launch.
+const LEGACY_ROUTING_LINE_PREFIX = FAILED_CONDITION_LINES[8];
+
+function legacyRoutingLines(lines) {
+  return lines.filter((line) => line.startsWith(LEGACY_ROUTING_LINE_PREFIX));
+}
+
+test("FV-P4 offline: a NULL-digest published routing row fails the launch check and names the policy ids and the RM33 procedure", () => {
+  withTempSnapshot(
+    (snapshot) => {
+      snapshot.legacy_routing_policy_ids = ["standard@3", "premium@1"];
+    },
+    (result) => {
+      const lines = stdoutLines(result.stdout);
+      assert.equal(lines.length, 1);
+      assert.ok(lines[0].startsWith(LEGACY_ROUTING_LINE_PREFIX));
+      assert.match(lines[0], /standard@3, premium@1/u);
+      assert.match(lines[0], /RM33\.md, operator checklist items 2-3/u);
+      assert.match(lines[0], /[Qq]uarantine and republish/u);
+    },
+  );
+});
+
+test("FV-P4 offline: the check passes once the row is republished with a digest (empty list) and fails closed when the list is absent or malformed", () => {
+  withTempSnapshot(
+    (snapshot) => {
+      snapshot.legacy_routing_policy_ids = [];
+    },
+    (result) => {
+      assert.deepEqual(stdoutLines(result.stdout), []);
+    },
+  );
+  for (const bad of [undefined, null, "standard@1", [1]]) {
+    withTempSnapshot(
+      (snapshot) => {
+        if (bad === undefined) {
+          delete snapshot.legacy_routing_policy_ids;
+        } else {
+          snapshot.legacy_routing_policy_ids = bad;
+        }
+      },
+      (result) => {
+        const lines = legacyRoutingLines(stdoutLines(result.stdout));
+        assert.equal(lines.length, 1, `value ${JSON.stringify(bad)} must fail closed`);
+      },
+    );
+  }
+});
+
+async function evaluateLegacyRoutingLive(legacyRoutingPolicyIds) {
+  const { createAboSource } = await import(
+    pathToFileURL(path.join(repoRoot, "ops", "launch", "live-sources.mjs")).href
+  );
+  const { acquire, evaluateLive } = await import(pathToFileURL(launchCheckScript).href);
+  const { validateTarget } = await import(
+    pathToFileURL(path.join(repoRoot, "ops", "launch", "target.mjs")).href
+  );
+  const target = validateTarget(
+    JSON.parse(readFileSync(path.join(fixturesDir, "target-test.json"), "utf8")),
+  );
+  const nowMs = Date.parse("2026-10-22T12:00:00Z");
+  const clock = { now: () => nowMs };
+  const date = new Date(nowMs).toUTCString();
+  const json = (body) =>
+    new Response(JSON.stringify(body), {
+      status: 200,
+      headers: { "content-type": "application/json", date },
+    });
+  const channels = Object.fromEntries(
+    [
+      "aboClinic",
+      "aboConsole",
+      "backendRpc",
+      "platformClinic",
+      "platformFeed",
+      "vendorEntrypoint",
+      "platformDo",
+      "paymobReturn",
+      "paymobAdapter",
+    ].map((name) => [name, 1]),
+  );
+  const fetchImpl = async (url) => {
+    if (url.endsWith("/ops/ceremony-context")) {
+      return json({ rp_id: target.ops_host });
+    }
+    if (url.endsWith("/ops/registries")) {
+      return json({
+        issuer_keys: [{ kid: "issuer-test", public_key: "pk-issuer-test" }],
+        service_keys: [{ key_id: "service-test" }],
+        operator_credentials: [{ active: true }, { active: true }],
+      });
+    }
+    if (url.endsWith("/ops/launch-state")) {
+      return json({
+        abo_signing_kid: "kid-test-1",
+        issuer_keys_pinned: true,
+        al_23_active: false,
+        term_count: 0,
+        grant_count: 0,
+        channel_versions: channels,
+        platform_channel_versions: channels,
+        key_self_check_passes: true,
+        key_self_check_checked_at: "2026-10-22T11:55:00Z",
+        platform_signing_key_set: true,
+        platform_signing_kid: "platform-kid-1",
+        legacy_routing_policy_ids: legacyRoutingPolicyIds,
+      });
+    }
+    throw new Error(`unexpected fake request: ${url}`);
+  };
+  const { observations, errors } = await acquire(
+    target,
+    { abo: createAboSource({ env: {}, fetchImpl }) },
+    clock,
+  );
+  return { errors, failures: evaluateLive(observations, target, nowMs - 1000, nowMs) };
+}
+
+test("FV-P4 live: the launch check fails on a NULL-digest published routing row and passes after it is republished with a digest", async () => {
+  const legacy = await evaluateLegacyRoutingLive(["standard@2"]);
+  assert.deepEqual(legacy.errors, []);
+  const failing = legacyRoutingLines(legacy.failures);
+  assert.equal(failing.length, 1);
+  assert.match(failing[0], /standard@2/u);
+  assert.match(failing[0], /RM33\.md, operator checklist items 2-3/u);
+
+  // Republished: the platform read no longer lists the row, so the whole ABO source is clean.
+  const republished = await evaluateLegacyRoutingLive([]);
+  assert.deepEqual(republished.errors, []);
+  assert.deepEqual(legacyRoutingLines(republished.failures), []);
+  assert.equal(republished.failures.includes(FAILED_CONDITION_LINES[6]), false);
+});
+
+test("FV-P4 live: an unreadable platform (null list) fails closed and a malformed list drops the ABO source", async () => {
+  const unreadable = await evaluateLegacyRoutingLive(null);
+  assert.deepEqual(unreadable.errors, []);
+  assert.equal(legacyRoutingLines(unreadable.failures).length, 1);
+  assert.match(legacyRoutingLines(unreadable.failures)[0], /not readable/u);
+
+  const malformed = await evaluateLegacyRoutingLive("standard@1");
+  assert.deepEqual(malformed.errors, [{ source: "abo", reason: "schema-mismatch" }]);
+  assert.equal(legacyRoutingLines(malformed.failures).length, 1);
 });

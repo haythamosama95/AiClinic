@@ -3198,7 +3198,8 @@ async function parsePlatformList(
  * live `term` rows across all clinic DOs. A failed
  * platform count answers 503 `transient`, never a partial success.
  * R9-RT1 additions: `channel_versions` (ABO), `platform_channel_versions`
- * (null when `readLaunchState` is not ok), `platform_signing_key_set` and
+ * (null when `readLaunchState` is not ok), `legacy_routing_policy_ids`
+ * (FR06 / FV-P4; null when unreadable), `platform_signing_key_set` and
  * `platform_signing_kid` (pinned, non-development keys only), and
  * `key_self_check_passes` / `key_self_check_checked_at` (fresh unpaused gate
  * plus a read-only recompute of the ABO key). Nothing is written.
@@ -3250,6 +3251,7 @@ async function handleGetLaunchState(
       grant_count: grants,
       channel_versions: { ...CHANNEL_VERSIONS },
       platform_channel_versions: platformChannelVersions(platform),
+      legacy_routing_policy_ids: legacyRoutingPolicyIds(platform),
       platform_signing_key_set: platformSigning.set,
       platform_signing_kid: platformSigning.kid,
       key_self_check_passes: keySelf.passes,
@@ -3267,6 +3269,7 @@ type PlatformLaunchDetail = {
   channel_versions?: unknown;
   signing_key?: unknown;
   environment?: unknown;
+  legacy_routing_policy_ids?: unknown;
 };
 
 /** Platform `readLaunchState` detail, or null when the call is not ok or unreadable. */
@@ -3291,6 +3294,22 @@ async function readPlatformLaunchDetail(
   } catch {
     return null;
   }
+}
+
+/**
+ * FR06 / FV-P4: `policy_id@version` of every published, canary or active
+ * routing row with no content digest, from the platform `readLaunchState`.
+ * `null` when the platform read failed or the field is malformed, so the
+ * launch check fails closed.
+ */
+function legacyRoutingPolicyIds(
+  platform: PlatformLaunchDetail | null,
+): string[] | null {
+  const ids = platform?.legacy_routing_policy_ids;
+  if (!Array.isArray(ids) || !ids.every((id) => typeof id === "string")) {
+    return null;
+  }
+  return ids as string[];
 }
 
 function platformChannelVersions(

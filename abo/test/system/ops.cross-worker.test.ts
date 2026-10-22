@@ -1432,6 +1432,7 @@ describe("ops cross-worker", () => {
         "issuer_keys_pinned",
         "key_self_check_checked_at",
         "key_self_check_passes",
+        "legacy_routing_policy_ids",
         "platform_channel_versions",
         "platform_signing_key_set",
         "platform_signing_kid",
