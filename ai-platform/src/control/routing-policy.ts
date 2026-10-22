@@ -1,4 +1,4 @@
-import { buildEntrypointAuditStatement, nowIso } from "./audit";
+import { buildEntrypointAuditStatement, newId, nowIso } from "./audit";
 import type { ControlActionResult, ControlBindings } from "./types";
 import {
   parseRoutingPolicyDocument,
@@ -239,6 +239,12 @@ export async function publishRoutingPolicyAction(
            canary_installation_ids, status
          ) VALUES (?, ?, ?, ?, ?, ?, NULL, 'published')`,
       ).bind(policyId, version, contentPointer, contentSha256, recordedAt, actor),
+      // R8-ROLLBACK1: first version of a policy has no predecessor; existing rows are kept.
+      DB.prepare(
+        `INSERT OR IGNORE INTO routing_policy_activation
+           (policy_id, generation, active_version, predecessor_version, predecessor_state)
+         VALUES (?, 0, NULL, NULL, 'none')`,
+      ).bind(policyId),
       buildEntrypointAuditStatement(
         DB,
         actor,
@@ -354,11 +360,100 @@ export async function canaryRoutingPolicyAction(
   return { ok: true, body: {} };
 }
 
+type ActivationRow = {
+  policy_id: string;
+  generation: number;
+  active_version: string | null;
+  predecessor_version: string | null;
+  predecessor_state: "unknown" | "none" | "known";
+};
+
+const GENERATION_CONFLICT: ControlActionResult = {
+  ok: false,
+  status: 409,
+  error: "generation_conflict",
+};
+
+async function readActivation(
+  db: D1Database,
+  policyId: string,
+): Promise<ActivationRow | null> {
+  return db
+    .prepare(
+      `SELECT policy_id, generation, active_version, predecessor_version, predecessor_state
+       FROM routing_policy_activation WHERE policy_id = ?`,
+    )
+    .bind(policyId)
+    .first<ActivationRow>();
+}
+
+/**
+ * R8-ROLLBACK1: audit row that exists only when the immediately preceding
+ * statement (the generation-guarded activation UPDATE) changed a row. Later
+ * statements in the same batch are gated on this audit row's presence.
+ */
+function guardedAuditStatement(
+  db: D1Database,
+  auditId: string,
+  actor: string,
+  action: string,
+  target: string,
+  beforePointer: string | null,
+  afterPointer: string | null,
+  recordedAt: string,
+): D1PreparedStatement {
+  return db
+    .prepare(
+      `INSERT INTO control_audit
+         (audit_id, operator_id, actor, action, target, assertion_sha256, before_pointer, after_pointer, recorded_at)
+       SELECT ?, ?, ?, ?, ?, NULL, ?, ?, ? WHERE changes() > 0`,
+    )
+    .bind(auditId, actor, actor, action, target, beforePointer, afterPointer, recordedAt);
+}
+
+/**
+ * R8-ROLLBACK1: runs one transition batch. The first statement is the
+ * generation-guarded activation UPDATE; if it changed zero rows nothing is
+ * committed and a generation conflict is returned.
+ */
+async function runFencedBatch(
+  db: D1Database,
+  statements: D1PreparedStatement[],
+): Promise<ControlActionResult | null> {
+  try {
+    const results = await db.batch(statements);
+    if (results[0]?.meta?.changes === 0) {
+      return GENERATION_CONFLICT;
+    }
+    return null;
+  } catch {
+    return { ok: false, status: 500, error: "storage_error" };
+  }
+}
+
+function cancelCanariesStatement(
+  db: D1Database,
+  policyId: string,
+  auditId: string,
+): D1PreparedStatement {
+  return db
+    .prepare(
+      `UPDATE routing_policy
+       SET status = CASE WHEN status = 'canary' THEN 'published' ELSE status END,
+           canary_installation_ids = NULL
+       WHERE policy_id = ?
+         AND (status = 'canary' OR canary_installation_ids IS NOT NULL)
+         AND EXISTS (SELECT 1 FROM control_audit WHERE audit_id = ?)`,
+    )
+    .bind(policyId, auditId);
+}
+
 export async function promoteRoutingPolicyAction(
   bindings: ControlBindings,
   actor: string,
   policyId: string,
   version: string,
+  expectedGeneration?: number,
 ): Promise<ControlActionResult> {
   if (!bindings.R2) {
     return { ok: false, status: 500, error: "missing_r2_binding" };
@@ -390,41 +485,54 @@ export async function promoteRoutingPolicyAction(
     return storedInvalid;
   }
 
-  const priorActive = await DB.prepare(
-    `SELECT version FROM routing_policy
-     WHERE policy_id = ? AND status = 'active'
-     ORDER BY active_from DESC, rowid DESC LIMIT 1`,
-  )
-    .bind(policyId)
-    .first<{ version: string }>();
+  const activation = await readActivation(DB, policyId);
+  if (!activation) {
+    return { ok: false, status: 409, error: "activation_state_missing" };
+  }
+  if (
+    expectedGeneration !== undefined &&
+    expectedGeneration !== activation.generation
+  ) {
+    return GENERATION_CONFLICT;
+  }
 
-  const beforePointer = priorActive
-    ? `${policyId}@${priorActive.version}`
+  const auditId = newId();
+  const recordedAt = nowIso();
+  const beforePointer = activation.active_version
+    ? `${policyId}@${activation.active_version}`
     : null;
-  const afterPointer = target;
 
-  const batchError = await runControlBatch(DB, [
+  const batchError = await runFencedBatch(DB, [
     DB.prepare(
-      `UPDATE routing_policy
-       SET status = 'active', canary_installation_ids = NULL
-       WHERE policy_id = ? AND version = ? AND status = ?`,
-    ).bind(policyId, version, existing.status),
-    buildEntrypointAuditStatement(
+      `UPDATE routing_policy_activation
+       SET generation = generation + 1,
+           predecessor_version = active_version,
+           predecessor_state = CASE WHEN active_version IS NULL THEN 'none' ELSE 'known' END,
+           active_version = ?
+       WHERE policy_id = ? AND generation = ?`,
+    ).bind(version, policyId, activation.generation),
+    guardedAuditStatement(
       DB,
+      auditId,
       actor,
       "routing_policy_promote",
       target,
-      null,
       beforePointer,
-      afterPointer,
-      true,
+      target,
+      recordedAt,
     ),
     DB.prepare(
       `UPDATE routing_policy
        SET status = 'superseded', canary_installation_ids = NULL
        WHERE policy_id = ? AND version != ? AND status IN ('active', 'canary')
-         AND changes() > 0`,
-    ).bind(policyId, version),
+         AND EXISTS (SELECT 1 FROM control_audit WHERE audit_id = ?)`,
+    ).bind(policyId, version, auditId),
+    DB.prepare(
+      `UPDATE routing_policy
+       SET status = 'active', canary_installation_ids = NULL
+       WHERE policy_id = ? AND version = ? AND status = ?
+         AND EXISTS (SELECT 1 FROM control_audit WHERE audit_id = ?)`,
+    ).bind(policyId, version, existing.status, auditId),
   ]);
   if (batchError) {
     return batchError;
@@ -438,6 +546,7 @@ export async function rollbackRoutingPolicyAction(
   actor: string,
   policyId: string,
   version: string,
+  expectedGeneration?: number,
 ): Promise<ControlActionResult> {
   const { DB } = bindings;
   const target = `${policyId}@${version}`;
@@ -453,86 +562,113 @@ export async function rollbackRoutingPolicyAction(
     return { ok: false, status: 404, error: "policy_version_not_found" };
   }
 
-  const statements: D1PreparedStatement[] = [];
-  let beforePointer: string | null = existing.status === "canary"
-    ? existing.canary_installation_ids
-    : `${policyId}@${version}`;
-  let afterPointer: string | null = null;
-  let priorVersion: string | null = null;
+  const activation = await readActivation(DB, policyId);
+  if (!activation) {
+    return { ok: false, status: 409, error: "activation_state_missing" };
+  }
+  if (
+    expectedGeneration !== undefined &&
+    expectedGeneration !== activation.generation
+  ) {
+    return GENERATION_CONFLICT;
+  }
+
+  const auditId = newId();
+  const recordedAt = nowIso();
 
   if (existing.status === "canary") {
-    const active = await DB.prepare(
-      `SELECT version FROM routing_policy
-       WHERE policy_id = ? AND status = 'active'
-       ORDER BY active_from DESC, rowid DESC LIMIT 1`,
-    )
-      .bind(policyId)
-      .first<{ version: string }>();
-
-    statements.push(
+    // Scoped canary cancellation: the canary row returns to published.
+    const activeAfter = activation.active_version
+      ? `${policyId}@${activation.active_version}`
+      : null;
+    const batchError = await runFencedBatch(DB, [
       DB.prepare(
-        `UPDATE routing_policy
-         SET status = 'published', canary_installation_ids = NULL
-         WHERE policy_id = ? AND version = ? AND status = 'canary'`,
-      ).bind(policyId, version),
-    );
-    afterPointer = active ? `${policyId}@${active.version}` : null;
-  } else if (existing.status === "active") {
-    const prior = await DB.prepare(
-      `SELECT version FROM routing_policy
-       WHERE policy_id = ? AND status = 'superseded'
-       ORDER BY active_from DESC, rowid DESC LIMIT 1`,
-    )
-      .bind(policyId)
-      .first<{ version: string }>();
+        `UPDATE routing_policy_activation
+         SET generation = generation + 1
+         WHERE policy_id = ? AND generation = ?`,
+      ).bind(policyId, activation.generation),
+      guardedAuditStatement(
+        DB,
+        auditId,
+        actor,
+        "routing_policy_rollback",
+        target,
+        existing.canary_installation_ids,
+        activeAfter,
+        recordedAt,
+      ),
+      cancelCanariesStatement(DB, policyId, auditId),
+    ]);
+    return batchError ?? { ok: true, body: {} };
+  }
 
-    if (!prior) {
-      return { ok: false, status: 409, error: "illegal_policy_transition" };
-    }
-
-    statements.push(
-      DB.prepare(
-        `UPDATE routing_policy
-         SET status = 'superseded', canary_installation_ids = NULL
-         WHERE policy_id = ? AND version = ? AND status = 'active'`,
-      ).bind(policyId, version),
-    );
-    priorVersion = prior.version;
-    afterPointer = `${policyId}@${prior.version}`;
-  } else {
+  if (existing.status !== "active" || activation.active_version !== version) {
     return { ok: false, status: 409, error: "illegal_policy_transition" };
   }
 
-  statements.splice(
-    1,
-    0,
-    buildEntrypointAuditStatement(
+  // R8-ROLLBACK1: the restore target is only the predecessor the activation
+  // record names. Publication order and active_from are never consulted.
+  if (activation.predecessor_state === "unknown") {
+    return { ok: false, status: 409, error: "rollback_predecessor_unknown" };
+  }
+  const predecessorVersion = activation.predecessor_version;
+  if (activation.predecessor_state !== "known" || predecessorVersion === null) {
+    return { ok: false, status: 409, error: "illegal_policy_transition" };
+  }
+
+  const prior = await DB.prepare(
+    `SELECT policy_id, version, status, canary_installation_ids, active_from,
+            content_pointer, content_sha256
+     FROM routing_policy WHERE policy_id = ? AND version = ?`,
+  )
+    .bind(policyId, predecessorVersion)
+    .first<RoutingPolicyRow>();
+  if (!prior || prior.status !== "superseded") {
+    return { ok: false, status: 409, error: "illegal_policy_transition" };
+  }
+  if (!bindings.R2) {
+    return { ok: false, status: 500, error: "missing_r2_binding" };
+  }
+  // ROUTE1: the restored version's stored bytes must parse before any state change.
+  const storedInvalid = await verifyStoredRoutingPolicy(bindings.R2, prior);
+  if (storedInvalid) {
+    return storedInvalid;
+  }
+
+  const batchError = await runFencedBatch(DB, [
+    DB.prepare(
+      `UPDATE routing_policy_activation
+       SET generation = generation + 1,
+           active_version = predecessor_version,
+           predecessor_version = NULL,
+           predecessor_state = 'unknown'
+       WHERE policy_id = ? AND generation = ? AND active_version = ?
+         AND predecessor_state = 'known' AND predecessor_version = ?`,
+    ).bind(policyId, activation.generation, version, predecessorVersion),
+    guardedAuditStatement(
       DB,
+      auditId,
       actor,
       "routing_policy_rollback",
       target,
-      null,
-      beforePointer,
-      afterPointer,
-      true,
+      target,
+      `${policyId}@${predecessorVersion}`,
+      recordedAt,
     ),
-  );
-  statements.push(
     DB.prepare(
       `UPDATE routing_policy
-       SET status = CASE
-             WHEN ? IS NOT NULL AND version = ? THEN 'active'
-             WHEN status = 'canary' THEN 'published'
-             ELSE status
-           END,
-           canary_installation_ids = NULL
-       WHERE policy_id = ? AND changes() > 0
-         AND ((? IS NOT NULL AND version = ?) OR status = 'canary'
-              OR canary_installation_ids IS NOT NULL)`,
-    ).bind(priorVersion, priorVersion, policyId, priorVersion, priorVersion),
-  );
-
-  const batchError = await runControlBatch(DB, statements);
+       SET status = 'superseded', canary_installation_ids = NULL
+       WHERE policy_id = ? AND version = ? AND status = 'active'
+         AND EXISTS (SELECT 1 FROM control_audit WHERE audit_id = ?)`,
+    ).bind(policyId, version, auditId),
+    DB.prepare(
+      `UPDATE routing_policy
+       SET status = 'active', canary_installation_ids = NULL
+       WHERE policy_id = ? AND version = ? AND status = 'superseded'
+         AND EXISTS (SELECT 1 FROM control_audit WHERE audit_id = ?)`,
+    ).bind(policyId, predecessorVersion, auditId),
+    cancelCanariesStatement(DB, policyId, auditId),
+  ]);
   if (batchError) {
     return batchError;
   }

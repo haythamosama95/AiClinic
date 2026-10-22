@@ -365,6 +365,9 @@ describe("routing policy traffic", () => {
       "context_window_too_small",
     );
 
+    // R8-ROUTE1: the strict parser rejects a non-array `languages` value at publish,
+    // so the per-target feature_unsupported exclusion is not reachable from a stored
+    // policy. The fail-closed contract is asserted at the publish boundary.
     const malformedLanguagesDocument = fakePolicyDocument(POLICY_ID, "21", {
       targets: [
         fakePolicyTarget("bogus-malformed", {
@@ -374,18 +377,9 @@ describe("routing policy traffic", () => {
         fakePolicyTarget("fake-v1"),
       ],
     });
-    const malformed = await promoteAndInvoke(malformedLanguagesDocument, "21");
-    expect(malformed.events.some((event) => event.event === "completed")).toBe(true);
-    const malformedRef = String(malformed.events[0]?.data.request_reference);
-    await flushBackgroundWork();
-    const malformedDecision = JSON.parse(
-      String((await getAiRequest(malformedRef))?.routing_decision),
-    ) as { excluded?: Array<{ reason_code?: string }> };
-    expect(
-      malformedDecision.excluded?.some(
-        (entry) => entry.reason_code === "feature_unsupported",
-      ),
-    ).toBe(true);
+    const malformed = await publishPolicy(POLICY_ID, "21", malformedLanguagesDocument);
+    expect(malformed.status).toBe(422);
+    expect(malformed.json).toEqual({ error: "invalid_policy_document" });
 
     const latencyDocument = fakePolicyDocument(POLICY_ID, "22", {
       targets: [fakePolicyTarget("fake-v1", { latencyClass: "interactive" })],

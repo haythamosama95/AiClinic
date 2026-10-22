@@ -166,11 +166,13 @@ const NO_CATCH_ALL_V9_DOCUMENT = {
           provider_id: "deepseek",
           model_id: "deepseek-v4-flash",
           features: {
-            structured_output: "yes",
-            min_context_window: "big",
-            languages: "en",
+            // R8-ROUTE1: the strict parser requires typed feature values; this
+            // fixture keeps the no-catch-all shape the test is about.
+            structured_output: false,
+            min_context_window: 128_000,
+            languages: ["en"],
             latency_class: "standard",
-            cost_class: "cheap",
+            cost_class: "economy",
           },
           max_attempts: 2,
           timeout_ms: 30000,

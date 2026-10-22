@@ -607,26 +607,22 @@ describe("Stage 05 — routing filters, kill switch, and invoke auth (S05-063…
     expect(exactFloor.chain?.[0]).toEqual(BOTH_FIXTURE_CHAIN[0]);
   });
 
-  it("S05-064 — Non-array languages fail closed as feature_unsupported", async () => {
+  it("S05-064 — Non-array languages are rejected at publish as invalid_policy_document", async () => {
+    // R8-ROUTE1: the strict routing parser rejects a non-array `languages` value
+    // before a document is stored, so the per-target feature_unsupported exclusion
+    // is no longer reachable through a published policy. The fail-closed contract
+    // is asserted at the publish boundary instead of at decision time.
     const scenario = await newScenario();
     await enrollAndEntitle(scenario);
-    await publishAndPromote(
-      policyDocument(7, {
-        targets: [
-          fixtureTarget("deepseek", "deepseek-v4-flash", { languages: "en" }),
-          GEMINI_FLASH,
-        ],
-      }),
-    );
-
-    const { ref } = await invokeAccepted(scenario, "idem-s05-064-0001");
-    const { decision } = await loadDecision(ref);
-    expect(decision.excluded?.[0]).toEqual({
-      provider_id: "deepseek",
-      model_id: "deepseek-v4-flash",
-      reason_code: "feature_unsupported",
+    const document = policyDocument(7, {
+      targets: [
+        fixtureTarget("deepseek", "deepseek-v4-flash", { languages: "en" }),
+        GEMINI_FLASH,
+      ],
     });
-    expect(decision.chain).toEqual(GEMINI_ONLY_CHAIN);
+    const published = await publishPolicy(POLICY_ID, "7", document);
+    expect(published.status).toBe(422);
+    expect(published.json).toEqual({ error: "invalid_policy_document" });
   });
 
   it("S05-065 — Target missing a required language", async () => {

@@ -5,6 +5,8 @@ import canaryMigrationSql from "../migrations/20260803100000_routing_policy_cana
 import statusMigrationSql from "../migrations/20260805190000_routing_policy_status.sql?raw";
 import operatorCredentialMigrationSql from "../migrations/20261003120000_operator_credential_and_platform_alert.sql?raw";
 import rm31AlertDeliverySql from "../migrations/20261021130000_rm31_alert_delivery.sql?raw";
+import rm33RoutingIntegritySql from "../migrations/20261021140000_rm33_routing_configuration_integrity.sql?raw";
+import rm33ActivationGenerationSql from "../migrations/20261021150000_rm33_routing_activation_generation.sql?raw";
 import planVersionPaidGrantCoverageMigrationSql from "../migrations/20261003140000_plan_version_paid_grant_coverage.sql?raw";
 import { applySqlStatements } from "./split-sql-statements";
 import {
@@ -346,6 +348,7 @@ async function applyPlatformSchema(db: D1Database, sql: string): Promise<void> {
 async function clearTables(db: D1Database): Promise<void> {
   await db.batch([
     db.prepare("DELETE FROM control_audit"),
+    db.prepare("DELETE FROM routing_policy_activation"),
     db.prepare("DELETE FROM routing_policy"),
     db.prepare("DELETE FROM capability_grant"),
     db.prepare("DELETE FROM tenant_binding"),
@@ -590,6 +593,8 @@ beforeAll(async () => {
   await applyPlatformSchema(env.DB, statusMigrationSql);
   await applySqlStatements(env.DB, operatorCredentialMigrationSql);
   await applySqlStatements(env.DB, rm31AlertDeliverySql);
+  await applySqlStatements(env.DB, rm33RoutingIntegritySql);
+  await applySqlStatements(env.DB, rm33ActivationGenerationSql);
   await applySqlStatements(env.DB, planVersionPaidGrantCoverageMigrationSql);
 });
 
@@ -1778,7 +1783,7 @@ describe("routing_policy_control_robustness", () => {
     expect(published.rules[0]?.targets[0]?.provider_id).not.toBe("gemini");
   });
 
-  it("rollback resurrects later rowid when superseded versions share active_from", async () => {
+  it("R8-ROLLBACK1: rollback with unknown predecessor returns conflict instead of resurrecting a later rowid when superseded versions share active_from", async () => {
     await seedInstallation(env.DB, COHORT_INSTALLATION_ID);
 
     const operatorAuth = createFakeOperatorAuth();
@@ -1810,12 +1815,25 @@ describe("routing_policy_control_robustness", () => {
     vi.setSystemTime(new Date("2026-08-03T12:01:00.000Z"));
     await publishAndPromoteVersion(handlers, bindings, operatorAuth, 11, "deepseek");
 
+    // R8-ROLLBACK1: rows from before the activation record carry an unknown
+    // predecessor. Publication order and active_from must not be used to guess
+    // a restore target, so rollback must refuse and require an explicit promotion.
+    await env.DB
+      .prepare(
+        `UPDATE routing_policy_activation
+         SET predecessor_version = NULL, predecessor_state = 'unknown'
+         WHERE policy_id = ?`,
+      )
+      .bind(FIXTURE_POLICY_ID)
+      .run();
+
     const rollback = await handleRoutingPolicyRollback(
       buildRollbackRequest("11"),
       bindings,
       operatorAuth,
     );
-    expect(rollback.status).toBe(200);
+    expect(rollback.status).toBe(409);
+    expect(await rollback.json()).toEqual({ error: "rollback_predecessor_unknown" });
 
     const active = await env.DB
       .prepare(
@@ -1824,16 +1842,7 @@ describe("routing_policy_control_robustness", () => {
       )
       .bind(FIXTURE_POLICY_ID)
       .first<{ version: string }>();
-    expect(active?.version).toBe("10");
-
-    const cache = new ConfigCache();
-    const reader = createD1ConfigReader(env.DB, env.R2);
-    const outcome = await routeForInstallation(
-      COHORT_INSTALLATION_ID,
-      cache,
-      reader,
-    );
-    expect(outcome.routing_decision.policy_version).toBe(10);
+    expect(active?.version).toBe("11");
   });
 
   it("promote audit before_pointer uses later rowid when two actives share active_from", async () => {
