@@ -23,6 +23,11 @@ import {
 import { clockNowIso, clockNowMs, type ClockEnv } from "../clock.js";
 import { insertFactLog } from "../records/append.js";
 import {
+  isNonEmptyTerms,
+  isPositiveSafeInteger,
+  validateOfferCopy,
+} from "../offers/copy.js";
+import {
   commandFactStatements,
   readCommandFact,
   safeResultPayload,
@@ -580,7 +585,7 @@ async function insertAssertionUsed(
     .run();
 }
 
-async function insertOperatorAction(
+async function operatorActionStatements(
   env: OpsEnv,
   row: {
     action_id: string;
@@ -593,7 +598,7 @@ async function insertOperatorAction(
     result: string;
   },
   createdAt: string,
-): Promise<void> {
+): Promise<D1PreparedStatement[]> {
   const canonicalRow = {
     action_id: row.action_id,
     actor_email: row.actor_email,
@@ -604,7 +609,7 @@ async function insertOperatorAction(
     assertion_sha256: row.assertion_sha256,
     result: row.result,
   };
-  await env.DB.batch([
+  return [
     env.DB.prepare(
       `INSERT INTO operator_action (
          action_id, actor_email, access_jti, action, subject,
@@ -621,7 +626,15 @@ async function insertOperatorAction(
       row.result,
     ),
     await insertFactLog(env, "operator_action", row.action_id, canonicalRow, createdAt),
-  ]);
+  ];
+}
+
+async function insertOperatorAction(
+  env: OpsEnv,
+  row: Parameters<typeof operatorActionStatements>[1],
+  createdAt: string,
+): Promise<void> {
+  await env.DB.batch(await operatorActionStatements(env, row, createdAt));
 }
 
 async function acceptedCommandForChallenge(
@@ -1383,7 +1396,7 @@ async function nextTermsVersionNumber(env: OpsEnv): Promise<number> {
   return (row?.terms_version ?? 0) + 1;
 }
 
-async function appendOfferEvent(
+async function offerEventStatements(
   env: OpsEnv,
   row: {
     offer_id: string;
@@ -1393,7 +1406,7 @@ async function appendOfferEvent(
     at: string;
     contract_version: number;
   },
-): Promise<void> {
+): Promise<D1PreparedStatement[]> {
   const canonicalRow = {
     offer_id: row.offer_id,
     kind: row.kind,
@@ -1402,7 +1415,7 @@ async function appendOfferEvent(
     at: row.at,
     contract_version: row.contract_version,
   };
-  await env.DB.batch([
+  return [
     env.DB.prepare(
       `INSERT INTO offer_event (
          offer_id, kind, version, actor, at, contract_version
@@ -1422,7 +1435,14 @@ async function appendOfferEvent(
       canonicalRow,
       row.at,
     ),
-  ]);
+  ];
+}
+
+async function appendOfferEvent(
+  env: OpsEnv,
+  row: Parameters<typeof offerEventStatements>[1],
+): Promise<void> {
+  await env.DB.batch(await offerEventStatements(env, row));
 }
 
 async function paymentFullyReversed(
@@ -1444,6 +1464,156 @@ async function paymentFullyReversed(
   return false;
 }
 
+const OFFER_ALLOCATION_ATTEMPTS = 5;
+const OFFER_ALLOCATION_TABLES = ["offer_version", "terms_version", "offer_event", "fact_log"];
+
+function termsTextR2Key(textSha256: string): string {
+  return `terms/sha256/${textSha256}.txt`;
+}
+
+function isUniqueConflictOn(error: unknown, tables: string[]): boolean {
+  const message = error instanceof Error ? error.message : String(error);
+  return (
+    message.includes("UNIQUE constraint failed") &&
+    tables.some((table) => message.includes(`${table}.`))
+  );
+}
+
+async function publishOfferStatements(
+  env: OpsEnv,
+  hp: VerifiedHpContext,
+  input: {
+    offerId: string;
+    version: number;
+    termsVersion: number;
+    termsSha256: string;
+    textR2Key: string;
+    priceMinor: number;
+    copyJson: string;
+    template: Record<string, unknown>;
+    contractVersion: number;
+    nowIso: string;
+  },
+): Promise<D1PreparedStatement[]> {
+  const { offerId, version, termsVersion, nowIso, contractVersion } = input;
+  const template = input.template;
+  const termsCanonical = {
+    terms_version: termsVersion,
+    locale: "en",
+    text_r2_key: input.textR2Key,
+    text_sha256: input.termsSha256,
+    published_by: hp.access.email,
+    contract_version: contractVersion,
+  };
+  const offerCanonical = {
+    offer_id: offerId,
+    version,
+    plan_id: template.plan_id,
+    plan_version: template.plan_version,
+    term_unit: template.term_unit,
+    term_count: template.term_count,
+    price_minor: input.priceMinor,
+    currency: template.currency,
+    allowance_credits: template.allowance_credits,
+    grace_days: template.grace_days,
+    grace_cap_rule: template.grace_cap_rule,
+    copy: input.copyJson,
+    terms_version: termsVersion,
+    published_by: hp.access.email,
+    assertion_sha256: hp.challengeSha256,
+    contract_version: contractVersion,
+  };
+  return [
+    env.DB.prepare(
+      `INSERT INTO assertion_used (challenge_sha256) VALUES (?)`,
+    ).bind(hp.challengeSha256),
+    ...(await operatorActionStatements(
+      env,
+      {
+        action_id: hp.actionId,
+        actor_email: hp.access.email,
+        access_jti: hp.access.jti,
+        action: hp.operation.op,
+        subject: offerId,
+        params_sha256: await sha256Hex(canonicalize(hp.operation.params)),
+        assertion_sha256: hp.challengeSha256,
+        result: "accepted",
+      },
+      nowIso,
+    )),
+    env.DB.prepare(
+      `INSERT INTO terms_version (
+         terms_version, locale, text_r2_key, text_sha256, published_by, contract_version
+       ) VALUES (?, 'en', ?, ?, ?, ?)`,
+    ).bind(
+      termsVersion,
+      input.textR2Key,
+      input.termsSha256,
+      hp.access.email,
+      contractVersion,
+    ),
+    await insertFactLog(
+      env,
+      "terms_version",
+      `${termsVersion}:en`,
+      termsCanonical,
+      nowIso,
+    ),
+    env.DB.prepare(
+      `INSERT INTO offer_version (
+         offer_id, version, plan_id, plan_version, term_unit, term_count, price_minor,
+         currency, allowance_credits, grace_days, grace_cap_rule, copy, terms_version,
+         published_by, assertion_sha256, contract_version
+       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    ).bind(
+      offerId,
+      version,
+      template.plan_id,
+      template.plan_version,
+      template.term_unit,
+      template.term_count,
+      input.priceMinor,
+      template.currency,
+      template.allowance_credits,
+      template.grace_days,
+      template.grace_cap_rule,
+      input.copyJson,
+      termsVersion,
+      hp.access.email,
+      hp.challengeSha256,
+      contractVersion,
+    ),
+    await insertFactLog(
+      env,
+      "offer_version",
+      `${offerId}:${version}`,
+      offerCanonical,
+      nowIso,
+    ),
+    ...(await offerEventStatements(env, {
+      offer_id: offerId,
+      kind: "published",
+      version,
+      actor: hp.access.email,
+      at: nowIso,
+      contract_version: contractVersion,
+    })),
+  ];
+}
+
+function platformGrantIdsFromCoverage(coverageDetail: Record<string, unknown>): string[] {
+  const grants = Array.isArray(coverageDetail.grants) ? coverageDetail.grants : [];
+  const ids: string[] = [];
+  for (const grant of grants) {
+    if (!isRecord(grant)) continue;
+    const id = grant.grant_id;
+    if (typeof id === "string" && /^[A-Za-z0-9_-]{1,128}$/u.test(id)) {
+      ids.push(id);
+    }
+  }
+  return ids;
+}
+
 async function handleHpCatalogueAction(
   env: OpsEnv,
   offerId: string,
@@ -1457,10 +1627,11 @@ async function handleHpCatalogueAction(
     const priceMinor = hp.operation.params.price_minor;
     const termsText = hp.operation.params.terms_text;
     const copy = hp.operation.params.copy;
+    // R8-CONSOLE5 step 1: malformed input is refused before any approval is consumed.
     if (
-      typeof priceMinor !== "number" ||
-      typeof termsText !== "string" ||
-      !isRecord(copy)
+      !isPositiveSafeInteger(priceMinor) ||
+      !isNonEmptyTerms(termsText) ||
+      validateOfferCopy(copy) === null
     ) {
       return refuseHpAction(
         env,
@@ -1495,102 +1666,65 @@ async function handleHpCatalogueAction(
       );
     }
 
-    await commitAcceptedHp(env, hp, offerId);
-    const version = await nextOfferVersionNumber(env, offerId);
-    const termsVersion = await nextTermsVersionNumber(env);
-    const textSha256 = await sha256Hex(new TextEncoder().encode(termsText));
-    const textR2Key = `terms/en/${termsVersion}.txt`;
+    // R8-PUB1 step 1: terms text is stored under its exact content digest. Distinct bytes never
+    // share a key, so a losing publication cannot replace text that an accepted offer references.
+    const termsSha256 = await sha256Hex(new TextEncoder().encode(termsText));
+    const textR2Key = termsTextR2Key(termsSha256);
     await env.R2.put(textR2Key, termsText);
-
-    const termsCanonical = {
-      terms_version: termsVersion,
-      locale: "en",
-      text_r2_key: textR2Key,
-      text_sha256: textSha256,
-      published_by: hp.access.email,
-      contract_version: contractVersion,
-    };
-    await env.DB.batch([
-      env.DB.prepare(
-        `INSERT INTO terms_version (
-           terms_version, locale, text_r2_key, text_sha256, published_by, contract_version
-         ) VALUES (?, 'en', ?, ?, ?, ?)`,
-      ).bind(
-        termsVersion,
-        textR2Key,
-        textSha256,
-        hp.access.email,
-        contractVersion,
-      ),
-      await insertFactLog(
-        env,
-        "terms_version",
-        `${termsVersion}:en`,
-        termsCanonical,
-        nowIso,
-      ),
-    ]);
-
     const copyJson = JSON.stringify(copy);
-    const offerCanonical = {
-      offer_id: offerId,
-      version,
-      plan_id: template.plan_id,
-      plan_version: template.plan_version,
-      term_unit: template.term_unit,
-      term_count: template.term_count,
-      price_minor: priceMinor,
-      currency: template.currency,
-      allowance_credits: template.allowance_credits,
-      grace_days: template.grace_days,
-      grace_cap_rule: template.grace_cap_rule,
-      copy: copyJson,
-      terms_version: termsVersion,
-      published_by: hp.access.email,
-      assertion_sha256: hp.challengeSha256,
-      contract_version: contractVersion,
-    };
-    await env.DB.batch([
-      env.DB.prepare(
-        `INSERT INTO offer_version (
-           offer_id, version, plan_id, plan_version, term_unit, term_count, price_minor,
-           currency, allowance_credits, grace_days, grace_cap_rule, copy, terms_version,
-           published_by, assertion_sha256, contract_version
-         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-      ).bind(
-        offerId,
-        version,
-        template.plan_id,
-        template.plan_version,
-        template.term_unit,
-        template.term_count,
-        priceMinor,
-        template.currency,
-        template.allowance_credits,
-        template.grace_days,
-        template.grace_cap_rule,
-        copyJson,
-        termsVersion,
-        hp.access.email,
-        hp.challengeSha256,
-        contractVersion,
-      ),
-      await insertFactLog(
+
+    // R8-PUB1 step 2: approval consumption, terms, offer, events and facts commit in one D1
+    // batch. The numbers are allocated per attempt; a uniqueness conflict on a number means a
+    // concurrent publication took it, so the batch rolled back and is retried with fresh numbers.
+    // A replayed assertion is refused, so an exact retry cannot mint another commercial version.
+    let allocated = false;
+    for (let attempt = 1; attempt <= OFFER_ALLOCATION_ATTEMPTS && !allocated; attempt += 1) {
+      const version = await nextOfferVersionNumber(env, offerId);
+      const termsVersion = await nextTermsVersionNumber(env);
+      try {
+        await env.DB.batch(
+          await publishOfferStatements(env, hp, {
+            offerId,
+            version,
+            termsVersion,
+            termsSha256,
+            textR2Key,
+            priceMinor,
+            copyJson,
+            template,
+            contractVersion,
+            nowIso,
+          }),
+        );
+        allocated = true;
+      } catch (error) {
+        if (isUniqueConflictOn(error, ["assertion_used"])) {
+          return refuseHpAction(
+            env,
+            hp.access,
+            op,
+            offerId,
+            hp.operation.params,
+            "assertion_used",
+            contractVersion,
+          );
+        }
+        if (!isUniqueConflictOn(error, OFFER_ALLOCATION_TABLES)) {
+          throw error;
+        }
+      }
+    }
+    if (!allocated) {
+      return refuseHpAction(
         env,
-        "offer_version",
-        `${offerId}:${version}`,
-        offerCanonical,
-        nowIso,
-      ),
-    ]);
-    await appendOfferEvent(env, {
-      offer_id: offerId,
-      kind: "published",
-      version,
-      actor: hp.access.email,
-      at: nowIso,
-      contract_version: contractVersion,
-    });
+        hp.access,
+        op,
+        offerId,
+        hp.operation.params,
+        "allocation_conflict",
+        contractVersion,
+      );
+    }
   } else if (op === "retire_offer" || op === "reinstate_offer") {
     const version = await latestPublishedOfferVersion(env, offerId);
     if (version === null) {
@@ -1607,7 +1741,9 @@ async function handleHpCatalogueAction(
     await commitAcceptedHp(env, hp, offerId);
     await appendOfferEvent(env, {
       offer_id: offerId,
-      kind: op === "retire_offer" ? "retired" : "reinstated",
+      // R8-CONSOLE1 step 1: reinstatement re-activates the last published version, so it is
+      // written as `published`. The reinstate_offer operator_action row keeps the audit trail.
+      kind: op === "retire_offer" ? "retired" : "published",
       version,
       actor: hp.access.email,
       at: nowIso,
@@ -2277,9 +2413,31 @@ async function handleGetClinic(
           INNER JOIN payment p ON p.payment_id = w.subject_id
           WHERE p.org_id = ?
         )
+        -- R8-CONSOLE4 step 1: payment subjects (release, chargeback) and grant subjects (void,
+        -- release) of this org, and reverse work whose reversal belongs to a payment of this org.
+        OR oa.subject IN (SELECT payment_id FROM payment WHERE org_id = ?)
+        OR oa.subject IN (SELECT grant_id FROM grant_request WHERE org_id = ?)
+        OR oa.subject IN (
+          SELECT w.work_id
+          FROM work w
+          INNER JOIN reversal r ON r.reversal_id = w.subject_id
+          INNER JOIN payment p ON p.payment_id = r.payment_id
+          WHERE w.kind = 'reverse' AND p.org_id = ?
+        )
+        -- R8-CONSOLE4 step 2: grants obtained from the platform inspection for this clinic
+        -- (imported or transferred grants without a local request). Exact ids only.
+        OR oa.subject IN (SELECT value FROM json_each(?))
      ORDER BY oa.action_id ASC`,
   )
-    .bind(orgId, orgId, orgId)
+    .bind(
+      orgId,
+      orgId,
+      orgId,
+      orgId,
+      orgId,
+      orgId,
+      JSON.stringify(platformGrantIdsFromCoverage(coverageDetail)),
+    )
     .all<Record<string, unknown>>();
   const operator_actions = operatorRows.results ?? [];
 

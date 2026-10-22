@@ -964,6 +964,80 @@ describe("ops cross-worker", () => {
     expect(Array.isArray(registriesBody.operator_credentials)).toBe(true);
   });
 
+  it("R8-CONSOLE4: clinic history lists org-scoped payment, grant-request and reverse-work actions and keeps existing entries", async () => {
+    const { expectations, offerVersions } = await setupOpsHarness();
+    const clinic = await seedRichClinic(ORG_OPS_02, expectations, offerVersions);
+    const otherClinic = await seedRichClinic(ORG_OPS_03, expectations, offerVersions);
+
+    const reversal = await env.DB.prepare(
+      `SELECT reversal_id FROM reversal WHERE payment_id = ?`,
+    )
+      .bind(clinic.paymentId)
+      .first<{ reversal_id: string }>();
+    expect(reversal).not.toBeNull();
+    const reverseWorkId = crypto.randomUUID();
+    await env.DB.prepare(
+      `INSERT INTO work (
+         work_id, kind, subject_id, dedupe_key, state, attempts,
+         next_attempt_at, lease_until, last_error, opened_at
+       ) VALUES (?, 'reverse', ?, ?, 'parked', 1, NULL, NULL, 'rejected', ?)`,
+    )
+      .bind(
+        reverseWorkId,
+        reversal!.reversal_id,
+        `reverse:${reversal!.reversal_id}`,
+        "2026-06-01T12:00:00.000Z",
+      )
+      .run();
+
+    const seedAction = async (action: string, subject: string): Promise<string> => {
+      const actionId = crypto.randomUUID();
+      await env.DB.prepare(
+        `INSERT INTO operator_action (
+           action_id, actor_email, access_jti, action, subject,
+           params_sha256, assertion_sha256, result
+         ) VALUES (?, ?, 'jti-r8-console4', ?, ?, ?, NULL, 'ok')`,
+      )
+        .bind(actionId, OPS_OPERATOR_EMAIL, action, subject, "0".repeat(64))
+        .run();
+      return actionId;
+    };
+    const existingId = await seedAction("retry_grant", clinic.checkoutId);
+    const paymentActionId = await seedAction("release_payment", clinic.paymentId);
+    const grantRequestActionId = await seedAction("void_grant", clinic.grantId);
+    const reverseWorkActionId = await seedAction("retry_parked", reverseWorkId);
+    const otherPaymentActionId = await seedAction(
+      "release_payment",
+      otherClinic.paymentId,
+    );
+
+    const accessJwt = await mintVendorAccessJwt(OPS_OPERATOR_EMAIL);
+    const sessionHeaders = await opsHeaders(accessJwt);
+    const actionIdsFor = async (orgId: string): Promise<string[]> => {
+      const response = await opsFetch(`/ops/clinics/${orgId}`, {
+        headers: sessionHeaders,
+      });
+      expect(response.status).toBe(200);
+      const body = (await response.json()) as {
+        operator_actions: Array<{ action_id: string }>;
+      };
+      return body.operator_actions.map((row) => row.action_id);
+    };
+
+    const ownIds = await actionIdsFor(clinic.orgId);
+    expect(ownIds).toContain(existingId);
+    expect(ownIds).toContain(paymentActionId);
+    expect(ownIds).toContain(grantRequestActionId);
+    expect(ownIds).toContain(reverseWorkActionId);
+
+    const otherIds = await actionIdsFor(otherClinic.orgId);
+    expect(otherIds).toContain(otherPaymentActionId);
+    expect(otherIds).not.toContain(existingId);
+    expect(otherIds).not.toContain(paymentActionId);
+    expect(otherIds).not.toContain(grantRequestActionId);
+    expect(otherIds).not.toContain(reverseWorkActionId);
+  });
+
   it("E2E-P4.6-03 lookup by billing email, PAY-, org_id, CK-, and GR-", async () => {
     const { expectations, offerVersions } = await setupOpsHarness();
     const clinic = await seedRichClinic(ORG_OPS_03, expectations, offerVersions);

@@ -82,7 +82,7 @@ Each fact has one authoritative store. Copies exist for evidence, rebuild and di
 | `terms_version`  | append-only | `terms_version`, `locale`, `text_r2_key`, `text_sha256`, `published_by`                                                                                                                                                                                   |
 
 
-An offer is **sellable** when its latest event is `published`; the sellable version is the latest published one. Publishing or retiring is an HP action (02 §3.3) because it changes what money buys. Past prices remain in `offer_version` (FR-04).
+An offer is **sellable** when its latest event is `published`; the sellable version is the latest published one. Reinstatement writes `published` for the last published version (R8-CONSOLE1). Rows written before RM34 with kind `reinstated` are read as the same activation alias. Terms text is stored under its SHA-256 digest (R8-PUB1), and readers verify that digest before serving the text. Publishing or retiring is an HP action (02 §3.3) because it changes what money buys. Past prices remain in `offer_version` (FR-04).
 
 ### 2.3 Billing contact
 

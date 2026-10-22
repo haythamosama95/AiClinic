@@ -425,6 +425,89 @@ describe("checkout cross-worker", () => {
     expect(JSON.parse(checkoutFact!.row_json).terms_version).toBe(currentTermsVersion);
   });
 
+  it("R8-CONSOLE1/R8-CONSOLE5: a retired offer is not sellable, a reinstated version is sellable, and a malformed version is not sellable", async () => {
+    const expectations = await seedOffersCatalogueFixture();
+    expect(expectations).not.toBeNull();
+    const offerId = expectations!.offer_id;
+    const version = expectations!.version;
+    const org = "org-checkout-r8-console";
+    await putBillingContact(org);
+    await setupActivePlatformCoverage(org);
+
+    const lastAt = await env.DB.prepare(
+      `SELECT MAX(at) AS at FROM offer_event WHERE offer_id = ?`,
+    )
+      .bind(offerId)
+      .first<{ at: string | null }>();
+    const baseAt = lastAt?.at ?? "2026-06-01T12:00:00.000Z";
+    const insertOfferEvent = async (
+      kind: string,
+      eventVersion: number,
+      minutesAfter: number,
+    ): Promise<void> => {
+      await env.DB.prepare(
+        `INSERT INTO offer_event (offer_id, kind, version, actor, at, contract_version)
+         VALUES (?, ?, ?, 'fixture', ?, 1)`,
+      )
+        .bind(offerId, kind, eventVersion, addMinutes(baseAt, minutesAfter))
+        .run();
+    };
+    const checkoutFor = (clientRequestId: string, offerVersion: number) =>
+      postCheckout(org, {
+        client_request_id: clientRequestId,
+        offer_id: offerId,
+        offer_version: offerVersion,
+        terms_version: expectations!.terms.version,
+      });
+
+    // Retired: the version is not sellable.
+    await insertOfferEvent("retired", version, 1);
+    const retired = await checkoutFor("req-checkout-r8-retired", version);
+    expect(retired.status).toBe(409);
+    expect(((await retired.json()) as Record<string, unknown>).code).toBe(
+      "offer_unavailable",
+    );
+
+    // Reinstated: the console writes `published` for the last published version.
+    await insertOfferEvent("published", version, 2);
+    const reinstated = await checkoutFor("req-checkout-r8-reinstated", version);
+    expect(reinstated.status).toBe(201);
+
+    // Historical `reinstated` rows are the same activation.
+    await insertOfferEvent("reinstated", version, 3);
+    const historical = await checkoutFor("req-checkout-r8-historical", version);
+    expect(historical.status).toBe(201);
+
+    // Malformed: a newer published version whose stored copy has no `en` entry is refused.
+    const maxVersionRow = await env.DB.prepare(
+      `SELECT MAX(version) AS version FROM offer_version WHERE offer_id = ?`,
+    )
+      .bind(offerId)
+      .first<{ version: number }>();
+    const malformedVersion = maxVersionRow!.version + 1;
+    await env.DB.prepare(
+      `INSERT INTO offer_version (
+         offer_id, version, plan_id, plan_version, term_unit, term_count,
+         price_minor, currency, allowance_credits, grace_days, grace_cap_rule,
+         copy, terms_version, published_by, assertion_sha256, contract_version
+       )
+       SELECT offer_id, ?, plan_id, plan_version, term_unit, term_count,
+              price_minor, currency, allowance_credits, grace_days, grace_cap_rule,
+              '{}', terms_version, 'fixture', 'fixture-assertion-malformed', contract_version
+       FROM offer_version WHERE offer_id = ? AND version = ?`,
+    )
+      .bind(malformedVersion, offerId, version)
+      .run();
+    await insertOfferEvent("published", malformedVersion, 4);
+    const checkoutsBefore = await checkoutCount(org);
+    const malformed = await checkoutFor("req-checkout-r8-malformed", malformedVersion);
+    expect(malformed.status).toBe(409);
+    expect(((await malformed.json()) as Record<string, unknown>).code).toBe(
+      "offer_unavailable",
+    );
+    expect(await checkoutCount(org)).toBe(checkoutsBefore);
+  });
+
   it("E2E-P4.2-05 R3-C2 provider failure is durable and retry uses the next reference", async () => {
     const expectations = await seedOffersCatalogueFixture();
     expect(expectations).not.toBeNull();

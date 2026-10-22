@@ -40,7 +40,10 @@ export type AlertCode =
   | "AL-22"
   | "AL-23"
   // R9-CRON1 decision (a): a scheduled job period failed. Keyed `scheduled_job_failed:<job>`.
-  | "scheduled_job_failed";
+  | "scheduled_job_failed"
+  // R8-CONSOLE5 step 2: a stored offer version is malformed and was left out of the catalogue.
+  // Keyed `offer_malformed:<offer_id>:<version>`.
+  | "offer_malformed";
 
 type AlertRow = {
   alert_key: string;

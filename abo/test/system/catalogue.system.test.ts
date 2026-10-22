@@ -6,6 +6,7 @@ import { env } from "cloudflare:test";
 import { beforeEach, describe, expect, it } from "vitest";
 import offersFixture from "../../fixtures/offers.json";
 import { loadOffersFixture } from "../../src/records/append";
+import { listOffers } from "../../src/clinic-api/offers";
 import {
   applySql,
   billingFetch,
@@ -71,12 +72,17 @@ async function appendCatalogueTermsVersion(): Promise<{
   const text = `Current catalogue terms v${version}.`;
   const textR2Key = `terms/en/catalogue-current-${version}.txt`;
   await env.R2.put(textR2Key, text);
+  // R8-PUB1 step 3: readers verify the stored digest, so the fixture stores the real SHA-256.
+  const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(text));
+  const textSha256 = [...new Uint8Array(digest)]
+    .map((byte) => byte.toString(16).padStart(2, "0"))
+    .join("");
   await env.DB.prepare(
     `INSERT INTO terms_version (
        terms_version, locale, text_r2_key, text_sha256, published_by, contract_version
      ) VALUES (?, ?, ?, ?, ?, ?)`,
   )
-    .bind(version, "en", textR2Key, `fixture-terms-v${version}`, "fixture", 1)
+    .bind(version, "en", textR2Key, textSha256, "fixture", 1)
     .run();
   return { version, text };
 }
@@ -472,6 +478,91 @@ describe("catalogue", () => {
       expect(terms.version).toBeTruthy();
       expect(terms.text).toBeTruthy();
     }
+  });
+
+  it("R8-PUB1: terms bytes that do not match the stored digest fail the catalogue explicitly", async () => {
+    const expectations = await seedOffersCatalogueFixture();
+    expect(expectations).not.toBeNull();
+    const latest = await env.DB.prepare(
+      `SELECT MAX(terms_version) AS version FROM terms_version`,
+    ).first<{ version: number | null }>();
+    const tamperedVersion = (latest?.version ?? 0) + 1;
+    const tamperedKey = `terms/sha256/r8-pub1-tampered-${tamperedVersion}.txt`;
+    await env.R2.put(tamperedKey, "tampered terms bytes");
+    await env.DB.prepare(
+      `INSERT INTO terms_version (
+         terms_version, locale, text_r2_key, text_sha256, published_by, contract_version
+       ) VALUES (?, 'en', ?, ?, 'fixture', 1)`,
+    )
+      .bind(tamperedVersion, tamperedKey, "0".repeat(64))
+      .run();
+    await expect(listOffers(env)).rejects.toThrow("terms_hash_mismatch");
+  });
+
+  it("R8-CONSOLE5: a malformed stored offer is quarantined and alerted while valid offers still load", async () => {
+    const expectations = await seedOffersCatalogueFixture();
+    expect(expectations).not.toBeNull();
+    const malformedOfferId = "01JHARNESSOFFERMALFORMED01";
+    const publishedAt = new Date(Date.now() + 60_000).toISOString();
+    await env.DB.prepare(
+      `INSERT INTO offer (offer_id, code, contract_version) VALUES (?, 'harness-malformed', 1)`,
+    )
+      .bind(malformedOfferId)
+      .run();
+    await env.DB.prepare(
+      `INSERT INTO offer_version (
+         offer_id, version, plan_id, plan_version, term_unit, term_count, price_minor,
+         currency, allowance_credits, grace_days, grace_cap_rule, copy, terms_version,
+         published_by, assertion_sha256, contract_version
+       ) VALUES (?, 1, 'plan-pro', 1, 'month', 1, 1000, 'EGP', 100, 7, 'proportional',
+         '{}', 1, 'fixture', 'fixture-assertion-malformed', 1)`,
+    )
+      .bind(malformedOfferId)
+      .run();
+    await env.DB.prepare(
+      `INSERT INTO offer_event (offer_id, kind, version, actor, at, contract_version)
+       VALUES (?, 'published', 1, 'fixture', ?, 1)`,
+    )
+      .bind(malformedOfferId, publishedAt)
+      .run();
+
+    const offers = await listOffers(env);
+    expect(offers.some((offer) => offer.offer_id === malformedOfferId)).toBe(false);
+    expect(offers.some((offer) => offer.offer_id === expectations!.offer_id)).toBe(true);
+    const alert = await env.DB.prepare(
+      `SELECT active, code FROM alert WHERE alert_key = ?`,
+    )
+      .bind(`offer_malformed:${malformedOfferId}:1`)
+      .first<{ active: number; code: string }>();
+    expect(alert?.active).toBe(1);
+    expect(alert?.code).toBe("offer_malformed");
+  });
+
+  it("R8-CONSOLE1: a historical reinstated event re-activates the offer and a later retirement hides it", async () => {
+    const expectations = await seedOffersCatalogueFixture();
+    expect(expectations).not.toBeNull();
+    const base = Date.now() + 60_000;
+    const insertEvent = (kind: string, offsetMs: number) =>
+      env.DB.prepare(
+        `INSERT INTO offer_event (offer_id, kind, version, actor, at, contract_version)
+         VALUES (?, ?, ?, 'fixture', ?, 1)`,
+      )
+        .bind(
+          expectations!.offer_id,
+          kind,
+          expectations!.version,
+          new Date(base + offsetMs).toISOString(),
+        )
+        .run();
+    await insertEvent("retired", 1_000);
+    expect((await listOffers(env)).some((o) => o.offer_id === expectations!.offer_id)).toBe(false);
+    await insertEvent("reinstated", 2_000);
+    const reinstated = await listOffers(env);
+    const restored = reinstated.find((o) => o.offer_id === expectations!.offer_id);
+    expect(restored?.version).toBe(expectations!.version);
+    expect(restored?.price_minor).toBe(expectations!.price_minor);
+    await insertEvent("retired", 3_000);
+    expect((await listOffers(env)).some((o) => o.offer_id === expectations!.offer_id)).toBe(false);
   });
 
   it("E2E-P4.1-04 PUT billing contact is idempotent and rejects a non-E.164 phone", async () => {

@@ -765,6 +765,84 @@ async function seedV1OnlyPublishOffer(
     .run();
 }
 
+async function signedHpRequest(
+  hp: ActiveHpCredential,
+  op: string,
+  params: Record<string, unknown>,
+): Promise<{ operation: HpOperation; assertion: Record<string, string> }> {
+  const operation = await buildHpOperation({
+    op,
+    params,
+    actorEmail: VENDOR_OPERATOR_EMAIL,
+  });
+  return {
+    operation,
+    assertion: await signHpOperation(hp.authenticator, operation),
+  };
+}
+
+async function advanceHarnessClock(minutes: number): Promise<void> {
+  const nextMs = Date.parse(await currentHarnessClockIso()) + minutes * 60_000;
+  await setClock(new Date(nextMs).toISOString());
+}
+
+async function listedOffer(
+  orgId: string,
+  offerId: string,
+): Promise<{ offer_id: string; version: number; price_minor: number } | undefined> {
+  const response = await billingFetch("/v1/offers", {
+    headers: await administratorHeaders(orgId),
+  });
+  expect(response.status).toBe(200);
+  const body = (await response.json()) as {
+    offers: Array<{ offer_id: string; version: number; price_minor: number }>;
+  };
+  return body.offers.find((offer) => offer.offer_id === offerId);
+}
+
+async function latestOfferEvent(
+  offerId: string,
+): Promise<{ kind: string; version: number } | null> {
+  return env.DB.prepare(
+    `SELECT kind, version FROM offer_event
+     WHERE offer_id = ?
+     ORDER BY at DESC, rowid DESC
+     LIMIT 1`,
+  )
+    .bind(offerId)
+    .first<{ kind: string; version: number }>();
+}
+
+async function latestTermsVersionRow(): Promise<{
+  terms_version: number;
+  text_r2_key: string;
+  text_sha256: string;
+}> {
+  const row = await env.DB.prepare(
+    `SELECT terms_version, text_r2_key, text_sha256 FROM terms_version
+     ORDER BY terms_version DESC
+     LIMIT 1`,
+  ).first<{ terms_version: number; text_r2_key: string; text_sha256: string }>();
+  expect(row).not.toBeNull();
+  return row!;
+}
+
+async function r2Text(key: string): Promise<string> {
+  const object = await env.R2.get(key);
+  expect(object).not.toBeNull();
+  return object!.text();
+}
+
+async function sha256HexOfText(text: string): Promise<string> {
+  const digest = await crypto.subtle.digest(
+    "SHA-256",
+    new TextEncoder().encode(text),
+  );
+  return Array.from(new Uint8Array(digest), (byte) =>
+    byte.toString(16).padStart(2, "0"),
+  ).join("");
+}
+
 async function postCheckout(
   org: string,
   offer: { offerId: string; version: number },
@@ -1407,6 +1485,227 @@ describe("hp-actions cross-worker", () => {
     expect(checkoutBody.code).toBe("offer_unavailable");
 
     expect(await platformPlanVersionSnapshot()).toBe(platformTermsBefore);
+  });
+
+  it("R8-CONSOLE1: publish, retire, and reinstate restore the same version and price; a never-published offer is not_found", async () => {
+    const expectations = await setupHpHarness();
+    const orgId = ORG_HP_02;
+    await putBillingContact(orgId);
+    await setupActivePlatformCoverage(orgId);
+    const hp = await ensureActiveHpCredential();
+    const offerId = expectations.offer_id;
+    const neverPublishedId = "01JHP4P7NEVERPUB00001";
+    await env.DB.prepare(
+      `INSERT OR IGNORE INTO offer (offer_id, code, contract_version)
+       VALUES (?, 'hp-never-published', 1)`,
+    )
+      .bind(neverPublishedId)
+      .run();
+
+    await advanceHarnessClock(1);
+    const publishRequest = await signedHpRequest(
+      hp,
+      "publish_offer",
+      publishOfferParams(offerId, expectations, HP_V2_PRICE_MINOR),
+    );
+    const publish = await opsHpFetch(`/ops/offers/${offerId}/publish`, {
+      accessJwt: hp.accessJwt,
+      operation: publishRequest.operation,
+      assertion: publishRequest.assertion,
+    });
+    expect(publish.status).toBe(200);
+    const published = await listedOffer(orgId, offerId);
+    expect(published?.price_minor).toBe(HP_V2_PRICE_MINOR);
+    const publishedVersion = published!.version;
+    expect(await latestOfferEvent(offerId)).toEqual({
+      kind: "published",
+      version: publishedVersion,
+    });
+
+    await advanceHarnessClock(1);
+    const retireRequest = await signedHpRequest(hp, "retire_offer", {
+      offer_id: offerId,
+    });
+    const retire = await opsHpFetch(`/ops/offers/${offerId}/retire`, {
+      accessJwt: hp.accessJwt,
+      operation: retireRequest.operation,
+      assertion: retireRequest.assertion,
+    });
+    expect(retire.status).toBe(200);
+    expect(await listedOffer(orgId, offerId)).toBeUndefined();
+
+    await advanceHarnessClock(1);
+    const reinstateRequest = await signedHpRequest(hp, "reinstate_offer", {
+      offer_id: offerId,
+    });
+    const reinstate = await opsHpFetch(`/ops/offers/${offerId}/reinstate`, {
+      accessJwt: hp.accessJwt,
+      operation: reinstateRequest.operation,
+      assertion: reinstateRequest.assertion,
+    });
+    expect(reinstate.status).toBe(200);
+    const reinstated = await listedOffer(orgId, offerId);
+    expect(reinstated?.version).toBe(publishedVersion);
+    expect(reinstated?.price_minor).toBe(HP_V2_PRICE_MINOR);
+    expect(await latestOfferEvent(offerId)).toEqual({
+      kind: "published",
+      version: publishedVersion,
+    });
+
+    await advanceHarnessClock(1);
+    const neverRequest = await signedHpRequest(hp, "reinstate_offer", {
+      offer_id: neverPublishedId,
+    });
+    const neverReinstated = await opsHpFetch(
+      `/ops/offers/${neverPublishedId}/reinstate`,
+      {
+        accessJwt: hp.accessJwt,
+        operation: neverRequest.operation,
+        assertion: neverRequest.assertion,
+      },
+    );
+    expect(neverReinstated.status).toBe(400);
+    const neverBody = (await neverReinstated.json()) as Record<string, unknown>;
+    expect(neverBody.code).toBe("not_found");
+    expect(await latestOfferEvent(neverPublishedId)).toBeNull();
+
+    await advanceHarnessClock(1);
+    const retireAgainRequest = await signedHpRequest(hp, "retire_offer", {
+      offer_id: offerId,
+    });
+    const retireAgain = await opsHpFetch(`/ops/offers/${offerId}/retire`, {
+      accessJwt: hp.accessJwt,
+      operation: retireAgainRequest.operation,
+      assertion: retireAgainRequest.assertion,
+    });
+    expect(retireAgain.status).toBe(200);
+    expect(await listedOffer(orgId, offerId)).toBeUndefined();
+  });
+
+  it("R8-CONSOLE5: publish with empty copy, zero price and empty terms is refused as assertion_invalid and consumes nothing", async () => {
+    const expectations = await setupHpHarness();
+    const hp = await ensureActiveHpCredential();
+    const offerId = expectations.offer_id;
+    const publishPath = `/ops/offers/${offerId}/publish`;
+    const assertionUsedBefore = await tableCount("assertion_used");
+    const offerVersionBefore = await tableCount("offer_version");
+    const termsVersionBefore = await tableCount("terms_version");
+    const operatorActionBefore = await operatorActionCount();
+
+    const invalid = await signedHpRequest(hp, "publish_offer", {
+      offer_id: offerId,
+      price_minor: 0,
+      terms_text: "",
+      copy: {},
+    });
+    const refused = await opsHpFetch(publishPath, {
+      accessJwt: hp.accessJwt,
+      operation: invalid.operation,
+      assertion: invalid.assertion,
+    });
+    expect(refused.status).toBe(400);
+    const refusedBody = (await refused.json()) as Record<string, unknown>;
+    expect(refusedBody.code).toBe("assertion_invalid");
+    expect(await operatorActionCount()).toBe(operatorActionBefore + 1);
+    expect(await latestOperatorActionResult()).toBe("assertion_invalid");
+    expect(await tableCount("assertion_used")).toBe(assertionUsedBefore);
+    expect(await tableCount("offer_version")).toBe(offerVersionBefore);
+    expect(await tableCount("terms_version")).toBe(termsVersionBefore);
+
+    // The refused assertion was never consumed: the same request is refused for the same
+    // reason on resubmission, not as assertion_used.
+    const repeated = await opsHpFetch(publishPath, {
+      accessJwt: hp.accessJwt,
+      operation: invalid.operation,
+      assertion: invalid.assertion,
+    });
+    expect(repeated.status).toBe(400);
+    const repeatedBody = (await repeated.json()) as Record<string, unknown>;
+    expect(repeatedBody.code).toBe("assertion_invalid");
+    expect(await tableCount("assertion_used")).toBe(assertionUsedBefore);
+
+    // A valid publish with its own signed request then succeeds and consumes exactly one
+    // assertion. The signed challenge covers the params, so the valid publish needs a new one.
+    const valid = await signedHpRequest(
+      hp,
+      "publish_offer",
+      publishOfferParams(offerId, expectations, HP_V2_PRICE_MINOR),
+    );
+    const published = await opsHpFetch(publishPath, {
+      accessJwt: hp.accessJwt,
+      operation: valid.operation,
+      assertion: valid.assertion,
+    });
+    expect(published.status).toBe(200);
+    expect(await tableCount("assertion_used")).toBe(assertionUsedBefore + 1);
+    expect(await tableCount("offer_version")).toBe(offerVersionBefore + 1);
+    expect(await tableCount("terms_version")).toBe(termsVersionBefore + 1);
+  });
+
+  it("R8-PUB1: overlapping publications cannot affect each other's accepted bytes", async () => {
+    const expectations = await setupHpHarness();
+    const hp = await ensureActiveHpCredential();
+    const offerId = expectations.offer_id;
+    const firstText = expectations.terms.text;
+    const secondText = `${expectations.terms.text}\nRevised clause for R8-PUB1.`;
+
+    const firstRequest = await signedHpRequest(
+      hp,
+      "publish_offer",
+      publishOfferParams(offerId, expectations, HP_V2_PRICE_MINOR),
+    );
+    const first = await opsHpFetch(`/ops/offers/${offerId}/publish`, {
+      accessJwt: hp.accessJwt,
+      operation: firstRequest.operation,
+      assertion: firstRequest.assertion,
+    });
+    expect(first.status).toBe(200);
+    const firstTerms = await latestTermsVersionRow();
+    const firstBytesBefore = await r2Text(firstTerms.text_r2_key);
+
+    await advanceHarnessClock(1);
+    const secondRequest = await signedHpRequest(hp, "publish_offer", {
+      ...publishOfferParams(offerId, expectations, HP_V2_PRICE_MINOR + 100),
+      terms_text: secondText,
+    });
+    const second = await opsHpFetch(`/ops/offers/${offerId}/publish`, {
+      accessJwt: hp.accessJwt,
+      operation: secondRequest.operation,
+      assertion: secondRequest.assertion,
+    });
+    expect(second.status).toBe(200);
+    const secondTerms = await latestTermsVersionRow();
+
+    expect(firstTerms.text_r2_key.startsWith("terms/sha256/")).toBe(true);
+    expect(secondTerms.text_r2_key.startsWith("terms/sha256/")).toBe(true);
+    expect(secondTerms.text_r2_key).not.toBe(firstTerms.text_r2_key);
+
+    // The first key's bytes are unchanged by the second publication.
+    expect(firstBytesBefore).toBe(firstText);
+    expect(await r2Text(firstTerms.text_r2_key)).toBe(firstBytesBefore);
+    expect(await r2Text(secondTerms.text_r2_key)).toBe(secondText);
+
+    // Each terms_version row's digest matches the R2 bytes it points at.
+    expect(await sha256HexOfText(await r2Text(firstTerms.text_r2_key))).toBe(
+      firstTerms.text_sha256,
+    );
+    expect(await sha256HexOfText(await r2Text(secondTerms.text_r2_key))).toBe(
+      secondTerms.text_sha256,
+    );
+
+    // Replaying the first assertion exactly is refused and mints no version.
+    const offerVersionBefore = await tableCount("offer_version");
+    const termsVersionBefore = await tableCount("terms_version");
+    const replay = await opsHpFetch(`/ops/offers/${offerId}/publish`, {
+      accessJwt: hp.accessJwt,
+      operation: firstRequest.operation,
+      assertion: firstRequest.assertion,
+    });
+    expect(replay.status).toBe(400);
+    const replayBody = (await replay.json()) as Record<string, unknown>;
+    expect(replayBody.code).toBe("assertion_used");
+    expect(await tableCount("offer_version")).toBe(offerVersionBefore);
+    expect(await tableCount("terms_version")).toBe(termsVersionBefore);
   });
 
   it("R9-REC2/R6-O1: accepted release retains command/result facts and replays idempotently", async () => {

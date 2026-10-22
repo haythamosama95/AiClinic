@@ -10,6 +10,7 @@ import type { BillingClaims } from "./auth.js";
 import { clinicErrorResponse, clinicJsonResponse } from "./version.js";
 import { clockNowIso, clockNowMs, type ClockEnv } from "../clock.js";
 import { PAYMOB_PROVIDER_ID, providerForId } from "../provider/registry.js";
+import { storedOfferFault } from "../offers/copy.js";
 
 const CHECKOUT_EXPIRES_MINUTES = 30;
 const CHECKOUT_EXPIRES_S = 1800;
@@ -162,17 +163,31 @@ async function sellableOfferVersion(
   )
     .bind(offerId, offerId)
     .first<{ kind: string }>();
-  if (latest?.kind !== "published") {
+  // R8-CONSOLE1 step 2: `reinstated` is the historical activation alias of `published`.
+  if (latest?.kind !== "published" && latest?.kind !== "reinstated") {
     return null;
   }
   const row = await env.DB.prepare(
     `SELECT MAX(version) AS version
      FROM offer_event
-     WHERE offer_id = ? AND kind = 'published'`,
+     WHERE offer_id = ? AND kind IN ('published', 'reinstated')`,
   )
     .bind(offerId)
     .first<{ version: number | null }>();
-  return row?.version ?? null;
+  const version = row?.version ?? null;
+  if (version === null) {
+    return null;
+  }
+  // R8-CONSOLE5 step 2: a malformed stored version is not sellable.
+  const offerRow = await env.DB.prepare(
+    `SELECT price_minor, copy FROM offer_version WHERE offer_id = ? AND version = ?`,
+  )
+    .bind(offerId, version)
+    .first<{ price_minor: number; copy: string }>();
+  if (offerRow === null || storedOfferFault(offerRow) !== null) {
+    return null;
+  }
+  return version;
 }
 
 async function maxTermsVersion(env: CheckoutsEnv): Promise<number | null> {
