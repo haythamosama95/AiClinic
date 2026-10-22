@@ -530,8 +530,9 @@ export default {
     if (cron === "* * * * *") {
       await runMinuteProcessing(env);
       // Minute cron retries only attempts that did not succeed (retryOnly). A never-attempted
-      // period is left to its own scheduled tick. The period lease keeps each period to one
-      // completion.
+      // period is left to its own scheduled tick, but FV-P3 flags it as scheduled_period_missed
+      // after a 5-minute grace window without starting it. The period lease keeps each period to
+      // one completion.
       await runCronJobs(env, ["six_hour", "hourly", "daily"], { retryOnly: true });
       // F7(ii): the minute stream pings unconditionally, after the minute work. It is a cron
       // liveness signal only. The digest success stream is pinged separately from the digest.

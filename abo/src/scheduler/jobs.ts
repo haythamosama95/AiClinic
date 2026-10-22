@@ -6,6 +6,9 @@ import { prepareAlertDeactivation, prepareRaiseAlert } from "../alert/index.js";
 // A failed, deferred or abandoned period stays pending with next_attempt_at set. The minute
 // cron retries only such pending attempts (retryOnly). It never starts a period that has
 // never been attempted; each scheduled cron tick runs its own period at its scheduled time.
+// FV-P3 (FD-2 = detect): the minute cron does flag a period that was never attempted once a
+// grace window has passed. It raises `scheduled_job_failed:<job>` with last_error_code
+// `scheduled_period_missed` and still does not start the work.
 // The lease and the period key keep each period to one completion.
 
 const MINUTE_MS = 60 * 1000;
@@ -16,6 +19,8 @@ const LEASE_MS = 15 * MINUTE_MS;
 const DEFERRED_RETRY_MS = 5 * MINUTE_MS;
 const FAILED_RETRY_MS = 15 * MINUTE_MS;
 const MAX_ERROR_CODE_LENGTH = 64;
+const PERIOD_MISSED_GRACE_MS = 5 * MINUTE_MS;
+export const SCHEDULED_PERIOD_MISSED = "scheduled_period_missed";
 
 export type Cadence = "six_hour" | "hourly" | "daily";
 export type JobOutcome = "succeeded" | "deferred" | "failed";
@@ -40,6 +45,21 @@ export function duePeriodKey(cadence: Cadence, nowMs: number): string {
   }
   const day = new Date(nowMs - DAILY_PERIOD_OFFSET_MS).toISOString().slice(0, 10);
   return `daily:${day}`;
+}
+
+// Start of the period that contains nowMs. Mirrors the boundaries of duePeriodKey.
+export function duePeriodStartMs(cadence: Cadence, nowMs: number): number {
+  if (cadence === "six_hour") {
+    return Math.floor(nowMs / (6 * HOUR_MS)) * 6 * HOUR_MS;
+  }
+  if (cadence === "hourly") {
+    return Math.floor(nowMs / HOUR_MS) * HOUR_MS;
+  }
+  const day = 24 * HOUR_MS;
+  return (
+    Math.floor((nowMs - DAILY_PERIOD_OFFSET_MS) / day) * day +
+    DAILY_PERIOD_OFFSET_MS
+  );
 }
 
 export function boundedErrorCode(error: unknown): string {
@@ -235,6 +255,72 @@ export async function runDueScheduledJob<E extends SchedulerEnv>(
   return outcome;
 }
 
+type MissedPeriodRow = {
+  last_succeeded_period: string | null;
+  last_started_at: string | null;
+  next_attempt_at: string | null;
+};
+
+// FV-P3: flags the most recent period that should have started at least the grace window
+// ago when the job neither succeeded nor attempted it. It never starts the work and never
+// sets next_attempt_at, so the retry-only claim still skips the period. The state update is
+// recorded once per period; the alert upsert is idempotent (one row, one email per send
+// interval), so repeating it each minute tick is safe and retries a swallowed raise failure.
+// The alert clears through finishLeased when the job next succeeds.
+export async function detectMissedScheduledPeriod<E extends SchedulerEnv>(
+  env: E,
+  definition: ScheduledJobDefinition<E>,
+): Promise<boolean> {
+  const nowMs = await clockNowMs(env);
+  const reference = nowMs - PERIOD_MISSED_GRACE_MS;
+  const period = duePeriodKey(definition.cadence, reference);
+  const periodStartIso = new Date(
+    duePeriodStartMs(definition.cadence, reference),
+  ).toISOString();
+
+  await ensureJobRow(env, definition.job);
+  const row = await env.DB.prepare(
+    `SELECT last_succeeded_period, last_started_at, next_attempt_at
+     FROM scheduled_job_state WHERE job = ?`,
+  )
+    .bind(definition.job)
+    .first<MissedPeriodRow>();
+  if (row === null) {
+    return false;
+  }
+  if (row.last_succeeded_period === period) {
+    return false;
+  }
+  if (row.next_attempt_at !== null) {
+    return false;
+  }
+  if (row.last_started_at !== null && row.last_started_at >= periodStartIso) {
+    return false;
+  }
+
+  const nowIso = new Date(nowMs).toISOString();
+  const recorded = await env.DB.prepare(
+    `UPDATE scheduled_job_state
+     SET last_error_at = ?, last_error_code = ?,
+         consecutive_failures = consecutive_failures + 1
+     WHERE job = ?
+       AND NOT (last_error_code = ? AND last_error_at >= ?)`,
+  )
+    .bind(
+      nowIso,
+      SCHEDULED_PERIOD_MISSED,
+      definition.job,
+      SCHEDULED_PERIOD_MISSED,
+      periodStartIso,
+    )
+    .run();
+  if (changesOf(recorded) === 1) {
+    logJobFailure(definition.job, period, SCHEDULED_PERIOD_MISSED);
+  }
+  await raiseJobFailedAlert(env.DB, definition.job);
+  return true;
+}
+
 export async function runDueScheduledJobs<E extends SchedulerEnv>(
   env: E,
   definitions: ReadonlyArray<ScheduledJobDefinition<E>>,
@@ -246,6 +332,13 @@ export async function runDueScheduledJobs<E extends SchedulerEnv>(
     } catch (error) {
       // Claim-time database errors affect only this job; later jobs still run.
       logJobFailure(definition.job, "claim", boundedErrorCode(error));
+    }
+    if (options?.retryOnly === true) {
+      try {
+        await detectMissedScheduledPeriod(env, definition);
+      } catch (error) {
+        logJobFailure(definition.job, "detect", boundedErrorCode(error));
+      }
     }
   }
 }

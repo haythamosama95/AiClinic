@@ -1827,6 +1827,77 @@ describe("P4.11 digest, watch, housekeeping, rebuild (H-XW)", () => {
     expect((await scheduledJobRow("digest")).last_succeeded_period).not.toBeNull();
   });
 
+  async function digestErrorCode(): Promise<string | null> {
+    const row = await env.DB.prepare(
+      `SELECT last_error_code FROM scheduled_job_state WHERE job = 'digest'`,
+    ).first<{ last_error_code: string | null }>();
+    return row?.last_error_code ?? null;
+  }
+
+  it("FV-P3 a missed 06:00 daily run is flagged by 06:06 and its work is not started", async () => {
+    await seedDigestScenario();
+    clearCapturedEmails();
+
+    // No 06:00 tick runs. Inside the grace window nothing is flagged.
+    await setClock(addMinutes(BASE_CLOCK, 4));
+    await runScheduled("* * * * *");
+    expect(await scheduledJobAlertRow("digest")).toBeNull();
+
+    await setClock(addMinutes(BASE_CLOCK, 6));
+    await runScheduled("* * * * *");
+    expect(await scheduledJobAlertRow("digest")).toMatchObject({ active: 1 });
+    expect(await digestErrorCode()).toBe("scheduled_period_missed");
+    expect(digestEmails()).toHaveLength(0);
+    const row = await scheduledJobRow("digest");
+    expect(row.last_succeeded_period).toBeNull();
+    expect(row.next_attempt_at).toBeNull();
+    expect(row.last_started_at).toBeNull();
+  });
+
+  it("FV-P3 repeated minute ticks keep one alert row and send one alert email", async () => {
+    await seedDigestScenario();
+    clearCapturedEmails();
+    const digestAlertEmails = (): number =>
+      getCapturedEmails().filter(
+        (message) => message.text === "scheduled_job_failed digest",
+      ).length;
+
+    for (const minute of [6, 7, 8, 9, 10]) {
+      await setClock(addMinutes(BASE_CLOCK, minute));
+      await runScheduled("* * * * *");
+    }
+    expect(await scheduledJobAlertCount("digest")).toBe(1);
+    expect(digestAlertEmails()).toBe(1);
+    expect(digestEmails()).toHaveLength(0);
+  });
+
+  it("FV-P3 an attempted or succeeded period is not flagged as missed", async () => {
+    await seedDigestScenario();
+    clearCapturedEmails();
+
+    await runScheduled("0 6 * * *");
+    expect((await scheduledJobRow("digest")).last_succeeded_period).not.toBeNull();
+    await setClock(addMinutes(BASE_CLOCK, 10));
+    await runScheduled("* * * * *");
+    expect(await scheduledJobAlertRow("digest")).toBeNull();
+    expect(await digestErrorCode()).toBeNull();
+  });
+
+  it("FV-P3 the next successful daily run clears the missed-period alert", async () => {
+    await seedDigestScenario();
+    clearCapturedEmails();
+
+    await setClock(addMinutes(BASE_CLOCK, 6));
+    await runScheduled("* * * * *");
+    expect(await scheduledJobAlertRow("digest")).toMatchObject({ active: 1 });
+
+    await setClock(addHours(BASE_CLOCK, 24));
+    await runScheduled("0 6 * * *");
+    expect((await scheduledJobRow("digest")).last_succeeded_period).not.toBeNull();
+    expect(await scheduledJobAlertRow("digest")).toMatchObject({ active: 0, unsent: 0 });
+    expect(await scheduledJobAlertCount("digest")).toBe(1);
+  });
+
   it("R9-CRON1 scheduled_job_failed alert is raised once per job and deduplicated", async () => {
     await seedDigestScenario();
     clearCapturedEmails();
