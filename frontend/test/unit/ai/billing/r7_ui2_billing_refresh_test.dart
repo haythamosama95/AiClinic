@@ -198,6 +198,168 @@ void main() {
       expect(find.byKey(const Key('billing_projection_pull_failed')), findsOneWidget);
       await tester.pumpWidget(const SizedBox());
     });
+
+    testWidgets('R7-UI2: review F4 summary keeps previous content visible during a refresh', (tester) async {
+      final pending = <Completer<dynamic>>[];
+      var calls = 0;
+      Future<dynamic> rpc(String name, Map<String, dynamic> params) {
+        calls++;
+        if (calls == 1) {
+          return Future<dynamic>.value(_statusReply('Old plan'));
+        }
+        final completer = Completer<dynamic>();
+        pending.add(completer);
+        return completer.future;
+      }
+      final client = _client((_) async => _subscriptionResponse(const []));
+
+      await tester.pumpWidget(_app(SubscriptionSummary(client: client, rpc: rpc, generation: 0)));
+      await _flush(tester);
+      expect(find.text('Old plan'), findsOneWidget);
+
+      await tester.pumpWidget(_app(SubscriptionSummary(client: client, rpc: rpc, generation: 1)));
+      await _flush(tester);
+      expect(find.text('Old plan'), findsOneWidget);
+      expect(find.byKey(const Key('billing_summary_refreshing')), findsOneWidget);
+      expect(find.byType(CircularProgressIndicator), findsNothing);
+
+      pending.single.complete(_statusReply('New plan'));
+      await _flush(tester);
+      expect(find.text('New plan'), findsOneWidget);
+      expect(find.byKey(const Key('billing_summary_refreshing')), findsNothing);
+      await tester.pumpWidget(const SizedBox());
+    });
+
+    testWidgets('R7-UI2: review F4 payment history keeps previous rows visible during a refresh', (tester) async {
+      Completer<http.Response>? gate;
+      var reads = 0;
+      final client = _client((request) async {
+        if (request.url.path != '/v1/payments') {
+          return http.Response('{}', 500);
+        }
+        reads++;
+        if (reads == 1) {
+          return http.Response(_paymentsBody(const ['PAY-1'], hasMore: false, nextCursor: ''), 200);
+        }
+        gate = Completer<http.Response>();
+        return gate!.future;
+      });
+
+      await tester.pumpWidget(_app(PaymentHistory(client: client, generation: 0)));
+      await _flush(tester);
+      expect(find.textContaining('PAY-1'), findsOneWidget);
+
+      await tester.pumpWidget(_app(PaymentHistory(client: client, generation: 1)));
+      await _flush(tester);
+      expect(find.textContaining('PAY-1'), findsOneWidget);
+      expect(find.byKey(const Key('billing_payment_history_refreshing')), findsOneWidget);
+
+      gate!.complete(http.Response(_paymentsBody(const ['PAY-9'], hasMore: false, nextCursor: ''), 200));
+      await _flush(tester);
+      expect(find.textContaining('PAY-9'), findsOneWidget);
+      expect(find.textContaining('PAY-1'), findsNothing);
+      expect(find.byKey(const Key('billing_payment_history_refreshing')), findsNothing);
+      await tester.pumpWidget(const SizedBox());
+    });
+
+    testWidgets('R7-UI2: review F2 renewal on a clinic with a plan stays pending until projected fields change', (tester) async {
+      final harness = _BillingPageHarness(
+        pullSucceeds: true,
+        planFromRead: (_) => 'Plan Pro',
+        endsAtFromRead: (reads) => reads >= 4 ? '2027-01-01T00:00:00Z' : '2026-11-01T00:00:00Z',
+      );
+      await harness.pump(tester);
+      await tester.pump(const Duration(seconds: 1));
+      await _flush(tester);
+      expect(harness.statusReads, 2);
+      expect(find.byKey(const Key('billing_projection_pending')), findsOneWidget);
+
+      await tester.pump(const Duration(seconds: 30));
+      await _flush(tester);
+      expect(harness.statusReads, 3);
+      expect(
+        find.byKey(const Key('billing_projection_pending')),
+        findsOneWidget,
+        reason: 'the first reread shows the same projection as the baseline, so it must not clear',
+      );
+
+      await tester.pump(const Duration(seconds: 30));
+      await _flush(tester);
+      expect(harness.statusReads, 4);
+      expect(find.byKey(const Key('billing_projection_pending')), findsNothing, reason: 'end date changed');
+
+      await tester.pump(const Duration(seconds: 60));
+      await _flush(tester);
+      expect(harness.statusReads, 4, reason: 'a confirmed projection stops the rereads');
+      await tester.pumpWidget(const SizedBox());
+    });
+
+    testWidgets('R7-UI2: review F5 the bound starts at the pull request so the last reread lands within two minutes', (tester) async {
+      final harness = _BillingPageHarness(pullSucceeds: true, planFromRead: (_) => null);
+      final gate = Completer<void>();
+      harness.pullGate = gate;
+      await harness.pump(tester);
+      await tester.pump(const Duration(seconds: 1));
+      await _flush(tester);
+      expect(harness.pulls, 1);
+
+      // The pull reply arrives at about 20 seconds after the request.
+      await tester.pump(const Duration(seconds: 19));
+      gate.complete();
+      await _flush(tester);
+      expect(harness.statusReads, 2);
+
+      for (var i = 0; i < 3; i++) {
+        await tester.pump(const Duration(seconds: 30));
+        await _flush(tester);
+      }
+      expect(harness.statusReads, 5, reason: 'three rereads by about 110 seconds');
+
+      await tester.pump(const Duration(seconds: 12));
+      await _flush(tester);
+      expect(harness.statusReads, 6, reason: 'the fourth reread lands two minutes after the pull request');
+
+      await tester.pump(const Duration(seconds: 60));
+      await _flush(tester);
+      expect(harness.statusReads, 6);
+      await tester.pumpWidget(const SizedBox());
+    });
+
+    testWidgets('R7-UI2: review F3 a reread is discarded when the session identity changes', (tester) async {
+      final harness = _BillingPageHarness(pullSucceeds: true, planFromRead: (_) => null);
+      await harness.pump(tester);
+      await tester.pump(const Duration(seconds: 1));
+      await _flush(tester);
+      expect(harness.pulls, 1);
+
+      harness.identity = 'user-2';
+      await tester.pump(const Duration(seconds: 30));
+      await _flush(tester);
+      expect(harness.statusReads, 2, reason: 'no reread is issued for a different session');
+
+      await tester.pump(const Duration(seconds: 90));
+      await _flush(tester);
+      expect(harness.statusReads, 2);
+      await tester.pumpWidget(const SizedBox());
+    });
+
+    testWidgets('R7-UI2: review F3 a pull reply and rereads after disposal are discarded', (tester) async {
+      final harness = _BillingPageHarness(pullSucceeds: true, planFromRead: (_) => null);
+      final gate = Completer<void>();
+      harness.pullGate = gate;
+      await harness.pump(tester);
+      await tester.pump(const Duration(seconds: 1));
+      await _flush(tester);
+      expect(harness.pulls, 1);
+
+      await tester.pumpWidget(const SizedBox());
+      gate.complete();
+      await _flush(tester);
+      await tester.pump(const Duration(seconds: 150));
+      await _flush(tester);
+      expect(harness.statusReads, 2, reason: 'no reread runs after the billing page is disposed');
+      expect(tester.takeException(), isNull);
+    });
   });
 
   group('R7-UI3 commercial notice copy', () {
@@ -248,17 +410,43 @@ void main() {
       expect(find.text('payment_withheld'), findsNothing);
       await tester.pumpWidget(const SizedBox());
     });
+
+    testWidgets('R7-UI3: review F1 ended_reversed notice shows its localized administrator text', (tester) async {
+      final client = _client((request) async {
+        if (request.url.path == '/v1/subscription') {
+          return http.Response(jsonEncode(_subscriptionBody(const ['ended_reversed'])), 200);
+        }
+        return http.Response('{}', 500);
+      });
+      await tester.pumpWidget(_app(CommercialNotices(client: client)));
+      await _flush(tester);
+
+      final en = lookupAppLocalizations(const Locale('en'));
+      expect(find.text(en.aiNoticeEndedReversedAdmin), findsOneWidget);
+      expect(find.text(en.aiNoticeUnavailable), findsNothing);
+      expect(find.text('ended_reversed'), findsNothing);
+      await tester.pumpWidget(const SizedBox());
+    });
   });
 }
 
 /// Drives [AdministratorBillingPage] through an Active checkout with injected clients and RPC.
 class _BillingPageHarness {
-  _BillingPageHarness({required this.pullSucceeds, required this.planFromRead});
+  _BillingPageHarness({required this.pullSucceeds, required this.planFromRead, this.endsAtFromRead});
 
   final bool pullSucceeds;
 
   /// Returns the plan name for the nth `get_ai_billing_status` read, or null when not projected.
   final String? Function(int reads)? planFromRead;
+
+  /// Returns the `ends_at` value for the nth status read, or null.
+  final String? Function(int reads)? endsAtFromRead;
+
+  /// Session identity reported to the page (review F3).
+  String? identity = 'user-1';
+
+  /// When set, the pull reply waits for this completer (review F3, F5).
+  Completer<void>? pullGate;
 
   int statusReads = 0;
   int pulls = 0;
@@ -291,10 +479,11 @@ class _BillingPageHarness {
       if (name == 'get_ai_billing_status') {
         statusReads++;
         final plan = planFromRead?.call(statusReads);
-        return _statusReply(plan);
+        return _statusReply(plan, endsAt: endsAtFromRead?.call(statusReads));
       }
       if (name == 'request_ai_status_refresh') {
         pulls++;
+        await pullGate?.future;
         return pullSucceeds
             ? {'success': true, 'contract_version': backendRpc, 'data': null}
             : {
@@ -312,6 +501,7 @@ class _BillingPageHarness {
       tokenClient: tokenClient,
       aboClient: client,
       rpc: rpc,
+      identityProbe: () => identity,
     )));
     await _flush(tester);
   }
@@ -374,14 +564,14 @@ Map<String, dynamic> _subscriptionBody(List<String> notices) => {
       'notices': notices,
     };
 
-Map<String, dynamic> _statusReply(String? plan) => {
+Map<String, dynamic> _statusReply(String? plan, {String? endsAt}) => {
       'success': true,
       'contract_version': backendRpc,
       'data': {
         'plan_display_name': plan,
         'notices': <dynamic>[],
         'starts_at': null,
-        'ends_at': null,
+        'ends_at': endsAt,
         'grace_ends_at': null,
         'allowance': null,
         'used': null,

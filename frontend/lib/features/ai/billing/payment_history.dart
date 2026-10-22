@@ -17,11 +17,16 @@ class PaymentHistory extends StatefulWidget {
 }
 
 class _PaymentHistoryState extends State<PaymentHistory> {
+  /// True only until the first load finishes. Later reloads keep the previous rows visible.
   var _loading = true;
+
+  /// True while a reload is in flight (review F4): a small indicator, not a spinner.
+  var _refreshing = false;
   var _loadingNextPage = false;
   List<PaymentRecord> _payments = const [];
   String _nextCursor = '';
   var _hasMore = false;
+  var _hasLoaded = false;
   Object? _error;
 
   /// Every first-page or next-page request takes a sequence number. A reply whose number is no
@@ -46,11 +51,13 @@ class _PaymentHistoryState extends State<PaymentHistory> {
   Future<void> _load() async {
     final seq = ++_requestSeq;
     final generation = widget.generation;
+    // R7-UI2 step 2: the cursor and next-page state reset now, so no stale next page can append.
+    // The old rows stay visible until the first page of the new read replaces them (review F4).
     setState(() {
-      _loading = true;
+      _loading = !_hasLoaded;
+      _refreshing = _hasLoaded;
       _loadingNextPage = false;
       _error = null;
-      _payments = const [];
       _nextCursor = '';
       _hasMore = false;
     });
@@ -64,6 +71,8 @@ class _PaymentHistoryState extends State<PaymentHistory> {
         _nextCursor = response.nextCursor;
         _hasMore = response.hasMore;
         _loading = false;
+        _refreshing = false;
+        _hasLoaded = true;
       });
     } catch (error) {
       if (!mounted || seq != _requestSeq || generation != widget.generation) {
@@ -71,7 +80,9 @@ class _PaymentHistoryState extends State<PaymentHistory> {
       }
       setState(() {
         _error = error;
+        _payments = const [];
         _loading = false;
+        _refreshing = false;
       });
     }
   }
@@ -152,6 +163,13 @@ class _PaymentHistoryState extends State<PaymentHistory> {
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         Text(l10n.aiBillingPaymentHistory, style: textTheme.titleMedium),
+        if (_refreshing) ...[
+          const SizedBox(height: 8),
+          const LinearProgressIndicator(
+            key: Key('billing_payment_history_refreshing'),
+            minHeight: 2,
+          ),
+        ],
         const SizedBox(height: 10),
         if (_payments.isEmpty)
           _HistoryMessage(

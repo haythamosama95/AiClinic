@@ -361,6 +361,10 @@ void main() {
       expect(find.byKey(_paymentHistoryKey), findsOneWidget);
       expect(find.text(_enL10n.aiBillingNoticeReversalRecorded), findsOneWidget);
       expect(find.text(_enL10n.aiBillingNoticeTermsHeld), findsOneWidget);
+      // Review F1: the commercial notice renders its localized text, not the neutral unavailable copy.
+      expect(find.text(_enL10n.aiNoticeEndedReversedAdmin), findsOneWidget);
+      expect(find.text(_enL10n.aiNoticeUnavailable), findsNothing);
+      // The subscription summary label is still shown.
       expect(find.text(_enL10n.aiBillingEndedReversed), findsOneWidget);
       expect(find.text(reversalReference), findsOneWidget);
     });

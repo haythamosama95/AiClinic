@@ -24,9 +24,24 @@ enum _BillingStep { loading, offers, contact, checkout, appUpdate }
 /// R7-UI2: projection catch-up after a checkout reaches Active.
 enum _ProjectionStatus { idle, pending, pullFailed, caughtUp }
 
-/// R7-UI2 step 3: at most four rereads, 30 seconds apart, so the last one lands within two minutes.
+/// R7-UI2 step 3: at most four rereads, 30 seconds apart. The timer chain starts when the pull is
+/// requested, so the last reread lands within two minutes of the pull request (review F5).
 const _projectionRereadInterval = Duration(seconds: 30);
 const _projectionMaxRereads = 4;
+
+/// True when any projected field shown by the subscription summary differs.
+bool _projectedFieldsDiffer(SubscriptionSummaryData a, SubscriptionSummaryData b) {
+  return a.planDisplayName != b.planDisplayName ||
+      a.startsAt != b.startsAt ||
+      a.endsAt != b.endsAt ||
+      a.graceEndsAt != b.graceEndsAt ||
+      a.allowance != b.allowance ||
+      a.used != b.used ||
+      a.queuedCount != b.queuedCount ||
+      a.heldCount != b.heldCount ||
+      a.subscriptionRef != b.subscriptionRef ||
+      a.showEndedReversed != b.showEndedReversed;
+}
 
 /// Administrator billing flow: resume open checkouts or offers → contact → checkout.
 ///
@@ -40,6 +55,7 @@ class AdministratorBillingPage extends StatefulWidget {
     @visibleForTesting this.rpc,
     @visibleForTesting this.tokenClient,
     @visibleForTesting this.aboClient,
+    @visibleForTesting this.identityProbe,
   });
 
   final SupabaseClient? supabaseClient;
@@ -48,6 +64,9 @@ class AdministratorBillingPage extends StatefulWidget {
   final SubscriptionSummaryRpcInvoke? rpc;
   final BillingTokenClient? tokenClient;
   final AboClient? aboClient;
+
+  /// Test seam for the session identity. Production reads the signed-in user id.
+  final String? Function()? identityProbe;
 
   @override
   State<AdministratorBillingPage> createState() =>
@@ -70,9 +89,19 @@ class _AdministratorBillingPageState extends State<AdministratorBillingPage> {
   /// confirm the projection, because it was issued after the pull request succeeded.
   int _chainGeneration = -1;
   var _projectionStatus = _ProjectionStatus.idle;
+
+  /// Bumped whenever a chain starts or stops. Timers and pull replies from an older epoch are dropped.
   var _projectionEpoch = 0;
   var _projectionRereads = 0;
+  var _projectionPulled = false;
   String? _projectionReference;
+
+  /// Summary captured when the pull was requested. A reread confirms the projection only when the
+  /// projected fields differ from it (review F2). Null means no summary was loaded yet.
+  SubscriptionSummaryData? _projectionBaseline;
+
+  /// Latest summary the page has loaded, used as the baseline when a new chain starts.
+  SubscriptionSummaryData? _latestSummary;
   Timer? _projectionTimer;
 
   @override
@@ -85,7 +114,7 @@ class _AdministratorBillingPageState extends State<AdministratorBillingPage> {
 
   @override
   void dispose() {
-    _projectionTimer?.cancel();
+    _stopProjectionChain();
     _tokenClient.dispose();
     super.dispose();
   }
@@ -141,8 +170,15 @@ class _AdministratorBillingPageState extends State<AdministratorBillingPage> {
     });
   }
 
+  /// R7-UI2 step 3: leaving the checkout step stops the reread chain and its pending message.
+  void _leaveCheckout() {
+    _stopProjectionChain();
+    _projectionStatus = _ProjectionStatus.idle;
+  }
+
   void _onTermsNotAccepted() {
     setState(() {
+      _leaveCheckout();
       _selection = null;
       _resumedCheckout = null;
       _step = _BillingStep.offers;
@@ -151,6 +187,7 @@ class _AdministratorBillingPageState extends State<AdministratorBillingPage> {
 
   void _onOfferUnavailable() {
     setState(() {
+      _leaveCheckout();
       _selection = null;
       _resumedCheckout = null;
       _step = _BillingStep.offers;
@@ -158,11 +195,17 @@ class _AdministratorBillingPageState extends State<AdministratorBillingPage> {
   }
 
   void _onBillingContactRequired() {
-    setState(() => _step = _BillingStep.contact);
+    setState(() {
+      _leaveCheckout();
+      _step = _BillingStep.contact;
+    });
   }
 
   void _onContractVersionUnsupported() {
-    setState(() => _step = _BillingStep.appUpdate);
+    setState(() {
+      _leaveCheckout();
+      _step = _BillingStep.appUpdate;
+    });
   }
 
   void _bumpBillingGeneration() {
@@ -184,50 +227,82 @@ class _AdministratorBillingPageState extends State<AdministratorBillingPage> {
     }
   }
 
-  /// R7-UI2 step 3: requests the backend pull, then rereads at most four times. A new call replaces
-  /// any earlier catch-up through the epoch.
-  Future<void> _startProjectionCatchUp(String reference) async {
-    final epoch = ++_projectionEpoch;
+  /// Stops the chain: the epoch moves on so pending timers and pull replies are rejected.
+  void _stopProjectionChain() {
+    _projectionEpoch++;
     _projectionTimer?.cancel();
     _projectionTimer = null;
+  }
+
+  /// R7-UI2 step 3: requests the backend pull, then rereads at most four times. The bound timer
+  /// starts with the pull request (review F5). A new call replaces any earlier chain via the epoch.
+  Future<void> _startProjectionCatchUp(String reference) async {
+    _stopProjectionChain();
+    final epoch = _projectionEpoch;
+    final identity = _currentIdentity();
     _projectionReference = reference;
+    _projectionBaseline = _latestSummary;
     _projectionRereads = 0;
+    _projectionPulled = false;
     _chainGeneration = -1;
     if (mounted) {
       setState(() => _projectionStatus = _ProjectionStatus.pending);
     }
+    _scheduleProjectionReread(epoch, identity);
     final requested = await _requestAiStatusPull();
-    if (!mounted || epoch != _projectionEpoch) {
+    if (!_projectionChainCurrent(epoch, identity)) {
       return;
     }
     if (!requested) {
+      _stopProjectionChain();
       setState(() => _projectionStatus = _ProjectionStatus.pullFailed);
       return;
     }
-    _scheduleProjectionReread(epoch, reference, _billingGeneration);
+    _projectionPulled = true;
   }
 
-  void _scheduleProjectionReread(int epoch, String reference, int generation) {
+  /// A timer or pull reply is current only while the page is mounted, the epoch matches, the user is
+  /// still on the checkout step and the session identity is unchanged (review F3).
+  bool _projectionChainCurrent(int epoch, String? identity) {
+    return mounted &&
+        epoch == _projectionEpoch &&
+        _step == _BillingStep.checkout &&
+        identity == _currentIdentity();
+  }
+
+  void _scheduleProjectionReread(int epoch, String? identity) {
     if (_projectionRereads >= _projectionMaxRereads) {
       // Still pending: the status message stays and manual refresh remains available.
       return;
     }
     _projectionTimer = Timer(_projectionRereadInterval, () {
       _projectionTimer = null;
-      // Reject a retry whose epoch, identity or billing-read generation no longer matches.
-      if (!mounted ||
-          epoch != _projectionEpoch ||
-          reference != _projectionReference ||
-          generation != _billingGeneration) {
+      if (!_projectionChainCurrent(epoch, identity)) {
         return;
       }
       _projectionRereads++;
-      setState(() {
-        _billingGeneration++;
-        _chainGeneration = _billingGeneration;
-      });
-      _scheduleProjectionReread(epoch, reference, _billingGeneration);
+      // A slot that fires before the pull has returned is spent without a confirming read.
+      if (_projectionPulled) {
+        setState(() {
+          _billingGeneration++;
+          _chainGeneration = _billingGeneration;
+        });
+      }
+      _scheduleProjectionReread(epoch, identity);
     });
+  }
+
+  String? _currentIdentity() {
+    final probe = widget.identityProbe;
+    if (probe != null) {
+      return probe();
+    }
+    try {
+      return (widget.supabaseClient ?? Supabase.instance.client).auth.currentUser?.id;
+    } catch (_) {
+      // Supabase is not initialised (widget tests without a client): no identity to compare.
+      return null;
+    }
   }
 
   /// Returns false when the pull could not be requested or the reply is not a success.
@@ -253,15 +328,24 @@ class _AdministratorBillingPageState extends State<AdministratorBillingPage> {
   }
 
   /// Confirms the projection only for a summary read issued after the pull (see [_chainGeneration]).
+  /// With a baseline, the projected fields must differ from it (review F2). Without one (no summary
+  /// was loaded when the pull was requested), a non-null plan confirms, as before.
   void _onSubscriptionLoaded(SubscriptionSummaryData data) {
+    _latestSummary = data;
     if (_projectionStatus != _ProjectionStatus.pending) {
       return;
     }
-    if (_chainGeneration != _billingGeneration || data.planDisplayName == null) {
+    if (_chainGeneration != _billingGeneration) {
       return;
     }
-    _projectionTimer?.cancel();
-    _projectionTimer = null;
+    final baseline = _projectionBaseline;
+    final caughtUp = baseline == null
+        ? data.planDisplayName != null
+        : _projectedFieldsDiffer(baseline, data);
+    if (!caughtUp) {
+      return;
+    }
+    _stopProjectionChain();
     setState(() => _projectionStatus = _ProjectionStatus.caughtUp);
   }
 

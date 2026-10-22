@@ -67,7 +67,11 @@ class SubscriptionSummary extends StatefulWidget {
 class _SubscriptionSummaryState extends State<SubscriptionSummary> {
   static const _rpcName = 'get_ai_billing_status';
 
+  /// True only until the first successful or failed load. Later reloads keep [_summary] on screen.
   var _loading = true;
+
+  /// True while a reload is in flight (review F4): a small indicator, not a full spinner.
+  var _refreshing = false;
   SubscriptionSummaryData? _summary;
   Object? _error;
   var _requestSeq = 0;
@@ -90,7 +94,8 @@ class _SubscriptionSummaryState extends State<SubscriptionSummary> {
     final seq = ++_requestSeq;
     final generation = widget.generation;
     setState(() {
-      _loading = true;
+      _loading = _summary == null;
+      _refreshing = true;
       _error = null;
     });
     try {
@@ -108,6 +113,7 @@ class _SubscriptionSummaryState extends State<SubscriptionSummary> {
       setState(() {
         _summary = summary;
         _loading = false;
+        _refreshing = false;
       });
       widget.onLoaded?.call(summary);
     } on AboContractVersionUnsupportedException {
@@ -117,6 +123,7 @@ class _SubscriptionSummaryState extends State<SubscriptionSummary> {
       setState(() {
         _error = const ContractVersionUnsupportedException();
         _loading = false;
+        _refreshing = false;
       });
     } catch (error) {
       if (!mounted || seq != _requestSeq || generation != widget.generation) {
@@ -125,6 +132,7 @@ class _SubscriptionSummaryState extends State<SubscriptionSummary> {
       setState(() {
         _error = error;
         _loading = false;
+        _refreshing = false;
       });
     }
   }
@@ -261,6 +269,13 @@ class _SubscriptionSummaryState extends State<SubscriptionSummary> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
+        if (_refreshing) ...[
+          const LinearProgressIndicator(
+            key: Key('billing_summary_refreshing'),
+            minHeight: 2,
+          ),
+          const SizedBox(height: 8),
+        ],
         Text(l10n.aiBillingCurrentCoverage, style: textTheme.titleMedium),
         const SizedBox(height: 10),
         _BillingPanel(
