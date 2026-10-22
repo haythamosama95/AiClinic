@@ -5,6 +5,7 @@ import 'package:ai_clinic/core/ai/https_submit_port.dart';
 import 'package:ai_clinic/core/ai/ports.dart';
 import 'package:ai_clinic/core/ai/taxonomy.dart';
 import 'package:ai_clinic/core/ai/usage_summary_client.dart';
+import 'package:ai_clinic/core/contract_versions.dart';
 import 'package:ai_clinic/core/ui/theme/app_theme.dart';
 import 'package:ai_clinic/features/ai/host/ai_feature_host_page.dart';
 import 'package:ai_clinic/features/ai/presentation/pages/ai_page.dart';
@@ -80,7 +81,10 @@ class _FakeCoverageUsageClient extends UsageSummaryClient {
                   'recent_terms': <Object>[],
                 }),
                 200,
-                headers: {'content-type': 'application/json'},
+                headers: {
+                  'content-type': 'application/json',
+                  'Aip-Contract-Version': '$platformClinic',
+                },
               );
             }
             return http.Response('not found', 404);
@@ -379,6 +383,7 @@ void main() {
           harness: adminHarness,
           submitPort: successSubmit,
           staffIsAdministrator: true,
+          usageSummaryClient: coverageFixtureUsageClient(networkSpy: adminHarness.networkSpy),
         ),
       );
 

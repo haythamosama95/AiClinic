@@ -1,11 +1,14 @@
 // Reusable pump helpers and spies for E4 AI feature surface widget tests.
 // ignore_for_file: depend_on_referenced_packages
 
+import 'dart:convert';
 import 'dart:io';
 
 import 'package:ai_clinic/core/ai/ai_client_sdk.dart';
 import 'package:ai_clinic/core/ai/context_provider_port.dart';
 import 'package:ai_clinic/core/ai/context_resolver.dart';
+import 'package:ai_clinic/core/ai/usage_summary_client.dart';
+import 'package:ai_clinic/core/contract_versions.dart';
 import 'package:ai_clinic/core/ui/theme/app_theme.dart';
 import 'package:ai_clinic/features/ai/availability/ai_availability.dart';
 import 'package:ai_clinic/features/ai/degraded/ai_degraded_mode.dart';
@@ -16,11 +19,52 @@ import 'package:ai_clinic/features/ai/surface/provisional_prose_view.dart';
 import 'package:ai_clinic/features/ai/surface/request_reference_view.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:http/http.dart' as http;
+import 'package:http/testing.dart';
 
 import '../../unit/core/ai/fakes.dart';
 
 const testVisitId = '550e8400-e29b-41d4-a716-446655440000';
 const testPlatformBaseUrl = 'https://ai.example.workers.dev';
+
+/// Coverage fixture for `GET /v1/coverage` (R2-C3 / R7-T2). Echoes the sent
+/// contract version in the `Aip-Contract-Version` header and returns the nested
+/// `snapshot.term` shape with `subscription_ref` at top level.
+UsageSummaryClient coverageFixtureUsageClient({
+  required InMemoryPlatformNetworkSpy networkSpy,
+  String subscriptionRef = 'sub-ref-test-001',
+  int termUsed = 42,
+  int termAllowance = 10000,
+  String planDisplayName = 'Standard Plan',
+}) {
+  return UsageSummaryClient(
+    httpClient: MockClient((request) async {
+      networkSpy.recordPlatformCall(request.url.toString());
+      if (request.url.path.endsWith('/v1/coverage')) {
+        return http.Response(
+          jsonEncode({
+            'subscription_ref': subscriptionRef,
+            'snapshot': {
+              'term': {
+                'used': termUsed,
+                'allowance': termAllowance,
+                'plan_display_name': planDisplayName,
+              },
+            },
+            'queued_terms': <Object>[],
+            'recent_terms': <Object>[],
+          }),
+          200,
+          headers: {
+            'content-type': 'application/json',
+            'Aip-Contract-Version': '$platformClinic',
+          },
+        );
+      }
+      return http.Response('not found', 404);
+    }),
+  );
+}
 
 class FakeAiAvailabilityReader implements AiAvailabilityReader {
   FakeAiAvailabilityReader(this._availability, {this.throwOnRead});
@@ -117,6 +161,7 @@ class AiSurfaceHarness {
   AiFeatureHostDependencies hostDependencies({
     bool skipReachabilityProbe = false,
     bool staffIsAdministrator = false,
+    UsageSummaryClient? usageSummaryClient,
   }) {
     return AiFeatureHostDependencies(
       availabilityReader: availabilityReader,
@@ -130,11 +175,17 @@ class AiSurfaceHarness {
       exportProbe: exportProbe,
       skipReachabilityProbe: skipReachabilityProbe || this.skipReachabilityProbe,
       staffIsAdministrator: staffIsAdministrator,
+      usageSummaryClient: usageSummaryClient,
     );
   }
 
-  Widget host({bool staffIsAdministrator = false}) =>
-      AiFeatureHostPage(dependencies: hostDependencies(staffIsAdministrator: staffIsAdministrator));
+  Widget host({bool staffIsAdministrator = false, UsageSummaryClient? usageSummaryClient}) =>
+      AiFeatureHostPage(
+        dependencies: hostDependencies(
+          staffIsAdministrator: staffIsAdministrator,
+          usageSummaryClient: usageSummaryClient,
+        ),
+      );
 
   Widget surface({bool autoInvoke = true}) => FirstAiFeatureSurface(
     sdk: sdk,
@@ -150,8 +201,15 @@ class AiSurfaceHarness {
     await tester.pumpWidget(MaterialApp(theme: AppTheme.light(), home: child));
   }
 
-  Future<void> pumpHost(WidgetTester tester, {bool staffIsAdministrator = false}) async {
-    await pumpWidgetWithTheme(tester, host(staffIsAdministrator: staffIsAdministrator));
+  Future<void> pumpHost(
+    WidgetTester tester, {
+    bool staffIsAdministrator = false,
+    UsageSummaryClient? usageSummaryClient,
+  }) async {
+    await pumpWidgetWithTheme(
+      tester,
+      host(staffIsAdministrator: staffIsAdministrator, usageSummaryClient: usageSummaryClient),
+    );
     await tester.pumpAndSettle();
   }
 

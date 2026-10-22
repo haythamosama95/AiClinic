@@ -18,7 +18,11 @@ void main() {
     testWidgets('gauge_renders_consumed_versus_budget', (tester) async {
       final harness = AiSurfaceHarness(reachable: true);
 
-      await harness.pumpHost(tester, staffIsAdministrator: true);
+      await harness.pumpHost(
+        tester,
+        staffIsAdministrator: true,
+        usageSummaryClient: coverageFixtureUsageClient(networkSpy: harness.networkSpy),
+      );
 
       expect(find.byKey(kAiUsageGaugeKey), findsOneWidget);
       expect(find.text('$kFixtureConsumedCredits'), findsOneWidget);
