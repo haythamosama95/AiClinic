@@ -395,7 +395,7 @@ commit.
 | Phase | Status | Validated commit | CI run | Completed on | Notes |
 | --- | --- | --- | --- | --- | --- |
 | FR01 | complete | 1940c38a | [39811302650](https://github.com/haythamosama95/AiClinic/actions/runs/39811302650) | 2026-10-22 | Membership-based guard; no operator actions |
-| FR02 | not started | | | | FD-1 = no |
+| FR02 | complete | 0b321c34 | [39814585550](https://github.com/haythamosama95/AiClinic/actions/runs/39814585550) | 2026-10-22 | Mapping table moved to 170450; operator rehearsal and procedure in FR02.md |
 | FR03 | not started | | | | |
 | FR04 | not started | | | | Refund test waits on FD-3 |
 | FR05 | not started | | | | FD-2 = detect |
