@@ -115,41 +115,65 @@ class _HttpSseConnection implements SseConnection {
   _HttpSseConnection({required http.StreamedResponse response})
       : _controller = StreamController<SseEvent>() {
     _parser = _SseLineParser(_controller);
-    _buffer = '';
-    _subscription = response.stream.listen(
-      (chunk) {
-        _buffer += utf8.decode(chunk);
-        final parts = _buffer.split('\n');
-        _buffer = parts.removeLast();
-        for (final line in parts) {
+    // R7-T3: a stateful UTF-8 decoder keeps partial multibyte sequences across
+    // network chunks, and LineSplitter handles LF, CRLF and CR line endings.
+    _subscription = response.stream
+        .transform(utf8.decoder)
+        .transform(const LineSplitter())
+        .listen(
+      (line) {
+        if (_closed) {
+          return;
+        }
+        try {
           _parser.addLine(line);
+        } on Object catch (error, stackTrace) {
+          _fail(error, stackTrace);
         }
       },
       onDone: () {
-        if (_buffer.isNotEmpty) {
-          _parser.addLine(_buffer);
-          _buffer = '';
+        if (_closed) {
+          return;
         }
-        _parser.close();
-      },
-      onError: (Object error, StackTrace stackTrace) {
+        _closed = true;
+        try {
+          _parser.close();
+        } on Object catch (error, stackTrace) {
+          if (!_controller.isClosed) {
+            _controller.addError(error, stackTrace);
+          }
+        }
         if (!_controller.isClosed) {
-          _controller.addError(error, stackTrace);
           _controller.close();
         }
+      },
+      onError: (Object error, StackTrace stackTrace) {
+        _fail(error, stackTrace);
       },
       cancelOnError: false,
     );
   }
 
   final StreamController<SseEvent> _controller;
-  late final StreamSubscription<List<int>> _subscription;
+  late final StreamSubscription<String> _subscription;
   late final _SseLineParser _parser;
-  late String _buffer;
   var _closed = false;
 
   @override
   Stream<SseEvent> get events => _controller.stream;
+
+  /// Surfaces one observed failure, then cancels the source exactly once (R7-T3).
+  void _fail(Object error, StackTrace stackTrace) {
+    if (_closed) {
+      return;
+    }
+    _closed = true;
+    unawaited(_subscription.cancel());
+    if (!_controller.isClosed) {
+      _controller.addError(error, stackTrace);
+      _controller.close();
+    }
+  }
 
   @override
   void close() {
