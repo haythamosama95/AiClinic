@@ -2095,7 +2095,8 @@ describe("reconciliation cross-worker", () => {
     expect(reversals?.n).toBe(1);
   });
 
-  it("R9-AO2 a provider refund recorded through recordReversalFromProviderTxn matches its payout line once", async () => {
+  // SKIPPED (RM32 owner decision): refund payout-line id is unresolved — Paymob CSV transaction_id for refunds is not settled by the repo or public docs (decision C). Re-enable once a real payout export confirms the id.
+  it.skip("R9-AO2 a provider refund recorded through recordReversalFromProviderTxn matches its payout line once", async () => {
     const expectations = await setupReconciliationHarness();
     const hp = await ensureActiveHpCredential();
     const { paymentId } = await paidCheckoutWithGrant(
