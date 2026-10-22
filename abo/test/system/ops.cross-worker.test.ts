@@ -744,6 +744,7 @@ async function seedRichClinic(
   orgId: string,
   expectations: OffersFixtureExpectations,
   offerVersions: Record<number, { offerId: string; version: number }>,
+  txnId = 96602,
 ): Promise<SeededClinic> {
   await setClock("2026-06-01T12:00:00.000Z");
   const billingEmail = "ops-clinic@clinic.test";
@@ -753,7 +754,7 @@ async function seedRichClinic(
     orgId,
     offerVersions[1],
     expectations,
-    96602,
+    txnId,
     billingEmail,
   );
   const paymentId = await paymentIdForCheckout(checkoutId);
@@ -967,7 +968,7 @@ describe("ops cross-worker", () => {
   it("R8-CONSOLE4: clinic history lists org-scoped payment, grant-request and reverse-work actions and keeps existing entries", async () => {
     const { expectations, offerVersions } = await setupOpsHarness();
     const clinic = await seedRichClinic(ORG_OPS_02, expectations, offerVersions);
-    const otherClinic = await seedRichClinic(ORG_OPS_03, expectations, offerVersions);
+    const otherClinic = await seedRichClinic(ORG_OPS_03, expectations, offerVersions, 96603);
 
     const reversal = await env.DB.prepare(
       `SELECT reversal_id FROM reversal WHERE payment_id = ?`,

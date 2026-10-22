@@ -430,7 +430,7 @@ describe("checkout cross-worker", () => {
     expect(expectations).not.toBeNull();
     const offerId = expectations!.offer_id;
     const version = expectations!.version;
-    const org = "org-checkout-r8-console";
+    const org = crypto.randomUUID();
     await putBillingContact(org);
     await setupActivePlatformCoverage(org);
 
