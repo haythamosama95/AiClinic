@@ -394,7 +394,7 @@ commit.
 
 | Phase | Status | Validated commit | CI run | Completed on | Notes |
 | --- | --- | --- | --- | --- | --- |
-| FR01 | not started | | | | |
+| FR01 | complete | 1940c38a | [39811302650](https://github.com/haythamosama95/AiClinic/actions/runs/39811302650) | 2026-10-22 | Membership-based guard; no operator actions |
 | FR02 | not started | | | | FD-1 = no |
 | FR03 | not started | | | | |
 | FR04 | not started | | | | Refund test waits on FD-3 |
