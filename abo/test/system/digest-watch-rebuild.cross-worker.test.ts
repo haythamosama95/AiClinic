@@ -46,7 +46,8 @@ import findingIdentityMigrationSql from "../../migrations/0022_finding_identity.
 import payoutImportFileIdentityMigrationSql from "../../migrations/0023_payout_import_file_identity.sql?raw";
 import payoutLineReversalIdentityMigrationSql from "../../migrations/0024_payout_line_reversal_identity.sql?raw";
 import reversalProviderIdentityMigrationSql from "../../migrations/0025_reversal_provider_identity.sql?raw";
-import { appendOffer, loadOffersFixture } from "../../src/records/append";
+import payoutReversalManualLinkMigrationSql from "../../migrations/0026_payout_reversal_manual_link.sql?raw";
+import { appendOffer, insertFactLog, loadOffersFixture } from "../../src/records/append";
 import { resolveHistoricalCheckoutTimestamp } from "../../src/rebuild";
 import { exportFacts } from "../../src/records/export";
 import {
@@ -383,6 +384,7 @@ async function ensureMigrations(): Promise<void> {
     payoutImportFileIdentityMigrationSql,
     payoutLineReversalIdentityMigrationSql,
     reversalProviderIdentityMigrationSql,
+    payoutReversalManualLinkMigrationSql,
   ]) {
     await applySql(sql);
   }
@@ -874,6 +876,7 @@ async function wipeAboD1(): Promise<void> {
   // 0024/0025 child tables reference `reversal` and payout lines; drop them
   // before the generic loop so the parent `reversal` table can be dropped.
   for (const tableName of [
+    "payout_reversal_manual_basis",
     "payout_reversal_link",
     "reversal_provider_identity",
     "payout_line_reversal",
@@ -3262,6 +3265,79 @@ describe("P4.11 digest, watch, housekeeping, rebuild (H-XW)", () => {
       table: "offer",
       key: "offer-r9-rec1-after-rebuild",
     });
+  });
+
+  it("FV-M4 a rebuild reproduces payout_reversal_link and payout_reversal_manual_basis from facts", async () => {
+    const expectations = await setupRebuildHarness({ freshPlatformState: true });
+    await ensureGrantTenantBinding(ORG_REBUILD, RESUME_INSTALLATION_ID);
+    const { paymentId } = await paidCheckoutWithGrant(
+      ORG_REBUILD,
+      expectations,
+      RESUME_PAYMOB_TXN_ID,
+      "req-fv-m4-rebuild",
+    );
+    const at = await currentHarnessClockIso();
+    const importId = "fv-m4-rebuild-import";
+    const reversalId = "fv-m4-rebuild-reversal";
+    const seeded: Array<[string, string, Record<string, unknown>]> = [
+      ["payout_import", importId, {
+        import_id: importId, provider_id: "paymob", file_sha256: "fv-m4-sha", r2_key: "payouts/fv-m4",
+        imported_by: "operator@example.test", period: "2026-03",
+      }],
+      ["payout_line", `${importId}:1`, {
+        import_id: importId, line_no: 1, kind: "chargeback", gross_minor: 5000, fee_minor: 0,
+        net_minor: 5000, settled_at: "2026-03-15T00:00:00.000Z", payment_id: paymentId,
+      }],
+      ["payout_line_reversal", `${importId}:1`, {
+        import_id: importId, line_no: 1, reversal_ref: "fv-m4-ref", amount_minor: 5000,
+      }],
+      ["reversal", reversalId, {
+        reversal_id: reversalId, payment_id: paymentId, reference: "REV-FV-M4", amount_minor: 5000,
+        kind: "chargeback", is_full: 1, source: "operator", cumulative_reversed_minor: 5000,
+        detected_via: "manual", recorded_by: "operator@example.test", evidence_sha256: "evidence",
+        effect: "none", dedupe_key: "fv-m4-rebuild-dedupe",
+      }],
+      ["payout_reversal_link", `${importId}:1`, {
+        import_id: importId, line_no: 1, reversal_id: reversalId,
+      }],
+      ["payout_reversal_manual_basis", `${importId}:1`, {
+        import_id: importId, line_no: 1, action_id: "fv-m4-action", actor_email: "operator@example.test",
+        recorded_at: at,
+      }],
+    ];
+    for (const [table, key, row] of seeded) {
+      const columns = Object.keys(row);
+      await env.DB.batch([
+        env.DB.prepare(
+          `INSERT INTO ${table} (${columns.join(", ")}) VALUES (${columns.map(() => "?").join(", ")})`,
+        ).bind(...columns.map((column) => row[column])),
+        await insertFactLog(env, table, key, row, at),
+      ]);
+    }
+    const read = async () => ({
+      link: (await env.DB.prepare(`SELECT * FROM payout_reversal_link`).all()).results,
+      basis: (await env.DB.prepare(`SELECT * FROM payout_reversal_manual_basis`).all()).results,
+    });
+    const before = await read();
+    expect(before.link).toHaveLength(1);
+    expect(before.basis).toHaveLength(1);
+    await exportLedgerFacts();
+
+    await wipeAboD1();
+    await reapplyAboSchema();
+    expect((await read()).link).toHaveLength(0);
+    const { rebuildAbo } = await import("../../src/rebuild.js");
+    await rebuildAbo(env as never, { providerTransactionReferences: [] });
+
+    expect(await read()).toEqual(before);
+    for (const table of ["payout_reversal_link", "payout_reversal_manual_basis"]) {
+      const fact = await env.DB.prepare(
+        `SELECT COUNT(*) AS n FROM fact_log WHERE "table" = ? AND key = ?`,
+      )
+        .bind(table, `${importId}:1`)
+        .first<{ n: number }>();
+      expect(fact?.n).toBe(1);
+    }
   });
 
   it("R9-REC1 manifest high-water rejects a missing ledger prefix even when no ledger object is listed", async () => {

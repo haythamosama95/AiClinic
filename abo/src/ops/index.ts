@@ -2981,6 +2981,201 @@ async function handlePostResolveFinding(
   );
 }
 
+const LINK_PAYOUT_REVERSAL_ACTION = "Link a payout reversal line to a recorded reversal";
+
+/**
+ * FV-M4 (R9-AO2 step 3): the operator states that one payout refund or chargeback line is the same
+ * event as one recorded reversal. Refused unless the line has retained reversal evidence and no
+ * link, the reversal exists and is not linked to another line, and payment, kind and amount are
+ * exactly equal. The link, its basis, their facts, the resolution of the line's open
+ * `unrecorded_reversal` finding with its AL-10 deactivation, and the operator action commit in one
+ * batch. Nothing here creates a reversal or a void.
+ */
+async function handlePostLinkPayoutReversal(
+  env: OpsEnv,
+  importId: string,
+  lineNoText: string,
+  access: VerifiedAccess,
+  request: Request,
+  contractVersion: number,
+): Promise<Response> {
+  const lineNo = Number(lineNoText);
+  if (!Number.isSafeInteger(lineNo) || lineNo < 1) {
+    return clinicErrorResponse("invalid_request", 400, contractVersion);
+  }
+  let reversalId: string;
+  try {
+    const parsed = (await request.json()) as unknown;
+    const candidate = isRecord(parsed) ? parsed.reversal_id : undefined;
+    if (typeof candidate !== "string" || candidate.length === 0) {
+      return clinicErrorResponse("invalid_request", 400, contractVersion);
+    }
+    reversalId = candidate;
+  } catch {
+    return clinicErrorResponse("invalid_request", 400, contractVersion);
+  }
+
+  const line = await env.DB.prepare(
+    `SELECT pl.kind, pl.payment_id, plr.amount_minor
+     FROM payout_line pl
+     LEFT JOIN payout_line_reversal plr
+       ON plr.import_id = pl.import_id AND plr.line_no = pl.line_no
+     WHERE pl.import_id = ? AND pl.line_no = ?`,
+  )
+    .bind(importId, lineNo)
+    .first<{ kind: string; payment_id: string | null; amount_minor: number | null }>();
+  if (line === null) {
+    return clinicErrorResponse("not_found", 404, contractVersion);
+  }
+  // Historical lines without retained reversal evidence stay unmatched (D-5).
+  if (
+    (line.kind !== "refund" && line.kind !== "chargeback") ||
+    line.amount_minor === null ||
+    line.payment_id === null
+  ) {
+    return clinicErrorResponse("invalid_request", 422, contractVersion);
+  }
+  const reversal = await env.DB.prepare(
+    `SELECT payment_id, kind, amount_minor FROM reversal WHERE reversal_id = ?`,
+  )
+    .bind(reversalId)
+    .first<{ payment_id: string; kind: string; amount_minor: number }>();
+  if (reversal === null) {
+    return clinicErrorResponse("not_found", 404, contractVersion);
+  }
+  const lineLink = await env.DB.prepare(
+    `SELECT 1 FROM payout_reversal_link WHERE import_id = ? AND line_no = ?`,
+  )
+    .bind(importId, lineNo)
+    .first();
+  const reversalLink = await env.DB.prepare(
+    `SELECT 1 FROM payout_reversal_link WHERE reversal_id = ? LIMIT 1`,
+  )
+    .bind(reversalId)
+    .first();
+  if (lineLink !== null || reversalLink !== null) {
+    return clinicErrorResponse("conflict", 409, contractVersion);
+  }
+  if (
+    reversal.payment_id !== line.payment_id ||
+    reversal.kind !== line.kind ||
+    reversal.amount_minor !== line.amount_minor
+  ) {
+    return clinicErrorResponse("invalid_request", 422, contractVersion);
+  }
+
+  const subject = `${importId}:${lineNo}`;
+  const findingRow = await env.DB.prepare(
+    `SELECT f.finding_id
+     FROM finding f
+     WHERE f.kind = 'unrecorded_reversal' AND f.subject = ?
+       AND NOT EXISTS (SELECT 1 FROM finding_resolution r WHERE r.finding_id = f.finding_id)
+     ORDER BY f.detected_at ASC, f.finding_id ASC
+     LIMIT 1`,
+  )
+    .bind(subject)
+    .first<{ finding_id: string }>();
+
+  const actionId = crypto.randomUUID();
+  const createdAt = await clockNowIso(env);
+  const action = LINK_PAYOUT_REVERSAL_ACTION;
+  const paramsSha256 = await sha256Hex(
+    canonicalize({ action, subject, reversal_id: reversalId }),
+  );
+  const statements: D1PreparedStatement[] = [
+    // Conditional on the reversal being unlinked, so a concurrent link to another line makes the
+    // basis insert below fail its foreign key and the whole batch roll back.
+    env.DB.prepare(
+      `INSERT INTO payout_reversal_link (import_id, line_no, reversal_id)
+       SELECT ?, ?, ?
+       WHERE NOT EXISTS (SELECT 1 FROM payout_reversal_link WHERE reversal_id = ?)`,
+    ).bind(importId, lineNo, reversalId, reversalId),
+    await insertFactLog(
+      env,
+      "payout_reversal_link",
+      subject,
+      { import_id: importId, line_no: lineNo, reversal_id: reversalId },
+      createdAt,
+    ),
+    env.DB.prepare(
+      `INSERT INTO payout_reversal_manual_basis (import_id, line_no, action_id, actor_email, recorded_at)
+       VALUES (?, ?, ?, ?, ?)`,
+    ).bind(importId, lineNo, actionId, access.email, createdAt),
+    await insertFactLog(
+      env,
+      "payout_reversal_manual_basis",
+      subject,
+      {
+        import_id: importId,
+        line_no: lineNo,
+        action_id: actionId,
+        actor_email: access.email,
+        recorded_at: createdAt,
+      },
+      createdAt,
+    ),
+  ];
+  if (findingRow !== null) {
+    const note = `Linked to recorded reversal ${reversalId} by operator action ${actionId}`;
+    statements.push(
+      env.DB.prepare(
+        `INSERT INTO finding_resolution (finding_id, resolved_by, note, at)
+         VALUES (?, ?, ?, ?)`,
+      ).bind(findingRow.finding_id, access.email, note, createdAt),
+      await insertFactLog(
+        env,
+        "finding_resolution",
+        findingRow.finding_id,
+        {
+          finding_id: findingRow.finding_id,
+          resolved_by: access.email,
+          note,
+          at: createdAt,
+        },
+        createdAt,
+      ),
+      prepareAlertDeactivation(env.DB, `AL-10:${findingRow.finding_id}`),
+    );
+  }
+  statements.push(
+    ...(await operatorActionStatements(
+      env,
+      {
+        action_id: actionId,
+        actor_email: access.email,
+        access_jti: access.jti,
+        action,
+        subject,
+        params_sha256: paramsSha256,
+        assertion_sha256: null,
+        result: "accepted",
+      },
+      createdAt,
+    )),
+  );
+  try {
+    await env.DB.batch(statements);
+  } catch (error) {
+    // A concurrent link or resolution won; nothing from this batch was written.
+    const raced = await env.DB.prepare(
+      `SELECT 1 FROM payout_reversal_link WHERE (import_id = ? AND line_no = ?) OR reversal_id = ? LIMIT 1`,
+    )
+      .bind(importId, lineNo, reversalId)
+      .first();
+    if (raced === null) {
+      throw error;
+    }
+    return clinicErrorResponse("conflict", 409, contractVersion);
+  }
+
+  await recordPlatformOperatorAction(env, access.jwt, action, subject, actionId);
+  return clinicJsonResponse(
+    { contract_version: contractVersion, action_id: actionId },
+    200,
+    contractVersion,
+  );
+}
+
 async function parsePlatformList(
   envelope: Record<string, unknown>,
 ): Promise<Array<Record<string, unknown>>> {
@@ -5482,6 +5677,19 @@ export async function handleOps(
     return handlePostResolveFinding(
       env,
       resolveFindingMatch[1]!,
+      access,
+      request,
+      contractVersion,
+    );
+  }
+
+  const linkPayoutReversalMatch =
+    /^\/ops\/payout-imports\/([^/]+)\/lines\/(\d+)\/link-reversal$/u.exec(path);
+  if (request.method === "POST" && linkPayoutReversalMatch !== null) {
+    return handlePostLinkPayoutReversal(
+      env,
+      linkPayoutReversalMatch[1]!,
+      linkPayoutReversalMatch[2]!,
       access,
       request,
       contractVersion,

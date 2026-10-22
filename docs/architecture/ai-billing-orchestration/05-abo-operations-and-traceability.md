@@ -98,6 +98,7 @@ HP actions run the passkey ceremony in the console. "Verified by" says which sys
 | Retry parked work                               | H     | ABO         | FR-71               |
 | Cancel an open checkout                         | H     | ABO         | FR-71               |
 | Import a payout CSV; resolve a finding          | H     | ABO         | FR-80               |
+| Link a payout reversal line to a recorded reversal: the operator states that one payout refund or chargeback line is a recorded reversal with the same payment, kind and amount. It resolves that line's `unrecorded_reversal` finding and creates no reversal or void (A18) | H | ABO | FR-80, A18 |
 | Submit a provider transaction id for a checkout with no known transaction (01 §3.8 D-3). The ABO confirms it by authenticated inquiry and order binding; the entry alone creates nothing | H | ABO | FR-82, A3 |
 | Adjudicate a disputed historical fact: record a new append-only adjudication fact with its evidence; the original is never rewritten (01 §3.8 D-5) | HP | System that owns the fact | G4, RC-01 |
 | Record a manual chargeback                      | HP    | ABO         | FR-44, A18          |

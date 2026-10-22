@@ -105,6 +105,7 @@ const LEDGER_TABLES = new Set([
   "payment_release", "grant_request", "grant_outcome", "grant_outcome_event", "reversal",
   "operator_action", "command_recovery_fact", "finding", "finding_resolution", "payout_import",
   "payout_line", "payout_line_reversal", "reversal_provider_identity", "payout_reversal_link",
+  "payout_reversal_manual_basis",
   "paymob_intention_attempt_event", "rebuild_inquiry_attempt",
   "reversal_request",
 ]);
@@ -135,6 +136,7 @@ const LEDGER_COLUMN_FIELDS: Record<string, readonly string[]> = {
   payout_line_reversal: ["import_id", "line_no", "reversal_ref", "amount_minor"],
   reversal_provider_identity: ["reversal_id", "reversal_ref"],
   payout_reversal_link: ["import_id", "line_no", "reversal_id"],
+  payout_reversal_manual_basis: ["import_id", "line_no", "action_id", "actor_email", "recorded_at"],
   paymob_intention_attempt_event: ["event_key", "checkout_id", "attempt_no", "state", "lease_token", "lease_until", "special_reference", "intention_id", "order_id", "expires_at", "started_at", "finished_at", "event_at"],
 };
 
@@ -164,6 +166,7 @@ const LEDGER_KEY_FIELDS: Record<string, readonly string[]> = {
   payout_line_reversal: ["import_id", "line_no"],
   reversal_provider_identity: ["reversal_id"],
   payout_reversal_link: ["import_id", "line_no"],
+  payout_reversal_manual_basis: ["import_id", "line_no"],
   paymob_intention_attempt_event: ["event_key"],
 };
 

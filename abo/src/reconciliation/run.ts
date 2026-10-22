@@ -507,8 +507,12 @@ async function payoutLineAlreadyLinked(
 }
 
 // R9-AO2: exact match on normalized identity, payment, kind and amount. Only reversals recorded from
-// the provider path carry an identity row, so manual reversals never match. Unrelated partial
+// the provider path carry an identity row, so manual reversals never match here. Unrelated partial
 // refunds carry a different identity and cannot satisfy a chargeback. Ambiguity matches nothing.
+// FV-M4: manual evidence is never inferred. A manual reversal satisfies a payout line only through
+// the operator link action (POST /ops/payout-imports/:import_id/lines/:line_no/link-reversal in
+// ops/index.ts), which writes payout_reversal_link and payout_reversal_manual_basis; a line already
+// linked that way is skipped by checkUnrecordedReversal.
 async function matchingProviderReversal(
   env: ReconciliationEnv,
   evidence: PayoutReversalEvidence,

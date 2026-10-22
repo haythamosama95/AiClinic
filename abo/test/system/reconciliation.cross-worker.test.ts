@@ -87,6 +87,11 @@ const ORG_RC_R9AO2_A = "a4110001-0001-4001-8001-00000000000a";
 const ORG_RC_R9AO2_B = "a4110002-0002-4002-8002-00000000000b";
 const ORG_RC_R9AO2_C = "a4110003-0003-4003-8003-00000000000c";
 const ORG_RC_R9AO2_D = "a4110004-0004-4004-8004-00000000000d";
+const ORG_RC_FVM4_A = "a4120001-0001-4001-8001-00000000000a";
+const ORG_RC_FVM4_B = "a4120002-0002-4002-8002-00000000000b";
+const ORG_RC_FVM4_C = "a4120003-0003-4003-8003-00000000000c";
+const ORG_RC_FVM4_D = "a4120004-0004-4004-8004-00000000000d";
+const ORG_RC_FVM4_E = "a4120005-0005-4005-8005-00000000000e";
 
 const HPAY_TXN_ID = 99001;
 
@@ -1415,6 +1420,104 @@ async function seedProviderIdentityReversal(input: {
   return reversalId;
 }
 
+// FV-M4: a recorded manual reversal. Manual reversals write no provider identity row.
+async function seedManualReversal(input: {
+  paymentId: string;
+  kind: string;
+  amountMinor: number;
+}): Promise<string> {
+  const reversalId = crypto.randomUUID();
+  await env.DB.prepare(
+    `INSERT INTO reversal (
+       reversal_id, payment_id, reference, amount_minor, kind, is_full,
+       source, cumulative_reversed_minor, detected_via, recorded_by,
+       evidence_sha256, effect, dedupe_key
+     ) VALUES (?, ?, ?, ?, ?, 1, 'operator', ?, 'manual', ?, 'evidence', 'none', ?)`,
+  )
+    .bind(
+      reversalId,
+      input.paymentId,
+      `REV-${reversalId}`,
+      input.amountMinor,
+      input.kind,
+      input.amountMinor,
+      VENDOR_OPERATOR_EMAIL,
+      `manual-${reversalId}`,
+    )
+    .run();
+  return reversalId;
+}
+
+// FV-M4: a payout line with retained reversal evidence, written the way an accepted import
+// writes it (without the file, the reconciliation run or the finding).
+async function seedPayoutReversalLine(input: {
+  importId: string;
+  lineNo: number;
+  kind: string;
+  paymentId: string | null;
+  amountMinor: number;
+  withEvidence?: boolean;
+}): Promise<void> {
+  await env.DB.prepare(
+    `INSERT OR IGNORE INTO payout_import (import_id, provider_id, file_sha256, r2_key, imported_by, period)
+     VALUES (?, 'paymob', ?, ?, ?, '2026-03')`,
+  )
+    .bind(input.importId, `sha-${input.importId}`, `payouts/${input.importId}`, VENDOR_OPERATOR_EMAIL)
+    .run();
+  await env.DB.prepare(
+    `INSERT INTO payout_line (import_id, line_no, kind, gross_minor, fee_minor, net_minor, settled_at, payment_id)
+     VALUES (?, ?, ?, ?, 0, ?, '2026-03-15T00:00:00.000Z', ?)`,
+  )
+    .bind(input.importId, input.lineNo, input.kind, input.amountMinor, input.amountMinor, input.paymentId)
+    .run();
+  if (input.withEvidence !== false) {
+    await env.DB.prepare(
+      `INSERT INTO payout_line_reversal (import_id, line_no, reversal_ref, amount_minor)
+       VALUES (?, ?, ?, ?)`,
+    )
+      .bind(input.importId, input.lineNo, `ref-${input.importId}-${input.lineNo}`, input.amountMinor)
+      .run();
+  }
+}
+
+async function linkPayoutReversalRequest(
+  accessJwt: string,
+  importId: string,
+  lineNo: number,
+  reversalId: string,
+): Promise<Response> {
+  return opsFetch(`/ops/payout-imports/${importId}/lines/${lineNo}/link-reversal`, {
+    method: "POST",
+    headers: await opsHeaders(accessJwt),
+    body: JSON.stringify({ reversal_id: reversalId }),
+  });
+}
+
+const LINK_PAYOUT_REVERSAL_ACTION_LABEL = "Link a payout reversal line to a recorded reversal";
+
+async function linkActionCount(): Promise<number> {
+  const row = await env.DB.prepare(
+    `SELECT COUNT(*) AS n FROM operator_action WHERE action = ?`,
+  )
+    .bind(LINK_PAYOUT_REVERSAL_ACTION_LABEL)
+    .first<{ n: number }>();
+  return row?.n ?? 0;
+}
+
+async function manualBasisCount(): Promise<number> {
+  const row = await env.DB.prepare(
+    `SELECT COUNT(*) AS n FROM payout_reversal_manual_basis`,
+  ).first<{ n: number }>();
+  return row?.n ?? 0;
+}
+
+async function alertActive(findingId: string): Promise<number | null> {
+  const row = await env.DB.prepare(`SELECT active FROM alert WHERE alert_key = ?`)
+    .bind(`AL-10:${findingId}`)
+    .first<{ active: number }>();
+  return row === null ? null : row.active;
+}
+
 async function payoutReversalLinkCount(): Promise<number> {
   const row = await env.DB.prepare(
     `SELECT COUNT(*) AS n FROM payout_reversal_link`,
@@ -2095,6 +2198,201 @@ describe("reconciliation cross-worker", () => {
     expect(reversals?.n).toBe(1);
   });
 
+  it("FV-M4 operator link resolves the unrecorded_reversal finding, silences AL-10 and later runs neither reopen nor re-alert", async () => {
+    const expectations = await setupReconciliationHarness();
+    const hp = await ensureActiveHpCredential();
+    const { paymentId } = await paidCheckoutWithGrant(
+      ORG_RC_FVM4_A,
+      expectations,
+      HPAY_TXN_ID,
+      "req-fv-m4-a",
+    );
+    const importResponse = await postPayoutImport(hp.accessJwt, payoutUnrecordedChargebackCsv);
+    expect(importResponse.status).toBe(200);
+    const { import_id: importId } = (await importResponse.json()) as { import_id: string };
+    const reversalId = await seedManualReversal({ paymentId, kind: "chargeback", amountMinor: 5000 });
+
+    const finding = await findingRow("unrecorded_reversal");
+    expect(finding).not.toBeNull();
+    expect(finding!.subject).toBe(`${importId}:1`);
+    expect(await alertActive(finding!.finding_id)).toBe(1);
+    // Manual evidence is never inferred: another run leaves the finding open and unlinked.
+    await runDailyReconciliation();
+    expect(await payoutReversalLinkCount()).toBe(0);
+    expect(await findingResolutionCount(finding!.finding_id)).toBe(0);
+
+    const response = await linkPayoutReversalRequest(hp.accessJwt, importId, 1, reversalId);
+    expect(response.status).toBe(200);
+    const { action_id: actionId } = (await response.json()) as { action_id: string };
+
+    const link = await env.DB.prepare(
+      `SELECT reversal_id FROM payout_reversal_link WHERE import_id = ? AND line_no = 1`,
+    )
+      .bind(importId)
+      .first<{ reversal_id: string }>();
+    expect(link?.reversal_id).toBe(reversalId);
+    const basis = await env.DB.prepare(
+      `SELECT action_id, actor_email FROM payout_reversal_manual_basis WHERE import_id = ? AND line_no = 1`,
+    )
+      .bind(importId)
+      .first<{ action_id: string; actor_email: string }>();
+    expect(basis?.action_id).toBe(actionId);
+    expect(basis?.actor_email).toBeTruthy();
+    const action = await env.DB.prepare(
+      `SELECT action, subject FROM operator_action WHERE action_id = ?`,
+    )
+      .bind(actionId)
+      .first<{ action: string; subject: string }>();
+    expect(action).toEqual({ action: LINK_PAYOUT_REVERSAL_ACTION_LABEL, subject: `${importId}:1` });
+    for (const table of ["payout_reversal_link", "payout_reversal_manual_basis", "finding_resolution"]) {
+      const fact = await env.DB.prepare(
+        `SELECT COUNT(*) AS n FROM fact_log WHERE "table" = ? AND key = ?`,
+      )
+        .bind(table, table === "finding_resolution" ? finding!.finding_id : `${importId}:1`)
+        .first<{ n: number }>();
+      expect(fact?.n).toBe(1);
+    }
+    expect(await findingResolutionCount(finding!.finding_id)).toBe(1);
+    expect(await alertActive(finding!.finding_id)).toBe(0);
+
+    await setClock("2026-06-02T12:00:00.000Z");
+    await runDailyReconciliation();
+    await setClock("2026-06-03T12:00:00.000Z");
+    await runDailyReconciliation();
+    expect(await findingCount("unrecorded_reversal")).toBe(1);
+    expect(await findingResolutionCount(finding!.finding_id)).toBe(1);
+    expect(await alertActive(finding!.finding_id)).toBe(0);
+    expect(capturedEmailMentions("AL-10")).toBe(false);
+    expect(await payoutReversalLinkCount()).toBe(1);
+    expect(await manualBasisCount()).toBe(1);
+    // The link records evidence only: it creates no reversal and no void.
+    const reversals = await env.DB.prepare(`SELECT COUNT(*) AS n FROM reversal`).first<{ n: number }>();
+    expect(reversals?.n).toBe(1);
+  });
+
+  it("FV-M4 link is refused for a mismatched payment, kind or amount, a line without retained evidence, and an unknown reversal", async () => {
+    const expectations = await setupReconciliationHarness();
+    const hp = await ensureActiveHpCredential();
+    const { paymentId: paymentA } = await paidCheckoutWithGrant(
+      ORG_RC_FVM4_B,
+      expectations,
+      HPAY_TXN_ID,
+      "req-fv-m4-b1",
+    );
+    const { paymentId: paymentB } = await paidCheckoutWithGrant(
+      ORG_RC_FVM4_C,
+      expectations,
+      99005,
+      "req-fv-m4-b2",
+    );
+    const importId = "fv-m4-import-refusals";
+    await seedPayoutReversalLine({
+      importId,
+      lineNo: 1,
+      kind: "chargeback",
+      paymentId: paymentA,
+      amountMinor: 5000,
+    });
+    await seedPayoutReversalLine({
+      importId,
+      lineNo: 2,
+      kind: "chargeback",
+      paymentId: paymentA,
+      amountMinor: 5000,
+      withEvidence: false,
+    });
+    await seedPayoutReversalLine({
+      importId,
+      lineNo: 3,
+      kind: "payment",
+      paymentId: paymentA,
+      amountMinor: 5000,
+      withEvidence: false,
+    });
+    const wrongPayment = await seedManualReversal({ paymentId: paymentB, kind: "chargeback", amountMinor: 5000 });
+    const wrongKind = await seedManualReversal({ paymentId: paymentA, kind: "refund", amountMinor: 5000 });
+    const wrongAmount = await seedManualReversal({ paymentId: paymentA, kind: "chargeback", amountMinor: 4999 });
+    const exact = await seedManualReversal({ paymentId: paymentA, kind: "chargeback", amountMinor: 5000 });
+
+    for (const reversalId of [wrongPayment, wrongKind, wrongAmount]) {
+      const refused = await linkPayoutReversalRequest(hp.accessJwt, importId, 1, reversalId);
+      expect(refused.status).toBe(422);
+    }
+    // A historical line without retained reversal evidence stays unmatched (D-5), and so does a
+    // line that is not a refund or chargeback.
+    expect((await linkPayoutReversalRequest(hp.accessJwt, importId, 2, exact)).status).toBe(422);
+    expect((await linkPayoutReversalRequest(hp.accessJwt, importId, 3, exact)).status).toBe(422);
+    expect((await linkPayoutReversalRequest(hp.accessJwt, importId, 1, crypto.randomUUID())).status).toBe(404);
+    expect((await linkPayoutReversalRequest(hp.accessJwt, importId, 9, exact)).status).toBe(404);
+    expect(await payoutReversalLinkCount()).toBe(0);
+    expect(await manualBasisCount()).toBe(0);
+    expect(await linkActionCount()).toBe(0);
+
+    expect((await linkPayoutReversalRequest(hp.accessJwt, importId, 1, exact)).status).toBe(200);
+    expect(await payoutReversalLinkCount()).toBe(1);
+    expect(await linkActionCount()).toBe(1);
+  });
+
+  it("FV-M4 link is refused for a line that is already linked and for a reversal already linked to another line", async () => {
+    const expectations = await setupReconciliationHarness();
+    const hp = await ensureActiveHpCredential();
+    const { paymentId } = await paidCheckoutWithGrant(
+      ORG_RC_FVM4_D,
+      expectations,
+      HPAY_TXN_ID,
+      "req-fv-m4-c",
+    );
+    const importId = "fv-m4-import-linked";
+    for (const lineNo of [1, 2]) {
+      await seedPayoutReversalLine({
+        importId,
+        lineNo,
+        kind: "chargeback",
+        paymentId,
+        amountMinor: 5000,
+      });
+    }
+    const first = await seedManualReversal({ paymentId, kind: "chargeback", amountMinor: 5000 });
+    const second = await seedManualReversal({ paymentId, kind: "chargeback", amountMinor: 5000 });
+
+    expect((await linkPayoutReversalRequest(hp.accessJwt, importId, 1, first)).status).toBe(200);
+    // The same line again, and the same line with another reversal.
+    expect((await linkPayoutReversalRequest(hp.accessJwt, importId, 1, first)).status).toBe(409);
+    expect((await linkPayoutReversalRequest(hp.accessJwt, importId, 1, second)).status).toBe(409);
+    // The linked reversal for another line.
+    expect((await linkPayoutReversalRequest(hp.accessJwt, importId, 2, first)).status).toBe(409);
+    expect(await payoutReversalLinkCount()).toBe(1);
+    expect(await manualBasisCount()).toBe(1);
+    expect(await linkActionCount()).toBe(1);
+
+    // The unlinked reversal can still serve the other line.
+    expect((await linkPayoutReversalRequest(hp.accessJwt, importId, 2, second)).status).toBe(200);
+    expect(await payoutReversalLinkCount()).toBe(2);
+  });
+
+  it("FV-M4 link and basis rows are append-only", async () => {
+    const expectations = await setupReconciliationHarness();
+    const hp = await ensureActiveHpCredential();
+    const { paymentId } = await paidCheckoutWithGrant(
+      ORG_RC_FVM4_E,
+      expectations,
+      HPAY_TXN_ID,
+      "req-fv-m4-d",
+    );
+    const importId = "fv-m4-import-append-only";
+    await seedPayoutReversalLine({ importId, lineNo: 1, kind: "chargeback", paymentId, amountMinor: 5000 });
+    const reversalId = await seedManualReversal({ paymentId, kind: "chargeback", amountMinor: 5000 });
+    expect((await linkPayoutReversalRequest(hp.accessJwt, importId, 1, reversalId)).status).toBe(200);
+
+    for (const statement of [
+      `UPDATE payout_reversal_manual_basis SET actor_email = 'x'`,
+      `DELETE FROM payout_reversal_manual_basis`,
+    ]) {
+      await expect(env.DB.prepare(statement).run()).rejects.toThrow(/append_only/u);
+    }
+    expect(await manualBasisCount()).toBe(1);
+  });
+
   // SKIPPED (RM32 owner decision): refund payout-line id is unresolved — Paymob CSV transaction_id for refunds is not settled by the repo or public docs (decision C). Re-enable once a real payout export confirms the id.
   it.skip("R9-AO2 a provider refund recorded through recordReversalFromProviderTxn matches its payout line once", async () => {
     const expectations = await setupReconciliationHarness();
@@ -2217,7 +2515,7 @@ describe("reconciliation cross-worker", () => {
     expect(badLimit.status).toBe(422);
   });
 
-  it("E2E-P4.10-05 unrecorded payout chargeback remains after a manual chargeback and re-run (R2-P1 bound params; R9-AO2 manual reversals never match identity)", async () => {
+  it("E2E-P4.10-05 FV-M4 unrecorded payout chargeback remains after a manual chargeback until the operator links it, then stays resolved (R2-P1 bound params; R9-AO2 manual reversals never match identity)", async () => {
     const expectations = await setupReconciliationHarness();
     const orgId = ORG_RC_05;
     const hp = await ensureActiveHpCredential();
@@ -2230,11 +2528,19 @@ describe("reconciliation cross-worker", () => {
     await syncPlatformGrantLedger(orgId);
     await drainPlatformDurableObjects();
 
-    const importResponse = await postPayoutImport(
-      hp.accessJwt,
-      payoutUnrecordedChargebackCsv,
-    );
+    // FV-M4: the manual chargeback records the full payment amount, so the payout line must
+    // carry the same amount for an exact operator link.
+    const paidAmount = await env.DB.prepare(
+      `SELECT amount_minor FROM payment WHERE payment_id = ?`,
+    )
+      .bind(paymentId)
+      .first<{ amount_minor: number }>();
+    const chargebackCsv =
+      "transaction_id,type,gross_minor,fee_minor,net_minor,settled_at\n" +
+      `${HPAY_TXN_ID},chargeback,${paidAmount!.amount_minor},0,${paidAmount!.amount_minor},2026-03-15T00:00:00.000Z\n`;
+    const importResponse = await postPayoutImport(hp.accessJwt, chargebackCsv);
     expect(importResponse.status).toBe(200);
+    const { import_id: importId } = (await importResponse.json()) as { import_id: string };
 
     const finding = await findingRow("unrecorded_reversal");
     expect(finding).not.toBeNull();
@@ -2273,6 +2579,27 @@ describe("reconciliation cross-worker", () => {
     await runDailyReconciliation();
     expect(await findingCount()).toBe(findingsBeforeRerun);
     expect(await findingCount("unrecorded_reversal")).toBe(1);
+    // FV-M4: the recorded manual chargeback alone does not clear the finding.
+    expect(await payoutReversalLinkCount()).toBe(0);
+    expect(await findingResolutionCount(finding!.finding_id)).toBe(0);
+
+    const manual = await env.DB.prepare(
+      `SELECT reversal_id FROM reversal WHERE payment_id = ? AND kind = 'chargeback'`,
+    )
+      .bind(paymentId)
+      .first<{ reversal_id: string }>();
+    expect(manual).not.toBeNull();
+    const linked = await linkPayoutReversalRequest(hp.accessJwt, importId, 1, manual!.reversal_id);
+    expect(linked.status).toBe(200);
+    expect(await findingResolutionCount(finding!.finding_id)).toBe(1);
+    expect(await alertActive(finding!.finding_id)).toBe(0);
+
+    await setClock("2026-06-02T12:00:00.000Z");
+    await runDailyReconciliation();
+    expect(await findingCount("unrecorded_reversal")).toBe(1);
+    expect(await findingResolutionCount(finding!.finding_id)).toBe(1);
+    expect(await alertActive(finding!.finding_id)).toBe(0);
+    expect(capturedEmailMentions("AL-10")).toBe(false);
   });
 
   it("E2E-P4.10-06 payout amount mismatch and omitted payment raise payout findings", async () => {

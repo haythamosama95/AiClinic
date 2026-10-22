@@ -29,6 +29,7 @@ import findingIdentityMigrationSql from "../../migrations/0022_finding_identity.
 import payoutImportFileIdentityMigrationSql from "../../migrations/0023_payout_import_file_identity.sql?raw";
 import payoutLineReversalIdentityMigrationSql from "../../migrations/0024_payout_line_reversal_identity.sql?raw";
 import reversalProviderIdentityMigrationSql from "../../migrations/0025_reversal_provider_identity.sql?raw";
+import payoutReversalManualLinkMigrationSql from "../../migrations/0026_payout_reversal_manual_link.sql?raw";
 
 const ABO_LEGACY_MIGRATION_SQL: string[] = [
   recordsMigrationSql,
@@ -59,6 +60,7 @@ const ABO_MIGRATION_SQL: string[] = [
   payoutImportFileIdentityMigrationSql,
   payoutLineReversalIdentityMigrationSql,
   reversalProviderIdentityMigrationSql,
+  payoutReversalManualLinkMigrationSql,
 ];
 
 function base64UrlEncode(bytes: Uint8Array): string {
