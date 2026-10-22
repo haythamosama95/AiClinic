@@ -399,7 +399,7 @@ commit.
 | FR03 | complete | 59a9fbcf | [39823583374](https://github.com/haythamosama95/AiClinic/actions/runs/39823583374) | 2026-10-22 | Exact txn-id check, action+work in one batch; action label now inaccurate (docs owner) |
 | FR04 | complete | b1466aae | [39827618617](https://github.com/haythamosama95/AiClinic/actions/runs/39827618617) | 2026-10-22 | Operator link action + manual basis table (0026); refund test waits on FD-3 |
 | FR05 | complete | b9bfdb9721c138c8c5498920e66a1c65bd21ea05 | https://github.com/haythamosama95/AiClinic/actions/runs/39834837592 | 2026-10-22 | Missed-period detection (scheduled_period_missed); fourth CI round user-authorised |
-| FR06 | not started | | | | FD-4 = gate |
+| FR06 | complete | `1bcc9c5c37b9e50ff0e0f47264913dd6a7d805f7` | [39836513979](https://github.com/haythamosama95/AiClinic/actions/runs/39836513979) | 2026-10-22 | FD-4 = gate. Launch check gains a ninth condition for NULL-digest routing rows |
 
 ## 6. Post-remediation review gate
 
