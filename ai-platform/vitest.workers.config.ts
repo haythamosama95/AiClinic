@@ -25,6 +25,8 @@ export default defineWorkersConfig({
       "test/capability-deprecation.test.ts",
       "test/cohort-activate-promote.test.ts",
       "test/routing-policy-canary.test.ts",
+      "test/routing-policy-document-wiring.test.ts",
+      "test/routing-policy-rollback-generation.test.ts",
       "test/token-contract-control.test.ts",
       "test/discovery-http.test.ts",
       "test/config-readers.test.ts",

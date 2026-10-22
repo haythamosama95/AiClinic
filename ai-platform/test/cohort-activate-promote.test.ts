@@ -10,6 +10,8 @@ import planVersionPaidGrantCoverageMigrationSql from "../migrations/202610031400
 import idempotencyFingerprintMigrationSql from "../migrations/20261014120000_ai_request_idempotency_fingerprint.sql?raw";
 import operatorAuditMigrationSql from "../migrations/20261003120000_operator_credential_and_platform_alert.sql?raw";
 import rm31AlertDeliverySql from "../migrations/20261021130000_rm31_alert_delivery.sql?raw";
+import rm33RoutingIntegritySql from "../migrations/20261021140000_rm33_routing_configuration_integrity.sql?raw";
+import rm33ActivationGenerationSql from "../migrations/20261021150000_rm33_routing_activation_generation.sql?raw";
 import { applySqlStatements } from "./split-sql-statements";
 import schemaSnapSql from "../schema.snap.sql?raw";
 import {
@@ -494,6 +496,8 @@ beforeAll(async () => {
   await applySqlStatements(env.DB, idempotencyFingerprintMigrationSql);
   await applySqlStatements(env.DB, operatorAuditMigrationSql);
   await applySqlStatements(env.DB, rm31AlertDeliverySql);
+  await applySqlStatements(env.DB, rm33RoutingIntegritySql);
+  await applySqlStatements(env.DB, rm33ActivationGenerationSql);
 });
 
 beforeEach(async () => {

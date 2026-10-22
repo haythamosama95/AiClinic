@@ -61,6 +61,8 @@ import rm26TransferPreparationSql from "../../../ai-platform/migrations/20261020
 import rm27DurableDeletionSql from "../../../ai-platform/migrations/20261020150000_rm27_durable_deletion.sql?raw";
 import rm30UsageAccountingIdentitySql from "../../../ai-platform/migrations/20261021120000_rm30_usage_accounting_identity.sql?raw";
 import rm31AlertDeliverySql from "../../../ai-platform/migrations/20261021130000_rm31_alert_delivery.sql?raw";
+import rm33RoutingConfigurationIntegritySql from "../../../ai-platform/migrations/20261021140000_rm33_routing_configuration_integrity.sql?raw";
+import rm33RoutingActivationGenerationSql from "../../../ai-platform/migrations/20261021150000_rm33_routing_activation_generation.sql?raw";
 
 const PLATFORM_MIGRATION_SQL: string[] = [
   platformSchemaSql,
@@ -99,6 +101,8 @@ const PLATFORM_MIGRATION_SQL: string[] = [
   rm27DurableDeletionSql,
   rm30UsageAccountingIdentitySql,
   rm31AlertDeliverySql,
+  rm33RoutingConfigurationIntegritySql,
+  rm33RoutingActivationGenerationSql,
 ];
 
 const VENDOR_CONTRACT_VERSION = CHANNEL_VERSIONS.vendorEntrypoint;

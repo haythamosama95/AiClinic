@@ -79,6 +79,7 @@ const EXPECTED_PLATFORM_TABLES = [
   "platform_counter",
   "reversal_command",
   "routing_policy",
+  "routing_policy_activation",
   "service_key",
   "tenant_binding",
   "token_contract",

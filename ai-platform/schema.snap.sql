@@ -363,8 +363,17 @@ CREATE TABLE routing_policy (
   version TEXT NOT NULL,
   content_pointer TEXT NOT NULL,
   active_from TEXT NOT NULL,
-  activated_by TEXT NOT NULL, canary_installation_ids TEXT, status TEXT NOT NULL DEFAULT 'published',
+  activated_by TEXT NOT NULL, canary_installation_ids TEXT, status TEXT NOT NULL DEFAULT 'published', content_sha256 TEXT,
   PRIMARY KEY (policy_id, version)
+);
+
+CREATE TABLE routing_policy_activation (
+  policy_id TEXT PRIMARY KEY,
+  generation INTEGER NOT NULL DEFAULT 0,
+  active_version TEXT,
+  predecessor_version TEXT,
+  predecessor_state TEXT NOT NULL DEFAULT 'unknown'
+    CHECK (predecessor_state IN ('unknown', 'none', 'known'))
 );
 
 CREATE TABLE service_key (

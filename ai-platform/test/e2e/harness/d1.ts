@@ -249,6 +249,7 @@ export async function resetPlatformState(): Promise<void> {
     db.prepare("DELETE FROM ai_request"),
     db.prepare("DELETE FROM capability_grant"),
     db.prepare("DELETE FROM routing_policy"),
+    db.prepare("DELETE FROM routing_policy_activation"),
     db.prepare("DELETE FROM kill_switch"),
     db.prepare("DELETE FROM coverage_event"),
     db.prepare("DELETE FROM grant_ledger"),
