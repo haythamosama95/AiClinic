@@ -21,6 +21,7 @@ import 'package:ai_clinic/core/config/supabase_config.dart';
 import 'package:ai_clinic/core/ui/widgets/widgets.dart';
 import 'package:ai_clinic/features/ai/availability/ai_availability.dart';
 import 'package:ai_clinic/features/ai/availability/ai_availability_reader.dart';
+import 'package:ai_clinic/features/ai/availability/ai_status_snapshot.dart';
 import 'package:ai_clinic/features/ai/degraded/ai_degraded_mode.dart';
 import 'package:ai_clinic/features/ai/degraded/ai_degraded_view.dart';
 import 'package:ai_clinic/features/ai/host/ai_feature_host_page.dart';
@@ -329,6 +330,7 @@ class _LiveVisitSummaryHostWidgetState extends State<LiveVisitSummaryHostWidget>
 Widget liveVisitSummaryHostBody({
   required String visitId,
   required LiveVisitSummaryComposition composition,
+  AiStatusSnapshot? liveStatus,
 }) {
   if (composition.contractVersionUnsupported) {
     return const AiDegradedView(
@@ -350,7 +352,12 @@ Widget liveVisitSummaryHostBody({
     children: [
       if (composition.discoveryFailureReference != null)
         RequestReferenceView(requestReference: composition.discoveryFailureReference!),
-      AiFeatureHostPage(key: ValueKey(visitId), dependencies: composition.dependencies, embedded: true),
+      AiFeatureHostPage(
+        key: ValueKey(visitId),
+        dependencies: composition.dependencies,
+        embedded: true,
+        liveStatus: liveStatus,
+      ),
     ],
   );
 }
@@ -807,6 +814,13 @@ class _LiveVisitSummaryHostState extends ConsumerState<_LiveVisitSummaryHost> {
 
   @override
   Widget build(BuildContext context) {
+    // R7-T1: the open host receives the one shell status, but only for the identity it was
+    // composed for; any other identity yields an empty snapshot and the reader fallback.
+    final identity = aiStatusIdentityFor(ref.watch(authSessionProvider));
+    final shellStatus = ref.watch(aiShellStatusNotifierProvider);
+    final liveStatus = identity != null && shellStatus.identity == identity
+        ? shellStatus
+        : AiStatusSnapshot.empty;
     return DecoratedBox(
       decoration: BoxDecoration(
         borderRadius: BorderRadius.circular(AppRadius.lg),
@@ -825,7 +839,11 @@ class _LiveVisitSummaryHostState extends ConsumerState<_LiveVisitSummaryHost> {
             if (_loading || _composition == null)
               const Center(child: Text(key: Key('live_host_loading'), 'Loading live host…'))
             else
-              liveVisitSummaryHostBody(visitId: widget.visitId, composition: _composition!),
+              liveVisitSummaryHostBody(
+                visitId: widget.visitId,
+                composition: _composition!,
+                liveStatus: liveStatus,
+              ),
           ],
         ),
       ),

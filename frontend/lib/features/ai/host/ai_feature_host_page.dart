@@ -17,6 +17,7 @@ import 'package:ai_clinic/core/ui/components/app_button.dart';
 import 'package:ai_clinic/core/ui/theme/app_typography.dart';
 
 import '../availability/ai_availability.dart';
+import '../availability/ai_status_snapshot.dart';
 import '../degraded/ai_degraded_mode.dart';
 import '../degraded/ai_degraded_view.dart';
 import '../surface/first_ai_feature_surface.dart';
@@ -99,12 +100,21 @@ class AiFeatureHostDependencies {
 
 /// Standalone host composing availability gate + surface (Clarification Q2).
 class AiFeatureHostPage extends StatefulWidget {
-  const AiFeatureHostPage({super.key, required this.dependencies, this.embedded = false});
+  const AiFeatureHostPage({
+    super.key,
+    required this.dependencies,
+    this.embedded = false,
+    this.liveStatus,
+  });
 
   final AiFeatureHostDependencies dependencies;
 
   /// When true, omit [Scaffold]/[AppBar] so the host can sit inside the app shell.
   final bool embedded;
+
+  /// R7-T1: current app-shell status pushed into the open host. When null (standalone
+  /// hosts) the host reads [AiFeatureHostDependencies.availabilityReader] instead.
+  final AiStatusSnapshot? liveStatus;
 
   @override
   State<AiFeatureHostPage> createState() => _AiFeatureHostPageState();
@@ -114,6 +124,14 @@ class _AiFeatureHostPageState extends State<AiFeatureHostPage> {
   AiDegradedMode _mode = AiDegradedMode.nonEnrolled;
   var _loading = true;
   ContextResolver? _resolver;
+  // R7-T1: bumps on every resolver recreation so the surface remounts exactly once.
+  var _resolverEpoch = 0;
+  // R7-T1: true once a status-driven recomposition happened; such remounts never auto-invoke.
+  var _remountedByStatus = false;
+  // R7-T1: readiness/context key of the last committed status.
+  String? _contextKey;
+  // R7-T1: a coverage denial stays visible until a fresh status shows recovery.
+  var _denialRetained = false;
   bool _platformReachable = false;
   int? _creditsUsed;
   int? _creditBudget;
@@ -126,8 +144,9 @@ class _AiFeatureHostPageState extends State<AiFeatureHostPage> {
   // R7-UI1: request generation for awaited bootstrap/coverage reads. Bumped when the
   // administrator role or coverage client changes; a read that started under an older
   // generation never commits commercial fields.
-  // T1 seam: status/coverage generation shared with ai_shell_status_provider is
-  // coordinated in the T1 sub-task; this counter guards identity/role only.
+  // R7-UI1 / R7-T1: request generation for awaited bootstrap/coverage reads. Bumped when the
+  // administrator role or coverage client changes and on every applied status, so a read
+  // started under an older generation never commits. Such a read is restarted, not dropped.
   var _requestGeneration = 0;
 
   @override
@@ -144,6 +163,9 @@ class _AiFeatureHostPageState extends State<AiFeatureHostPage> {
       _requestGeneration++;
       unawaited(_refreshAdministratorCoverage());
     }
+    if (!identical(oldWidget.liveStatus, widget.liveStatus)) {
+      _applyLiveStatus(widget.liveStatus);
+    }
   }
 
   @override
@@ -153,10 +175,72 @@ class _AiFeatureHostPageState extends State<AiFeatureHostPage> {
     super.dispose();
   }
 
-  Future<void> _bootstrap() async {
+  /// R7-T1: applies a status pushed by the app shell to notices, readiness and degraded mode.
+  /// Recomposition happens only on a readiness/context transition or denial recovery; a
+  /// periodic or boundary read that changes nothing else updates notices only.
+  void _applyLiveStatus(AiStatusSnapshot? status) {
+    if (status == null || !mounted) {
+      return;
+    }
+    _requestGeneration++;
+    final plan = planAiStatusApply(
+      currentContextKey: _contextKey,
+      denialRetained: _denialRetained,
+      status: status,
+    );
+    switch (plan) {
+      case AiStatusApplyPlan.awaitStatus:
+        return;
+      case AiStatusApplyPlan.noticesOnly:
+      case AiStatusApplyPlan.retainDenial:
+        setState(() => _notices = status.availability!.notices);
+        return;
+      case AiStatusApplyPlan.updateRequired:
+      case AiStatusApplyPlan.recomposeHost:
+        unawaited(_bootstrap(status: status));
+        return;
+    }
+  }
+
+  void _restartBootstrapIfMounted(AiStatusSnapshot? status) {
+    if (mounted) {
+      unawaited(_bootstrap(status: status));
+    }
+  }
+
+  void _disposeResolver() {
+    _resolver?.dispose();
+    _resolver = null;
+  }
+
+  Future<void> _bootstrap({AiStatusSnapshot? status}) async {
     final generation = _requestGeneration;
+    final live = status ?? widget.liveStatus;
     try {
-      final availability = await widget.dependencies.availabilityReader.read();
+      if (live != null && live.updateRequired) {
+        if (!mounted) {
+          return;
+        }
+        setState(() {
+          _loading = false;
+          _mode = AiDegradedMode.appUpdate;
+          _platformReachable = false;
+          _disposeResolver();
+          _notices = const [];
+          _denialRetained = false;
+          _contextKey = aiStatusContextKey(live);
+        });
+        return;
+      }
+
+      final availability = live?.availability ?? await widget.dependencies.availabilityReader.read();
+      if (!mounted) {
+        return;
+      }
+      if (generation != _requestGeneration) {
+        _restartBootstrapIfMounted(status);
+        return;
+      }
 
       if (!availability.available) {
         if (!mounted) {
@@ -166,7 +250,10 @@ class _AiFeatureHostPageState extends State<AiFeatureHostPage> {
           _loading = false;
           _mode = AiDegradedMode.nonEnrolled;
           _platformReachable = false;
+          _disposeResolver();
           _notices = availability.notices;
+          _denialRetained = false;
+          _contextKey = aiStatusContextKey(AiStatusSnapshot(availability: availability));
         });
         return;
       }
@@ -176,6 +263,13 @@ class _AiFeatureHostPageState extends State<AiFeatureHostPage> {
       if (!widget.dependencies.skipReachabilityProbe && baseUrl != null && baseUrl.isNotEmpty) {
         widget.dependencies.networkSpy?.recordPlatformCall('$baseUrl/health');
         reachable = await widget.dependencies.reachabilityPort.isReachable(baseUrl);
+      }
+      if (!mounted) {
+        return;
+      }
+      if (generation != _requestGeneration) {
+        _restartBootstrapIfMounted(status);
+        return;
       }
 
       final mode = resolveDegradedMode(availability: availability, platformReachable: reachable);
@@ -198,38 +292,60 @@ class _AiFeatureHostPageState extends State<AiFeatureHostPage> {
       if (!mounted) {
         return;
       }
+      if (generation != _requestGeneration) {
+        _restartBootstrapIfMounted(status);
+        return;
+      }
+      final isRecompose = status != null;
       setState(() {
         _loading = false;
         _mode = mode;
         _platformReachable = reachable;
-        // Commercial fields commit only for the generation that started them and only while
-        // the current role is administrator; otherwise they stay cleared.
-        if (generation == _requestGeneration) {
-          final isAdministrator = widget.dependencies.staffIsAdministrator;
-          _creditsUsed = isAdministrator ? creditsUsed : null;
-          _creditBudget = isAdministrator ? creditBudget : null;
-          _subscriptionRef = isAdministrator ? subscriptionRef : null;
-          _planDisplayName = isAdministrator ? planDisplayName : null;
-        }
+        // Commercial fields commit only while the current role is administrator; otherwise they
+        // stay cleared.
+        final isAdministrator = widget.dependencies.staffIsAdministrator;
+        _creditsUsed = isAdministrator ? creditsUsed : null;
+        _creditBudget = isAdministrator ? creditBudget : null;
+        _subscriptionRef = isAdministrator ? subscriptionRef : null;
+        _planDisplayName = isAdministrator ? planDisplayName : null;
         _notices = availability.notices;
+        _denialRetained = false;
+        _contextKey = aiStatusContextKey(AiStatusSnapshot(availability: availability));
         if (mode == AiDegradedMode.ready) {
+          _disposeResolver();
           _resolver = ContextResolver(providerPort: widget.dependencies.contextProvider);
+          _resolverEpoch++;
+          if (isRecompose) {
+            // Explicit Retry/Generate by user press; refresh-driven remounts never auto-invoke.
+            _remountedByStatus = true;
+          }
+        } else {
+          _disposeResolver();
         }
       });
     } on ContractVersionUnsupportedException {
       if (!mounted) {
         return;
       }
+      if (generation != _requestGeneration) {
+        _restartBootstrapIfMounted(status);
+        return;
+      }
       setState(() {
         _loading = false;
         _mode = AiDegradedMode.appUpdate;
         _platformReachable = false;
-        _resolver = null;
+        _disposeResolver();
         _notices = const [];
+        _denialRetained = false;
       });
     } catch (e, st) {
       debugPrint('AiFeatureHostPage bootstrap failed: $e\n$st');
       if (!mounted) {
+        return;
+      }
+      if (generation != _requestGeneration) {
+        _restartBootstrapIfMounted(status);
         return;
       }
       // Fail-closed: treat as non-enrolled so clinical work is never blocked (A11).
@@ -237,8 +353,9 @@ class _AiFeatureHostPageState extends State<AiFeatureHostPage> {
         _loading = false;
         _mode = AiDegradedMode.nonEnrolled;
         _platformReachable = false;
-        _resolver = null;
+        _disposeResolver();
         _notices = const [];
+        _denialRetained = false;
       });
     }
   }
@@ -341,7 +458,10 @@ class _AiFeatureHostPageState extends State<AiFeatureHostPage> {
     String? retryAfter,
     bool networkFailure = false,
   }) {
-    if (isCoverageDenialWireCode(wireCode)) {
+    final coverageDenial = isCoverageDenialWireCode(wireCode);
+    if (coverageDenial) {
+      // R7-T1: the refreshed status arrives through liveStatus; _applyLiveStatus applies it only
+      // while the host generation and identity are current (identity is scoped in the shell).
       unawaited(widget.dependencies.onStatusRefresh?.call());
     }
 
@@ -358,9 +478,10 @@ class _AiFeatureHostPageState extends State<AiFeatureHostPage> {
       _mode = mode;
       _denialWireCode = wireCode;
       _denialRetryAfter = retryAfter;
+      // Only status-fed hosts retain a denial; standalone hosts keep the previous behavior.
+      _denialRetained = coverageDenial && widget.liveStatus != null;
       if (_hidesSurface(mode)) {
-        _resolver?.dispose();
-        _resolver = null;
+        _disposeResolver();
       }
     });
   }
@@ -421,6 +542,7 @@ class _AiFeatureHostPageState extends State<AiFeatureHostPage> {
           ? const Text('Clinical workflows remain available.')
           : _resolver != null
           ? FirstAiFeatureSurface(
+              key: ValueKey('ai-surface-$_resolverEpoch'),
               sdk: widget.dependencies.sdk,
               resolver: _resolver!,
               manifestRefreshPort: widget.dependencies.manifestRefreshPort,
@@ -442,7 +564,8 @@ class _AiFeatureHostPageState extends State<AiFeatureHostPage> {
                     retryAfter: retryAfter,
                     networkFailure: networkFailure,
                   ),
-              autoInvoke: widget.dependencies.autoInvoke,
+              // R7-T1: status-driven recomposition waits for an explicit Retry/Generate press.
+              autoInvoke: widget.dependencies.autoInvoke && !_remountedByStatus,
             )
           : null,
     );

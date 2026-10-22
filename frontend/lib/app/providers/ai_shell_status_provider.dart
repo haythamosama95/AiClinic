@@ -6,6 +6,7 @@ import 'package:ai_clinic/app/providers/auth_session_provider.dart';
 import 'package:ai_clinic/core/config/supabase_config.dart';
 import 'package:ai_clinic/features/ai/availability/ai_availability.dart';
 import 'package:ai_clinic/features/ai/availability/ai_availability_reader.dart';
+import 'package:ai_clinic/features/ai/availability/ai_status_snapshot.dart';
 
 /// Injectable status reader for the app-shell scheduler (widget tests override this).
 final aiShellStatusReaderProvider = Provider<AiAvailabilityReader>((ref) {
@@ -20,21 +21,44 @@ final aiShellStatusRefreshProvider = Provider<AiShellStatusRefresh>((ref) {
 });
 
 final aiShellStatusNotifierProvider =
-    NotifierProvider<AiShellStatusNotifier, AsyncValue<AiAvailability?>>(
+    NotifierProvider<AiShellStatusNotifier, AiStatusSnapshot>(
   AiShellStatusNotifier.new,
 );
 
+/// R7-T1: identity of the current session, or null when no clinic context is ready.
+AiStatusIdentity? aiStatusIdentityFor(AuthSessionState auth) {
+  final context = auth.context;
+  if (!auth.isAuthenticated || context == null || context.needsClinicSetup) {
+    return null;
+  }
+  return AiStatusIdentity(
+    userId: context.staffProfile.staffMemberId,
+    organizationId: context.organizationId ?? '',
+    role: context.staffProfile.role.name,
+  );
+}
+
 /// Schedules `get_ai_status` on open, resume, `next_change_at`, and every 5 minutes.
-class AiShellStatusNotifier extends Notifier<AsyncValue<AiAvailability?>> {
+///
+/// R7-T1: state is scoped to one identity. Identity change or sign-out clears state,
+/// cancels timers and invalidates in-flight reads; each read publishes only if its
+/// identity and refresh generation are still current.
+class AiShellStatusNotifier extends Notifier<AiStatusSnapshot> {
   static const _periodicInterval = Duration(minutes: 5);
 
   Timer? _nextChangeTimer;
   Timer? _periodicTimer;
+  final _gate = AiStatusFetchGate();
 
   @override
-  AsyncValue<AiAvailability?> build() {
+  AiStatusSnapshot build() {
     ref.onDispose(_cancelTimers);
-    return const AsyncValue.data(null);
+    ref.listen<AuthSessionState>(authSessionProvider, (previous, next) {
+      if (aiStatusIdentityFor(next) != _gate.identity) {
+        _reset();
+      }
+    });
+    return AiStatusSnapshot.empty;
   }
 
   void startPeriodicRefresh() {
@@ -45,20 +69,58 @@ class AiShellStatusNotifier extends Notifier<AsyncValue<AiAvailability?>> {
   }
 
   Future<void> refresh() async {
-    final auth = ref.read(authSessionProvider);
-    if (!auth.isAuthenticated || auth.context!.needsClinicSetup) {
+    final identity = aiStatusIdentityFor(ref.read(authSessionProvider));
+    if (identity == null) {
+      _reset();
       return;
     }
+    if (identity != _gate.identity) {
+      _reset();
+    }
+    final generation = _gate.begin(identity);
 
     startPeriodicRefresh();
 
     try {
       final availability = await ref.read(aiShellStatusReaderProvider).read();
-      state = AsyncValue.data(availability);
+      if (!_isCurrent(identity, generation)) {
+        return;
+      }
+      state = AiStatusSnapshot(identity: identity, availability: availability);
       _scheduleNextChange(availability.nextChangeAt);
+    } on ContractVersionUnsupportedException {
+      if (!_isCurrent(identity, generation)) {
+        return;
+      }
+      _nextChangeTimer?.cancel();
+      _nextChangeTimer = null;
+      state = AiStatusSnapshot(identity: identity, updateRequired: true);
     } catch (_) {
-      // Status refresh failures must not block clinical work.
+      if (!_isCurrent(identity, generation)) {
+        return;
+      }
+      // Transient failure: keep the latest valid data but expose staleness so clinical
+      // work is never blocked by status reads.
+      state = AiStatusSnapshot(
+        identity: identity,
+        availability: state.availability,
+        refreshFailed: true,
+      );
     }
+  }
+
+  bool _isCurrent(AiStatusIdentity identity, int generation) {
+    if (!ref.mounted) {
+      return false;
+    }
+    return _gate.isCurrent(identity, generation) &&
+        aiStatusIdentityFor(ref.read(authSessionProvider)) == identity;
+  }
+
+  void _reset() {
+    _cancelTimers();
+    _gate.invalidate();
+    state = AiStatusSnapshot.empty;
   }
 
   void _scheduleNextChange(DateTime? nextChangeAt) {
