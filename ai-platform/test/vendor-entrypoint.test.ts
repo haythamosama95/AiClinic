@@ -11,6 +11,8 @@ import routingPolicyCanarySql from "../migrations/20260803100000_routing_policy_
 import routingPolicyStatusSql from "../migrations/20260805190000_routing_policy_status.sql?raw";
 import rm33RoutingIntegritySql from "../migrations/20261021140000_rm33_routing_configuration_integrity.sql?raw";
 import rm33ActivationGenerationSql from "../migrations/20261021150000_rm33_routing_activation_generation.sql?raw";
+import planVersionPaidGrantCoverageMigrationSql from "../migrations/20261003140000_plan_version_paid_grant_coverage.sql?raw";
+import rm30UsageAccountingMigrationSql from "../migrations/20261021120000_rm30_usage_accounting_identity.sql?raw";
 import { applySqlStatements } from "./split-sql-statements";
 import { VendorEntrypoint } from "../src/vendor/entrypoint";
 
@@ -101,6 +103,8 @@ beforeAll(async () => {
   await applySql(env.DB, routingPolicyStatusSql);
   await applySql(env.DB, rm33RoutingIntegritySql);
   await applySql(env.DB, rm33ActivationGenerationSql);
+  await applySql(env.DB, planVersionPaidGrantCoverageMigrationSql);
+  await applySql(env.DB, rm30UsageAccountingMigrationSql);
   await env.DB.prepare(
     `INSERT OR IGNORE INTO token_contract (ver, added_at, retired_at, changed_by)
      VALUES ('1', '2026-08-03T00:00:00.000Z', NULL, 'seed')`,

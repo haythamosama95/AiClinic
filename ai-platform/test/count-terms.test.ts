@@ -57,10 +57,11 @@ describe("R9-RT1 count_terms", () => {
     // The first versioned fetch creates the per-clinic tables.
     const ready = await request();
     expect(ready.status).toBe(200);
+    await ready.text();
 
     await runInDurableObject(stub, async (_instance, state) => {
       sqlExec(
-        state,
+        state.storage,
         `INSERT INTO recovery_state (
           singleton, generation, installation_id, org_id, binding_epoch,
           anchor_event_id, status, updated_at

@@ -49,6 +49,7 @@ export default defineConfig({
       "test/entitle-grant.test.ts",
       "test/plan-catalogue.test.ts",
       "test/quota-inspect.test.ts",
+      "test/count-terms.test.ts",
       "test/period-close.test.ts",
       "test/price-list-activation.test.ts",
       "test/system/**/*.system.test.ts",

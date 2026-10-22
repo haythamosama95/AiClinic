@@ -1449,11 +1449,24 @@ describe("ops cross-worker", () => {
     await setupOpsHarness();
     const platformVersions = { ...CHANNEL_VERSIONS, aboClinic: 2 };
 
-    const unreadable = await fetchLaunchState({});
+    const unreadable = await fetchLaunchState({
+      PLATFORM: launchStatePlatform({
+        readLaunchState: async () => ({
+          contract_version: CONTRACT_VERSION,
+          result: "transient",
+          code: "",
+          detail: "unavailable",
+        }),
+      }),
+    });
     expect(unreadable.status).toBe(200);
     expect(unreadable.body.channel_versions).toEqual({ ...CHANNEL_VERSIONS });
     expect(Object.keys(unreadable.body.channel_versions as object).length).toBe(9);
     expect(unreadable.body.platform_channel_versions).toBeNull();
+
+    const real = await fetchLaunchState({});
+    expect(real.status).toBe(200);
+    expect(real.body.platform_channel_versions).toEqual({ ...CHANNEL_VERSIONS });
 
     const read = await fetchLaunchState({
       PLATFORM: launchStatePlatform({
@@ -1496,7 +1509,21 @@ describe("ops cross-worker", () => {
     expect(paused.body.key_self_check_checked_at).toBe(LAUNCH_NOW_ISO);
 
     await env.DB.prepare(`DELETE FROM signing_key_gate`).run();
-    const missing = await fetchLaunchState({});
+    // aboWorker.fetch self-heals a missing gate row before routing; block only that
+    // write so the missing-row state observed by launch-state stays absent.
+    const realDb = env.DB;
+    const selfHealBlockedDb = {
+      prepare(query: string) {
+        if (/INSERT INTO signing_key_gate/.test(query)) {
+          throw new Error("signing_key_gate self-heal blocked for test");
+        }
+        return realDb.prepare(query);
+      },
+      batch: (statements: D1PreparedStatement[]) => realDb.batch(statements),
+      exec: (query: string) => realDb.exec(query),
+      dump: () => realDb.dump(),
+    } as unknown as D1Database;
+    const missing = await fetchLaunchState({ DB: selfHealBlockedDb });
     expect(missing.body.key_self_check_passes).toBe(false);
     expect(missing.body.key_self_check_checked_at).toBeNull();
 
