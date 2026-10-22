@@ -36,7 +36,7 @@ http.Response _coverageResponse() => http.Response(
 
 void main() {
   group('R7-UI1 live visit and role identity guard', () {
-    test('R7-UI1: changing visit does not show previous visit AI context', () {
+    test('R7-UI1 identity key differs per visit', () {
       final administrator = sampleAuthSessionContext(role: StaffRole.administrator);
 
       final visitA = liveVisitHostIdentityFor(authContext: administrator, visitId: 'visit-A');

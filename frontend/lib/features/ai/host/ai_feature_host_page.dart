@@ -141,13 +141,12 @@ class _AiFeatureHostPageState extends State<AiFeatureHostPage> {
   String? _denialWireCode;
   String? _denialRetryAfter;
 
-  // R7-UI1: request generation for awaited bootstrap/coverage reads. Bumped when the
-  // administrator role or coverage client changes; a read that started under an older
-  // generation never commits commercial fields.
   // R7-UI1 / R7-T1: request generation for awaited bootstrap/coverage reads. Bumped when the
-  // administrator role or coverage client changes and on every applied status, so a read
-  // started under an older generation never commits. Such a read is restarted, not dropped.
+  // administrator role or coverage client changes and when a status recomposes the host, so a
+  // read started under an older generation never commits. Notices-only statuses do not bump it.
   var _requestGeneration = 0;
+  // R7-T1: id of the most recent bootstrap run; an older run stops silently once superseded.
+  var _bootstrapRun = 0;
 
   @override
   void initState() {
@@ -182,7 +181,6 @@ class _AiFeatureHostPageState extends State<AiFeatureHostPage> {
     if (status == null || !mounted) {
       return;
     }
-    _requestGeneration++;
     final plan = planAiStatusApply(
       currentContextKey: _contextKey,
       denialRetained: _denialRetained,
@@ -193,10 +191,13 @@ class _AiFeatureHostPageState extends State<AiFeatureHostPage> {
         return;
       case AiStatusApplyPlan.noticesOnly:
       case AiStatusApplyPlan.retainDenial:
+        // Notices are not guarded by the request generation, so an in-flight coverage read
+        // is not dropped by a notices-only update.
         setState(() => _notices = status.availability!.notices);
         return;
       case AiStatusApplyPlan.updateRequired:
       case AiStatusApplyPlan.recomposeHost:
+        _requestGeneration++;
         unawaited(_bootstrap(status: status));
         return;
     }
@@ -208,12 +209,26 @@ class _AiFeatureHostPageState extends State<AiFeatureHostPage> {
     }
   }
 
+  /// True when this bootstrap run must stop. A newer run already owns the work and stops
+  /// silently; a generation move with no newer run restarts exactly one run.
+  bool _superseded(int run, int generation, AiStatusSnapshot? status) {
+    if (run != _bootstrapRun) {
+      return true;
+    }
+    if (generation == _requestGeneration) {
+      return false;
+    }
+    _restartBootstrapIfMounted(status);
+    return true;
+  }
+
   void _disposeResolver() {
     _resolver?.dispose();
     _resolver = null;
   }
 
   Future<void> _bootstrap({AiStatusSnapshot? status}) async {
+    final run = ++_bootstrapRun;
     final generation = _requestGeneration;
     final live = status ?? widget.liveStatus;
     try {
@@ -237,8 +252,7 @@ class _AiFeatureHostPageState extends State<AiFeatureHostPage> {
       if (!mounted) {
         return;
       }
-      if (generation != _requestGeneration) {
-        _restartBootstrapIfMounted(status);
+      if (_superseded(run, generation, status)) {
         return;
       }
 
@@ -267,8 +281,7 @@ class _AiFeatureHostPageState extends State<AiFeatureHostPage> {
       if (!mounted) {
         return;
       }
-      if (generation != _requestGeneration) {
-        _restartBootstrapIfMounted(status);
+      if (_superseded(run, generation, status)) {
         return;
       }
 
@@ -292,8 +305,7 @@ class _AiFeatureHostPageState extends State<AiFeatureHostPage> {
       if (!mounted) {
         return;
       }
-      if (generation != _requestGeneration) {
-        _restartBootstrapIfMounted(status);
+      if (_superseded(run, generation, status)) {
         return;
       }
       final isRecompose = status != null;
@@ -315,10 +327,9 @@ class _AiFeatureHostPageState extends State<AiFeatureHostPage> {
           _disposeResolver();
           _resolver = ContextResolver(providerPort: widget.dependencies.contextProvider);
           _resolverEpoch++;
-          if (isRecompose) {
-            // Explicit Retry/Generate by user press; refresh-driven remounts never auto-invoke.
-            _remountedByStatus = true;
-          }
+          // Status-driven remounts never auto-invoke (explicit Retry/Generate by user press).
+          // A user-open composition resets the flag, so its surface keeps the initial behaviour.
+          _remountedByStatus = isRecompose;
         } else {
           _disposeResolver();
         }
@@ -327,8 +338,7 @@ class _AiFeatureHostPageState extends State<AiFeatureHostPage> {
       if (!mounted) {
         return;
       }
-      if (generation != _requestGeneration) {
-        _restartBootstrapIfMounted(status);
+      if (_superseded(run, generation, status)) {
         return;
       }
       setState(() {
@@ -344,8 +354,7 @@ class _AiFeatureHostPageState extends State<AiFeatureHostPage> {
       if (!mounted) {
         return;
       }
-      if (generation != _requestGeneration) {
-        _restartBootstrapIfMounted(status);
+      if (_superseded(run, generation, status)) {
         return;
       }
       // Fail-closed: treat as non-enrolled so clinical work is never blocked (A11).

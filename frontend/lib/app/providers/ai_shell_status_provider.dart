@@ -54,8 +54,17 @@ class AiShellStatusNotifier extends Notifier<AiStatusSnapshot> {
   AiStatusSnapshot build() {
     ref.onDispose(_cancelTimers);
     ref.listen<AuthSessionState>(authSessionProvider, (previous, next) {
-      if (aiStatusIdentityFor(next) != _gate.identity) {
-        _reset();
+      final previousIdentity = _gate.identity;
+      final identity = aiStatusIdentityFor(next);
+      if (identity == previousIdentity) {
+        return;
+      }
+      _reset();
+      // A switch between two ready identities (e.g. role demotion) stays ready, so the app
+      // shell does not refresh it. Refresh for the new identity here. Sign-out and
+      // transitions through not-ready are refreshed by the app shell on becoming ready.
+      if (identity != null && previousIdentity != null) {
+        unawaited(refresh());
       }
     });
     return AiStatusSnapshot.empty;
@@ -100,10 +109,12 @@ class AiShellStatusNotifier extends Notifier<AiStatusSnapshot> {
         return;
       }
       // Transient failure: keep the latest valid data but expose staleness so clinical
-      // work is never blocked by status reads.
+      // work is never blocked by status reads. An update-required outcome stays until a fresh
+      // successful status clears it.
       state = AiStatusSnapshot(
         identity: identity,
         availability: state.availability,
+        updateRequired: state.updateRequired,
         refreshFailed: true,
       );
     }
