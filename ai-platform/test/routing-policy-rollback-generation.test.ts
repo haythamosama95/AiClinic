@@ -3,6 +3,8 @@ import { beforeAll, beforeEach, describe, expect, it } from "vitest";
 import migrationSql from "../migrations/20260731120000_platform_schema.sql?raw";
 import canaryMigrationSql from "../migrations/20260803100000_routing_policy_canary.sql?raw";
 import statusMigrationSql from "../migrations/20260805190000_routing_policy_status.sql?raw";
+import operatorCredentialMigrationSql from "../migrations/20261003120000_operator_credential_and_platform_alert.sql?raw";
+import { applySqlStatements } from "./split-sql-statements";
 import rm33RoutingIntegritySql from "../migrations/20261021140000_rm33_routing_configuration_integrity.sql?raw";
 import rm33ActivationGenerationSql from "../migrations/20261021150000_rm33_routing_activation_generation.sql?raw";
 import {
@@ -112,6 +114,7 @@ beforeAll(async () => {
   await applySchema(env.DB, migrationSql);
   await applySchema(env.DB, canaryMigrationSql);
   await applySchema(env.DB, statusMigrationSql);
+  await applySqlStatements(env.DB, operatorCredentialMigrationSql);
   await applySchema(env.DB, rm33RoutingIntegritySql);
   await applySchema(env.DB, rm33ActivationGenerationSql);
 });
