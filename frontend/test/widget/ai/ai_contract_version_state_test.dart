@@ -20,6 +20,8 @@ import '../../unit/core/ai/fakes.dart';
 import 'ai_surface_test_harness.dart';
 
 const _updateCopy = 'Update the app to use AI';
+// JWS-shaped AI token whose payload carries the expected `ver` claim ("2").
+const _aatTokenContractVer2 = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ2ZXIiOiIyIn0.c2ln';
 
 void main() {
   group('E2E-P6.1-05', () {
@@ -83,7 +85,7 @@ void main() {
         final mintPort = SupabaseAatMintPort.withRpc(
           rpc: (functionName, params) async {
             rpcLog.add({'functionName': functionName, 'params': Map<String, dynamic>.from(params)});
-            return 'aat-token-contract-test';
+            return _aatTokenContractVer2;
           },
         );
 
@@ -192,7 +194,7 @@ void main() {
         rpc: (functionName, params) async {
           expect(functionName, SupabaseAatMintPort.rpcName);
           expect(params['p_contract_version'], backendRpc);
-          return 'aat-token-contract-test';
+          return _aatTokenContractVer2;
         },
       );
 
