@@ -671,10 +671,15 @@ describe("Stage 05 — routing filters, kill switch, and invoke auth (S05-063…
     expect(decision.chain).toEqual(GEMINI_ONLY_CHAIN);
   });
 
-  it("S05-067 — Unknown cost_class fails closed as feature_unsupported", async () => {
+  it("S05-067 — Unknown cost_class is rejected at publish as invalid_policy_document (R8-ROUTE1)", async () => {
+    // R8-ROUTE1: the strict routing parser rejects an unknown cost_class before a
+    // document is stored, so the feature_unsupported exclusion is not reachable
+    // through a published policy. Nothing is written.
     const scenario = await newScenario();
     await enrollAndEntitle(scenario);
-    await publishAndPromote(
+    const published = await publishPolicy(
+      POLICY_ID,
+      "11",
       policyDocument(11, {
         targets: [
           fixtureTarget("deepseek", "deepseek-v4-flash", { cost_class: "cheap" }),
@@ -682,15 +687,10 @@ describe("Stage 05 — routing filters, kill switch, and invoke auth (S05-063…
         ],
       }),
     );
-
-    const { ref } = await invokeAccepted(scenario, "idem-s05-067-0001");
-    const { decision } = await loadDecision(ref);
-    expect(decision.excluded?.[0]).toEqual({
-      provider_id: "deepseek",
-      model_id: "deepseek-v4-flash",
-      reason_code: "feature_unsupported",
-    });
-    expect(decision.chain).toEqual(GEMINI_ONLY_CHAIN);
+    expect(published.status).toBe(422);
+    expect(published.json).toEqual({ error: "invalid_policy_document" });
+    expect(await getRoutingPolicy(POLICY_ID, "11")).toBeNull();
+    expect(await count("routing_policy")).toBe(0);
   });
 
   it("S05-068 — Cost class above the effective ceiling", async () => {

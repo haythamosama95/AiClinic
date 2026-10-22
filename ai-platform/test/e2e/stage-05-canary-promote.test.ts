@@ -160,6 +160,11 @@ function policyPointerPattern(version: string): RegExp {
   return new RegExp(`^control/routing-policy/${POLICY_ID}/${version}/sha256-[0-9a-f]{64}\\.json$`);
 }
 
+async function r2KeysUnder(prefix: string): Promise<string[]> {
+  const listed = await env.R2.list({ prefix });
+  return listed.objects.map((object) => object.key);
+}
+
 async function storedPointer(version: string): Promise<string> {
   const row = (await getRoutingPolicy(POLICY_ID, version)) as { content_pointer?: string } | null;
   return row?.content_pointer ?? "";
@@ -385,14 +390,17 @@ describe("Stage 05 — canary and promote (S05-021…S05-041)", () => {
     expect(await count("kill_switch")).toBe(0);
   });
 
-  it("S05-022 — Shape-malformed document still publishes", async () => {
+  it("R8-ROUTE1: shape-malformed document is rejected at publish", async () => {
     const document = malformedDocument();
     const result = await publishPolicy(POLICY_ID, "9", document);
 
-    assertEmptySuccess(result);
-    await assertPublishedRow("9", document);
-    expect(await count("routing_policy")).toBe(1);
-    expect(await count("control_audit")).toBe(1);
+    // R8-ROUTE1: the strict routing parser rejects the shape before any write.
+    expect(result.status).toBe(422);
+    expect(result.json).toEqual({ error: "invalid_policy_document" });
+    expect(await getRoutingPolicy(POLICY_ID, "9")).toBeNull();
+    expect(await count("routing_policy")).toBe(0);
+    expect(await count("control_audit")).toBe(0);
+    expect(await r2KeysUnder("control/routing-policy/")).toEqual([]);
   });
 
   it("S05-023 — Canary happy path from published", async () => {

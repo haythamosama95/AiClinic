@@ -54,8 +54,30 @@ beforeEach(async () => {
   await resetE2eState();
 });
 const POLICY_ID = "standard";
-const STANDARD_V1_POINTER = "control/routing-policy/standard/1.json";
-const STANDARD_V2_POINTER = "control/routing-policy/standard/2.json";
+/** R8-PUB1 / RM33: content is stored at a digest-keyed R2 key. */
+function pointerPattern(policyId: string, version: string): RegExp {
+  return new RegExp(
+    `^control/routing-policy/${policyId}/${version}/sha256-[0-9a-f]{64}\\.json$`,
+  );
+}
+
+/** The R2 key recorded on the routing_policy row (content_pointer). */
+async function storedPointer(policyId: string, version: string): Promise<string> {
+  const row = (await getRoutingPolicy(policyId, version)) as {
+    content_pointer?: string;
+  } | null;
+  return row?.content_pointer ?? "";
+}
+
+async function r2KeysUnder(prefix: string): Promise<string[]> {
+  const listed = await env.R2.list({ prefix });
+  return listed.objects.map((object) => object.key);
+}
+
+async function sha256Hex(bytes: string): Promise<string> {
+  const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(bytes));
+  return Array.from(new Uint8Array(digest), (b) => b.toString(16).padStart(2, "0")).join("");
+}
 
 /** Verbatim `ai-platform/control/routing-policy/platform-default/1.json`. */
 const PLATFORM_DEFAULT_DOCUMENT = {
@@ -447,11 +469,13 @@ async function assertPostAcceptInternalError(ref: string): Promise<void> {
 }
 
 describe("Stage 05 — rollback, serving, and post-accept routing failures (S05-042…S05-062)", () => {
-  it("S05-042 — Rollback a canary version back to published", async () => {
+  it("S05-042 — Rollback a canary version back to published (R8-ROLLBACK1 digest-keyed pointer)", async () => {
     await enrollCatalog(INST_A);
     await setupV1ActiveV2CanaryA();
     const v1Before = await getRoutingPolicy(POLICY_ID, "1");
-    const v2BytesBefore = JSON.stringify(await getR2Json(STANDARD_V2_POINTER));
+    const v2Pointer = await storedPointer(POLICY_ID, "2");
+    expect(v2Pointer).toMatch(pointerPattern(POLICY_ID, "2"));
+    const v2BytesBefore = JSON.stringify(await getR2Json(v2Pointer));
 
     const result = await rollbackPolicy(POLICY_ID, "2");
 
@@ -472,9 +496,7 @@ describe("Stage 05 — rollback, serving, and post-accept routing failures (S05-
     expect(JSON.parse(String(audits[0]?.before_pointer))).toEqual([INST_A]);
     expect(audits[0]?.after_pointer).toBe("standard@1");
 
-    expect(JSON.stringify(await getR2Json(STANDARD_V2_POINTER))).toBe(
-      v2BytesBefore,
-    );
+    expect(JSON.stringify(await getR2Json(v2Pointer))).toBe(v2BytesBefore);
   });
 
   it("S05-043 — Rollback a canary version with no active version", async () => {
@@ -694,11 +716,13 @@ describe("Stage 05 — rollback, serving, and post-accept routing failures (S05-
     expect(decision.policy_version).toBe(1);
   });
 
-  it("S05-053 — Active row whose R2 object is missing", async () => {
+  it("S05-053 — Active row whose R2 object is missing (R8-PUB1 digest-keyed pointer)", async () => {
     const instA = await enrollAndEntitle(INST_A);
     await publishThenPromote(platformDefaultAt(1));
-    await env.R2.delete(STANDARD_V1_POINTER);
-    expect(await r2Exists(STANDARD_V1_POINTER)).toBe(false);
+    const v1Pointer = await storedPointer(POLICY_ID, "1");
+    expect(v1Pointer).toMatch(pointerPattern(POLICY_ID, "1"));
+    await env.R2.delete(v1Pointer);
+    expect(await r2Exists(v1Pointer)).toBe(false);
     await clearConfigCache();
 
     const result = await invokeVisitSummary(instA, "idem-s05-053-0001");
@@ -708,13 +732,16 @@ describe("Stage 05 — rollback, serving, and post-accept routing failures (S05-
     // HARNESS-GAP: isolate console is not captured; routing_policy_r2_miss is not asserted.
   });
 
-  it("S05-054 — Canary R2 miss does not fall back to active", async () => {
+  it("S05-054 — Canary R2 miss does not fall back to active (R8-PUB1 digest-keyed pointer)", async () => {
     const instA = await enrollAndEntitle(INST_A);
     const instB = await enrollAndEntitle(INST_B);
     await setupV1ActiveV2CanaryA(V2_CANARY_DOCUMENT);
-    await env.R2.delete(STANDARD_V2_POINTER);
-    expect(await r2Exists(STANDARD_V2_POINTER)).toBe(false);
-    expect(await r2Exists(STANDARD_V1_POINTER)).toBe(true);
+    const v1Pointer = await storedPointer(POLICY_ID, "1");
+    const v2Pointer = await storedPointer(POLICY_ID, "2");
+    expect(v2Pointer).toMatch(pointerPattern(POLICY_ID, "2"));
+    await env.R2.delete(v2Pointer);
+    expect(await r2Exists(v2Pointer)).toBe(false);
+    expect(await r2Exists(v1Pointer)).toBe(true);
     await clearConfigCache();
 
     const resultA = await invokeVisitSummary(instA, "idem-s05-054a-0001");
@@ -730,14 +757,18 @@ describe("Stage 05 — rollback, serving, and post-accept routing failures (S05-
     // HARNESS-GAP: isolate console is not captured; routing_policy_r2_miss is not asserted.
   });
 
-  it("S05-055 — R2 document identity overwritten out-of-band", async () => {
+  it("S05-055 — R2 document identity overwritten out-of-band (R8-PUB1 digest mismatch fails closed)", async () => {
     const instA = await enrollAndEntitle(INST_A);
     await publishThenPromote(platformDefaultAt(1));
+    const v1Pointer = await storedPointer(POLICY_ID, "1");
     const tampered = platformDefaultAt(2);
-    await env.R2.put(STANDARD_V1_POINTER, JSON.stringify(tampered), {
+    // R8-PUB1: the digest-keyed object is overwritten with other bytes. The
+    // config-cache digest check (content_sha256) returns a miss on mismatch,
+    // so the request fails closed exactly like a missing object (S05-053).
+    await env.R2.put(v1Pointer, JSON.stringify(tampered), {
       httpMetadata: { contentType: "application/json" },
     });
-    expect(await getR2Json(STANDARD_V1_POINTER)).toMatchObject({
+    expect(await getR2Json(v1Pointer)).toMatchObject({
       policy_id: "standard",
       policy_version: 2,
     });
@@ -749,13 +780,27 @@ describe("Stage 05 — rollback, serving, and post-accept routing failures (S05-
     await assertPostAcceptInternalError(ref);
   });
 
-  it("S05-056 — Unsupported schema_version in served document", async () => {
+  it("S05-056 — Unsupported schema_version in served document (R8-ROUTE1 serve-time fail-closed)", async () => {
     const instA = await enrollAndEntitle(INST_A);
-    await publishThenPromote({
+    await publishThenPromote({ ...PLATFORM_DEFAULT_DOCUMENT, policy_version: 3 });
+    // R8-ROUTE1 rejects schema_version 2 at publish, so the bad bytes are seeded
+    // after a valid publish: the digest-keyed object and content_sha256 are both
+    // replaced so the digest check passes and the serve path parses the document.
+    const pointer = await storedPointer(POLICY_ID, "3");
+    const badBytes = JSON.stringify({
       ...PLATFORM_DEFAULT_DOCUMENT,
       policy_version: 3,
       schema_version: 2,
     });
+    await env.R2.put(pointer, badBytes, {
+      httpMetadata: { contentType: "application/json" },
+    });
+    await seedSql([
+      {
+        sql: "UPDATE routing_policy SET content_sha256 = ? WHERE policy_id = ? AND version = ?",
+        params: [await sha256Hex(badBytes), POLICY_ID, "3"],
+      },
+    ]);
     await clearConfigCache();
 
     const result = await invokeVisitSummary(instA, "idem-s05-056-0001");
@@ -764,15 +809,14 @@ describe("Stage 05 — rollback, serving, and post-accept routing failures (S05-
     await assertPostAcceptInternalError(ref);
   });
 
-  it("S05-057 — Served document without a catch-all last rule", async () => {
-    const instA = await enrollAndEntitle(INST_A);
-    await publishThenPromote(NO_CATCH_ALL_V9_DOCUMENT);
-    await clearConfigCache();
-
-    const result = await invokeVisitSummary(instA, "idem-s05-057-0001");
-
-    const ref = assertAcceptedThenFailedInternalError(result);
-    await assertPostAcceptInternalError(ref);
+  it("S05-057 — Routing document without a catch-all last rule is rejected at publish (R8-ROUTE1)", async () => {
+    const published = await publishPolicy(POLICY_ID, "9", NO_CATCH_ALL_V9_DOCUMENT);
+    expect(published.status).toBe(422);
+    expect(published.json).toEqual({ error: "invalid_policy_document" });
+    expect(await getRoutingPolicy(POLICY_ID, "9")).toBeNull();
+    expect(await count("routing_policy")).toBe(0);
+    expect(await count("control_audit")).toBe(0);
+    expect(await r2KeysUnder("control/routing-policy/")).toEqual([]);
   });
 
   it("S05-058 — no_matching_rule is unreachable through the serving path", async () => {
@@ -953,9 +997,8 @@ describe("Stage 05 — rollback, serving, and post-accept routing failures (S05-
     ]);
   });
 
-  it("S05-062 — Missing/non-numeric min_context_window fails closed as feature_unsupported", async () => {
-    const instA = await enrollAndEntitle(INST_A);
-    await publishThenPromote({
+  it("S05-062 — Missing/non-numeric min_context_window is rejected at publish as invalid_policy_document (R8-ROUTE1)", async () => {
+    const published = await publishPolicy(POLICY_ID, "5", {
       schema_version: 1,
       policy_id: "standard",
       policy_version: 5,
@@ -989,7 +1032,15 @@ describe("Stage 05 — rollback, serving, and post-accept routing failures (S05-
       ],
       overrides: [],
     });
-    await clearConfigCache();
+    // R8-ROUTE1: a non-numeric min_context_window is rejected by the strict
+    // parser at publish, so nothing is written and nothing reaches serving.
+    expect(published.status).toBe(422);
+    expect(published.json).toEqual({ error: "invalid_policy_document" });
+    expect(await getRoutingPolicy(POLICY_ID, "5")).toBeNull();
+    expect(await count("routing_policy")).toBe(0);
+    expect(await count("control_audit")).toBe(0);
+    expect(await r2KeysUnder("control/routing-policy/")).toEqual([]);
+  });
 
     const result = await invokeVisitSummary(instA, "idem-s05-062-0001");
 

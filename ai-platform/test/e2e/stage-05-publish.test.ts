@@ -18,7 +18,6 @@ import {
   queryAll,
   readHttpResult,
   resetE2eState,
-  r2Exists,
   uniqueConstraintError,
   wrapD1,
   type HttpResult,
@@ -33,7 +32,6 @@ beforeEach(async () => {
 });
 
 const PUBLISH_PATH = "/control/routing-policies/publish";
-const STANDARD_V1_POINTER = "control/routing-policy/standard/1.json";
 const ISO_8601 = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/;
 const CLOCK_SKEW_MS = 15_000;
 
@@ -197,8 +195,24 @@ const IDENTITY_SHELL = {
   overrides: [] as unknown[],
 };
 
-function contentPointer(policyId: string, version: number | string): string {
-  return `control/routing-policy/${policyId}/${version}.json`;
+/** R8-PUB1 / RM33: content is stored at a digest-keyed R2 key. */
+function pointerPattern(policyId: string, version: string): RegExp {
+  return new RegExp(
+    `^control/routing-policy/${policyId}/${version}/sha256-[0-9a-f]{64}\\.json$`,
+  );
+}
+
+/** The R2 key recorded on the routing_policy row (content_pointer). */
+async function storedPointer(policyId: string, version: string): Promise<string> {
+  const row = (await getRoutingPolicy(policyId, version)) as {
+    content_pointer?: string;
+  } | null;
+  return row?.content_pointer ?? "";
+}
+
+async function r2KeysUnder(prefix: string): Promise<string[]> {
+  const listed = await env.R2.list({ prefix });
+  return listed.objects.map((object) => object.key);
 }
 
 function publish(
@@ -248,13 +262,10 @@ async function r2Text(key: string): Promise<string | null> {
   return object.text();
 }
 
-async function assertNoPublishWrites(pointer?: string): Promise<void> {
+async function assertNoPublishWrites(): Promise<void> {
   expect(await count("routing_policy")).toBe(0);
   expect(await count("control_audit")).toBe(0);
-  if (pointer) {
-    expect(await r2Exists(pointer)).toBe(false);
-  }
-  expect(await r2Exists(STANDARD_V1_POINTER)).toBe(false);
+  expect(await r2KeysUnder("control/routing-policy/")).toEqual([]);
 }
 
 async function assertPublishedRow(opts: {
@@ -267,6 +278,9 @@ async function assertPublishedRow(opts: {
   expect(row).not.toBeNull();
   expect(row?.policy_id).toBe(opts.policyId);
   expect(row?.version).toBe(opts.version);
+  expect(row?.content_pointer).toMatch(
+    pointerPattern(opts.policyId, opts.version),
+  );
   expect(row?.content_pointer).toBe(opts.pointer);
   expect(row?.activated_by).toBe(OPERATOR_ID);
   expect(row?.canary_installation_ids).toBeNull();
@@ -279,7 +293,7 @@ async function assertPublishedRow(opts: {
   expect(audits[0]?.action).toBe("routing_policy_publish");
   expect(audits[0]?.target).toBe(opts.target);
   expect(audits[0]?.before_pointer).toBeNull();
-  expect(audits[0]?.after_pointer).toBe(opts.pointer);
+  expect(audits[0]?.after_pointer).toBe(row?.content_pointer);
   expect(audits[0]?.recorded_at).toBe(activeFrom);
 
   expect(await count("routing_policy")).toBe(1);
@@ -305,33 +319,32 @@ async function assertOnlyPublishTablesTouched(): Promise<void> {
 }
 
 describe("Stage 05 — routing policy publish (S05-001…S05-020)", () => {
-  it("S05-001 — Publish platform-default policy", async () => {
+  it("S05-001 — Publish platform-default policy (R8-PUB1 digest-keyed pointer)", async () => {
     const result = await publish({ document: PLATFORM_DEFAULT_DOCUMENT });
 
     assertOkEmpty(result);
 
-    const stored = await env.R2.get(STANDARD_V1_POINTER);
+    const pointer = await storedPointer("standard", "1");
+    const stored = await env.R2.get(pointer);
     expect(stored).not.toBeNull();
     expect(stored?.httpMetadata?.contentType).toBe("application/json");
     expect(await stored!.text()).toBe(JSON.stringify(PLATFORM_DEFAULT_DOCUMENT));
-    expect(await getR2Json(STANDARD_V1_POINTER)).toEqual(
-      PLATFORM_DEFAULT_DOCUMENT,
-    );
+    expect(await getR2Json(pointer)).toEqual(PLATFORM_DEFAULT_DOCUMENT);
 
     await assertPublishedRow({
       policyId: "standard",
       version: "1",
-      pointer: STANDARD_V1_POINTER,
+      pointer,
       target: "standard@1",
     });
     await assertOnlyPublishTablesTouched();
   });
 
-  it("S05-002 — Publish unreferenced policy id warns unreferenced_policy", async () => {
-    const pointer = contentPointer("premium-eu", 1);
+  it("S05-002 — Publish unreferenced policy id warns unreferenced_policy (R8-PUB1 digest-keyed pointer)", async () => {
     const result = await publish({ document: UNREFERENCED_PREMIUM_EU_DOCUMENT });
 
     assertOkWarnings(result, ["unreferenced_policy"]);
+    const pointer = await storedPointer("premium-eu", "1");
 
     expect(await r2Text(pointer)).toBe(
       JSON.stringify(UNREFERENCED_PREMIUM_EU_DOCUMENT),
@@ -346,13 +359,13 @@ describe("Stage 05 — routing policy publish (S05-001…S05-020)", () => {
     });
   });
 
-  it("S05-003 — Publish referenced policy with latency_class_mismatch", async () => {
-    const pointer = contentPointer("standard", 7);
+  it("S05-003 — Publish referenced policy with latency_class_mismatch (R8-PUB1 digest-keyed pointer)", async () => {
     const result = await publish({
       document: LATENCY_MISMATCH_STANDARD_V7_DOCUMENT,
     });
 
     assertOkWarnings(result, ["latency_class_mismatch"]);
+    const pointer = await storedPointer("standard", "7");
 
     expect(await r2Text(pointer)).toBe(
       JSON.stringify(LATENCY_MISMATCH_STANDARD_V7_DOCUMENT),
@@ -369,14 +382,16 @@ describe("Stage 05 — routing policy publish (S05-001…S05-020)", () => {
     });
   });
 
-  it("S05-004 — Duplicate publish returns already_published", async () => {
+  it("S05-004 — Duplicate publish returns already_published (R8-PUB1 digest-keyed pointer)", async () => {
     const first = await publishPolicy(
       "standard",
       "1",
       PLATFORM_DEFAULT_DOCUMENT,
     );
     expect(first.status).toBe(200);
-    const bytesBefore = await r2Text(STANDARD_V1_POINTER);
+    const pointer = await storedPointer("standard", "1");
+    expect(pointer).toMatch(pointerPattern("standard", "1"));
+    const bytesBefore = await r2Text(pointer);
     expect(bytesBefore).toBe(JSON.stringify(PLATFORM_DEFAULT_DOCUMENT));
     const rowBefore = await getRoutingPolicy("standard", "1");
     const auditsBefore = await getAudits("routing_policy_publish", "standard@1");
@@ -384,8 +399,8 @@ describe("Stage 05 — routing policy publish (S05-001…S05-020)", () => {
     const result = await publish({ document: DUPLICATE_STANDARD_V1_DOCUMENT });
 
     assertControlError(result, 409, "already_published");
-    expect(await r2Text(STANDARD_V1_POINTER)).toBe(bytesBefore);
-    expect(await getR2Json(STANDARD_V1_POINTER)).toEqual(
+    expect(await r2Text(pointer)).toBe(bytesBefore);
+    expect(await getR2Json(pointer)).toEqual(
       PLATFORM_DEFAULT_DOCUMENT,
     );
     expect(await getRoutingPolicy("standard", "1")).toEqual(rowBefore);
@@ -555,7 +570,7 @@ describe("Stage 05 — routing policy publish (S05-001…S05-020)", () => {
     await assertNoPublishWrites();
   });
 
-  it("S05-020 — Concurrent first publish maps UNIQUE to already_published", async () => {
+  it("S05-020 — Concurrent first publish maps UNIQUE to already_published (R8-PUB1 digest-keyed pointer)", async () => {
     // Register 5 #10: pool D1 serializes concurrent publishes; a SELF.fetch
     // race cannot interleave SELECT and batch. wrapD1({ batchUniqueThrow }) +
     // dispatchControl is the documented seam for the UNIQUE → 409 mapping
@@ -579,7 +594,9 @@ describe("Stage 05 — routing policy publish (S05-001…S05-020)", () => {
     const uniqueResult = await readHttpResult(uniqueResponse);
 
     assertControlError(uniqueResult, 409, "already_published");
-    expect(await r2Exists(STANDARD_V1_POINTER)).toBe(true);
+    // R8-PUB1 / RM33: the digest-keyed object is written before the D1 batch
+    // fails, so exactly one object exists under the policy version prefix.
+    expect(await r2KeysUnder("control/routing-policy/standard/1/")).toHaveLength(1);
     expect(await count("routing_policy")).toBe(0);
     expect(await count("control_audit")).toBe(0);
     expect(await queryAll("SELECT * FROM routing_policy")).toEqual([]);
@@ -587,11 +604,14 @@ describe("Stage 05 — routing policy publish (S05-001…S05-020)", () => {
     const winner = await publish({ document: PLATFORM_DEFAULT_DOCUMENT });
     assertOkEmpty(winner);
 
-    expect(await r2Exists(STANDARD_V1_POINTER)).toBe(true);
+    const pointer = await storedPointer("standard", "1");
+    expect(await r2KeysUnder("control/routing-policy/standard/1/")).toEqual([
+      pointer,
+    ]);
     await assertPublishedRow({
       policyId: "standard",
       version: "1",
-      pointer: STANDARD_V1_POINTER,
+      pointer,
       target: "standard@1",
     });
   });
