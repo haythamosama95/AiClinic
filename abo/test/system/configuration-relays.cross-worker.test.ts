@@ -504,6 +504,13 @@ async function setupPromotedRoutingPolicy(): Promise<void> {
   )
     .bind(POLICY_ID, POLICY_VERSION, contentPointer, now, VENDOR_OPERATOR_EMAIL)
     .run();
+  await env.PLATFORM_DB.prepare(
+    `INSERT OR REPLACE INTO routing_policy_activation (
+       policy_id, generation, active_version, predecessor_version, predecessor_state
+     ) VALUES (?, 1, ?, NULL, 'none')`,
+  )
+    .bind(POLICY_ID, POLICY_VERSION)
+    .run();
 }
 
 async function setupConfigurationRelaysHarness(): Promise<OffersFixtureExpectations> {

@@ -115,7 +115,7 @@ const COVER_DEFAULT_CONCURRENCY = 4;
 const COVER_DEFAULT_ALLOWANCE = 10_000;
 const VENDOR_OPERATOR_EMAIL = "operator@vendor.test";
 // Increment when PLATFORM_MIGRATION_SQL or its bootstrap seeds change.
-const PLATFORM_MIGRATION_HARNESS_VERSION = 6;
+const PLATFORM_MIGRATION_HARNESS_VERSION = 7;
 
 declare module "cloudflare:test" {
   interface ProvidedEnv {

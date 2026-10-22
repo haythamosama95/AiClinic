@@ -73,6 +73,9 @@ export function vendorEnvelopeToHttp(
     ) {
       return { status: 404, json: { error: envelope.code } };
     }
+    if (envelope.code === "invalid_policy_document") {
+      return { status: 422, json: { error: envelope.code } };
+    }
     return { status: 400, json: { error: envelope.code } };
   }
   if (
