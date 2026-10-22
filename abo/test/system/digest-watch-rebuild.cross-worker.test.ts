@@ -1838,11 +1838,7 @@ describe("P4.11 digest, watch, housekeeping, rebuild (H-XW)", () => {
     await seedDigestScenario();
     clearCapturedEmails();
 
-    // No 06:00 tick runs. Inside the grace window nothing is flagged.
-    await setClock(addMinutes(BASE_CLOCK, 4));
-    await runScheduled("* * * * *");
-    expect(await scheduledJobAlertRow("digest")).toBeNull();
-
+    // No 06:00 tick runs.
     await setClock(addMinutes(BASE_CLOCK, 6));
     await runScheduled("* * * * *");
     expect(await scheduledJobAlertRow("digest")).toMatchObject({ active: 1 });
@@ -1871,13 +1867,20 @@ describe("P4.11 digest, watch, housekeeping, rebuild (H-XW)", () => {
     expect(digestEmails()).toHaveLength(0);
   });
 
-  it("FV-P3 an attempted or succeeded period is not flagged as missed", async () => {
+  it("FV-P3 an attempted or succeeded period, or one inside the grace window, is not flagged", async () => {
     await seedDigestScenario();
     clearCapturedEmails();
 
     await runScheduled("0 6 * * *");
     expect((await scheduledJobRow("digest")).last_succeeded_period).not.toBeNull();
     await setClock(addMinutes(BASE_CLOCK, 10));
+    await runScheduled("* * * * *");
+    expect(await scheduledJobAlertRow("digest")).toBeNull();
+    expect(await digestErrorCode()).toBeNull();
+
+    // Next day, 4 minutes after 06:00 with no tick yet: the new period is inside the grace
+    // window and the previous period succeeded, so nothing is flagged.
+    await setClock(addMinutes(addHours(BASE_CLOCK, 24), 4));
     await runScheduled("* * * * *");
     expect(await scheduledJobAlertRow("digest")).toBeNull();
     expect(await digestErrorCode()).toBeNull();
