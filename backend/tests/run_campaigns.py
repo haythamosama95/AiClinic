@@ -159,6 +159,7 @@ def _all_steps() -> list[TestStep]:
             TestStep("Staff authority RM01", "sql", "r1_rm01_staff_authority.sql"),
             TestStep("Permission readers RM02", "sql", "r1_rm02_permission_readers.sql"),
             TestStep("Last administrator guard FV-M1", "sql", "fv_m1_last_administrator.sql"),
+            TestStep("Repair mapping table FV-M2", "sql", "fv_m2_repair_mapping.sql"),
             TestStep("Status refresh claim RM36", "sql", "r7_rm36_status_refresh.sql"),
         ]
     )

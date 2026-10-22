@@ -19,38 +19,18 @@
 --   * Held rows need an explicit per-org approved mapping from that clinic's
 --     administrator and the maintainer. The repair aborts (nothing applied)
 --     while any held row lacks an approved mapping. Approved mappings are
---     supplied as rows in ai_internal.membership_role_repair_mapping; once
---     present, re-running this migration applies them transactionally and
---     proceeds.
+--     supplied as rows in ai_internal.membership_role_repair_mapping (created by
+--     20261014170450); once present, re-running this migration applies them
+--     transactionally and proceeds.
 --
 -- The global role is used only to remove administrator authority, never to
 -- add it; roles are never flattened across orgs.
 -- Forward-only migration; never edit an applied migration file.
 -- =============================================================================
 
--- Approved per-org mapping for held rows. approved_role is the final
--- membership role; it can preserve a valid difference (equal to the current
--- membership role) but can never add administrator authority.
-CREATE TABLE IF NOT EXISTS ai_internal.membership_role_repair_mapping (
-  user_id uuid NOT NULL REFERENCES auth.users (id) ON DELETE CASCADE,
-  organization_id uuid NOT NULL REFERENCES public.organizations (id) ON DELETE CASCADE,
-  approved_role public.staff_role NOT NULL,
-  approved_by text NOT NULL,
-  approved_note text,
-  approved_at timestamptz NOT NULL DEFAULT now(),
-  PRIMARY KEY (user_id, organization_id),
-  CONSTRAINT membership_role_repair_mapping_no_admin_add
-    CHECK (approved_role <> 'administrator')
-);
-
-ALTER TABLE ai_internal.membership_role_repair_mapping ENABLE ROW LEVEL SECURITY;
-
-CREATE POLICY membership_role_repair_mapping_deny_all ON ai_internal.membership_role_repair_mapping
-  FOR ALL
-  USING (false);
-
-REVOKE ALL ON TABLE ai_internal.membership_role_repair_mapping
-  FROM PUBLIC, anon, authenticated, service_role;
+-- The approved-mapping table ai_internal.membership_role_repair_mapping is created
+-- by 20261014170450_fv_m2_membership_role_repair_mapping.sql, which is ordered
+-- before this migration so approved rows can be inserted before a retry.
 
 DO $$
 DECLARE
