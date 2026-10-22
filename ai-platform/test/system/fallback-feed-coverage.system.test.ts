@@ -8,9 +8,10 @@ import {
   grantIdPaid,
   sha256Hex,
   subscriptionRef,
+  validateCoverageSnapshot,
 } from "vendor-contracts";
 import { beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
-import { supplementaryFieldsForCode } from "../../src/errors";
+import { liveHttpStatusForCode, supplementaryFieldsForCode } from "../../src/errors";
 import { handleCoverageReadRequest } from "../../src/coverage-read";
 import { withAipContractVersion } from "../../src/vendor/contract-version";
 import {
@@ -109,6 +110,43 @@ async function readHotUsed(installationId: string): Promise<number> {
       sqlSelect<{ used: number }>(state, "SELECT used FROM hot LIMIT 1"),
   );
   return rows[0]?.used ?? 0;
+}
+
+// RM36 (R7-PS2 / R7-PS4) helpers: row counts, an initialized-empty DO, and the administrator read.
+async function countDoRows(installationId: string, table: "hot" | "term"): Promise<number> {
+  const rows = await runInDurableObject(
+    quotaDoStub(installationId),
+    async (_instance, state) =>
+      sqlSelect<{ n: number }>(state, `SELECT count(*) AS n FROM ${table}`),
+  );
+  return rows[0]?.n ?? 0;
+}
+
+// Same column list as the DO's ensureHotRow; binding_epoch and clinic_seq are 0 as in the empty read.
+async function initializeEmptyDo(installationId: string): Promise<void> {
+  await runInDurableObject(quotaDoStub(installationId), async (_instance, state) => {
+    const storage = state.storage as DurableObjectStorage & {
+      sql?: { exec: (q: string) => Iterable<unknown> };
+    };
+    [...(storage.sql?.exec(
+      `INSERT INTO hot (
+        suspended, transferred_out_to, awaiting_transfer, transfer_pending,
+        active_term_id, used, reserved, grace_base_used, reservations, replay,
+        idempotency, band_emitted, binding_epoch, clinic_seq, next_alarm_at
+      ) VALUES (0, NULL, 0, 0, NULL, 0, 0, 0, '[]', '{}', '{}', '{}', 0, 0, NULL)`,
+    ) ?? [])];
+  });
+}
+
+async function readCoverageAs(token: string): Promise<Response> {
+  return SELF.fetch(
+    new Request(`${GATEWAY_ORIGIN}/v1/coverage`, {
+      headers: {
+        authorization: `Bearer ${token}`,
+        "Aip-Contract-Version": String(PLATFORM_CLINIC_VERSION),
+      },
+    }),
+  );
 }
 
 async function expectFallbackAdmissionTable(): Promise<void> {
@@ -715,6 +753,22 @@ describe("P3.9 fallback admission, feed, and coverage read", () => {
     expect(coverageBody.queued_terms).toEqual(vendorCoverage.queued_terms);
     expect(coverageBody.recent_terms).toEqual(vendorCoverage.recent_terms);
 
+    // RM36 egress (R7-A1): the body snapshot carries only contract keys and no internal fields.
+    const contractSnapshotKeys = [
+      "contract_version", "state", "suspended", "term", "queued_count",
+      "held_count", "coverage_through", "binding_epoch", "clinic_seq", "reason",
+    ];
+    const egressSnapshot = coverageBody.snapshot as Record<string, unknown>;
+    for (const key of Object.keys(egressSnapshot)) {
+      expect(contractSnapshotKeys, key).toContain(key);
+    }
+    expect(egressSnapshot).not.toHaveProperty("terms");
+    expect(egressSnapshot).not.toHaveProperty("accounting_seq");
+    const egressTerm = egressSnapshot.term as Record<string, unknown> | null;
+    if (egressTerm !== null) {
+      expect(egressTerm).not.toHaveProperty("capabilities");
+    }
+
     const detailAfterAdminRead = await getCoverageDetail(scenario);
     expect(detailAfterAdminRead).toBe(detailBefore);
 
@@ -731,6 +785,107 @@ describe("P3.9 fallback admission, feed, and coverage read", () => {
 
     const detailAfterStaffDenied = await getCoverageDetail(scenario);
     expect(detailAfterStaffDenied).toBe(detailBefore);
+  });
+
+  it("R7-PS2 read of an uninitialized and an initialized-empty DO agree on state none and reason none, and reads create no rows", async () => {
+    const scenario = await newScenario();
+    await newClinic(scenario);
+
+    // Uninitialized: no hot row and no term row exist yet.
+    expect(await countDoRows(scenario.installationId, "hot")).toBe(0);
+    expect(await countDoRows(scenario.installationId, "term")).toBe(0);
+    const uninitialized = JSON.parse(await getCoverageDetail(scenario)) as {
+      snapshot: Record<string, unknown>;
+    };
+    expect(uninitialized.snapshot.state).toBe("none");
+    expect(uninitialized.snapshot.reason).toBe("none");
+    expect(await countDoRows(scenario.installationId, "hot")).toBe(0);
+    expect(await countDoRows(scenario.installationId, "term")).toBe(0);
+
+    // Initialized-empty: a hot row exists and no term has ever been applied.
+    await initializeEmptyDo(scenario.installationId);
+    expect(await countDoRows(scenario.installationId, "hot")).toBe(1);
+    expect(await countDoRows(scenario.installationId, "term")).toBe(0);
+    const initialized = JSON.parse(await getCoverageDetail(scenario)) as {
+      snapshot: Record<string, unknown>;
+    };
+    expect(initialized.snapshot.state).toBe("none");
+    expect(initialized.snapshot.reason).toBe("none");
+    expect(initialized.snapshot).toEqual(uninitialized.snapshot);
+
+    // The reads wrote nothing.
+    expect(await countDoRows(scenario.installationId, "hot")).toBe(1);
+    expect(await countDoRows(scenario.installationId, "term")).toBe(0);
+  });
+
+  it("R7-PS4 coverage read on a suspended installation: administrator reads 200 with suspended true, staff get 403, retired and deleted-unheld bindings are denied, and reads still work after resume", async () => {
+    const scenario = await newScenario();
+    await coverClinic(scenario);
+    const accessJwt = await mintVendorAccessJwt();
+
+    const suspended = await vendorCall(
+      "suspend",
+      {
+        contract_version: CONTRACT_VERSION,
+        org_id: scenario.orgId,
+        reason: "billing dispute",
+      },
+      { accessJwt },
+    );
+    expect(suspended.result).toBe("ok");
+    // RM36 egress: the suspend return is a projected snapshot with no terms key.
+    const suspendedDetail = JSON.parse(suspended.detail) as Record<string, unknown>;
+    expect(suspendedDetail).not.toHaveProperty("terms");
+    expect(validateCoverageSnapshot(suspendedDetail)).toEqual({ ok: true });
+
+    const adminToken = await mintAat(scenario, { role: "administrator" });
+    const adminRead = await readCoverageAs(adminToken);
+    expect(adminRead.status).toBe(200);
+    const adminBody = (await adminRead.json()) as { snapshot: Record<string, unknown> };
+    expect(adminBody.snapshot.suspended).toBe(true);
+
+    const staffRead = await readCoverageAs(await mintAat(scenario, { role: "staff" }));
+    expect(staffRead.status).toBe(403);
+
+    // A retired binding is not a live binding, so the diagnostic read is denied.
+    const retired = await newScenario();
+    await coverClinic(retired);
+    await env.DB.prepare(
+      "UPDATE tenant_binding SET status = 'retired', retired_at = ? WHERE org_id = ? AND installation_id = ?",
+    )
+      .bind(new Date().toISOString(), retired.orgId, retired.installationId)
+      .run();
+    const retiredRead = await readCoverageAs(
+      await mintAat(retired, { role: "administrator" }),
+    );
+    expect(retiredRead.status).toBe(liveHttpStatusForCode("unauthenticated"));
+
+    // A deleted installation without a held-for-transfer binding is denied.
+    const deleted = await newScenario();
+    await coverClinic(deleted);
+    await env.DB.prepare("UPDATE installation SET status = 'deleted' WHERE installation_id = ?")
+      .bind(deleted.installationId)
+      .run();
+    const deletedRead = await readCoverageAs(
+      await mintAat(deleted, { role: "administrator" }),
+    );
+    expect(deletedRead.status).toBe(liveHttpStatusForCode("unauthenticated"));
+
+    const resumed = await vendorCall(
+      "resume",
+      {
+        contract_version: CONTRACT_VERSION,
+        org_id: scenario.orgId,
+        reason: "resolved",
+      },
+      { accessJwt: await mintVendorAccessJwt() },
+    );
+    expect(resumed.result).toBe("ok");
+
+    const afterResume = await readCoverageAs(adminToken);
+    expect(afterResume.status).toBe(200);
+    const afterResumeBody = (await afterResume.json()) as { snapshot: Record<string, unknown> };
+    expect(afterResumeBody.snapshot.suspended).toBe(false);
   });
 
   it("R2-C3: coverage read fails closed on a mismatched DO version", async () => {

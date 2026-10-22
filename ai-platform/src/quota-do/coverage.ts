@@ -681,7 +681,8 @@ export function buildCoverageSnapshot(input: {
     return {
       contract_version: input.vendorContractVersion,
       state: "transferred",
-      reason: "none",
+      // R7-PS2 step 2: a completed transfer-out carries its named reason (04 §1.7).
+      reason: "transferred",
       suspended: input.hot.suspended !== 0,
       term: null,
       queued_count: queued.length,
@@ -724,10 +725,15 @@ export function buildCoverageSnapshot(input: {
   } else if (grace !== undefined) {
     coverageState = "grace";
     termObject = snapshotTermObject(grace, input.hot);
+  } else if (input.terms.length === 0) {
+    // R7-PS2 step 1: no term has ever been applied, so the state and reason are none.
+    coverageState = "none";
   } else {
     const lastEnded = lastEndedTermForSnapshot(input.terms);
     if (lastEnded?.state === "exhausted") {
       coverageState = "exhausted";
+      // R7-PS2 step 2: an exhausted term reports the exhausted reason.
+      reason = "exhausted";
     } else if (lastEnded?.end_reason === "reversed") {
       coverageState = "reversed";
       reason = "reversed";
@@ -2553,13 +2559,13 @@ export async function readCoverageRPC(
         clinic_seq: 0,
         next_alarm_at: null,
       };
+      // R7-PS2 step 3: the common builder reports none for an empty DO. The read creates no rows.
       const snapshot = buildCoverageSnapshot({
         vendorContractVersion: request.vendorContractVersion,
         orgId: request.orgId,
         hot: emptyHot,
         terms: [],
       });
-      snapshot.state = "active";
       return {
         kind: "read_coverage",
         snapshot,

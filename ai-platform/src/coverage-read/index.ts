@@ -2,7 +2,11 @@
  * Administrator coverage read (P3.9 GET /v1/coverage).
  */
 
-import { CHANNEL_VERSIONS, subscriptionRef } from "vendor-contracts";
+import {
+  CHANNEL_VERSIONS,
+  projectCoverageSnapshot,
+  subscriptionRef,
+} from "vendor-contracts";
 import {
   isolateConfigCache,
   createD1ConfigReader,
@@ -116,6 +120,9 @@ export async function handleCoverageReadRequest(
     issuerId: env.ISSUER_ID,
     db: env.DB,
     alertEnv: env,
+    // R7-PS4: the administrator's diagnostic read is served while the installation is suspended.
+    // The suspended flag in the returned snapshot is authoritative; admission routes never set this.
+    allowSuspended: true,
   });
 
   if (!verifyResult.ok) {
@@ -165,7 +172,7 @@ export async function handleCoverageReadRequest(
   const subRef = await subscriptionRef(orgId);
   return Response.json({
     subscription_ref: subRef,
-    snapshot: doResponse.body.snapshot,
+    snapshot: projectCoverageSnapshot(doResponse.body.snapshot),
     queued_terms: doResponse.body.queued_terms,
     recent_terms: doResponse.body.recent_terms,
   });

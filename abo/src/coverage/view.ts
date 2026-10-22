@@ -13,11 +13,6 @@ export type CoverageViewEnv = {
   };
 };
 
-type CoveragePair = {
-  binding_epoch: number;
-  clinic_seq: number;
-};
-
 type FeedPage = {
   after: number;
   events: Record<string, unknown>[];
@@ -25,15 +20,21 @@ type FeedPage = {
   has_more: boolean;
 };
 
-function isNewerPair(candidate: CoveragePair, stored: CoveragePair | null): boolean {
-  if (stored === null) {
-    return true;
-  }
-  if (candidate.binding_epoch !== stored.binding_epoch) {
-    return candidate.binding_epoch > stored.binding_epoch;
-  }
-  return candidate.clinic_seq > stored.clinic_seq;
-}
+// R7-A1 step 1: the lexicographic (binding_epoch, clinic_seq) order is enforced by the upsert
+// predicate itself, so a stale writer cannot replace a newer snapshot between a read and a write.
+const COVERAGE_UPSERT_SQL = `INSERT INTO coverage_view (org_id, binding_epoch, clinic_seq, snapshot)
+     VALUES (?, ?, ?, ?)
+     ON CONFLICT(org_id) DO UPDATE SET
+       binding_epoch = excluded.binding_epoch,
+       clinic_seq = excluded.clinic_seq,
+       snapshot = excluded.snapshot
+     WHERE excluded.binding_epoch > coverage_view.binding_epoch
+       OR (excluded.binding_epoch = coverage_view.binding_epoch
+           AND excluded.clinic_seq > coverage_view.clinic_seq)`;
+
+// R7-A1 step 2: the ordinary cursor only moves forward. An explicit reset is owned by R9.
+const FEED_CURSOR_UPSERT_SQL = `INSERT INTO feed_cursor (id, feed_seq) VALUES (1, ?)
+     ON CONFLICT(id) DO UPDATE SET feed_seq = MAX(feed_cursor.feed_seq, excluded.feed_seq)`;
 
 function parseFeedPage(detail: unknown): FeedPage | null {
   if (typeof detail !== "string" || detail.length === 0) {
@@ -72,27 +73,6 @@ async function readFeedCursor(env: CoverageViewEnv): Promise<number> {
   return row?.feed_seq ?? 0;
 }
 
-async function writeFeedCursor(env: CoverageViewEnv, feedSeq: number): Promise<void> {
-  await env.DB.prepare(
-    `INSERT INTO feed_cursor (id, feed_seq) VALUES (1, ?)
-     ON CONFLICT(id) DO UPDATE SET feed_seq = excluded.feed_seq`,
-  )
-    .bind(feedSeq)
-    .run();
-}
-
-async function loadStoredPair(
-  env: CoverageViewEnv,
-  orgId: string,
-): Promise<CoveragePair | null> {
-  const row = await env.DB.prepare(
-    `SELECT binding_epoch, clinic_seq FROM coverage_view WHERE org_id = ?`,
-  )
-    .bind(orgId)
-    .first<CoveragePair>();
-  return row ?? null;
-}
-
 export function feedEventAccepted(event: Record<string, unknown>): boolean {
   if (validateFeedEvent(event).ok === true) {
     return true;
@@ -110,49 +90,31 @@ export function feedEventAccepted(event: Record<string, unknown>): boolean {
   return validateCoverageSnapshot(event.snapshot).ok === true;
 }
 
-async function applyFeedEvent(
+// Returns the ordered upsert for an accepted event, or null when the event is rejected.
+function coverageUpsertStatement(
   env: CoverageViewEnv,
   event: Record<string, unknown>,
-): Promise<void> {
+): D1PreparedStatement | null {
   if (!feedEventAccepted(event)) {
-    return;
+    return null;
   }
   const orgId = event.org_id;
-  if (typeof orgId !== "string") {
-    return;
+  if (typeof orgId !== "string" || !Number.isInteger(event.feed_seq)) {
+    return null;
   }
-  const candidate: CoveragePair = {
-    binding_epoch: event.binding_epoch as number,
-    clinic_seq: event.clinic_seq as number,
-  };
-  const stored = await loadStoredPair(env, orgId);
-  if (!isNewerPair(candidate, stored)) {
-    return;
+  if (validateCoverageSnapshot(event.snapshot).ok !== true) {
+    return null;
   }
-  const snapshot = event.snapshot;
-  if (validateCoverageSnapshot(snapshot).ok !== true) {
-    return;
-  }
-  await env.DB.prepare(
-    `INSERT INTO coverage_view (org_id, binding_epoch, clinic_seq, snapshot)
-     VALUES (?, ?, ?, ?)
-     ON CONFLICT(org_id) DO UPDATE SET
-       binding_epoch = excluded.binding_epoch,
-       clinic_seq = excluded.clinic_seq,
-       snapshot = excluded.snapshot`,
-  )
-    .bind(
-      orgId,
-      candidate.binding_epoch,
-      candidate.clinic_seq,
-      JSON.stringify(snapshot),
-    )
-    .run();
+  return env.DB.prepare(COVERAGE_UPSERT_SQL).bind(
+    orgId,
+    event.binding_epoch,
+    event.clinic_seq,
+    JSON.stringify(event.snapshot),
+  );
 }
 
 export async function refreshCoverageView(env: CoverageViewEnv): Promise<void> {
   let after = await readFeedCursor(env);
-  let lastFeedSeq = after;
 
   for (;;) {
     const envelope = await env.PLATFORM.readCoverageEvents({
@@ -167,21 +129,40 @@ export async function refreshCoverageView(env: CoverageViewEnv): Promise<void> {
     if (page === null) {
       break;
     }
+
+    // R7-A1 step 2: the page's validated upserts and its cursor move commit in one D1 batch.
+    // A rejected event is never applied and the cursor does not pass it; the walk stops there.
+    const statements: D1PreparedStatement[] = [];
+    let lastAcceptedFeedSeq: number | null = null;
+    let rejected = false;
     for (const event of page.events) {
-      const feedSeq = event.feed_seq;
-      if (typeof feedSeq === "number" && Number.isInteger(feedSeq)) {
-        lastFeedSeq = feedSeq;
+      const statement = coverageUpsertStatement(env, event);
+      if (statement === null) {
+        rejected = true;
+        break;
       }
-      await applyFeedEvent(env, event);
+      statements.push(statement);
+      lastAcceptedFeedSeq = event.feed_seq as number;
     }
-    if (page.events.length > 0) {
-      lastFeedSeq = page.next_after;
+
+    let cursorTarget: number | null = null;
+    if (rejected) {
+      cursorTarget = lastAcceptedFeedSeq;
+    } else if (page.events.length > 0) {
+      cursorTarget = page.next_after;
     }
-    if (!page.has_more) {
+    if (cursorTarget !== null) {
+      statements.push(
+        env.DB.prepare(FEED_CURSOR_UPSERT_SQL).bind(cursorTarget),
+      );
+    }
+    if (statements.length > 0) {
+      await env.DB.batch(statements);
+    }
+
+    if (rejected || !page.has_more) {
       break;
     }
     after = page.next_after;
   }
-
-  await writeFeedCursor(env, lastFeedSeq);
 }

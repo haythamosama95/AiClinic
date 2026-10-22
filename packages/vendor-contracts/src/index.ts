@@ -15,7 +15,10 @@ export {
   acceptedVersions,
   negotiate,
 } from "./version.js";
-export { validateCoverageSnapshot } from "./coverage-snapshot.js";
+export {
+  projectCoverageSnapshot,
+  validateCoverageSnapshot,
+} from "./coverage-snapshot.js";
 export { validateFeedEvent } from "./feed-event.js";
 export {
   grantEnvelopeHash,

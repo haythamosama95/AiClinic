@@ -780,6 +780,23 @@ describe("identity_preverification_tallies_unverified", () => {
 
     spy.mockRestore();
   });
+
+  it("R7-PS4: allowSuspended admits a suspended installation for the diagnostic read context only", async () => {
+    const verifier = new IssuerTokenVerifier();
+    const token = await mintToken(fixtureKeypair);
+    const reader = makeIdentityReader(fixtureKeypair, {
+      installation: installationRow("suspended"),
+    });
+
+    const diagnostic = await verifier.verify(token, {
+      ...buildVerifyContext(reader),
+      allowSuspended: true,
+    });
+    expect(diagnostic.ok).toBe(true);
+
+    const admission = await verifier.verify(token, buildVerifyContext(reader));
+    expectRejected(admission, "suspended");
+  });
 });
 
 describe("identity_accepts_key_within_validity_window", () => {

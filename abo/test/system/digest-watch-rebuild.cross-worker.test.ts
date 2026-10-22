@@ -2013,8 +2013,7 @@ describe("P4.11 digest, watch, housekeeping, rebuild (H-XW)", () => {
     ).toHaveLength(0);
   });
 
-  // SKIPPED (RM32 owner decision): root cause is coverage view admission rejecting real platform snapshots with extra keys — owned by R7-A1 (RM36). Re-enable when RM36 lands.
-  it.skip("R9-REC2/R9-REC3 restores due grant work once against its original provider order", async () => {
+  it("R9-REC2/R9-REC3 restores due grant work once against its original provider order", async () => {
     const expectations = await setupRebuildHarness();
     const paid = await paidCheckoutWithGrant(
       ORG_REBUILD,
@@ -3159,8 +3158,7 @@ describe("P4.11 digest, watch, housekeeping, rebuild (H-XW)", () => {
     expect(rows?.count).toBe(0);
   });
 
-  // SKIPPED (RM32 owner decision): root cause is coverage view admission rejecting real platform snapshots with extra keys — owned by R7-A1 (RM36). Re-enable when RM36 lands.
-  it.skip("R9-REC1 interrupted ledger replay resumes with original fact sequences", async () => {
+  it("R9-REC1 interrupted ledger replay resumes with original fact sequences", async () => {
     const expectations = await setupRebuildHarness({ freshPlatformState: true });
     await ensureGrantTenantBinding(ORG_REBUILD, RESUME_INSTALLATION_ID);
     const { paymentId } = await paidCheckoutWithGrant(

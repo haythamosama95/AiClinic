@@ -2,6 +2,7 @@ import { DurableObject, env } from "cloudflare:workers";
 import {
   CHANNEL_VERSIONS,
   negotiate,
+  projectCoverageSnapshot,
   validateTokenClaims,
 } from "vendor-contracts";
 import {
@@ -2741,7 +2742,9 @@ async function handleFeedCoverageRequest(
     clinic_seq: row.clinic_seq,
     kind: row.kind,
     at: row.at,
-    snapshot: JSON.parse(row.snapshot) as Record<string, unknown>,
+    snapshot: projectCoverageSnapshot(
+      JSON.parse(row.snapshot) as Record<string, unknown>,
+    ),
   }));
 
   const nextAfter =

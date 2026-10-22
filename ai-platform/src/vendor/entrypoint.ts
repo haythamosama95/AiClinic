@@ -15,6 +15,7 @@ import {
   verifyReceiptSignature,
   signCompactJws,
   receiptSigningBytes,
+  projectCoverageSnapshot,
   type AccessCertsDocument,
   type Assertion,
 } from "vendor-contracts";
@@ -6818,7 +6819,8 @@ export class VendorEntrypoint extends WorkerEntrypoint<VendorEnv> {
       return rejected(version, lifecycle.error);
     }
 
-    return ok(version, JSON.stringify(doResponse.snapshot));
+    // RM36 egress: the suspend and resume return is a snapshot, so it is projected like the other egress sites.
+    return ok(version, JSON.stringify(projectCoverageSnapshot(doResponse.snapshot)));
   }
 
   async inspectCoverage(
@@ -6897,7 +6899,7 @@ export class VendorEntrypoint extends WorkerEntrypoint<VendorEnv> {
     }
 
     const detail = JSON.stringify({
-      snapshot: doResponse.snapshot,
+      snapshot: projectCoverageSnapshot(doResponse.snapshot),
       queued_terms: doResponse.queued_terms,
       recent_terms: doResponse.recent_terms,
     });
@@ -7032,7 +7034,9 @@ export class VendorEntrypoint extends WorkerEntrypoint<VendorEnv> {
       clinic_seq: row.clinic_seq,
       kind: row.kind,
       at: row.at,
-      snapshot: JSON.parse(row.snapshot) as Record<string, unknown>,
+      snapshot: projectCoverageSnapshot(
+        JSON.parse(row.snapshot) as Record<string, unknown>,
+      ),
     }));
 
     const nextAfter =

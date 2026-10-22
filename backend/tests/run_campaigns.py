@@ -158,6 +158,7 @@ def _all_steps() -> list[TestStep]:
             TestStep("Contract versions", "node", "contract_versions.mjs"),
             TestStep("Staff authority RM01", "sql", "r1_rm01_staff_authority.sql"),
             TestStep("Permission readers RM02", "sql", "r1_rm02_permission_readers.sql"),
+            TestStep("Status refresh claim RM36", "sql", "r7_rm36_status_refresh.sql"),
         ]
     )
     return steps

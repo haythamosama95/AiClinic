@@ -121,3 +121,33 @@ export function validateCoverageSnapshot(
 
   return { ok: true };
 }
+
+/**
+ * RM36 (R7-A1) egress projection. Keeps only the contract keys (plus `reason`
+ * when present) and reduces a non-null `term` to its contract keys. Returns a
+ * new object and never mutates the input. Stored and internal copies stay full;
+ * only platform egress applies this.
+ */
+export function projectCoverageSnapshot(
+  snapshot: Record<string, unknown>,
+): Record<string, unknown> {
+  const projected: Record<string, unknown> = {};
+  for (const key of SNAPSHOT_KEYS) {
+    if (key in snapshot) {
+      projected[key] = snapshot[key];
+    }
+  }
+  if ("reason" in snapshot) {
+    projected.reason = snapshot.reason;
+  }
+  if (isRecord(projected.term)) {
+    const term: Record<string, unknown> = {};
+    for (const key of TERM_KEYS) {
+      if (key in projected.term) {
+        term[key] = projected.term[key];
+      }
+    }
+    projected.term = term;
+  }
+  return projected;
+}

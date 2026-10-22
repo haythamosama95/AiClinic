@@ -1,5 +1,6 @@
 import { CHANNEL_VERSIONS, subscriptionRef } from "vendor-contracts";
-import { listOffers } from "./offers.js";
+import { prepareRaiseAlert } from "../alert/index.js";
+import { validateOfferCopy } from "../offers/copy.js";
 import { clinicErrorResponse, clinicJsonResponse } from "./version.js";
 
 const PAYMENTS_PAGE_SIZE = 20;
@@ -24,6 +25,8 @@ type PaymentRow = {
   classification: string;
   term_unit: string;
   term_count: number;
+  // The payment's own immutable offer_version.copy, or null when that version is absent (R7-A2).
+  offer_copy: string | null;
 };
 
 type ReversalRow = {
@@ -141,15 +144,34 @@ async function buildNotices(
   return notices;
 }
 
-async function planDisplayNames(
+// R7-A2 step 2: the name is read from the payment's exact immutable offer version, so it survives
+// later publication or retirement and does not depend on the sellable catalogue or terms R2. A
+// missing or malformed version is diagnosed (offer_malformed alert) and yields a null name; no
+// name is invented.
+async function paymentPlanDisplayName(
   env: BillingReadsEnv,
-): Promise<Map<string, string>> {
-  const offers = await listOffers(env);
-  const names = new Map<string, string>();
-  for (const offer of offers) {
-    names.set(offer.offer_id, offer.plan_display_name);
+  row: PaymentRow,
+): Promise<string | null> {
+  let copy: ReturnType<typeof validateOfferCopy> = null;
+  if (row.offer_copy !== null) {
+    try {
+      copy = validateOfferCopy(JSON.parse(row.offer_copy));
+    } catch {
+      copy = null;
+    }
   }
-  return names;
+  if (copy === null) {
+    const reason =
+      row.offer_copy === null ? "version missing" : "copy malformed";
+    await prepareRaiseAlert(
+      env.DB,
+      "offer_malformed",
+      `offer_malformed:${row.offer_id}:${row.offer_version}`,
+      `payment ${row.reference} offer ${row.offer_id} version ${row.offer_version}: ${reason}`,
+    ).run();
+    return null;
+  }
+  return copy.en.name;
 }
 
 async function loadReversals(
@@ -223,9 +245,11 @@ async function loadPaymentPage(
     const result = await env.DB.prepare(
       `SELECT p.payment_id, p.reference, p.paid_at, p.amount_minor, p.currency,
               p.offer_id, p.offer_version, p.classification,
-              c.term_unit, c.term_count
+              c.term_unit, c.term_count, ov.copy AS offer_copy
        FROM payment p
        INNER JOIN checkout c ON c.checkout_id = p.checkout_id
+       LEFT JOIN offer_version ov
+         ON ov.offer_id = p.offer_id AND ov.version = p.offer_version
        WHERE p.org_id = ?
        ORDER BY p.paid_at ASC, p.reference ASC
        LIMIT ?`,
@@ -243,9 +267,11 @@ async function loadPaymentPage(
   const result = await env.DB.prepare(
     `SELECT p.payment_id, p.reference, p.paid_at, p.amount_minor, p.currency,
             p.offer_id, p.offer_version, p.classification,
-            c.term_unit, c.term_count
+            c.term_unit, c.term_count, ov.copy AS offer_copy
      FROM payment p
      INNER JOIN checkout c ON c.checkout_id = p.checkout_id
+     LEFT JOIN offer_version ov
+       ON ov.offer_id = p.offer_id AND ov.version = p.offer_version
      WHERE p.org_id = ?
        AND (p.paid_at > ? OR (p.paid_at = ? AND p.reference > ?))
      ORDER BY p.paid_at ASC, p.reference ASC
@@ -277,7 +303,6 @@ export async function handleGetPayments(
   const rows = await loadPaymentPage(env, orgId, cursor);
   const hasMore = rows.length > PAYMENTS_PAGE_SIZE;
   const pageRows = hasMore ? rows.slice(0, PAYMENTS_PAGE_SIZE) : rows;
-  const displayNames = await planDisplayNames(env);
 
   const payments: Record<string, unknown>[] = [];
   for (const row of pageRows) {
@@ -286,8 +311,7 @@ export async function handleGetPayments(
       paid_at: row.paid_at,
       amount_minor: row.amount_minor,
       currency: row.currency,
-      plan_display_name:
-        displayNames.get(row.offer_id) ?? "Clinic subscription",
+      plan_display_name: await paymentPlanDisplayName(env, row),
       offer_version: row.offer_version,
       term_unit: row.term_unit,
       term_count: row.term_count,
