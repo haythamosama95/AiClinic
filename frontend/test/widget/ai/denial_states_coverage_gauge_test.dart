@@ -69,11 +69,15 @@ class _FakeCoverageUsageClient extends UsageSummaryClient {
               return http.Response(
                 jsonEncode({
                   'subscription_ref': subscriptionRef,
-                  'term': {
-                    'used': termUsed,
-                    'allowance': termAllowance,
-                    'plan_display_name': _testPlanDisplayName,
+                  'snapshot': {
+                    'term': {
+                      'used': termUsed,
+                      'allowance': termAllowance,
+                      'plan_display_name': _testPlanDisplayName,
+                    },
                   },
+                  'queued_terms': <Object>[],
+                  'recent_terms': <Object>[],
                 }),
                 200,
                 headers: {'content-type': 'application/json'},
@@ -445,6 +449,38 @@ void main() {
       );
 
       expect(find.text(_testPlanDisplayName), findsOneWidget);
+    });
+  });
+
+  group('R7-T2 staff coverage isolation', () {
+    testWidgets('R7-T2: staff caller does not fetch or display commercial coverage data', (
+      tester,
+    ) async {
+      final harness = AiSurfaceHarness();
+      final submit = FakeSubmitPort(
+        script: [
+          SubmitOpenStreamStep(
+            streamingThenCompleted(provisionalText: 'draft', terminalText: 'done'),
+          ),
+        ],
+      );
+
+      await _pumpDenialHost(
+        tester,
+        composition: _buildComposition(
+          harness: harness,
+          submitPort: submit,
+          staffIsAdministrator: false,
+        ),
+      );
+
+      expect(find.byKey(kAiUsageGaugeKey), findsNothing);
+      expect(find.text(_testPlanDisplayName), findsNothing);
+      expect(find.text(_testSubscriptionRef), findsNothing);
+      expect(
+        harness.networkSpy.urls.where((url) => url.contains('/v1/coverage')),
+        isEmpty,
+      );
     });
   });
 }

@@ -14,14 +14,18 @@ import 'package:http/testing.dart';
 import '../../helpers/auth_test_support.dart';
 import 'ai_surface_test_harness.dart';
 
-// Mirrors the coverage fixture shape used by usage_gauge_test.dart (42 of 10000 credits).
+// Mirrors the producer coverage wire shape (42 of 10000 credits).
 const _coverageBody = {
   'subscription_ref': 'sub-fixture-001',
-  'term': {
-    'used': 42,
-    'allowance': 10000,
-    'plan_display_name': 'Fixture Plan',
+  'snapshot': {
+    'term': {
+      'used': 42,
+      'allowance': 10000,
+      'plan_display_name': 'Fixture Plan',
+    },
   },
+  'queued_terms': <Object>[],
+  'recent_terms': <Object>[],
 };
 
 http.Response _coverageResponse() => http.Response(

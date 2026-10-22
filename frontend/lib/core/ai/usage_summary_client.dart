@@ -20,16 +20,19 @@ class UsageSummaryAuthFailure implements Exception {
 }
 
 /// Successful coverage fetch (04 §4.2 wire).
+///
+/// `creditsUsed` and `creditBudget` are null when the valid snapshot has no current term;
+/// the subscription reference is preserved in that case so the host can still show it.
 class UsageSummaryFetchResult {
   const UsageSummaryFetchResult({
-    required this.creditsUsed,
-    required this.creditBudget,
+    this.creditsUsed,
+    this.creditBudget,
     this.subscriptionRef,
     this.planDisplayName,
   });
 
-  final int creditsUsed;
-  final int creditBudget;
+  final int? creditsUsed;
+  final int? creditBudget;
   final String? subscriptionRef;
   final String? planDisplayName;
 }
@@ -58,14 +61,24 @@ class UsageSummaryClient {
     );
 
     if (response.statusCode >= 200 && response.statusCode < 300) {
+      // Seam: R2-C3 response-version guard (RM37, blocked)
       final decoded = jsonDecode(response.body);
       if (decoded is! Map<String, dynamic>) {
         throw const FormatException('Coverage body is not an object');
       }
       final subscriptionRef = decoded['subscription_ref']?.toString();
-      final term = decoded['term'];
+      // Producer wire: `{subscription_ref, snapshot: {term, ...}, queued_terms, recent_terms}`.
+      final snapshot = decoded['snapshot'];
+      if (snapshot is! Map<String, dynamic>) {
+        throw const FormatException('Coverage snapshot missing or not an object');
+      }
+      final term = snapshot['term'];
+      if (term == null) {
+        // Valid snapshot with no current term: keep the reference, no commercial figures.
+        return UsageSummaryFetchResult(subscriptionRef: subscriptionRef);
+      }
       if (term is! Map<String, dynamic>) {
-        throw const FormatException('Coverage missing term');
+        throw const FormatException('Coverage snapshot.term is not an object');
       }
       final creditsUsed = term['used'];
       final creditBudget = term['allowance'];

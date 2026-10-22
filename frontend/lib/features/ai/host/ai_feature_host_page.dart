@@ -411,11 +411,15 @@ class _AiFeatureHostPageState extends State<AiFeatureHostPage> {
             return http.Response(
               jsonEncode({
                 'subscription_ref': 'sub-fixture-001',
-                'term': {
-                  'used': 42,
-                  'allowance': 10000,
-                  'plan_display_name': 'Fixture Plan',
+                'snapshot': {
+                  'term': {
+                    'used': 42,
+                    'allowance': 10000,
+                    'plan_display_name': 'Fixture Plan',
+                  },
                 },
+                'queued_terms': <Object>[],
+                'recent_terms': <Object>[],
               }),
               200,
               headers: {'content-type': 'application/json'},
